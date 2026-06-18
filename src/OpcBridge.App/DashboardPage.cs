@@ -8,206 +8,184 @@ internal static class DashboardPage
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>OPC Bridge Dashboard</title>
+    <title>OPC Bridge</title>
     <style>
         :root {
             color-scheme: dark;
-            --bg: #0d1117;
-            --surface: #161b22;
+            --bg:       #0d1117;
+            --surface:  #161b22;
             --surface2: #1c2330;
-            --border: #30363d;
-            --text: #e6edf3;
-            --muted: #8b949e;
-            --good: #3fb950;
-            --bad: #f85149;
-            --warn: #d29922;
-            --accent: #58a6ff;
+            --border:   #30363d;
+            --text:     #e6edf3;
+            --muted:    #8b949e;
+            --good:     #3fb950;
+            --bad:      #f85149;
+            --warn:     #d29922;
+            --accent:   #58a6ff;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         }
-        * { box-sizing: border-box; }
-        body { margin: 0; background: var(--bg); color: var(--text); font-size: 14px; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; }
 
-        /* Header */
+        /* ── Header ─────────────────────────────── */
         header {
-            padding: 16px 28px;
+            padding: 14px 28px;
             background: var(--surface);
             border-bottom: 1px solid var(--border);
-            display: flex;
-            align-items: center;
-            gap: 16px;
+            display: flex; align-items: center; gap: 14px;
+            position: sticky; top: 0; z-index: 10;
         }
-        header h1 { margin: 0; font-size: 18px; font-weight: 600; }
-        .header-meta { color: var(--muted); font-size: 13px; }
-        .header-meta code { color: var(--accent); background: rgba(88,166,255,.1); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
         .pulse-dot {
-            width: 9px; height: 9px; border-radius: 50%;
-            background: var(--good); flex-shrink: 0;
+            width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0;
+            background: var(--good);
             box-shadow: 0 0 0 0 rgba(63,185,80,.6);
             animation: pulse 2s infinite;
         }
         .pulse-dot.offline { background: var(--bad); animation: none; box-shadow: none; }
         @keyframes pulse {
-            0%   { box-shadow: 0 0 0 0 rgba(63,185,80,.6); }
-            70%  { box-shadow: 0 0 0 7px rgba(63,185,80,0); }
-            100% { box-shadow: 0 0 0 0 rgba(63,185,80,0); }
+            0%   { box-shadow: 0 0 0 0   rgba(63,185,80,.6); }
+            70%  { box-shadow: 0 0 0 7px rgba(63,185,80,0);  }
+            100% { box-shadow: 0 0 0 0   rgba(63,185,80,0);  }
         }
-        .last-refresh { margin-left: auto; color: var(--muted); font-size: 12px; }
+        header h1 { font-size: 17px; font-weight: 600; }
+        .header-meta { color: var(--muted); font-size: 12px; }
+        .header-meta code {
+            color: var(--accent); background: rgba(88,166,255,.1);
+            padding: 1px 5px; border-radius: 4px; font-size: 11px;
+        }
+        .header-right { margin-left: auto; color: var(--muted); font-size: 12px; white-space: nowrap; }
 
-        main { padding: 24px 28px; }
+        /* ── Layout ─────────────────────────────── */
+        main { padding: 24px 28px; max-width: 1400px; }
 
-        /* Cards */
+        /* ── Cards ──────────────────────────────── */
         .cards {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
-            gap: 10px;
-            margin-bottom: 28px;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 10px; margin-bottom: 28px;
         }
         .card {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 14px 16px;
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 8px; padding: 14px 16px;
         }
         .card-label {
-            color: var(--muted);
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: .06em;
-            font-weight: 500;
+            color: var(--muted); font-size: 11px;
+            text-transform: uppercase; letter-spacing: .06em; font-weight: 500;
         }
-        .card-value {
-            margin-top: 8px;
-            font-size: 17px;
-            font-weight: 700;
-            overflow-wrap: anywhere;
-            line-height: 1.2;
-        }
-        .card-sub {
-            margin-top: 5px;
-            color: var(--muted);
-            font-size: 12px;
-            overflow-wrap: anywhere;
-        }
+        .card-value { margin-top: 8px; font-size: 17px; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
+        .card-sub   { margin-top: 5px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 
-        /* Badge */
+        /* ── Badge ──────────────────────────────── */
         .badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 5px;
-            padding: 2px 8px;
-            border-radius: 12px;
-            font-size: 13px;
-            font-weight: 600;
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 2px 9px; border-radius: 12px; font-size: 13px; font-weight: 600;
         }
-        .badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .7; }
-        .badge.good  { color: var(--good);  background: rgba(63,185,80,.12); }
-        .badge.bad   { color: var(--bad);   background: rgba(248,81,73,.12); }
-        .badge.warn  { color: var(--warn);  background: rgba(210,153,34,.12); }
+        .badge::before { content:''; width:6px; height:6px; border-radius:50%; background:currentColor; opacity:.75; }
+        .badge.good { color: var(--good); background: rgba(63,185,80,.12); }
+        .badge.bad  { color: var(--bad);  background: rgba(248,81,73,.12);  }
+        .badge.warn { color: var(--warn); background: rgba(210,153,34,.12); }
 
-        /* Section */
-        .section-header { font-size: 14px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; margin: 0 0 10px; }
-
-        /* Tables */
-        .table-wrap { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 28px; }
-        table { width: 100%; border-collapse: collapse; background: var(--surface); }
-        thead { position: sticky; top: 0; z-index: 1; }
-        th {
-            background: var(--surface2);
-            color: var(--muted);
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: .06em;
-            font-weight: 500;
-            padding: 9px 14px;
-            text-align: left;
+        /* ── Section header ─────────────────────── */
+        .sh {
+            font-size: 11px; font-weight: 600; color: var(--muted);
+            text-transform: uppercase; letter-spacing: .08em;
+            margin: 20px 0 10px; padding-bottom: 6px;
             border-bottom: 1px solid var(--border);
+        }
+        .sh:first-child { margin-top: 0; }
+
+        /* ── Panel / table wrap ──────────────────── */
+        .panel { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 24px; }
+        table { width: 100%; border-collapse: collapse; background: var(--surface); }
+        thead { z-index: 1; }
+        th {
+            background: var(--surface2); color: var(--muted);
+            font-size: 11px; text-transform: uppercase; letter-spacing: .06em; font-weight: 500;
+            padding: 9px 14px; text-align: left; border-bottom: 1px solid var(--border);
         }
         td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
         tr:last-child td { border-bottom: none; }
-        tbody tr:hover td { background: var(--surface2); }
-        td.label-cell { color: var(--muted); width: 180px; font-size: 13px; }
+        tbody tr:hover td { background: var(--surface2); transition: background .1s; }
+        td.lbl { color: var(--muted); width: 160px; font-size: 13px; }
 
-        .good  { color: var(--good); }
-        .bad   { color: var(--bad); }
-        .warn  { color: var(--warn); }
-        code   { color: var(--accent); font-size: 12px; }
+        .good { color: var(--good); }
+        .bad  { color: var(--bad);  }
+        .warn { color: var(--warn); }
+        code  { color: var(--accent); font-size: 12px; }
 
-        /* Mode control */
-        .mode-row { display: flex; align-items: center; gap: 10px; }
-        select {
-            background: var(--surface2);
-            color: var(--text);
+        /* ── Inputs ─────────────────────────────── */
+        .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        select, input[type="text"] {
+            background: var(--surface2); color: var(--text);
+            border: 1px solid var(--border); border-radius: 6px;
+            padding: 6px 10px; font-size: 13px;
+        }
+        select { cursor: pointer; }
+        select:focus, input[type="text"]:focus {
+            outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent;
+        }
+        input[type="text"] { width: 240px; }
+
+        /* ── Buttons ─────────────────────────────── */
+        .btn {
+            display: inline-flex; align-items: center; gap: 6px;
+            background: var(--accent); color: #0d1117;
+            border: none; border-radius: 6px;
+            padding: 6px 14px; font-size: 13px; font-weight: 600;
+            cursor: pointer; transition: opacity .15s; white-space: nowrap;
+        }
+        .btn:hover:not(:disabled) { opacity: .85; }
+        .btn:disabled { opacity: .4; cursor: not-allowed; }
+        .btn-ghost {
+            background: var(--surface2); color: var(--text);
             border: 1px solid var(--border);
-            border-radius: 6px;
-            padding: 6px 10px;
-            font-size: 13px;
-            cursor: pointer;
         }
-        select:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
-        input[type="text"] {
-            background: var(--surface2);
-            color: var(--text);
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            padding: 6px 10px;
-            font-size: 13px;
-            width: 280px;
-        }
-        input[type="text"]:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
-        button {
-            background: var(--accent);
-            color: #0d1117;
-            border: none;
-            border-radius: 6px;
-            padding: 6px 14px;
-            font-size: 13px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: opacity .15s;
-        }
-        button:hover:not(:disabled) { opacity: .85; }
-        button:disabled { opacity: .4; cursor: not-allowed; }
-        .mode-msg { font-size: 13px; color: var(--muted); }
+        .btn-ghost:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); opacity: 1; }
+        .msg { font-size: 13px; color: var(--muted); }
 
-        /* UA endpoint display */
+        /* ── Endpoint box ────────────────────────── */
         .endpoint-box {
-            background: var(--surface2);
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            padding: 8px 12px;
-            font-family: monospace;
-            font-size: 13px;
-            color: var(--accent);
-            word-break: break-all;
+            background: var(--surface2); border: 1px solid var(--border);
+            border-radius: 6px; padding: 9px 14px;
+            font-family: 'Consolas', 'SF Mono', monospace; font-size: 13px;
+            color: var(--accent); word-break: break-all; margin-bottom: 24px;
         }
-        /* Tab buttons */
-        .tab-btn {
-            background: none;
-            color: var(--muted);
-            border: none;
-            border-bottom: 2px solid transparent;
-            border-radius: 0;
-            padding: 10px 20px;
-            font-size: 13px;
-            font-weight: 500;
-            cursor: pointer;
+
+        /* ── Tabs ────────────────────────────────── */
+        .tabs { display: flex; border-bottom: 1px solid var(--border); background: var(--surface2); }
+        .tab {
+            background: none; color: var(--muted);
+            border: none; border-bottom: 2px solid transparent;
+            border-radius: 0; padding: 10px 20px;
+            font-size: 13px; font-weight: 500; cursor: pointer;
+            transition: color .15s;
         }
-        .tab-btn.active { color: var(--text); border-bottom-color: var(--accent); }
-        .tab-btn:hover:not(.active) { color: var(--text); }
-        /* Server list items */
-        .server-item {
-            display: flex;
-            flex-direction: column;
-            padding: 10px 12px;
-            border-radius: 6px;
-            cursor: pointer;
-            margin-bottom: 4px;
-            border: 1px solid transparent;
+        .tab.active { color: var(--text); border-bottom-color: var(--accent); }
+        .tab:hover:not(.active) { color: var(--text); }
+        .tab-pane { padding: 14px 16px; }
+
+        /* ── Server list ─────────────────────────── */
+        .server-list { display: flex; flex-direction: column; gap: 4px; }
+        .srv {
+            display: flex; flex-direction: column;
+            padding: 10px 12px; border-radius: 6px; cursor: pointer;
+            border: 1px solid transparent; transition: background .1s, border-color .1s;
         }
-        .server-item:hover { background: var(--surface2); border-color: var(--border); }
-        .server-item.selected { background: rgba(88,166,255,.08); border-color: var(--accent); }
-        .server-item .s-name { font-size: 13px; font-weight: 600; color: var(--text); }
-        .server-item .s-prog { font-size: 12px; color: var(--muted); font-family: monospace; margin-top:2px; }
+        .srv:hover   { background: var(--surface2); border-color: var(--border); }
+        .srv.active  { background: rgba(88,166,255,.08); border-color: var(--accent); }
+        .srv-name    { font-size: 13px; font-weight: 600; }
+        .srv-prog    { font-size: 12px; color: var(--muted); font-family: monospace; margin-top: 2px; }
+
+        /* ── Selected bar ────────────────────────── */
+        .sel-bar {
+            border-top: 1px solid var(--border);
+            padding: 12px 16px; background: var(--surface2);
+            display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+        }
+        .sel-label { font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; white-space: nowrap; }
+
+        /* ── SVG icons ───────────────────────────── */
+        .icon { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
     </style>
 </head>
 <body>
@@ -215,13 +193,14 @@ internal static class DashboardPage
     <div class="pulse-dot" id="pulseDot"></div>
     <div>
         <h1>OPC DA → UA Bridge</h1>
-        <div class="header-meta">Runtime dashboard &nbsp;·&nbsp; UA endpoint: <code id="headerEndpoint">opc.tcp://…</code></div>
+        <div class="header-meta">Runtime dashboard &nbsp;·&nbsp; UA: <code id="headerEndpoint">—</code></div>
     </div>
-    <div class="last-refresh" id="refresh">—</div>
+    <div class="header-right" id="refresh">—</div>
 </header>
 
 <main>
 
+    <!-- Status cards -->
     <div class="cards">
         <div class="card">
             <div class="card-label">Bridge runtime</div>
@@ -255,279 +234,255 @@ internal static class DashboardPage
         </div>
     </div>
 
-    <p class="section-header">OPC UA Endpoint</p>
+    <!-- UA Endpoint -->
+    <p class="sh">OPC UA Endpoint</p>
     <div class="endpoint-box" id="uaEndpoint">—</div>
-    <br>
 
-    <p class="section-header">OPC DA mode</p>
-    <div class="table-wrap">
-        <table>
-            <tbody>
-                <tr>
-                    <td class="label-cell">Source mode</td>
-                    <td>
-                        <div class="mode-row">
-                            <select id="modeSelect">
-                                <option value="Simulation">Simulation</option>
-                                <option value="OpcDa">Real OPC DA</option>
-                            </select>
-                            <button id="modeApply" type="button">Apply</button>
-                            <span class="mode-msg" id="modeMessage">No pending change</span>
-                        </div>
-                    </td>
-                </tr>
-            </tbody>
-        </table>
+    <!-- DA Mode -->    <p class="sh">OPC DA Mode</p>
+    <div class="panel" style="margin-bottom:24px">
+        <table><tbody>
+            <tr>
+                <td class="lbl">Source mode</td>
+                <td>
+                    <div class="row">
+                        <select id="modeSelect">
+                            <option value="Simulation">Simulation</option>
+                            <option value="OpcDa">Real OPC DA</option>
+                        </select>
+                        <button class="btn" id="modeApply" type="button">
+                            <svg class="icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                            Apply
+                        </button>
+                        <span class="msg" id="modeMessage">No pending change</span>
+                    </div>
+                </td>
+            </tr>
+        </tbody></table>
     </div>
 
-    <p class="section-header">OPC DA server browser</p>
-    <div class="table-wrap" style="margin-bottom:28px">
-        <!-- Tabs -->
-        <div style="display:flex; border-bottom:1px solid var(--border); background:var(--surface2);">
-            <button class="tab-btn active" id="tabLocal" onclick="switchTab('local')" type="button">Local</button>
-            <button class="tab-btn" id="tabRemote" onclick="switchTab('remote')" type="button">Remote</button>
+    <!-- Server Browser -->
+    <p class="sh">OPC DA Server Browser</p>
+    <div class="panel" style="margin-bottom:24px">
+        <div class="tabs">
+            <button class="tab active" id="tabLocal"  onclick="switchTab('local')"  type="button">Local</button>
+            <button class="tab"        id="tabRemote" onclick="switchTab('remote')" type="button">Remote</button>
         </div>
 
-        <!-- Local tab -->
-        <div id="paneLocal" style="padding:14px 16px;">
-            <div class="mode-row" style="margin-bottom:10px;">
-                <button id="btnReloadLocal" type="button" onclick="browseServers(null)">⟳ Reload</button>
-                <span class="mode-msg" id="msgLocal">—</span>
+        <div class="tab-pane" id="paneLocal">
+            <div class="row" style="margin-bottom:12px">
+                <button class="btn btn-ghost" id="btnReloadLocal" type="button" onclick="browseServers(null)">
+                    <svg class="icon" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                    Reload
+                </button>
+                <span class="msg" id="msgLocal">Click Reload to scan local OPC DA servers.</span>
             </div>
-            <div id="listLocal"><span style="color:var(--muted);font-size:13px">Click Reload to scan local OPC DA servers.</span></div>
+            <div class="server-list" id="listLocal"></div>
         </div>
 
-        <!-- Remote tab -->
-        <div id="paneRemote" style="padding:14px 16px; display:none;">
-            <div class="mode-row" style="margin-bottom:10px;">
+        <div class="tab-pane" id="paneRemote" style="display:none">
+            <div class="row" style="margin-bottom:12px">
                 <input id="remoteHost" type="text" placeholder="192.168.x.x or hostname" style="width:220px">
-                <button id="btnReloadRemote" type="button" onclick="browseServers(document.getElementById('remoteHost').value)">⟳ Browse</button>
-                <span class="mode-msg" id="msgRemote">—</span>
+                <button class="btn btn-ghost" id="btnReloadRemote" type="button" onclick="browseServers(el('remoteHost').value)">
+                    <svg class="icon" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                    Browse
+                </button>
+                <span class="msg" id="msgRemote">Enter a host and click Browse.</span>
             </div>
-            <div id="listRemote"><span style="color:var(--muted);font-size:13px">Enter a host and click Browse.</span></div>
+            <div class="server-list" id="listRemote"></div>
         </div>
 
-        <!-- Selected server row -->
-        <div style="border-top:1px solid var(--border); padding:12px 16px; background:var(--surface2); display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-            <span style="color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.06em">Selected</span>
+        <div class="sel-bar">
+            <span class="sel-label">Selected</span>
             <input id="cfgProgId" type="text" placeholder="ProgID" style="flex:1;min-width:200px">
-            <input id="cfgHost" type="text" placeholder="Host (localhost or IP)" style="width:180px">
-            <button id="cfgApply" type="button" onclick="applyServerConfig()">Apply</button>
-            <span class="mode-msg" id="cfgMessage">—</span>
+            <input id="cfgHost"   type="text" placeholder="Host" style="width:160px">
+            <button class="btn" id="cfgApply" type="button" onclick="applyServerConfig()">
+                <svg class="icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+                Apply
+            </button>
+            <span class="msg" id="cfgMessage">—</span>
         </div>
     </div>
 
-    <p class="section-header">Live values — OPC DA → Bridge</p>
-    <div class="table-wrap">
+    <!-- Live values -->
+    <p class="sh">Live Values &#8212; OPC DA &#8594; Bridge</p>
+    <div class="panel">
         <table>
-            <thead>
-                <tr><th>DA Item ID</th><th>Value</th><th>Quality</th><th>Timestamp (local)</th></tr>
-            </thead>
-            <tbody id="values"><tr><td colspan="4">Waiting for values…</td></tr></tbody>
+            <thead><tr>
+                <th>DA Item ID</th><th>Value</th><th>Quality</th><th>Timestamp (local)</th>
+            </tr></thead>
+            <tbody id="values"><tr><td colspan="4" style="color:var(--muted)">Waiting for values…</td></tr></tbody>
         </table>
     </div>
 
 </main>
+""";
 
+    // JS is appended below to keep each part manageable
+    public const string Script = """
 <script>
 const ESC = {'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'};
 const esc = s => String(s??'').replace(/[&<>'"]/g, c => ESC[c]);
-const el = id => document.getElementById(id);
+const el  = id => document.getElementById(id);
 
-let modeChangeInFlight = false;
+let modeInFlight = false;
 
+// ── Helpers ──────────────────────────────────────────────────────
 function badge(text, cls) {
     return `<span class="badge ${cls}">${esc(text)}</span>`;
 }
-
 function stateClass(v) {
     if (!v) return 'warn';
     const s = v.toLowerCase();
     if (s === 'running' || s === 'connected') return 'good';
-    if (s === 'faulted' || s === 'stopped' || s === 'disconnected') return 'bad';
-    return 'warn'; // Starting, Reconnecting, Unknown, etc.
+    if (s === 'faulted' || s === 'stopped'  || s === 'disconnected') return 'bad';
+    return 'warn';
 }
-
-function relativeTime(utcStr) {
+function relTime(utcStr) {
     if (!utcStr) return '—';
-    const diff = Math.floor((Date.now() - new Date(utcStr).getTime()) / 1000);
-    if (diff < 5)  return 'just now';
-    if (diff < 60) return diff + 's ago';
-    if (diff < 3600) return Math.floor(diff/60) + 'm ago';
+    const d = Math.floor((Date.now() - new Date(utcStr)) / 1000);
+    if (d < 5)    return 'just now';
+    if (d < 60)   return d + 's ago';
+    if (d < 3600) return Math.floor(d/60) + 'm ago';
     return new Date(utcStr).toLocaleTimeString();
 }
+function locTime(utcStr) { return utcStr ? new Date(utcStr).toLocaleString() : '—'; }
+function get(o, k) { return o[k] ?? o[k[0].toUpperCase() + k.slice(1)]; }
 
-function localTime(utcStr) {
-    if (!utcStr) return '—';
-    return new Date(utcStr).toLocaleString();
-}
-
-function get(o, key) {
-    return o[key] ?? o[key[0].toUpperCase() + key.slice(1)];
-}
-
+// ── Dashboard refresh ─────────────────────────────────────────────
 async function refreshDashboard() {
     try {
         const r = await fetch('/api/dashboard', { cache: 'no-store' });
         if (!r.ok) throw new Error('HTTP ' + r.status);
         const p = await r.json();
-        const b = p.bridge || p.Bridge || {};
-        const ua = p.ua || p.Ua || {};
-        const values = p.values || p.Values || [];
+        const b  = p.bridge || p.Bridge || {};
+        const ua = p.ua     || p.Ua     || {};
+        const vs = p.values || p.Values || [];
 
-        // Header
         el('pulseDot').className = 'pulse-dot';
         el('refresh').textContent = 'Updated ' + new Date().toLocaleTimeString();
 
-        const endpoint = get(ua, 'endpointUrl') || 'opc.tcp://…';
-        el('headerEndpoint').textContent = endpoint;
-        el('uaEndpoint').textContent = endpoint;
+        const ep = get(ua, 'endpointUrl') || '—';
+        el('headerEndpoint').textContent = ep;
+        el('uaEndpoint').textContent = ep;
 
-        // Cards
-        const bsClass = stateClass(get(b, 'bridgeState'));
-        el('bridgeState').innerHTML = badge(get(b, 'bridgeState') || '—', bsClass);
+        el('bridgeState').innerHTML = badge(get(b,'bridgeState') || '—', stateClass(get(b,'bridgeState')));
+        const err = get(b,'lastError');
+        el('lastError').textContent  = err || 'No errors';
+        el('lastError').className    = 'card-sub' + (err ? ' bad' : '');
 
-        const err = get(b, 'lastError');
-        el('lastError').textContent = err || 'No errors';
-        el('lastError').className = 'card-sub' + (err ? ' bad' : '');
+        el('daState').innerHTML = badge(get(b,'daConnectionState') || '—', stateClass(get(b,'daConnectionState')));
+        el('daMode').textContent = 'Mode: ' + (get(b,'daMode') || '—');
 
-        const dsClass = stateClass(get(b, 'daConnectionState'));
-        el('daState').innerHTML = badge(get(b, 'daConnectionState') || '—', dsClass);
-        el('daMode').textContent = 'Mode: ' + (get(b, 'daMode') || '—');
+        el('lastDaRead').textContent     = relTime(get(b,'lastDaReadUtc'));
+        el('lastDaReadCount').textContent = (get(b,'lastDaReadCount')??0) + ' values';
+        el('lastUaWrite').textContent     = relTime(get(b,'lastUaWriteUtc'));
+        el('lastUaWriteCount').textContent= (get(b,'lastUaWriteCount')??0) + ' values';
 
-        el('lastDaRead').textContent = relativeTime(get(b, 'lastDaReadUtc'));
-        el('lastDaReadCount').textContent = (get(b, 'lastDaReadCount') ?? 0) + ' values';
+        el('uaState').innerHTML  = badge(get(ua,'state') || '—', stateClass(get(ua,'state')));
+        el('uaClients').textContent = (get(ua,'connectedClientCount')??0) + ' clients';
+        el('mappingCount').textContent = (get(b,'mappingCount')??0) + ' tags';
+        el('updateRate').textContent   = 'Update: ' + (get(b,'updateRateMs')||'—') + ' ms';
 
-        el('lastUaWrite').textContent = relativeTime(get(b, 'lastUaWriteUtc'));
-        el('lastUaWriteCount').textContent = (get(b, 'lastUaWriteCount') ?? 0) + ' values';
+        if (!modeInFlight) el('modeSelect').value = get(b,'daMode') || 'Simulation';
 
-        const usClass = stateClass(get(ua, 'state'));
-        el('uaState').innerHTML = badge(get(ua, 'state') || '—', usClass);
-        el('uaClients').textContent = (get(ua, 'connectedClientCount') ?? 0) + ' clients';
-
-        el('mappingCount').textContent = (get(b, 'mappingCount') ?? 0) + ' tags';
-        el('updateRate').textContent = 'Update: ' + (get(b, 'updateRateMs') ?? '—') + ' ms';
-
-        // Mode select
-        if (!modeChangeInFlight) {
-            el('modeSelect').value = get(b, 'daMode') || 'Simulation';
-        }
-
-        // Values table
-        el('values').innerHTML = values.length
-            ? values.map(item => {
-                const isGood = get(item, 'isGood');
-                const quality = get(item, 'daQuality');
-                const qBadge = badge(isGood ? 'Good' : 'Bad', isGood ? 'good' : 'bad');
+        el('values').innerHTML = vs.length
+            ? vs.map(item => {
+                const good = get(item,'isGood'), q = get(item,'daQuality');
                 return `<tr>
                     <td><code>${esc(get(item,'daItemId'))}</code></td>
-                    <td>${esc(String(get(item,'value') ?? ''))}</td>
-                    <td>${qBadge} <span class="${isGood?'good':'bad'}" style="font-size:12px">(${quality})</span></td>
-                    <td>${esc(localTime(get(item,'timestampUtc')))}</td>
+                    <td>${esc(String(get(item,'value')??''))}</td>
+                    <td>${badge(good?'Good':'Bad', good?'good':'bad')} <span class="${good?'good':'bad'}" style="font-size:11px;opacity:.7">(${q})</span></td>
+                    <td style="color:var(--muted);font-size:13px">${esc(locTime(get(item,'timestampUtc')))}</td>
                 </tr>`;
-            }).join('')
-            : '<tr><td colspan="4">No values yet.</td></tr>';
+              }).join('')
+            : '<tr><td colspan="4" style="color:var(--muted)">No values yet.</td></tr>';
 
-    } catch (e) {
+    } catch(e) {
         el('pulseDot').className = 'pulse-dot offline';
         el('refresh').textContent = 'Offline — ' + e.message;
         el('values').innerHTML = `<tr><td colspan="4" class="bad">${esc(e.message)}</td></tr>`;
     }
 }
 
+// ── Mode change ───────────────────────────────────────────────────
 async function applyModeChange() {
     const sel = el('modeSelect'), btn = el('modeApply'), msg = el('modeMessage');
-    modeChangeInFlight = true;
-    sel.disabled = btn.disabled = true;
-    msg.textContent = 'Applying…';
-    msg.className = 'mode-msg warn';
+    modeInFlight = true; sel.disabled = btn.disabled = true;
+    msg.textContent = 'Applying…'; msg.className = 'msg warn';
     try {
         const r = await fetch('/api/da/mode', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            method: 'POST', headers: {'Content-Type':'application/json'},
             body: JSON.stringify({ mode: sel.value })
         });
         if (!r.ok) throw new Error('HTTP ' + r.status);
         const p = await r.json();
-        msg.textContent = '✓ Applied: ' + (p.mode || sel.value);
-        msg.className = 'mode-msg good';
+        msg.textContent = '✓ Mode set to ' + (p.mode || sel.value);
+        msg.className = 'msg good';
         await refreshDashboard();
-    } catch (e) {
-        msg.textContent = '✗ ' + e.message;
-        msg.className = 'mode-msg bad';
+    } catch(e) {
+        msg.textContent = '✗ ' + e.message; msg.className = 'msg bad';
     } finally {
-        modeChangeInFlight = false;
-        sel.disabled = btn.disabled = false;
+        modeInFlight = false; sel.disabled = btn.disabled = false;
     }
 }
 
-el('modeApply').addEventListener('click', applyModeChange);
-refreshDashboard();
-setInterval(refreshDashboard, 1000);
-
 // ── Server browser ────────────────────────────────────────────────
 function switchTab(tab) {
-    const isLocal = tab === 'local';
-    el('tabLocal').classList.toggle('active', isLocal);
-    el('tabRemote').classList.toggle('active', !isLocal);
-    el('paneLocal').style.display  = isLocal ? '' : 'none';
-    el('paneRemote').style.display = isLocal ? 'none' : '';
+    const loc = tab === 'local';
+    el('tabLocal').classList.toggle('active', loc);
+    el('tabRemote').classList.toggle('active', !loc);
+    el('paneLocal').style.display  = loc ? '' : 'none';
+    el('paneRemote').style.display = loc ? 'none' : '';
 }
 
 async function browseServers(host) {
-    const isLocal = !host || host.trim() === '';
-    const listEl = el(isLocal ? 'listLocal' : 'listRemote');
-    const msgEl  = el(isLocal ? 'msgLocal'  : 'msgRemote');
-    const btnEl  = el(isLocal ? 'btnReloadLocal' : 'btnReloadRemote');
-    const displayHost = isLocal ? 'localhost' : host.trim();
+    const local = !host || !host.trim();
+    const listEl = el(local ? 'listLocal'       : 'listRemote');
+    const msgEl  = el(local ? 'msgLocal'         : 'msgRemote');
+    const btnEl  = el(local ? 'btnReloadLocal'   : 'btnReloadRemote');
+    const dhost  = local ? 'localhost' : host.trim();
 
     btnEl.disabled = true;
-    msgEl.textContent = 'Scanning…';
-    msgEl.className = 'mode-msg warn';
+    msgEl.textContent = 'Scanning…'; msgEl.className = 'msg warn';
     listEl.innerHTML = '<span style="color:var(--muted);font-size:13px">Scanning…</span>';
 
     try {
-        const url = '/api/da/servers' + (isLocal ? '' : '?host=' + encodeURIComponent(host.trim()));
+        const url = '/api/da/servers' + (local ? '' : '?host=' + encodeURIComponent(dhost));
         const r = await fetch(url, { cache: 'no-store' });
         const p = await r.json();
         if (p.error) throw new Error(p.error);
 
-        const servers = p.servers || [];
-        if (servers.length === 0) {
+        const svrs = p.servers || [];
+        if (!svrs.length) {
             listEl.innerHTML = '<span style="color:var(--muted);font-size:13px">No OPC DA servers found.</span>';
-            msgEl.textContent = '0 servers';
-            msgEl.className = 'mode-msg';
+            msgEl.textContent = '0 servers found'; msgEl.className = 'msg';
             return;
         }
+        msgEl.textContent = svrs.length + (svrs.length > 1 ? ' servers' : ' server') + ' found';
+        msgEl.className = 'msg good';
 
-        msgEl.textContent = servers.length + ' server' + (servers.length > 1 ? 's' : '') + ' found';
-        msgEl.className = 'mode-msg good';
-
-        listEl.innerHTML = servers.map((s, i) => {
-            const id = `si-${isLocal?'l':'r'}-${i}`;
-            return `<div class="server-item" id="${id}"
-                onclick="selectServer(${JSON.stringify(s.progId||s.ProgId)},${JSON.stringify(displayHost)},'${id}')">
-                <span class="s-name">${esc(s.description||s.Description||s.progId||s.ProgId)}</span>
-                <span class="s-prog">${esc(s.progId||s.ProgId)}</span>
+        listEl.innerHTML = svrs.map((s, i) => {
+            const id   = `si-${local?'l':'r'}-${i}`;
+            const name = s.description || s.Description || s.progId || s.ProgId;
+            const prog = s.progId || s.ProgId;
+            return `<div class="srv" id="${id}" onclick="selectServer(${JSON.stringify(prog)},${JSON.stringify(dhost)},'${id}')">
+                <span class="srv-name">${esc(name)}</span>
+                <span class="srv-prog">${esc(prog)}</span>
             </div>`;
         }).join('');
-    } catch (e) {
+    } catch(e) {
         listEl.innerHTML = `<span style="color:var(--bad);font-size:13px">${esc(e.message)}</span>`;
-        msgEl.textContent = '✗ ' + e.message;
-        msgEl.className = 'mode-msg bad';
-    } finally {
-        btnEl.disabled = false;
-    }
+        msgEl.textContent = '✗ ' + e.message; msgEl.className = 'msg bad';
+    } finally { btnEl.disabled = false; }
 }
 
 function selectServer(progId, host, itemId) {
-    document.querySelectorAll('.server-item.selected').forEach(n => n.classList.remove('selected'));
-    const item = document.getElementById(itemId);
-    if (item) item.classList.add('selected');
+    document.querySelectorAll('.srv.active').forEach(n => n.classList.remove('active'));
+    el(itemId)?.classList.add('active');
     el('cfgProgId').value = progId;
     el('cfgHost').value   = host;
     el('cfgMessage').textContent = 'Selected — click Apply to connect';
-    el('cfgMessage').className   = 'mode-msg warn';
+    el('cfgMessage').className   = 'msg warn';
 }
 
 // ── Server config apply ───────────────────────────────────────────
@@ -543,29 +498,29 @@ async function loadServerConfig() {
 
 async function applyServerConfig() {
     const btn = el('cfgApply'), msg = el('cfgMessage');
-    btn.disabled = true;
-    msg.textContent = 'Applying…';
-    msg.className = 'mode-msg warn';
+    btn.disabled = true; msg.textContent = 'Saving…'; msg.className = 'msg warn';
     try {
         const r = await fetch('/api/da/config', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            method: 'POST', headers: {'Content-Type':'application/json'},
             body: JSON.stringify({ progId: el('cfgProgId').value.trim(), host: el('cfgHost').value.trim() || 'localhost' })
         });
         if (!r.ok) throw new Error('HTTP ' + r.status);
         msg.textContent = '✓ Saved — switch to OpcDa mode to connect';
-        msg.className = 'mode-msg good';
-    } catch (e) {
-        msg.textContent = '✗ ' + e.message;
-        msg.className = 'mode-msg bad';
-    } finally {
-        btn.disabled = false;
-    }
+        msg.className = 'msg good';
+    } catch(e) {
+        msg.textContent = '✗ ' + e.message; msg.className = 'msg bad';
+    } finally { btn.disabled = false; }
 }
 
+// ── Init ──────────────────────────────────────────────────────────
+el('modeApply').addEventListener('click', applyModeChange);
 loadServerConfig();
+refreshDashboard();
+setInterval(refreshDashboard, 1000);
 </script>
 </body>
 </html>
 """;
+
+    public static string FullHtml => Html + Script;
 }
