@@ -311,7 +311,7 @@ internal static class DashboardPage
 const ESC = {'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'};
 const esc = s => String(s??'').replace(/[&<>'"]/g, c => ESC[c]);
 const el  = id => document.getElementById(id);
-let modeInFlight = false, tagPath = '';
+let modeInFlight = false, pendingMode = null, tagPath = '';
 
 // ── Tabs ──────────────────────────────────────────────────────────
 function showTab(name) {
@@ -383,9 +383,9 @@ async function refresh() {
         el('mappingCount').textContent = (get(b,'mappingCount')??0) + ' tags';
         el('uaEndpoint').textContent = get(ua,'endpointUrl') || '\u2014';
 
-        if (!modeInFlight) el('modeSelect').value = get(b,'daMode') || 'Simulation';
-
-        el('valCount').textContent = vs.length + (vs.length===1?' value':' values');
+        const currentMode = get(b,'daMode') || 'Simulation';
+        if (pendingMode && currentMode === pendingMode) pendingMode = null;
+        if (!modeInFlight) el('modeSelect').value = pendingMode || currentMode;
         el('values').innerHTML = vs.length ? vs.map(it => {
             const g = get(it,'isGood'), q = get(it,'daQuality');
             return `<tr><td><code>${esc(get(it,'daItemId'))}</code></td>
@@ -403,16 +403,20 @@ async function refresh() {
 // ── Mode ──────────────────────────────────────────────────────────
 async function applyMode() {
     const sel = el('modeSelect'), btn = el('modeApply'), msg = el('modeMessage');
+    const requestedMode = sel.value;
     modeInFlight = true; sel.disabled = btn.disabled = true;
-    msg.textContent = 'Applying\u2026'; msg.className = 'hint warn';
+    msg.textContent = 'Applying…'; msg.className = 'hint warn';
     try {
-        const r = await fetch('/api/da/mode', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ mode: sel.value }) });
+        const r = await fetch('/api/da/mode', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ mode: requestedMode }) });
         if (!r.ok) throw new Error('HTTP ' + r.status);
         const p = await r.json();
-        msg.textContent = '\u2713 Mode set to ' + (p.mode || sel.value); msg.className = 'hint good';
+        pendingMode = p.mode || requestedMode;
+        msg.textContent = '✓ Mode set to ' + pendingMode; msg.className = 'hint good';
         await refresh();
-    } catch(e) { msg.textContent = '\u2717 ' + e.message; msg.className = 'hint bad'; }
-    finally { modeInFlight = false; sel.disabled = btn.disabled = false; }
+    } catch(e) {
+        pendingMode = null;
+        msg.textContent = '✗ ' + e.message; msg.className = 'hint bad';
+    } finally { modeInFlight = false; sel.disabled = btn.disabled = false; }
 }
 
 // ── Server browser ────────────────────────────────────────────────
@@ -466,7 +470,12 @@ async function applyServerConfig() {
             remoteUsername: el('cfgUser').value.trim()||null, remotePassword: el('cfgPass').value||null, remoteDomain: el('cfgDomain').value.trim()||null };
         const r = await fetch('/api/da/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
         if (!r.ok) throw new Error('HTTP ' + r.status);
-        msg.textContent = '\u2713 Saved \u2014 switch to OpcDa mode to connect'; msg.className = 'msg good';
+        // Also switch to OpcDa mode automatically
+        await fetch('/api/da/mode', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ mode: 'OpcDa' }) });
+        pendingMode = 'OpcDa';
+        el('modeSelect').value = 'OpcDa';
+        msg.textContent = '\u2713 Server saved \u2014 switching to OpcDa mode\u2026'; msg.className = 'msg good';
+        await refresh();
     } catch(e) { msg.textContent = '\u2717 ' + e.message; msg.className = 'msg bad'; }
     finally { btn.disabled = false; }
 }
