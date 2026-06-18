@@ -186,6 +186,18 @@ internal static class DashboardPage
 
         /* ── SVG icons ───────────────────────────── */
         .icon { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+        /* ── Tag tree ────────────────────────────── */
+        .tnode {
+            display: flex; align-items: center; gap: 8px;
+            padding: 6px 8px; border-radius: 5px; cursor: pointer; font-size: 13px;
+        }
+        .tnode:hover { background: var(--surface2); }
+        .tnode .icon { color: var(--muted); }
+        .tnode.branch .icon { color: var(--warn); }
+        .tnode.tag    .icon { color: var(--accent); }
+        .tnode .tprog { color: var(--muted); font-family: monospace; font-size: 11px; margin-left: auto; }
+        .tcrumb { color: var(--accent); cursor: pointer; }
+        .tcrumb:hover { text-decoration: underline; }
     </style>
 </head>
 <body>
@@ -304,6 +316,21 @@ internal static class DashboardPage
                 Apply
             </button>
             <span class="msg" id="cfgMessage">—</span>
+        </div>
+    </div>
+
+    <!-- Tag browser -->
+    <p class="sh">OPC DA Tag Browser</p>
+    <div class="panel" style="margin-bottom:24px">
+        <div class="row" style="padding:14px 16px; border-bottom:1px solid var(--border)">
+            <button class="btn btn-ghost" id="btnBrowseTags" type="button" onclick="browseTags('')">
+                <svg class="icon" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                Browse tags
+            </button>
+            <span class="msg" id="tagBreadcrumb">Uses the Selected server above (ProgID + Host).</span>
+        </div>
+        <div id="tagTree" style="padding:10px 16px; max-height:340px; overflow-y:auto;">
+            <span style="color:var(--muted);font-size:13px">Click "Browse tags" to explore the selected server's address space.</span>
         </div>
     </div>
 
@@ -537,6 +564,98 @@ async function applyServerConfig() {
 
 // ── Init ──────────────────────────────────────────────────────────
 el('modeApply').addEventListener('click', applyModeChange);
+// ── Tag browser ───────────────────────────────────────────────────
+let tagPath = '';
+
+function renderBreadcrumb() {
+    const crumb = el('tagBreadcrumb');
+    const parts = tagPath ? tagPath.split('.') : [];
+    let html = `<span class="tcrumb" onclick="browseTags('')">root</span>`;
+    let acc = '';
+    for (const part of parts) {
+        acc = acc ? acc + '.' + part : part;
+        html += ` / <span class="tcrumb" onclick="browseTags(${JSON.stringify(acc)})">${esc(part)}</span>`;
+    }
+    crumb.innerHTML = html;
+}
+
+async function browseTags(path) {
+    const btn = el('btnBrowseTags'), tree = el('tagTree');
+    const progId = el('cfgProgId').value.trim();
+    const host   = el('cfgHost').value.trim() || 'localhost';
+
+    if (!progId) {
+        tree.innerHTML = '<span class="bad" style="font-size:13px">Select a server first (set ProgID above).</span>';
+        return;
+    }
+
+    tagPath = path || '';
+    btn.disabled = true;
+    tree.innerHTML = '<span style="color:var(--muted);font-size:13px">Browsing…</span>';
+
+    try {
+        const body = {
+            progId, host, path: tagPath,
+            remoteUsername: el('cfgUser').value.trim()   || null,
+            remotePassword: el('cfgPass').value          || null,
+            remoteDomain:   el('cfgDomain').value.trim() || null
+        };
+        const r = await fetch('/api/da/tags', {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify(body)
+        });
+        const p = await r.json();
+        if (p.error) throw new Error(p.error);
+
+        renderBreadcrumb();
+        const branches = p.branches || [];
+        const tags     = p.tags     || [];
+
+        let html = '';
+        // "up" navigation
+        if (tagPath) {
+            const parent = tagPath.includes('.') ? tagPath.slice(0, tagPath.lastIndexOf('.')) : '';
+            html += `<div class="tnode" onclick="browseTags(${JSON.stringify(parent)})">
+                <svg class="icon" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+                <span style="color:var(--muted)">.. (up)</span></div>`;
+        }
+        // branches (folders)
+        for (const b of branches) {
+            const child = tagPath ? tagPath + '.' + b : b;
+            html += `<div class="tnode branch" onclick="browseTags(${JSON.stringify(child)})">
+                <svg class="icon" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                <span>${esc(b)}</span></div>`;
+        }
+        // tags (leaves)
+        for (const t of tags) {
+            const name = t.name || t.Name;
+            const itemId = t.itemId || t.ItemId;
+            html += `<div class="tnode tag" onclick="pickTag(${JSON.stringify(itemId)})" title="Click to copy ItemID to clipboard">
+                <svg class="icon" viewBox="0 0 24 24"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                <span>${esc(name)}</span><span class="tprog">${esc(itemId)}</span></div>`;
+        }
+        if (!branches.length && !tags.length) {
+            html += '<span style="color:var(--muted);font-size:13px">Empty.</span>';
+        }
+        tree.innerHTML = html;
+    } catch(e) {
+        tree.innerHTML = `<span class="bad" style="font-size:13px">${esc(e.message)}</span>`;
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+function pickTag(itemId) {
+    navigator.clipboard?.writeText(itemId);
+    const tree = el('tagTree');
+    const note = document.createElement('div');
+    note.className = 'msg good';
+    note.style.padding = '6px 8px';
+    note.textContent = '✓ Copied: ' + itemId;
+    tree.prepend(note);
+    setTimeout(() => note.remove(), 2500);
+}
+
 loadServerConfig();
 refreshDashboard();
 setInterval(refreshDashboard, 1000);

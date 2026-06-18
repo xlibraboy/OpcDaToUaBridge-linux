@@ -80,6 +80,27 @@ app.MapGet("/api/da/servers", async (string? host) =>
         return Results.Json(new { error = ex.Message, servers = Array.Empty<object>() });
     }
 });
+app.MapPost("/api/da/tags", async (DaTagBrowseRequest request) =>
+{
+    if (!OperatingSystem.IsWindows())
+        return Results.Json(new { error = "OPC DA browsing requires Windows.", branches = Array.Empty<object>(), tags = Array.Empty<object>() });
+    try
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        var result = await Task.Run(() => OpcBridge.Da.OpcTagBrowser.Browse(
+            request.ProgId, request.Host, request.Path ?? string.Empty,
+            request.RemoteUsername, request.RemotePassword, request.RemoteDomain), cts.Token);
+        return Results.Json(new { branches = result.Branches, tags = result.Tags });
+    }
+    catch (OperationCanceledException)
+    {
+        return Results.Json(new { error = "Tag browse timed out. Check the server and DCOM settings.", branches = Array.Empty<object>(), tags = Array.Empty<object>() });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { error = ex.Message, branches = Array.Empty<object>(), tags = Array.Empty<object>() });
+    }
+});
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
 await app.RunAsync().ConfigureAwait(false);
