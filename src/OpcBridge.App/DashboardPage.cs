@@ -410,8 +410,8 @@ async function applyMode() {
         const r = await fetch('/api/da/mode', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ mode: requestedMode }) });
         if (!r.ok) throw new Error('HTTP ' + r.status);
         const p = await r.json();
-        pendingMode = p.mode || requestedMode;
-        msg.textContent = '✓ Mode set to ' + pendingMode; msg.className = 'hint good';
+        pendingMode = null;
+        msg.textContent = '✓ Mode set to ' + (p.mode || requestedMode); msg.className = 'hint good';
         await refresh();
     } catch(e) {
         pendingMode = null;
