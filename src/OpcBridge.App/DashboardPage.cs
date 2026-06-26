@@ -150,6 +150,12 @@ internal static class DashboardPage
         .log-entry { padding: 8px 0; border-bottom: 1px solid var(--border); }
         .log-entry:last-child { border-bottom: none; }
         .log-entry .meta { color: var(--muted); font-size: 11px; margin-bottom: 4px; }
+        .rate-limit-table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 12px; }
+        .rate-limit-table th { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border2); color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
+        .rate-limit-table td { padding: 5px 8px; border-bottom: 1px solid var(--border); }
+        .rate-limit-table td:first-child { font-weight: 600; white-space: nowrap; }
+        .rate-limit-table td:nth-child(2) { text-align: center; white-space: nowrap; }
+
         .log-entry .message { white-space: pre-wrap; word-break: break-word; }
         .log-entry .exception { white-space: pre-wrap; word-break: break-word; margin-top: 6px; color: var(--bad); }
         .doc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
@@ -382,12 +388,31 @@ internal static class DashboardPage
                     </ul>
                 </div>
                 <div class="doc-card">
-                    <h3>Poll Rate Tuning</h3>
+                    <h3>Poll Rate &amp; Tag Limits</h3>
                     <ul>
-                        <li>Each source has its own poll rate; the default rate applies to new sources.</li>
-                        <li>Lower poll rate means faster polling; the practical minimum is 100 ms.</li>
-                        <li>Watch the cycle-budget bar: green is healthy, yellow is tight, red is saturated.</li>
-                        <li>If saturation appears, increase the rate or reduce mapped load per source.</li>
+                        <li>Each tag can be assigned its own poll rate via the faceplate; tags with the same rate share one OPC DA group.</li>
+                        <li>The default rate (Connection tab) applies only to new sources and tags with rate = Source Default.</li>
+                        <li>Watch the alarm bar on the Monitor tab: green = within limits, yellow = cycle budget warning, red = limit exceeded or saturated.</li>
+                    </ul>
+                    <h4 style="margin-top:12px;font-size:12px;color:var(--muted)">Default tag limits per rate (appsettings.json → Bridge:RateLimits)</h4>
+                    <table class="rate-limit-table">
+                        <thead><tr><th>Rate</th><th>Max Tags</th><th>Basis</th></tr></thead>
+                        <tbody>
+                            <tr><td>100 ms</td><td>200</td><td>COM device read ~0.4ms/item; 80ms budget at 80% cycle</td></tr>
+                            <tr><td>250 ms</td><td>500</td><td>Cached reads ~0.4ms; 200ms budget</td></tr>
+                            <tr><td>500 ms</td><td>1,000</td><td>Mixed cache/device ~0.4ms; 400ms budget</td></tr>
+                            <tr><td>1 s</td><td>5,000</td><td>Cached reads; 800ms budget; UA lock ~50ms</td></tr>
+                            <tr><td>2 s</td><td>10,000</td><td>~1.6s budget; UA updates ~10K/sec</td></tr>
+                            <tr><td>5 s</td><td>20,000</td><td>~4s budget; network ~2MB/s per UA client</td></tr>
+                            <tr><td>10 s</td><td>50,000</td><td>~8s budget; network ~5MB/s; lock contention monitor</td></tr>
+                        </tbody>
+                    </table>
+                    <h4 style="margin-top:12px;font-size:12px;color:var(--muted)">How limits are derived</h4>
+                    <ul>
+                        <li><b>DA COM read time</b> — IOPCSyncIO.Read with N items takes ~0.4–1ms/item (cache) or 2–5ms/item (device). Limit = 80% of rate interval ÷ per-item read time.</li>
+                        <li><b>UA server lock</b> — each UpdateValue holds a lock for ~5–10μs. At 5000 tags × 500ms = 10K updates/sec, lock contention becomes measurable.</li>
+                        <li><b>Network bandwidth</b> — each UA client notification is ~50–100 bytes. At 5000 tags × 500ms ≈ 500KB/s per client; 50K tags × 100ms ≈ 5MB/s saturates 100Mbps LAN.</li>
+                        <li>Limits are <b>conservative estimates</b>, not hard ceilings. Adjust in appsettings.json for your hardware and network. The alarm bar warns before degradation.</li>
                     </ul>
                 </div>
                 <div class="doc-card">
