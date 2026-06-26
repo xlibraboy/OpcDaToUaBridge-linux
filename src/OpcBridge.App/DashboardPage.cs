@@ -52,6 +52,12 @@ internal static class DashboardPage
         .box-h { padding: 9px 14px; background: var(--panel2); border-bottom: 1px solid var(--border); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); display: flex; align-items: center; gap: 8px; }
         .box-b { padding: 12px 14px; }
         .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
+        .mon-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 14px; }
+        .mon-stat-group { background: var(--panel); border: 1px solid var(--border); border-radius: 7px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
+        .mon-stat-group-h { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+        .mon-stat-group .stat { padding: 4px 0; border: none; background: none; }
+        .mon-stat-group .stat .v { font-size: 15px; }
+        .mon-stat-group .stat .v .badge { font-size: 13px; }
         .stat { background: var(--panel); border: 1px solid var(--border); border-radius: 7px; padding: 11px 13px; }
         .stat .k { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
         .stat .v { margin-top: 6px; font-size: 16px; font-weight: 700; line-height: 1.1; }
@@ -183,18 +189,31 @@ internal static class DashboardPage
 </div>
 <div class="content">
 <div class="view active" id="view-monitor">
-    <div class="stats">
-        <div class="stat"><div class="k">Bridge runtime</div><div class="v" id="bridgeState">&#8212;</div><div class="s" id="lastError">No errors</div></div>
-        <div class="stat"><div class="k">Aggregate DA</div><div class="v" id="daState">&#8212;</div></div>
-        <div class="stat"><div class="k">Last DA read</div><div class="v" id="lastDaRead">&#8212;</div><div class="s" id="lastDaReadCount">0 values</div></div>
-        <div class="stat"><div class="k">Last UA write</div><div class="v" id="lastUaWrite">&#8212;</div><div class="s" id="lastUaWriteCount">0 values</div></div>
-        <div class="stat"><div class="k">OPC UA server</div><div class="v" id="uaState">&#8212;</div><div class="s" id="uaClients">0 clients</div></div>
-        <div class="stat"><div class="k">Default rate</div><div class="v" id="updateRate">&#8212;</div><div class="s" id="mappingCount">0 tags</div><div class="mini-meter" aria-hidden="true"><div class="mini-meter-track"><div class="mini-meter-fill" id="pollUtilizationFill"></div></div></div><div class="s" id="pollUtilizationText">Cycle budget —</div><div class="s" id="pollSaturation">Cycle timing normal.</div></div>
+    <div class="mon-stats">
+        <div class="mon-stat-group">
+            <div class="mon-stat-group-h">Bridge</div>
+            <div class="stat"><div class="k">Runtime</div><div class="v" id="bridgeState">&#8212;</div><div class="s" id="lastError">No errors</div></div>
+        </div>
+        <div class="mon-stat-group">
+            <div class="mon-stat-group-h">OPC DA</div>
+            <div class="stat"><div class="k">Connection</div><div class="v" id="daState">&#8212;</div></div>
+            <div class="stat"><div class="k">Last Read</div><div class="v" id="lastDaRead">&#8212;</div><div class="s" id="lastDaReadCount">0 values</div></div>
+        </div>
+        <div class="mon-stat-group">
+            <div class="mon-stat-group-h">OPC UA</div>
+            <div class="stat"><div class="k">Server</div><div class="v" id="uaState">&#8212;</div><div class="s" id="uaClients">0 clients</div></div>
+            <div class="stat"><div class="k">Last Write</div><div class="v" id="lastUaWrite">&#8212;</div><div class="s" id="lastUaWriteCount">0 values</div></div>
+        </div>
+        <div class="mon-stat-group">
+            <div class="mon-stat-group-h">Polling</div>
+            <div class="stat"><div class="k">Default Rate</div><div class="v" id="updateRate">&#8212;</div><div class="s" id="mappingCount">0 tags</div></div>
+            <div class="stat"><div class="k">Cycle Budget</div><div class="mini-meter" aria-hidden="true"><div class="mini-meter-track"><div class="mini-meter-fill" id="pollUtilizationFill"></div></div></div><div class="s" id="pollUtilizationText">—</div><div class="s" id="pollSaturation">—</div></div>
+        </div>
     </div>
     <div class="grid2" style="margin-bottom:14px">
         <div class="box">
-            <div class="box-h">Source Status</div>
-            <div class="box-b"><div class="list" id="sourceStatusList"></div></div>
+            <div class="box-h">Source Status <span class="msg" id="sourceCountH" style="margin-left:auto"></span></div>
+            <div class="box-b"><div class="list" id="sourceStatusList" style="max-height:300px"></div></div>
         </div>
         <div class="box">
             <div class="box-h">OPC UA Endpoint</div>
@@ -202,7 +221,7 @@ internal static class DashboardPage
         </div>
     </div>
     <div class="box">
-            <div class="box-h">DA Live Values <span class="msg" id="valCount" style="margin-left:auto"></span><button class="btn ghost" id="toggleLiveValues" type="button">Disable Live Data</button></div>
+        <div class="box-h">DA Live Values <span class="msg" id="valCount" style="margin-left:auto"></span><button class="btn ghost" id="toggleLiveValues" type="button">Disable Live Data</button></div>
         <div class="box-b" style="padding:0">
             <div class="values-wrap">
                 <table class="values-table">
@@ -701,9 +720,12 @@ async function refresh() {
         el('mappingCount').textContent = (get(b, 'mappingCount') ?? 0) + ' tags';
         el('uaEndpoint').textContent = get(ua, 'endpointUrl') || '—';
         el('uaDiagnostics').textContent = formatUaDiagnostics(ua);
-        el('sourceStatusList').innerHTML = sources.length ? sources.map(source =>
-            `<div class="li"><div style="flex:1"><div class="n">${esc(get(source,'displayName') || get(source,'sourceId'))}</div><div class="p">${esc(get(source,'sourceId'))} · ${esc(get(source,'host') || '')} · ${esc(get(source,'progId') || '')} · ${formatMs(get(source,'updateRateMs'))} · ${(get(source,'lastDaReadCount') ?? 0)} values in ${formatMs(get(source,'lastDaReadDurationMs'))}</div></div><div>${badge(get(source,'connectionState') || '—', stateClass(get(source,'connectionState')))}</div></div>`
-        ).join('') : '<span class="msg">No source status yet.</span>';
+        const srcCountH = el('sourceCountH'); if (srcCountH) srcCountH.textContent = sources.length + ' source' + (sources.length !== 1 ? 's' : '');
+        el('sourceStatusList').innerHTML = sources.length ? sources.map(source => {
+            const connState = get(source,'connectionState') || '—';
+            const connClass = stateClass(connState);
+            return `<div class="li"><div style="flex:1"><div class="n">${esc(get(source,'displayName') || get(source,'sourceId'))} ${badge(connState, connClass)}</div><div class="p">${esc(get(source,'sourceId'))} · ${esc(get(source,'host') || '')} · ${esc(get(source,'progId') || '')}</div><div class="p">${formatMs(get(source,'updateRateMs'))} · ${(get(source,'lastDaReadCount') ?? 0)} values in ${formatMs(get(source,'lastDaReadDurationMs'))}${get(source,'lastError') ? ' · <span class="bad">' + esc(get(source,'lastError')) + '</span>' : ''}</div></div></div>`;
+        }).join('') : '<span class="msg">No source status yet.</span>';
         state.lastValueCount = vs.length;
         updateLiveValuesUi();
         if (state.liveValuesEnabled) {
