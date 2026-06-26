@@ -678,7 +678,7 @@ async function loadAppInfo(force = false) {
 
 let helpLoaded = false;
 function renderMarkdown(md) {
-    const lines = md.split('\n');
+    const lines = md.replace(/\r\n/g, '\n').split('\n');
     let html = '', inList = false, inTable = false, tableHeader = false;
     const closeList = () => { if (inList) { html += '</ul>'; inList = false; } };
     const closeTable = () => { if (inTable) { html += '</tbody></table>'; inTable = false; } };
@@ -710,7 +710,7 @@ function renderMarkdown(md) {
 async function loadHelp() {
     if (helpLoaded) return;
     const p = await (await fetch('/api/help', { cache: 'no-store' })).json();
-    const sections = (p.markdown || '').split(/\n---\n/).filter(s => s.trim());
+    const sections = (p.markdown || '').split(/\r?\n---\r?\n/).filter(s => s.trim());
     const container = el('helpContent');
     container.innerHTML = sections.map((section, i) => {
         const titleMatch = section.match(/^#\s+(.+)/m);
