@@ -11,7 +11,6 @@ namespace OpcBridge.App;
 
 public sealed class BridgeWorker : BackgroundService
 {
-    private const int MaxConcurrentSourcePolls = 8;
     private const int CoordinatorTickMs = 200;
 
     private readonly UaServerHost ua_server_;
@@ -57,7 +56,6 @@ public sealed class BridgeWorker : BackgroundService
             CancellationTokenSource pollerCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
             SharedCacheHolder cacheHolder = new(sourceMappingCache);
             ConcurrentQueue<string> failedSourceQueue = new();
-            using SemaphoreSlim concurrencyGate = new(MaxConcurrentSourcePolls);
 
             try
             {
@@ -99,7 +97,7 @@ public sealed class BridgeWorker : BackgroundService
                             connectedVersion = settings.Version;
                             bridge_state_.UpdateSources(settings.UpdateRateMs, activeMappings.Count, settings.Sources);
                             pollerCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
-                            StartPollers(settings, sessions, cacheHolder, concurrencyGate, failedSourceQueue, pollers, pollerCts.Token);
+                            StartPollers(settings, sessions, cacheHolder, failedSourceQueue, pollers, pollerCts.Token);
                         }
 
                         await Task.Delay(CoordinatorTickMs, stoppingToken).ConfigureAwait(false);
@@ -148,7 +146,6 @@ public sealed class BridgeWorker : BackgroundService
         DaRuntimeSettingsSnapshot settings,
         Dictionary<string, SourceSession> sessions,
         SharedCacheHolder cacheHolder,
-        SemaphoreSlim concurrencyGate,
         ConcurrentQueue<string> failedSourceQueue,
         Dictionary<string, Task> pollers,
         CancellationToken pollerToken)
@@ -172,7 +169,6 @@ public sealed class BridgeWorker : BackgroundService
                     session,
                     rate,
                     cacheHolder,
-                    concurrencyGate,
                     failedSourceQueue,
                     pollerToken));
             }
@@ -184,7 +180,6 @@ public sealed class BridgeWorker : BackgroundService
         SourceSession session,
         int rate,
         SharedCacheHolder cacheHolder,
-        SemaphoreSlim concurrencyGate,
         ConcurrentQueue<string> failedSourceQueue,
         CancellationToken pollerToken)
     {
@@ -208,7 +203,6 @@ public sealed class BridgeWorker : BackgroundService
                     session,
                     sourceReadMappings,
                     manualMappings,
-                    concurrencyGate,
                     pollerToken).ConfigureAwait(false);
                 cycleTimer.Stop();
 
@@ -261,11 +255,8 @@ public sealed class BridgeWorker : BackgroundService
         SourceSession session,
         IReadOnlyList<TagMapping> sourceReadMappings,
         IReadOnlyList<TagMapping> manualMappings,
-        SemaphoreSlim concurrencyGate,
         CancellationToken cancellationToken)
     {
-        await concurrencyGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-
         int outputValueCount = 0;
         bool sourceReadSucceeded = false;
 
