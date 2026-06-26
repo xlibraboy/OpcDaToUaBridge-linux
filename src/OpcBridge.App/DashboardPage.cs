@@ -151,6 +151,13 @@ internal static class DashboardPage
         .kv .k { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
         .kv .v { word-break: break-word; }
         @media (max-width: 1100px) { .split { grid-template-columns: 1fr; } }
+        .conn-layout { display: grid; grid-template-columns: 1.4fr 1fr; gap: 14px; align-items: start; }
+        @media (max-width: 1000px) { .conn-layout { grid-template-columns: 1fr; } }
+        .conn-side { display: flex; flex-direction: column; gap: 14px; }
+        .conn-section { padding: 10px 0; border-top: 1px solid var(--border); }
+        .conn-section:first-of-type { border-top: none; padding-top: 4px; }
+        .conn-section-h { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+        .conn-section-h .msg { font-size: 10px; text-transform: none; letter-spacing: 0; }
     </style>
 </head>
 <body>
@@ -208,40 +215,54 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="view" id="view-connection">
-    <div class="box">
-        <div class="box-h">Selected Source</div>
-        <div class="box-b">
-            <div class="field"><label class="fl">Source</label><select id="selectedSource"></select></div>
-            <div class="field"><label class="fl">Source ID</label><input id="cfgSourceId" type="text" placeholder="server-a" style="flex:1"></div>
-            <div class="field"><label class="fl">Name</label><input id="cfgDisplayName" type="text" placeholder="Server A" style="flex:1"></div>
-            <div class="field"><label class="fl">ProgID</label><input id="cfgProgId" type="text" placeholder="ProgID" style="flex:1"></div>
-            <div class="field"><label class="fl">Host</label><input id="cfgHost" type="text" placeholder="localhost" style="flex:1"></div>
-            <div class="field"><label class="fl">User</label><input id="cfgUser" type="text" placeholder="username" style="width:130px"><input id="cfgPass" type="password" placeholder="password" style="width:120px"><input id="cfgDomain" type="text" placeholder="domain" style="width:110px"></div>
-            <div class="field"><label class="fl">Poll Rate</label><input id="cfgPollRate" type="text" inputmode="numeric" placeholder="1000" style="width:130px"><button class="btn ghost" id="cfgApplyPollRate" type="button">Apply</button><span class="msg" id="pollRateMsg">Per-source ms</span></div>
-            <div class="field"><label class="fl">Default Rate</label><input id="cfgUpdateRate" type="text" inputmode="numeric" placeholder="1000" style="width:130px"><button class="btn ghost" id="cfgApplyRate" type="button">Apply Rate</button><span class="msg">For new sources · min 100 ms</span></div>
-            <div class="toolbar">
-                <button class="btn" id="cfgApply" type="button">Save Source</button>
-                <button class="btn ghost" id="cfgNew" type="button">New Source</button>
-                <button class="btn ghost" id="cfgRemove" type="button">Remove Source</button>
-            </div>
-            <div class="msg" id="cfgMessage">Select a source.</div>
-            <div class="msg" id="rateMessage">Default rate applies to new sources only.</div>
-        </div>
-    </div>
-    <div class="grid2" style="margin-top:14px">
-        <div class="box">
-            <div class="box-h">OPC DA Browser</div>
-            <div class="box-b">
-                <div class="toolbar">
-                    <button class="btn ghost" id="btnReloadServers" type="button">Browse Servers</button>
-                    <span class="msg" id="msgServers">Scan local servers.</span>
+    <div class="conn-layout">
+        <div class="conn-main">
+            <div class="box">
+                <div class="box-h">Source Configuration <span class="msg" id="cfgMessage" style="margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0">Select a source.</span></div>
+                <div class="box-b">
+                    <div class="field"><label class="fl">Source</label><select id="selectedSource"></select></div>
+                    <div class="conn-section">
+                        <div class="conn-section-h">Identity</div>
+                        <div class="field"><label class="fl">Source ID</label><input id="cfgSourceId" type="text" placeholder="server-a" style="flex:1"></div>
+                        <div class="field"><label class="fl">Name</label><input id="cfgDisplayName" type="text" placeholder="Server A" style="flex:1"></div>
+                    </div>
+                    <div class="conn-section">
+                        <div class="conn-section-h">Connection</div>
+                        <div class="field"><label class="fl">ProgID</label><input id="cfgProgId" type="text" placeholder="Matrikon.OPC.Simulation.1" style="flex:1"></div>
+                        <div class="field"><label class="fl">Host</label><input id="cfgHost" type="text" placeholder="localhost" style="flex:1"></div>
+                    </div>
+                    <div class="conn-section">
+                        <div class="conn-section-h">Credentials <span class="msg" style="text-transform:none;letter-spacing:0">optional · for remote DCOM</span></div>
+                        <div class="field"><label class="fl">User</label><input id="cfgUser" type="text" placeholder="username" style="flex:1"><input id="cfgPass" type="password" placeholder="password" style="flex:1"><input id="cfgDomain" type="text" placeholder="domain" style="flex:1"></div>
+                    </div>
+                    <div class="conn-section">
+                        <div class="conn-section-h">Polling</div>
+                        <div class="field"><label class="fl">Poll Rate</label><select id="cfgPollRate"><option value="0">Source Default</option><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select><button class="btn ghost" id="cfgApplyPollRate" type="button">Apply</button><span class="msg" id="pollRateMsg">Per-source</span></div>
+                        <div class="field"><label class="fl">Default Rate</label><select id="cfgUpdateRate"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select><button class="btn ghost" id="cfgApplyRate" type="button">Apply</button><span class="msg" id="rateMessage">For new sources</span></div>
+                    </div>
+                    <div class="toolbar" style="margin-top:12px">
+                        <button class="btn" id="cfgApply" type="button">Save Source</button>
+                        <button class="btn ghost" id="cfgNew" type="button">New Source</button>
+                        <button class="btn ghost" id="cfgRemove" type="button">Remove Source</button>
+                    </div>
                 </div>
-                <div class="list" id="listServers"></div>
             </div>
         </div>
-        <div class="box">
-            <div class="box-h">Configured Sources</div>
-            <div class="box-b"><div class="list" id="sourcesList"></div></div>
+        <div class="conn-side">
+            <div class="box">
+                <div class="box-h">Server Browser</div>
+                <div class="box-b">
+                    <div class="toolbar">
+                        <button class="btn ghost" id="btnReloadServers" type="button">Scan Servers</button>
+                        <span class="msg" id="msgServers">Scan local servers.</span>
+                    </div>
+                    <div class="list" id="listServers" style="max-height:200px"></div>
+                </div>
+            </div>
+            <div class="box">
+                <div class="box-h">Configured Sources <span class="msg" id="pSourcesSide" style="margin-left:auto"></span></div>
+                <div class="box-b"><div class="list" id="sourcesList" style="max-height:280px"></div></div>
+            </div>
         </div>
     </div>
 </div>
@@ -528,6 +549,7 @@ function renderSources() {
     select.value = state.selectedSourceId;
     mapSelect.value = state.selectedSourceId;
     el('pSources').textContent = state.sources.length;
+    const sideCount = el('pSourcesSide'); if (sideCount) sideCount.textContent = state.sources.length + ' source' + (state.sources.length !== 1 ? 's' : '');
     el('sourcesList').innerHTML = state.sources.length ? state.sources.map(source =>
         `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)}</div><div class="p">${esc(source.sourceId)} · ${esc(source.host || 'localhost')} · ${esc(source.progId || '')} · ${formatMs(source.updateRateMs)}</div></div><button class="btn ghost" data-action="select-source" data-source-id="${attr(source.sourceId)}">Select</button></div>`
     ).join('') : '<span class="msg">No sources configured.</span>';
@@ -545,14 +567,14 @@ function loadSelectedSourceForm() {
     el('cfgUser').value = source.remoteUsername || '';
     el('cfgPass').value = '';
     el('cfgDomain').value = source.remoteDomain || '';
-    el('cfgPollRate').value = source.updateRateMs || '';
+    el('cfgPollRate').value = String(source.updateRateMs || 0);
     el('cfgMessage').textContent = 'Editing source ' + (source.displayName || source.sourceId) + '. Source ID is fixed; create a new source for another ID.';
 }
 async function loadSources() {
     const payload = await (await fetch('/api/da/sources', { cache: 'no-store' })).json();
     state.sources = payload.sources || [];
     state.updateRateMs = Number(payload.updateRateMs || state.updateRateMs || 1000);
-    if (document.activeElement !== el('cfgUpdateRate')) el('cfgUpdateRate').value = state.updateRateMs;
+    if (document.activeElement !== el('cfgUpdateRate')) el('cfgUpdateRate').value = String(state.updateRateMs);
     renderSources();
 }
 function updateLiveValuesUi() {
@@ -675,7 +697,7 @@ async function refresh() {
         el('pollUtilizationText').textContent = pollUtilization.text;
         el('pollSaturation').textContent = pollSaturation.text;
         el('pollSaturation').className = pollSaturation.className;
-        if (document.activeElement !== el('cfgUpdateRate')) el('cfgUpdateRate').value = updateRateMs;
+        if (document.activeElement !== el('cfgUpdateRate')) el('cfgUpdateRate').value = String(updateRateMs);
         el('mappingCount').textContent = (get(b, 'mappingCount') ?? 0) + ' tags';
         el('uaEndpoint').textContent = get(ua, 'endpointUrl') || '—';
         el('uaDiagnostics').textContent = formatUaDiagnostics(ua);
@@ -769,7 +791,7 @@ async function saveSource() {
         displayName: el('cfgDisplayName').value.trim() || null,
         progId: el('cfgProgId').value.trim(),
         host: el('cfgHost').value.trim() || 'localhost',
-        updateRateMs: Number.parseInt(el('cfgPollRate').value.trim(), 10) || 0,
+        updateRateMs: Number.parseInt(el('cfgPollRate').value, 10) || 0,
         remoteUsername: el('cfgUser').value.trim() || null,
         remotePassword: el('cfgPass').value || null,
         remoteDomain: el('cfgDomain').value.trim() || null
@@ -784,9 +806,9 @@ async function saveSource() {
     el('cfgMessage').textContent = 'Source saved.';
 }
 async function saveUpdateRate() {
-    const updateRateMs = Number.parseInt(el('cfgUpdateRate').value.trim(), 10);
+    const updateRateMs = Number.parseInt(el('cfgUpdateRate').value, 10);
     if (!Number.isFinite(updateRateMs) || updateRateMs <= 0) {
-        el('rateMessage').textContent = '✗ Enter an update rate in milliseconds.';
+        el('rateMessage').textContent = '✗ Select a rate.';
         return;
     }
 
@@ -798,9 +820,9 @@ async function saveUpdateRate() {
     const p = await r.json();
     if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
     state.updateRateMs = Number(p.updateRateMs || updateRateMs);
-    el('cfgUpdateRate').value = state.updateRateMs;
+    el('cfgUpdateRate').value = String(state.updateRateMs);
     await refresh();
-    el('rateMessage').textContent = 'Update rate applied: ' + state.updateRateMs + ' ms.';
+    el('rateMessage').textContent = 'Default rate applied: ' + state.updateRateMs + ' ms.';
 }
 async function savePollRate() {
     const source = currentSource();
@@ -808,9 +830,9 @@ async function savePollRate() {
         el('pollRateMsg').textContent = '✗ Select a source first.';
         return;
     }
-    const rate = Number.parseInt(el('cfgPollRate').value.trim(), 10);
-    if (!Number.isFinite(rate) || rate <= 0) {
-        el('pollRateMsg').textContent = '✗ Enter a poll rate in milliseconds.';
+    const rate = Number.parseInt(el('cfgPollRate').value, 10);
+    if (!Number.isFinite(rate) || rate < 0) {
+        el('pollRateMsg').textContent = '✗ Select a rate.';
         return;
     }
 
@@ -821,7 +843,7 @@ async function savePollRate() {
     });
     const p = await r.json();
     if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
-    el('cfgPollRate').value = p.updateRateMs || rate;
+    el('cfgPollRate').value = String(p.updateRateMs || rate);
     await loadSources();
     await refresh();
     el('pollRateMsg').textContent = 'Poll rate applied: ' + (p.updateRateMs || rate) + ' ms.';
@@ -852,7 +874,7 @@ function newSource() {
     el('cfgUser').value = '';
     el('cfgPass').value = '';
     el('cfgDomain').value = '';
-    el('cfgPollRate').value = state.updateRateMs || '';
+    el('cfgPollRate').value = String(state.updateRateMs || 0);
     el('tagTree').innerHTML = '<span class="msg">Save the new source before browsing tags.</span>';
     el('cfgMessage').textContent = 'Enter a unique Source ID, then save.';
 }
