@@ -31,6 +31,7 @@ internal static class DashboardPage
         .topbar { display: flex; align-items: center; gap: 14px; padding: 0 18px; height: 46px; background: var(--panel); border-bottom: 1px solid var(--border2); }
         .brand { display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: 14px; white-space: nowrap; }
         .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--good); }
+        .ver { font-size: 10px; font-weight: 400; color: var(--muted); background: var(--panel2); border: 1px solid var(--border2); border-radius: 3px; padding: 1px 6px; margin-left: 4px; }
         .dot.off { background: var(--bad); }
         .pills { display: flex; gap: 7px; margin-left: 8px; flex-wrap: wrap; }
         .pill { display: flex; align-items: center; gap: 6px; background: var(--panel2); border: 1px solid var(--border); border-radius: 5px; padding: 3px 9px; font-size: 12px; white-space: nowrap; }
@@ -199,7 +200,7 @@ internal static class DashboardPage
 </head>
 <body>
 <div class="topbar">
-    <div class="brand"><span class="dot" id="dot"></span>OPC DA&#8594;UA Bridge</div>
+    <div class="brand"><span class="dot" id="dot"></span>OPC DA&#8594;UA Bridge <span class="ver" id="appVersion"></span></div>
     <div class="pills">
         <div class="pill"><span class="k">Bridge</span><span id="pBridge">&#8212;</span></div>
         <div class="pill"><span class="k">DA</span><span id="pDa">&#8212;</span></div>
@@ -1184,6 +1185,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (initTab === 'logs') await loadLogs();
     if (initTab === 'help') await loadHelp();
     if (initTab === 'about') await loadAppInfo();
+    fetch('/api/version').then(r => r.json()).then(p => { el('appVersion').textContent = 'v' + (p.informationalVersion || p.version || '0.0.0'); }).catch(() => {});
     setInterval(refresh, 1000);
 });
 </script>

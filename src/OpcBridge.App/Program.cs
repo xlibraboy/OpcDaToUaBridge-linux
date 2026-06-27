@@ -78,6 +78,15 @@ app.MapGet("/api/app-info", () =>
         creator = "xlibraboy"
     });
 });
+app.MapGet("/api/version", () =>
+{
+    Assembly assembly = typeof(Program).Assembly;
+    return Results.Json(new
+    {
+        version = assembly.GetName().Version?.ToString() ?? "0.0.0.0",
+        informationalVersion = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? string.Empty
+    });
+});
 app.MapGet("/api/help", () => Results.Json(new { markdown = HelpContent.Markdown }));
 app.MapGet("/api/da/sources", (DaRuntimeSettings settings) =>
 {
