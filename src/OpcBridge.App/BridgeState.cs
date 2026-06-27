@@ -182,7 +182,7 @@ public sealed class BridgeState
         {
             status_ = status_ with
             {
-                BridgeState = "Faulted",
+                BridgeState = "Degraded",
                 LastError = exception.Message
             };
         }
@@ -202,12 +202,9 @@ public sealed class BridgeState
                     : source)
                 .ToArray();
 
-            bool anyConnected = updated.Any(s => string.Equals(s.ConnectionState, "Connected", StringComparison.OrdinalIgnoreCase));
             status_ = status_ with
             {
-                BridgeState = anyConnected ? status_.BridgeState : "Faulted",
                 DaConnectionState = AggregateConnectionState(updated),
-                LastError = anyConnected ? status_.LastError : exception.Message,
                 Sources = updated
             };
         }
@@ -244,13 +241,14 @@ public sealed class BridgeState
                     : source)
                 .ToArray();
 
+            bool anyFaulted = updated.Any(s => string.Equals(s.ConnectionState, "Faulted", StringComparison.OrdinalIgnoreCase));
             status_ = status_ with
             {
                 BridgeState = "Running",
                 DaConnectionState = AggregateConnectionState(updated),
                 LastDaReadUtc = readTime,
                 LastDaReadCount = values.Count,
-                LastError = null,
+                LastError = anyFaulted ? status_.LastError : null,
                 Sources = updated
             };
         }
