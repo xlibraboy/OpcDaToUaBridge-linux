@@ -1185,7 +1185,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (initTab === 'logs') await loadLogs();
     if (initTab === 'help') await loadHelp();
     if (initTab === 'about') await loadAppInfo();
-    fetch('/api/version').then(r => r.json()).then(p => { el('appVersion').textContent = 'v' + (p.informationalVersion || p.version || '0.0.0'); }).catch(() => {});
+    fetch('/api/version').then(r => r.json()).then(p => { const v = (p.informationalVersion || p.version || '0.0.0').split('+')[0]; el('appVersion').textContent = 'v' + v; }).catch(() => {});
     setInterval(refresh, 1000);
 });
 </script>
