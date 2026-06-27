@@ -600,6 +600,7 @@ function renderSources() {
         `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)}</div><div class="p">${esc(source.sourceId)} · ${esc(source.host || 'localhost')} · ${esc(source.progId || '')} · ${formatMs(source.updateRateMs)}</div></div><button class="btn ghost" data-action="select-source" data-source-id="${attr(source.sourceId)}">Select</button></div>`
     ).join('') : '<span class="msg">No sources configured.</span>';
     loadSelectedSourceForm();
+}
 function loadSelectedSourceForm() {
     const source = currentSource();
     if (!source) return;
