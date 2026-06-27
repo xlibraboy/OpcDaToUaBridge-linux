@@ -956,6 +956,7 @@ async function removeSelectedSource() {
     await loadMappings();
     await refresh();
     el('cfgMessage').textContent = 'Source removed.';
+}
 function showSaveReset() { el('cfgApply').style.display = ''; el('cfgReset').style.display = ''; }
 function hideSaveReset() { el('cfgApply').style.display = 'none'; el('cfgReset').style.display = 'none'; }
 function resetSource() {
