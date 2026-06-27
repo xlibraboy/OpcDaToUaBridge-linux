@@ -275,6 +275,127 @@ The bridge can discover OPC DA servers installed on the **local machine** or on 
 
 ---
 
+# Installation
+
+The bridge app does **not require admin** — it installs to a per-user folder with a per-user scheduled task.
+
+## Prerequisites (one-time, admin required on target PC)
+
+- **OPC DA server** — installed by the vendor's installer (e.g. Matrikon, Kepware, RSLinx)
+- **DCOM permissions** — configured for the DA server if remote access is needed (`dcomcnfg`)
+- **Firewall ports** — port 8080 (dashboard) and 4840 (OPC UA) opened if accessed from other machines
+- **.NET 8 runtime** — already installed on this machine; for a new target PC, either install the .NET 8 runtime or use a self-contained build (single `.exe`, no runtime needed)
+
+## Install steps (no admin)
+
+```
+ 1. Copy app folder to target PC
+    e.g.  %LOCALAPPDATA%\OpcDaToUaBridge\
+    Files:  OpcBridge.App.dll (or .exe for self-contained)
+            appsettings.json
+            scripts\windows\start-published-bridge.cmd
+
+ 2. Edit appsettings.json for the target machine
+    Da:ProgId     → ProgID of the OPC DA server on this machine
+    Da:Host       → localhost (or remote IP)
+    Ua:EndpointUrl → opc.tcp://0.0.0.0:4840/OpcDaToUaBridge
+
+ 3. Register the scheduled task (no admin needed)
+    Open Command Prompt, run:
+    scripts\windows\register-published-task.ps1
+    → creates task "OpcDaToUaBridge" for current user
+    → task starts automatically on user logon
+
+ 4. Start the task
+    schtasks /run /tn OpcDaToUaBridge
+
+ 5. Open dashboard in browser
+    http://localhost:8080/
+    → check Monitor tab: Bridge = Running, DA = Connected
+```
+
+## Verify installation
+
+| Check | Expected |
+|-------|----------|
+| `http://localhost:8080/` | Dashboard loads |
+| `http://localhost:8080/health` | `{"status":"ok"}` |
+| `http://localhost:8080/api/version` | `{"version":"1.0.0.0", ...}` |
+| Monitor → Bridge | Running |
+| Monitor → DA Connection | Connected |
+
+---
+
+# Updating
+
+Updates are **local only** — no internet required, no admin. New app files are copied from a USB drive or network share.
+
+## Check current version
+
+The version badge is shown in the topbar next to the app name (e.g. **v1.0.0**), or call `http://localhost:8080/api/version` to confirm.
+
+## Update steps
+
+```
+ 1. Receive new version files (USB drive, network share, etc.)
+    New folder contains:
+    OpcBridge.App.dll     ← updated app
+    OpcBridge.Da.dll      ← updated DA library (if changed)
+    OpcBridge.Core.dll    ← updated core library (if changed)
+    appsettings.json      ← only if config schema changed
+    update.cmd            ← optional update helper script
+
+ 2. Stop the running app
+    schtasks /end /tn OpcDaToUaBridge
+
+ 3. Copy new files over the old ones
+    copy /Y OpcBridge.App.dll  %LOCALAPPDATA%\OpcDaToUaBridge\
+    copy /Y OpcBridge.Da.dll   %LOCALAPPDATA%\OpcDaToUaBridge\
+    copy /Y OpcBridge.Core.dll %LOCALAPPDATA%\OpcDaToUaBridge\
+
+ 4. Restart the task
+    schtasks /run /tn OpcDaToUaBridge
+
+ 5. Confirm the new version
+    Check topbar badge → should show new version (e.g. v1.1.0)
+    Check Monitor tab → Bridge = Running
+
+ Note: appsettings.json and mappings.json are user data — do NOT
+       overwrite them unless the config schema changed. Your source
+       configs and tag mappings are preserved across updates.
+```
+
+## Using update.cmd (helper script)
+
+If provided, `update.cmd` automates steps 2–5. Place it in the same folder as the new DLL files and double-click it:
+
+```
+ update.cmd (example)
+ ─────────────────────────────────────────────────────
+ @echo off
+ schtasks /end /tn OpcDaToUaBridge
+ ping -n 4 127.0.0.1 >nul
+ copy /Y OpcBridge.App.dll  "%LOCALAPPDATA%\OpcDaToUaBridge\"
+ copy /Y OpcBridge.Da.dll   "%LOCALAPPDATA%\OpcDaToUaBridge\"
+ copy /Y OpcBridge.Core.dll "%LOCALAPPDATA%\OpcDaToUaBridge\"
+ schtasks /run /tn OpcDaToUaBridge
+ echo Update complete. New version is now running.
+ pause
+```
+
+## What is preserved across updates
+
+| File | Updated? | Notes |
+|------|----------|-------|
+| `OpcBridge.App.dll` | ✅ Yes | Main app binary |
+| `OpcBridge.Da.dll` | ✅ Yes | DA client library |
+| `OpcBridge.Core.dll` | ✅ Yes | Shared types |
+| `appsettings.json` | ⚠️ Only if schema changed | Source configs, host, rates |
+| `mappings.json` | ❌ Never overwrite | Your tag mappings |
+| `pki/` | ❌ Never overwrite | OPC UA certificates |
+
+---
+
 # Configuration Reference
 
 ## appsettings.json
