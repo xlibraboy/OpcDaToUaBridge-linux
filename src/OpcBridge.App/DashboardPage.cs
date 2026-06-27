@@ -196,10 +196,10 @@ internal static class DashboardPage
         .conn-section:first-of-type { border-top: none; padding-top: 4px; }
         .conn-section-h { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
         .conn-section-h .msg { font-size: 10px; text-transform: none; letter-spacing: 0; }
-        .info { display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border-radius: 50%; background: var(--panel2); border: 1px solid var(--border2); color: var(--muted); font-size: 9px; font-weight: 700; font-style: normal; cursor: help; position: relative; margin-left: 4px; user-select: none; }
+        .info { display: inline-flex; align-items: center; justify-content: center; width: 13px; height: 13px; border-radius: 50%; background: var(--panel2); border: 1px solid var(--border2); color: var(--muted); font-size: 9px; font-weight: 700; font-style: italic; cursor: help; margin-left: 3px; user-select: none; vertical-align: middle; }
         .info:hover { color: var(--accent); border-color: var(--accent); }
-        .info::after { content: attr(data-tip); position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); background: var(--panel2); color: var(--text); border: 1px solid var(--border2); border-radius: 5px; padding: 6px 10px; font-size: 11px; font-weight: 400; line-height: 1.5; white-space: normal; width: 260px; max-width: 80vw; text-align: left; opacity: 0; visibility: hidden; transition: opacity .12s ease; pointer-events: none; z-index: 100; box-shadow: 0 4px 12px rgba(0,0,0,.3); }
-        .info:hover::after { opacity: 1; visibility: visible; }
+        .tip { position: fixed; z-index: 9999; background: var(--panel2); color: var(--text); border: 1px solid var(--border2); border-radius: 5px; padding: 7px 11px; font-size: 11px; font-weight: 400; line-height: 1.5; max-width: 280px; box-shadow: 0 6px 16px rgba(0,0,0,.4); pointer-events: none; opacity: 0; transition: opacity .1s ease; }
+        .tip.show { opacity: 1; }
     </style>
 </head>
 <body>
@@ -430,6 +430,24 @@ internal static class DashboardPage
 const ESC = {'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'};
 const esc = s => String(s ?? '').replace(/[&<>'"]/g, c => ESC[c]);
 const attr = esc;
+let tipEl;
+document.addEventListener('mouseover', e => {
+    const info = e.target.closest('.info');
+    if (!info || !info.dataset.tip) return;
+    if (!tipEl) { tipEl = document.createElement('div'); tipEl.className = 'tip'; document.body.appendChild(tipEl); }
+    tipEl.textContent = info.dataset.tip;
+    tipEl.classList.add('show');
+    const r = info.getBoundingClientRect();
+    const tr = tipEl.getBoundingClientRect();
+    let x = r.left + r.width / 2 - tr.width / 2;
+    let y = r.top - tr.height - 6;
+    if (y < 4) y = r.bottom + 6;
+    if (x < 4) x = 4;
+    if (x + tr.width > window.innerWidth - 4) x = window.innerWidth - tr.width - 4;
+    tipEl.style.left = x + 'px';
+    tipEl.style.top = y + 'px';
+});
+document.addEventListener('mouseout', e => { if (e.target.closest('.info') && tipEl) tipEl.classList.remove('show'); });
 const el = id => document.getElementById(id);
 const state = {
     tagPath: '',
