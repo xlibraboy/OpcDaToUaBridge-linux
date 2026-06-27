@@ -30,7 +30,7 @@ builder.Services.AddHostedService<BridgeWorker>();
 
 WebApplication app = builder.Build();
 
-app.MapGet("/", () => Results.Content(DashboardPage.FullHtml, "text/html"));
+app.MapGet("/", () => Results.Content(DashboardPage.FullHtml, "text/html; charset=utf-8"));
 app.MapGet("/api/values", (BridgeState state) => Results.Json(new { values = state.GetValues() }));
 app.MapGet("/api/status", (BridgeState state, UaServerHost uaServer) => Results.Json(new
 {
