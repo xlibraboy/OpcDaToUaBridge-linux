@@ -239,19 +239,22 @@ public sealed class BridgeWorker : BackgroundService
         }
     }
 
-    private static async Task StopPollersAsync(Dictionary<string, Task> pollers, CancellationTokenSource pollerCts)
+    private static async Task StopPollersAsync(Dictionary<string, Task> pollers, CancellationTokenSource? pollerCts)
     {
-        pollerCts.Cancel();
+        try { pollerCts?.Cancel(); } catch (ObjectDisposedException) { }
         Task[] tasks = pollers.Values.ToArray();
         pollers.Clear();
 
-        try
+        if (tasks.Length > 0)
         {
-            await Task.WhenAll(tasks).ConfigureAwait(false);
-        }
-        catch
-        {
-            // Poller exceptions are logged within the poller; suppress during teardown.
+            try
+            {
+                await Task.WhenAll(tasks).ConfigureAwait(false);
+            }
+            catch
+            {
+                // Poller exceptions are logged within the poller; suppress during teardown.
+            }
         }
     }
 
