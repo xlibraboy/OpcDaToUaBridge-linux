@@ -328,6 +328,11 @@ internal static class DashboardPage
     <div class="box" style="margin-bottom:14px">
         <div class="box-h">Tag Browser</div>
         <div class="box-b">
+            <div class="field" style="margin-bottom:10px">
+                <label class="fl">DA Source</label>
+                <select id="mapSourceSelect"></select>
+                <span class="msg" id="tagSourceStatus"></span>
+            </div>
             <div class="tag-browser-toolbar">
                 <button class="btn" id="btnBrowseAllTags" type="button">Browse All Tags</button>
                 <button class="btn ghost" id="btnBrowseTags" type="button">Browse Folders</button>
@@ -340,10 +345,6 @@ internal static class DashboardPage
     <div class="box">
         <div class="box-h">DA → OPC UA Mappings <span class="msg" id="mapCount" style="margin-left:auto"></span></div>
         <div class="box-b">
-            <div class="field">
-                <label class="fl">DA Source</label>
-                <select id="mapSourceSelect"></select>
-            </div>
             <div class="add-mapping-box">
                 <div class="field">
                     <input id="manualItem" type="text" placeholder="DA Item ID (e.g. Random.Real8)" style="flex:1">
@@ -799,6 +800,18 @@ async function refresh() {
         el('uaEndpoint').textContent = get(ua, 'endpointUrl') || '—';
         el('uaDiagnostics').textContent = formatUaDiagnostics(ua);
         const srcCountH = el('sourceCountH'); if (srcCountH) srcCountH.textContent = sources.length + ' source' + (sources.length !== 1 ? 's' : '');
+        const tagSrcStatus = el('tagSourceStatus');
+        if (tagSrcStatus) {
+            const selSrc = sources.find(s => (s.sourceId || s.SourceId) === state.selectedSourceId);
+            if (selSrc) {
+                const cs = get(selSrc, 'connectionState') || '—';
+                tagSrcStatus.innerHTML = badge(cs, stateClass(cs));
+            } else if (state.editingNewSource) {
+                tagSrcStatus.innerHTML = '<span class="msg">unsaved source</span>';
+            } else {
+                tagSrcStatus.innerHTML = '<span class="msg">—</span>';
+            }
+        }
         el('sourceStatusList').innerHTML = sources.length ? sources.map(source => {
             const connState = get(source,'connectionState') || '—';
             const connClass = stateClass(connState);
