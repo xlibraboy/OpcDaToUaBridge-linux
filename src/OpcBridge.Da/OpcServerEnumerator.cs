@@ -10,68 +10,78 @@ public static class OpcServerEnumerator
     private const string OpcDaCategoryGuid = "{63D5F430-CFE4-11D1-B2C8-0060083BA1FB}";
 
     /// <summary>
-    /// Enumerates locally registered OPC DA servers by scanning the registry.
-    /// For remote hosts, falls back to DCOM via IOPCServerList2.
+    /// Enumerates registered OPC DA servers. For local hosts, scans both HKLM
+    /// (machine-wide) and HKCU (per-user) registry hives. For remote hosts,
+    /// uses DCOM OpcEnum. When credentials are provided, enumeration runs
+    /// under impersonation so per-user (HKCU) registrations are visible.
     /// </summary>
     [SupportedOSPlatform("windows")]
-    public static IReadOnlyList<OpcServerInfo> Enumerate(string? host)
+    public static IReadOnlyList<OpcServerInfo> Enumerate(string? host, string? username = null, string? password = null, string? domain = null)
     {
         if (!OperatingSystem.IsWindows())
             throw new PlatformNotSupportedException("OPC DA enumeration requires Windows.");
 
         string? normalizedHost = NormalizeHost(host);
+        string fallbackDomain = normalizedHost ?? Environment.MachineName;
 
-        return normalizedHost is null
-            ? EnumerateLocal()
-            : EnumerateRemote(normalizedHost);
+        IReadOnlyList<OpcServerInfo> result = Array.Empty<OpcServerInfo>();
+        WindowsImpersonation.Run(username, password, domain, fallbackDomain, () =>
+        {
+            result = normalizedHost is null
+                ? EnumerateLocal()
+                : EnumerateRemote(normalizedHost);
+        });
+        return result;
     }
 
     [SupportedOSPlatform("windows")]
     private static IReadOnlyList<OpcServerInfo> EnumerateLocal()
     {
         var results = new List<OpcServerInfo>();
-
-        // Check both 32-bit (WOW6432Node) and 64-bit CLSID hives
-        string[] hives = [
-            @"SOFTWARE\WOW6432Node\Classes\CLSID",
-            @"SOFTWARE\Classes\CLSID"
-        ];
-
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (string hive in hives)
-        {
-            using RegistryKey? clsidRoot = Registry.LocalMachine.OpenSubKey(hive);
-            if (clsidRoot is null) continue;
+        // Scan HKLM (machine-wide) — both 32-bit and 64-bit hives
+        ScanClsidHive(Registry.LocalMachine, @"SOFTWARE\WOW6432Node\Classes\CLSID", results, seen);
+        ScanClsidHive(Registry.LocalMachine, @"SOFTWARE\Classes\CLSID", results, seen);
 
-            foreach (string clsidStr in clsidRoot.GetSubKeyNames())
-            {
-                using RegistryKey? clsidKey = clsidRoot.OpenSubKey(clsidStr);
-                if (clsidKey is null) continue;
-
-                using RegistryKey? catKey = clsidKey.OpenSubKey(@"Implemented Categories\" + OpcDaCategoryGuid);
-                if (catKey is null) continue;
-
-                if (!seen.Add(clsidStr)) continue; // deduplicate between 32/64 hives
-
-                string description = clsidKey.GetValue(null) as string ?? string.Empty;
-
-                string progId = string.Empty;
-                using (RegistryKey? progIdKey = clsidKey.OpenSubKey("ProgID"))
-                {
-                    progId = progIdKey?.GetValue(null) as string ?? string.Empty;
-                }
-
-                if (progId.Length == 0) continue;
-
-                results.Add(new OpcServerInfo(progId, description, clsidStr.ToUpperInvariant()));
-            }
-        }
+        // Scan HKCU (per-user registrations) — both 32-bit and 64-bit hives
+        ScanClsidHive(Registry.CurrentUser, @"SOFTWARE\WOW6432Node\Classes\CLSID", results, seen);
+        ScanClsidHive(Registry.CurrentUser, @"SOFTWARE\Classes\CLSID", results, seen);
 
         results.Sort((a, b) => string.Compare(a.Description.Length > 0 ? a.Description : a.ProgId,
                                                b.Description.Length > 0 ? b.Description : b.ProgId,
                                                StringComparison.OrdinalIgnoreCase));
         return results;
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static void ScanClsidHive(RegistryKey rootKey, string subKeyPath, List<OpcServerInfo> results, HashSet<string> seen)
+    {
+        using RegistryKey? clsidRoot = rootKey.OpenSubKey(subKeyPath);
+        if (clsidRoot is null) return;
+
+        foreach (string clsidStr in clsidRoot.GetSubKeyNames())
+        {
+            if (!seen.Add(clsidStr)) continue; // deduplicate across all hives
+
+            using RegistryKey? clsidKey = clsidRoot.OpenSubKey(clsidStr);
+            if (clsidKey is null) continue;
+
+            using RegistryKey? catKey = clsidKey.OpenSubKey(@"Implemented Categories\" + OpcDaCategoryGuid);
+            if (catKey is null) continue;
+
+            string description = clsidKey.GetValue(null) as string ?? string.Empty;
+
+            string progId = string.Empty;
+            using (RegistryKey? progIdKey = clsidKey.OpenSubKey("ProgID"))
+            {
+                progId = progIdKey?.GetValue(null) as string ?? string.Empty;
+            }
+
+            if (progId.Length == 0) continue;
+
+            results.Add(new OpcServerInfo(progId, description, clsidStr.ToUpperInvariant()));
+        }
     }
 
     [SupportedOSPlatform("windows")]

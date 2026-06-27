@@ -179,7 +179,7 @@ app.MapPost("/api/da/sources/remove", (DaSourceRemoveRequest request, DaRuntimeS
     long mappingVersion = store.RemoveSource(request.SourceId);
     return Results.Json(new { version = snapshot.Version, mappingVersion });
 });
-app.MapGet("/api/da/servers", async (string? host) =>
+app.MapPost("/api/da/servers", async (DaServerBrowseRequest request) =>
 {
     if (!OperatingSystem.IsWindows())
     {
@@ -189,7 +189,7 @@ app.MapGet("/api/da/servers", async (string? host) =>
     try
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-        IReadOnlyList<OpcServerInfo> servers = await Task.Run(() => EnumerateDaServers(host), cts.Token);
+        IReadOnlyList<OpcServerInfo> servers = await Task.Run(() => EnumerateDaServers(request.Host, request.Username, request.Password, request.Domain), cts.Token);
         return Results.Json(new { servers });
     }
     catch (OperationCanceledException)
@@ -298,14 +298,14 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
 await app.RunAsync().ConfigureAwait(false);
 
-static IReadOnlyList<OpcServerInfo> EnumerateDaServers(string? host)
+static IReadOnlyList<OpcServerInfo> EnumerateDaServers(string? host, string? username, string? password, string? domain)
 {
     if (!OperatingSystem.IsWindows())
     {
         throw new PlatformNotSupportedException("OPC DA enumeration requires Windows.");
     }
 
-    return OpcServerEnumerator.Enumerate(host);
+    return OpcServerEnumerator.Enumerate(host, username, password, domain);
 }
 
 static OpcTagBrowseResult BrowseDaTags(DaTagBrowseRequest request)

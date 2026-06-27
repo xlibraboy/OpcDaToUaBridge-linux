@@ -949,8 +949,13 @@ function newSource() {
 async function browseServers() {
     const host = (el('cfgHost').value.trim() || 'localhost');
     el('msgServers').textContent = 'Scanning…';
-    const url = '/api/da/servers' + (host && host !== 'localhost' ? ('?host=' + encodeURIComponent(host)) : '');
-    const p = await (await fetch(url, { cache: 'no-store' })).json();
+    const user = el('cfgUser').value.trim();
+    const pass = el('cfgPass').value;
+    const domain = el('cfgDomain').value.trim();
+    const body = { host: host === 'localhost' ? null : host };
+    if (user) { body.username = user; body.password = pass; body.domain = domain || null; }
+    const r = await fetch('/api/da/servers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), cache: 'no-store' });
+    const p = await r.json();
     if (p.error) throw new Error(p.error);
     const servers = p.servers || [];
     el('listServers').innerHTML = servers.length ? servers.map((s, i) => {
@@ -958,7 +963,7 @@ async function browseServers() {
         const desc = s.description || s.Description || prog;
         return `<div class="li"><div style="flex:1"><div class="n">${esc(desc)}</div><div class="p">${esc(prog)}</div></div><button class="btn ghost" data-action="pick-server" data-prog-id="${attr(prog)}" data-host="${attr(host)}">Use</button></div>`;
     }).join('') : '<span class="msg">No servers found.</span>';
-    el('msgServers').textContent = servers.length + ' servers';
+    el('msgServers').textContent = servers.length + ' servers' + (user ? ' (as ' + esc(domain || host) + '\\' + esc(user) + ')' : '');
 }
 function pickServer(progId, host) {
     el('cfgProgId').value = progId;
