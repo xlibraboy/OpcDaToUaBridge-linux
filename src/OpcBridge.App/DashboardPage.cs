@@ -296,7 +296,8 @@ internal static class DashboardPage
                         <div class="field"><label class="fl">Rate</label><select id="cfgUpdateRate"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select><button class="btn ghost" id="cfgApplyRate" type="button">Apply</button><span class="msg" id="rateMessage">Applies live</span></div>
                     </div>
                     <div class="toolbar" style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
-                        <button class="btn" id="cfgApply" type="button">Save</button>
+                        <button class="btn" id="cfgApply" type="button" style="display:none">Save</button>
+                        <button class="btn ghost" id="cfgReset" type="button" style="display:none">Reset</button>
                         <button class="btn ghost" id="cfgNew" type="button">New</button>
                         <button class="btn ghost" id="cfgRemove" type="button">Remove</button>
                     </div>
@@ -599,7 +600,6 @@ function renderSources() {
         `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)}</div><div class="p">${esc(source.sourceId)} · ${esc(source.host || 'localhost')} · ${esc(source.progId || '')} · ${formatMs(source.updateRateMs)}</div></div><button class="btn ghost" data-action="select-source" data-source-id="${attr(source.sourceId)}">Select</button></div>`
     ).join('') : '<span class="msg">No sources configured.</span>';
     loadSelectedSourceForm();
-}
 function loadSelectedSourceForm() {
     const source = currentSource();
     if (!source) return;
@@ -612,7 +612,8 @@ function loadSelectedSourceForm() {
     el('cfgUser').value = source.remoteUsername || '';
     el('cfgPass').value = '';
     el('cfgDomain').value = source.remoteDomain || '';
-    el('cfgMessage').textContent = 'Editing source ' + (source.displayName || source.sourceId) + '. Source ID is fixed; create a new source for another ID.';
+    el('cfgMessage').textContent = 'Editing ' + (source.displayName || source.sourceId) + '.';
+    hideSaveReset();
 }
 async function loadSources() {
     const payload = await (await fetch('/api/da/sources', { cache: 'no-store' })).json();
@@ -922,6 +923,7 @@ async function saveSource() {
     await loadSources();
     await refresh();
     el('cfgMessage').textContent = 'Source saved.';
+    hideSaveReset();
 }
 async function saveUpdateRate() {
     const updateRateMs = Number.parseInt(el('cfgUpdateRate').value, 10);
@@ -954,7 +956,14 @@ async function removeSelectedSource() {
     await loadMappings();
     await refresh();
     el('cfgMessage').textContent = 'Source removed.';
+function showSaveReset() { el('cfgApply').style.display = ''; el('cfgReset').style.display = ''; }
+function hideSaveReset() { el('cfgApply').style.display = 'none'; el('cfgReset').style.display = 'none'; }
+function resetSource() {
+    if (state.editingNewSource) { newSource(); return; }
+    loadSelectedSourceForm();
+    el('cfgMessage').textContent = 'Reverted to saved values.';
 }
+
 function newSource() {
     state.selectedSourceId = '';
     state.editingNewSource = true;
@@ -970,6 +979,7 @@ function newSource() {
     el('cfgDomain').value = '';
     el('tagTree').innerHTML = '<span class="msg">Save the new source before browsing tags.</span>';
     el('cfgMessage').textContent = 'Enter a unique Source ID, then save.';
+    showSaveReset();
 }
 async function browseServers() {
     const host = (el('cfgHost').value.trim() || 'localhost');
@@ -1186,8 +1196,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     el('selectedSource').addEventListener('change', e => pickSource(e.target.value));
     el('mapSourceSelect').addEventListener('change', e => pickSource(e.target.value));
     el('cfgApply').addEventListener('click', () => saveSource().catch(e => el('cfgMessage').textContent = '✗ ' + e.message));
+    el('cfgReset').addEventListener('click', resetSource);
     el('cfgNew').addEventListener('click', newSource);
     el('cfgRemove').addEventListener('click', () => removeSelectedSource().catch(e => el('cfgMessage').textContent = '✗ ' + e.message));
+    ['cfgSourceId','cfgDisplayName','cfgProgId','cfgHost','cfgUser','cfgPass','cfgDomain'].forEach(id => {
+        el(id).addEventListener('input', () => { if (!state.editingNewSource) showSaveReset(); });
+    });
     el('cfgApplyRate').addEventListener('click', () => saveUpdateRate().catch(e => el('rateMessage').textContent = '✗ ' + e.message));
     el('btnReloadServers').addEventListener('click', () => browseServers().catch(e => el('msgServers').textContent = e.message));
     el('btnBrowseTags').addEventListener('click', () => browseTags('').catch(e => el('tagTree').innerHTML = `<span class="bad">${esc(e.message)}</span>`));
