@@ -997,6 +997,8 @@ async function refresh() {
                 alarmBar.textContent = rateGroups.length + ' rate group' + (rateGroups.length !== 1 ? 's' : '') + ' · all within limits';
             } else {
                 alarmBar.style.display = 'none';
+            }
+        }
         const res = get(b, 'resources');
         const resH = el('resHandles'); const resGU = el('resGdiUser');
         const resA = el('resAssessment'); const resAD = el('resAssessmentDetail');
