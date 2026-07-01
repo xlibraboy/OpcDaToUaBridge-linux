@@ -18,14 +18,34 @@ internal sealed class WriteQueue
             SingleWriter = false
         });
 
+    private long total_enqueued_;
+    private long total_succeeded_;
+    private long total_failed_;
+
     public ValueTask EnqueueAsync(WriteRequest req, CancellationToken ct)
     {
+        Interlocked.Increment(ref total_enqueued_);
         return channel_.Writer.WriteAsync(req, ct);
     }
 
     public IAsyncEnumerable<WriteRequest> ReaderAsync(CancellationToken ct)
     {
         return channel_.Reader.ReadAllAsync(ct);
+    }
+
+    public void RecordResult(bool success)
+    {
+        if (success) Interlocked.Increment(ref total_succeeded_);
+        else Interlocked.Increment(ref total_failed_);
+    }
+
+    public (int CurrentDepth, long TotalEnqueued, long TotalSucceeded, long TotalFailed) GetStats()
+    {
+        return (
+            channel_.Reader.Count,
+            Interlocked.Read(ref total_enqueued_),
+            Interlocked.Read(ref total_succeeded_),
+            Interlocked.Read(ref total_failed_));
     }
 }
 

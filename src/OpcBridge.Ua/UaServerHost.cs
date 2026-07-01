@@ -74,6 +74,21 @@ public sealed class UaServerHost : IAsyncDisposable
             server?.GetLastValueUpdateUtc());
     }
 
+    public IReadOnlyList<UaSessionDiagnostic> GetSessionDiagnostics()
+    {
+        return server_?.GetSessionDiagnostics() ?? Array.Empty<UaSessionDiagnostic>();
+    }
+
+    public IReadOnlyList<UaSubscriptionDiagnostic> GetSubscriptionDiagnostics()
+    {
+        return server_?.GetSubscriptionDiagnostics() ?? Array.Empty<UaSubscriptionDiagnostic>();
+    }
+
+    public (long TotalNotifications, double NotificationsPerSec) GetBandwidthEstimate()
+    {
+        return server_?.GetBandwidthEstimate() ?? (0, 0);
+    }
+
     public async Task StopAsync(CancellationToken cancellationToken)
     {
         if (server_ is null)

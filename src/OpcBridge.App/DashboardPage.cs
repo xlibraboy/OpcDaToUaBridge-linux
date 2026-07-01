@@ -225,6 +225,7 @@ internal static class DashboardPage
 <div class="tabbar">
     <button class="tabbtn active" data-tab="monitor" onclick="showTab('monitor')">Monitor</button>
     <button class="tabbtn" data-tab="connection" onclick="showTab('connection')">Connection</button>
+    <button class="tabbtn" data-tab="diagnostics" onclick="showTab('diagnostics')">Diagnostics</button>
     <button class="tabbtn" data-tab="tags" onclick="showTab('tags')">Tags</button>
     <button class="tabbtn" data-tab="logs" onclick="showTab('logs')">Logs</button>
     <button class="tabbtn" data-tab="help" onclick="showTab('help')">Help</button>
@@ -281,6 +282,46 @@ internal static class DashboardPage
                 </table>
             </div>
         </div>
+    </div>
+</div>
+<div class="view" id="view-diagnostics">
+    <div class="box" style="margin-bottom:14px">
+        <div class="box-h">DA Source Diagnostics <span class="msg" id="diagDaSummary" style="margin-left:auto"></span></div>
+        <div class="box-b" id="diagDaSources"><span class="msg">Loading…</span></div>
+    </div>
+    <div class="grid2" style="margin-bottom:14px">
+        <div class="box">
+            <div class="box-h">UA Sessions <span class="msg" id="diagUaSessionCount" style="margin-left:auto"></span></div>
+            <div class="box-b"><div class="list" id="diagUaSessions" style="max-height:300px"><span class="msg">Loading…</span></div></div>
+        </div>
+        <div class="box">
+            <div class="box-h">UA Subscriptions <span class="msg" id="diagUaSubCount" style="margin-left:auto"></span></div>
+            <div class="box-b"><div class="list" id="diagUaSubscriptions" style="max-height:300px"><span class="msg">Loading…</span></div></div>
+        </div>
+    </div>
+    <div class="grid2" style="margin-bottom:14px">
+        <div class="box">
+            <div class="box-h">UA Bandwidth <span class="info" data-tip="Notifications/sec counts how many value changes were pushed to UA nodes. Estimated bandwidth = notifications/sec x ~80 bytes (typical UA notification encoding). The SDK does not expose actual wire bytes.">i</span></div>
+            <div class="box-b">
+                <div class="stats">
+                    <div class="stat"><div class="k">Notifications/sec</div><div class="v" id="diagNotifPerSec">&#8212;</div></div>
+                    <div class="stat"><div class="k">Est. Bandwidth</div><div class="v" id="diagBandwidth">&#8212;</div><div class="s" id="diagTotalNotif">0 total</div></div>
+                </div>
+            </div>
+        </div>
+        <div class="box">
+            <div class="box-h">Write Queue <span class="info" data-tip="UA client writes are queued in a bounded channel (capacity 1024) and drained by per-source consumer tasks. Success rate shows confirmed DA writes.">i</span></div>
+            <div class="box-b">
+                <div class="stats">
+                    <div class="stat"><div class="k">Current Depth</div><div class="v" id="diagWqDepth">&#8212;</div></div>
+                    <div class="stat"><div class="k">Success Rate</div><div class="v" id="diagWqRate">&#8212;</div><div class="s" id="diagWqTotals">0 enqueued</div></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="box">
+        <div class="box-h">STA Thread Health <span class="info" data-tip="Each OPC DA source has a dedicated Single-Threaded Apartment (STA) thread. All COM calls for that source serialize through it. 'Queued' shows pending COM operations; 'Last action' shows the most recent COM call time.">i</span></div>
+        <div class="box-b"><div class="list" id="diagStaThreads" style="max-height:280px"><span class="msg">Loading…</span></div></div>
     </div>
 </div>
 <div class="view" id="view-connection">
@@ -591,6 +632,8 @@ function showTab(name) {
     document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + name));
     if (location.hash !== '#' + name) history.replaceState(null, '', '#' + name);
     if (name === 'logs') { state.logsLoaded = false; loadLogs(true).catch(e => el('logMessage').textContent = '✗ ' + e.message); }
+    if (name === 'diagnostics') { diagnosticsActive = true; loadDiagnostics(); }
+    else { diagnosticsActive = false; }
     if (name === 'about') loadAppInfo().catch(e => el('aboutName').textContent = '✗ ' + e.message);
     if (name === 'help') loadHelp().catch(e => el('helpContent').innerHTML = '<span class="msg bad">✗ ' + esc(e.message) + '</span>');
 }
@@ -728,6 +771,87 @@ async function loadLogs(force = false) {
     el('logMessage').textContent = entries.length + ' entr' + (entries.length !== 1 ? 'ies' : 'y') + ' (level ≥ ' + level + ')';
     state.logsLoaded = true;
 }
+
+let diagnosticsActive = false;
+async function loadDiagnostics() {
+    if (!diagnosticsActive) return;
+    try {
+        const p = await (await fetch('/api/diagnostics', { cache: 'no-store' })).json();
+        renderDiagnostics(p);
+    } catch (e) {
+        el('diagDaSources').innerHTML = '<span class="bad">✗ ' + esc(e.message) + '</span>';
+    }
+}
+
+function renderDiagnostics(p) {
+    // DA Source Diagnostics — reuse state data from /api/dashboard
+    const sources = state.sources || [];
+    const rateGroups = (state.rateGroups || []);
+    const daHtml = sources.length ? sources.map(src => {
+        const sid = get(src, 'sourceId') || 'default';
+        const conn = get(src, 'connectionState') || '—';
+        const latency = formatMs(get(src, 'lastDaReadDurationMs'));
+        const srcGroups = rateGroups.filter(g => g.sourceId === sid);
+        const totalTags = srcGroups.reduce((sum, g) => sum + (g.tagCount || 0), 0);
+        const groupRows = srcGroups.length ? srcGroups.map(g => {
+            const budget = Math.round(g.cycleBudgetPct || 0);
+            const budgetCls = budget >= 80 ? 'bad' : (budget >= 50 ? 'warn' : 'good');
+            return `<div class="li"><div style="flex:1"><div class="n">${formatMs(g.rateMs)} · ${g.tagCount} tags</div><div class="p">budget <span class="${budgetCls}">${budget}%</span> · limit ${g.tagLimit || '—'}</div></div></div>`;
+        }).join('') : '<span class="msg">No rate groups.</span>';
+        return `<div class="li"><div style="flex:1"><div class="n">${esc(get(src,'displayName') || sid)} ${badge(conn, stateClass(conn))}</div><div class="p">Latency: ${latency} · ${totalTags} tags in ${srcGroups.length} group(s)</div></div></div>${groupRows}`;
+    }).join('') : '<span class="msg">No sources configured.</span>';
+    el('diagDaSources').innerHTML = daHtml;
+    el('diagDaSummary').textContent = sources.length + ' source' + (sources.length !== 1 ? 's' : '');
+
+    // Store rateGroups for DA section reuse
+    if (p.bridge && p.bridge.uaBandwidth) {
+        state.rateGroups = state.rateGroups || [];
+    }
+
+    // UA Sessions
+    const sessions = (p.ua && p.ua.sessions) || [];
+    el('diagUaSessionCount').textContent = sessions.length + ' active';
+    el('diagUaSessions').innerHTML = sessions.length ? sessions.map(s => {
+        const last = relTime(s.lastContactUtc);
+        return `<div class="li"><div style="flex:1"><div class="n">${esc(s.clientName || 'anonymous')}</div><div class="p">${s.subscriptions} subs · ${s.monitoredItems} monitored · ${s.publishRequestsInQueue} publish queued · ${s.totalPublishCount} total publishes</div><div class="p">last contact ${last}</div></div></div>`;
+    }).join('') : '<span class="msg">No active UA sessions.</span>';
+
+    // UA Subscriptions
+    const subs = (p.ua && p.ua.subscriptions) || [];
+    el('diagUaSubCount').textContent = subs.length + ' active';
+    el('diagUaSubscriptions').innerHTML = subs.length ? subs.map(s => {
+        return `<div class="li"><div style="flex:1"><div class="n">${esc(s.clientName || 'anonymous')} · sub #${s.subscriptionId}</div><div class="p">${s.monitoredItems} monitored · ${formatMs(s.publishingIntervalMs)} interval · ${s.dataChangeNotifications} data changes · ${s.totalNotifications} total notifs</div><div class="p">${s.publishRequests} publish reqs · ${s.latePublishRequests} late</div></div></div>`;
+    }).join('') : '<span class="msg">No active subscriptions.</span>';
+
+    // UA Bandwidth
+    const bw = (p.bridge && p.bridge.uaBandwidth) || {};
+    const nps = Number(bw.notificationsPerSec || 0);
+    el('diagNotifPerSec').textContent = nps.toFixed(1);
+    const bps = Number(bw.estimatedBytesPerSec || 0);
+    el('diagBandwidth').textContent = bps < 1024 ? bps.toFixed(0) + ' B/s' : (bps / 1024).toFixed(1) + ' KB/s';
+    el('diagTotalNotif').textContent = (bw.totalNotifications || 0).toLocaleString() + ' total';
+
+    // Write Queue
+    const wq = (p.bridge && p.bridge.writeQueue) || {};
+    el('diagWqDepth').textContent = String(wq.currentDepth ?? '—');
+    const enq = Number(wq.totalEnqueued || 0);
+    const ok = Number(wq.totalSucceeded || 0);
+    const fail = Number(wq.totalFailed || 0);
+    const rate = enq > 0 ? ((ok / enq) * 100).toFixed(1) + '%' : '—';
+    const rateCls = enq > 0 ? (fail > 0 ? 'warn' : 'good') : 'msg';
+    el('diagWqRate').innerHTML = '<span class="' + rateCls + '">' + rate + '</span>';
+    el('diagWqTotals').textContent = enq + ' enqueued · ' + ok + ' ok · ' + fail + ' failed';
+
+    // STA Thread Health
+    const sta = (p.bridge && p.bridge.staThreads) || [];
+    el('diagStaThreads').innerHTML = sta.length ? sta.map(t => {
+        const aliveCls = t.alive ? 'good' : 'bad';
+        const aliveBadge = t.alive ? badge('Alive', 'good') : badge('Dead', 'bad');
+        const last = t.lastActionUtc ? relTime(t.lastActionUtc) : 'never';
+        return `<div class="li"><div style="flex:1"><div class="n">${esc(t.sourceId)} ${aliveBadge}</div><div class="p">queued: ${t.queuedItems} · last action ${last}</div></div></div>`;
+    }).join('') : '<span class="msg">No STA threads (non-Windows or no sources connected).</span>';
+}
+
 
 async function loadAppInfo(force = false) {
     if (state.appInfoLoaded && !force) return;
@@ -1336,13 +1460,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     bindDynamicButtons();
     const initTab = location.hash.slice(1);
-    if (['monitor','connection','tags','logs','help','about'].includes(initTab)) showTab(initTab);
+    if (['monitor','connection','diagnostics','tags','logs','help','about'].includes(initTab)) showTab(initTab);
     await loadSources();
     await loadMappings();
     updateLiveValuesUi();
     await refresh();
     setInterval(refresh, 1000);
     setInterval(() => { if (el('logAutoRefresh')?.checked && document.querySelector('#view-logs.active')) { state.logsLoaded = false; loadLogs(true).catch(() => {}); } }, 3000);
+    setInterval(() => { if (diagnosticsActive) loadDiagnostics().catch(() => {}); }, 2000);
     if (initTab === 'logs') await loadLogs();
     if (initTab === 'help') await loadHelp();
     if (initTab === 'about') await loadAppInfo();

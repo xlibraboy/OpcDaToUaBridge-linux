@@ -23,6 +23,7 @@ public sealed class BridgeWorker : BackgroundService
     private readonly IReadOnlyDictionary<int, int> rate_limits_;
     private int backoffMs_ = 1000;
     private WriteQueue? write_queue_;
+    private volatile Dictionary<string, SourceSession>? active_sessions_;
 
     public BridgeWorker(
         UaServerHost uaServer,
@@ -114,6 +115,7 @@ public sealed class BridgeWorker : BackgroundService
                             pollerCts.Dispose();
                             await ReconfigureSessionsAsync(settings, sessions, stoppingToken).ConfigureAwait(false);
                             connectedVersion = settings.Version;
+                            active_sessions_ = new Dictionary<string, SourceSession>(sessions, StringComparer.OrdinalIgnoreCase);
                             bridge_state_.UpdateSources(settings.UpdateRateMs, activeMappings.Count, settings.Sources);
                             pollerCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
                             StartPollers(settings, sessions, cacheHolder, failedSourceQueue, pollers, pollerCts.Token);
@@ -288,10 +290,12 @@ public sealed class BridgeWorker : BackgroundService
             {
                 bool success = await session.Client.WriteAsync(req.DaItemId, req.Value, cancellationToken).ConfigureAwait(false);
                 req.Tcs.TrySetResult(success);
+                writeQueue.RecordResult(success);
             }
             catch (Exception ex)
             {
                 req.Tcs.TrySetException(ex);
+                writeQueue.RecordResult(false);
             }
         }
     }
@@ -469,6 +473,59 @@ public sealed class BridgeWorker : BackgroundService
             ua_server_.UpdateValue(value);
         }
     }
+    public object GetDiagnostics()
+    {
+        // STA thread health per source
+        List<object> staThreads = new();
+        Dictionary<string, SourceSession>? sessions = active_sessions_;
+        if (sessions is not null)
+        {
+            foreach ((string sourceId, SourceSession session) in sessions)
+            {
+                if (session.Client is OpcDaClient daClient)
+                {
+                    var stats = daClient.GetStaThreadStats();
+                    staThreads.Add(new
+                    {
+                        sourceId,
+                        alive = stats?.Alive ?? false,
+                        queuedItems = stats?.QueuedItems ?? 0,
+                        lastActionUtc = stats?.LastActionUtc
+                    });
+                }
+            }
+        }
+
+        // Write queue stats
+        object? writeQueue = null;
+        if (write_queue_ is not null)
+        {
+            var (depth, enqueued, succeeded, failed) = write_queue_.GetStats();
+            writeQueue = new
+            {
+                currentDepth = depth,
+                totalEnqueued = enqueued,
+                totalSucceeded = succeeded,
+                totalFailed = failed
+            };
+        }
+
+        // UA bandwidth estimate (from BridgeNodeManager notification counter)
+        var (totalNotifications, notificationsPerSec) = ua_server_.GetBandwidthEstimate();
+
+        return new
+        {
+            staThreads,
+            writeQueue,
+            uaBandwidth = new
+            {
+                totalNotifications,
+                notificationsPerSec,
+                estimatedBytesPerSec = notificationsPerSec * 80.0
+            }
+        };
+    }
+
 
 
     private static async Task DisposeSessionsAsync(Dictionary<string, SourceSession> sessions)

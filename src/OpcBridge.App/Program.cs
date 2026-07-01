@@ -26,7 +26,8 @@ builder.Services.AddSingleton<DaClientFactory>();
 builder.Services.AddSingleton<BridgeState>();
 builder.Services.AddSingleton<MappingStore>();
 builder.Services.AddSingleton<UaServerHost>();
-builder.Services.AddHostedService<BridgeWorker>();
+builder.Services.AddSingleton<BridgeWorker>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<BridgeWorker>());
 builder.Services.AddHostedService<OpcBridgeMonitor>();
 
 WebApplication app = builder.Build();
@@ -43,6 +44,15 @@ app.MapGet("/api/dashboard", (BridgeState state, UaServerHost uaServer) => Resul
     bridge = state.GetStatus(),
     ua = uaServer.GetStatus(),
     values = state.GetValues()
+}));
+app.MapGet("/api/diagnostics", (BridgeWorker worker, UaServerHost uaServer) => Results.Json(new
+{
+    bridge = worker.GetDiagnostics(),
+    ua = new
+    {
+        sessions = uaServer.GetSessionDiagnostics(),
+        subscriptions = uaServer.GetSubscriptionDiagnostics()
+    }
 }));
 app.MapGet("/api/logs", (DashboardLogStore logStore, int? limit, string? level) =>
 {

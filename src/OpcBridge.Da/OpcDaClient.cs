@@ -30,6 +30,16 @@ public sealed class OpcDaClient : IDaClient
         options_ = options;
     }
 
+    public (bool Alive, int QueuedItems, DateTime? LastActionUtc)? GetStaThreadStats()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return null;
+        }
+
+        return com_thread_?.GetStats();
+    }
+
     public Task ConnectAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

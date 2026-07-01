@@ -14,6 +14,11 @@ internal sealed class BridgeNodeManager : CustomNodeManager2
     private FolderState? root_folder_;
     private ushort namespace_index_;
     private DateTime? last_value_update_utc_;
+    private long total_notifications_;
+    private long notifications_window_start_ticks_;
+    private long notifications_in_window_;
+
+    private static readonly double TicksPerSecond = TimeSpan.FromSeconds(1).Ticks;
 
     public BridgeNodeManager(
         IServerInternal server,
@@ -125,7 +130,24 @@ internal sealed class BridgeNodeManager : CustomNodeManager2
             variable.StatusCode = value.IsGood ? StatusCodes.Good : StatusCodes.Bad;
             variable.ClearChangeMasks(SystemContext, false);
             last_value_update_utc_ = DateTime.UtcNow;
+            Interlocked.Increment(ref total_notifications_);
+
+            long nowTicks = DateTime.UtcNow.Ticks;
+            long elapsed = nowTicks - Interlocked.Read(ref notifications_window_start_ticks_);
+            if (elapsed >= TicksPerSecond)
+            {
+                Interlocked.Exchange(ref notifications_window_start_ticks_, nowTicks);
+                Interlocked.Exchange(ref notifications_in_window_, 0);
+            }
+            Interlocked.Increment(ref notifications_in_window_);
         }
+    }
+
+    public (long TotalNotifications, double NotificationsPerSec) GetBandwidthEstimate()
+    {
+        long total = Interlocked.Read(ref total_notifications_);
+        long inWindow = Interlocked.Read(ref notifications_in_window_);
+        return (total, inWindow);
     }
     public void SetWriteHandler(Action<BridgeValue, TaskCompletionSource<bool>> handler)
     {

@@ -80,6 +80,77 @@ internal sealed class BridgeUaServer : StandardServer
     {
         return node_manager_?.GetLastValueUpdateUtc();
     }
+    public (long TotalNotifications, double NotificationsPerSec) GetBandwidthEstimate()
+    {
+        return node_manager_?.GetBandwidthEstimate() ?? (0, 0);
+    }
+
+    public IReadOnlyList<UaSessionDiagnostic> GetSessionDiagnostics()
+    {
+        ISessionManager? sessionManager = ServerInternal?.SessionManager;
+        if (sessionManager is null)
+        {
+            return Array.Empty<UaSessionDiagnostic>();
+        }
+
+        List<UaSessionDiagnostic> result = new();
+        foreach (ISession session in sessionManager.GetSessions().Cast<ISession>())
+        {
+            if (!session.Activated || session.HasExpired)
+            {
+                continue;
+            }
+
+            SessionDiagnosticsDataType diag = session.SessionDiagnostics;
+            string clientName = session.Identity?.DisplayName
+                ?? session.EffectiveIdentity?.DisplayName
+                ?? "anonymous";
+            string endpointUrl = diag?.EndpointUrl ?? string.Empty;
+
+            result.Add(new UaSessionDiagnostic(
+                session.Id?.ToString() ?? "?",
+                clientName,
+                endpointUrl,
+                (int)(diag?.CurrentSubscriptionsCount ?? 0),
+                (int)(diag?.CurrentMonitoredItemsCount ?? 0),
+                (int)(diag?.CurrentPublishRequestsInQueue ?? 0),
+                (long)(diag?.PublishCount?.TotalCount ?? 0),
+                diag?.ClientLastContactTime ?? DateTime.MinValue));
+        }
+
+        return result;
+    }
+
+    public IReadOnlyList<UaSubscriptionDiagnostic> GetSubscriptionDiagnostics()
+    {
+        ISubscriptionManager? subMgr = ServerInternal?.SubscriptionManager;
+        if (subMgr is null)
+        {
+            return Array.Empty<UaSubscriptionDiagnostic>();
+        }
+
+        List<UaSubscriptionDiagnostic> result = new();
+        foreach (var sub in subMgr.GetSubscriptions())
+        {
+            var d = sub.Diagnostics;
+            string clientName = sub.Session?.Identity?.DisplayName
+                ?? sub.EffectiveIdentity?.DisplayName
+                ?? "anonymous";
+            result.Add(new UaSubscriptionDiagnostic(
+                (int)sub.Id,
+                clientName,
+                (int)sub.MonitoredItemCount,
+                sub.PublishingInterval,
+                (long)(d?.DataChangeNotificationsCount ?? 0),
+                (long)(d?.NotificationsCount ?? 0),
+                (long)(d?.PublishRequestCount ?? 0),
+                (long)(d?.LatePublishRequestCount ?? 0)));
+        }
+
+        return result;
+    }
+
+
 
     protected override MasterNodeManager CreateMasterNodeManager(
         IServerInternal server,
@@ -107,3 +178,23 @@ internal sealed class BridgeUaServer : StandardServer
         return string.Concat(sourceId.Trim(), "::", daItemId.Trim());
     }
 }
+
+public sealed record UaSessionDiagnostic(
+    string SessionId,
+    string ClientName,
+    string EndpointUrl,
+    int Subscriptions,
+    int MonitoredItems,
+    int PublishRequestsInQueue,
+    long TotalPublishCount,
+    DateTime LastContactUtc);
+
+public sealed record UaSubscriptionDiagnostic(
+    int SubscriptionId,
+    string ClientName,
+    int MonitoredItems,
+    double PublishingIntervalMs,
+    long DataChangeNotifications,
+    long TotalNotifications,
+    long PublishRequests,
+    long LatePublishRequests);

@@ -15,6 +15,8 @@ internal sealed class OpcComThread : IDisposable
     private readonly BlockingCollection<Action> queue_ = new();
     private readonly ManualResetEventSlim idle_ = new(initialState: true);
     private bool disposed_;
+    private int queued_items_;
+    private long last_action_ticks_utc_;
 
     public OpcComThread(string name)
     {
@@ -47,6 +49,7 @@ internal sealed class OpcComThread : IDisposable
         }
 
         TaskCompletionSource tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Interlocked.Increment(ref queued_items_);
         queue_.Add(() =>
         {
             try
@@ -75,6 +78,7 @@ internal sealed class OpcComThread : IDisposable
         }
 
         TaskCompletionSource<T> tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Interlocked.Increment(ref queued_items_);
         queue_.Add(() =>
         {
             try
@@ -128,8 +132,19 @@ internal sealed class OpcComThread : IDisposable
             }
             finally
             {
+                Interlocked.Decrement(ref queued_items_);
+                Interlocked.Exchange(ref last_action_ticks_utc_, DateTime.UtcNow.Ticks);
                 idle_.Set();
             }
         }
+    }
+
+    public (bool Alive, int QueuedItems, DateTime? LastActionUtc) GetStats()
+    {
+        bool alive = !disposed_ && thread_.IsAlive;
+        int queued = Interlocked.CompareExchange(ref queued_items_, 0, 0);
+        long ticks = Interlocked.Read(ref last_action_ticks_utc_);
+        DateTime? lastAction = ticks > 0 ? new DateTime(ticks, DateTimeKind.Utc) : null;
+        return (alive, queued, lastAction);
     }
 }
