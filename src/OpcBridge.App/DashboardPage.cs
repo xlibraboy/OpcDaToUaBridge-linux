@@ -257,6 +257,7 @@ internal static class DashboardPage
             <div class="mon-stat-group-h">Resources <span class="info" data-tip="Native Windows process counters sampled every 5s. A steady or slowly growing count is normal; a steady upward trend signals a handle or COM object leak.">i</span></div>
             <div class="stat"><div class="k">Handles <span class="info" data-tip="Total OS handles (files, registry keys, threads, events, COM objects) held by the process via GetProcessHandleCount. Typical idle: 300-800; investigate if it grows unbounded over time.">i</span></div><div class="v" id="resHandles">&#8212;</div></div>
             <div class="stat"><div class="k">GDI / USER <span class="info" data-tip="GDI objects (pens, brushes, fonts, bitmaps) and USER objects (windows, menus, hooks) via GetGuiResources. Each has a per-process limit of 10,000; approaching it indicates a GDI/USER leak.">i</span></div><div class="v" id="resGdiUser">&#8212;</div></div>
+            <div class="stat"><div class="k">Assessment</div><div class="v" id="resAssessment">&#8212;</div><div class="s" id="resAssessmentDetail">Awaiting data…</div></div>
         </div>
     </div>
     <div class="grid2" style="margin-bottom:14px">
@@ -486,7 +487,9 @@ const state = {
     logsLoaded: false,
     appInfoLoaded: false,
     mappings: [],
-    valuesByKey: new Map()
+    valuesByKey: new Map(),
+    handleHistory: [],
+    handleBaseline: null
 };
 
 function valueKey(sourceId, itemId) {
@@ -870,16 +873,67 @@ async function refresh() {
                 alarmBar.textContent = rateGroups.length + ' rate group' + (rateGroups.length !== 1 ? 's' : '') + ' · all within limits';
             } else {
                 alarmBar.style.display = 'none';
-            }
-        }
         const res = get(b, 'resources');
         const resH = el('resHandles'); const resGU = el('resGdiUser');
+        const resA = el('resAssessment'); const resAD = el('resAssessmentDetail');
         if (resH && resGU) {
             if (res && res.supported) {
                 resH.textContent = String(res.handleCount ?? '—');
                 resGU.textContent = (res.gdiObjects ?? '—') + ' / ' + (res.userObjects ?? '—');
+
+                // Track handle history for leak detection (keep last 60 samples ≈ 5 min at 5s intervals)
+                const hc = Number(res.handleCount ?? 0);
+                if (hc > 0) {
+                    if (state.handleBaseline === null) state.handleBaseline = hc;
+                    state.handleHistory.push(hc);
+                    if (state.handleHistory.length > 60) state.handleHistory.shift();
+                }
+
+                if (resA && resAD) {
+                    const gdi = Number(res.gdiObjects ?? 0);
+                    const user = Number(res.userObjects ?? 0);
+                    const baseline = state.handleBaseline ?? hc;
+                    const drift = hc - baseline;
+                    const gdiPct = (gdi / 10000) * 100;
+                    const userPct = (user / 10000) * 100;
+
+                    // Determine growth trend from history (compare first quarter to last quarter avg)
+                    let trend = 'stable';
+                    let trendPct = 0;
+                    if (state.handleHistory.length >= 12) {
+                        const q = Math.floor(state.handleHistory.length / 4);
+                        const earlyAvg = state.handleHistory.slice(0, q).reduce((a, b) => a + b, 0) / q;
+                        const recentAvg = state.handleHistory.slice(-q).reduce((a, b) => a + b, 0) / q;
+                        trendPct = earlyAvg > 0 ? ((recentAvg - earlyAvg) / earlyAvg) * 100 : 0;
+                        if (trendPct > 15) trend = 'rising';
+                        else if (trendPct < -5) trend = 'falling';
+                    }
+
+                    let verdict, cls, detail;
+                    if (gdiPct >= 80 || userPct >= 80) {
+                        verdict = 'Critical'; cls = 'bad';
+                        detail = 'GDI/USER near 10,000 limit — restart the app to avoid crash.';
+                    } else if (gdiPct >= 50 || userPct >= 50) {
+                        verdict = 'Warning'; cls = 'warn';
+                        detail = 'GDI/USER above 50% of the 10,000 per-process limit.';
+                    } else if (drift > 200 && trend === 'rising') {
+                        verdict = 'Watch'; cls = 'warn';
+                        detail = 'Handle count rising (+' + Math.round(trendPct) + '% trend, +' + drift + ' since start). Possible leak.';
+                    } else if (drift > 500) {
+                        verdict = 'Watch'; cls = 'warn';
+                        detail = 'Handle count +' + drift + ' above baseline. Monitor for continued growth.';
+                    } else {
+                        verdict = 'Normal'; cls = 'good';
+                        detail = 'Handles stable (baseline ' + baseline + ', drift ' + (drift >= 0 ? '+' : '') + drift + '). GDI/USER within safe range.';
+                    }
+
+                    resA.innerHTML = '<span class="' + cls + '">' + verdict + '</span>';
+                    resAD.textContent = detail;
+                }
             } else {
                 resH.textContent = '—'; resGU.textContent = 'n/a (non-Windows)';
+                if (resA) resA.innerHTML = '<span class="msg">n/a</span>';
+                if (resAD) resAD.textContent = 'Resource counters are Windows-only.';
             }
         }
         state.lastValueCount = vs.length;
