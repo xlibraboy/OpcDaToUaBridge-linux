@@ -9,7 +9,7 @@ A bridge that mirrors OPC DA tag values into an OPC UA server, with a web dashbo
 - **DA side**: connects to one or more OPC DA servers via direct COM/DCOM interop (no vendor SDK).
 - **UA side**: an in-process OPC UA server (OPCFoundation.NetStandard SDK) that mirrors DA reads as UA variables.
 - **Dashboard**: ASP.NET Core minimal API + single-page HTML dashboard for sources, mappings, browsing, live values, MQTT, and Diagram topology.
-- **HMI**: Avalonia desktop operator client (`OpcBridge.Hmi`) connecting to bridge HTTP + SignalR on port 8080 only. Trends / Influx history / auth / Android are deferred non-goals.
+- **HMI**: Avalonia desktop operator client (`OpcBridge.Hmi`) connecting to bridge HTTP + SignalR on port 8080 only. Faceplate chart loads history via bridge `GET /api/hmi/trends` (Influx proxy — HMI never holds an Influx token). Auth / Android remain deferred non-goals. Writer path / `InfluxEnabled` is documented when the writer branch merges; this branch is read proxy + faceplate chart.
 
 ## Project map
 
@@ -22,8 +22,8 @@ Projects under `src/`, all .NET 8, `ImplicitUsings` + `Nullable` enabled.
 | `OpcBridge.Ua` | `net8.0` | UA server: `BridgeUaServer` (extends `StandardServer`), `BridgeNodeManager` (extends `CustomNodeManager2`), `UaServerHost`. Depends on `OPCFoundation.NetStandard.Opc.Ua` 1.5.378.145. |
 | `OpcBridge.Mqtt` | `net8.0` | MQTT publish/subscribe helper for mapped tags. |
 | `OpcBridge.App` | `net8.0` (Web SDK) | Entrypoint, HTTP API, dashboard HTML/JS (`DashboardPage`), `BridgeWorker`, `BridgeState`, `MappingStore`, `DaRuntimeSettings`, `DaClientFactory`, `DashboardLogStore`, HMI snapshot/write API + SignalR hub. References Core, Da, Ua, Mqtt, Client. |
-| `OpcBridge.Client` | `net8.0` | Shared HMI/App wire DTOs and tag-cache merge helpers: `HmiTagDto`, `HmiTagsResponse`, `HmiValueDelta`, `HmiWriteRequest`/`HmiWriteResponse`, `HmiMappingsChanged`, `HmiTagCache`. No framework deps. |
-| `OpcBridge.Hmi` | `net8.0` (WinExe) | Avalonia 11 operator client: connect bar, tag grid, faceplate write. References Client; SignalR client for `/hmi`. Separate process from the bridge. |
+| `OpcBridge.Client` | `net8.0` | Shared HMI/App wire DTOs and tag-cache merge helpers: `HmiTagDto`, `HmiTagsResponse`, `HmiValueDelta`, `HmiWriteRequest`/`HmiWriteResponse`, `HmiMappingsChanged`, `HmiTagCache`, `HmiTrendPoint`, `HmiTrendResponse`. No framework deps. |
+| `OpcBridge.Hmi` | `net8.0` (WinExe) | Avalonia 11 operator client: connect bar, tag grid, faceplate write + sparkline (last-hour trends via bridge proxy). References Client; SignalR client for `/hmi`. Separate process from the bridge. |
 
 Reference graph: `App → {Core, Da, Ua, Mqtt, Client}`, `Hmi → Client`, `Da → Core`, `Ua → Core`, `Mqtt → Core`. Core and Client depend on nothing.
 
@@ -105,6 +105,7 @@ Endpoints (all in `Program.cs`):
 - `GET /api/values` — current `BridgeState` values
 - `GET /api/hmi/tags` — HMI tag snapshot (mappings + current values) for the operator client
 - `POST /api/hmi/write` — HMI write request; gated on mapping `Writeable`; reuses `WriteQueue` / `ApplyUaWriteAsync` path
+- `GET /api/hmi/trends?sourceId=&daItemId=&from=&to=&maxPoints=` — history via bridge Influx proxy (HMI never holds Influx token). Soft-fails with empty points + `error` when Influx unavailable.
 - SignalR hub `/hmi` — events `values` (batched `HmiValueDelta[]`) and `mappingsChanged` (`HmiMappingsChanged`)
 - `GET /api/status` | `/api/dashboard` — bridge + UA status (dashboard also includes values)
 - `GET /api/logs?limit=&level=` — `DashboardLogStore` ring buffer (500 entries)
@@ -119,7 +120,7 @@ Endpoints (all in `Program.cs`):
 - MQTT config/status/values endpoints under `/api/mqtt/*`
 - `GET /health` — `{ "status": "ok" }`
 
-HMI note: the operator UI is not embedded in the dashboard; run `dotnet run --project src/OpcBridge.Hmi` against the bridge base URL (`http://<host>:8080`). Historical trends are deferred.
+HMI note: the operator UI is not embedded in the dashboard; run `dotnet run --project src/OpcBridge.Hmi` against the bridge base URL (`http://<host>:8080`). Historical trends are served only through the bridge proxy (`GET /api/hmi/trends`); the HMI has no Influx config or token.
 
 `DashboardLogStore` is also wired as an `ILoggerProvider` (`DashboardLogProvider`), so `ILogger` calls under the `OpcBridge.*` categories at Information+ appear in the dashboard's Logs panel.
 
