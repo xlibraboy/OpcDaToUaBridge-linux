@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Text.Json;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -51,6 +52,15 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty]
     private bool _isConnected;
 
+    [ObservableProperty]
+    private string _trendStatus = string.Empty;
+
+    [ObservableProperty]
+    private bool _trendLoading;
+
+    [ObservableProperty]
+    private IReadOnlyList<double> _trendValues = Array.Empty<double>();
+
     public ObservableCollection<TagItemViewModel> Tags { get; } = new();
 
     public IEnumerable<TagItemViewModel> FilteredTags =>
@@ -71,6 +81,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         WriteValue = value?.ValueText ?? string.Empty;
         WriteCommand.NotifyCanExecuteChanged();
+        _ = LoadTrendsForSelectionAsync();
     }
 
     [RelayCommand(CanExecute = nameof(CanConnect))]
@@ -98,6 +109,11 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             IsConnected = true;
             ConnectionState = "Connected";
             StatusMessage = $"Loaded {Tags.Count} tags (v{_mappingVersion})";
+            _ = TrendRefreshLoopAsync(ct);
+            if (SelectedTag is not null)
+            {
+                await LoadTrendsAsync(ct).ConfigureAwait(true);
+            }
         }
         catch (OperationCanceledException)
         {
@@ -248,7 +264,147 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         _tagIndex.Clear();
         _cache.ReplaceAll(Array.Empty<HmiTagDto>());
         SelectedTag = null;
+        TrendValues = Array.Empty<double>();
+        TrendStatus = string.Empty;
+        TrendLoading = false;
         OnPropertyChanged(nameof(FilteredTags));
+    }
+
+    private async Task LoadTrendsForSelectionAsync()
+    {
+        if (_connectCts is null || !IsConnected)
+        {
+            return;
+        }
+
+        await LoadTrendsAsync(_connectCts.Token).ConfigureAwait(true);
+    }
+
+    private async Task TrendRefreshLoopAsync(CancellationToken ct)
+    {
+        try
+        {
+            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
+            while (await timer.WaitForNextTickAsync(ct).ConfigureAwait(true))
+            {
+                if (SelectedTag is not null)
+                {
+                    await LoadTrendsAsync(ct).ConfigureAwait(true);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private async Task LoadTrendsAsync(CancellationToken ct)
+    {
+        TagItemViewModel? tag = SelectedTag;
+        if (!IsConnected || tag is null)
+        {
+            TrendValues = Array.Empty<double>();
+            TrendStatus = string.Empty;
+            return;
+        }
+
+        TrendLoading = true;
+        try
+        {
+            HmiTrendResponse response = await _api.GetTrendsAsync(
+                tag.SourceId,
+                tag.DaItemId,
+                fromUtc: null,
+                toUtc: null,
+                maxPoints: 500,
+                ct).ConfigureAwait(true);
+
+            List<double> ys = new();
+            foreach (HmiTrendPoint p in response.Points)
+            {
+                if (TryToDouble(p.V, out double y))
+                {
+                    ys.Add(y);
+                }
+            }
+
+            TrendValues = ys;
+            if (!string.IsNullOrWhiteSpace(response.Error))
+            {
+                TrendStatus = response.Error!;
+            }
+            else if (ys.Count == 0)
+            {
+                TrendStatus = "No history";
+            }
+            else
+            {
+                TrendStatus = string.Empty;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // ignore
+        }
+        catch (Exception ex)
+        {
+            TrendValues = Array.Empty<double>();
+            TrendStatus = ex.Message;
+        }
+        finally
+        {
+            TrendLoading = false;
+        }
+    }
+
+    private static bool TryToDouble(object? value, out double y)
+    {
+        y = 0;
+        if (value is null)
+        {
+            return false;
+        }
+
+        if (value is double d)
+        {
+            y = d;
+            return true;
+        }
+
+        if (value is float f)
+        {
+            y = f;
+            return true;
+        }
+
+        if (value is int i)
+        {
+            y = i;
+            return true;
+        }
+
+        if (value is long l)
+        {
+            y = l;
+            return true;
+        }
+
+        if (value is JsonElement je)
+        {
+            if (je.ValueKind == JsonValueKind.Number && je.TryGetDouble(out d))
+            {
+                y = d;
+                return true;
+            }
+
+            return false;
+        }
+
+        return double.TryParse(
+            Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture),
+            System.Globalization.NumberStyles.Float,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out y);
     }
 
     private bool MatchesFilter(TagItemViewModel tag)
