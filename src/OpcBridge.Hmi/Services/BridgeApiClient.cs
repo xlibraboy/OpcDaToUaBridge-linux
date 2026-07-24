@@ -35,5 +35,42 @@ public sealed class BridgeApiClient : IDisposable
         return body ?? new HmiWriteResponse { Ok = false, Error = $"HTTP {(int)http.StatusCode}" };
     }
 
+    public async Task<HmiTrendResponse> GetTrendsAsync(
+        string sourceId,
+        string daItemId,
+        DateTime? fromUtc,
+        DateTime? toUtc,
+        int? maxPoints,
+        CancellationToken ct)
+    {
+        var query = new List<string>
+        {
+            $"sourceId={Uri.EscapeDataString(sourceId)}",
+            $"daItemId={Uri.EscapeDataString(daItemId)}"
+        };
+        if (fromUtc is not null)
+        {
+            query.Add($"from={Uri.EscapeDataString(fromUtc.Value.ToUniversalTime().ToString("o"))}");
+        }
+        if (toUtc is not null)
+        {
+            query.Add($"to={Uri.EscapeDataString(toUtc.Value.ToUniversalTime().ToString("o"))}");
+        }
+        if (maxPoints is not null)
+        {
+            query.Add($"maxPoints={maxPoints.Value}");
+        }
+
+        string path = "api/hmi/trends?" + string.Join("&", query);
+        HmiTrendResponse? response = await client_.GetFromJsonAsync<HmiTrendResponse>(path, JsonOptions, ct)
+            .ConfigureAwait(false);
+        return response ?? new HmiTrendResponse
+        {
+            SourceId = sourceId,
+            DaItemId = daItemId,
+            Error = "Empty trends response"
+        };
+    }
+
     public void Dispose() => client_.Dispose();
 }
