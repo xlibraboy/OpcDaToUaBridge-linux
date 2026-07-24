@@ -68,6 +68,45 @@ app.MapPost("/api/hmi/write", async (HmiWriteRequest request, BridgeWorker worke
         ct).ConfigureAwait(false);
     return Results.Json(new HmiWriteResponse { Ok = ok, Error = error });
 });
+app.MapGet("/api/hmi/trends", async (
+    string? sourceId,
+    string? daItemId,
+    DateTime? from,
+    DateTime? to,
+    int? maxPoints,
+    IInfluxTrendQuery trends,
+    CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(sourceId) || string.IsNullOrWhiteSpace(daItemId))
+    {
+        return Results.Json(
+            new { error = "sourceId and daItemId are required" },
+            statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    DateTime toUtc = (to ?? DateTime.UtcNow).ToUniversalTime();
+    DateTime fromUtc = (from ?? toUtc.AddHours(-1)).ToUniversalTime();
+    if (fromUtc > toUtc)
+    {
+        return Results.Json(
+            new { error = "from must be less than or equal to to" },
+            statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    int limit = maxPoints ?? 500;
+    if (limit < 10) limit = 10;
+    if (limit > 2000) limit = 2000;
+
+    HmiTrendResponse response = await trends.QueryAsync(
+        sourceId.Trim(),
+        daItemId.Trim(),
+        fromUtc,
+        toUtc,
+        limit,
+        ct).ConfigureAwait(false);
+
+    return Results.Json(response);
+});
  app.MapGet("/api/status", (BridgeState state, UaServerHost uaServer, BridgeAppDiscovery discovery) => Results.Json(new
  {
      bridge = state.GetStatus(),
