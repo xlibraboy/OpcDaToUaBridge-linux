@@ -44,6 +44,7 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<BridgeWorker>());
  builder.Services.AddHostedService(sp => sp.GetRequiredService<BridgeAppDiscovery>());
 builder.Services.AddSignalR();
 builder.Services.AddHostedService<HmiBroadcastService>();
+builder.Services.AddSingleton<IInfluxTrendQuery, UnavailableInfluxTrendQuery>();
 
 
 WebApplication app = builder.Build();
