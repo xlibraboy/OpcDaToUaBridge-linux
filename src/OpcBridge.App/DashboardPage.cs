@@ -162,6 +162,17 @@ internal static class DashboardPage
         .modal-f .field { margin-bottom: 0; flex: 1; min-width: 200px; }
         .modal-f .btn { margin-left: auto; }
         .modal-f .btn + .btn { margin-left: 0; }
+        .modal.wizard { width: 480px; max-width: 94vw; }
+        .wizard-steps { display: flex; gap: 6px; padding: 10px 14px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+        .wizard-step { font-size: 11px; color: var(--muted); padding: 3px 8px; border-radius: 4px; }
+        .wizard-step.active { color: var(--accent); background: rgba(56,189,248,.12); }
+        .wizard-step.done { color: var(--good); }
+        .wizard-body { padding: 14px; max-height: 60vh; overflow-y: auto; }
+        .wizard-pane { display: none; }
+        .wizard-pane.active { display: block; }
+        .wizard-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--border); }
+        .wizard-summary { font-size: 12px; line-height: 1.6; }
+        .wizard-summary b { color: var(--text); }
         .endpoint { background: var(--bg); border: 1px solid var(--border2); border-radius: 5px; padding: 7px 11px; font-family: 'Consolas', monospace; font-size: 12px; color: var(--accent); word-break: break-all; }
         .split { display: grid; grid-template-columns: 1.2fr 1fr; gap: 12px; }
         .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
@@ -552,7 +563,7 @@ internal static class DashboardPage
     <div class="conn-layout">
         <div class="conn-main">
             <div class="box">
-                <div class="box-h">Server Connection <span class="msg" id="cfgMessage" style="margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0">Select a saved connection or click New.</span></div>
+                <div class="box-h">Server Connection <button class="btn" type="button" onclick="openAddSourceWizard()" style="margin-left:auto">+ Add Source</button><span class="msg" id="cfgMessage" style="font-weight:400;text-transform:none;letter-spacing:0">Select a saved connection or click New.</span></div>
                 <div class="box-b">
                     <div class="field"><label class="fl">Selected</label><select id="selectedSource"></select></div>
                     <div class="conn-section">
@@ -614,6 +625,55 @@ internal static class DashboardPage
                     <div class="hint" id="configMessage">Export saves all sources, settings, and tag mappings to a JSON file. Passwords are not included — re-enter after import.</div>
                 </div>
             </div>
+        </div>
+    </div>
+</div>
+<div class="modal-overlay" id="addSourceWizard" style="display:none" onclick="if(event.target===this)closeAddSourceWizard()">
+    <div class="modal wizard" role="dialog" aria-modal="true" aria-labelledby="addSourceWizardTitle">
+        <div class="modal-head">
+            <div class="modal-title" id="addSourceWizardTitle">Add OPC DA Source</div>
+            <button class="modal-close" type="button" onclick="closeAddSourceWizard()">&times;</button>
+        </div>
+        <div class="wizard-steps">
+            <span class="wizard-step" data-step="1">1. Identity</span>
+            <span class="wizard-step" data-step="2">2. Server</span>
+            <span class="wizard-step" data-step="3">3. Credentials</span>
+            <span class="wizard-step" data-step="4">4. Defaults</span>
+            <span class="wizard-step" data-step="5">5. Review</span>
+        </div>
+        <div class="wizard-body">
+            <div class="wizard-pane active" data-pane="1">
+                <div class="field"><label class="fl">Source ID</label><input type="text" id="wzSourceId" placeholder="server-a"></div>
+                <div class="field"><label class="fl">Display Name</label><input type="text" id="wzDisplayName" placeholder="(optional)"></div>
+                <div class="hint">Unique key with no spaces. Used in UA Node IDs (ns=2;s={sourceId}/...).</div>
+            </div>
+            <div class="wizard-pane" data-pane="2">
+                <div class="field"><label class="fl">Host</label><input type="text" id="wzHost" placeholder="localhost"></div>
+                <div class="field"><label class="fl">ProgID / CLSID</label><input type="text" id="wzProgId" placeholder="Kepware.KEPServerEX.V6"></div>
+                <button class="btn ghost" type="button" onclick="wzBrowseServers()">Browse Servers</button>
+                <span class="msg" id="wzMsgServers"></span>
+                <div class="list" id="wzListServers" style="max-height:180px"></div>
+            </div>
+            <div class="wizard-pane" data-pane="3">
+                <div class="field"><label class="fl">Domain</label><input type="text" id="wzDomain" placeholder="(optional)"></div>
+                <div class="field"><label class="fl">Username</label><input type="text" id="wzUser" placeholder="(optional)"></div>
+                <div class="field"><label class="fl">Password</label><input type="password" id="wzPass"></div>
+                <div class="hint">Only required for remote DCOM or servers in another user's profile.</div>
+            </div>
+            <div class="wizard-pane" data-pane="4">
+                <div class="field"><label class="fl">Update Rate</label><select id="wzUpdateRate"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000" selected>1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
+                <div class="field"><label class="fl">Subscriptions</label><input type="checkbox" id="wzSubs" checked> <span class="msg">Use IOPCDataCallback (recommended)</span></div>
+            </div>
+            <div class="wizard-pane" data-pane="5">
+                <div class="wizard-summary" id="wzSummary"></div>
+                <div class="hint">Click Finish to save. You can map tags next.</div>
+            </div>
+        </div>
+        <div class="wizard-foot">
+            <button class="btn ghost" type="button" onclick="closeAddSourceWizard()">Cancel</button>
+            <button class="btn ghost" type="button" id="wzBack" onclick="wzStep(-1)">Back</button>
+            <button class="btn" type="button" id="wzNext" onclick="wzStep(1)">Next</button>
+            <button class="btn" type="button" id="wzFinish" style="display:none" onclick="wzFinish()">Finish &amp; Save</button>
         </div>
     </div>
 </div>
@@ -3154,6 +3214,99 @@ function newSource() {
     el('cfgMessage').textContent = 'Enter a unique Source ID, then save.';
     showSaveReset();
 }
+let wzCurrentStep = 1;
+const WZ_STEPS = 5;
+
+function openAddSourceWizard() {
+  wzCurrentStep = 1;
+  ['wzSourceId','wzDisplayName','wzHost','wzProgId','wzDomain','wzUser','wzPass'].forEach(id => el(id).value = '');
+  el('wzHost').value = 'localhost';
+  el('wzSubs').checked = true;
+  el('wzUpdateRate').value = '1000';
+  el('wzListServers').innerHTML = '';
+  el('wzMsgServers').textContent = '';
+  el('addSourceWizard').style.display = '';
+  wzRender();
+}
+function closeAddSourceWizard() { el('addSourceWizard').style.display = 'none'; }
+function wzRender() {
+  document.querySelectorAll('.wizard-pane').forEach(p => p.classList.toggle('active', Number(p.dataset.pane) === wzCurrentStep));
+  document.querySelectorAll('.wizard-step').forEach(s => {
+    const n = Number(s.dataset.step);
+    s.classList.toggle('active', n === wzCurrentStep);
+    s.classList.toggle('done', n < wzCurrentStep);
+  });
+  el('wzBack').style.display = wzCurrentStep > 1 ? '' : 'none';
+  el('wzNext').style.display = wzCurrentStep < WZ_STEPS ? '' : 'none';
+  el('wzFinish').style.display = wzCurrentStep === WZ_STEPS ? '' : 'none';
+  if (wzCurrentStep === 5) wzBuildSummary();
+}
+function wzStep(delta) {
+  const next = wzCurrentStep + delta;
+  if (next < 1 || next > WZ_STEPS) return;
+  if (delta > 0 && !wzValidate(wzCurrentStep)) return;
+  wzCurrentStep = next;
+  wzRender();
+}
+function wzValidate(step) {
+  if (step === 1) {
+    const id = el('wzSourceId').value.trim();
+    if (!id) { alert('Source ID is required.'); return false; }
+    if (/\s/.test(id)) { alert('Source ID must not contain spaces.'); return false; }
+    if (state.sources.some(s => s.sourceId === id)) { alert('Source ID already exists.'); return false; }
+  }
+  if (step === 2 && !el('wzProgId').value.trim()) { alert('ProgID / CLSID is required.'); return false; }
+  return true;
+}
+async function wzBrowseServers() {
+  const host = el('wzHost').value.trim() || 'localhost';
+  el('wzMsgServers').textContent = 'Scanning…';
+  const body = { host: host === 'localhost' ? null : host };
+  try {
+    const r = await fetch('/api/da/servers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), cache: 'no-store' });
+    const p = await r.json();
+    if (p.error) throw new Error(p.error);
+    const servers = p.servers || [];
+    el('wzListServers').innerHTML = servers.length ? servers.map(s => {
+      const prog = s.progId || s.ProgId;
+      const desc = s.description || s.Description || prog;
+      return `<div class="li"><div style="flex:1"><div class="n">${esc(desc)}</div><div class="p">${esc(prog)}</div></div><button class="btn ghost" data-action="wz-pick-server" data-prog-id="${attr(prog)}" data-host="${attr(host)}">Use</button></div>`;
+    }).join('') : '<span class="msg">No servers found.</span>';
+    el('wzMsgServers').textContent = servers.length + ' servers';
+  } catch (e) { el('wzMsgServers').textContent = '✗ ' + e.message; }
+}
+function wzPickServer(progId, host) {
+  el('wzProgId').value = progId;
+  el('wzHost').value = host;
+  el('wzMsgServers').textContent = 'Selected ' + progId;
+}
+function wzBuildSummary() {
+  el('wzSummary').innerHTML =
+    `<b>Source ID:</b> ${esc(el('wzSourceId').value)}<br>` +
+    `<b>Display Name:</b> ${esc(el('wzDisplayName').value || '—')}<br>` +
+    `<b>Host:</b> ${esc(el('wzHost').value || 'localhost')}<br>` +
+    `<b>ProgID:</b> ${esc(el('wzProgId').value)}<br>` +
+    `<b>Credentials:</b> ${el('wzUser').value ? el('wzDomain').value + '\\' + el('wzUser').value : 'none'}<br>` +
+    `<b>Update Rate:</b> ${el('wzUpdateRate').value} ms<br>` +
+    `<b>Subscriptions:</b> ${el('wzSubs').checked ? 'on' : 'off'}`;
+}
+async function wzFinish() {
+  el('cfgSourceId').value = el('wzSourceId').value.trim();
+  el('cfgDisplayName').value = el('wzDisplayName').value.trim();
+  el('cfgProgId').value = el('wzProgId').value.trim();
+  el('cfgHost').value = el('wzHost').value.trim() || 'localhost';
+  el('cfgUser').value = el('wzUser').value.trim();
+  el('cfgPass').value = el('wzPass').value;
+  el('cfgDomain').value = el('wzDomain').value.trim();
+  state.editingNewSource = true;
+  try {
+    await saveSource();
+    closeAddSourceWizard();
+    if (confirm('Source saved. Map tags now?')) navigate('tags/maps');
+  } catch (e) {
+    el('cfgMessage').textContent = '✗ ' + e.message;
+  }
+}
 async function browseServers() {
     const host = (el('cfgHost').value.trim() || 'localhost');
     el('msgServers').textContent = 'Scanning…';
@@ -3380,6 +3533,11 @@ function bindDynamicButtons() {
         const button = event.target.closest('button[data-action="pick-server"]');
         if (!button) return;
         pickServer(button.dataset.progId || '', button.dataset.host || 'localhost');
+    });
+    el('wzListServers').addEventListener('click', event => {
+        const button = event.target.closest('button[data-action="wz-pick-server"]');
+        if (!button) return;
+        wzPickServer(button.dataset.progId || '', button.dataset.host || 'localhost');
     });
     el('tagTree').addEventListener('click', event => {
         const actionEl = event.target.closest('[data-action]');
