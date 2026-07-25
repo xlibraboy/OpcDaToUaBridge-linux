@@ -2285,7 +2285,7 @@ async function showTab(name, route) {
   document.querySelectorAll('.tabbtn').forEach(b => b.classList.toggle('active', b.dataset.route === route));
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + activeTab));
   if (location.hash !== '#/' + route) history.replaceState(null, '', '#/' + route);
-  if (activeTab === 'iot-traffic') {
+  if (name === 'iot-traffic') {
     const traffic = document.getElementById('mqttTraffic');
     if (traffic) traffic.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
