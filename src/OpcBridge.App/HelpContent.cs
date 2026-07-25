@@ -73,16 +73,18 @@ internal static class HelpContent
   ┌─────────────────────────────────────────────────────────────────────┐
   │                      Web Dashboard (port 8080)                       │
   │                                                                      │
-  │  Monitor ──► stats, source status, alarm bar, live values table      │
-│  Connection ──► server connection config, discovery, default rate, subscriptions toggle  │
-│  Tags ──► DA browser, mappings, faceplate (access rights, update rate, simulation)  │
-│  OPC DA to DA ──► connected tags: set/clear provider→consumer links, view all connections   │
-  │  Help ──► this page                                                  │
+  │  Sidebar groups pages by job:                                        │
+  │  Connectivity ──► Sources, Diagnostics                               │
+  │  Tags ──► Maps, DA Links                                             │
+  │  IoT ──► MQTT, Traffic                                               │
+  │  Historian ──► InfluxDB                                              │
+  │  Ops ──► Monitor, Logs, Diagram                                      │
+  │  Help ──► Guide, About                                               │
   │                                                                      │
-   │  HTTP API: /api/dashboard, /api/mappings, /api/da/sources, etc.      │
-   │                                                                      │
-   │  **Apps Pill**: Shows count of detected bridge instances across all    │
-   │  configured DA source hosts. Updates every 10 seconds.                 │
+  │  HTTP API: /api/dashboard, /api/mappings, /api/da/sources, etc.      │
+  │                                                                      │
+  │  **Apps Pill**: Shows count of detected bridge instances across all    │
+  │  configured DA source hosts. Updates every 10 seconds.                 │
   └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -94,6 +96,20 @@ internal static class HelpContent
 - **UA writes** (writeable mappings) flow: UA Client → BridgeNodeManager → WriteQueue → per-source consumer → `IOPCSyncIO.Write` → DA Server.
 - UA clients subscribe to UA nodes and receive notifications when values change.
 - The web dashboard reads from `/api/dashboard` (1s polling) to display live status and resource telemetry.
+
+## Dashboard Navigation
+
+The sidebar groups pages by job:
+
+- **Connectivity** — Sources (add/edit OPC DA sources), Diagnostics (DA health, time sync)
+- **Tags** — Maps (browse DA, map to UA, faceplate), DA Links (DA→DA forwarding)
+- **IoT** — MQTT (broker config), Traffic (publish/subscribe monitor)
+- **Historian** — InfluxDB (config, write status, per-tag enable via faceplate)
+- **Ops** — Monitor (live values, status), Logs, Diagram
+- **Help** — Guide, About
+
+Use **Connectivity → Sources → + Add Source** for the guided setup wizard.
+Use **IoT → MQTT → Setup Wizard** and **Historian → InfluxDB → Setup Wizard** for first-time broker/historian setup.
 
 ## OPC UA Endpoint — Bind vs Connect
 
