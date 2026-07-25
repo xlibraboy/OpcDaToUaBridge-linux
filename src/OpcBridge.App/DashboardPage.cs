@@ -3975,9 +3975,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         deleteDaLink(btn.dataset.linkId || '').catch(e => el('linksMessage').textContent = '✗ ' + e.message);
     });
     bindDynamicButtons();
-    const initHash = location.hash.replace(/^#\/?/, '');
-    const initRoute = Object.prototype.hasOwnProperty.call(ROUTE_TO_TAB, initHash) ? initHash
-      : (initHash && Object.keys(ROUTE_TO_TAB).find(r => ROUTE_TO_TAB[r] === initHash) ? Object.keys(ROUTE_TO_TAB).find(r => ROUTE_TO_TAB[r] === initHash) : DEFAULT_ROUTE);
+    const LEGACY_TAB_TO_ROUTE = {
+      monitor: 'ops/monitor',
+      connection: 'connectivity/sources',
+      diagnostics: 'connectivity/diagnostics',
+      tags: 'tags/maps',
+      links: 'tags/links',
+      logs: 'ops/logs',
+      mqtt: 'iot/mqtt',
+      influx: 'historian/influx',
+      diagram: 'ops/diagram',
+      help: 'help/guide',
+      about: 'help/about'
+    };
+    const initHashRaw = location.hash.replace(/^#\/?/, '');
+    let initRoute = Object.prototype.hasOwnProperty.call(ROUTE_TO_TAB, initHashRaw) ? initHashRaw
+      : (LEGACY_TAB_TO_ROUTE[initHashRaw] || DEFAULT_ROUTE);
     navigate(initRoute);
     await loadSources();
     await loadMappings();
