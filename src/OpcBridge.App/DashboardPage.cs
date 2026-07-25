@@ -78,6 +78,8 @@ internal static class DashboardPage
         .alarm-bar.ok { background: rgba(52,211,153,.1); border: 1px solid rgba(52,211,153,.3); color: var(--good); }
         .alarm-bar.warning { background: rgba(251,191,36,.1); border: 1px solid rgba(251,191,36,.3); color: var(--warn); }
         .alarm-bar.bad { background: rgba(248,113,113,.1); border: 1px solid rgba(248,113,113,.3); color: var(--bad); }
+        .first-run-banner { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 7px; margin-bottom: 12px; font-size: 12px; background: rgba(56,189,248,.08); border: 1px solid rgba(56,189,248,.3); color: var(--text); }
+        .first-run-banner button { margin-left: auto; }
         .stat .k { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
         .stat .v { margin-top: 6px; font-size: 16px; font-weight: 700; line-height: 1.1; }
         .stat .s { margin-top: 4px; color: var(--muted); font-size: 11px; }
@@ -458,6 +460,8 @@ internal static class DashboardPage
 </div>
 <div class="content">
 <div class="view active" id="view-monitor">
+    <div class="first-run-banner" id="bannerNoSources" style="display:none"></div>
+    <div class="first-run-banner" id="bannerNoMappings" style="display:none"></div>
     <div class="alarm-bar" id="rateAlarmBar" style="display:none"></div>
     <div class="mon-stats">
         <div class="mon-stat-group">
@@ -678,6 +682,7 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="view" id="view-tags">
+    <div class="first-run-banner" id="bannerTagsNoSources" style="display:none"></div>
     <div class="box" style="margin-bottom:14px">
         <div class="box-h">Tag Browser</div>
         <div class="box-b">
@@ -870,6 +875,7 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="view" id="view-mqtt">
+    <div class="first-run-banner" id="hintMqtt" style="display:none"></div>
     <div class="grid2">
         <div class="box">
             <div class="box-h">MQTT Broker <span class="info" data-tip="This app connects TO an external MQTT broker (like Mosquitto, HiveMQ, or AWS IoT). It does NOT include its own broker. Configure your broker connection here. Settings are saved to mqtt.json.">i</span><button class="btn" type="button" onclick="openMqttWizard()" style="margin-left:auto">Setup Wizard</button></div>
@@ -971,6 +977,7 @@ internal static class DashboardPage
 </div>
 </div>
 <div class="view" id="view-influx">
+    <div class="first-run-banner" id="hintInflux" style="display:none"></div>
     <div class="grid2">
         <div class="box">
             <div class="box-h">Historian <span class="msg" style="font-weight:400;text-transform:none;letter-spacing:0">InfluxDB 2.x/3.x</span> <span class="info" data-tip="This app writes to an external InfluxDB 2.x/3.x server. It does NOT run InfluxDB itself. Configure URL, Org, Bucket and Token here. Settings are saved to influx.json.">i</span><button class="btn" type="button" onclick="openInfluxWizard()" style="margin-left:auto">Setup Wizard</button></div>
@@ -1113,6 +1120,11 @@ const state = {
     mappingSort: 'name',
     mappingSortDir: 1,
     mappingFilter: '',
+    mqttConfigured: false,
+    mqttState: 'Disconnected',
+    mqttConnectionState: 'Disconnected',
+    influxConfigured: false,
+    influxState: 'Disconnected',
     mqttValFilter: { direction: '', topic: '' },
     valuesByKey: new Map(),
     handleHistory: [],
@@ -2472,6 +2484,14 @@ function renderSources() {
     select.value = state.selectedSourceId;
     mapSelect.value = state.selectedSourceId;
     el('pSources').textContent = state.sources.length;
+    const noSources = state.sources.length === 0;
+    const bannerNo = el('bannerNoSources');
+    if (bannerNo) bannerNo.style.display = noSources ? '' : 'none';
+    if (bannerNo && noSources) bannerNo.innerHTML = 'No OPC DA sources configured. <button class="btn" type="button" onclick="navigate(\'connectivity/sources\')">Add Source</button>';
+    const bannerTags = el('bannerTagsNoSources');
+    if (bannerTags) bannerTags.style.display = noSources ? '' : 'none';
+    if (bannerTags && noSources) bannerTags.innerHTML = 'No sources yet. <button class="btn" type="button" onclick="navigate(\'connectivity/sources\')">Add Source</button>';
+    updateNoMappingsBanner();
     const sideCount = el('pSourcesSide'); if (sideCount) sideCount.textContent = state.sources.length + ' source' + (state.sources.length !== 1 ? 's' : '');
     el('sourcesList').innerHTML = state.sources.length ? state.sources.map(source =>
         `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)}</div><div class="p">${esc(source.sourceId)} · ${esc(source.host || 'localhost')} · ${esc(source.progId || '')} · ${formatMs(source.updateRateMs)}</div></div><button class="btn ghost" data-action="select-source" data-source-id="${attr(source.sourceId)}">Select</button></div>`
@@ -2938,6 +2958,7 @@ async function loadMappings() {
     const view = applyMappingView(mappings);
     el('mappedList').innerHTML = renderMappingRows(view);
     if (el('mapCount')) el('mapCount').textContent = view.length + (view.length !== mappings.length ? ' / ' + mappings.length + ' mappings' : ' mappings');
+    updateNoMappingsBanner();
     refreshTagBrowserMappedBadges();
     if (document.getElementById('view-links')?.classList.contains('active')) renderLinksView();
 }
@@ -2974,12 +2995,14 @@ async function loadMqttConfig() {
         if (el('mqttIgnoreCert')) el('mqttIgnoreCert').checked = !!cfg.ignoreCertErrors;
         if (el('mqttPrefix')) el('mqttPrefix').value = cfg.topicPrefix || 'bridge/tags';
         if (el('mqttFields')) el('mqttFields').value = cfg.payloadFields || 'Value, Timestamp';
+        state.mqttConfigured = !!(cfg.enabled || (cfg.brokerUrl || '').trim());
     } catch (e) { /* ignore */ }
 }
 async function loadMqttStatus() {
     try {
         const st = await (await fetch('/api/mqtt/status', { cache: 'no-store' })).json();
-        state.mqttConnectionState = st.state || 'Disconnected';
+        state.mqttState = st.state || 'Disconnected';
+        state.mqttConnectionState = state.mqttState;
         if (el('mqttState')) {
             el('mqttState').textContent = st.state || 'Disconnected';
             el('mqttState').className = 'v ' + (st.state === 'Connected' ? 'badge good' : 'badge bad');
@@ -2989,6 +3012,13 @@ async function loadMqttStatus() {
         if (el('mqttReceived')) el('mqttReceived').textContent = (st.receivedCount || 0).toLocaleString();
         if (el('mqttPublishedRate')) el('mqttPublishedRate').textContent = (st.publishedRate || 0).toFixed(1) + '/s';
         if (el('mqttReceivedRate')) el('mqttReceivedRate').textContent = (st.receivedRate || 0).toFixed(1) + '/s';
+        const hintMqtt = el('hintMqtt');
+        if (hintMqtt) {
+            const off = !state.mqttConfigured || state.mqttState === 'Disconnected';
+            const hasMqttTags = (state.mappings || []).some(m => (m.mqttEnabled ?? m.MqttEnabled) === true);
+            hintMqtt.style.display = (off && hasMqttTags) ? '' : 'none';
+            if (off && hasMqttTags) hintMqtt.innerHTML = 'MQTT tags exist but broker is disconnected.';
+        }
     } catch (e) { if (el('mqttMessage')) el('mqttMessage').textContent = '✗ ' + e.message; }
 }
 async function loadMqtt() { await Promise.all([loadMqttConfig(), loadMqttStatus()]); }
@@ -3128,11 +3158,13 @@ async function loadInfluxConfig() {
         if (el('influxMeasurement')) el('influxMeasurement').value = cfg.measurement || 'opc_tags';
         if (el('influxTimeoutMs')) el('influxTimeoutMs').value = String(cfg.timeoutMs ?? 5000);
         if (el('influxVerifySsl')) el('influxVerifySsl').checked = cfg.verifySsl !== false;
+        state.influxConfigured = !!(cfg.enabled || (cfg.url || '').trim() || (cfg.org || '').trim() || (cfg.bucket || '').trim() || (cfg.token || '').trim());
     } catch (e) { /* ignore */ }
 }
 async function loadInfluxStatus() {
     try {
         const st = await (await fetch('/api/influx/status', { cache: 'no-store' })).json();
+        state.influxState = st.state || 'Disconnected';
         if (el('influxState')) {
             el('influxState').textContent = st.state || 'Disconnected';
             el('influxState').className = 'v ' + (st.state === 'Connected' ? 'badge good' : 'badge bad');
@@ -3140,6 +3172,12 @@ async function loadInfluxStatus() {
         if (el('influxLastError')) el('influxLastError').textContent = st.lastError || 'No errors';
         if (el('influxWritten')) el('influxWritten').textContent = (st.writtenCount || 0).toLocaleString();
         if (el('influxWrittenRate')) el('influxWrittenRate').textContent = (st.writtenRate || 0).toFixed(1) + '/s';
+        const hintInflux = el('hintInflux');
+        if (hintInflux) {
+            const off = !state.influxConfigured || state.influxState === 'Disconnected';
+            hintInflux.style.display = off ? '' : 'none';
+            if (off) hintInflux.innerHTML = 'Historian (InfluxDB) not configured. <button class="btn" type="button" onclick="navigate(\'historian/influx\')">Configure</button>';
+        }
     } catch (e) { if (el('influxMessage')) el('influxMessage').textContent = '✗ ' + e.message; }
 }
 async function loadInflux() { await Promise.all([loadInfluxConfig(), loadInfluxStatus()]); }
@@ -3272,10 +3310,19 @@ function applyMappingView(mappings) {
     };
     return view.slice().sort(cmp);
 }
+function updateNoMappingsBanner() {
+    const noMappings = (state.mappings || []).length === 0;
+    const bannerNoMap = el('bannerNoMappings');
+    if (bannerNoMap) {
+        bannerNoMap.style.display = (noMappings && (state.sources || []).length > 0) ? '' : 'none';
+        if (noMappings && (state.sources || []).length > 0) bannerNoMap.innerHTML = 'No tags mapped yet. <button class="btn" type="button" onclick="navigate(\'tags/maps\')">Map Tags</button>';
+    }
+}
 function rerenderMappings() {
     const view = applyMappingView(state.mappings || []);
     el('mapCount').textContent = view.length + (view.length !== (state.mappings || []).length ? ' / ' + (state.mappings || []).length + ' mappings' : ' mappings');
     el('mappedList').innerHTML = renderMappingRows(view);
+    updateNoMappingsBanner();
 }
 
 function getMapping(sourceId, itemId) {
