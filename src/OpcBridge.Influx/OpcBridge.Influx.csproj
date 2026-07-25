@@ -6,6 +6,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\OpcBridge.Core\OpcBridge.Core.csproj" />
+    <ProjectReference Include="..\OpcBridge.Client\OpcBridge.Client.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="InfluxDB.Client" Version="5.1.0" />

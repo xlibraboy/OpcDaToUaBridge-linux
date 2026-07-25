@@ -1,6 +1,4 @@
-using OpcBridge.Client;
-
-namespace OpcBridge.App.Hmi;
+namespace OpcBridge.Client;
 
 public interface IInfluxTrendQuery
 {

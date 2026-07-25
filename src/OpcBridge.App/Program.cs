@@ -48,7 +48,12 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<BridgeWorker>());
  builder.Services.AddHostedService(sp => sp.GetRequiredService<BridgeAppDiscovery>());
 builder.Services.AddSignalR();
 builder.Services.AddHostedService<HmiBroadcastService>();
-builder.Services.AddSingleton<IInfluxTrendQuery, UnavailableInfluxTrendQuery>();
+builder.Services.AddSingleton<IInfluxTrendQuery>(sp =>
+{
+    InfluxRuntimeSettings settings = sp.GetRequiredService<InfluxRuntimeSettings>();
+    ILogger<InfluxFluxTrendQuery> logger = sp.GetRequiredService<ILogger<InfluxFluxTrendQuery>>();
+    return new InfluxFluxTrendQuery(() => settings.GetOptions(), logger);
+});
 
 
 WebApplication app = builder.Build();
