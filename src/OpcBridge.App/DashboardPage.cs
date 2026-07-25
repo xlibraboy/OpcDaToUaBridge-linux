@@ -872,7 +872,7 @@ internal static class DashboardPage
 <div class="view" id="view-mqtt">
     <div class="grid2">
         <div class="box">
-            <div class="box-h">MQTT Broker <span class="info" data-tip="This app connects TO an external MQTT broker (like Mosquitto, HiveMQ, or AWS IoT). It does NOT include its own broker. Configure your broker connection here. Settings are saved to mqtt.json.">i</span></div>
+            <div class="box-h">MQTT Broker <span class="info" data-tip="This app connects TO an external MQTT broker (like Mosquitto, HiveMQ, or AWS IoT). It does NOT include its own broker. Configure your broker connection here. Settings are saved to mqtt.json.">i</span><button class="btn" type="button" onclick="openMqttWizard()" style="margin-left:auto">Setup Wizard</button></div>
             <div class="box-b">
                 <div class="conn-section">
                     <div class="conn-section-h">Configuration <span class="info" data-tip="Settings saved to mqtt.json. These define HOW the bridge connects to the broker. Changes here do not take effect until you click 'Save Config', and only apply to future connections — they do not connect or disconnect the broker live.">i</span></div>
@@ -932,6 +932,43 @@ internal static class DashboardPage
             <div class="list" id="mqttTraffic"><span class="msg">No MQTT tags yet.</span></div>
         </div>
     </div>
+<div class="modal-overlay" id="mqttWizard" style="display:none" onclick="if(event.target===this)closeMqttWizard()">
+  <div class="modal wizard" role="dialog" aria-modal="true" aria-labelledby="mqttWizardTitle">
+    <div class="modal-head">
+      <div class="modal-title" id="mqttWizardTitle">Connect MQTT Broker</div>
+      <button class="modal-close" type="button" onclick="closeMqttWizard()">&times;</button>
+    </div>
+    <div class="wizard-steps">
+      <span class="wizard-step" data-step="1">1. Broker</span>
+      <span class="wizard-step" data-step="2">2. Auth &amp; Topics</span>
+      <span class="wizard-step" data-step="3">3. Save &amp; Connect</span>
+    </div>
+    <div class="wizard-body">
+      <div class="wizard-pane active" data-pane="1">
+        <div class="field"><label class="fl">Broker URL</label><input type="text" id="wzMqttUrl" placeholder="tcp://localhost:1883"></div>
+        <div class="field"><label class="fl">Client ID</label><input type="text" id="wzMqttClientId" placeholder="OpcDaToUaBridge"></div>
+        <div class="field"><label class="fl">Auto-connect</label><input type="checkbox" id="wzMqttAuto" checked></div>
+      </div>
+      <div class="wizard-pane" data-pane="2">
+        <div class="field"><label class="fl">Username</label><input type="text" id="wzMqttUser" placeholder="(optional)"></div>
+        <div class="field"><label class="fl">Password</label><input type="password" id="wzMqttPass"></div>
+        <div class="field"><label class="fl">TLS</label><input type="checkbox" id="wzMqttTls"></div>
+        <div class="field"><label class="fl">Topic Prefix</label><input type="text" id="wzMqttPrefix" placeholder="bridge/tags"></div>
+        <div class="field"><label class="fl">Payload Fields</label><select id="wzMqttFields"><option>Value, Timestamp</option><option>Value, Timestamp, Quality</option><option>Value, Timestamp, Quality, SourceId, ItemId</option><option>Value, Timestamp, SourceId, ItemId, DisplayName, DataType</option></select></div>
+      </div>
+      <div class="wizard-pane" data-pane="3">
+        <div class="wizard-summary" id="wzMqttSummary"></div>
+        <div class="field"><label class="fl">Connect now</label><input type="checkbox" id="wzMqttConnectNow" checked></div>
+      </div>
+    </div>
+    <div class="wizard-foot">
+      <button class="btn ghost" type="button" onclick="closeMqttWizard()">Cancel</button>
+      <button class="btn ghost" type="button" id="wzMqttBack" onclick="wzMqttStep(-1)">Back</button>
+      <button class="btn" type="button" id="wzMqttNext" onclick="wzMqttStep(1)">Next</button>
+      <button class="btn" type="button" id="wzMqttFinish" style="display:none" onclick="wzMqttFinish()">Finish</button>
+    </div>
+  </div>
+</div>
 </div>
 <div class="view" id="view-influx">
     <div class="grid2">
@@ -2943,6 +2980,73 @@ async function connectMqtt() {
     const p = await r.json();
     el('mqttMessage').textContent = p.status === 'ok' ? 'Connected.' : ('✗ ' + (p.error || 'connect failed'));
     await loadMqtt();
+}
+let wzMqttStepCur = 1;
+const WZ_MQTT_STEPS = 3;
+
+async function openMqttWizard() {
+  wzMqttStepCur = 1;
+  await loadMqtt();
+  el('wzMqttUrl').value = el('mqttBrokerUrl').value || 'tcp://localhost:1883';
+  el('wzMqttClientId').value = el('mqttClientId').value || 'OpcDaToUaBridge';
+  el('wzMqttAuto').checked = el('mqttEnabled').checked;
+  el('wzMqttUser').value = el('mqttUser').value;
+  el('wzMqttPass').value = el('mqttPass').value;
+  el('wzMqttTls').checked = el('mqttTls').checked;
+  el('wzMqttPrefix').value = el('mqttPrefix').value || 'bridge/tags';
+  el('wzMqttFields').value = el('mqttFields').value;
+  el('wzMqttConnectNow').checked = true;
+  el('mqttWizard').style.display = '';
+  wzMqttRender();
+}
+function closeMqttWizard() { el('mqttWizard').style.display = 'none'; }
+function wzMqttRender() {
+  document.querySelectorAll('#mqttWizard .wizard-pane').forEach(p => p.classList.toggle('active', Number(p.dataset.pane) === wzMqttStepCur));
+  document.querySelectorAll('#mqttWizard .wizard-step').forEach(s => {
+    const n = Number(s.dataset.step);
+    s.classList.toggle('active', n === wzMqttStepCur);
+    s.classList.toggle('done', n < wzMqttStepCur);
+  });
+  el('wzMqttBack').style.display = wzMqttStepCur > 1 ? '' : 'none';
+  el('wzMqttNext').style.display = wzMqttStepCur < WZ_MQTT_STEPS ? '' : 'none';
+  el('wzMqttFinish').style.display = wzMqttStepCur === WZ_MQTT_STEPS ? '' : 'none';
+  if (wzMqttStepCur === 3) {
+    el('wzMqttSummary').innerHTML =
+      `<b>Broker:</b> ${esc(el('wzMqttUrl').value)}<br>` +
+      `<b>Client ID:</b> ${esc(el('wzMqttClientId').value)}<br>` +
+      `<b>Auth:</b> ${el('wzMqttUser').value ? 'yes' : 'none'}<br>` +
+      `<b>TLS:</b> ${el('wzMqttTls').checked ? 'on' : 'off'}<br>` +
+      `<b>Topic Prefix:</b> ${esc(el('wzMqttPrefix').value)}<br>` +
+      `<b>Auto-connect:</b> ${el('wzMqttAuto').checked ? 'on' : 'off'}`;
+  }
+}
+function wzMqttStep(delta) {
+  const next = wzMqttStepCur + delta;
+  if (next < 1 || next > WZ_MQTT_STEPS) return;
+  if (delta > 0 && !wzMqttValidate(wzMqttStepCur)) return;
+  wzMqttStepCur = next;
+  wzMqttRender();
+}
+function wzMqttValidate(step) {
+  if (step === 1 && !el('wzMqttUrl').value.trim()) { alert('Broker URL is required.'); return false; }
+  return true;
+}
+async function wzMqttFinish() {
+  el('mqttBrokerUrl').value = el('wzMqttUrl').value.trim();
+  el('mqttClientId').value = el('wzMqttClientId').value.trim() || 'OpcDaToUaBridge';
+  el('mqttEnabled').checked = el('wzMqttAuto').checked;
+  el('mqttUser').value = el('wzMqttUser').value;
+  el('mqttPass').value = el('wzMqttPass').value;
+  el('mqttTls').checked = el('wzMqttTls').checked;
+  el('mqttPrefix').value = el('wzMqttPrefix').value.trim() || 'bridge/tags';
+  el('mqttFields').value = el('wzMqttFields').value;
+  try {
+    await saveMqtt();
+    if (el('wzMqttConnectNow').checked) await connectMqtt();
+    closeMqttWizard();
+  } catch (e) {
+    el('mqttMessage').textContent = '✗ ' + e.message;
+  }
 }
 async function disconnectMqtt() {
     await fetch('/api/mqtt/disconnect', { method: 'POST' });
