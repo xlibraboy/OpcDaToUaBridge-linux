@@ -54,4 +54,27 @@ public sealed class DashboardPageTests
         Assert.Contains("pApps", DashboardPage.Script);
         Assert.Contains("detectedCount", DashboardPage.Script);
     }
+
+    [Fact]
+    public void Html_ContainsInfluxTabAndFaceplateToggle()
+    {
+        Assert.Contains("data-tab=\"influx\"", DashboardPage.Html);
+        Assert.Contains("id=\"view-influx\"", DashboardPage.Html);
+        Assert.Contains("id=\"fpInfluxEnabled\"", DashboardPage.Html);
+        Assert.Contains("id=\"influxUrl\"", DashboardPage.Html);
+        Assert.Contains("id=\"influxWritten\"", DashboardPage.Html);
+    }
+
+    [Fact]
+    public void Script_LoadsAndSavesInfluxConfig()
+    {
+        Assert.Contains("function loadInfluxConfig(", DashboardPage.Script);
+        Assert.Contains("function loadInfluxStatus(", DashboardPage.Script);
+        Assert.Contains("function saveInflux(", DashboardPage.Script);
+        Assert.Contains("function connectInflux(", DashboardPage.Script);
+        Assert.Contains("function disconnectInflux(", DashboardPage.Script);
+        Assert.Contains("/api/influx/config", DashboardPage.Script);
+        Assert.Contains("influxEnabled: el('fpInfluxEnabled').checked", DashboardPage.Script);
+        Assert.Contains("if (name === 'influx')", DashboardPage.Script);
+    }
 }

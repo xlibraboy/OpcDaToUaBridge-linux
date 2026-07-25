@@ -1,9 +1,8 @@
-Task 1: complete (commits 13051ee..155c080, review clean)
-Task 2: complete (commits 155c080..2648ecf, review clean)
-Task 3: complete (commits 2648ecf..3e374a8, review clean)
-Task 4: complete (commits 3e374a8..aa2f7cb, review clean)
-Task 5: base aa2f7cb (pending review)
-Task 5: complete (commits aa2f7cb..0cb9975, review clean)
-Task 6: base 0cb9975 (pending review)
-Task 6: complete (commits 0cb9975..fc89824, review clean)
-Final whole-branch review: complete (merge-base 0cae9ce..b6edf9e, approved)
+# SDD progress — feature/influxdb-access
+Plan: docs/superpowers/plans/2026-07-23-influxdb-writer.md
+Base: 7ba898d (plan committed on main f7a973d)
+
+Task 1: complete (commits 7ba898d..e4d017e, review clean — controller verified after reviewer API key failure)
+Task 2: complete (commits e4d017e..071547f, review clean — controller verified after reviewer API key failure)
+Task 3: complete (commits 071547f..6c5f886, review clean — controller verified)
+Task 4: complete (commits 6c5f886..5f85edc, BridgeWorker drain + DI green)

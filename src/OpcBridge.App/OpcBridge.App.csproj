@@ -5,6 +5,7 @@
     <ProjectReference Include="..\OpcBridge.Da\OpcBridge.Da.csproj" />
     <ProjectReference Include="..\OpcBridge.Ua\OpcBridge.Ua.csproj" />
     <ProjectReference Include="..\OpcBridge.Mqtt\OpcBridge.Mqtt.csproj" />
+    <ProjectReference Include="..\OpcBridge.Influx\OpcBridge.Influx.csproj" />
     <ProjectReference Include="..\OpcBridge.Client\OpcBridge.Client.csproj" />
   </ItemGroup>
 

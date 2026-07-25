@@ -11,6 +11,7 @@ using OpcBridge.Client;
 using OpcBridge.Core;
 using OpcBridge.Da;
 using OpcBridge.Mqtt;
+using OpcBridge.Influx;
 using OpcBridge.Ua;
 
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
@@ -22,6 +23,7 @@ builder.Services.Configure<BridgeOptions>(builder.Configuration.GetSection("Brid
 builder.Services.Configure<DaClientOptions>(builder.Configuration.GetSection("Da"));
 builder.Services.Configure<UaServerOptions>(builder.Configuration.GetSection("Ua"));
 builder.Services.Configure<MqttBrokerOptions>(builder.Configuration.GetSection("Mqtt"));
+builder.Services.Configure<InfluxOptions>(builder.Configuration.GetSection("Influx"));
 builder.Services.AddSingleton<DashboardLogStore>();
 builder.Logging.Services.AddSingleton<ILoggerProvider, DashboardLogProvider>();
 
@@ -36,6 +38,8 @@ builder.Services.AddSingleton<UaServerHost>();
 builder.Services.AddSingleton<IMqttBridge, MqttBridge>();
 builder.Services.AddSingleton<MqttRuntimeSettings>();
 builder.Services.AddSingleton<MqttValueStore>();
+builder.Services.AddSingleton<IInfluxWriter, InfluxWriter>();
+builder.Services.AddSingleton<InfluxRuntimeSettings>();
 builder.Services.AddSingleton<BridgeWorker>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<BridgeWorker>());
  builder.Services.AddHostedService<OpcBridgeMonitor>();
@@ -438,7 +442,8 @@ app.MapPost("/api/mappings/add", (MappingAddRequest request, MappingStore store)
             Writeable = tag.Writeable ?? false,
             AccessRights = string.IsNullOrWhiteSpace(tag.AccessRights) ? TagAccessRights.Read : tag.AccessRights,
             MqttEnabled = tag.MqttEnabled ?? false,
-            MqttTopic = string.IsNullOrWhiteSpace(tag.MqttTopic) ? null : tag.MqttTopic
+            MqttTopic = string.IsNullOrWhiteSpace(tag.MqttTopic) ? null : tag.MqttTopic,
+            InfluxEnabled = tag.InfluxEnabled ?? false
         });
 
     long version = store.Add(tags);
@@ -468,7 +473,8 @@ app.MapPost("/api/mappings/bulk-add", (MappingAddRequest request, MappingStore s
             DeadbandPct = tag.DeadbandPct ?? 0f,
             AccessRights = string.IsNullOrWhiteSpace(tag.AccessRights) ? TagAccessRights.Read : tag.AccessRights,
             MqttEnabled = tag.MqttEnabled ?? false,
-            MqttTopic = string.IsNullOrWhiteSpace(tag.MqttTopic) ? null : tag.MqttTopic
+            MqttTopic = string.IsNullOrWhiteSpace(tag.MqttTopic) ? null : tag.MqttTopic,
+            InfluxEnabled = tag.InfluxEnabled ?? false
         })
         .Where(tag => !string.IsNullOrWhiteSpace(tag.DaItemId));
 
@@ -498,7 +504,8 @@ app.MapPost("/api/mappings/update", (MappingUpdateRequest request, MappingStore 
         Writeable = request.Tag.Writeable ?? false,
         AccessRights = string.IsNullOrWhiteSpace(request.Tag.AccessRights) ? TagAccessRights.Read : request.Tag.AccessRights,
         MqttEnabled = request.Tag.MqttEnabled ?? false,
-        MqttTopic = string.IsNullOrWhiteSpace(request.Tag.MqttTopic) ? null : request.Tag.MqttTopic
+        MqttTopic = string.IsNullOrWhiteSpace(request.Tag.MqttTopic) ? null : request.Tag.MqttTopic,
+        InfluxEnabled = request.Tag.InfluxEnabled ?? false
     };
 
     if (!store.TryUpdate(tag, out long version))
@@ -832,6 +839,70 @@ app.MapGet("/api/mqtt/values", (MqttValueStore values, string? direction, string
         total = page_.Total
     });
 });
+app.MapGet("/api/influx/config", (InfluxRuntimeSettings settings) =>
+{
+    InfluxRuntimeSnapshot snapshot = settings.GetSnapshot();
+    return Results.Json(new
+    {
+        enabled = snapshot.Options.Enabled,
+        url = snapshot.Options.Url,
+        org = snapshot.Options.Org,
+        bucket = snapshot.Options.Bucket,
+        token = snapshot.Options.Token,
+        measurement = snapshot.Options.Measurement,
+        timeoutMs = snapshot.Options.TimeoutMs,
+        verifySsl = snapshot.Options.VerifySsl
+    });
+});
+app.MapPost("/api/influx/config", (InfluxConfigRequest request, InfluxRuntimeSettings settings) =>
+{
+    InfluxOptions options = settings.GetOptions();
+    InfluxOptions updated = new()
+    {
+        Enabled = request.Enabled,
+        Url = string.IsNullOrWhiteSpace(request.Url) ? options.Url : request.Url.Trim(),
+        Org = string.IsNullOrWhiteSpace(request.Org) ? options.Org : request.Org.Trim(),
+        Bucket = string.IsNullOrWhiteSpace(request.Bucket) ? options.Bucket : request.Bucket.Trim(),
+        Token = request.Token,
+        Measurement = string.IsNullOrWhiteSpace(request.Measurement) ? options.Measurement : request.Measurement.Trim(),
+        TimeoutMs = request.TimeoutMs is null or <= 0 ? options.TimeoutMs : request.TimeoutMs.Value,
+        VerifySsl = request.VerifySsl
+    };
+    settings.UpsertOptions(updated);
+    return Results.Json(new { status = "ok" });
+});
+app.MapPost("/api/influx/connect", async (InfluxRuntimeSettings settings, IInfluxWriter writer) =>
+{
+    try
+    {
+        settings.SetState("Connecting");
+        await writer.ConnectAsync(settings.GetOptions(), CancellationToken.None);
+        return Results.Json(new { status = "ok", state = settings.GetSnapshot().State });
+    }
+    catch (Exception ex)
+    {
+        settings.SetState("Faulted", ex.Message);
+        return Results.Json(new { status = "error", error = ex.Message });
+    }
+});
+app.MapPost("/api/influx/disconnect", async (InfluxRuntimeSettings settings, IInfluxWriter writer) =>
+{
+    await writer.DisconnectAsync(CancellationToken.None);
+    settings.SetState("Disconnected");
+    return Results.Json(new { status = "ok" });
+});
+app.MapGet("/api/influx/status", (InfluxRuntimeSettings settings) =>
+{
+    InfluxRuntimeSnapshot snapshot = settings.GetSnapshot();
+    return Results.Json(new
+    {
+        state = snapshot.State,
+        lastError = snapshot.LastError,
+        writtenCount = snapshot.WrittenCount,
+        writtenRate = snapshot.WrittenRate,
+        enabled = snapshot.Options.Enabled
+    });
+});
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapHub<HmiHub>("/hmi");
@@ -994,3 +1065,13 @@ record MqttConfigRequest(
     bool IgnoreCertErrors,
     string? TopicPrefix,
     string? PayloadFields);
+
+record InfluxConfigRequest(
+    bool Enabled,
+    string? Url,
+    string? Org,
+    string? Bucket,
+    string? Token,
+    string? Measurement,
+    int? TimeoutMs,
+    bool VerifySsl);

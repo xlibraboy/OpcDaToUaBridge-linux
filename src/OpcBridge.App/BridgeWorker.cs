@@ -7,6 +7,7 @@ using Microsoft.Extensions.Logging;
 using OpcBridge.Core;
 using OpcBridge.Da;
 using OpcBridge.Mqtt;
+using OpcBridge.Influx;
 using OpcBridge.Ua;
 using System.Threading.Channels;
 using System.Text.Json;
@@ -40,6 +41,16 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
             SingleWriter = false
         });
     private HashSet<string> mqtt_enabled_keys_ = new(StringComparer.OrdinalIgnoreCase);
+    private readonly IInfluxWriter influx_writer_;
+    private readonly InfluxRuntimeSettings influx_settings_;
+    private readonly Channel<BridgeValue> influx_write_channel_ = Channel.CreateBounded<BridgeValue>(
+        new BoundedChannelOptions(1024)
+        {
+            FullMode = BoundedChannelFullMode.DropOldest,
+            SingleReader = true,
+            SingleWriter = false
+        });
+    private HashSet<string> influx_enabled_keys_ = new(StringComparer.OrdinalIgnoreCase);
     private volatile SourceMappingCache? source_mapping_cache_;
 
     public BridgeWorker(
@@ -53,7 +64,9 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
         ILogger<BridgeWorker> logger,
         IMqttBridge mqttBridge,
         MqttRuntimeSettings mqttSettings,
-        MqttValueStore mqttValues)
+        MqttValueStore mqttValues,
+        IInfluxWriter influxWriter,
+        InfluxRuntimeSettings influxSettings)
     {
         ua_server_ = uaServer;
         bridge_state_ = bridgeState;
@@ -66,6 +79,8 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
         mqtt_bridge_ = mqttBridge;
         mqtt_settings_ = mqttSettings;
         mqtt_values_ = mqttValues;
+        influx_writer_ = influxWriter;
+        influx_settings_ = influxSettings;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -80,6 +95,9 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
 
         mqtt_enabled_keys_ = new HashSet<string>(
             activeMappings.Where(m => m.MqttEnabled).Select(m => NormalizeKey(m.SourceId, m.DaItemId)),
+            StringComparer.OrdinalIgnoreCase);
+        influx_enabled_keys_ = new HashSet<string>(
+            activeMappings.Where(m => m.InfluxEnabled).Select(m => NormalizeKey(m.SourceId, m.DaItemId)),
             StringComparer.OrdinalIgnoreCase);
 
         try
@@ -117,12 +135,26 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                     mqtt_settings_.ResetCounters();
                 }
             };
+            influx_writer_.StateChanged += state =>
+            {
+                influx_settings_.SetState(state.ToString(), state == InfluxConnectionState.Faulted ? "Influx connection failed." : null);
+                if (state == InfluxConnectionState.Connected)
+                {
+                    influx_settings_.ResetCounters();
+                }
+            };
             bridge_state_.ValueUpdated += OnBridgeValueUpdated;
             _ = Task.Run(() => MqttPublishDrainAsync(stoppingToken), stoppingToken);
+            _ = Task.Run(() => InfluxWriteDrainAsync(stoppingToken), stoppingToken);
 
             if (mqtt_settings_.GetOptions().Enabled)
             {
                 _ = ConnectMqttAsync(stoppingToken);
+            }
+
+            if (influx_settings_.GetOptions().Enabled)
+            {
+                _ = ConnectInfluxAsync(stoppingToken);
             }
 
             try
@@ -158,6 +190,9 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                                 activeMappings = cacheHolder.Cache.GetActiveMappings();
                                 mqtt_enabled_keys_ = new HashSet<string>(
                                     activeMappings.Where(m => m.MqttEnabled).Select(m => NormalizeKey(m.SourceId, m.DaItemId)),
+                                    StringComparer.OrdinalIgnoreCase);
+                                influx_enabled_keys_ = new HashSet<string>(
+                                    activeMappings.Where(m => m.InfluxEnabled).Select(m => NormalizeKey(m.SourceId, m.DaItemId)),
                                     StringComparer.OrdinalIgnoreCase);
                                 ua_server_.SyncMappings(activeMappings);
                                 bridge_state_.RetainMappedValues(activeMappings);
@@ -224,6 +259,14 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
         bridge_state_.SetBridgeState("Stopping");
+        try
+        {
+            await influx_writer_.DisconnectAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            logger_.LogWarning(ex, "Influx disconnect failed during stop");
+        }
         await ua_server_.StopAsync(cancellationToken).ConfigureAwait(false);
         await base.StopAsync(cancellationToken).ConfigureAwait(false);
         bridge_state_.SetDaConnectionState("Disconnected");
@@ -618,12 +661,15 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
 
     private void OnBridgeValueUpdated(BridgeValue value)
     {
-        if (!mqtt_enabled_keys_.Contains(NormalizeKey(value.SourceId, value.DaItemId)))
+        string key = NormalizeKey(value.SourceId, value.DaItemId);
+        if (mqtt_enabled_keys_.Contains(key))
         {
-            return;
+            _ = mqtt_publish_channel_.Writer.WriteAsync(value);
         }
-
-        _ = mqtt_publish_channel_.Writer.WriteAsync(value);
+        if (influx_enabled_keys_.Contains(key))
+        {
+            _ = influx_write_channel_.Writer.WriteAsync(value);
+        }
     }
 
     private async Task ConnectMqttAsync(CancellationToken ct)
@@ -658,6 +704,45 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
             catch (Exception ex)
             {
                 logger_.LogWarning(ex, "MQTT publish failed for {SourceId}/{ItemId}", value.SourceId, value.DaItemId);
+            }
+        }
+    }
+
+    private async Task ConnectInfluxAsync(CancellationToken ct)
+    {
+        try
+        {
+            influx_settings_.SetState("Connecting");
+            await influx_writer_.ConnectAsync(influx_settings_.GetOptions(), ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            influx_settings_.SetState("Faulted", ex.Message);
+            logger_.LogWarning(ex, "Influx connect failed");
+        }
+    }
+
+    private async Task InfluxWriteDrainAsync(CancellationToken ct)
+    {
+        await foreach (BridgeValue value in influx_write_channel_.Reader.ReadAllAsync(ct).ConfigureAwait(false))
+        {
+            try
+            {
+                InfluxOptions options = influx_settings_.GetOptions();
+                if (!options.Enabled || influx_writer_.State != InfluxConnectionState.Connected)
+                {
+                    continue;
+                }
+
+                await influx_writer_.WritePointAsync(
+                    value,
+                    ResolveDisplayName(value.SourceId, value.DaItemId),
+                    ct).ConfigureAwait(false);
+                influx_settings_.IncrementWritten();
+            }
+            catch (Exception ex)
+            {
+                logger_.LogWarning(ex, "Influx write failed for {SourceId}/{ItemId}", value.SourceId, value.DaItemId);
             }
         }
     }

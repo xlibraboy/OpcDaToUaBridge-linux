@@ -15,7 +15,8 @@ public sealed record MappingTagDto(
     bool? Writeable = null,
     string? AccessRights = null,
     bool? MqttEnabled = null,
-    string? MqttTopic = null);
+    string? MqttTopic = null,
+    bool? InfluxEnabled = null);
 
 public sealed record MappingAddRequest(List<MappingTagDto>? Tags);
 

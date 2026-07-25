@@ -407,6 +407,7 @@ internal static class DashboardPage
     <button class="tabbtn" data-tab="links" onclick="showTab('links')">OPC DA to DA</button>
     <button class="tabbtn" data-tab="logs" onclick="showTab('logs')">Logs</button>
     <button class="tabbtn" data-tab="mqtt" onclick="showTab('mqtt')">MQTT</button>
+    <button class="tabbtn" data-tab="influx" onclick="showTab('influx')">InfluxDB</button>
     <button class="tabbtn" data-tab="diagram" onclick="showTab('diagram')">Diagram</button>
     <button class="tabbtn" data-tab="help" onclick="showTab('help')">Help</button>
     <button class="tabbtn" data-tab="about" onclick="showTab('about')">About</button>
@@ -704,6 +705,7 @@ internal static class DashboardPage
                 <div class="field"><label class="fl">MQTT</label><input type="checkbox" id="fpMqttEnabled"> <span class="msg">publish/subscribe this tag</span></div>
                 <div class="field"><label class="fl">MQTT Topic</label><input type="text" id="fpMqttTopic" placeholder="override topic (optional)"></div>
                 <div class="hint" style="margin-top:4px">When enabled, the tag's value is published to the broker and inbound broker writes are applied to it. Leave the topic blank to use the default <span class="mono">{TopicPrefix}/{SourceId}/{DaItemId}</span> scheme.</div>
+                <div class="field"><label class="fl">Influx log</label><input type="checkbox" id="fpInfluxEnabled"> <span class="msg">write this tag to InfluxDB</span></div>
             </div>
         </div>
         <div class="modal-f">
@@ -835,6 +837,43 @@ internal static class DashboardPage
                 <input type="checkbox" id="mqttValAuto" checked onchange="onMqttValFilterChange()">
             </div>
             <div class="list" id="mqttTraffic"><span class="msg">No MQTT tags yet.</span></div>
+        </div>
+    </div>
+</div>
+<div class="view" id="view-influx">
+    <div class="grid2">
+        <div class="box">
+            <div class="box-h">InfluxDB <span class="info" data-tip="This app writes to an external InfluxDB 2.x/3.x server. It does NOT run InfluxDB itself. Configure URL, Org, Bucket and Token here. Settings are saved to influx.json.">i</span></div>
+            <div class="box-b">
+                <div class="conn-section">
+                    <div class="conn-section-h">Configuration <span class="info" data-tip="Settings saved to influx.json. Changes take effect after Save Config and apply to the next Connect.">i</span></div>
+                    <div class="field"><label class="fl" for="influxEnabled">Auto-connect</label><span class="info" data-tip="When ON, the bridge connects to InfluxDB automatically on app startup. When OFF, it starts disconnected. Use Live Connection buttons to connect or disconnect now.">i</span><input type="checkbox" id="influxEnabled"></div>
+                    <div class="field"><label class="fl" for="influxUrl">URL</label><span class="info" data-tip="InfluxDB HTTP API base URL. Example: http://192.168.1.50:8086 or https://us-east-1-1.aws.cloud2.influxdata.com">i</span><input type="text" id="influxUrl" placeholder="http://localhost:8086"></div>
+                    <div class="field"><label class="fl" for="influxOrg">Org</label><span class="info" data-tip="InfluxDB organization name (required for 2.x/Cloud).">i</span><input type="text" id="influxOrg" placeholder="my-org"></div>
+                    <div class="field"><label class="fl" for="influxBucket">Bucket</label><span class="info" data-tip="Target bucket for written points.">i</span><input type="text" id="influxBucket" placeholder="opc"></div>
+                    <div class="field"><label class="fl" for="influxToken">Token</label><span class="info" data-tip="API token with write access to the bucket. Stored in influx.json.">i</span><input type="password" id="influxToken"></div>
+                    <div class="field"><label class="fl" for="influxMeasurement">Measurement</label><span class="info" data-tip="Line protocol measurement name. Default opc_tags.">i</span><input type="text" id="influxMeasurement" placeholder="opc_tags"></div>
+                    <div class="field"><label class="fl" for="influxTimeoutMs">Timeout ms</label><span class="info" data-tip="HTTP write timeout in milliseconds. Optional; default 5000.">i</span><input type="number" id="influxTimeoutMs" min="100" step="100" value="5000" style="width:100px"></div>
+                    <div class="field"><label class="fl" for="influxVerifySsl">Verify SSL</label><span class="info" data-tip="When ON, TLS certificates are validated. Turn OFF only for lab/self-signed endpoints.">i</span><input type="checkbox" id="influxVerifySsl" checked></div>
+                    <div class="field"><button class="btn" onclick="saveInflux()">Save Config</button><span class="msg">persists to influx.json (applies on next connect)</span></div>
+                </div>
+                <div class="conn-section">
+                    <div class="conn-section-h">Live Connection <span class="info" data-tip="Manual control of the InfluxDB connection right now. Connect uses the saved config; Disconnect closes the writer. These do NOT change Auto-connect.">i</span></div>
+                    <div class="field">
+                        <button class="btn ghost" onclick="connectInflux()">Connect</button>
+                        <button class="btn ghost" onclick="disconnectInflux()">Disconnect</button>
+                        <span class="msg">applies immediately</span>
+                    </div>
+                </div>
+                <div class="msg" id="influxMessage"></div>
+            </div>
+        </div>
+        <div class="box">
+            <div class="box-h">Connection <span class="info" data-tip="Live InfluxDB writer status and counters since the last (re)connect.">i</span></div>
+            <div class="box-b">
+                <div class="stat"><div class="k">State <span class="info" data-tip="Writer connection state: Disconnected, Connecting, Connected, or Faulted.">i</span></div><div class="v" id="influxState">Disconnected</div><div class="s" id="influxLastError">No errors</div></div>
+                <div class="stat"><div class="k">Written <span class="info" data-tip="Total points written to InfluxDB since the last (re)connect — one per enabled tag update.">i</span></div><div class="v" id="influxWritten">0</div><div class="s" id="influxWrittenRate">0.0/s</div></div>
+            </div>
         </div>
     </div>
 </div>
@@ -2096,9 +2135,11 @@ function renderMappingRow(mapping) {
     const deadbandBadge = deadband > 0 ? `<span class="pill" style="padding:1px 6px;font-size:10px">db ${deadband}%</span>` : '';
     const mqttOn = (mapping.mqttEnabled ?? mapping.MqttEnabled) === true;
     const mqttBadge = mqttOn ? `<span class="pill" style="padding:1px 6px;font-size:10px">MQTT</span>` : '';
+    const influxOn = (mapping.influxEnabled ?? mapping.InfluxEnabled) === true;
+    const influxBadge = influxOn ? `<span class="pill" style="padding:1px 6px;font-size:10px">Influx</span>` : '';
     const desc = (mapping.description || mapping.Description || '').trim();
     const descIcon = desc ? `<span class="li-desc" title="${attr(desc)}" data-action="open-faceplate" data-source-id="${attr(sourceId)}" data-item-id="${attr(item)}">&#8505;</span>` : '';
-    return `<div class="li clickable" data-action="open-faceplate" data-source-id="${attr(sourceId)}" data-item-id="${attr(item)}">${descIcon}<div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="n">${esc(name)}</span> <span class="p">${esc(sourceId)} · ${esc(item)} · UA: ${esc(node)}</span></div><div class="li-badge">${accessBadge}${deadbandBadge}${rateBadge}${mqttBadge}</div></div>`;
+    return `<div class="li clickable" data-action="open-faceplate" data-source-id="${attr(sourceId)}" data-item-id="${attr(item)}">${descIcon}<div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="n">${esc(name)}</span> <span class="p">${esc(sourceId)} · ${esc(item)} · UA: ${esc(node)}</span></div><div class="li-badge">${accessBadge}${deadbandBadge}${rateBadge}${mqttBadge}${influxBadge}</div></div>`;
 }
 
 function renderMappingRows(mappings) {
@@ -2136,6 +2177,7 @@ function openFaceplate(sourceId, itemId) {
     el('fpDeadband').value = String(deadband);
     el('fpMqttEnabled').checked = (mapping.mqttEnabled ?? mapping.MqttEnabled) === true;
     el('fpMqttTopic').value = String(mapping.mqttTopic ?? mapping.MqttTopic ?? '');
+    el('fpInfluxEnabled').checked = (mapping.influxEnabled ?? mapping.InfluxEnabled) === true;
     updateManualInputState();
     el('fpApply').dataset.sourceId = sourceId;
     el('fpApply').dataset.itemId = itemId;
@@ -2193,6 +2235,7 @@ function updateManualInputState() {
     if (name === 'about') loadAppInfo().catch(e => el('aboutName').textContent = '✗ ' + e.message);
     if (name === 'help') loadHelp().catch(e => el('helpContent').innerHTML = '<span class="msg bad">✗ ' + esc(e.message) + '</span>');
         if (name === 'mqtt') { await loadMqtt(); await loadMqttValues(); }
+    if (name === 'influx') { await loadInflux(); }
     if (name === 'links') loadDaLinks().catch(e => el('linksMessage').textContent = '✗ ' + e.message);
     if (name === 'diagram') {
         state.diagramLoaded = true;
@@ -2815,6 +2858,60 @@ function onMqttValTopicInput() {
     clearTimeout(mqttValTopicTimer);
     mqttValTopicTimer = setTimeout(() => loadMqttValues().catch(() => {}), 250);
 }
+async function loadInfluxConfig() {
+    try {
+        const cfg = await (await fetch('/api/influx/config', { cache: 'no-store' })).json();
+        if (el('influxEnabled')) el('influxEnabled').checked = !!cfg.enabled;
+        if (el('influxUrl')) el('influxUrl').value = cfg.url || '';
+        if (el('influxOrg')) el('influxOrg').value = cfg.org || '';
+        if (el('influxBucket')) el('influxBucket').value = cfg.bucket || '';
+        if (el('influxToken')) el('influxToken').value = cfg.token || '';
+        if (el('influxMeasurement')) el('influxMeasurement').value = cfg.measurement || 'opc_tags';
+        if (el('influxTimeoutMs')) el('influxTimeoutMs').value = String(cfg.timeoutMs ?? 5000);
+        if (el('influxVerifySsl')) el('influxVerifySsl').checked = cfg.verifySsl !== false;
+    } catch (e) { /* ignore */ }
+}
+async function loadInfluxStatus() {
+    try {
+        const st = await (await fetch('/api/influx/status', { cache: 'no-store' })).json();
+        if (el('influxState')) {
+            el('influxState').textContent = st.state || 'Disconnected';
+            el('influxState').className = 'v ' + (st.state === 'Connected' ? 'badge good' : 'badge bad');
+        }
+        if (el('influxLastError')) el('influxLastError').textContent = st.lastError || 'No errors';
+        if (el('influxWritten')) el('influxWritten').textContent = (st.writtenCount || 0).toLocaleString();
+        if (el('influxWrittenRate')) el('influxWrittenRate').textContent = (st.writtenRate || 0).toFixed(1) + '/s';
+    } catch (e) { if (el('influxMessage')) el('influxMessage').textContent = '✗ ' + e.message; }
+}
+async function loadInflux() { await Promise.all([loadInfluxConfig(), loadInfluxStatus()]); }
+async function saveInflux() {
+    const body = {
+        enabled: el('influxEnabled').checked,
+        url: el('influxUrl').value.trim(),
+        org: el('influxOrg').value.trim(),
+        bucket: el('influxBucket').value.trim(),
+        token: el('influxToken').value || null,
+        measurement: el('influxMeasurement').value.trim(),
+        timeoutMs: Number(el('influxTimeoutMs').value) || 5000,
+        verifySsl: el('influxVerifySsl').checked
+    };
+    const r = await fetch('/api/influx/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const p = await r.json();
+    el('influxMessage').textContent = p.status === 'ok' ? 'Influx config saved.' : ('✗ ' + (p.error || 'save failed'));
+    await loadInflux();
+}
+async function connectInflux() {
+    el('influxMessage').textContent = 'Connecting...';
+    const r = await fetch('/api/influx/connect', { method: 'POST' });
+    const p = await r.json();
+    el('influxMessage').textContent = p.status === 'ok' ? 'Connected.' : ('✗ ' + (p.error || 'connect failed'));
+    await loadInflux();
+}
+async function disconnectInflux() {
+    await fetch('/api/influx/disconnect', { method: 'POST' });
+    el('influxMessage').textContent = 'Disconnected.';
+    await loadInflux();
+}
 function applyMappingView(mappings) {
     const filter = (state.mappingFilter || '').trim().toLowerCase();
     let view = mappings;
@@ -2888,7 +2985,8 @@ async function updateMapping(sourceId, itemId, mutate) {
         writeable: (mapping.writeable ?? mapping.Writeable) === true,
         accessRights: mapping.accessRights || mapping.AccessRights || 'Read',
         mqttEnabled: el('fpMqttEnabled').checked,
-        mqttTopic: el('fpMqttTopic').value.trim() || null
+        mqttTopic: el('fpMqttTopic').value.trim() || null,
+        influxEnabled: el('fpInfluxEnabled').checked
     };
     mutate(payload);
     const r = await fetch('/api/mappings/update', {
@@ -3412,7 +3510,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     bindDynamicButtons();
     const initTab = location.hash.slice(1);
-    if (['monitor','connection','diagnostics','tags','links','logs','help','about'].includes(initTab)) showTab(initTab);
+    if (['monitor','connection','diagnostics','tags','links','logs','mqtt','influx','help','about'].includes(initTab)) showTab(initTab);
     await loadSources();
     await loadMappings();
     updateLiveValuesUi();
@@ -3421,9 +3519,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     setInterval(() => { if (el('logAutoRefresh')?.checked && document.querySelector('#view-logs.active')) { state.logsLoaded = false; loadLogs(true).catch(() => {}); } }, 3000);
     setInterval(() => { if (diagnosticsActive) loadDiagnostics().catch(() => {}); }, 2000);
     setInterval(() => {
-        if (!document.querySelector('#view-mqtt.active')) return;
-        loadMqttStatus().catch(() => {});
-        if (el('mqttValAuto')?.checked) loadMqttValues().catch(() => {});
+        if (document.querySelector('#view-mqtt.active')) {
+            loadMqttStatus().catch(() => {});
+            if (el('mqttValAuto')?.checked) loadMqttValues().catch(() => {});
+        }
+        if (document.querySelector('#view-influx.active')) loadInfluxStatus().catch(() => {});
     }, 2000);
     if (initTab === 'logs') await loadLogs();
     if (initTab === 'help') await loadHelp();

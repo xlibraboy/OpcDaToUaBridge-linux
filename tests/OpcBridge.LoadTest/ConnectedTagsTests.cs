@@ -6,6 +6,7 @@ using OpcBridge.App;
 using OpcBridge.Core;
 using OpcBridge.Da;
 using OpcBridge.Mqtt;
+using OpcBridge.Influx;
 using OpcBridge.Ua;
 using Xunit;
 
@@ -51,7 +52,9 @@ public sealed class ConnectedTagsTests
             loggerFactory.CreateLogger<BridgeWorker>(),
             new MqttBridge(loggerFactory.CreateLogger<MqttBridge>()),
             new MqttRuntimeSettings(Options.Create(new MqttBrokerOptions())),
-            new MqttValueStore());
+            new MqttValueStore(),
+            new FakeInfluxWriter(),
+            new InfluxRuntimeSettings(Options.Create(new InfluxOptions())));
     }
 
     private static void SetPrivateField(object instance, string name, object value)
@@ -68,6 +71,73 @@ public sealed class ConnectedTagsTests
         method!.Invoke(instance, args);
     }
 
+
+    [Fact]
+    public async Task OnBridgeValueUpdated_Enqueues_Only_InfluxEnabled()
+    {
+        MappingStore mappingStore = new(Options.Create(new BridgeOptions()));
+        DaLinkStore linkStore = CreateLinkStore();
+        BridgeWorker worker = CreateWorker(mappingStore, linkStore);
+
+        FakeInfluxWriter fake = new() { State = InfluxConnectionState.Connected };
+        SetPrivateField(worker, "influx_writer_", fake);
+        SetPrivateField(worker, "influx_enabled_keys_", new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "default::enabled" });
+
+        InfluxRuntimeSettings settings = new(Options.Create(new InfluxOptions { Enabled = true }));
+        SetPrivateField(worker, "influx_settings_", settings);
+
+        BridgeValue enabled = new("default", "enabled", 1L, DateTime.UtcNow, 192, true);
+        BridgeValue disabled = new("default", "disabled", 2L, DateTime.UtcNow, 192, true);
+        InvokePrivateVoid(worker, "OnBridgeValueUpdated", enabled);
+        InvokePrivateVoid(worker, "OnBridgeValueUpdated", disabled);
+
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(2));
+        Task drain = (Task)worker.GetType()
+            .GetMethod("InfluxWriteDrainAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(worker, [cts.Token])!;
+
+        using CancellationTokenSource waitCts = new(TimeSpan.FromSeconds(2));
+        while (fake.Written.Count < 1 && !waitCts.IsCancellationRequested)
+        {
+            await Task.Delay(20, CancellationToken.None);
+        }
+
+        cts.Cancel();
+        try { await drain.ConfigureAwait(false); } catch (OperationCanceledException) { }
+
+        BridgeValue written = Assert.Single(fake.Written);
+        Assert.Equal("enabled", written.DaItemId);
+        Assert.Equal("default", written.SourceId);
+    }
+
+    private sealed class FakeInfluxWriter : IInfluxWriter
+    {
+        public List<BridgeValue> Written { get; } = new();
+        public InfluxConnectionState State { get; set; } = InfluxConnectionState.Disconnected;
+        public event Action<InfluxConnectionState>? StateChanged;
+
+        public Task ConnectAsync(InfluxOptions options, CancellationToken ct)
+        {
+            State = InfluxConnectionState.Connected;
+            StateChanged?.Invoke(State);
+            return Task.CompletedTask;
+        }
+
+        public Task DisconnectAsync(CancellationToken ct)
+        {
+            State = InfluxConnectionState.Disconnected;
+            StateChanged?.Invoke(State);
+            return Task.CompletedTask;
+        }
+
+        public Task WritePointAsync(BridgeValue value, string? displayName, CancellationToken ct)
+        {
+            Written.Add(value);
+            return Task.CompletedTask;
+        }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+    }
     [Fact]
     public async Task SubscriptionCallbackValues_ForwardToDaLinkConsumers()
     {

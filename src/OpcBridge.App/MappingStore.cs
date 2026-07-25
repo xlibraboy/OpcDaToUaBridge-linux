@@ -261,7 +261,8 @@ public sealed class MappingStore
             Writeable = writeable,
             AccessRights = accessRights,
             MqttEnabled = tag.MqttEnabled,
-            MqttTopic = string.IsNullOrWhiteSpace(tag.MqttTopic) ? null : tag.MqttTopic.Trim()
+            MqttTopic = string.IsNullOrWhiteSpace(tag.MqttTopic) ? null : tag.MqttTopic.Trim(),
+            InfluxEnabled = tag.InfluxEnabled
         };
     }
 

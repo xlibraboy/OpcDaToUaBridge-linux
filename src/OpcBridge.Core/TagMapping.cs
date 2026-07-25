@@ -26,6 +26,7 @@ public sealed class TagMapping
     public string AccessRights { get; set; } = TagAccessRights.Read;
     public bool MqttEnabled { get; set; }
     public string? MqttTopic { get; set; }
+    public bool InfluxEnabled { get; set; }
 }
 public static class TagMode
 {
