@@ -973,7 +973,7 @@ internal static class DashboardPage
 <div class="view" id="view-influx">
     <div class="grid2">
         <div class="box">
-            <div class="box-h">InfluxDB <span class="info" data-tip="This app writes to an external InfluxDB 2.x/3.x server. It does NOT run InfluxDB itself. Configure URL, Org, Bucket and Token here. Settings are saved to influx.json.">i</span></div>
+            <div class="box-h">Historian <span class="msg" style="font-weight:400;text-transform:none;letter-spacing:0">InfluxDB 2.x/3.x</span> <span class="info" data-tip="This app writes to an external InfluxDB 2.x/3.x server. It does NOT run InfluxDB itself. Configure URL, Org, Bucket and Token here. Settings are saved to influx.json.">i</span><button class="btn" type="button" onclick="openInfluxWizard()" style="margin-left:auto">Setup Wizard</button></div>
             <div class="box-b">
                 <div class="conn-section">
                     <div class="conn-section-h">Configuration <span class="info" data-tip="Settings saved to influx.json. Changes take effect after Save Config and apply to the next Connect.">i</span></div>
@@ -1006,6 +1006,41 @@ internal static class DashboardPage
             </div>
         </div>
     </div>
+<div class="modal-overlay" id="influxWizard" style="display:none" onclick="if(event.target===this)closeInfluxWizard()">
+  <div class="modal wizard" role="dialog" aria-modal="true" aria-labelledby="influxWizardTitle">
+    <div class="modal-head">
+      <div class="modal-title" id="influxWizardTitle">Enable Historian (InfluxDB)</div>
+      <button class="modal-close" type="button" onclick="closeInfluxWizard()">&times;</button>
+    </div>
+    <div class="wizard-steps">
+      <span class="wizard-step" data-step="1">1. Server</span>
+      <span class="wizard-step" data-step="2">2. Auth</span>
+      <span class="wizard-step" data-step="3">3. Save &amp; Connect</span>
+    </div>
+    <div class="wizard-body">
+      <div class="wizard-pane active" data-pane="1">
+        <div class="field"><label class="fl">URL</label><input type="text" id="wzInfluxUrl" placeholder="http://localhost:8086"></div>
+        <div class="field"><label class="fl">Org</label><input type="text" id="wzInfluxOrg" placeholder="my-org"></div>
+        <div class="field"><label class="fl">Bucket</label><input type="text" id="wzInfluxBucket" placeholder="opc"></div>
+      </div>
+      <div class="wizard-pane" data-pane="2">
+        <div class="field"><label class="fl">Token</label><input type="password" id="wzInfluxToken"></div>
+        <div class="hint">API token with write access to the bucket. Stored in influx.json.</div>
+      </div>
+      <div class="wizard-pane" data-pane="3">
+        <div class="wizard-summary" id="wzInfluxSummary"></div>
+        <div class="field"><label class="fl">Auto-connect</label><input type="checkbox" id="wzInfluxAuto" checked></div>
+        <div class="field"><label class="fl">Connect now</label><input type="checkbox" id="wzInfluxConnectNow" checked></div>
+      </div>
+    </div>
+    <div class="wizard-foot">
+      <button class="btn ghost" type="button" onclick="closeInfluxWizard()">Cancel</button>
+      <button class="btn ghost" type="button" id="wzInfluxBack" onclick="wzInfluxStep(-1)">Back</button>
+      <button class="btn" type="button" id="wzInfluxNext" onclick="wzInfluxStep(1)">Next</button>
+      <button class="btn" type="button" id="wzInfluxFinish" style="display:none" onclick="wzInfluxFinish()">Finish</button>
+    </div>
+  </div>
+</div>
 </div>
 <div class="view" id="view-diagram">
     <div class="diag-toolbar">
@@ -3131,6 +3166,68 @@ async function connectInflux() {
     el('influxMessage').textContent = p.status === 'ok' ? 'Connected.' : ('✗ ' + (p.error || 'connect failed'));
     await loadInflux();
 }
+let wzInfluxStepCur = 1;
+const WZ_INFLUX_STEPS = 3;
+
+async function openInfluxWizard() {
+  wzInfluxStepCur = 1;
+  await loadInflux();
+  el('wzInfluxUrl').value = el('influxUrl').value || 'http://localhost:8086';
+  el('wzInfluxOrg').value = el('influxOrg').value;
+  el('wzInfluxBucket').value = el('influxBucket').value;
+  el('wzInfluxToken').value = el('influxToken').value;
+  el('wzInfluxAuto').checked = el('influxEnabled').checked;
+  el('wzInfluxConnectNow').checked = true;
+  el('influxWizard').style.display = '';
+  wzInfluxRender();
+}
+function closeInfluxWizard() { el('influxWizard').style.display = 'none'; }
+function wzInfluxRender() {
+  document.querySelectorAll('#influxWizard .wizard-pane').forEach(p => p.classList.toggle('active', Number(p.dataset.pane) === wzInfluxStepCur));
+  document.querySelectorAll('#influxWizard .wizard-step').forEach(s => {
+    const n = Number(s.dataset.step);
+    s.classList.toggle('active', n === wzInfluxStepCur);
+    s.classList.toggle('done', n < wzInfluxStepCur);
+  });
+  el('wzInfluxBack').style.display = wzInfluxStepCur > 1 ? '' : 'none';
+  el('wzInfluxNext').style.display = wzInfluxStepCur < WZ_INFLUX_STEPS ? '' : 'none';
+  el('wzInfluxFinish').style.display = wzInfluxStepCur === WZ_INFLUX_STEPS ? '' : 'none';
+  if (wzInfluxStepCur === 3) {
+    el('wzInfluxSummary').innerHTML =
+      `<b>URL:</b> ${esc(el('wzInfluxUrl').value)}<br>` +
+      `<b>Org:</b> ${esc(el('wzInfluxOrg').value || '—')}<br>` +
+      `<b>Bucket:</b> ${esc(el('wzInfluxBucket').value || '—')}<br>` +
+      `<b>Token:</b> ${el('wzInfluxToken').value ? 'set' : '—'}<br>` +
+      `<b>Auto-connect:</b> ${el('wzInfluxAuto').checked ? 'on' : 'off'}`;
+  }
+}
+function wzInfluxStep(delta) {
+  const next = wzInfluxStepCur + delta;
+  if (next < 1 || next > WZ_INFLUX_STEPS) return;
+  if (delta > 0 && !wzInfluxValidate(wzInfluxStepCur)) return;
+  wzInfluxStepCur = next;
+  wzInfluxRender();
+}
+function wzInfluxValidate(step) {
+  if (step === 1 && !el('wzInfluxUrl').value.trim()) { alert('URL is required.'); return false; }
+  if (step === 2 && !el('wzInfluxToken').value) { alert('Token is required.'); return false; }
+  return true;
+}
+async function wzInfluxFinish() {
+  el('influxUrl').value = el('wzInfluxUrl').value.trim();
+  el('influxOrg').value = el('wzInfluxOrg').value.trim();
+  el('influxBucket').value = el('wzInfluxBucket').value.trim();
+  el('influxToken').value = el('wzInfluxToken').value;
+  el('influxEnabled').checked = el('wzInfluxAuto').checked;
+  try {
+    await saveInflux();
+    if (el('wzInfluxConnectNow').checked) await connectInflux();
+    closeInfluxWizard();
+  } catch (e) {
+    el('influxMessage').textContent = '✗ ' + e.message;
+  }
+}
+
 async function disconnectInflux() {
     await fetch('/api/influx/disconnect', { method: 'POST' });
     el('influxMessage').textContent = 'Disconnected.';
