@@ -1,5 +1,15 @@
 namespace OpcBridge.App;
 
+// Test-asserted DOM/JS contract (see tests/OpcBridge.LoadTest/DashboardPageTests.cs, HelpContentTests.cs).
+// Do NOT rename without updating tests:
+//   data-tab="influx", id="view-influx", id="fpInfluxEnabled", id="influxUrl", id="influxWritten"
+//   function loadInfluxConfig/loadInfluxStatus/saveInflux/connectInflux/disconnectInflux
+//   /api/influx/config, influxEnabled: el('fpInfluxEnabled').checked, if (name === 'influx')
+//   id="pApps", text "Apps", "pApps" in script, "detectedCount" in script
+//   text "DA Links", id="linkSourceStatus", id="linkBrowseTree", id="btnClearLinkSelection"
+//   text "Clear Selection", text "Delete Saved Link", function clearLinkDraftSelection
+//   state.linkDraft.consumer = null, state.linkDraft.provider = null
+//   function browseLinkTags(, state.linkDraft, data-action="pick-link-consumer", data-action="pick-link-provider"
 internal static class DashboardPage
 {
     public const string Html = """
