@@ -49,14 +49,18 @@ internal static class DashboardPage
         .pill .k { color: var(--muted); text-transform: uppercase; font-size: 10px; letter-spacing: .05em; }
         .topbar .clock { margin-left: auto; color: var(--muted); font-size: 11px; white-space: nowrap; }
 .app-shell { display: flex; flex: 1; min-height: 0; overflow: hidden; }
-.tabbar { display: flex; flex-direction: column; background: var(--panel); border-right: 1px solid var(--border2); padding: 8px 0; width: 152px; flex-shrink: 0; overflow-y: auto; }
+.tabbar { display: flex; flex-direction: column; background: var(--panel); border-right: 1px solid var(--border2); padding: 8px 0; width: 200px; flex-shrink: 0; overflow-y: auto; }
 .tabbtn { background: none; border: none; color: var(--muted); padding: 11px 16px; font-size: 13px; font-weight: 500; cursor: pointer; border-left: 3px solid transparent; display: flex; align-items: center; gap: 8px; text-align: left; }
 .tabbtn:hover { color: var(--text); background: var(--panel2); }
 .tabbtn.active { color: var(--accent); border-left-color: var(--accent); background: var(--panel2); }
+.nav-group { padding: 6px 0; border-bottom: 1px solid var(--border); }
+.nav-group:last-child { border-bottom: none; }
+.nav-group-h { padding: 8px 16px 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+.nav-group .tabbtn { padding-left: 22px; }
 .content { flex: 1; min-width: 0; overflow: auto; }
 .view { display: none; padding: 16px 18px; }
 .view.active { display: block; }
-@media (max-width: 600px) { .app-shell { flex-direction: column; } .tabbar { flex-direction: row; width: 100%; border-right: none; border-bottom: 1px solid var(--border2); padding: 0 8px; overflow-x: auto; } .tabbtn { border-left: none; border-bottom: 3px solid transparent; padding: 10px 14px; } .tabbtn.active { border-left: none; border-bottom-color: var(--accent); } }
+@media (max-width: 600px) { .app-shell { flex-direction: column; } .tabbar { flex-direction: row; width: 100%; border-right: none; border-bottom: 1px solid var(--border2); padding: 0 8px; overflow-x: auto; } .tabbtn { border-left: none; border-bottom: 3px solid transparent; padding: 10px 14px; } .tabbtn.active { border-left: none; border-bottom-color: var(--accent); } .nav-group { border-bottom: none; } .nav-group-h { display: none; } }
         .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
         @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
         .box { background: var(--panel); border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
@@ -410,17 +414,36 @@ internal static class DashboardPage
 </div>
 <div class="app-shell">
 <div class="tabbar">
-    <button class="tabbtn active" data-tab="monitor" onclick="showTab('monitor')">Monitor</button>
-    <button class="tabbtn" data-tab="connection" onclick="showTab('connection')">Connection</button>
-    <button class="tabbtn" data-tab="diagnostics" onclick="showTab('diagnostics')">Diagnostics</button>
-    <button class="tabbtn" data-tab="tags" onclick="showTab('tags')">Tags</button>
-    <button class="tabbtn" data-tab="links" onclick="showTab('links')">OPC DA to DA</button>
-    <button class="tabbtn" data-tab="logs" onclick="showTab('logs')">Logs</button>
-    <button class="tabbtn" data-tab="mqtt" onclick="showTab('mqtt')">MQTT</button>
-    <button class="tabbtn" data-tab="influx" onclick="showTab('influx')">InfluxDB</button>
-    <button class="tabbtn" data-tab="diagram" onclick="showTab('diagram')">Diagram</button>
-    <button class="tabbtn" data-tab="help" onclick="showTab('help')">Help</button>
-    <button class="tabbtn" data-tab="about" onclick="showTab('about')">About</button>
+  <div class="nav-group">
+    <div class="nav-group-h">Connectivity</div>
+    <button class="tabbtn" data-tab="connection" data-route="connectivity/sources" onclick="navigate('connectivity/sources')">Sources</button>
+    <button class="tabbtn" data-tab="diagnostics" data-route="connectivity/diagnostics" onclick="navigate('connectivity/diagnostics')">Diagnostics</button>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-h">Tags</div>
+    <button class="tabbtn" data-tab="tags" data-route="tags/maps" onclick="navigate('tags/maps')">Maps</button>
+    <button class="tabbtn" data-tab="links" data-route="tags/links" onclick="navigate('tags/links')">DA Links</button>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-h">IoT</div>
+    <button class="tabbtn" data-tab="mqtt" data-route="iot/mqtt" onclick="navigate('iot/mqtt')">MQTT</button>
+    <button class="tabbtn" data-tab="iot-traffic" data-route="iot/traffic" onclick="navigate('iot/traffic')">Traffic</button>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-h">Historian</div>
+    <button class="tabbtn" data-tab="influx" data-route="historian/influx" onclick="navigate('historian/influx')">InfluxDB</button>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-h">Ops</div>
+    <button class="tabbtn active" data-tab="monitor" data-route="ops/monitor" onclick="navigate('ops/monitor')">Monitor</button>
+    <button class="tabbtn" data-tab="logs" data-route="ops/logs" onclick="navigate('ops/logs')">Logs</button>
+    <button class="tabbtn" data-tab="diagram" data-route="ops/diagram" onclick="navigate('ops/diagram')">Diagram</button>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-h">Help</div>
+    <button class="tabbtn" data-tab="help" data-route="help/guide" onclick="navigate('help/guide')">Guide</button>
+    <button class="tabbtn" data-tab="about" data-route="help/about" onclick="navigate('help/about')">About</button>
+  </div>
 </div>
 <div class="content">
 <div class="view active" id="view-monitor">
@@ -2235,23 +2258,50 @@ function updateManualInputState() {
         : 'Simulation OFF: bridge reads from DA (for Read/Read-Write). Toggle to inject a fixed value.';
 }
 
- async function showTab(name) {
-     document.querySelectorAll('.tabbtn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
-    document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + name));
-    if (location.hash !== '#' + name) history.replaceState(null, '', '#' + name);
-    if (name === 'logs') { state.logsLoaded = false; loadLogs(true).catch(e => el('logMessage').textContent = '✗ ' + e.message); }
-    if (name === 'diagnostics') { diagnosticsActive = true; loadDiagnostics(); }
-    else { diagnosticsActive = false; }
-    if (name === 'about') loadAppInfo().catch(e => el('aboutName').textContent = '✗ ' + e.message);
-    if (name === 'help') loadHelp().catch(e => el('helpContent').innerHTML = '<span class="msg bad">✗ ' + esc(e.message) + '</span>');
-        if (name === 'mqtt') { await loadMqtt(); await loadMqttValues(); }
-    if (name === 'influx') { await loadInflux(); }
-    if (name === 'links') loadDaLinks().catch(e => el('linksMessage').textContent = '✗ ' + e.message);
-    if (name === 'diagram') {
-        state.diagramLoaded = true;
-        await Promise.all([loadSources(), loadMappings(), loadDaLinks(), loadMqtt().catch(() => {})]);
-        renderDiagram();
-    }
+const ROUTE_TO_TAB = {
+  'connectivity/sources': 'connection',
+  'connectivity/diagnostics': 'diagnostics',
+  'tags/maps': 'tags',
+  'tags/links': 'links',
+  'iot/mqtt': 'mqtt',
+  'iot/traffic': 'iot-traffic',
+  'historian/influx': 'influx',
+  'ops/monitor': 'monitor',
+  'ops/logs': 'logs',
+  'ops/diagram': 'diagram',
+  'help/guide': 'help',
+  'help/about': 'about'
+};
+const DEFAULT_ROUTE = 'ops/monitor';
+
+function navigate(route) {
+  const tab = ROUTE_TO_TAB[route] || ROUTE_TO_TAB[DEFAULT_ROUTE];
+  showTab(tab, route);
+}
+
+async function showTab(name, route) {
+  route = route || (Object.keys(ROUTE_TO_TAB).find(r => ROUTE_TO_TAB[r] === name) || DEFAULT_ROUTE);
+  const activeTab = name === 'iot-traffic' ? 'mqtt' : name;
+  document.querySelectorAll('.tabbtn').forEach(b => b.classList.toggle('active', b.dataset.route === route));
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + activeTab));
+  if (location.hash !== '#/' + route) history.replaceState(null, '', '#/' + route);
+  if (activeTab === 'iot-traffic') {
+    const traffic = document.getElementById('mqttTraffic');
+    if (traffic) traffic.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  if (activeTab === 'logs') { state.logsLoaded = false; loadLogs(true).catch(e => el('logMessage').textContent = '✗ ' + e.message); }
+  if (activeTab === 'diagnostics') { diagnosticsActive = true; loadDiagnostics(); }
+  else { diagnosticsActive = false; }
+  if (activeTab === 'about') loadAppInfo().catch(e => el('aboutName').textContent = '✗ ' + e.message);
+  if (activeTab === 'help') loadHelp().catch(e => el('helpContent').innerHTML = '<span class="msg bad">✗ ' + esc(e.message) + '</span>');
+  if (activeTab === 'mqtt') { await loadMqtt(); await loadMqttValues(); }
+  if (name === 'influx') { await loadInflux(); }
+  if (activeTab === 'links') loadDaLinks().catch(e => el('linksMessage').textContent = '✗ ' + e.message);
+  if (activeTab === 'diagram') {
+    state.diagramLoaded = true;
+    await Promise.all([loadSources(), loadMappings(), loadDaLinks(), loadMqtt().catch(() => {})]);
+    renderDiagram();
+  }
 }
 function badge(t, c) { return `<span class="badge ${c}">${esc(t)}</span>`; }
 function stateClass(v) {
@@ -3519,8 +3569,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         deleteDaLink(btn.dataset.linkId || '').catch(e => el('linksMessage').textContent = '✗ ' + e.message);
     });
     bindDynamicButtons();
-    const initTab = location.hash.slice(1);
-    if (['monitor','connection','diagnostics','tags','links','logs','mqtt','influx','help','about'].includes(initTab)) showTab(initTab);
+    const initHash = location.hash.replace(/^#\/?/, '');
+    const initRoute = Object.prototype.hasOwnProperty.call(ROUTE_TO_TAB, initHash) ? initHash
+      : (initHash && Object.keys(ROUTE_TO_TAB).find(r => ROUTE_TO_TAB[r] === initHash) ? Object.keys(ROUTE_TO_TAB).find(r => ROUTE_TO_TAB[r] === initHash) : DEFAULT_ROUTE);
+    navigate(initRoute);
     await loadSources();
     await loadMappings();
     updateLiveValuesUi();
