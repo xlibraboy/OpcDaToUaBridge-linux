@@ -532,9 +532,9 @@ public sealed class OpcUaSourceClient : IDaClient, ISubscribableSourceClient
 
             lock (gate_)
             {
-                // Healthy subscription → subscription path (poll ReadAsync returns empty).
-                // Empty desired still keeps subscriptions_active so we do not thrash reads.
-                subscriptions_active_ = subscription.Created;
+                // Only disable poll when at least one MonitoredItem is actually tracked.
+                // Empty desired (Manual-only) or all creates failed → keep poll path.
+                subscriptions_active_ = subscription.Created && monitored_items_.Count > 0;
             }
 
             logger_.LogInformation(
@@ -681,17 +681,9 @@ public sealed class OpcUaSourceClient : IDaClient, ISubscribableSourceClient
 
         if (!session.AddSubscription(subscription))
         {
-            subscription.Dispose();
-            throw new InvalidOperationException(
-                $"Failed to add OPC UA subscription for source '{options_.SourceId}'.");
-        }
-
-        await subscription.CreateAsync(cancellationToken).ConfigureAwait(false);
-        if (!subscription.Created)
-        {
             try
             {
-                await session.RemoveSubscriptionAsync(subscription, CancellationToken.None).ConfigureAwait(false);
+                subscription.FastDataChangeCallback = null;
             }
             catch
             {
@@ -700,7 +692,24 @@ public sealed class OpcUaSourceClient : IDaClient, ISubscribableSourceClient
 
             subscription.Dispose();
             throw new InvalidOperationException(
-                $"OPC UA subscription create failed for source '{options_.SourceId}'.");
+                $"Failed to add OPC UA subscription for source '{options_.SourceId}'.");
+        }
+
+        try
+        {
+            await subscription.CreateAsync(cancellationToken).ConfigureAwait(false);
+            if (!subscription.Created)
+            {
+                throw new InvalidOperationException(
+                    $"OPC UA subscription create failed for source '{options_.SourceId}'.");
+            }
+        }
+        catch
+        {
+            // CreateAsync may throw before Created, or return with Created=false.
+            // subscription_ is still null — tear down the local object so it is not orphaned on the session.
+            await DiscardUnownedSubscriptionAsync(session, subscription).ConfigureAwait(false);
+            throw;
         }
 
         lock (gate_)
@@ -709,6 +718,54 @@ public sealed class OpcUaSourceClient : IDaClient, ISubscribableSourceClient
         }
 
         return subscription;
+    }
+
+    /// <summary>
+    /// Delete/Remove/Dispose a subscription that was added to the session but never stored in <see cref="subscription_"/>.
+    /// </summary>
+    private async Task DiscardUnownedSubscriptionAsync(Session session, Subscription subscription)
+    {
+        try
+        {
+            subscription.FastDataChangeCallback = null;
+        }
+        catch
+        {
+            // ignore
+        }
+
+        try
+        {
+            if (subscription.Created)
+            {
+                await subscription.DeleteAsync(silent: true, CancellationToken.None).ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger_.LogDebug(
+                ex,
+                "Error deleting unowned OPC UA subscription for source {SourceId}",
+                options_.SourceId);
+        }
+
+        try
+        {
+            await session.RemoveSubscriptionAsync(subscription, CancellationToken.None).ConfigureAwait(false);
+        }
+        catch
+        {
+            // ignore remove races
+        }
+
+        try
+        {
+            subscription.Dispose();
+        }
+        catch
+        {
+            // ignore
+        }
     }
 
     private async Task TearDownSubscriptionAsync(bool keepSession)
