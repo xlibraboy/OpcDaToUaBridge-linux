@@ -436,6 +436,25 @@ public sealed record DaSourceRuntimeSettings(
             RemoteDomain = RemoteDomain
         };
     }
+
+    public OpcBridge.Ua.OpcUaSourceClientOptions ToUaOptions(DaRuntimeSettingsSnapshot settings)
+    {
+        bool useSubscriptions = settings.UseSubscriptions && UseSubscriptions;
+        return new OpcBridge.Ua.OpcUaSourceClientOptions
+        {
+            SourceId = SourceId,
+            DisplayName = DisplayName,
+            EndpointUrl = EndpointUrl,
+            SecurityMode = SecurityMode,
+            SecurityPolicy = SecurityPolicy,
+            Username = UaUsername,
+            Password = UaPassword,
+            UpdateRateMs = UpdateRateMs,
+            SessionTimeoutMs = SessionTimeoutMs,
+            ReconnectDelayMs = ReconnectDelayMs,
+            UseSubscriptions = useSubscriptions
+        };
+    }
 }
 
 internal sealed class SourcesConfigDto

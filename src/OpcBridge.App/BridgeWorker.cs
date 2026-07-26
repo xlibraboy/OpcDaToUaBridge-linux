@@ -608,7 +608,32 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                 await existing.Client.DisposeAsync().ConfigureAwait(false);
             }
 
-            if (string.IsNullOrWhiteSpace(source.ProgId))
+            if (string.Equals(source.SourceType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.IsNullOrWhiteSpace(source.EndpointUrl))
+                {
+                    bridge_state_.SetSourceConnectionState(source.SourceId, "Disconnected");
+                    bridge_state_.SetSourceError(source.SourceId, new InvalidOperationException(
+                        "EndpointUrl is empty — enter a valid OPC UA server endpoint (opc.tcp://...)."));
+                    logger_.LogWarning("Source {SourceId} has no EndpointUrl, skipping connection", source.SourceId);
+                    continue;
+                }
+
+                string serverEndpointUrl = ua_server_.GetOptions().EndpointUrl;
+                if (UaEndpointGuard.TargetsSelf(source.EndpointUrl, serverEndpointUrl))
+                {
+                    bridge_state_.SetSourceConnectionState(source.SourceId, "Faulted");
+                    bridge_state_.SetSourceError(source.SourceId, new InvalidOperationException(
+                        "Cannot use this process's own OPC UA server endpoint as a source."));
+                    logger_.LogWarning(
+                        "Source {SourceId} EndpointUrl {EndpointUrl} targets own UA server {ServerEndpoint}, refusing connect",
+                        source.SourceId,
+                        source.EndpointUrl,
+                        serverEndpointUrl);
+                    continue;
+                }
+            }
+            else if (string.IsNullOrWhiteSpace(source.ProgId))
             {
                 bridge_state_.SetSourceConnectionState(source.SourceId, "Disconnected");
                 bridge_state_.SetSourceError(source.SourceId, new InvalidOperationException("ProgID is empty — enter a valid OPC DA server ProgID."));
