@@ -10,6 +10,8 @@ namespace OpcBridge.App;
 //   text "Clear Selection", text "Delete Saved Link", function clearLinkDraftSelection
 //   state.linkDraft.consumer = null, state.linkDraft.provider = null
 //   function browseLinkTags(, state.linkDraft, data-action="pick-link-consumer", data-action="pick-link-provider"
+//   data-tab="opc-da", id="view-opc-da", data-route="connectivity/opc-da", text "OPC DA"
+//   id="sourcesStatusList", data-tab="connection" remains Sources list
 internal static class DashboardPage
 {
     public const string Html = """
@@ -430,6 +432,7 @@ internal static class DashboardPage
   <div class="nav-group">
     <div class="nav-group-h">Connectivity</div>
     <button class="tabbtn" data-tab="connection" data-route="connectivity/sources" onclick="navigate('connectivity/sources')">Sources</button>
+    <button class="tabbtn" data-tab="opc-da" data-route="connectivity/opc-da" onclick="navigate('connectivity/opc-da')">OPC DA</button>
     <button class="tabbtn" data-tab="diagnostics" data-route="connectivity/diagnostics" onclick="navigate('connectivity/diagnostics')">Diagnostics</button>
   </div>
   <div class="nav-group">
@@ -564,10 +567,19 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="view" id="view-connection">
+    <div class="box">
+        <div class="box-h">Sources <button class="btn" type="button" onclick="openAddSourceWizard()" style="margin-left:auto">+ Add Source</button></div>
+        <div class="box-b">
+            <div class="hint" id="sourcesStatusHint">Select a source to open OPC DA configuration.</div>
+            <div class="list" id="sourcesStatusList" style="max-height:none"></div>
+        </div>
+    </div>
+</div>
+<div class="view" id="view-opc-da">
     <div class="conn-layout">
         <div class="conn-main">
             <div class="box">
-                <div class="box-h">Server Connection <button class="btn" type="button" onclick="openAddSourceWizard()" style="margin-left:auto">+ Add Source</button><span class="msg" id="cfgMessage" style="font-weight:400;text-transform:none;letter-spacing:0">Select a saved connection or click New.</span></div>
+                <div class="box-h">OPC DA Configuration <button class="btn" type="button" onclick="openAddSourceWizard()" style="margin-left:auto">+ Add Source</button><span class="msg" id="cfgMessage" style="font-weight:400;text-transform:none;letter-spacing:0">Select a saved connection or click New.</span></div>
                 <div class="box-b">
                     <div class="field"><label class="fl">Selected</label><select id="selectedSource"></select></div>
                     <div class="conn-section">
@@ -2404,6 +2416,7 @@ function updateManualInputState() {
 
 const ROUTE_TO_TAB = {
   'connectivity/sources': 'connection',
+  'connectivity/opc-da': 'opc-da',
   'connectivity/diagnostics': 'diagnostics',
   'tags/maps': 'tags',
   'tags/links': 'links',
@@ -2440,6 +2453,9 @@ async function showTab(name, route) {
   if (activeTab === 'help') loadHelp().catch(e => el('helpContent').innerHTML = '<span class="msg bad">✗ ' + esc(e.message) + '</span>');
   if (activeTab === 'mqtt') { await loadMqtt(); await loadMqttValues(); }
   if (name === 'influx') { await loadInflux(); }
+  if (activeTab === 'opc-da' || activeTab === 'connection') {
+    await loadSources().catch(e => console.warn(e));
+  }
   if (activeTab === 'links') loadDaLinks().catch(e => el('linksMessage').textContent = '✗ ' + e.message);
   if (activeTab === 'diagram') {
     state.diagramLoaded = true;
@@ -2472,6 +2488,19 @@ function locTime(u) { return u ? new Date(u).toLocaleString() : '—'; }
 function get(o, k) { return o?.[k] ?? o?.[k[0].toUpperCase() + k.slice(1)]; }
 function currentSource() { return state.editingNewSource ? null : state.sources.find(s => s.sourceId === state.selectedSourceId) || null; }
 function defaultUaNodeId(sourceId, itemId) { return `ns=2;s=${sourceId}/${itemId}`; }
+function sourceStatusRowHtml(source) {
+    const st = source.connectionState || source.ConnectionState || '';
+    const err = source.lastError || source.LastError || '';
+    const errBit = err ? ` · <span class="bad">${esc(err)}</span>` : '';
+    return `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)} ${st ? badge(st, stateClass(st)) : ''}</div><div class="p">${esc(source.sourceId)} · ${esc(source.host || 'localhost')} · ${esc(source.progId || '')} · ${formatMs(source.updateRateMs)}${errBit}</div></div><button class="btn ghost" data-action="select-source-status" data-source-id="${attr(source.sourceId)}">Select</button></div>`;
+}
+function renderSourcesStatusList() {
+    const host = el('sourcesStatusList');
+    if (!host) return;
+    host.innerHTML = state.sources.length
+        ? state.sources.map(sourceStatusRowHtml).join('')
+        : '<span class="msg">No sources configured. Click + Add Source.</span>';
+}
 function renderSources() {
     const select = el('selectedSource');
     const mapSelect = el('mapSourceSelect');
@@ -2493,9 +2522,11 @@ function renderSources() {
     if (bannerTags && noSources) bannerTags.innerHTML = 'No sources yet. <button class="btn" type="button" onclick="navigate(\'connectivity/sources\')">Add Source</button>';
     updateNoMappingsBanner();
     const sideCount = el('pSourcesSide'); if (sideCount) sideCount.textContent = state.sources.length + ' source' + (state.sources.length !== 1 ? 's' : '');
-    el('sourcesList').innerHTML = state.sources.length ? state.sources.map(source =>
+    const list = el('sourcesList');
+    if (list) list.innerHTML = state.sources.length ? state.sources.map(source =>
         `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)}</div><div class="p">${esc(source.sourceId)} · ${esc(source.host || 'localhost')} · ${esc(source.progId || '')} · ${formatMs(source.updateRateMs)}</div></div><button class="btn ghost" data-action="select-source" data-source-id="${attr(source.sourceId)}">Select</button></div>`
     ).join('') : '<span class="msg">No sources configured.</span>';
+    renderSourcesStatusList();
     loadSelectedSourceForm();
 }
 function loadSelectedSourceForm() {
@@ -3369,7 +3400,7 @@ async function updateMapping(sourceId, itemId, mutate) {
     el('mappingMessage').textContent = 'Mapping updated.';
 }
 
-function pickSource(sourceId) {
+function pickSource(sourceId, opts) {
     state.selectedSourceId = sourceId;
     state.editingNewSource = false;
     state.tagPath = '';
@@ -3379,6 +3410,7 @@ function pickSource(sourceId) {
     resetLinkBrowser();
     renderSources();
     if (document.getElementById('view-links')?.classList.contains('active')) renderLinksView();
+    if (opts && opts.openOpcDa) navigate('connectivity/opc-da');
 }
 async function saveSource() {
     const sourceId = el('cfgSourceId').value.trim();
@@ -3777,6 +3809,14 @@ function bindDynamicButtons() {
         if (!button) return;
         pickSource(button.dataset.sourceId || '');
     });
+    const statusList = el('sourcesStatusList');
+    if (statusList) {
+        statusList.addEventListener('click', event => {
+            const button = event.target.closest('button[data-action="select-source-status"]');
+            if (!button) return;
+            pickSource(button.dataset.sourceId || '', { openOpcDa: true });
+        });
+    }
     el('listServers').addEventListener('click', event => {
         const button = event.target.closest('button[data-action="pick-server"]');
         if (!button) return;
@@ -3978,6 +4018,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const LEGACY_TAB_TO_ROUTE = {
       monitor: 'ops/monitor',
       connection: 'connectivity/sources',
+      'opc-da': 'connectivity/opc-da',
       diagnostics: 'connectivity/diagnostics',
       tags: 'tags/maps',
       links: 'tags/links',
