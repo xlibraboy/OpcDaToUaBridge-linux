@@ -194,8 +194,20 @@ app.MapGet("/api/da/sources", (DaRuntimeSettings settings) =>
         {
             sourceId = source.SourceId,
             displayName = source.DisplayName,
+            sourceType = source.SourceType,
             progId = source.ProgId,
             host = source.Host,
+            transport = source.Transport,
+            serialPortName = source.SerialPortName,
+            baudRate = source.BaudRate,
+            dataBits = source.DataBits,
+            parity = source.Parity,
+            stopBits = source.StopBits,
+            stationNo = source.StationNo,
+            pcNo = source.PcNo,
+            timeoutMs = source.TimeoutMs,
+            retryCount = source.RetryCount,
+            maxMappedTags = source.MaxMappedTags,
             updateRateMs = source.UpdateRateMs,
             remoteUsername = source.RemoteUsername,
             remoteDomain = source.RemoteDomain
@@ -260,11 +272,23 @@ app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings
     DaRuntimeSettingsSnapshot snapshot = settings.UpsertSource(new DaSourceRuntimeSettings(
         request.SourceId,
         request.DisplayName ?? string.Empty,
-        request.ProgId,
-        request.Host,
+        request.SourceType ?? string.Empty,
+        request.ProgId ?? string.Empty,
+        request.Host ?? string.Empty,
         request.RemoteUsername,
         request.RemotePassword,
         request.RemoteDomain,
+        request.Transport ?? string.Empty,
+        request.SerialPortName ?? string.Empty,
+        request.BaudRate,
+        request.DataBits,
+        request.Parity ?? string.Empty,
+        request.StopBits ?? string.Empty,
+        request.StationNo ?? string.Empty,
+        request.PcNo ?? string.Empty,
+        request.TimeoutMs,
+        request.RetryCount,
+        request.MaxMappedTags,
         request.UpdateRateMs));
 
     DaSourceRuntimeSettings source = snapshot.GetSource(request.SourceId)!;
@@ -275,8 +299,20 @@ app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings
         {
             sourceId = source.SourceId,
             displayName = source.DisplayName,
+            sourceType = source.SourceType,
             progId = source.ProgId,
             host = source.Host,
+            transport = source.Transport,
+            serialPortName = source.SerialPortName,
+            baudRate = source.BaudRate,
+            dataBits = source.DataBits,
+            parity = source.Parity,
+            stopBits = source.StopBits,
+            stationNo = source.StationNo,
+            pcNo = source.PcNo,
+            timeoutMs = source.TimeoutMs,
+            retryCount = source.RetryCount,
+            maxMappedTags = source.MaxMappedTags,
             updateRateMs = source.UpdateRateMs,
             remoteUsername = source.RemoteUsername,
             remoteDomain = source.RemoteDomain
@@ -547,8 +583,20 @@ app.MapGet("/api/config/export", (DaRuntimeSettings daSettings, MappingStore map
             {
                 sourceId = s.SourceId,
                 displayName = s.DisplayName,
+                sourceType = s.SourceType,
                 progId = s.ProgId,
                 host = s.Host,
+                transport = s.Transport,
+                serialPortName = s.SerialPortName,
+                baudRate = s.BaudRate,
+                dataBits = s.DataBits,
+                parity = s.Parity,
+                stopBits = s.StopBits,
+                stationNo = s.StationNo,
+                pcNo = s.PcNo,
+                timeoutMs = s.TimeoutMs,
+                retryCount = s.RetryCount,
+                maxMappedTags = s.MaxMappedTags,
                 updateRateMs = s.UpdateRateMs,
                 remoteUsername = s.RemoteUsername,
                 remoteDomain = s.RemoteDomain
@@ -575,15 +623,27 @@ app.MapPost("/api/config/import", async (HttpContext context, DaRuntimeSettings 
             {
                 foreach (JsonElement s in sourcesEl.EnumerateArray())
                 {
-                    sources.Add(new DaSourceRuntimeSettings(
+                    sources.Add(SourceConfigMigration.Normalize(new DaSourceRuntimeSettings(
                         s.TryGetProperty("sourceId", out JsonElement sid) ? sid.GetString() ?? "default" : "default",
                         s.TryGetProperty("displayName", out JsonElement dn) ? dn.GetString() ?? string.Empty : string.Empty,
+                        s.TryGetProperty("sourceType", out JsonElement st) ? st.GetString() ?? string.Empty : string.Empty,
                         s.TryGetProperty("progId", out JsonElement pid) ? pid.GetString() ?? string.Empty : string.Empty,
                         s.TryGetProperty("host", out JsonElement h) ? h.GetString() ?? "localhost" : "localhost",
                         s.TryGetProperty("remoteUsername", out JsonElement ru) ? ru.GetString() : null,
                         null, // password not exported — must be re-entered on import
                         s.TryGetProperty("remoteDomain", out JsonElement rd) ? rd.GetString() : null,
-                        s.TryGetProperty("updateRateMs", out JsonElement sur) ? sur.GetInt32() : updateRate));
+                        s.TryGetProperty("transport", out JsonElement tr) ? tr.GetString() ?? string.Empty : string.Empty,
+                        s.TryGetProperty("serialPortName", out JsonElement spn) ? spn.GetString() ?? string.Empty : string.Empty,
+                        s.TryGetProperty("baudRate", out JsonElement br) ? br.GetInt32() : 0,
+                        s.TryGetProperty("dataBits", out JsonElement dbits) ? dbits.GetInt32() : 0,
+                        s.TryGetProperty("parity", out JsonElement par) ? par.GetString() ?? string.Empty : string.Empty,
+                        s.TryGetProperty("stopBits", out JsonElement sb) ? sb.GetString() ?? string.Empty : string.Empty,
+                        s.TryGetProperty("stationNo", out JsonElement sn) ? sn.GetString() ?? string.Empty : string.Empty,
+                        s.TryGetProperty("pcNo", out JsonElement pn) ? pn.GetString() ?? string.Empty : string.Empty,
+                        s.TryGetProperty("timeoutMs", out JsonElement to) ? to.GetInt32() : 0,
+                        s.TryGetProperty("retryCount", out JsonElement rc) ? rc.GetInt32() : -1,
+                        s.TryGetProperty("maxMappedTags", out JsonElement mmt) ? mmt.GetInt32() : 0,
+                        s.TryGetProperty("updateRateMs", out JsonElement sur) ? sur.GetInt32() : updateRate), updateRate));
                 }
             }
 
