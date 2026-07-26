@@ -8,11 +8,20 @@ namespace OpcBridge.LoadTest;
 /// Runs on any platform (no COM). Used to stress-test <see cref="BridgeState"/> and the write queue
 /// without a real OPC DA server.
 /// </summary>
-public sealed class MockDaClient : IDaClient
+public sealed class MockDaClient : IDaClient, ISubscribableSourceClient
 {
     private readonly int tagCount;
     private readonly string sourceId;
     private long readCounter;
+
+    /// <summary>
+    /// Present for interface compliance; MockDaClient is poll-only and never raises this.
+    /// </summary>
+    public event Action<IReadOnlyList<BridgeValue>>? ValuesReceived
+    {
+        add { }
+        remove { }
+    }
 
     public MockDaClient(string sourceId, int tagCount)
     {

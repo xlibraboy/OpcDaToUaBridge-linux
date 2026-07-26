@@ -622,9 +622,9 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                 IDaClient client = da_client_factory_.Create(settings, source);
                 await client.ConnectAsync(cancellationToken).ConfigureAwait(false);
 
-                if (client is OpcDaClient opcDa)
+                if (client is ISubscribableSourceClient subscribable)
                 {
-                    opcDa.OnCallbackValues += values => OnSubscriptionValues(values);
+                    subscribable.ValuesReceived += values => OnSubscriptionValues(values);
                 }
 
                 sessions[source.SourceId] = new SourceSession(source, client);
