@@ -12,6 +12,8 @@ namespace OpcBridge.Ua;
 public sealed class OpcUaSourceClient : IDaClient, ISubscribableSourceClient
 {
     private const int ReadChunkSize = 500;
+    private const int MonitoredItemBatchSize = 750;
+    private const int NotificationFlushSize = 1000;
 
     private readonly OpcUaSourceClientOptions options_;
     private readonly ILogger logger_;
@@ -23,14 +25,18 @@ public sealed class OpcUaSourceClient : IDaClient, ISubscribableSourceClient
 
     private ApplicationConfiguration? configuration_;
     private Session? session_;
+    private Subscription? subscription_;
+    private readonly Dictionary<string, MonitoredItem> monitored_items_ =
+        new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> node_id_by_display_ =
+        new(StringComparer.Ordinal);
+    private bool subscriptions_active_;
     private bool disposed_;
 
     /// <summary>
-    /// Raised when a UA subscription delivers values. Wired in Task 5.
+    /// Raised when a UA subscription delivers values via MonitoredItems.
     /// </summary>
-#pragma warning disable CS0067 // Event reserved for Task 5 subscription notifications.
     public event Action<IReadOnlyList<BridgeValue>>? ValuesReceived;
-#pragma warning restore CS0067
 
     public OpcUaSourceClient(OpcUaSourceClientOptions options, ILogger? logger = null)
     {
@@ -118,6 +124,11 @@ public sealed class OpcUaSourceClient : IDaClient, ISubscribableSourceClient
                     previous = session_;
                     session_ = session;
                     configuration_ = configuration;
+                    // New session owns its own subscription; drop local bookkeeping for the old one.
+                    subscription_ = null;
+                    monitored_items_.Clear();
+                    node_id_by_display_.Clear();
+                    subscriptions_active_ = false;
                     session = null!; // ownership transferred
                 }
             }
@@ -155,6 +166,13 @@ public sealed class OpcUaSourceClient : IDaClient, ISubscribableSourceClient
     {
         cancellationToken.ThrowIfCancellationRequested();
         Session session = GetConnectedSession();
+
+        // When subscriptions are live, values arrive via ValuesReceived; poller stays as
+        // health/keepalive but should not re-read the full mapped set each tick.
+        if (subscriptions_active_)
+        {
+            return Array.Empty<BridgeValue>();
+        }
 
         if (mappings.Count == 0)
         {
@@ -356,17 +374,193 @@ public sealed class OpcUaSourceClient : IDaClient, ISubscribableSourceClient
     }
 
     /// <summary>
-    /// Task 5 fills subscription reconcile. Stub keeps poll path active for now.
+    /// Ensure MonitoredItems match the desired mapped set (enabled, non-Manual, non-empty NodeId).
+    /// On failure keeps the session and falls back to poll (<see cref="subscriptions_active_"/> false).
     /// </summary>
-    public Task ReconcileMonitoredItemsAsync(
+    public async Task ReconcileMonitoredItemsAsync(
         IReadOnlyList<TagMapping> desiredMappings,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        _ = desiredMappings;
-        // Subscriptions not active until Task 5.
-        return Task.CompletedTask;
+        ObjectDisposedException.ThrowIf(disposed_, this);
+
+        if (!options_.UseSubscriptions)
+        {
+            await TearDownSubscriptionAsync(keepSession: true).ConfigureAwait(false);
+            return;
+        }
+
+        Session? session;
+        lock (gate_)
+        {
+            session = session_;
+            if (session is null || !session.Connected)
+            {
+                subscriptions_active_ = false;
+                return;
+            }
+        }
+
+        try
+        {
+            Dictionary<string, int> desiredSampling = BuildDesiredSampling(desiredMappings);
+            IReadOnlyCollection<string> desiredIds = desiredSampling.Keys;
+
+            Subscription subscription = await EnsureSubscriptionAsync(session, cancellationToken)
+                .ConfigureAwait(false);
+
+            string[] activeIds;
+            lock (gate_)
+            {
+                activeIds = monitored_items_.Keys.ToArray();
+            }
+
+            (IReadOnlyList<string> toAdd, IReadOnlyList<string> toRemove) =
+                MonitoredItemReconcile.Diff(desiredIds, activeIds);
+
+            for (int offset = 0; offset < toRemove.Count; offset += MonitoredItemBatchSize)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                int count = Math.Min(MonitoredItemBatchSize, toRemove.Count - offset);
+                List<MonitoredItem> batch = new(count);
+                lock (gate_)
+                {
+                    for (int i = 0; i < count; i++)
+                    {
+                        string nodeId = toRemove[offset + i];
+                        if (monitored_items_.Remove(nodeId, out MonitoredItem? item))
+                        {
+                            node_id_by_display_.Remove(item.DisplayName);
+                            item.Notification -= OnMonitoredItemNotification;
+                            batch.Add(item);
+                        }
+                    }
+                }
+
+                if (batch.Count == 0)
+                {
+                    continue;
+                }
+
+                subscription.RemoveItems(batch);
+                await subscription.ApplyChangesAsync(cancellationToken).ConfigureAwait(false);
+            }
+
+            for (int offset = 0; offset < toAdd.Count; offset += MonitoredItemBatchSize)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                int count = Math.Min(MonitoredItemBatchSize, toAdd.Count - offset);
+                List<MonitoredItem> batch = new(count);
+
+                for (int i = 0; i < count; i++)
+                {
+                    string nodeIdString = toAdd[offset + i];
+                    if (!NodeId.TryParse(nodeIdString, out NodeId? nodeId) || nodeId is null)
+                    {
+                        logger_.LogDebug(
+                            "Skipping invalid NodeId for UA subscription on {SourceId}: {NodeId}",
+                            options_.SourceId,
+                            nodeIdString);
+                        continue;
+                    }
+
+                    int sampling = desiredSampling.TryGetValue(nodeIdString, out int s)
+                        ? s
+                        : Math.Max(100, options_.UpdateRateMs);
+
+                    // No ITelemetryContext on source client yet — parameterless ctor is obsolete but fine.
+#pragma warning disable CS0618
+                    MonitoredItem item = new()
+                    {
+                        StartNodeId = nodeId,
+                        AttributeId = Attributes.Value,
+                        DisplayName = nodeIdString,
+                        SamplingInterval = sampling,
+                        QueueSize = 1,
+                        DiscardOldest = true,
+                        MonitoringMode = MonitoringMode.Reporting,
+                        Handle = nodeIdString
+                    };
+#pragma warning restore CS0618
+                    item.Notification += OnMonitoredItemNotification;
+                    batch.Add(item);
+                }
+
+                if (batch.Count == 0)
+                {
+                    continue;
+                }
+
+                subscription.AddItems(batch);
+                await subscription.ApplyChangesAsync(cancellationToken).ConfigureAwait(false);
+
+                lock (gate_)
+                {
+                    for (int i = 0; i < batch.Count; i++)
+                    {
+                        MonitoredItem item = batch[i];
+                        string key = item.Handle as string ?? item.DisplayName;
+                        ServiceResult? createError = item.Status.Error;
+                        if (!item.Status.Created
+                            || (createError is not null && StatusCode.IsBad(createError.StatusCode)))
+                        {
+                            logger_.LogDebug(
+                                "MonitoredItem create failed for {SourceId} {NodeId}: created={Created} status={Status}",
+                                options_.SourceId,
+                                key,
+                                item.Status.Created,
+                                createError?.StatusCode);
+                            item.Notification -= OnMonitoredItemNotification;
+                            subscription.RemoveItem(item);
+                            continue;
+                        }
+
+                        monitored_items_[key] = item;
+                        node_id_by_display_[item.DisplayName] = key;
+                    }
+                }
+
+                // Drop failed creates from the subscription if any were removed above.
+                if (subscription.ChangesPending)
+                {
+                    await subscription.ApplyChangesAsync(cancellationToken).ConfigureAwait(false);
+                }
+            }
+
+            // Keep sampling intervals aligned for items that remain desired.
+            // (Add/remove covered; existing items keep prior sampling — acceptable for v1.)
+
+            lock (gate_)
+            {
+                // Healthy subscription → subscription path (poll ReadAsync returns empty).
+                // Empty desired still keeps subscriptions_active so we do not thrash reads.
+                subscriptions_active_ = subscription.Created;
+            }
+
+            logger_.LogInformation(
+                "OPC UA source {SourceId} subscription reconcile: desired={Desired} active={Active} added={Added} removed={Removed}",
+                options_.SourceId,
+                desiredIds.Count,
+                monitored_items_.Count,
+                toAdd.Count,
+                toRemove.Count);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger_.LogWarning(
+                ex,
+                "OPC UA source {SourceId} subscription reconcile failed; falling back to poll",
+                options_.SourceId);
+            await TearDownSubscriptionAsync(keepSession: true).ConfigureAwait(false);
+        }
     }
+
+    /// <summary>True when MonitoredItems are delivering values (poll ReadAsync is a no-op).</summary>
+    public bool SubscriptionsActive => subscriptions_active_;
 
     public async ValueTask DisposeAsync()
     {
@@ -384,13 +578,317 @@ public sealed class OpcUaSourceClient : IDaClient, ISubscribableSourceClient
             configuration_ = null;
         }
 
+        await TearDownSubscriptionAsync(keepSession: false).ConfigureAwait(false);
+
         if (session is null)
         {
             return;
         }
 
         await SafeCloseAndDisposeAsync(session).ConfigureAwait(false);
+
     }
+
+    private Dictionary<string, int> BuildDesiredSampling(IReadOnlyList<TagMapping>? desiredMappings)
+    {
+        Dictionary<string, int> desired = new(StringComparer.Ordinal);
+        if (desiredMappings is null)
+        {
+            return desired;
+        }
+
+        int defaultSampling = Math.Max(100, options_.UpdateRateMs);
+        for (int i = 0; i < desiredMappings.Count; i++)
+        {
+            TagMapping mapping = desiredMappings[i];
+            if (!mapping.Enabled)
+            {
+                continue;
+            }
+
+            if (string.Equals(mapping.Mode, TagMode.Manual, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(mapping.DaItemId))
+            {
+                continue;
+            }
+
+            // Write-only tags are not source-read (matches SourceMappingCache.SourceRead filter).
+            if (string.Equals(mapping.AccessRights, TagAccessRights.Write, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            string nodeId = mapping.DaItemId.Trim();
+            int sampling = mapping.PollRateMs > 0 ? mapping.PollRateMs : defaultSampling;
+            if (sampling < 0)
+            {
+                sampling = defaultSampling;
+            }
+
+            // First wins; Diff keys are unique.
+            if (!desired.ContainsKey(nodeId))
+            {
+                desired[nodeId] = sampling;
+            }
+        }
+
+        return desired;
+    }
+
+    private async Task<Subscription> EnsureSubscriptionAsync(Session session, CancellationToken cancellationToken)
+    {
+        Subscription? existing;
+        lock (gate_)
+        {
+            existing = subscription_;
+            if (existing is not null
+                && ReferenceEquals(existing.Session, session)
+                && existing.Created)
+            {
+                int desiredPublishing = Math.Max(100, options_.UpdateRateMs);
+                if (existing.PublishingInterval != desiredPublishing)
+                {
+                    existing.PublishingInterval = desiredPublishing;
+                }
+
+                return existing;
+            }
+        }
+
+        // Drop stale subscription bookkeeping (session may have changed).
+        await TearDownSubscriptionAsync(keepSession: true).ConfigureAwait(false);
+        // No ITelemetryContext on source client yet — parameterless ctor is obsolete but fine.
+#pragma warning disable CS0618
+        Subscription subscription = new()
+        {
+            DisplayName = $"OpcBridge_{options_.SourceId}",
+            PublishingEnabled = true,
+            PublishingInterval = Math.Max(100, options_.UpdateRateMs),
+            KeepAliveCount = 10,
+            LifetimeCount = 1000,
+            MaxNotificationsPerPublish = 0,
+            TimestampsToReturn = TimestampsToReturn.Both,
+            Priority = 0
+        };
+#pragma warning restore CS0618
+
+        // Prefer batch notification path for large publish sets.
+        subscription.FastDataChangeCallback = OnFastDataChange;
+
+        if (!session.AddSubscription(subscription))
+        {
+            subscription.Dispose();
+            throw new InvalidOperationException(
+                $"Failed to add OPC UA subscription for source '{options_.SourceId}'.");
+        }
+
+        await subscription.CreateAsync(cancellationToken).ConfigureAwait(false);
+        if (!subscription.Created)
+        {
+            try
+            {
+                await session.RemoveSubscriptionAsync(subscription, CancellationToken.None).ConfigureAwait(false);
+            }
+            catch
+            {
+                // ignore
+            }
+
+            subscription.Dispose();
+            throw new InvalidOperationException(
+                $"OPC UA subscription create failed for source '{options_.SourceId}'.");
+        }
+
+        lock (gate_)
+        {
+            subscription_ = subscription;
+        }
+
+        return subscription;
+    }
+
+    private async Task TearDownSubscriptionAsync(bool keepSession)
+    {
+        Subscription? subscription;
+        List<MonitoredItem> items;
+        lock (gate_)
+        {
+            subscription = subscription_;
+            subscription_ = null;
+            items = monitored_items_.Values.ToList();
+            monitored_items_.Clear();
+            node_id_by_display_.Clear();
+            subscriptions_active_ = false;
+        }
+
+        for (int i = 0; i < items.Count; i++)
+        {
+            try
+            {
+                items[i].Notification -= OnMonitoredItemNotification;
+            }
+            catch
+            {
+                // ignore
+            }
+        }
+
+        if (subscription is null)
+        {
+            return;
+        }
+
+        try
+        {
+            subscription.FastDataChangeCallback = null;
+        }
+        catch
+        {
+            // ignore
+        }
+
+        try
+        {
+            if (subscription.Session is not null && subscription.Created)
+            {
+                await subscription.DeleteAsync(silent: true, CancellationToken.None).ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger_.LogDebug(ex, "Error deleting OPC UA subscription for source {SourceId}", options_.SourceId);
+        }
+
+        try
+        {
+            if (subscription.Session is ISession s && keepSession)
+            {
+                await s.RemoveSubscriptionAsync(subscription, CancellationToken.None).ConfigureAwait(false);
+            }
+        }
+        catch
+        {
+            // ignore remove races on dispose
+        }
+
+        try
+        {
+            subscription.Dispose();
+        }
+        catch
+        {
+            // ignore
+        }
+
+        _ = keepSession;
+    }
+
+    private void OnFastDataChange(
+        Subscription subscription,
+        DataChangeNotification notification,
+        IList<string> stringTable)
+    {
+        _ = stringTable;
+        if (notification?.MonitoredItems is null || notification.MonitoredItems.Count == 0)
+        {
+            return;
+        }
+
+        List<BridgeValue> batch = new(Math.Min(notification.MonitoredItems.Count, NotificationFlushSize));
+        for (int i = 0; i < notification.MonitoredItems.Count; i++)
+        {
+            MonitoredItemNotification change = notification.MonitoredItems[i];
+            MonitoredItem? item = subscription.FindItemByClientHandle(change.ClientHandle);
+            string? daItemId = ResolveMonitoredItemId(item);
+            if (daItemId is null)
+            {
+                continue;
+            }
+
+            DataValue dataValue = change.Value ?? new DataValue(StatusCodes.BadNoData);
+            batch.Add(ToBridgeValue(daItemId, dataValue));
+
+            if (batch.Count >= NotificationFlushSize)
+            {
+                RaiseValuesReceived(batch);
+                batch = new List<BridgeValue>(NotificationFlushSize);
+            }
+        }
+
+        if (batch.Count > 0)
+        {
+            RaiseValuesReceived(batch);
+        }
+    }
+
+    private void OnMonitoredItemNotification(MonitoredItem item, MonitoredItemNotificationEventArgs e)
+    {
+        // FastDataChangeCallback is preferred; per-item handler is a fallback if Fast path is unset.
+        if (subscription_?.FastDataChangeCallback is not null)
+        {
+            return;
+        }
+
+        string? daItemId = ResolveMonitoredItemId(item);
+        if (daItemId is null || e.NotificationValue is not MonitoredItemNotification change)
+        {
+            return;
+        }
+
+        DataValue dataValue = change.Value ?? new DataValue(StatusCodes.BadNoData);
+        RaiseValuesReceived(new List<BridgeValue>(1) { ToBridgeValue(daItemId, dataValue) });
+    }
+
+    private string? ResolveMonitoredItemId(MonitoredItem? item)
+    {
+        if (item is null)
+        {
+            return null;
+        }
+
+        if (item.Handle is string handle && handle.Length > 0)
+        {
+            return handle;
+        }
+
+        if (!string.IsNullOrEmpty(item.DisplayName))
+        {
+            lock (gate_)
+            {
+                if (node_id_by_display_.TryGetValue(item.DisplayName, out string? id))
+                {
+                    return id;
+                }
+            }
+
+            return item.DisplayName;
+        }
+
+        return null;
+    }
+
+    private void RaiseValuesReceived(IReadOnlyList<BridgeValue> values)
+    {
+        if (values.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            ValuesReceived?.Invoke(values);
+        }
+        catch (Exception ex)
+        {
+            logger_.LogDebug(ex, "ValuesReceived handler failed for source {SourceId}", options_.SourceId);
+        }
+    }
+
+
 
     private async Task SafeCloseAndDisposeAsync(IDisposable session)
     {
