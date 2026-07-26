@@ -57,7 +57,8 @@ internal static class DashboardPage
 .tabbtn.active { color: var(--accent); border-left-color: var(--accent); background: var(--panel2); }
 .nav-group { padding: 6px 0; border-bottom: 1px solid var(--border); }
 .nav-group:last-child { border-bottom: none; }
-.nav-group-h { padding: 8px 16px 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+.nav-group-h { display: flex; align-items: center; gap: 7px; padding: 8px 16px 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+.nav-group-h .nav-ico { width: 13px; height: 13px; flex-shrink: 0; opacity: .85; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .nav-group .tabbtn { padding-left: 22px; }
 .content { flex: 1; min-width: 0; overflow: auto; }
 .view { display: none; padding: 16px 18px; }
@@ -430,32 +431,32 @@ internal static class DashboardPage
 <div class="app-shell">
 <div class="tabbar">
   <div class="nav-group">
-    <div class="nav-group-h">Sources</div>
+    <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><circle cx="7" cy="7" r="1" fill="currentColor" stroke="none"/><circle cx="7" cy="17" r="1" fill="currentColor" stroke="none"/></svg>Sources</div>
     <button class="tabbtn" data-tab="opc-da" data-route="connectivity/opc-da" onclick="navigate('connectivity/opc-da')">OPC DA</button>
     <button class="tabbtn" data-tab="diagnostics" data-route="connectivity/diagnostics" onclick="navigate('connectivity/diagnostics')">Diagnostics</button>
   </div>
   <div class="nav-group">
-    <div class="nav-group-h">Tags</div>
+    <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><circle cx="7" cy="7" r="1.5" fill="currentColor" stroke="none"/></svg>Tags</div>
     <button class="tabbtn" data-tab="tags" data-route="tags/maps" onclick="navigate('tags/maps')">Maps</button>
     <button class="tabbtn" data-tab="links" data-route="tags/links" onclick="navigate('tags/links')">DA Links</button>
   </div>
   <div class="nav-group">
-    <div class="nav-group-h">IoT</div>
+    <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1.2" fill="currentColor" stroke="none"/></svg>IoT</div>
     <button class="tabbtn" data-tab="mqtt" data-route="iot/mqtt" onclick="navigate('iot/mqtt')">MQTT</button>
     <button class="tabbtn" data-tab="iot-traffic" data-route="iot/traffic" onclick="navigate('iot/traffic')">Traffic</button>
   </div>
   <div class="nav-group">
-    <div class="nav-group-h">Historian</div>
+    <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"/></svg>Historian</div>
     <button class="tabbtn" data-tab="influx" data-route="historian/influx" onclick="navigate('historian/influx')">InfluxDB</button>
   </div>
   <div class="nav-group">
-    <div class="nav-group-h">Ops</div>
+    <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>Ops</div>
     <button class="tabbtn active" data-tab="monitor" data-route="ops/monitor" onclick="navigate('ops/monitor')">Monitor</button>
     <button class="tabbtn" data-tab="logs" data-route="ops/logs" onclick="navigate('ops/logs')">Logs</button>
     <button class="tabbtn" data-tab="diagram" data-route="ops/diagram" onclick="navigate('ops/diagram')">Diagram</button>
   </div>
   <div class="nav-group">
-    <div class="nav-group-h">Help</div>
+    <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2.5-3 4.5"/><circle cx="12" cy="17.2" r="0.9" fill="currentColor" stroke="none"/></svg>Help</div>
     <button class="tabbtn" data-tab="help" data-route="help/guide" onclick="navigate('help/guide')">Guide</button>
     <button class="tabbtn" data-tab="about" data-route="help/about" onclick="navigate('help/about')">About</button>
   </div>
