@@ -100,16 +100,38 @@ public sealed class OpcUaSourceClient : IDaClient, ISubscribableSourceClient
 
             if (created is not Session session)
             {
-                created.Dispose();
+                await SafeCloseAndDisposeAsync(created).ConfigureAwait(false);
                 throw new InvalidOperationException(
                     $"OPC UA session factory returned unexpected type '{created.GetType().FullName}'.");
             }
 
+            Session? previous;
             lock (gate_)
             {
-                ObjectDisposedException.ThrowIf(disposed_, this);
-                session_ = session;
-                configuration_ = configuration;
+                if (disposed_)
+                {
+                    // Client was disposed while connecting — never store the new session.
+                    previous = null;
+                }
+                else
+                {
+                    previous = session_;
+                    session_ = session;
+                    configuration_ = configuration;
+                    session = null!; // ownership transferred
+                }
+            }
+
+            if (previous is not null)
+            {
+                await SafeCloseAndDisposeAsync(previous).ConfigureAwait(false);
+            }
+
+            if (session is not null)
+            {
+                // disposed_ was true under lock: close the just-created session and fail.
+                await SafeCloseAndDisposeAsync(session).ConfigureAwait(false);
+                throw new ObjectDisposedException(nameof(OpcUaSourceClient));
             }
 
             logger_.LogInformation(
@@ -224,9 +246,10 @@ public sealed class OpcUaSourceClient : IDaClient, ISubscribableSourceClient
             AttributeId = Attributes.Value,
             Value = new DataValue
             {
+                // Value-only write (no SourceTimestamp) so servers that reject
+                // timestamped writes accept the request.
                 Value = value,
-                StatusCode = StatusCodes.Good,
-                SourceTimestamp = DateTime.UtcNow
+                StatusCode = StatusCodes.Good
             }
         };
 
@@ -366,13 +389,35 @@ public sealed class OpcUaSourceClient : IDaClient, ISubscribableSourceClient
             return;
         }
 
+        await SafeCloseAndDisposeAsync(session).ConfigureAwait(false);
+    }
+
+    private async Task SafeCloseAndDisposeAsync(IDisposable session)
+    {
         try
         {
-            await session.CloseAsync(CancellationToken.None).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            logger_.LogDebug(ex, "Error closing OPC UA session for source {SourceId}", options_.SourceId);
+            if (session is Session s)
+            {
+                try
+                {
+                    await s.CloseAsync(CancellationToken.None).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    logger_.LogDebug(ex, "Error closing OPC UA session for source {SourceId}", options_.SourceId);
+                }
+            }
+            else if (session is ISession isession)
+            {
+                try
+                {
+                    await isession.CloseAsync(CancellationToken.None).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    logger_.LogDebug(ex, "Error closing OPC UA session for source {SourceId}", options_.SourceId);
+                }
+            }
         }
         finally
         {
