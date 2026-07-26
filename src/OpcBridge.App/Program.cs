@@ -190,16 +190,7 @@ app.MapGet("/api/da/sources", (DaRuntimeSettings settings) =>
     {
         updateRateMs = snapshot.UpdateRateMs,
         useSubscriptions = snapshot.UseSubscriptions,
-        sources = snapshot.Sources.Select(source => new
-        {
-            sourceId = source.SourceId,
-            displayName = source.DisplayName,
-            progId = source.ProgId,
-            host = source.Host,
-            updateRateMs = source.UpdateRateMs,
-            remoteUsername = source.RemoteUsername,
-            remoteDomain = source.RemoteDomain
-        })
+        sources = snapshot.Sources.Select(ToSourceApiDto)
     });
 });
 app.MapPost("/api/da/update-rate", (DaUpdateRateRequest request, DaRuntimeSettings settings) =>
@@ -251,12 +242,18 @@ app.MapPost("/api/da/sources/update-rate", (DaSourceUpdateRateRequest request, D
         updateRateMs = source.UpdateRateMs
     });
 });
-app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings settings) =>
+app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings settings, UaServerHost uaServer) =>
 {
     if (string.IsNullOrWhiteSpace(request.SourceId))
     {
         return Results.BadRequest(new { error = "Source ID is required." });
     }
+
+    if (!TryValidateSourceUpsert(request, uaServer.GetOptions().EndpointUrl, out string? validationError))
+    {
+        return Results.BadRequest(new { error = validationError });
+    }
+
     DaRuntimeSettingsSnapshot snapshot = settings.UpsertSource(new DaSourceRuntimeSettings(
         request.SourceId,
         request.DisplayName ?? string.Empty,
@@ -281,25 +278,7 @@ app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings
     return Results.Json(new
     {
         version = snapshot.Version,
-        source = new
-        {
-            sourceId = source.SourceId,
-            displayName = source.DisplayName,
-            sourceType = source.SourceType,
-            progId = source.ProgId,
-            host = source.Host,
-            endpointUrl = source.EndpointUrl,
-            securityMode = source.SecurityMode,
-            securityPolicy = source.SecurityPolicy,
-            updateRateMs = source.UpdateRateMs,
-            sessionTimeoutMs = source.SessionTimeoutMs,
-            reconnectDelayMs = source.ReconnectDelayMs,
-            maxMappedTags = source.MaxMappedTags,
-            useSubscriptions = source.UseSubscriptions,
-            remoteUsername = source.RemoteUsername,
-            remoteDomain = source.RemoteDomain,
-            uaUsername = source.UaUsername
-        }
+        source = ToSourceApiDto(source)
     });
 });
 app.MapPost("/api/da/sources/remove", (DaSourceRemoveRequest request, DaRuntimeSettings settings, MappingStore store, DaLinkStore daLinkStore) =>
@@ -437,7 +416,7 @@ app.MapGet("/api/mappings", (MappingStore store) =>
     (IReadOnlyList<TagMapping> mappings, long version) = store.GetSnapshot();
     return Results.Json(new { mappings, version });
 });
-app.MapPost("/api/mappings/add", (MappingAddRequest request, MappingStore store) =>
+app.MapPost("/api/mappings/add", (MappingAddRequest request, MappingStore store, DaRuntimeSettings settings) =>
 {
     if (request.Tags is null || request.Tags.Count == 0)
     {
@@ -449,7 +428,7 @@ app.MapPost("/api/mappings/add", (MappingAddRequest request, MappingStore store)
         return Results.BadRequest(new { error = "Source ID and DA Item ID are required for every mapping." });
     }
 
-    IEnumerable<TagMapping> tags = request.Tags
+    List<TagMapping> tags = request.Tags
         .Select(tag => new TagMapping
         {
             SourceId = tag.SourceId,
@@ -468,19 +447,25 @@ app.MapPost("/api/mappings/add", (MappingAddRequest request, MappingStore store)
             MqttEnabled = tag.MqttEnabled ?? false,
             MqttTopic = string.IsNullOrWhiteSpace(tag.MqttTopic) ? null : tag.MqttTopic,
             InfluxEnabled = tag.InfluxEnabled ?? false
-        });
+        })
+        .ToList();
+
+    if (TryGetMaxMappedTagsError(tags, store, settings) is { } maxError)
+    {
+        return Results.BadRequest(new { error = maxError });
+    }
 
     long version = store.Add(tags);
     return Results.Json(new { version });
 });
-app.MapPost("/api/mappings/bulk-add", (MappingAddRequest request, MappingStore store) =>
+app.MapPost("/api/mappings/bulk-add", (MappingAddRequest request, MappingStore store, DaRuntimeSettings settings) =>
 {
     if (request.Tags is null || request.Tags.Count == 0)
     {
         return Results.BadRequest(new { error = "At least one mapping is required." });
     }
 
-    IEnumerable<TagMapping> tags = request.Tags
+    List<TagMapping> tags = request.Tags
         .Select(tag => new TagMapping
         {
             SourceId = string.IsNullOrWhiteSpace(tag.SourceId) ? "default" : tag.SourceId,
@@ -500,11 +485,17 @@ app.MapPost("/api/mappings/bulk-add", (MappingAddRequest request, MappingStore s
             MqttTopic = string.IsNullOrWhiteSpace(tag.MqttTopic) ? null : tag.MqttTopic,
             InfluxEnabled = tag.InfluxEnabled ?? false
         })
-        .Where(tag => !string.IsNullOrWhiteSpace(tag.DaItemId));
+        .Where(tag => !string.IsNullOrWhiteSpace(tag.DaItemId))
+        .ToList();
+
+    if (TryGetMaxMappedTagsError(tags, store, settings) is { } maxError)
+    {
+        return Results.BadRequest(new { error = maxError });
+    }
 
     long version = store.Add(tags);
     return Results.Json(new { version, received = request.Tags.Count });
-    });
+});
 app.MapPost("/api/mappings/update", (MappingUpdateRequest request, MappingStore store) =>
 {
     if (string.IsNullOrWhiteSpace(request.Tag.SourceId) || string.IsNullOrWhiteSpace(request.Tag.DaItemId))
@@ -1077,6 +1068,214 @@ static string NormalizeDaLinkSourceId(string? sourceId)
 {
     string value = sourceId?.Trim() ?? string.Empty;
     return value.Length == 0 ? DaRuntimeSettings.DefaultSourceId : value;
+}
+
+static object ToSourceApiDto(DaSourceRuntimeSettings source)
+{
+    return new
+    {
+        sourceId = source.SourceId,
+        displayName = source.DisplayName,
+        sourceType = source.SourceType,
+        progId = source.ProgId,
+        host = source.Host,
+        endpointUrl = source.EndpointUrl,
+        securityMode = source.SecurityMode,
+        securityPolicy = source.SecurityPolicy,
+        updateRateMs = source.UpdateRateMs,
+        sessionTimeoutMs = source.SessionTimeoutMs,
+        reconnectDelayMs = source.ReconnectDelayMs,
+        maxMappedTags = source.MaxMappedTags,
+        useSubscriptions = source.UseSubscriptions,
+        remoteUsername = source.RemoteUsername,
+        remoteDomain = source.RemoteDomain,
+        uaUsername = source.UaUsername
+    };
+}
+
+static bool TryValidateSourceUpsert(DaServerConfigRequest request, string serverEndpointUrl, out string? error)
+{
+    error = null;
+    string sourceType = ResolveApiSourceType(request.SourceType, out string? typeError);
+    if (typeError is not null)
+    {
+        error = typeError;
+        return false;
+    }
+
+    if (string.Equals(sourceType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
+    {
+        string endpointUrl = request.EndpointUrl?.Trim() ?? string.Empty;
+        if (endpointUrl.Length == 0)
+        {
+            error = "Endpoint URL is required for OPC UA sources.";
+            return false;
+        }
+
+        if (!endpointUrl.StartsWith("opc.tcp://", StringComparison.OrdinalIgnoreCase))
+        {
+            error = "Endpoint URL must start with opc.tcp://.";
+            return false;
+        }
+
+        if (!TryValidateUaSecurity(request.SecurityMode, request.SecurityPolicy, out string? securityError))
+        {
+            error = securityError;
+            return false;
+        }
+
+        if (UaEndpointGuard.TargetsSelf(endpointUrl, serverEndpointUrl))
+        {
+            error = "Source endpoint cannot target this bridge's own OPC UA server.";
+            return false;
+        }
+
+        return true;
+    }
+
+    if (string.IsNullOrWhiteSpace(request.ProgId))
+    {
+        error = "ProgId is required for OPC DA sources.";
+        return false;
+    }
+
+    return true;
+}
+
+static string ResolveApiSourceType(string? sourceType, out string? error)
+{
+    error = null;
+    if (string.IsNullOrWhiteSpace(sourceType))
+    {
+        return SourceTypes.OpcDa;
+    }
+
+    string trimmed = sourceType.Trim();
+    if (string.Equals(trimmed, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
+    {
+        return SourceTypes.OpcUa;
+    }
+
+    if (string.Equals(trimmed, SourceTypes.OpcDa, StringComparison.OrdinalIgnoreCase))
+    {
+        return SourceTypes.OpcDa;
+    }
+
+    error = "Source type must be OpcDa or OpcUa.";
+    return string.Empty;
+}
+
+static bool TryValidateUaSecurity(string? securityMode, string? securityPolicy, out string? error)
+{
+    error = null;
+    string mode = string.IsNullOrWhiteSpace(securityMode) ? "None" : securityMode.Trim();
+    string policy = string.IsNullOrWhiteSpace(securityPolicy) ? "None" : securityPolicy.Trim();
+
+    bool modeOk = mode.Equals("None", StringComparison.OrdinalIgnoreCase)
+        || mode.Equals("Sign", StringComparison.OrdinalIgnoreCase)
+        || mode.Equals("SignAndEncrypt", StringComparison.OrdinalIgnoreCase);
+    if (!modeOk)
+    {
+        error = "Security mode must be None, Sign, or SignAndEncrypt.";
+        return false;
+    }
+
+    bool policyOk = policy.Equals("None", StringComparison.OrdinalIgnoreCase)
+        || policy.Equals("Basic256Sha256", StringComparison.OrdinalIgnoreCase);
+    if (!policyOk)
+    {
+        error = "Security policy must be None or Basic256Sha256.";
+        return false;
+    }
+
+    bool modeIsNone = mode.Equals("None", StringComparison.OrdinalIgnoreCase);
+    bool policyIsNone = policy.Equals("None", StringComparison.OrdinalIgnoreCase);
+    if (modeIsNone != policyIsNone)
+    {
+        error = "Security mode None requires policy None; Sign/SignAndEncrypt require Basic256Sha256.";
+        return false;
+    }
+
+    if (!modeIsNone && !policy.Equals("Basic256Sha256", StringComparison.OrdinalIgnoreCase))
+    {
+        error = "Security mode None requires policy None; Sign/SignAndEncrypt require Basic256Sha256.";
+        return false;
+    }
+
+    return true;
+}
+
+static string? TryGetMaxMappedTagsError(
+    IReadOnlyList<TagMapping> incoming,
+    MappingStore store,
+    DaRuntimeSettings settings)
+{
+    if (incoming.Count == 0)
+    {
+        return null;
+    }
+
+    (IReadOnlyList<TagMapping> existing, _) = store.GetSnapshot();
+    DaRuntimeSettingsSnapshot snapshot = settings.GetSnapshot();
+
+    Dictionary<string, HashSet<string>> incomingBySource = new(StringComparer.OrdinalIgnoreCase);
+    foreach (TagMapping tag in incoming)
+    {
+        string sourceId = string.IsNullOrWhiteSpace(tag.SourceId)
+            ? DaRuntimeSettings.DefaultSourceId
+            : tag.SourceId.Trim();
+        string itemId = tag.DaItemId?.Trim() ?? string.Empty;
+        if (itemId.Length == 0)
+        {
+            continue;
+        }
+
+        if (!incomingBySource.TryGetValue(sourceId, out HashSet<string>? items))
+        {
+            items = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            incomingBySource[sourceId] = items;
+        }
+
+        items.Add(itemId);
+    }
+
+    foreach ((string sourceId, HashSet<string> newItems) in incomingBySource)
+    {
+        DaSourceRuntimeSettings? source = snapshot.GetSource(sourceId);
+        if (source is null
+            || !string.Equals(source.SourceType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
+        {
+            continue;
+        }
+
+        HashSet<string> existingItems = new(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < existing.Count; i++)
+        {
+            TagMapping mapping = existing[i];
+            if (string.Equals(mapping.SourceId, sourceId, StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(mapping.DaItemId))
+            {
+                existingItems.Add(mapping.DaItemId);
+            }
+        }
+
+        int newUnique = 0;
+        foreach (string itemId in newItems)
+        {
+            if (!existingItems.Contains(itemId))
+            {
+                newUnique++;
+            }
+        }
+
+        int total = existingItems.Count + newUnique;
+        if (total > source.MaxMappedTags)
+        {
+            return $"Source {source.SourceId} exceeds MaxMappedTags ({source.MaxMappedTags}).";
+        }
+    }
+
+    return null;
 }
 
 static bool TryParseLogLevel(string? value, out LogLevel level)
