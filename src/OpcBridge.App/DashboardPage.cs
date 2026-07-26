@@ -11,7 +11,9 @@ namespace OpcBridge.App;
 //   state.linkDraft.consumer = null, state.linkDraft.provider = null
 //   function browseLinkTags(, state.linkDraft, data-action="pick-link-consumer", data-action="pick-link-provider"
 //   data-tab="opc-da", id="view-opc-da", data-route="connectivity/opc-da", text "OPC DA"
-//   Sources is a sidebar group label only (not a page); legacy connectivity/sources → opc-da
+//   data-tab="opc-ua", id="view-opc-ua", data-route="connectivity/opc-ua", text "OPC UA"
+//   data-tab="connection", id="view-connection", id="sourcesStatusList", data-route="connectivity/sources", text "Sources"
+//   id="uaCfgEndpointUrl", id="uaCfgSourceId", function saveUaSource/testUaConnection
 internal static class DashboardPage
 {
     public const string Html = """
@@ -432,7 +434,9 @@ internal static class DashboardPage
 <div class="tabbar">
   <div class="nav-group">
     <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><circle cx="7" cy="7" r="1" fill="currentColor" stroke="none"/><circle cx="7" cy="17" r="1" fill="currentColor" stroke="none"/></svg>Sources</div>
+    <button class="tabbtn" data-tab="connection" data-route="connectivity/sources" onclick="navigate('connectivity/sources')">Sources</button>
     <button class="tabbtn" data-tab="opc-da" data-route="connectivity/opc-da" onclick="navigate('connectivity/opc-da')">OPC DA</button>
+    <button class="tabbtn" data-tab="opc-ua" data-route="connectivity/opc-ua" onclick="navigate('connectivity/opc-ua')">OPC UA</button>
     <button class="tabbtn" data-tab="diagnostics" data-route="connectivity/diagnostics" onclick="navigate('connectivity/diagnostics')">Diagnostics</button>
   </div>
   <div class="nav-group">
@@ -566,6 +570,15 @@ internal static class DashboardPage
         <div class="box-b"><div class="list" id="diagStaThreads" style="max-height:280px"><span class="msg">Loading…</span></div></div>
     </div>
 </div>
+<div class="view" id="view-connection">
+    <div class="box">
+        <div class="box-h">Sources <button class="btn" type="button" onclick="openAddSourceWizard()" style="margin-left:auto">+ Add Source</button></div>
+        <div class="box-b">
+            <div class="hint" id="sourcesStatusHint">Select a source to open its OPC DA or OPC UA configuration.</div>
+            <div class="list" id="sourcesStatusList" style="max-height:none"></div>
+        </div>
+    </div>
+</div>
 <div class="view" id="view-opc-da">
     <div class="conn-layout">
         <div class="conn-main">
@@ -635,43 +648,122 @@ internal static class DashboardPage
         </div>
     </div>
 </div>
+<div class="view" id="view-opc-ua">
+    <div class="conn-layout">
+        <div class="conn-main">
+            <div class="box">
+                <div class="box-h">OPC UA Configuration <button class="btn" type="button" onclick="openAddSourceWizard()" style="margin-left:auto">+ Add Source</button><span class="msg" id="uaCfgMessage" style="font-weight:400;text-transform:none;letter-spacing:0">Select a saved connection or click New.</span></div>
+                <div class="box-b">
+                    <div class="field"><label class="fl">Selected</label><select id="uaSelectedSource"></select></div>
+                    <div class="conn-section">
+                        <div class="conn-section-h">Identity</div>
+                        <div class="field"><label class="fl">Source ID <span class="info" data-tip="Unique key with no spaces. Used internally and in UA Node IDs (ns=2;s={sourceId}/...).">i</span></label><input id="uaCfgSourceId" type="text" placeholder="ua-plant-a" style="flex:1"></div>
+                        <div class="field"><label class="fl">Name <span class="info" data-tip="Friendly label shown in lists and the Tags tab.">i</span></label><input id="uaCfgDisplayName" type="text" placeholder="Plant UA Server" style="flex:1"></div>
+                    </div>
+                    <div class="conn-section">
+                        <div class="conn-section-h">Endpoint</div>
+                        <div class="field"><label class="fl">Endpoint URL <span class="info" data-tip="opc.tcp URL of the external OPC UA server the bridge connects to as a client (not this bridge's own endpoint).">i</span></label><input id="uaCfgEndpointUrl" type="text" placeholder="opc.tcp://192.168.1.10:4840" style="flex:1"></div>
+                        <div class="field"><label class="fl">Security Mode</label><select id="uaCfgSecurityMode"><option value="None">None</option><option value="Sign">Sign</option><option value="SignAndEncrypt">SignAndEncrypt</option></select></div>
+                        <div class="field"><label class="fl">Security Policy</label><select id="uaCfgSecurityPolicy"><option value="None">None</option><option value="Basic256Sha256">Basic256Sha256</option></select></div>
+                    </div>
+                    <div class="conn-section">
+                        <div class="conn-section-h">Credentials <span class="info" data-tip="Optional UserName token. Leave blank for anonymous.">i</span></div>
+                        <div class="field"><label class="fl">User</label><input id="uaCfgUser" type="text" placeholder="username" style="flex:1"><input id="uaCfgPass" type="password" placeholder="password" style="flex:1"></div>
+                    </div>
+                    <div class="conn-section">
+                        <div class="conn-section-h">Update &amp; Scale</div>
+                        <div class="field"><label class="fl">Update Rate</label><select id="uaCfgUpdateRate"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
+                        <div class="field"><label class="fl">Max Mapped Tags <span class="info" data-tip="Hard cap on mappings for this UA source. Only mapped NodeIds are subscribed.">i</span></label><input id="uaCfgMaxMappedTags" type="number" min="1" value="50000" style="flex:1"></div>
+                        <div class="field"><label class="fl">Subscriptions</label><input type="checkbox" id="uaCfgUseSubscriptions" checked><span class="msg" id="uaSubMessage">MonitoredItems for mapped tags</span></div>
+                    </div>
+                    <div class="toolbar" style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
+                        <button class="btn" id="btnUaTestConnection" type="button">Test Connection</button>
+                        <button class="btn" id="uaCfgApply" type="button" style="display:none">Save</button>
+                        <button class="btn ghost" id="uaCfgReset" type="button" style="display:none">Reset</button>
+                        <button class="btn ghost" id="uaCfgNew" type="button">New</button>
+                        <button class="btn ghost" id="uaCfgRemove" type="button">Remove</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="conn-side">
+            <div class="box">
+                <div class="box-h">Saved UA Connections <span class="msg" id="pUaSourcesSide" style="margin-left:auto"></span></div>
+                <div class="box-b">
+                    <div class="list" id="uaSourcesList" style="max-height:280px"></div>
+                </div>
+            </div>
+            <div class="box">
+                <div class="box-h">Notes</div>
+                <div class="box-b">
+                    <div class="hint">OPC UA <b>source</b> = bridge connects outbound to an external UA server. The Monitor page OPC UA endpoint is the bridge's own server for clients.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 <div class="modal-overlay" id="addSourceWizard" style="display:none" onclick="if(event.target===this)closeAddSourceWizard()">
     <div class="modal wizard" role="dialog" aria-modal="true" aria-labelledby="addSourceWizardTitle">
         <div class="modal-head">
-            <div class="modal-title" id="addSourceWizardTitle">Add OPC DA Source</div>
+            <div class="modal-title" id="addSourceWizardTitle">Add Source</div>
             <button class="modal-close" type="button" onclick="closeAddSourceWizard()">&times;</button>
         </div>
         <div class="wizard-steps">
-            <span class="wizard-step" data-step="1">1. Identity</span>
-            <span class="wizard-step" data-step="2">2. Server</span>
-            <span class="wizard-step" data-step="3">3. Credentials</span>
-            <span class="wizard-step" data-step="4">4. Defaults</span>
-            <span class="wizard-step" data-step="5">5. Review</span>
+            <span class="wizard-step" data-step="1">1. Type</span>
+            <span class="wizard-step" data-step="2">2. Identity</span>
+            <span class="wizard-step" data-step="3">3. Server</span>
+            <span class="wizard-step" data-step="4">4. Auth</span>
+            <span class="wizard-step" data-step="5">5. Defaults</span>
+            <span class="wizard-step" data-step="6">6. Review</span>
         </div>
         <div class="wizard-body">
             <div class="wizard-pane active" data-pane="1">
+                <div class="field"><label class="fl">Source Type</label>
+                    <select id="wzSourceType" onchange="wzOnTypeChange()">
+                        <option value="OpcDa">OPC DA</option>
+                        <option value="OpcUa">OPC UA</option>
+                    </select>
+                </div>
+                <div class="hint">OPC DA uses ProgID/Host (Windows COM). OPC UA uses an opc.tcp endpoint (cross-platform client).</div>
+            </div>
+            <div class="wizard-pane" data-pane="2">
                 <div class="field"><label class="fl">Source ID</label><input type="text" id="wzSourceId" placeholder="server-a"></div>
                 <div class="field"><label class="fl">Display Name</label><input type="text" id="wzDisplayName" placeholder="(optional)"></div>
                 <div class="hint">Unique key with no spaces. Used in UA Node IDs (ns=2;s={sourceId}/...).</div>
             </div>
-            <div class="wizard-pane" data-pane="2">
-                <div class="field"><label class="fl">Host</label><input type="text" id="wzHost" placeholder="localhost"></div>
-                <div class="field"><label class="fl">ProgID / CLSID</label><input type="text" id="wzProgId" placeholder="Kepware.KEPServerEX.V6"></div>
-                <button class="btn ghost" type="button" onclick="wzBrowseServers()">Browse Servers</button>
-                <span class="msg" id="wzMsgServers"></span>
-                <div class="list" id="wzListServers" style="max-height:180px"></div>
-            </div>
             <div class="wizard-pane" data-pane="3">
-                <div class="field"><label class="fl">Domain</label><input type="text" id="wzDomain" placeholder="(optional)"></div>
-                <div class="field"><label class="fl">Username</label><input type="text" id="wzUser" placeholder="(optional)"></div>
-                <div class="field"><label class="fl">Password</label><input type="password" id="wzPass"></div>
-                <div class="hint">Only required for remote DCOM or servers in another user's profile.</div>
+                <div id="wzDaServerFields">
+                    <div class="field"><label class="fl">Host</label><input type="text" id="wzHost" placeholder="localhost"></div>
+                    <div class="field"><label class="fl">ProgID / CLSID</label><input type="text" id="wzProgId" placeholder="Kepware.KEPServerEX.V6"></div>
+                    <button class="btn ghost" type="button" onclick="wzBrowseServers()">Browse Servers</button>
+                    <span class="msg" id="wzMsgServers"></span>
+                    <div class="list" id="wzListServers" style="max-height:180px"></div>
+                </div>
+                <div id="wzUaServerFields" style="display:none">
+                    <div class="field"><label class="fl">Endpoint URL</label><input type="text" id="wzEndpointUrl" placeholder="opc.tcp://host:4840"></div>
+                    <div class="field"><label class="fl">Security Mode</label><select id="wzSecurityMode"><option value="None">None</option><option value="Sign">Sign</option><option value="SignAndEncrypt">SignAndEncrypt</option></select></div>
+                    <div class="field"><label class="fl">Security Policy</label><select id="wzSecurityPolicy"><option value="None">None</option><option value="Basic256Sha256">Basic256Sha256</option></select></div>
+                </div>
             </div>
             <div class="wizard-pane" data-pane="4">
-                <div class="field"><label class="fl">Update Rate</label><select id="wzUpdateRate"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000" selected>1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
-                <div class="field"><label class="fl">Subscriptions</label><input type="checkbox" id="wzSubs" checked> <span class="msg">Use IOPCDataCallback (recommended)</span></div>
+                <div id="wzDaAuthFields">
+                    <div class="field"><label class="fl">Domain</label><input type="text" id="wzDomain" placeholder="(optional)"></div>
+                    <div class="field"><label class="fl">Username</label><input type="text" id="wzUser" placeholder="(optional)"></div>
+                    <div class="field"><label class="fl">Password</label><input type="password" id="wzPass"></div>
+                    <div class="hint">Only required for remote DCOM or servers in another user's profile.</div>
+                </div>
+                <div id="wzUaAuthFields" style="display:none">
+                    <div class="field"><label class="fl">UA Username</label><input type="text" id="wzUaUser" placeholder="(optional, anonymous if empty)"></div>
+                    <div class="field"><label class="fl">UA Password</label><input type="password" id="wzUaPass"></div>
+                    <div class="hint">UserName token credentials for the external OPC UA server.</div>
+                </div>
             </div>
             <div class="wizard-pane" data-pane="5">
+                <div class="field"><label class="fl">Update Rate</label><select id="wzUpdateRate"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000" selected>1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
+                <div class="field"><label class="fl">Subscriptions</label><input type="checkbox" id="wzSubs" checked> <span class="msg" id="wzSubsHint">Use IOPCDataCallback (recommended)</span></div>
+                <div class="field" id="wzMaxTagsField" style="display:none"><label class="fl">Max Mapped Tags</label><input type="number" id="wzMaxMappedTags" min="1" value="50000"></div>
+            </div>
+            <div class="wizard-pane" data-pane="6">
                 <div class="wizard-summary" id="wzSummary"></div>
                 <div class="hint">Click Finish to save. You can map tags next.</div>
             </div>
@@ -1111,6 +1203,7 @@ const state = {
     sources: [],
     selectedSourceId: 'default',
     editingNewSource: false,
+    editingNewUaSource: false,
     liveValuesEnabled: true,
     lastValueCount: 0,
     updateRateMs: 1000,
@@ -2406,8 +2499,9 @@ function updateManualInputState() {
 }
 
 const ROUTE_TO_TAB = {
-  'connectivity/sources': 'opc-da',
+  'connectivity/sources': 'connection',
   'connectivity/opc-da': 'opc-da',
+  'connectivity/opc-ua': 'opc-ua',
   'connectivity/diagnostics': 'diagnostics',
   'tags/maps': 'tags',
   'tags/links': 'links',
@@ -2444,7 +2538,7 @@ async function showTab(name, route) {
   if (activeTab === 'help') loadHelp().catch(e => el('helpContent').innerHTML = '<span class="msg bad">✗ ' + esc(e.message) + '</span>');
   if (activeTab === 'mqtt') { await loadMqtt(); await loadMqttValues(); }
   if (name === 'influx') { await loadInflux(); }
-  if (activeTab === 'opc-da') {
+  if (activeTab === 'opc-da' || activeTab === 'opc-ua' || activeTab === 'connection') {
     await loadSources().catch(e => console.warn(e));
   }
   if (activeTab === 'links') loadDaLinks().catch(e => el('linksMessage').textContent = '✗ ' + e.message);
@@ -2479,37 +2573,92 @@ function locTime(u) { return u ? new Date(u).toLocaleString() : '—'; }
 function get(o, k) { return o?.[k] ?? o?.[k[0].toUpperCase() + k.slice(1)]; }
 function currentSource() { return state.editingNewSource ? null : state.sources.find(s => s.sourceId === state.selectedSourceId) || null; }
 function defaultUaNodeId(sourceId, itemId) { return `ns=2;s=${sourceId}/${itemId}`; }
+function isUaSource(source) {
+    const t = String(source?.sourceType || source?.SourceType || 'OpcDa');
+    return t.toLowerCase() === 'opcua';
+}
+function sourceTypeLabel(source) { return isUaSource(source) ? 'UA' : 'DA'; }
+function sourceTypeBadge(source) {
+    return isUaSource(source) ? badge('UA', 'partial') : badge('DA', 'warn');
+}
+function sourceEndpointSummary(source) {
+    if (isUaSource(source)) {
+        return esc(source.endpointUrl || source.EndpointUrl || '—');
+    }
+    return `${esc(source.host || 'localhost')} · ${esc(source.progId || '')}`;
+}
+function sourceStatusRowHtml(source) {
+    const st = source.connectionState || source.ConnectionState || '';
+    const err = source.lastError || source.LastError || '';
+    const errBit = err ? ` · <span class="bad">${esc(err)}</span>` : '';
+    return `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)} ${sourceTypeBadge(source)} ${st ? badge(st, stateClass(st)) : ''}</div><div class="p">${esc(source.sourceId)} · ${sourceEndpointSummary(source)} · ${formatMs(source.updateRateMs)}${errBit}</div></div><button class="btn ghost" data-action="select-source-status" data-source-id="${attr(source.sourceId)}">Select</button></div>`;
+}
+function renderSourcesStatusList() {
+    const host = el('sourcesStatusList');
+    if (!host) return;
+    host.innerHTML = state.sources.length
+        ? state.sources.map(sourceStatusRowHtml).join('')
+        : '<span class="msg">No sources configured. Click + Add Source.</span>';
+}
+function daSources() { return state.sources.filter(s => !isUaSource(s)); }
+function uaSources() { return state.sources.filter(s => isUaSource(s)); }
 function renderSources() {
     const select = el('selectedSource');
     const mapSelect = el('mapSourceSelect');
-    const options = state.sources.map(source => `<option value="${esc(source.sourceId)}">${esc(source.displayName || source.sourceId)}</option>`).join('');
-    select.innerHTML = options;
-    mapSelect.innerHTML = options;
-    if (!state.editingNewSource && !state.sources.some(source => source.sourceId === state.selectedSourceId) && state.sources.length) {
+    const uaSelect = el('uaSelectedSource');
+    const allOpts = state.sources.map(source => `<option value="${esc(source.sourceId)}">${esc(source.displayName || source.sourceId)} [${sourceTypeLabel(source)}]</option>`).join('');
+    const daOpts = daSources().map(source => `<option value="${esc(source.sourceId)}">${esc(source.displayName || source.sourceId)}</option>`).join('');
+    const uaOpts = uaSources().map(source => `<option value="${esc(source.sourceId)}">${esc(source.displayName || source.sourceId)}</option>`).join('');
+    if (select) select.innerHTML = daOpts;
+    if (mapSelect) mapSelect.innerHTML = allOpts;
+    if (uaSelect) uaSelect.innerHTML = uaOpts;
+    if (!state.editingNewSource && !state.editingNewUaSource && !state.sources.some(source => source.sourceId === state.selectedSourceId) && state.sources.length) {
         state.selectedSourceId = state.sources[0].sourceId;
     }
-    select.value = state.selectedSourceId;
-    mapSelect.value = state.selectedSourceId;
+    if (select) select.value = state.selectedSourceId;
+    if (mapSelect) mapSelect.value = state.selectedSourceId;
+    if (uaSelect) uaSelect.value = state.selectedSourceId;
     el('pSources').textContent = state.sources.length;
     const noSources = state.sources.length === 0;
     const bannerNo = el('bannerNoSources');
     if (bannerNo) bannerNo.style.display = noSources ? '' : 'none';
-    if (bannerNo && noSources) bannerNo.innerHTML = 'No OPC DA sources configured. <button class="btn" type="button" onclick="navigate(\'connectivity/opc-da\')">Add Source</button>';
+    if (bannerNo && noSources) bannerNo.innerHTML = 'No sources configured. <button class="btn" type="button" onclick="navigate(\'connectivity/sources\')">Add Source</button>';
     const bannerTags = el('bannerTagsNoSources');
     if (bannerTags) bannerTags.style.display = noSources ? '' : 'none';
-    if (bannerTags && noSources) bannerTags.innerHTML = 'No sources yet. <button class="btn" type="button" onclick="navigate(\'connectivity/opc-da\')">Add Source</button>';
+    if (bannerTags && noSources) bannerTags.innerHTML = 'No sources yet. <button class="btn" type="button" onclick="navigate(\'connectivity/sources\')">Add Source</button>';
     updateNoMappingsBanner();
-    const sideCount = el('pSourcesSide'); if (sideCount) sideCount.textContent = state.sources.length + ' source' + (state.sources.length !== 1 ? 's' : '');
+    const sideCount = el('pSourcesSide');
+    if (sideCount) {
+        const n = daSources().length;
+        sideCount.textContent = n + ' source' + (n !== 1 ? 's' : '');
+    }
+    const uaSide = el('pUaSourcesSide');
+    if (uaSide) {
+        const n = uaSources().length;
+        uaSide.textContent = n + ' source' + (n !== 1 ? 's' : '');
+    }
     const list = el('sourcesList');
-    if (list) list.innerHTML = state.sources.length ? state.sources.map(source =>
-        `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)}</div><div class="p">${esc(source.sourceId)} · ${esc(source.host || 'localhost')} · ${esc(source.progId || '')} · ${formatMs(source.updateRateMs)}</div></div><button class="btn ghost" data-action="select-source" data-source-id="${attr(source.sourceId)}">Select</button></div>`
-    ).join('') : '<span class="msg">No sources configured.</span>';
+    if (list) {
+        const das = daSources();
+        list.innerHTML = das.length ? das.map(source =>
+            `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)} ${sourceTypeBadge(source)}</div><div class="p">${esc(source.sourceId)} · ${esc(source.host || 'localhost')} · ${esc(source.progId || '')} · ${formatMs(source.updateRateMs)}</div></div><button class="btn ghost" data-action="select-source" data-source-id="${attr(source.sourceId)}">Select</button></div>`
+        ).join('') : '<span class="msg">No OPC DA sources configured.</span>';
+    }
+    const uaList = el('uaSourcesList');
+    if (uaList) {
+        const uas = uaSources();
+        uaList.innerHTML = uas.length ? uas.map(source =>
+            `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)} ${sourceTypeBadge(source)}</div><div class="p">${esc(source.sourceId)} · ${esc(source.endpointUrl || '')} · ${formatMs(source.updateRateMs)}</div></div><button class="btn ghost" data-action="select-ua-source" data-source-id="${attr(source.sourceId)}">Select</button></div>`
+        ).join('') : '<span class="msg">No OPC UA sources configured.</span>';
+    }
+    renderSourcesStatusList();
     loadSelectedSourceForm();
+    loadSelectedUaSourceForm();
 }
 function loadSelectedSourceForm() {
+    if (state.editingNewSource) return;
     const source = currentSource();
-    if (!source) return;
-    state.editingNewSource = false;
+    if (!source || isUaSource(source)) return;
     el('cfgSourceId').value = source.sourceId || '';
     el('cfgSourceId').disabled = true;
     el('cfgDisplayName').value = source.displayName || '';
@@ -2521,13 +2670,31 @@ function loadSelectedSourceForm() {
     el('cfgMessage').textContent = 'Editing ' + (source.displayName || source.sourceId) + '.';
     hideSaveReset();
 }
+function loadSelectedUaSourceForm() {
+    if (state.editingNewUaSource) return;
+    const source = currentSource();
+    if (!source || !isUaSource(source)) return;
+    el('uaCfgSourceId').value = source.sourceId || '';
+    el('uaCfgSourceId').disabled = true;
+    el('uaCfgDisplayName').value = source.displayName || '';
+    el('uaCfgEndpointUrl').value = source.endpointUrl || '';
+    el('uaCfgSecurityMode').value = source.securityMode || 'None';
+    el('uaCfgSecurityPolicy').value = source.securityPolicy || 'None';
+    el('uaCfgUser').value = source.uaUsername || '';
+    el('uaCfgPass').value = '';
+    el('uaCfgUpdateRate').value = String(source.updateRateMs || state.updateRateMs || 1000);
+    el('uaCfgMaxMappedTags').value = String(source.maxMappedTags || 50000);
+    el('uaCfgUseSubscriptions').checked = source.useSubscriptions !== false;
+    el('uaCfgMessage').textContent = 'Editing ' + (source.displayName || source.sourceId) + '.';
+    hideUaSaveReset();
+}
 async function loadSources() {
     const payload = await (await fetch('/api/da/sources', { cache: 'no-store' })).json();
     state.sources = payload.sources || [];
     state.updateRateMs = Number(payload.updateRateMs || state.updateRateMs || 1000);
     state.useSubscriptions = payload.useSubscriptions !== false;
-    el('cfgUseSubscriptions').checked = state.useSubscriptions;
-    if (document.activeElement !== el('cfgUpdateRate')) el('cfgUpdateRate').value = String(state.updateRateMs);
+    if (el('cfgUseSubscriptions')) el('cfgUseSubscriptions').checked = state.useSubscriptions;
+    if (el('cfgUpdateRate') && document.activeElement !== el('cfgUpdateRate')) el('cfgUpdateRate').value = String(state.updateRateMs);
     renderSources();
     if (document.getElementById('view-links')?.classList.contains('active')) renderLinksView();
 }
@@ -3377,9 +3544,10 @@ async function updateMapping(sourceId, itemId, mutate) {
     el('mappingMessage').textContent = 'Mapping updated.';
 }
 
-function pickSource(sourceId) {
+function pickSource(sourceId, opts) {
     state.selectedSourceId = sourceId;
     state.editingNewSource = false;
+    state.editingNewUaSource = false;
     state.tagPath = '';
     el('tagTree').innerHTML = '<span class="msg">Browse the active source to load tags.</span>';
     el('tagStatus').textContent = 'Browse all tags, or open folders one level at a time.';
@@ -3387,6 +3555,11 @@ function pickSource(sourceId) {
     resetLinkBrowser();
     renderSources();
     if (document.getElementById('view-links')?.classList.contains('active')) renderLinksView();
+    if (opts && opts.openConfig) {
+        const src = state.sources.find(s => s.sourceId === sourceId);
+        if (src && isUaSource(src)) navigate('connectivity/opc-ua');
+        else navigate('connectivity/opc-da');
+    }
 }
 async function saveSource() {
     const sourceId = el('cfgSourceId').value.trim();
@@ -3397,6 +3570,7 @@ async function saveSource() {
     const body = {
         sourceId,
         displayName: el('cfgDisplayName').value.trim() || null,
+        sourceType: 'OpcDa',
         progId: el('cfgProgId').value.trim(),
         host: el('cfgHost').value.trim() || 'localhost',
         remoteUsername: el('cfgUser').value.trim() || null,
@@ -3434,7 +3608,7 @@ async function saveUpdateRate() {
 }
 async function removeSelectedSource() {
     const source = currentSource();
-    if (!source || state.editingNewSource) return;
+    if (!source || state.editingNewSource || isUaSource(source)) return;
     if (!confirm('Remove source "' + source.sourceId + '" and its DA → OPC UA mappings?')) return;
     const r = await fetch('/api/da/sources/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId: source.sourceId }) });
     const p = await r.json();
@@ -3456,6 +3630,7 @@ function resetSource() {
 function newSource() {
     state.selectedSourceId = '';
     state.editingNewSource = true;
+    state.editingNewUaSource = false;
     el('selectedSource').value = '';
     el('mapSourceSelect').value = '';
     el('cfgSourceId').disabled = false;
@@ -3470,17 +3645,137 @@ function newSource() {
     el('cfgMessage').textContent = 'Enter a unique Source ID, then save.';
     showSaveReset();
 }
+function showUaSaveReset() { el('uaCfgApply').style.display = ''; el('uaCfgReset').style.display = ''; }
+function hideUaSaveReset() { el('uaCfgApply').style.display = 'none'; el('uaCfgReset').style.display = 'none'; }
+function newUaSource() {
+    state.selectedSourceId = '';
+    state.editingNewUaSource = true;
+    state.editingNewSource = false;
+    if (el('uaSelectedSource')) el('uaSelectedSource').value = '';
+    el('uaCfgSourceId').disabled = false;
+    el('uaCfgSourceId').value = '';
+    el('uaCfgDisplayName').value = '';
+    el('uaCfgEndpointUrl').value = '';
+    el('uaCfgSecurityMode').value = 'None';
+    el('uaCfgSecurityPolicy').value = 'None';
+    el('uaCfgUser').value = '';
+    el('uaCfgPass').value = '';
+    el('uaCfgUpdateRate').value = String(state.updateRateMs || 1000);
+    el('uaCfgMaxMappedTags').value = '50000';
+    el('uaCfgUseSubscriptions').checked = true;
+    el('uaCfgMessage').textContent = 'Enter a unique Source ID and endpoint, then save.';
+    showUaSaveReset();
+}
+function resetUaSource() {
+    if (state.editingNewUaSource) { newUaSource(); return; }
+    loadSelectedUaSourceForm();
+    el('uaCfgMessage').textContent = 'Reverted to saved values.';
+}
+async function saveUaSource() {
+    const sourceId = el('uaCfgSourceId').value.trim();
+    if (!sourceId) {
+        el('uaCfgMessage').textContent = '✗ Source ID is required.';
+        return;
+    }
+    const endpointUrl = el('uaCfgEndpointUrl').value.trim();
+    if (!endpointUrl) {
+        el('uaCfgMessage').textContent = '✗ Endpoint URL is required.';
+        return;
+    }
+    const body = {
+        sourceId,
+        displayName: el('uaCfgDisplayName').value.trim() || null,
+        sourceType: 'OpcUa',
+        endpointUrl,
+        securityMode: el('uaCfgSecurityMode').value,
+        securityPolicy: el('uaCfgSecurityPolicy').value,
+        uaUsername: el('uaCfgUser').value.trim() || null,
+        uaPassword: el('uaCfgPass').value || null,
+        updateRateMs: parseInt(el('uaCfgUpdateRate').value, 10) || 1000,
+        maxMappedTags: parseInt(el('uaCfgMaxMappedTags').value, 10) || 50000,
+        useSubscriptions: el('uaCfgUseSubscriptions').checked,
+        progId: '',
+        host: ''
+    };
+    const r = await fetch('/api/da/sources', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const p = await r.json();
+    if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
+    state.selectedSourceId = p.source?.sourceId || body.sourceId;
+    state.editingNewUaSource = false;
+    await loadSources();
+    await refresh();
+    el('uaCfgMessage').textContent = 'Source saved.';
+    hideUaSaveReset();
+}
+async function testUaConnection() {
+    const body = {
+        endpointUrl: el('uaCfgEndpointUrl').value.trim(),
+        securityMode: el('uaCfgSecurityMode').value,
+        securityPolicy: el('uaCfgSecurityPolicy').value,
+        username: el('uaCfgUser').value.trim() || null,
+        password: el('uaCfgPass').value || null,
+        sourceId: el('uaCfgSourceId').value.trim() || null
+    };
+    if (!body.endpointUrl) {
+        el('uaCfgMessage').textContent = '✗ Endpoint URL is required.';
+        return;
+    }
+    el('uaCfgMessage').textContent = 'Testing connection…';
+    const r = await fetch('/api/ua/test-connection', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const p = await r.json().catch(() => ({}));
+    if (!r.ok || p.ok === false) {
+        el('uaCfgMessage').textContent = '✗ ' + (p.error || p.message || ('HTTP ' + r.status));
+        return;
+    }
+    const bits = [];
+    if (p.serverProductName || p.productName) bits.push(p.serverProductName || p.productName);
+    if (p.sessionId) bits.push('session ' + p.sessionId);
+    el('uaCfgMessage').textContent = '✓ Connected' + (bits.length ? ' — ' + bits.join(' · ') : '.');
+}
+async function removeSelectedUaSource() {
+    const source = currentSource();
+    if (!source || !isUaSource(source) || state.editingNewUaSource) return;
+    if (!confirm('Remove source "' + source.sourceId + '" and its mappings?')) return;
+    const r = await fetch('/api/da/sources/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId: source.sourceId }) });
+    const p = await r.json();
+    if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
+    state.selectedSourceId = 'default';
+    await loadSources();
+    await loadMappings();
+    await refresh();
+    el('uaCfgMessage').textContent = 'Source removed.';
+}
 let wzCurrentStep = 1;
-const WZ_STEPS = 5;
-
+const WZ_STEPS = 6;
+function wzIsUa() { return (el('wzSourceType')?.value || 'OpcDa') === 'OpcUa'; }
+function wzOnTypeChange() {
+  const ua = wzIsUa();
+  const daServer = el('wzDaServerFields');
+  const uaServer = el('wzUaServerFields');
+  const daAuth = el('wzDaAuthFields');
+  const uaAuth = el('wzUaAuthFields');
+  const maxTags = el('wzMaxTagsField');
+  if (daServer) daServer.style.display = ua ? 'none' : '';
+  if (uaServer) uaServer.style.display = ua ? '' : 'none';
+  if (daAuth) daAuth.style.display = ua ? 'none' : '';
+  if (uaAuth) uaAuth.style.display = ua ? '' : 'none';
+  if (maxTags) maxTags.style.display = ua ? '' : 'none';
+  const hint = el('wzSubsHint');
+  if (hint) hint.textContent = ua ? 'Use MonitoredItems for mapped tags (recommended)' : 'Use IOPCDataCallback (recommended)';
+}
 function openAddSourceWizard() {
   wzCurrentStep = 1;
-  ['wzSourceId','wzDisplayName','wzHost','wzProgId','wzDomain','wzUser','wzPass'].forEach(id => el(id).value = '');
+  ['wzSourceId','wzDisplayName','wzHost','wzProgId','wzDomain','wzUser','wzPass','wzEndpointUrl','wzUaUser','wzUaPass'].forEach(id => { const n = el(id); if (n) n.value = ''; });
+  if (el('wzSourceType')) el('wzSourceType').value = 'OpcDa';
   el('wzHost').value = 'localhost';
   el('wzSubs').checked = true;
   el('wzUpdateRate').value = '1000';
+  if (el('wzSecurityMode')) el('wzSecurityMode').value = 'None';
+  if (el('wzSecurityPolicy')) el('wzSecurityPolicy').value = 'None';
+  if (el('wzMaxMappedTags')) el('wzMaxMappedTags').value = '50000';
   el('wzListServers').innerHTML = '';
   el('wzMsgServers').textContent = '';
+  wzOnTypeChange();
   el('addSourceWizard').style.display = '';
   wzRender();
 }
@@ -3495,7 +3790,8 @@ function wzRender() {
   el('wzBack').style.display = wzCurrentStep > 1 ? '' : 'none';
   el('wzNext').style.display = wzCurrentStep < WZ_STEPS ? '' : 'none';
   el('wzFinish').style.display = wzCurrentStep === WZ_STEPS ? '' : 'none';
-  if (wzCurrentStep === 5) wzBuildSummary();
+  if (wzCurrentStep === 3 || wzCurrentStep === 4 || wzCurrentStep === 5) wzOnTypeChange();
+  if (wzCurrentStep === WZ_STEPS) wzBuildSummary();
 }
 function wzStep(delta) {
   const next = wzCurrentStep + delta;
@@ -3505,13 +3801,19 @@ function wzStep(delta) {
   wzRender();
 }
 function wzValidate(step) {
-  if (step === 1) {
+  if (step === 2) {
     const id = el('wzSourceId').value.trim();
     if (!id) { alert('Source ID is required.'); return false; }
     if (/\s/.test(id)) { alert('Source ID must not contain spaces.'); return false; }
     if (state.sources.some(s => s.sourceId === id)) { alert('Source ID already exists.'); return false; }
   }
-  if (step === 2 && !el('wzProgId').value.trim()) { alert('ProgID / CLSID is required.'); return false; }
+  if (step === 3) {
+    if (wzIsUa()) {
+      if (!el('wzEndpointUrl').value.trim()) { alert('Endpoint URL is required.'); return false; }
+    } else if (!el('wzProgId').value.trim()) {
+      alert('ProgID / CLSID is required.'); return false;
+    }
+  }
   return true;
 }
 async function wzBrowseServers() {
@@ -3537,16 +3839,53 @@ function wzPickServer(progId, host) {
   el('wzMsgServers').textContent = 'Selected ' + progId;
 }
 function wzBuildSummary() {
-  el('wzSummary').innerHTML =
-    `<b>Source ID:</b> ${esc(el('wzSourceId').value)}<br>` +
-    `<b>Display Name:</b> ${esc(el('wzDisplayName').value || '—')}<br>` +
-    `<b>Host:</b> ${esc(el('wzHost').value || 'localhost')}<br>` +
-    `<b>ProgID:</b> ${esc(el('wzProgId').value)}<br>` +
-    `<b>Credentials:</b> ${el('wzUser').value ? el('wzDomain').value + '\\' + el('wzUser').value : 'none'}<br>` +
-    `<b>Update Rate:</b> ${el('wzUpdateRate').value} ms<br>` +
-    `<b>Subscriptions:</b> ${el('wzSubs').checked ? 'on' : 'off'}`;
+  if (wzIsUa()) {
+    el('wzSummary').innerHTML =
+      `<b>Type:</b> OPC UA<br>` +
+      `<b>Source ID:</b> ${esc(el('wzSourceId').value)}<br>` +
+      `<b>Display Name:</b> ${esc(el('wzDisplayName').value || '—')}<br>` +
+      `<b>Endpoint:</b> ${esc(el('wzEndpointUrl').value)}<br>` +
+      `<b>Security:</b> ${esc(el('wzSecurityMode').value)} / ${esc(el('wzSecurityPolicy').value)}<br>` +
+      `<b>Credentials:</b> ${el('wzUaUser').value ? esc(el('wzUaUser').value) : 'anonymous'}<br>` +
+      `<b>Update Rate:</b> ${el('wzUpdateRate').value} ms<br>` +
+      `<b>Subscriptions:</b> ${el('wzSubs').checked ? 'on' : 'off'}<br>` +
+      `<b>Max Mapped Tags:</b> ${esc(el('wzMaxMappedTags').value || '50000')}`;
+  } else {
+    el('wzSummary').innerHTML =
+      `<b>Type:</b> OPC DA<br>` +
+      `<b>Source ID:</b> ${esc(el('wzSourceId').value)}<br>` +
+      `<b>Display Name:</b> ${esc(el('wzDisplayName').value || '—')}<br>` +
+      `<b>Host:</b> ${esc(el('wzHost').value || 'localhost')}<br>` +
+      `<b>ProgID:</b> ${esc(el('wzProgId').value)}<br>` +
+      `<b>Credentials:</b> ${el('wzUser').value ? el('wzDomain').value + '\\' + el('wzUser').value : 'none'}<br>` +
+      `<b>Update Rate:</b> ${el('wzUpdateRate').value} ms<br>` +
+      `<b>Subscriptions:</b> ${el('wzSubs').checked ? 'on' : 'off'}`;
+  }
 }
 async function wzFinish() {
+  if (wzIsUa()) {
+    el('uaCfgSourceId').disabled = false;
+    el('uaCfgSourceId').value = el('wzSourceId').value.trim();
+    el('uaCfgDisplayName').value = el('wzDisplayName').value.trim();
+    el('uaCfgEndpointUrl').value = el('wzEndpointUrl').value.trim();
+    el('uaCfgSecurityMode').value = el('wzSecurityMode').value;
+    el('uaCfgSecurityPolicy').value = el('wzSecurityPolicy').value;
+    el('uaCfgUser').value = el('wzUaUser').value.trim();
+    el('uaCfgPass').value = el('wzUaPass').value;
+    el('uaCfgUpdateRate').value = el('wzUpdateRate').value;
+    el('uaCfgMaxMappedTags').value = el('wzMaxMappedTags').value || '50000';
+    el('uaCfgUseSubscriptions').checked = el('wzSubs').checked;
+    state.editingNewUaSource = true;
+    try {
+      await saveUaSource();
+      closeAddSourceWizard();
+      navigate('connectivity/opc-ua');
+      if (confirm('Source saved. Map tags now?')) navigate('tags/maps');
+    } catch (e) {
+      el('uaCfgMessage').textContent = '✗ ' + e.message;
+    }
+    return;
+  }
   el('cfgSourceId').value = el('wzSourceId').value.trim();
   el('cfgDisplayName').value = el('wzDisplayName').value.trim();
   el('cfgProgId').value = el('wzProgId').value.trim();
@@ -3558,6 +3897,7 @@ async function wzFinish() {
   try {
     await saveSource();
     closeAddSourceWizard();
+    navigate('connectivity/opc-da');
     if (confirm('Source saved. Map tags now?')) navigate('tags/maps');
   } catch (e) {
     el('cfgMessage').textContent = '✗ ' + e.message;
@@ -3785,6 +4125,22 @@ function bindDynamicButtons() {
         if (!button) return;
         pickSource(button.dataset.sourceId || '');
     });
+    const statusList = el('sourcesStatusList');
+    if (statusList) {
+        statusList.addEventListener('click', event => {
+            const button = event.target.closest('button[data-action="select-source-status"]');
+            if (!button) return;
+            pickSource(button.dataset.sourceId || '', { openConfig: true });
+        });
+    }
+    const uaList = el('uaSourcesList');
+    if (uaList) {
+        uaList.addEventListener('click', event => {
+            const button = event.target.closest('button[data-action="select-ua-source"]');
+            if (!button) return;
+            pickSource(button.dataset.sourceId || '');
+        });
+    }
     el('listServers').addEventListener('click', event => {
         const button = event.target.closest('button[data-action="pick-server"]');
         if (!button) return;
@@ -3896,12 +4252,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     bindDiagramPanZoom();
     el('selectedSource').addEventListener('change', e => pickSource(e.target.value));
     el('mapSourceSelect').addEventListener('change', e => pickSource(e.target.value));
+    if (el('uaSelectedSource')) el('uaSelectedSource').addEventListener('change', e => pickSource(e.target.value));
     el('cfgApply').addEventListener('click', () => saveSource().catch(e => el('cfgMessage').textContent = '✗ ' + e.message));
     el('cfgReset').addEventListener('click', resetSource);
     el('cfgNew').addEventListener('click', newSource);
     el('cfgRemove').addEventListener('click', () => removeSelectedSource().catch(e => el('cfgMessage').textContent = '✗ ' + e.message));
     ['cfgSourceId','cfgDisplayName','cfgProgId','cfgHost','cfgUser','cfgPass','cfgDomain'].forEach(id => {
         el(id).addEventListener('input', () => { if (!state.editingNewSource) showSaveReset(); });
+    });
+    el('uaCfgApply').addEventListener('click', () => saveUaSource().catch(e => el('uaCfgMessage').textContent = '✗ ' + e.message));
+    el('uaCfgReset').addEventListener('click', resetUaSource);
+    el('uaCfgNew').addEventListener('click', newUaSource);
+    el('uaCfgRemove').addEventListener('click', () => removeSelectedUaSource().catch(e => el('uaCfgMessage').textContent = '✗ ' + e.message));
+    el('btnUaTestConnection').addEventListener('click', () => testUaConnection().catch(e => el('uaCfgMessage').textContent = '✗ ' + e.message));
+    ['uaCfgSourceId','uaCfgDisplayName','uaCfgEndpointUrl','uaCfgSecurityMode','uaCfgSecurityPolicy','uaCfgUser','uaCfgPass','uaCfgUpdateRate','uaCfgMaxMappedTags','uaCfgUseSubscriptions'].forEach(id => {
+        const node = el(id);
+        if (!node) return;
+        const evt = node.tagName === 'SELECT' || node.type === 'checkbox' ? 'change' : 'input';
+        node.addEventListener(evt, () => { if (!state.editingNewUaSource) showUaSaveReset(); });
     });
     el('cfgApplyRate').addEventListener('click', () => saveUpdateRate().catch(e => el('rateMessage').textContent = '✗ ' + e.message));
     el('btnExportConfig').addEventListener('click', async () => {
@@ -3985,8 +4353,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     bindDynamicButtons();
     const LEGACY_TAB_TO_ROUTE = {
       monitor: 'ops/monitor',
-      connection: 'connectivity/opc-da',
+      connection: 'connectivity/sources',
       'opc-da': 'connectivity/opc-da',
+      'opc-ua': 'connectivity/opc-ua',
       diagnostics: 'connectivity/diagnostics',
       tags: 'tags/maps',
       links: 'tags/links',
