@@ -1,5 +1,17 @@
 namespace OpcBridge.App;
 
+// Test-asserted DOM/JS contract (see tests/OpcBridge.LoadTest/DashboardPageTests.cs, HelpContentTests.cs).
+// Do NOT rename without updating tests:
+//   data-tab="influx", id="view-influx", id="fpInfluxEnabled", id="influxUrl", id="influxWritten"
+//   function loadInfluxConfig/loadInfluxStatus/saveInflux/connectInflux/disconnectInflux
+//   /api/influx/config, influxEnabled: el('fpInfluxEnabled').checked, if (name === 'influx')
+//   id="pApps", text "Apps", "pApps" in script, "detectedCount" in script
+//   text "DA Links", id="linkSourceStatus", id="linkBrowseTree", id="btnClearLinkSelection"
+//   text "Clear Selection", text "Delete Saved Link", function clearLinkDraftSelection
+//   state.linkDraft.consumer = null, state.linkDraft.provider = null
+//   function browseLinkTags(, state.linkDraft, data-action="pick-link-consumer", data-action="pick-link-provider"
+//   data-tab="opc-da", id="view-opc-da", data-route="connectivity/opc-da", text "OPC DA"
+//   Sources is a sidebar group label only (not a page); legacy connectivity/sources → opc-da
 internal static class DashboardPage
 {
     public const string Html = """
@@ -39,14 +51,19 @@ internal static class DashboardPage
         .pill .k { color: var(--muted); text-transform: uppercase; font-size: 10px; letter-spacing: .05em; }
         .topbar .clock { margin-left: auto; color: var(--muted); font-size: 11px; white-space: nowrap; }
 .app-shell { display: flex; flex: 1; min-height: 0; overflow: hidden; }
-.tabbar { display: flex; flex-direction: column; background: var(--panel); border-right: 1px solid var(--border2); padding: 8px 0; width: 152px; flex-shrink: 0; overflow-y: auto; }
+.tabbar { display: flex; flex-direction: column; background: var(--panel); border-right: 1px solid var(--border2); padding: 8px 0; width: 200px; flex-shrink: 0; overflow-y: auto; }
 .tabbtn { background: none; border: none; color: var(--muted); padding: 11px 16px; font-size: 13px; font-weight: 500; cursor: pointer; border-left: 3px solid transparent; display: flex; align-items: center; gap: 8px; text-align: left; }
 .tabbtn:hover { color: var(--text); background: var(--panel2); }
 .tabbtn.active { color: var(--accent); border-left-color: var(--accent); background: var(--panel2); }
+.nav-group { padding: 6px 0; border-bottom: 1px solid var(--border); }
+.nav-group:last-child { border-bottom: none; }
+.nav-group-h { display: flex; align-items: center; gap: 7px; padding: 8px 16px 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+.nav-group-h .nav-ico { width: 13px; height: 13px; flex-shrink: 0; opacity: .85; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.nav-group .tabbtn { padding-left: 22px; }
 .content { flex: 1; min-width: 0; overflow: auto; }
 .view { display: none; padding: 16px 18px; }
 .view.active { display: block; }
-@media (max-width: 600px) { .app-shell { flex-direction: column; } .tabbar { flex-direction: row; width: 100%; border-right: none; border-bottom: 1px solid var(--border2); padding: 0 8px; overflow-x: auto; } .tabbtn { border-left: none; border-bottom: 3px solid transparent; padding: 10px 14px; } .tabbtn.active { border-left: none; border-bottom-color: var(--accent); } }
+@media (max-width: 600px) { .app-shell { flex-direction: column; } .tabbar { flex-direction: row; width: 100%; border-right: none; border-bottom: 1px solid var(--border2); padding: 0 8px; overflow-x: auto; } .tabbtn { border-left: none; border-bottom: 3px solid transparent; padding: 10px 14px; } .tabbtn.active { border-left: none; border-bottom-color: var(--accent); } .nav-group { border-bottom: none; } .nav-group-h { display: none; } }
         .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
         @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
         .box { background: var(--panel); border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
@@ -64,6 +81,8 @@ internal static class DashboardPage
         .alarm-bar.ok { background: rgba(52,211,153,.1); border: 1px solid rgba(52,211,153,.3); color: var(--good); }
         .alarm-bar.warning { background: rgba(251,191,36,.1); border: 1px solid rgba(251,191,36,.3); color: var(--warn); }
         .alarm-bar.bad { background: rgba(248,113,113,.1); border: 1px solid rgba(248,113,113,.3); color: var(--bad); }
+        .first-run-banner { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 7px; margin-bottom: 12px; font-size: 12px; background: rgba(56,189,248,.08); border: 1px solid rgba(56,189,248,.3); color: var(--text); }
+        .first-run-banner button { margin-left: auto; }
         .stat .k { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
         .stat .v { margin-top: 6px; font-size: 16px; font-weight: 700; line-height: 1.1; }
         .stat .s { margin-top: 4px; color: var(--muted); font-size: 11px; }
@@ -148,6 +167,17 @@ internal static class DashboardPage
         .modal-f .field { margin-bottom: 0; flex: 1; min-width: 200px; }
         .modal-f .btn { margin-left: auto; }
         .modal-f .btn + .btn { margin-left: 0; }
+        .modal.wizard { width: 480px; max-width: 94vw; }
+        .wizard-steps { display: flex; gap: 6px; padding: 10px 14px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+        .wizard-step { font-size: 11px; color: var(--muted); padding: 3px 8px; border-radius: 4px; }
+        .wizard-step.active { color: var(--accent); background: rgba(56,189,248,.12); }
+        .wizard-step.done { color: var(--good); }
+        .wizard-body { padding: 14px; max-height: 60vh; overflow-y: auto; }
+        .wizard-pane { display: none; }
+        .wizard-pane.active { display: block; }
+        .wizard-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--border); }
+        .wizard-summary { font-size: 12px; line-height: 1.6; }
+        .wizard-summary b { color: var(--text); }
         .endpoint { background: var(--bg); border: 1px solid var(--border2); border-radius: 5px; padding: 7px 11px; font-family: 'Consolas', monospace; font-size: 12px; color: var(--accent); word-break: break-all; }
         .split { display: grid; grid-template-columns: 1.2fr 1fr; gap: 12px; }
         .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
@@ -400,20 +430,41 @@ internal static class DashboardPage
 </div>
 <div class="app-shell">
 <div class="tabbar">
-    <button class="tabbtn active" data-tab="monitor" onclick="showTab('monitor')">Monitor</button>
-    <button class="tabbtn" data-tab="connection" onclick="showTab('connection')">Connection</button>
-    <button class="tabbtn" data-tab="diagnostics" onclick="showTab('diagnostics')">Diagnostics</button>
-    <button class="tabbtn" data-tab="tags" onclick="showTab('tags')">Tags</button>
-    <button class="tabbtn" data-tab="links" onclick="showTab('links')">OPC DA to DA</button>
-    <button class="tabbtn" data-tab="logs" onclick="showTab('logs')">Logs</button>
-    <button class="tabbtn" data-tab="mqtt" onclick="showTab('mqtt')">MQTT</button>
-    <button class="tabbtn" data-tab="influx" onclick="showTab('influx')">InfluxDB</button>
-    <button class="tabbtn" data-tab="diagram" onclick="showTab('diagram')">Diagram</button>
-    <button class="tabbtn" data-tab="help" onclick="showTab('help')">Help</button>
-    <button class="tabbtn" data-tab="about" onclick="showTab('about')">About</button>
+  <div class="nav-group">
+    <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><circle cx="7" cy="7" r="1" fill="currentColor" stroke="none"/><circle cx="7" cy="17" r="1" fill="currentColor" stroke="none"/></svg>Sources</div>
+    <button class="tabbtn" data-tab="opc-da" data-route="connectivity/opc-da" onclick="navigate('connectivity/opc-da')">OPC DA</button>
+    <button class="tabbtn" data-tab="diagnostics" data-route="connectivity/diagnostics" onclick="navigate('connectivity/diagnostics')">Diagnostics</button>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><circle cx="7" cy="7" r="1.5" fill="currentColor" stroke="none"/></svg>Tags</div>
+    <button class="tabbtn" data-tab="tags" data-route="tags/maps" onclick="navigate('tags/maps')">Maps</button>
+    <button class="tabbtn" data-tab="links" data-route="tags/links" onclick="navigate('tags/links')">DA Links</button>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1.2" fill="currentColor" stroke="none"/></svg>IoT</div>
+    <button class="tabbtn" data-tab="mqtt" data-route="iot/mqtt" onclick="navigate('iot/mqtt')">MQTT</button>
+    <button class="tabbtn" data-tab="iot-traffic" data-route="iot/traffic" onclick="navigate('iot/traffic')">Traffic</button>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"/></svg>Historian</div>
+    <button class="tabbtn" data-tab="influx" data-route="historian/influx" onclick="navigate('historian/influx')">InfluxDB</button>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>Ops</div>
+    <button class="tabbtn active" data-tab="monitor" data-route="ops/monitor" onclick="navigate('ops/monitor')">Monitor</button>
+    <button class="tabbtn" data-tab="logs" data-route="ops/logs" onclick="navigate('ops/logs')">Logs</button>
+    <button class="tabbtn" data-tab="diagram" data-route="ops/diagram" onclick="navigate('ops/diagram')">Diagram</button>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2.5-3 4.5"/><circle cx="12" cy="17.2" r="0.9" fill="currentColor" stroke="none"/></svg>Help</div>
+    <button class="tabbtn" data-tab="help" data-route="help/guide" onclick="navigate('help/guide')">Guide</button>
+    <button class="tabbtn" data-tab="about" data-route="help/about" onclick="navigate('help/about')">About</button>
+  </div>
 </div>
 <div class="content">
 <div class="view active" id="view-monitor">
+    <div class="first-run-banner" id="bannerNoSources" style="display:none"></div>
+    <div class="first-run-banner" id="bannerNoMappings" style="display:none"></div>
     <div class="alarm-bar" id="rateAlarmBar" style="display:none"></div>
     <div class="mon-stats">
         <div class="mon-stat-group">
@@ -515,11 +566,11 @@ internal static class DashboardPage
         <div class="box-b"><div class="list" id="diagStaThreads" style="max-height:280px"><span class="msg">Loading…</span></div></div>
     </div>
 </div>
-<div class="view" id="view-connection">
+<div class="view" id="view-opc-da">
     <div class="conn-layout">
         <div class="conn-main">
             <div class="box">
-                <div class="box-h">Server Connection <span class="msg" id="cfgMessage" style="margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0">Select a saved connection or click New.</span></div>
+                <div class="box-h">OPC DA Configuration <button class="btn" type="button" onclick="openAddSourceWizard()" style="margin-left:auto">+ Add Source</button><span class="msg" id="cfgMessage" style="font-weight:400;text-transform:none;letter-spacing:0">Select a saved connection or click New.</span></div>
                 <div class="box-b">
                     <div class="field"><label class="fl">Selected</label><select id="selectedSource"></select></div>
                     <div class="conn-section">
@@ -584,7 +635,57 @@ internal static class DashboardPage
         </div>
     </div>
 </div>
+<div class="modal-overlay" id="addSourceWizard" style="display:none" onclick="if(event.target===this)closeAddSourceWizard()">
+    <div class="modal wizard" role="dialog" aria-modal="true" aria-labelledby="addSourceWizardTitle">
+        <div class="modal-head">
+            <div class="modal-title" id="addSourceWizardTitle">Add OPC DA Source</div>
+            <button class="modal-close" type="button" onclick="closeAddSourceWizard()">&times;</button>
+        </div>
+        <div class="wizard-steps">
+            <span class="wizard-step" data-step="1">1. Identity</span>
+            <span class="wizard-step" data-step="2">2. Server</span>
+            <span class="wizard-step" data-step="3">3. Credentials</span>
+            <span class="wizard-step" data-step="4">4. Defaults</span>
+            <span class="wizard-step" data-step="5">5. Review</span>
+        </div>
+        <div class="wizard-body">
+            <div class="wizard-pane active" data-pane="1">
+                <div class="field"><label class="fl">Source ID</label><input type="text" id="wzSourceId" placeholder="server-a"></div>
+                <div class="field"><label class="fl">Display Name</label><input type="text" id="wzDisplayName" placeholder="(optional)"></div>
+                <div class="hint">Unique key with no spaces. Used in UA Node IDs (ns=2;s={sourceId}/...).</div>
+            </div>
+            <div class="wizard-pane" data-pane="2">
+                <div class="field"><label class="fl">Host</label><input type="text" id="wzHost" placeholder="localhost"></div>
+                <div class="field"><label class="fl">ProgID / CLSID</label><input type="text" id="wzProgId" placeholder="Kepware.KEPServerEX.V6"></div>
+                <button class="btn ghost" type="button" onclick="wzBrowseServers()">Browse Servers</button>
+                <span class="msg" id="wzMsgServers"></span>
+                <div class="list" id="wzListServers" style="max-height:180px"></div>
+            </div>
+            <div class="wizard-pane" data-pane="3">
+                <div class="field"><label class="fl">Domain</label><input type="text" id="wzDomain" placeholder="(optional)"></div>
+                <div class="field"><label class="fl">Username</label><input type="text" id="wzUser" placeholder="(optional)"></div>
+                <div class="field"><label class="fl">Password</label><input type="password" id="wzPass"></div>
+                <div class="hint">Only required for remote DCOM or servers in another user's profile.</div>
+            </div>
+            <div class="wizard-pane" data-pane="4">
+                <div class="field"><label class="fl">Update Rate</label><select id="wzUpdateRate"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000" selected>1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
+                <div class="field"><label class="fl">Subscriptions</label><input type="checkbox" id="wzSubs" checked> <span class="msg">Use IOPCDataCallback (recommended)</span></div>
+            </div>
+            <div class="wizard-pane" data-pane="5">
+                <div class="wizard-summary" id="wzSummary"></div>
+                <div class="hint">Click Finish to save. You can map tags next.</div>
+            </div>
+        </div>
+        <div class="wizard-foot">
+            <button class="btn ghost" type="button" onclick="closeAddSourceWizard()">Cancel</button>
+            <button class="btn ghost" type="button" id="wzBack" onclick="wzStep(-1)">Back</button>
+            <button class="btn" type="button" id="wzNext" onclick="wzStep(1)">Next</button>
+            <button class="btn" type="button" id="wzFinish" style="display:none" onclick="wzFinish()">Finish &amp; Save</button>
+        </div>
+    </div>
+</div>
 <div class="view" id="view-tags">
+    <div class="first-run-banner" id="bannerTagsNoSources" style="display:none"></div>
     <div class="box" style="margin-bottom:14px">
         <div class="box-h">Tag Browser</div>
         <div class="box-b">
@@ -777,9 +878,10 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="view" id="view-mqtt">
+    <div class="first-run-banner" id="hintMqtt" style="display:none"></div>
     <div class="grid2">
         <div class="box">
-            <div class="box-h">MQTT Broker <span class="info" data-tip="This app connects TO an external MQTT broker (like Mosquitto, HiveMQ, or AWS IoT). It does NOT include its own broker. Configure your broker connection here. Settings are saved to mqtt.json.">i</span></div>
+            <div class="box-h">MQTT Broker <span class="info" data-tip="This app connects TO an external MQTT broker (like Mosquitto, HiveMQ, or AWS IoT). It does NOT include its own broker. Configure your broker connection here. Settings are saved to mqtt.json.">i</span><button class="btn" type="button" onclick="openMqttWizard()" style="margin-left:auto">Setup Wizard</button></div>
             <div class="box-b">
                 <div class="conn-section">
                     <div class="conn-section-h">Configuration <span class="info" data-tip="Settings saved to mqtt.json. These define HOW the bridge connects to the broker. Changes here do not take effect until you click 'Save Config', and only apply to future connections — they do not connect or disconnect the broker live.">i</span></div>
@@ -839,11 +941,49 @@ internal static class DashboardPage
             <div class="list" id="mqttTraffic"><span class="msg">No MQTT tags yet.</span></div>
         </div>
     </div>
+<div class="modal-overlay" id="mqttWizard" style="display:none" onclick="if(event.target===this)closeMqttWizard()">
+  <div class="modal wizard" role="dialog" aria-modal="true" aria-labelledby="mqttWizardTitle">
+    <div class="modal-head">
+      <div class="modal-title" id="mqttWizardTitle">Connect MQTT Broker</div>
+      <button class="modal-close" type="button" onclick="closeMqttWizard()">&times;</button>
+    </div>
+    <div class="wizard-steps">
+      <span class="wizard-step" data-step="1">1. Broker</span>
+      <span class="wizard-step" data-step="2">2. Auth &amp; Topics</span>
+      <span class="wizard-step" data-step="3">3. Save &amp; Connect</span>
+    </div>
+    <div class="wizard-body">
+      <div class="wizard-pane active" data-pane="1">
+        <div class="field"><label class="fl">Broker URL</label><input type="text" id="wzMqttUrl" placeholder="tcp://localhost:1883"></div>
+        <div class="field"><label class="fl">Client ID</label><input type="text" id="wzMqttClientId" placeholder="OpcDaToUaBridge"></div>
+        <div class="field"><label class="fl">Auto-connect</label><input type="checkbox" id="wzMqttAuto" checked></div>
+      </div>
+      <div class="wizard-pane" data-pane="2">
+        <div class="field"><label class="fl">Username</label><input type="text" id="wzMqttUser" placeholder="(optional)"></div>
+        <div class="field"><label class="fl">Password</label><input type="password" id="wzMqttPass"></div>
+        <div class="field"><label class="fl">TLS</label><input type="checkbox" id="wzMqttTls"></div>
+        <div class="field"><label class="fl">Topic Prefix</label><input type="text" id="wzMqttPrefix" placeholder="bridge/tags"></div>
+        <div class="field"><label class="fl">Payload Fields</label><select id="wzMqttFields"><option>Value, Timestamp</option><option>Value, Timestamp, Quality</option><option>Value, Timestamp, Quality, SourceId, ItemId</option><option>Value, Timestamp, SourceId, ItemId, DisplayName, DataType</option></select></div>
+      </div>
+      <div class="wizard-pane" data-pane="3">
+        <div class="wizard-summary" id="wzMqttSummary"></div>
+        <div class="field"><label class="fl">Connect now</label><input type="checkbox" id="wzMqttConnectNow" checked></div>
+      </div>
+    </div>
+    <div class="wizard-foot">
+      <button class="btn ghost" type="button" onclick="closeMqttWizard()">Cancel</button>
+      <button class="btn ghost" type="button" id="wzMqttBack" onclick="wzMqttStep(-1)">Back</button>
+      <button class="btn" type="button" id="wzMqttNext" onclick="wzMqttStep(1)">Next</button>
+      <button class="btn" type="button" id="wzMqttFinish" style="display:none" onclick="wzMqttFinish()">Finish</button>
+    </div>
+  </div>
+</div>
 </div>
 <div class="view" id="view-influx">
+    <div class="first-run-banner" id="hintInflux" style="display:none"></div>
     <div class="grid2">
         <div class="box">
-            <div class="box-h">InfluxDB <span class="info" data-tip="This app writes to an external InfluxDB 2.x/3.x server. It does NOT run InfluxDB itself. Configure URL, Org, Bucket and Token here. Settings are saved to influx.json.">i</span></div>
+            <div class="box-h">Historian <span class="msg" style="font-weight:400;text-transform:none;letter-spacing:0">InfluxDB 2.x/3.x</span> <span class="info" data-tip="This app writes to an external InfluxDB 2.x/3.x server. It does NOT run InfluxDB itself. Configure URL, Org, Bucket and Token here. Settings are saved to influx.json.">i</span><button class="btn" type="button" onclick="openInfluxWizard()" style="margin-left:auto">Setup Wizard</button></div>
             <div class="box-b">
                 <div class="conn-section">
                     <div class="conn-section-h">Configuration <span class="info" data-tip="Settings saved to influx.json. Changes take effect after Save Config and apply to the next Connect.">i</span></div>
@@ -876,6 +1016,41 @@ internal static class DashboardPage
             </div>
         </div>
     </div>
+<div class="modal-overlay" id="influxWizard" style="display:none" onclick="if(event.target===this)closeInfluxWizard()">
+  <div class="modal wizard" role="dialog" aria-modal="true" aria-labelledby="influxWizardTitle">
+    <div class="modal-head">
+      <div class="modal-title" id="influxWizardTitle">Enable Historian (InfluxDB)</div>
+      <button class="modal-close" type="button" onclick="closeInfluxWizard()">&times;</button>
+    </div>
+    <div class="wizard-steps">
+      <span class="wizard-step" data-step="1">1. Server</span>
+      <span class="wizard-step" data-step="2">2. Auth</span>
+      <span class="wizard-step" data-step="3">3. Save &amp; Connect</span>
+    </div>
+    <div class="wizard-body">
+      <div class="wizard-pane active" data-pane="1">
+        <div class="field"><label class="fl">URL</label><input type="text" id="wzInfluxUrl" placeholder="http://localhost:8086"></div>
+        <div class="field"><label class="fl">Org</label><input type="text" id="wzInfluxOrg" placeholder="my-org"></div>
+        <div class="field"><label class="fl">Bucket</label><input type="text" id="wzInfluxBucket" placeholder="opc"></div>
+      </div>
+      <div class="wizard-pane" data-pane="2">
+        <div class="field"><label class="fl">Token</label><input type="password" id="wzInfluxToken"></div>
+        <div class="hint">API token with write access to the bucket. Stored in influx.json.</div>
+      </div>
+      <div class="wizard-pane" data-pane="3">
+        <div class="wizard-summary" id="wzInfluxSummary"></div>
+        <div class="field"><label class="fl">Auto-connect</label><input type="checkbox" id="wzInfluxAuto" checked></div>
+        <div class="field"><label class="fl">Connect now</label><input type="checkbox" id="wzInfluxConnectNow" checked></div>
+      </div>
+    </div>
+    <div class="wizard-foot">
+      <button class="btn ghost" type="button" onclick="closeInfluxWizard()">Cancel</button>
+      <button class="btn ghost" type="button" id="wzInfluxBack" onclick="wzInfluxStep(-1)">Back</button>
+      <button class="btn" type="button" id="wzInfluxNext" onclick="wzInfluxStep(1)">Next</button>
+      <button class="btn" type="button" id="wzInfluxFinish" style="display:none" onclick="wzInfluxFinish()">Finish</button>
+    </div>
+  </div>
+</div>
 </div>
 <div class="view" id="view-diagram">
     <div class="diag-toolbar">
@@ -948,6 +1123,11 @@ const state = {
     mappingSort: 'name',
     mappingSortDir: 1,
     mappingFilter: '',
+    mqttConfigured: false,
+    mqttState: 'Disconnected',
+    mqttConnectionState: 'Disconnected',
+    influxConfigured: false,
+    influxState: 'Disconnected',
     mqttValFilter: { direction: '', topic: '' },
     valuesByKey: new Map(),
     handleHistory: [],
@@ -2225,23 +2405,54 @@ function updateManualInputState() {
         : 'Simulation OFF: bridge reads from DA (for Read/Read-Write). Toggle to inject a fixed value.';
 }
 
- async function showTab(name) {
-     document.querySelectorAll('.tabbtn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
-    document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + name));
-    if (location.hash !== '#' + name) history.replaceState(null, '', '#' + name);
-    if (name === 'logs') { state.logsLoaded = false; loadLogs(true).catch(e => el('logMessage').textContent = '✗ ' + e.message); }
-    if (name === 'diagnostics') { diagnosticsActive = true; loadDiagnostics(); }
-    else { diagnosticsActive = false; }
-    if (name === 'about') loadAppInfo().catch(e => el('aboutName').textContent = '✗ ' + e.message);
-    if (name === 'help') loadHelp().catch(e => el('helpContent').innerHTML = '<span class="msg bad">✗ ' + esc(e.message) + '</span>');
-        if (name === 'mqtt') { await loadMqtt(); await loadMqttValues(); }
-    if (name === 'influx') { await loadInflux(); }
-    if (name === 'links') loadDaLinks().catch(e => el('linksMessage').textContent = '✗ ' + e.message);
-    if (name === 'diagram') {
-        state.diagramLoaded = true;
-        await Promise.all([loadSources(), loadMappings(), loadDaLinks(), loadMqtt().catch(() => {})]);
-        renderDiagram();
-    }
+const ROUTE_TO_TAB = {
+  'connectivity/sources': 'opc-da',
+  'connectivity/opc-da': 'opc-da',
+  'connectivity/diagnostics': 'diagnostics',
+  'tags/maps': 'tags',
+  'tags/links': 'links',
+  'iot/mqtt': 'mqtt',
+  'iot/traffic': 'iot-traffic',
+  'historian/influx': 'influx',
+  'ops/monitor': 'monitor',
+  'ops/logs': 'logs',
+  'ops/diagram': 'diagram',
+  'help/guide': 'help',
+  'help/about': 'about'
+};
+const DEFAULT_ROUTE = 'ops/monitor';
+
+function navigate(route) {
+  const tab = ROUTE_TO_TAB[route] || ROUTE_TO_TAB[DEFAULT_ROUTE];
+  showTab(tab, route);
+}
+
+async function showTab(name, route) {
+  route = route || (Object.keys(ROUTE_TO_TAB).find(r => ROUTE_TO_TAB[r] === name) || DEFAULT_ROUTE);
+  const activeTab = name === 'iot-traffic' ? 'mqtt' : name;
+  document.querySelectorAll('.tabbtn').forEach(b => b.classList.toggle('active', b.dataset.route === route));
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + activeTab));
+  if (location.hash !== '#/' + route) history.replaceState(null, '', '#/' + route);
+  if (name === 'iot-traffic') {
+    const traffic = document.getElementById('mqttTraffic');
+    if (traffic) traffic.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  if (activeTab === 'logs') { state.logsLoaded = false; loadLogs(true).catch(e => el('logMessage').textContent = '✗ ' + e.message); }
+  if (activeTab === 'diagnostics') { diagnosticsActive = true; loadDiagnostics(); }
+  else { diagnosticsActive = false; }
+  if (activeTab === 'about') loadAppInfo().catch(e => el('aboutName').textContent = '✗ ' + e.message);
+  if (activeTab === 'help') loadHelp().catch(e => el('helpContent').innerHTML = '<span class="msg bad">✗ ' + esc(e.message) + '</span>');
+  if (activeTab === 'mqtt') { await loadMqtt(); await loadMqttValues(); }
+  if (name === 'influx') { await loadInflux(); }
+  if (activeTab === 'opc-da') {
+    await loadSources().catch(e => console.warn(e));
+  }
+  if (activeTab === 'links') loadDaLinks().catch(e => el('linksMessage').textContent = '✗ ' + e.message);
+  if (activeTab === 'diagram') {
+    state.diagramLoaded = true;
+    await Promise.all([loadSources(), loadMappings(), loadDaLinks(), loadMqtt().catch(() => {})]);
+    renderDiagram();
+  }
 }
 function badge(t, c) { return `<span class="badge ${c}">${esc(t)}</span>`; }
 function stateClass(v) {
@@ -2280,8 +2491,17 @@ function renderSources() {
     select.value = state.selectedSourceId;
     mapSelect.value = state.selectedSourceId;
     el('pSources').textContent = state.sources.length;
+    const noSources = state.sources.length === 0;
+    const bannerNo = el('bannerNoSources');
+    if (bannerNo) bannerNo.style.display = noSources ? '' : 'none';
+    if (bannerNo && noSources) bannerNo.innerHTML = 'No OPC DA sources configured. <button class="btn" type="button" onclick="navigate(\'connectivity/opc-da\')">Add Source</button>';
+    const bannerTags = el('bannerTagsNoSources');
+    if (bannerTags) bannerTags.style.display = noSources ? '' : 'none';
+    if (bannerTags && noSources) bannerTags.innerHTML = 'No sources yet. <button class="btn" type="button" onclick="navigate(\'connectivity/opc-da\')">Add Source</button>';
+    updateNoMappingsBanner();
     const sideCount = el('pSourcesSide'); if (sideCount) sideCount.textContent = state.sources.length + ' source' + (state.sources.length !== 1 ? 's' : '');
-    el('sourcesList').innerHTML = state.sources.length ? state.sources.map(source =>
+    const list = el('sourcesList');
+    if (list) list.innerHTML = state.sources.length ? state.sources.map(source =>
         `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)}</div><div class="p">${esc(source.sourceId)} · ${esc(source.host || 'localhost')} · ${esc(source.progId || '')} · ${formatMs(source.updateRateMs)}</div></div><button class="btn ghost" data-action="select-source" data-source-id="${attr(source.sourceId)}">Select</button></div>`
     ).join('') : '<span class="msg">No sources configured.</span>';
     loadSelectedSourceForm();
@@ -2746,6 +2966,7 @@ async function loadMappings() {
     const view = applyMappingView(mappings);
     el('mappedList').innerHTML = renderMappingRows(view);
     if (el('mapCount')) el('mapCount').textContent = view.length + (view.length !== mappings.length ? ' / ' + mappings.length + ' mappings' : ' mappings');
+    updateNoMappingsBanner();
     refreshTagBrowserMappedBadges();
     if (document.getElementById('view-links')?.classList.contains('active')) renderLinksView();
 }
@@ -2782,12 +3003,14 @@ async function loadMqttConfig() {
         if (el('mqttIgnoreCert')) el('mqttIgnoreCert').checked = !!cfg.ignoreCertErrors;
         if (el('mqttPrefix')) el('mqttPrefix').value = cfg.topicPrefix || 'bridge/tags';
         if (el('mqttFields')) el('mqttFields').value = cfg.payloadFields || 'Value, Timestamp';
+        state.mqttConfigured = !!(cfg.enabled || (cfg.brokerUrl || '').trim());
     } catch (e) { /* ignore */ }
 }
 async function loadMqttStatus() {
     try {
         const st = await (await fetch('/api/mqtt/status', { cache: 'no-store' })).json();
-        state.mqttConnectionState = st.state || 'Disconnected';
+        state.mqttState = st.state || 'Disconnected';
+        state.mqttConnectionState = state.mqttState;
         if (el('mqttState')) {
             el('mqttState').textContent = st.state || 'Disconnected';
             el('mqttState').className = 'v ' + (st.state === 'Connected' ? 'badge good' : 'badge bad');
@@ -2797,6 +3020,13 @@ async function loadMqttStatus() {
         if (el('mqttReceived')) el('mqttReceived').textContent = (st.receivedCount || 0).toLocaleString();
         if (el('mqttPublishedRate')) el('mqttPublishedRate').textContent = (st.publishedRate || 0).toFixed(1) + '/s';
         if (el('mqttReceivedRate')) el('mqttReceivedRate').textContent = (st.receivedRate || 0).toFixed(1) + '/s';
+        const hintMqtt = el('hintMqtt');
+        if (hintMqtt) {
+            const off = !state.mqttConfigured || state.mqttState === 'Disconnected';
+            const hasMqttTags = (state.mappings || []).some(m => (m.mqttEnabled ?? m.MqttEnabled) === true);
+            hintMqtt.style.display = (off && hasMqttTags) ? '' : 'none';
+            if (off && hasMqttTags) hintMqtt.innerHTML = 'MQTT tags exist but broker is disconnected.';
+        }
     } catch (e) { if (el('mqttMessage')) el('mqttMessage').textContent = '✗ ' + e.message; }
 }
 async function loadMqtt() { await Promise.all([loadMqttConfig(), loadMqttStatus()]); }
@@ -2823,6 +3053,73 @@ async function connectMqtt() {
     const p = await r.json();
     el('mqttMessage').textContent = p.status === 'ok' ? 'Connected.' : ('✗ ' + (p.error || 'connect failed'));
     await loadMqtt();
+}
+let wzMqttStepCur = 1;
+const WZ_MQTT_STEPS = 3;
+
+async function openMqttWizard() {
+  wzMqttStepCur = 1;
+  await loadMqtt();
+  el('wzMqttUrl').value = el('mqttBrokerUrl').value || 'tcp://localhost:1883';
+  el('wzMqttClientId').value = el('mqttClientId').value || 'OpcDaToUaBridge';
+  el('wzMqttAuto').checked = el('mqttEnabled').checked;
+  el('wzMqttUser').value = el('mqttUser').value;
+  el('wzMqttPass').value = el('mqttPass').value;
+  el('wzMqttTls').checked = el('mqttTls').checked;
+  el('wzMqttPrefix').value = el('mqttPrefix').value || 'bridge/tags';
+  el('wzMqttFields').value = el('mqttFields').value;
+  el('wzMqttConnectNow').checked = true;
+  el('mqttWizard').style.display = '';
+  wzMqttRender();
+}
+function closeMqttWizard() { el('mqttWizard').style.display = 'none'; }
+function wzMqttRender() {
+  document.querySelectorAll('#mqttWizard .wizard-pane').forEach(p => p.classList.toggle('active', Number(p.dataset.pane) === wzMqttStepCur));
+  document.querySelectorAll('#mqttWizard .wizard-step').forEach(s => {
+    const n = Number(s.dataset.step);
+    s.classList.toggle('active', n === wzMqttStepCur);
+    s.classList.toggle('done', n < wzMqttStepCur);
+  });
+  el('wzMqttBack').style.display = wzMqttStepCur > 1 ? '' : 'none';
+  el('wzMqttNext').style.display = wzMqttStepCur < WZ_MQTT_STEPS ? '' : 'none';
+  el('wzMqttFinish').style.display = wzMqttStepCur === WZ_MQTT_STEPS ? '' : 'none';
+  if (wzMqttStepCur === 3) {
+    el('wzMqttSummary').innerHTML =
+      `<b>Broker:</b> ${esc(el('wzMqttUrl').value)}<br>` +
+      `<b>Client ID:</b> ${esc(el('wzMqttClientId').value)}<br>` +
+      `<b>Auth:</b> ${el('wzMqttUser').value ? 'yes' : 'none'}<br>` +
+      `<b>TLS:</b> ${el('wzMqttTls').checked ? 'on' : 'off'}<br>` +
+      `<b>Topic Prefix:</b> ${esc(el('wzMqttPrefix').value)}<br>` +
+      `<b>Auto-connect:</b> ${el('wzMqttAuto').checked ? 'on' : 'off'}`;
+  }
+}
+function wzMqttStep(delta) {
+  const next = wzMqttStepCur + delta;
+  if (next < 1 || next > WZ_MQTT_STEPS) return;
+  if (delta > 0 && !wzMqttValidate(wzMqttStepCur)) return;
+  wzMqttStepCur = next;
+  wzMqttRender();
+}
+function wzMqttValidate(step) {
+  if (step === 1 && !el('wzMqttUrl').value.trim()) { alert('Broker URL is required.'); return false; }
+  return true;
+}
+async function wzMqttFinish() {
+  el('mqttBrokerUrl').value = el('wzMqttUrl').value.trim();
+  el('mqttClientId').value = el('wzMqttClientId').value.trim() || 'OpcDaToUaBridge';
+  el('mqttEnabled').checked = el('wzMqttAuto').checked;
+  el('mqttUser').value = el('wzMqttUser').value;
+  el('mqttPass').value = el('wzMqttPass').value;
+  el('mqttTls').checked = el('wzMqttTls').checked;
+  el('mqttPrefix').value = el('wzMqttPrefix').value.trim() || 'bridge/tags';
+  el('mqttFields').value = el('wzMqttFields').value;
+  try {
+    await saveMqtt();
+    if (el('wzMqttConnectNow').checked) await connectMqtt();
+    closeMqttWizard();
+  } catch (e) {
+    el('mqttMessage').textContent = '✗ ' + e.message;
+  }
 }
 async function disconnectMqtt() {
     await fetch('/api/mqtt/disconnect', { method: 'POST' });
@@ -2869,11 +3166,13 @@ async function loadInfluxConfig() {
         if (el('influxMeasurement')) el('influxMeasurement').value = cfg.measurement || 'opc_tags';
         if (el('influxTimeoutMs')) el('influxTimeoutMs').value = String(cfg.timeoutMs ?? 5000);
         if (el('influxVerifySsl')) el('influxVerifySsl').checked = cfg.verifySsl !== false;
+        state.influxConfigured = !!(cfg.enabled || (cfg.url || '').trim() || (cfg.org || '').trim() || (cfg.bucket || '').trim() || (cfg.token || '').trim());
     } catch (e) { /* ignore */ }
 }
 async function loadInfluxStatus() {
     try {
         const st = await (await fetch('/api/influx/status', { cache: 'no-store' })).json();
+        state.influxState = st.state || 'Disconnected';
         if (el('influxState')) {
             el('influxState').textContent = st.state || 'Disconnected';
             el('influxState').className = 'v ' + (st.state === 'Connected' ? 'badge good' : 'badge bad');
@@ -2881,6 +3180,12 @@ async function loadInfluxStatus() {
         if (el('influxLastError')) el('influxLastError').textContent = st.lastError || 'No errors';
         if (el('influxWritten')) el('influxWritten').textContent = (st.writtenCount || 0).toLocaleString();
         if (el('influxWrittenRate')) el('influxWrittenRate').textContent = (st.writtenRate || 0).toFixed(1) + '/s';
+        const hintInflux = el('hintInflux');
+        if (hintInflux) {
+            const off = !state.influxConfigured || state.influxState === 'Disconnected';
+            hintInflux.style.display = off ? '' : 'none';
+            if (off) hintInflux.innerHTML = 'Historian (InfluxDB) not configured. <button class="btn" type="button" onclick="navigate(\'historian/influx\')">Configure</button>';
+        }
     } catch (e) { if (el('influxMessage')) el('influxMessage').textContent = '✗ ' + e.message; }
 }
 async function loadInflux() { await Promise.all([loadInfluxConfig(), loadInfluxStatus()]); }
@@ -2907,6 +3212,68 @@ async function connectInflux() {
     el('influxMessage').textContent = p.status === 'ok' ? 'Connected.' : ('✗ ' + (p.error || 'connect failed'));
     await loadInflux();
 }
+let wzInfluxStepCur = 1;
+const WZ_INFLUX_STEPS = 3;
+
+async function openInfluxWizard() {
+  wzInfluxStepCur = 1;
+  await loadInflux();
+  el('wzInfluxUrl').value = el('influxUrl').value || 'http://localhost:8086';
+  el('wzInfluxOrg').value = el('influxOrg').value;
+  el('wzInfluxBucket').value = el('influxBucket').value;
+  el('wzInfluxToken').value = el('influxToken').value;
+  el('wzInfluxAuto').checked = el('influxEnabled').checked;
+  el('wzInfluxConnectNow').checked = true;
+  el('influxWizard').style.display = '';
+  wzInfluxRender();
+}
+function closeInfluxWizard() { el('influxWizard').style.display = 'none'; }
+function wzInfluxRender() {
+  document.querySelectorAll('#influxWizard .wizard-pane').forEach(p => p.classList.toggle('active', Number(p.dataset.pane) === wzInfluxStepCur));
+  document.querySelectorAll('#influxWizard .wizard-step').forEach(s => {
+    const n = Number(s.dataset.step);
+    s.classList.toggle('active', n === wzInfluxStepCur);
+    s.classList.toggle('done', n < wzInfluxStepCur);
+  });
+  el('wzInfluxBack').style.display = wzInfluxStepCur > 1 ? '' : 'none';
+  el('wzInfluxNext').style.display = wzInfluxStepCur < WZ_INFLUX_STEPS ? '' : 'none';
+  el('wzInfluxFinish').style.display = wzInfluxStepCur === WZ_INFLUX_STEPS ? '' : 'none';
+  if (wzInfluxStepCur === 3) {
+    el('wzInfluxSummary').innerHTML =
+      `<b>URL:</b> ${esc(el('wzInfluxUrl').value)}<br>` +
+      `<b>Org:</b> ${esc(el('wzInfluxOrg').value || '—')}<br>` +
+      `<b>Bucket:</b> ${esc(el('wzInfluxBucket').value || '—')}<br>` +
+      `<b>Token:</b> ${el('wzInfluxToken').value ? 'set' : '—'}<br>` +
+      `<b>Auto-connect:</b> ${el('wzInfluxAuto').checked ? 'on' : 'off'}`;
+  }
+}
+function wzInfluxStep(delta) {
+  const next = wzInfluxStepCur + delta;
+  if (next < 1 || next > WZ_INFLUX_STEPS) return;
+  if (delta > 0 && !wzInfluxValidate(wzInfluxStepCur)) return;
+  wzInfluxStepCur = next;
+  wzInfluxRender();
+}
+function wzInfluxValidate(step) {
+  if (step === 1 && !el('wzInfluxUrl').value.trim()) { alert('URL is required.'); return false; }
+  if (step === 2 && !el('wzInfluxToken').value) { alert('Token is required.'); return false; }
+  return true;
+}
+async function wzInfluxFinish() {
+  el('influxUrl').value = el('wzInfluxUrl').value.trim();
+  el('influxOrg').value = el('wzInfluxOrg').value.trim();
+  el('influxBucket').value = el('wzInfluxBucket').value.trim();
+  el('influxToken').value = el('wzInfluxToken').value;
+  el('influxEnabled').checked = el('wzInfluxAuto').checked;
+  try {
+    await saveInflux();
+    if (el('wzInfluxConnectNow').checked) await connectInflux();
+    closeInfluxWizard();
+  } catch (e) {
+    el('influxMessage').textContent = '✗ ' + e.message;
+  }
+}
+
 async function disconnectInflux() {
     await fetch('/api/influx/disconnect', { method: 'POST' });
     el('influxMessage').textContent = 'Disconnected.';
@@ -2951,10 +3318,19 @@ function applyMappingView(mappings) {
     };
     return view.slice().sort(cmp);
 }
+function updateNoMappingsBanner() {
+    const noMappings = (state.mappings || []).length === 0;
+    const bannerNoMap = el('bannerNoMappings');
+    if (bannerNoMap) {
+        bannerNoMap.style.display = (noMappings && (state.sources || []).length > 0) ? '' : 'none';
+        if (noMappings && (state.sources || []).length > 0) bannerNoMap.innerHTML = 'No tags mapped yet. <button class="btn" type="button" onclick="navigate(\'tags/maps\')">Map Tags</button>';
+    }
+}
 function rerenderMappings() {
     const view = applyMappingView(state.mappings || []);
     el('mapCount').textContent = view.length + (view.length !== (state.mappings || []).length ? ' / ' + (state.mappings || []).length + ' mappings' : ' mappings');
     el('mappedList').innerHTML = renderMappingRows(view);
+    updateNoMappingsBanner();
 }
 
 function getMapping(sourceId, itemId) {
@@ -3093,6 +3469,99 @@ function newSource() {
     el('tagTree').innerHTML = '<span class="msg">Save the new source before browsing tags.</span>';
     el('cfgMessage').textContent = 'Enter a unique Source ID, then save.';
     showSaveReset();
+}
+let wzCurrentStep = 1;
+const WZ_STEPS = 5;
+
+function openAddSourceWizard() {
+  wzCurrentStep = 1;
+  ['wzSourceId','wzDisplayName','wzHost','wzProgId','wzDomain','wzUser','wzPass'].forEach(id => el(id).value = '');
+  el('wzHost').value = 'localhost';
+  el('wzSubs').checked = true;
+  el('wzUpdateRate').value = '1000';
+  el('wzListServers').innerHTML = '';
+  el('wzMsgServers').textContent = '';
+  el('addSourceWizard').style.display = '';
+  wzRender();
+}
+function closeAddSourceWizard() { el('addSourceWizard').style.display = 'none'; }
+function wzRender() {
+  document.querySelectorAll('.wizard-pane').forEach(p => p.classList.toggle('active', Number(p.dataset.pane) === wzCurrentStep));
+  document.querySelectorAll('.wizard-step').forEach(s => {
+    const n = Number(s.dataset.step);
+    s.classList.toggle('active', n === wzCurrentStep);
+    s.classList.toggle('done', n < wzCurrentStep);
+  });
+  el('wzBack').style.display = wzCurrentStep > 1 ? '' : 'none';
+  el('wzNext').style.display = wzCurrentStep < WZ_STEPS ? '' : 'none';
+  el('wzFinish').style.display = wzCurrentStep === WZ_STEPS ? '' : 'none';
+  if (wzCurrentStep === 5) wzBuildSummary();
+}
+function wzStep(delta) {
+  const next = wzCurrentStep + delta;
+  if (next < 1 || next > WZ_STEPS) return;
+  if (delta > 0 && !wzValidate(wzCurrentStep)) return;
+  wzCurrentStep = next;
+  wzRender();
+}
+function wzValidate(step) {
+  if (step === 1) {
+    const id = el('wzSourceId').value.trim();
+    if (!id) { alert('Source ID is required.'); return false; }
+    if (/\s/.test(id)) { alert('Source ID must not contain spaces.'); return false; }
+    if (state.sources.some(s => s.sourceId === id)) { alert('Source ID already exists.'); return false; }
+  }
+  if (step === 2 && !el('wzProgId').value.trim()) { alert('ProgID / CLSID is required.'); return false; }
+  return true;
+}
+async function wzBrowseServers() {
+  const host = el('wzHost').value.trim() || 'localhost';
+  el('wzMsgServers').textContent = 'Scanning…';
+  const body = { host: host === 'localhost' ? null : host };
+  try {
+    const r = await fetch('/api/da/servers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), cache: 'no-store' });
+    const p = await r.json();
+    if (p.error) throw new Error(p.error);
+    const servers = p.servers || [];
+    el('wzListServers').innerHTML = servers.length ? servers.map(s => {
+      const prog = s.progId || s.ProgId;
+      const desc = s.description || s.Description || prog;
+      return `<div class="li"><div style="flex:1"><div class="n">${esc(desc)}</div><div class="p">${esc(prog)}</div></div><button class="btn ghost" data-action="wz-pick-server" data-prog-id="${attr(prog)}" data-host="${attr(host)}">Use</button></div>`;
+    }).join('') : '<span class="msg">No servers found.</span>';
+    el('wzMsgServers').textContent = servers.length + ' servers';
+  } catch (e) { el('wzMsgServers').textContent = '✗ ' + e.message; }
+}
+function wzPickServer(progId, host) {
+  el('wzProgId').value = progId;
+  el('wzHost').value = host;
+  el('wzMsgServers').textContent = 'Selected ' + progId;
+}
+function wzBuildSummary() {
+  el('wzSummary').innerHTML =
+    `<b>Source ID:</b> ${esc(el('wzSourceId').value)}<br>` +
+    `<b>Display Name:</b> ${esc(el('wzDisplayName').value || '—')}<br>` +
+    `<b>Host:</b> ${esc(el('wzHost').value || 'localhost')}<br>` +
+    `<b>ProgID:</b> ${esc(el('wzProgId').value)}<br>` +
+    `<b>Credentials:</b> ${el('wzUser').value ? el('wzDomain').value + '\\' + el('wzUser').value : 'none'}<br>` +
+    `<b>Update Rate:</b> ${el('wzUpdateRate').value} ms<br>` +
+    `<b>Subscriptions:</b> ${el('wzSubs').checked ? 'on' : 'off'}`;
+}
+async function wzFinish() {
+  el('cfgSourceId').value = el('wzSourceId').value.trim();
+  el('cfgDisplayName').value = el('wzDisplayName').value.trim();
+  el('cfgProgId').value = el('wzProgId').value.trim();
+  el('cfgHost').value = el('wzHost').value.trim() || 'localhost';
+  el('cfgUser').value = el('wzUser').value.trim();
+  el('cfgPass').value = el('wzPass').value;
+  el('cfgDomain').value = el('wzDomain').value.trim();
+  state.editingNewSource = true;
+  try {
+    await saveSource();
+    closeAddSourceWizard();
+    if (confirm('Source saved. Map tags now?')) navigate('tags/maps');
+  } catch (e) {
+    el('cfgMessage').textContent = '✗ ' + e.message;
+  }
 }
 async function browseServers() {
     const host = (el('cfgHost').value.trim() || 'localhost');
@@ -3321,6 +3790,11 @@ function bindDynamicButtons() {
         if (!button) return;
         pickServer(button.dataset.progId || '', button.dataset.host || 'localhost');
     });
+    el('wzListServers').addEventListener('click', event => {
+        const button = event.target.closest('button[data-action="wz-pick-server"]');
+        if (!button) return;
+        wzPickServer(button.dataset.progId || '', button.dataset.host || 'localhost');
+    });
     el('tagTree').addEventListener('click', event => {
         const actionEl = event.target.closest('[data-action]');
         if (!actionEl) return;
@@ -3509,8 +3983,24 @@ document.addEventListener('DOMContentLoaded', async () => {
         deleteDaLink(btn.dataset.linkId || '').catch(e => el('linksMessage').textContent = '✗ ' + e.message);
     });
     bindDynamicButtons();
-    const initTab = location.hash.slice(1);
-    if (['monitor','connection','diagnostics','tags','links','logs','mqtt','influx','help','about'].includes(initTab)) showTab(initTab);
+    const LEGACY_TAB_TO_ROUTE = {
+      monitor: 'ops/monitor',
+      connection: 'connectivity/opc-da',
+      'opc-da': 'connectivity/opc-da',
+      diagnostics: 'connectivity/diagnostics',
+      tags: 'tags/maps',
+      links: 'tags/links',
+      logs: 'ops/logs',
+      mqtt: 'iot/mqtt',
+      influx: 'historian/influx',
+      diagram: 'ops/diagram',
+      help: 'help/guide',
+      about: 'help/about'
+    };
+    const initHashRaw = location.hash.replace(/^#\/?/, '');
+    let initRoute = Object.prototype.hasOwnProperty.call(ROUTE_TO_TAB, initHashRaw) ? initHashRaw
+      : (LEGACY_TAB_TO_ROUTE[initHashRaw] || DEFAULT_ROUTE);
+    navigate(initRoute);
     await loadSources();
     await loadMappings();
     updateLiveValuesUi();

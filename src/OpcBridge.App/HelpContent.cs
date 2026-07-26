@@ -73,16 +73,18 @@ internal static class HelpContent
   ┌─────────────────────────────────────────────────────────────────────┐
   │                      Web Dashboard (port 8080)                       │
   │                                                                      │
-  │  Monitor ──► stats, source status, alarm bar, live values table      │
-│  Connection ──► server connection config, discovery, default rate, subscriptions toggle  │
-│  Tags ──► DA browser, mappings, faceplate (access rights, update rate, simulation)  │
-│  OPC DA to DA ──► connected tags: set/clear provider→consumer links, view all connections   │
-  │  Help ──► this page                                                  │
+  │  Sidebar groups pages by job:                                        │
+  │  Sources ──► OPC DA, Diagnostics                                     │
+  │  Tags ──► Maps, DA Links                                             │
+  │  IoT ──► MQTT, Traffic                                               │
+  │  Historian ──► InfluxDB                                              │
+  │  Ops ──► Monitor, Logs, Diagram                                      │
+  │  Help ──► Guide, About                                               │
   │                                                                      │
-   │  HTTP API: /api/dashboard, /api/mappings, /api/da/sources, etc.      │
-   │                                                                      │
-   │  **Apps Pill**: Shows count of detected bridge instances across all    │
-   │  configured DA source hosts. Updates every 10 seconds.                 │
+  │  HTTP API: /api/dashboard, /api/mappings, /api/da/sources, etc.      │
+  │                                                                      │
+  │  **Apps Pill**: Shows count of detected bridge instances across all    │
+  │  configured DA source hosts. Updates every 10 seconds.                 │
   └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -94,6 +96,21 @@ internal static class HelpContent
 - **UA writes** (writeable mappings) flow: UA Client → BridgeNodeManager → WriteQueue → per-source consumer → `IOPCSyncIO.Write` → DA Server.
 - UA clients subscribe to UA nodes and receive notifications when values change.
 - The web dashboard reads from `/api/dashboard` (1s polling) to display live status and resource telemetry.
+
+## Dashboard Navigation
+
+The sidebar groups pages by job:
+
+- **Sources** — OPC DA (connection config, rate, subscriptions, discover, backup, + Add Source), Diagnostics (DA health, time sync)
+- **Tags** — Maps (browse DA, map to UA, faceplate), DA Links (DA→DA forwarding)
+- **IoT** — MQTT (broker config), Traffic (publish/subscribe monitor)
+- **Historian** — InfluxDB (config, write status, per-tag enable via faceplate)
+- **Ops** — Monitor (live values, status), Logs, Diagram
+- **Help** — Guide, About
+
+Use **Sources → OPC DA → + Add Source** for the guided setup wizard.
+Use **Sources → OPC DA** to edit ProgID/host, credentials, default rate, subscriptions, discover servers, and backup/restore.
+Use **IoT → MQTT → Setup Wizard** and **Historian → InfluxDB → Setup Wizard** for first-time broker/historian setup.
 
 ## OPC UA Endpoint — Bind vs Connect
 
@@ -178,7 +195,7 @@ Each UA node simply reflects whatever value the DA-side poller last read. The cl
 # Update Rate & Tag Limits
 
 - Each tag can be assigned its own update rate via the faceplate (Tags tab → click a tag → Setup tab). Tags with the same rate share one OPC DA group.
-- Tags set to "Source Default" (update rate = 0) inherit the global **Default Update Rate** (Connection tab).
+- Tags set to "Source Default" (update rate = 0) inherit the global **Default Update Rate** (Sources → OPC DA).
 - The global Default Update Rate is the single fallback for all tags without an explicit rate.
 - Watch the alarm bar on the Monitor tab: <span class="good">green</span> = within limits, <span class="warn">yellow</span> = cycle budget warning, <span class="bad">red</span> = limit exceeded or saturated.
 
@@ -371,7 +388,7 @@ Minimal JSON. Selectable fields (MQTT Broker → Payload Fields): `v` (value), `
 
 ## Subscriptions & Deadband
 
-- Subscriptions can be toggled in **Connection tab → DA Subscriptions**. When ON (default), the bridge uses `IOPCDataCallback` to receive value changes from the DA server instead of polling with `IOPCSyncIO.Read`. Changing the toggle takes effect on the next source reconnect.
+- Subscriptions can be toggled in **Sources → OPC DA → DA Subscriptions**. When ON (default), the bridge uses `IOPCDataCallback` to receive value changes from the DA server instead of polling with `IOPCSyncIO.Read`. Changing the toggle takes effect on the next source reconnect.
 - Subscriptions deliver values on change (faster than update rate) and respect the per-group **deadband**.
 - **Deadband %** (Tags tab → faceplate → Setup tab → Deadband %) sets the OPC DA group's `percentDeadband`. The DA server suppresses callbacks for changes within the deadband. Set 0 for no filtering, 1.0 for 1% noise suppression.
 - If the DA server does not support `IOPCDataCallback`, the bridge logs a warning and falls back to device-read polling — deadband has no effect in polling mode.
@@ -424,7 +441,7 @@ The bridge can discover OPC DA servers installed on the **local machine** or on 
 ## Discovery workflow
 
 ```
- Connection tab → Credentials section
+ Sources → OPC DA → Credentials section
 
   Host: [localhost          ]
   User: [opcuser            ]  ← user who installed the OPC DA server
@@ -454,7 +471,7 @@ The bridge can discover OPC DA servers installed on the **local machine** or on 
 
 - **No credentials needed** — servers installed normally (machine-wide, admin install)
 - **Credentials needed** — server installed by a specific user (per-user COM registration), or remote host requiring DCOM authentication
-- **Manual ProgID** — if a server doesn't appear in scan, type the ProgID directly in the Connection tab's ProgID field and provide credentials
+- **Manual ProgID** — if a server doesn't appear in scan, type the ProgID directly in Sources → OPC DA → ProgID field and provide credentials
 
 ## Limitations
 
@@ -466,13 +483,13 @@ The bridge can discover OPC DA servers installed on the **local machine** or on 
 
 # Troubleshooting
 
-- **DA browse fails** — check ProgID, host reachability, DCOM permissions, and credentials (Connection tab → Credentials section).
+- **DA browse fails** — check ProgID, host reachability, DCOM permissions, and credentials (Sources → OPC DA → Credentials section).
 - **Values stop moving** — check Monitor → Source Status for connection state and last read timing. Check the alarm bar for rate-group saturation.
 - **Tags not appearing in UA** — verify the tag is Enabled (Tags tab → faceplate → Setup tab). Check Monitor → OPC UA Endpoint for node count.
 - **Rate group saturated** — the read time exceeds 80% of the update rate. Increase the rate or reduce the number of tags in that rate group.
 - **Tag limit exceeded** — the number of tags in a rate group exceeds the configured limit. Move some tags to a slower rate or increase the limit in `appsettings.json`.
 - **UA write rejected** — verify the tag's Access Rights is **Read-Write** or **Write** (Tags tab → faceplate → Setup tab). Read-only tags return `BadWriteNotSupported`. A write that times out (DA server unresponsive for 5s) returns `BadRequestTimeout`; a DA-side failure returns `BadNoCommunication`.
-- **Deadband not filtering** — deadband only works under **subscriptions** (Connection tab → DA Subscriptions ON). If the DA server doesn't support `IOPCDataCallback`, the bridge falls back to polling and deadband has no effect. Check Logs for the subscription fallback warning.
+- **Deadband not filtering** — deadband only works under **subscriptions** (Sources → OPC DA → DA Subscriptions ON). If the DA server doesn't support `IOPCDataCallback`, the bridge falls back to polling and deadband has no effect. Check Logs for the subscription fallback warning.
 - **Handle count growing** — a steady upward trend in Monitor → Resources → Handles indicates a COM object or handle leak. Restart the scheduled task if it grows unbounded; report the source for investigation.
 - **Subscription fallback** — if `/api/logs` shows "OPC DA server does not support subscriptions", the bridge silently switched to polling. Values still flow at the update rate. This is non-fatal.
 
@@ -625,7 +642,7 @@ schtasks /delete /tn OpcDaToUaBridge /f
 
 ## Backup and restore
 
-Use the **Connection tab → Backup & Restore** section in the dashboard:
+Use the **Sources → OPC DA → Backup & Restore** section in the dashboard:
 - **Export Config** — downloads a JSON file with all DA sources + tag mappings
 - **Import Config** — restores from a previously exported file
 - Passwords are NOT exported — re-enter DCOM credentials after import
@@ -640,7 +657,7 @@ Updates are **local only** — no internet, no admin. Overwrite the DLLs and res
 ## Before you update
 
 1. **Check current version** — look at the topbar badge (e.g. **v1.0.0**) or call `http://localhost:8080/api/version`
-2. **Export a backup** — Connection tab → Backup & Restore → **Export Config** (saves all sources + mappings to a JSON file). This is your safety net if anything goes wrong.
+2. **Export a backup** — Sources → OPC DA → Backup & Restore → **Export Config** (saves all sources + mappings to a JSON file). This is your safety net if anything goes wrong.
 3. **Get the new version files** — a `publish` folder from the developer (USB drive, network share, SCP, etc.)
 
 ## What's in a new version
@@ -731,7 +748,7 @@ Start-Sleep -Seconds 10
 | DA connection | Monitor → DA | Connected |
 | Tag count | Monitor → Tags | Same as before update |
 | Mappings | Tags tab | All your tags are still there |
-| Sources | Connection tab | All your sources are still there |
+| Sources | Sources → OPC DA | All your sources are still there |
 
 If DA shows Faulted after update, check `/api/logs` for errors. If `appsettings.json` was overwritten with wrong DA config, fix the ProgID/Host and restart.
 
@@ -747,7 +764,7 @@ schtasks /end /tn OpcDaToUaBridge; Get-Process dotnet -ErrorAction SilentlyConti
 
 1. **Bridge won't start** — check `publish\bridge-task-stderr.log` for the crash error
 2. **DA Faulted** — check the dashboard logs tab or `/api/logs?limit=50`; verify `appsettings.json` Da:ProgId and Da:Host
-3. **Lost mappings** — restore from the backup JSON: Connection tab → Backup & Restore → Import Config
+3. **Lost mappings** — restore from the backup JSON: Sources → OPC DA → Backup & Restore → Import Config
 4. **Roll back** — keep the old `publish` folder renamed to `publish.old`; if the new version fails, stop the task, rename `publish.old` back to `publish`, restart
 
 ## What is preserved across updates
@@ -813,8 +830,8 @@ Always preserve `pki/` across updates. It's listed in the update guide as "never
 
 - **Da:ProgId** — OPC DA server ProgID (e.g. `Matrikon.OPC.Simulation.1`)
 - **Da:Host** — DA server host (localhost or remote IP)
-- **Da:UpdateRateMs** — default update rate for new sources (min 100ms); can be changed live in Connection tab → Default Update Rate
-- **Da:UseSubscriptions** — use `IOPCDataCallback` subscriptions (default `true`); can be toggled live in Connection tab → DA Subscriptions
+- **Da:UpdateRateMs** — default update rate for new sources (min 100ms); can be changed live in Sources → OPC DA → Default Update Rate
+- **Da:UseSubscriptions** — use `IOPCDataCallback` subscriptions (default `true`); can be toggled live in Sources → OPC DA → DA Subscriptions
 - **Ua:EndpointUrl** — OPC UA server endpoint (default `opc.tcp://0.0.0.0:4840/OpcDaToUaBridge`)
 - **Ua:AutoAcceptUntrustedCertificates** — accept untrusted UA client certs (dev/test)
 - **Bridge:RateLimits** — max tags per rate group (rate ms → max tags)
