@@ -260,11 +260,21 @@ app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings
     DaRuntimeSettingsSnapshot snapshot = settings.UpsertSource(new DaSourceRuntimeSettings(
         request.SourceId,
         request.DisplayName ?? string.Empty,
-        request.ProgId,
-        request.Host,
+        request.SourceType ?? string.Empty,
+        request.ProgId ?? string.Empty,
+        request.Host ?? string.Empty,
         request.RemoteUsername,
         request.RemotePassword,
         request.RemoteDomain,
+        request.EndpointUrl ?? string.Empty,
+        request.SecurityMode ?? string.Empty,
+        request.SecurityPolicy ?? string.Empty,
+        request.UaUsername,
+        request.UaPassword,
+        request.SessionTimeoutMs,
+        request.ReconnectDelayMs,
+        request.MaxMappedTags,
+        request.UseSubscriptions ?? true,
         request.UpdateRateMs));
 
     DaSourceRuntimeSettings source = snapshot.GetSource(request.SourceId)!;
@@ -275,11 +285,20 @@ app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings
         {
             sourceId = source.SourceId,
             displayName = source.DisplayName,
+            sourceType = source.SourceType,
             progId = source.ProgId,
             host = source.Host,
+            endpointUrl = source.EndpointUrl,
+            securityMode = source.SecurityMode,
+            securityPolicy = source.SecurityPolicy,
             updateRateMs = source.UpdateRateMs,
+            sessionTimeoutMs = source.SessionTimeoutMs,
+            reconnectDelayMs = source.ReconnectDelayMs,
+            maxMappedTags = source.MaxMappedTags,
+            useSubscriptions = source.UseSubscriptions,
             remoteUsername = source.RemoteUsername,
-            remoteDomain = source.RemoteDomain
+            remoteDomain = source.RemoteDomain,
+            uaUsername = source.UaUsername
         }
     });
 });
@@ -547,11 +566,20 @@ app.MapGet("/api/config/export", (DaRuntimeSettings daSettings, MappingStore map
             {
                 sourceId = s.SourceId,
                 displayName = s.DisplayName,
+                sourceType = s.SourceType,
                 progId = s.ProgId,
                 host = s.Host,
+                endpointUrl = s.EndpointUrl,
+                securityMode = s.SecurityMode,
+                securityPolicy = s.SecurityPolicy,
                 updateRateMs = s.UpdateRateMs,
+                sessionTimeoutMs = s.SessionTimeoutMs,
+                reconnectDelayMs = s.ReconnectDelayMs,
+                maxMappedTags = s.MaxMappedTags,
+                useSubscriptions = s.UseSubscriptions,
                 remoteUsername = s.RemoteUsername,
-                remoteDomain = s.RemoteDomain
+                remoteDomain = s.RemoteDomain,
+                uaUsername = s.UaUsername
             })
         },
         mappings = mappings
@@ -575,15 +603,25 @@ app.MapPost("/api/config/import", async (HttpContext context, DaRuntimeSettings 
             {
                 foreach (JsonElement s in sourcesEl.EnumerateArray())
                 {
-                    sources.Add(new DaSourceRuntimeSettings(
+                    sources.Add(SourceConfigMigration.Normalize(new DaSourceRuntimeSettings(
                         s.TryGetProperty("sourceId", out JsonElement sid) ? sid.GetString() ?? "default" : "default",
                         s.TryGetProperty("displayName", out JsonElement dn) ? dn.GetString() ?? string.Empty : string.Empty,
+                        s.TryGetProperty("sourceType", out JsonElement st) ? st.GetString() ?? string.Empty : string.Empty,
                         s.TryGetProperty("progId", out JsonElement pid) ? pid.GetString() ?? string.Empty : string.Empty,
                         s.TryGetProperty("host", out JsonElement h) ? h.GetString() ?? "localhost" : "localhost",
                         s.TryGetProperty("remoteUsername", out JsonElement ru) ? ru.GetString() : null,
                         null, // password not exported — must be re-entered on import
                         s.TryGetProperty("remoteDomain", out JsonElement rd) ? rd.GetString() : null,
-                        s.TryGetProperty("updateRateMs", out JsonElement sur) ? sur.GetInt32() : updateRate));
+                        s.TryGetProperty("endpointUrl", out JsonElement eu) ? eu.GetString() ?? string.Empty : string.Empty,
+                        s.TryGetProperty("securityMode", out JsonElement sm) ? sm.GetString() ?? string.Empty : string.Empty,
+                        s.TryGetProperty("securityPolicy", out JsonElement sp) ? sp.GetString() ?? string.Empty : string.Empty,
+                        s.TryGetProperty("uaUsername", out JsonElement uu) ? uu.GetString() : null,
+                        null, // UA password not exported
+                        s.TryGetProperty("sessionTimeoutMs", out JsonElement sto) ? sto.GetInt32() : 0,
+                        s.TryGetProperty("reconnectDelayMs", out JsonElement rcd) ? rcd.GetInt32() : 0,
+                        s.TryGetProperty("maxMappedTags", out JsonElement mmt) ? mmt.GetInt32() : 0,
+                        s.TryGetProperty("useSubscriptions", out JsonElement usrc) ? usrc.GetBoolean() : true,
+                        s.TryGetProperty("updateRateMs", out JsonElement sur) ? sur.GetInt32() : updateRate), updateRate));
                 }
             }
 

@@ -37,10 +37,10 @@ public sealed class BridgeAppDiscoveryTests : IDisposable
         var settings = new DaRuntimeSettings(options);
 
         // Add sources with local aliases
-        settings.UpsertSource(new DaSourceRuntimeSettings("s1", "S1", "ProgId", "localhost", null, null, null, 1000));
-        settings.UpsertSource(new DaSourceRuntimeSettings("s2", "S2", "ProgId", ".", null, null, null, 1000));
-        settings.UpsertSource(new DaSourceRuntimeSettings("s3", "S3", "ProgId", "127.0.0.1", null, null, null, 1000));
-        settings.UpsertSource(new DaSourceRuntimeSettings("s4", "S4", "ProgId", Environment.MachineName, null, null, null, 1000));
+        settings.UpsertSource(DaRuntimeSettings.CreateDaSource("s1", "S1", "ProgId", "localhost", null, null, null, 1000));
+        settings.UpsertSource(DaRuntimeSettings.CreateDaSource("s2", "S2", "ProgId", ".", null, null, null, 1000));
+        settings.UpsertSource(DaRuntimeSettings.CreateDaSource("s3", "S3", "ProgId", "127.0.0.1", null, null, null, 1000));
+        settings.UpsertSource(DaRuntimeSettings.CreateDaSource("s4", "S4", "ProgId", Environment.MachineName, null, null, null, 1000));
 
         var handler = new StubHttpMessageHandler();
         var httpClient = new HttpClient(handler);
@@ -62,7 +62,7 @@ public sealed class BridgeAppDiscoveryTests : IDisposable
     {
         var options = Options.Create(new DaClientOptions());
         var settings = new DaRuntimeSettings(options);
-        settings.UpsertSource(new DaSourceRuntimeSettings("remote", "Remote", "ProgId", "REMOTE-HOST", null, null, null, 1000));
+        settings.UpsertSource(DaRuntimeSettings.CreateDaSource("remote", "Remote", "ProgId", "REMOTE-HOST", null, null, null, 1000));
 
         var handler = new StubHttpMessageHandler();
         handler.AddResponse("http://REMOTE-HOST:8080/health", new { status = "ok" });
@@ -105,8 +105,8 @@ public sealed class BridgeAppDiscoveryTests : IDisposable
     {
         var options = Options.Create(new DaClientOptions());
         var settings = new DaRuntimeSettings(options);
-        settings.UpsertSource(new DaSourceRuntimeSettings("healthy", "Healthy", "ProgId", "HEALTHY-HOST", null, null, null, 1000));
-        settings.UpsertSource(new DaSourceRuntimeSettings("failing", "Failing", "ProgId", "FAILING-HOST", null, null, null, 1000));
+        settings.UpsertSource(DaRuntimeSettings.CreateDaSource("healthy", "Healthy", "ProgId", "HEALTHY-HOST", null, null, null, 1000));
+        settings.UpsertSource(DaRuntimeSettings.CreateDaSource("failing", "Failing", "ProgId", "FAILING-HOST", null, null, null, 1000));
 
         var handler = new StubHttpMessageHandler();
         handler.AddResponse("http://HEALTHY-HOST:8080/health", new { status = "ok" });
@@ -145,8 +145,8 @@ public sealed class BridgeAppDiscoveryTests : IDisposable
     {
         var options = Options.Create(new DaClientOptions());
         var settings = new DaRuntimeSettings(options);
-        settings.UpsertSource(new DaSourceRuntimeSettings("alias1", "Alias1", "ProgId", "HOST-A", null, null, null, 1000));
-        settings.UpsertSource(new DaSourceRuntimeSettings("alias2", "Alias2", "ProgId", "192.168.1.100", null, null, null, 1000));
+        settings.UpsertSource(DaRuntimeSettings.CreateDaSource("alias1", "Alias1", "ProgId", "HOST-A", null, null, null, 1000));
+        settings.UpsertSource(DaRuntimeSettings.CreateDaSource("alias2", "Alias2", "ProgId", "192.168.1.100", null, null, null, 1000));
 
         var handler = new StubHttpMessageHandler();
         // Both aliases return the same machineName

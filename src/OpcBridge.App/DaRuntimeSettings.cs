@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.Options;
+using OpcBridge.Core;
 using OpcBridge.Da;
 
 namespace OpcBridge.App;
@@ -171,7 +172,7 @@ public sealed class DaRuntimeSettings
         string? password = null,
         string? domain = null)
     {
-        return UpsertSource(new DaSourceRuntimeSettings(
+        return UpsertSource(CreateDaSource(
             DefaultSourceId,
             "Default Source",
             progId,
@@ -191,7 +192,7 @@ public sealed class DaRuntimeSettings
         {
             foreach (DaSourceOptions source in options.Sources)
             {
-                configuredSources.Add(NormalizeSource(new DaSourceRuntimeSettings(
+                configuredSources.Add(NormalizeSource(CreateDaSource(
                     source.SourceId,
                     source.DisplayName,
                     source.ProgId,
@@ -204,7 +205,7 @@ public sealed class DaRuntimeSettings
         }
         else
         {
-            configuredSources.Add(NormalizeSource(new DaSourceRuntimeSettings(
+            configuredSources.Add(NormalizeSource(CreateDaSource(
                 string.IsNullOrWhiteSpace(options.SourceId) ? DefaultSourceId : options.SourceId,
                 string.IsNullOrWhiteSpace(options.DisplayName) ? "Default Source" : options.DisplayName,
                 options.ProgId,
@@ -229,26 +230,55 @@ public sealed class DaRuntimeSettings
 
         if (dedupedSources.Count == 0)
         {
-            dedupedSources.Add(new DaSourceRuntimeSettings(DefaultSourceId, "Default Source", string.Empty, "localhost", null, null, null, NormalizeUpdateRate(0)));
+            dedupedSources.Add(NormalizeSource(CreateDaSource(
+                DefaultSourceId,
+                "Default Source",
+                string.Empty,
+                "localhost",
+                null,
+                null,
+                null,
+                NormalizeUpdateRate(0)), defaultRate));
         }
 
         return dedupedSources;
     }
 
-    private static DaSourceRuntimeSettings NormalizeSource(DaSourceRuntimeSettings source, int defaultUpdateRate)
+    internal static DaSourceRuntimeSettings CreateDaSource(
+        string sourceId,
+        string displayName,
+        string progId,
+        string host,
+        string? remoteUsername,
+        string? remotePassword,
+        string? remoteDomain,
+        int updateRateMs,
+        bool useSubscriptions = true)
     {
-        string sourceId = NormalizeSourceId(source.SourceId);
-        string displayName = string.IsNullOrWhiteSpace(source.DisplayName) ? sourceId : source.DisplayName.Trim();
-
         return new DaSourceRuntimeSettings(
             sourceId,
             displayName,
-            source.ProgId?.Trim() ?? string.Empty,
-            string.IsNullOrWhiteSpace(source.Host) ? "localhost" : source.Host.Trim(),
-            string.IsNullOrWhiteSpace(source.RemoteUsername) ? null : source.RemoteUsername.Trim(),
-            string.IsNullOrWhiteSpace(source.RemotePassword) ? null : source.RemotePassword,
-            string.IsNullOrWhiteSpace(source.RemoteDomain) ? null : source.RemoteDomain.Trim(),
-            NormalizeUpdateRate(source.UpdateRateMs <= 0 ? defaultUpdateRate : source.UpdateRateMs));
+            SourceTypes.OpcDa,
+            progId,
+            host,
+            remoteUsername,
+            remotePassword,
+            remoteDomain,
+            string.Empty,
+            "None",
+            "None",
+            null,
+            null,
+            60000,
+            5000,
+            50000,
+            useSubscriptions,
+            updateRateMs);
+    }
+
+    private static DaSourceRuntimeSettings NormalizeSource(DaSourceRuntimeSettings source, int defaultUpdateRate)
+    {
+        return SourceConfigMigration.Normalize(source, defaultUpdateRate);
     }
 
     private static string NormalizeSourceId(string? sourceId)
@@ -281,11 +311,21 @@ public sealed class DaRuntimeSettings
                         {
                             SourceId = s.SourceId,
                             DisplayName = s.DisplayName,
+                            SourceType = s.SourceType,
                             ProgId = s.ProgId,
                             Host = s.Host,
                             RemoteUsername = s.RemoteUsername,
                             RemotePassword = s.RemotePassword,
                             RemoteDomain = s.RemoteDomain,
+                            EndpointUrl = s.EndpointUrl,
+                            SecurityMode = s.SecurityMode,
+                            SecurityPolicy = s.SecurityPolicy,
+                            UaUsername = s.UaUsername,
+                            UaPassword = s.UaPassword,
+                            SessionTimeoutMs = s.SessionTimeoutMs,
+                            ReconnectDelayMs = s.ReconnectDelayMs,
+                            MaxMappedTags = s.MaxMappedTags,
+                            UseSubscriptions = s.UseSubscriptions,
                             UpdateRateMs = s.UpdateRateMs
                         })
                         .ToList()
@@ -308,21 +348,14 @@ public sealed class DaRuntimeSettings
             SourcesConfigDto? dto = JsonSerializer.Deserialize<SourcesConfigDto>(json);
             if (dto is null) return null;
 
+            int defaultRate = NormalizeUpdateRate(dto.UpdateRateMs);
             List<DaSourceRuntimeSettings> sources = dto.Sources?
-                .Select(s => new DaSourceRuntimeSettings(
-                    s.SourceId ?? DefaultSourceId,
-                    s.DisplayName ?? string.Empty,
-                    s.ProgId ?? string.Empty,
-                    string.IsNullOrWhiteSpace(s.Host) ? "localhost" : s.Host,
-                    string.IsNullOrWhiteSpace(s.RemoteUsername) ? null : s.RemoteUsername,
-                    string.IsNullOrWhiteSpace(s.RemotePassword) ? null : s.RemotePassword,
-                    string.IsNullOrWhiteSpace(s.RemoteDomain) ? null : s.RemoteDomain,
-                    s.UpdateRateMs <= 0 ? dto.UpdateRateMs : s.UpdateRateMs))
+                .Select(s => SourceConfigMigration.FromDto(s, defaultRate))
                 .ToList() ?? new List<DaSourceRuntimeSettings>();
 
             if (sources.Count == 0) return null;
 
-            return new DaRuntimeSettingsSnapshot(dto.UpdateRateMs, dto.UseSubscriptions, sources, 0);
+            return new DaRuntimeSettingsSnapshot(defaultRate, dto.UseSubscriptions, sources, 0);
         }
         catch
         {
@@ -334,7 +367,17 @@ public sealed class DaRuntimeSettings
     {
         lock (sync_)
         {
-            snapshot_ = snapshot with { Version = snapshot_.Version + 1 };
+            int defaultRate = NormalizeUpdateRate(snapshot.UpdateRateMs);
+            IReadOnlyList<DaSourceRuntimeSettings> normalizedSources = snapshot.Sources
+                .Select(source => NormalizeSource(source, defaultRate))
+                .ToList();
+
+            snapshot_ = snapshot with
+            {
+                UpdateRateMs = defaultRate,
+                Sources = normalizedSources,
+                Version = snapshot_.Version + 1
+            };
             Persist();
         }
     }
@@ -349,23 +392,33 @@ public sealed record DaRuntimeSettingsSnapshot(
 {
     public DaSourceRuntimeSettings? GetSource(string? sourceId)
     {
-        string normalizedSourceId = string.IsNullOrWhiteSpace(sourceId)
+        string normalized = string.IsNullOrWhiteSpace(sourceId)
             ? DaRuntimeSettings.DefaultSourceId
             : sourceId.Trim();
 
         return Sources.FirstOrDefault(source =>
-            string.Equals(source.SourceId, normalizedSourceId, StringComparison.OrdinalIgnoreCase));
+            string.Equals(source.SourceId, normalized, StringComparison.OrdinalIgnoreCase));
     }
 }
 
 public sealed record DaSourceRuntimeSettings(
     string SourceId,
     string DisplayName,
+    string SourceType,
     string ProgId,
     string Host,
     string? RemoteUsername,
     string? RemotePassword,
     string? RemoteDomain,
+    string EndpointUrl,
+    string SecurityMode,
+    string SecurityPolicy,
+    string? UaUsername,
+    string? UaPassword,
+    int SessionTimeoutMs,
+    int ReconnectDelayMs,
+    int MaxMappedTags,
+    bool UseSubscriptions,
     int UpdateRateMs)
 {
     public DaClientOptions ToOptions(bool useSubscriptions)
@@ -392,14 +445,123 @@ internal sealed class SourcesConfigDto
     public List<SourceConfigDto> Sources { get; set; } = new();
 }
 
-internal sealed class SourceConfigDto
+public sealed class SourceConfigDto
 {
     public string? SourceId { get; set; }
     public string? DisplayName { get; set; }
+    public string? SourceType { get; set; }
     public string? ProgId { get; set; }
     public string? Host { get; set; }
     public string? RemoteUsername { get; set; }
     public string? RemotePassword { get; set; }
     public string? RemoteDomain { get; set; }
+    public string? EndpointUrl { get; set; }
+    public string? SecurityMode { get; set; }
+    public string? SecurityPolicy { get; set; }
+    public string? UaUsername { get; set; }
+    public string? UaPassword { get; set; }
+    public int SessionTimeoutMs { get; set; }
+    public int ReconnectDelayMs { get; set; }
+    public int MaxMappedTags { get; set; }
+    public bool? UseSubscriptions { get; set; }
     public int UpdateRateMs { get; set; }
+}
+
+public static class SourceConfigMigration
+{
+    public static DaSourceRuntimeSettings FromDto(SourceConfigDto dto, int defaultUpdateRate)
+    {
+        return Normalize(new DaSourceRuntimeSettings(
+            dto.SourceId ?? DaRuntimeSettings.DefaultSourceId,
+            dto.DisplayName ?? string.Empty,
+            dto.SourceType ?? string.Empty,
+            dto.ProgId ?? string.Empty,
+            dto.Host ?? string.Empty,
+            dto.RemoteUsername,
+            dto.RemotePassword,
+            dto.RemoteDomain,
+            dto.EndpointUrl ?? string.Empty,
+            dto.SecurityMode ?? string.Empty,
+            dto.SecurityPolicy ?? string.Empty,
+            dto.UaUsername,
+            dto.UaPassword,
+            dto.SessionTimeoutMs,
+            dto.ReconnectDelayMs,
+            dto.MaxMappedTags,
+            dto.UseSubscriptions ?? true,
+            dto.UpdateRateMs), defaultUpdateRate);
+    }
+
+    public static DaSourceRuntimeSettings Normalize(DaSourceRuntimeSettings source, int defaultUpdateRate)
+    {
+        string sourceId = NormalizeSourceId(source.SourceId);
+        string displayName = string.IsNullOrWhiteSpace(source.DisplayName) ? sourceId : source.DisplayName.Trim();
+        string sourceType = NormalizeSourceType(source.SourceType);
+        int updateRateMs = NormalizeUpdateRate(source.UpdateRateMs <= 0 ? defaultUpdateRate : source.UpdateRateMs);
+        int sessionTimeoutMs = source.SessionTimeoutMs <= 0 ? 60000 : source.SessionTimeoutMs;
+        int reconnectDelayMs = source.ReconnectDelayMs <= 0 ? 5000 : source.ReconnectDelayMs;
+        int maxMappedTags = source.MaxMappedTags <= 0 ? 50000 : Math.Max(1, source.MaxMappedTags);
+        string securityMode = string.IsNullOrWhiteSpace(source.SecurityMode) ? "None" : source.SecurityMode.Trim();
+        string securityPolicy = string.IsNullOrWhiteSpace(source.SecurityPolicy) ? "None" : source.SecurityPolicy.Trim();
+        string endpointUrl = source.EndpointUrl?.Trim() ?? string.Empty;
+        string host = string.IsNullOrWhiteSpace(source.Host) ? "localhost" : source.Host.Trim();
+
+        return new DaSourceRuntimeSettings(
+            sourceId,
+            displayName,
+            sourceType,
+            source.ProgId?.Trim() ?? string.Empty,
+            host,
+            string.IsNullOrWhiteSpace(source.RemoteUsername) ? null : source.RemoteUsername.Trim(),
+            string.IsNullOrWhiteSpace(source.RemotePassword) ? null : source.RemotePassword,
+            string.IsNullOrWhiteSpace(source.RemoteDomain) ? null : source.RemoteDomain.Trim(),
+            endpointUrl,
+            securityMode,
+            securityPolicy,
+            string.IsNullOrWhiteSpace(source.UaUsername) ? null : source.UaUsername.Trim(),
+            string.IsNullOrWhiteSpace(source.UaPassword) ? null : source.UaPassword,
+            sessionTimeoutMs,
+            reconnectDelayMs,
+            maxMappedTags,
+            source.UseSubscriptions,
+            updateRateMs);
+    }
+
+    private static string NormalizeSourceType(string? sourceType)
+    {
+        if (string.IsNullOrWhiteSpace(sourceType))
+        {
+            return SourceTypes.OpcDa;
+        }
+
+        string trimmed = sourceType.Trim();
+        if (string.Equals(trimmed, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
+        {
+            return SourceTypes.OpcUa;
+        }
+
+        if (string.Equals(trimmed, SourceTypes.OpcDa, StringComparison.OrdinalIgnoreCase))
+        {
+            return SourceTypes.OpcDa;
+        }
+
+        // Load resilience: unknown types collapse to OpcDa; API validates on write.
+        return SourceTypes.OpcDa;
+    }
+
+    private static string NormalizeSourceId(string? sourceId)
+    {
+        string value = sourceId?.Trim() ?? string.Empty;
+        return value.Length == 0 ? DaRuntimeSettings.DefaultSourceId : value;
+    }
+
+    private static int NormalizeUpdateRate(int updateRateMs)
+    {
+        if (updateRateMs <= 0)
+        {
+            return 1000;
+        }
+
+        return Math.Max(100, updateRateMs);
+    }
 }

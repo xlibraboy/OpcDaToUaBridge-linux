@@ -155,9 +155,9 @@ public sealed class DaLinkApiTests
                     true,
                     new[]
                     {
-                        new DaSourceRuntimeSettings("providerA", "Provider", string.Empty, "localhost", null, null, null, 1000),
-                        new DaSourceRuntimeSettings("consumerA", "Consumer", string.Empty, "localhost", null, null, null, 1000),
-                        new DaSourceRuntimeSettings("otherA", "Other", string.Empty, "localhost", null, null, null, 1000)
+                        DaRuntimeSettings.CreateDaSource("providerA", "Provider", string.Empty, "localhost", null, null, null, 1000),
+                        DaRuntimeSettings.CreateDaSource("consumerA", "Consumer", string.Empty, "localhost", null, null, null, 1000),
+                        DaRuntimeSettings.CreateDaSource("otherA", "Other", string.Empty, "localhost", null, null, null, 1000)
                     },
                     0)));
 
