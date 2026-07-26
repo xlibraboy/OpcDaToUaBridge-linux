@@ -9,8 +9,9 @@ namespace OpcBridge.Drivers.Melsec.Protocol;
 public static class Melsec1CDeviceCodes
 {
     /// <summary>
-    /// Head device string as required by 1C body, e.g. "D0100", "M0010", "X020".
-    /// D/M: letter + 4 decimal digits. X/Y: letter + 3 zero-padded octal digits.
+    /// Head device string as required by 1C body, e.g. "D0100", "M0010", "X0020".
+    /// D/M: letter + 4 decimal digits. X/Y: letter + 4 zero-padded octal digits
+    /// (fixed width covers full AnN range X0000–X07FF / 0–0x7FF).
     /// </summary>
     public static string FormatHead(MelsecAddress address)
     {
@@ -20,20 +21,25 @@ public static class Melsec1CDeviceCodes
         {
             MelsecDeviceKind.D => "D" + address.Number.ToString("D4", CultureInfo.InvariantCulture),
             MelsecDeviceKind.M => "M" + address.Number.ToString("D4", CultureInfo.InvariantCulture),
-            MelsecDeviceKind.X => "X" + ToOctal3(address.Number),
-            MelsecDeviceKind.Y => "Y" + ToOctal3(address.Number),
+            MelsecDeviceKind.X => "X" + ToOctal4(address.Number),
+            MelsecDeviceKind.Y => "Y" + ToOctal4(address.Number),
             _ => throw new ArgumentOutOfRangeException(nameof(address), address.Device, "Unsupported MELSEC device kind.")
         };
     }
 
-    private static string ToOctal3(int number)
+    private const int MaxXyAnN = 0x7FF; // AnN X/Y max; value 2047 → octal 3777 (4 digits)
+
+    private static string ToOctal4(int number)
     {
-        if (number < 0)
+        if (number < 0 || number > MaxXyAnN)
         {
-            throw new ArgumentOutOfRangeException(nameof(number), number, "Device number must be non-negative.");
+            throw new ArgumentOutOfRangeException(
+                nameof(number),
+                number,
+                $"X/Y device number must be in 0..{MaxXyAnN} (0x7FF) for 4-digit octal 1C heads.");
         }
 
-        // 3-digit zero-padded octal (ACPU common style: X020).
-        return Convert.ToString(number, 8).PadLeft(3, '0');
+        // Fixed 4-digit zero-padded octal (AnN wire: X0020, X07FF) — avoids variable-length heads.
+        return Convert.ToString(number, 8).PadLeft(4, '0');
     }
 }

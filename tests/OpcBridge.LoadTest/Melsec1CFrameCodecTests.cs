@@ -91,13 +91,22 @@ public sealed class Melsec1CFrameCodecTests
     [Theory]
     [InlineData(MelsecDeviceKind.D, 100, "D0100")]
     [InlineData(MelsecDeviceKind.M, 10, "M0010")]
-    [InlineData(MelsecDeviceKind.X, 16, "X020")] // 16 decimal = 020 octal
-    [InlineData(MelsecDeviceKind.Y, 15, "Y017")] // 15 decimal = 017 octal
-    [InlineData(MelsecDeviceKind.X, 0, "X000")]
+    [InlineData(MelsecDeviceKind.X, 16, "X0020")] // 16 decimal = 0020 octal (4-digit AnN head)
+    [InlineData(MelsecDeviceKind.Y, 15, "Y0017")] // 15 decimal = 0017 octal
+    [InlineData(MelsecDeviceKind.X, 0, "X0000")]
+    [InlineData(MelsecDeviceKind.X, 0x7FF, "X3777")] // AnN max 2047 = 3777 octal
+    [InlineData(MelsecDeviceKind.Y, 0x1FF, "Y0777")] // 511 = 0777 octal
     public void FormatHead_AcpuStyle(MelsecDeviceKind kind, int number, string expected)
     {
         var address = new MelsecAddress(kind, number, null, "n/a");
         Assert.Equal(expected, Melsec1CDeviceCodes.FormatHead(address));
+    }
+
+    [Fact]
+    public void FormatHead_XyAboveAnNMax_Throws()
+    {
+        var address = new MelsecAddress(MelsecDeviceKind.X, 0x800, null, "n/a");
+        Assert.Throws<ArgumentOutOfRangeException>(() => Melsec1CDeviceCodes.FormatHead(address));
     }
 
     [Fact]
@@ -205,5 +214,24 @@ public sealed class Melsec1CFrameCodecTests
     {
         byte[] junk = [(byte)'X'];
         Assert.Throws<MelsecProtocolException>(() => Melsec1CFrameCodec.EnsureAckOrThrow(junk));
+    }
+
+    [Fact]
+    public void ParseDataResponse_RejectsTrailingBytesAfterCr()
+    {
+        string data = "00";
+        string sum = AlgorithmicSum(data + ((char)Melsec1CFrameCodec.Etx));
+        byte[] response =
+        [
+            Melsec1CFrameCodec.Stx,
+            ..Encoding.ASCII.GetBytes(data),
+            Melsec1CFrameCodec.Etx,
+            ..Encoding.ASCII.GetBytes(sum),
+            Melsec1CFrameCodec.Cr,
+            (byte)'X' // junk after CR
+        ];
+
+        var ex = Assert.Throws<MelsecProtocolException>(() => Melsec1CFrameCodec.ParseDataResponse(response));
+        Assert.Contains("trailing", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 }

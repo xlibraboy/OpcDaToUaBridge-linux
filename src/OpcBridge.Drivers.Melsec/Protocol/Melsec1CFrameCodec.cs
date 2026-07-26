@@ -118,16 +118,35 @@ public static class Melsec1CFrameCodec
             throw new MelsecProtocolException("MELSEC 1C data response missing ETX.");
         }
 
-        // After ETX: 2 sum digits + optional CR
+        // After ETX: exactly 2 sum digits, optionally followed by a single CR; nothing else.
         int afterEtx = etxIndex + 1;
         if (afterEtx + 2 > response.Length)
         {
             throw new MelsecProtocolException("MELSEC 1C data response missing sum-check digits after ETX.");
         }
 
+        int remaining = response.Length - afterEtx;
+        if (remaining == 2)
+        {
+            // sum only — OK
+        }
+        else if (remaining == 3 && response[afterEtx + 2] == Cr)
+        {
+            // sum + CR — OK
+        }
+        else
+        {
+            throw new MelsecProtocolException(
+                "MELSEC 1C data response must end with sum-check (2 hex) or sum-check + CR; trailing bytes rejected.");
+        }
+
         // Sum check covers characters after STX through ETX inclusive (data + ETX).
         int dataLen = etxIndex - stxIndex - 1;
-        Span<char> sumSpan = stackalloc char[dataLen + 1];
+        int sumLen = dataLen + 1;
+        const int StackThreshold = 256;
+        Span<char> sumSpan = sumLen <= StackThreshold
+            ? stackalloc char[sumLen]
+            : new char[sumLen];
         for (int i = 0; i < dataLen; i++)
         {
             sumSpan[i] = (char)response[stxIndex + 1 + i];
@@ -143,14 +162,6 @@ public static class Melsec1CFrameCodec
         {
             throw new MelsecProtocolException(
                 $"MELSEC 1C sum-check mismatch: expected {expectedSum}, got {actualSum}.");
-        }
-
-        if (afterEtx + 2 < response.Length && response[afterEtx + 2] != Cr)
-        {
-            // Tolerate missing CR; reject unexpected trailing non-CR.
-            // If there is a third byte it should be CR.
-            throw new MelsecProtocolException(
-                $"Expected CR after sum-check, got 0x{response[afterEtx + 2]:X2}.");
         }
 
         return Encoding.ASCII.GetString(response.Slice(stxIndex + 1, dataLen));
