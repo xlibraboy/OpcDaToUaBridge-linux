@@ -35,6 +35,7 @@ builder.Services.AddSingleton<MappingStore>();
 builder.Services.AddSingleton<DaLinkStore>();
 builder.Services.AddSingleton<IDaLinkMetadataResolver>(sp => sp.GetRequiredService<BridgeWorker>());
 builder.Services.AddSingleton<UaServerHost>();
+builder.Services.AddSingleton<OpcUaBrowseService>();
 builder.Services.AddSingleton<IMqttBridge, MqttBridge>();
 builder.Services.AddSingleton<MqttRuntimeSettings>();
 builder.Services.AddSingleton<MqttValueStore>();
@@ -791,6 +792,97 @@ app.MapPost("/api/ua/settings", async (HttpContext context, UaServerHost uaServe
         return Results.BadRequest(new { error = ex.Message });
     }
 });
+
+app.MapPost("/api/ua/test-connection", async (
+    UaTestConnectionRequest request,
+    OpcUaBrowseService browseService,
+    DaRuntimeSettings settings,
+    CancellationToken cancellationToken) =>
+{
+    if (!TryResolveUaConnection(
+            request.SourceId,
+            request.EndpointUrl,
+            request.SecurityMode,
+            request.SecurityPolicy,
+            request.Username,
+            request.Password,
+            settings,
+            out OpcUaSourceClientOptions? options,
+            out string? resolveError))
+    {
+        return Results.BadRequest(new { error = resolveError, ok = false });
+    }
+
+    using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+    cts.CancelAfter(TimeSpan.FromMilliseconds(OpcUaBrowseService.DefaultTimeoutMs));
+
+    UaTestConnectionResult result = await browseService
+        .TestConnectionAsync(options!, cts.Token)
+        .ConfigureAwait(false);
+
+    if (!result.Ok)
+    {
+        return Results.Json(new { ok = false, error = result.Error ?? "Connection failed." });
+    }
+
+    return Results.Json(new
+    {
+        ok = true,
+        serverProductName = result.ServerProductName,
+        sessionId = result.SessionId
+    });
+});
+
+app.MapPost("/api/ua/browse", async (
+    UaBrowseRequest request,
+    OpcUaBrowseService browseService,
+    DaRuntimeSettings settings,
+    CancellationToken cancellationToken) =>
+{
+    if (!TryResolveUaConnection(
+            request.SourceId,
+            request.EndpointUrl,
+            request.SecurityMode,
+            request.SecurityPolicy,
+            request.Username,
+            request.Password,
+            settings,
+            out OpcUaSourceClientOptions? options,
+            out string? resolveError))
+    {
+        return Results.BadRequest(new { error = resolveError });
+    }
+
+    using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+    cts.CancelAfter(TimeSpan.FromMilliseconds(OpcUaBrowseService.DefaultTimeoutMs));
+
+    UaBrowseResult result = await browseService
+        .BrowseAsync(
+            options!,
+            request.NodeId,
+            request.MaxNodes ?? OpcUaBrowseService.DefaultMaxNodes,
+            cts.Token)
+        .ConfigureAwait(false);
+
+    if (result.Error is not null
+        && result.Error.StartsWith("Invalid nodeId", StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.BadRequest(new { error = result.Error, nodes = Array.Empty<object>() });
+    }
+
+    return Results.Json(new
+    {
+        nodes = result.Nodes.Select(n => new
+        {
+            nodeId = n.NodeId,
+            displayName = n.DisplayName,
+            nodeClass = n.NodeClass,
+            hasChildren = n.HasChildren
+        }),
+        continuationPoint = result.ContinuationPoint,
+        error = result.Error
+    });
+});
 app.MapGet("/api/mqtt/config", (MqttRuntimeSettings settings) =>
 {
     MqttRuntimeSnapshot snapshot = settings.GetSnapshot();
@@ -1199,6 +1291,124 @@ static bool TryValidateUaSecurity(string? securityMode, string? securityPolicy, 
     if (!modeIsNone && !policy.Equals("Basic256Sha256", StringComparison.OrdinalIgnoreCase))
     {
         error = "Security mode None requires policy None; Sign/SignAndEncrypt require Basic256Sha256.";
+        return false;
+    }
+
+    return true;
+}
+
+static bool TryResolveUaConnection(
+    string? sourceId,
+    string? endpointUrl,
+    string? securityMode,
+    string? securityPolicy,
+    string? username,
+    string? password,
+    DaRuntimeSettings settings,
+    out OpcUaSourceClientOptions? options,
+    out string? error)
+{
+    options = null;
+    error = null;
+
+    string trimmedSourceId = sourceId?.Trim() ?? string.Empty;
+    if (trimmedSourceId.Length > 0)
+    {
+        DaRuntimeSettingsSnapshot snapshot = settings.GetSnapshot();
+        DaSourceRuntimeSettings? source = snapshot.GetSource(trimmedSourceId);
+        if (source is null)
+        {
+            error = $"Source '{trimmedSourceId}' was not found.";
+            return false;
+        }
+
+        if (!string.Equals(source.SourceType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
+        {
+            error = $"Source '{trimmedSourceId}' is not an OpcUa source.";
+            return false;
+        }
+
+        // Explicit body fields override stored source values when provided.
+        string resolvedEndpoint = !string.IsNullOrWhiteSpace(endpointUrl)
+            ? endpointUrl.Trim()
+            : source.EndpointUrl;
+        string resolvedMode = !string.IsNullOrWhiteSpace(securityMode)
+            ? securityMode.Trim()
+            : source.SecurityMode;
+        string resolvedPolicy = !string.IsNullOrWhiteSpace(securityPolicy)
+            ? securityPolicy.Trim()
+            : source.SecurityPolicy;
+        string? resolvedUser = username ?? source.UaUsername;
+        string? resolvedPassword = password ?? source.UaPassword;
+
+        if (!TryValidateUaConnectionFields(resolvedEndpoint, resolvedMode, resolvedPolicy, out error))
+        {
+            return false;
+        }
+
+        options = new OpcUaSourceClientOptions
+        {
+            SourceId = source.SourceId,
+            DisplayName = source.DisplayName,
+            EndpointUrl = resolvedEndpoint,
+            SecurityMode = string.IsNullOrWhiteSpace(resolvedMode) ? "None" : resolvedMode,
+            SecurityPolicy = string.IsNullOrWhiteSpace(resolvedPolicy) ? "None" : resolvedPolicy,
+            Username = resolvedUser,
+            Password = resolvedPassword,
+            SessionTimeoutMs = source.SessionTimeoutMs > 0
+                ? source.SessionTimeoutMs
+                : OpcUaBrowseService.DefaultTimeoutMs,
+            AutoAcceptUntrustedCertificates = true,
+            PkiRoot = "pki/ua-client"
+        };
+        return true;
+    }
+
+    string directEndpoint = endpointUrl?.Trim() ?? string.Empty;
+    if (!TryValidateUaConnectionFields(directEndpoint, securityMode, securityPolicy, out error))
+    {
+        return false;
+    }
+
+    options = new OpcUaSourceClientOptions
+    {
+        SourceId = "adhoc",
+        DisplayName = "Ad-hoc",
+        EndpointUrl = directEndpoint,
+        SecurityMode = string.IsNullOrWhiteSpace(securityMode) ? "None" : securityMode.Trim(),
+        SecurityPolicy = string.IsNullOrWhiteSpace(securityPolicy) ? "None" : securityPolicy.Trim(),
+        Username = username,
+        Password = password,
+        SessionTimeoutMs = OpcUaBrowseService.DefaultTimeoutMs,
+        AutoAcceptUntrustedCertificates = true,
+        PkiRoot = "pki/ua-client"
+    };
+    return true;
+}
+
+static bool TryValidateUaConnectionFields(
+    string endpointUrl,
+    string? securityMode,
+    string? securityPolicy,
+    out string? error)
+{
+    error = null;
+    if (string.IsNullOrWhiteSpace(endpointUrl))
+    {
+        error = "Endpoint URL is required (or provide a valid sourceId).";
+        return false;
+    }
+
+    string trimmed = endpointUrl.Trim();
+    if (!trimmed.StartsWith("opc.tcp://", StringComparison.OrdinalIgnoreCase))
+    {
+        error = "Endpoint URL must start with opc.tcp://.";
+        return false;
+    }
+
+    if (!TryValidateUaSecurity(securityMode, securityPolicy, out string? securityError))
+    {
+        error = securityError;
         return false;
     }
 
