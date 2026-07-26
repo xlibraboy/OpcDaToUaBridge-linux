@@ -43,3 +43,8 @@ mappings.json
 #Avalonia build task cache
 .avalonia-build-tasks/
 **/.avalonia-build-tasks/
+
+# Agent skills — bodies are restored from skills-lock.json (see scripts/install-agent-skills.sh)
+# Commit skills-lock.json so every PC gets the same skill set; do not commit skill file trees.
+.agents/
+.pi/
