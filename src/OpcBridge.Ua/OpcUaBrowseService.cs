@@ -34,11 +34,13 @@ public sealed class OpcUaBrowseService
     {
         ArgumentNullException.ThrowIfNull(options);
 
+        using var timeoutCts = CreateOperationTimeoutCts(options, cancellationToken);
+
         Session? session = null;
         try
         {
-            session = await OpenSessionAsync(options, cancellationToken).ConfigureAwait(false);
-            string? productName = await TryReadServerProductNameAsync(session, cancellationToken)
+            session = await OpenSessionAsync(options, timeoutCts.Token).ConfigureAwait(false);
+            string? productName = await TryReadServerProductNameAsync(session, timeoutCts.Token)
                 .ConfigureAwait(false);
             string? sessionId = session.SessionId?.ToString();
 
@@ -48,11 +50,17 @@ public sealed class OpcUaBrowseService
                 ServerProductName: productName,
                 SessionId: sessionId);
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            // Caller/request abort — do not map to a soft connection failure.
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            // Nested operation timeout only.
             return new UaTestConnectionResult(false, "Connection timed out.", null, null);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex)
         {
             logger_.LogDebug(ex, "UA test-connection failed for {Endpoint}", options.EndpointUrl);
             return new UaTestConnectionResult(false, FlattenMessage(ex), null, null);
@@ -81,10 +89,12 @@ public sealed class OpcUaBrowseService
                 Error: $"Invalid nodeId '{targetNodeId}'.");
         }
 
+        using var timeoutCts = CreateOperationTimeoutCts(options, cancellationToken);
+
         Session? session = null;
         try
         {
-            session = await OpenSessionAsync(options, cancellationToken).ConfigureAwait(false);
+            session = await OpenSessionAsync(options, timeoutCts.Token).ConfigureAwait(false);
 
             BrowseDescription description = new()
             {
@@ -102,7 +112,7 @@ public sealed class OpcUaBrowseService
                     view: null,
                     requestedMaxReferencesPerNode: (uint)pageSize,
                     nodesToBrowse: nodesToBrowse,
-                    ct: cancellationToken)
+                    ct: timeoutCts.Token)
                 .ConfigureAwait(false);
             BrowseResultCollection? results = browseResponse.Results;
 
@@ -163,11 +173,17 @@ public sealed class OpcUaBrowseService
 
             return new UaBrowseResult(nodes, continuation, null);
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            // Caller/request abort — do not map to a soft browse failure.
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            // Nested operation timeout only.
             return new UaBrowseResult(Array.Empty<UaBrowseNodeDto>(), null, "Browse timed out.");
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex)
         {
             logger_.LogDebug(ex, "UA browse failed for {Endpoint} node {NodeId}", options.EndpointUrl, targetNodeId);
             return new UaBrowseResult(Array.Empty<UaBrowseNodeDto>(), null, FlattenMessage(ex));
@@ -186,6 +202,19 @@ public sealed class OpcUaBrowseService
         }
 
         return Math.Min(maxNodes, AbsoluteMaxNodes);
+    }
+
+    private static CancellationTokenSource CreateOperationTimeoutCts(
+        OpcUaSourceClientOptions options,
+        CancellationToken cancellationToken)
+    {
+        int timeoutMs = options.SessionTimeoutMs > 0
+            ? Math.Min(options.SessionTimeoutMs, DefaultTimeoutMs)
+            : DefaultTimeoutMs;
+
+        CancellationTokenSource timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(TimeSpan.FromMilliseconds(timeoutMs));
+        return timeoutCts;
     }
 
     private async Task<Session> OpenSessionAsync(
@@ -392,6 +421,10 @@ public sealed class OpcUaBrowseService
             throw new InvalidOperationException(
                 $"No endpoint at '{endpointUrl}' matches security {desiredMode}/{ShortPolicy(desiredPolicyUri)}. Available: {available}");
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (InvalidOperationException)
         {
             throw;
@@ -421,6 +454,10 @@ public sealed class OpcUaBrowseService
                 }
 
                 return PreferConfiguredUrl(selected, endpointUrl);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
             }
             catch (InvalidOperationException)
             {

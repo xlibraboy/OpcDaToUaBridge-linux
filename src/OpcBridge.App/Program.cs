@@ -813,11 +813,8 @@ app.MapPost("/api/ua/test-connection", async (
         return Results.BadRequest(new { error = resolveError, ok = false });
     }
 
-    using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-    cts.CancelAfter(TimeSpan.FromMilliseconds(OpcUaBrowseService.DefaultTimeoutMs));
-
     UaTestConnectionResult result = await browseService
-        .TestConnectionAsync(options!, cts.Token)
+        .TestConnectionAsync(options!, cancellationToken)
         .ConfigureAwait(false);
 
     if (!result.Ok)
@@ -853,15 +850,12 @@ app.MapPost("/api/ua/browse", async (
         return Results.BadRequest(new { error = resolveError });
     }
 
-    using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-    cts.CancelAfter(TimeSpan.FromMilliseconds(OpcUaBrowseService.DefaultTimeoutMs));
-
     UaBrowseResult result = await browseService
         .BrowseAsync(
             options!,
             request.NodeId,
             request.MaxNodes ?? OpcUaBrowseService.DefaultMaxNodes,
-            cts.Token)
+            cancellationToken)
         .ConfigureAwait(false);
 
     if (result.Error is not null
