@@ -2692,6 +2692,16 @@ function loadSelectedUaSourceForm() {
 async function loadSources() {
     const payload = await (await fetch('/api/da/sources', { cache: 'no-store' })).json();
     state.sources = payload.sources || [];
+    // Merge live connection status (from /api/dashboard bridge.sources) so the
+    // status list and Select-by-type rows show Connected/Faulted + last error.
+    const statusBySource = new Map((state.bridgeSources || []).map(s => [String(get(s, 'sourceId') || '').toLowerCase(), s]));
+    state.sources.forEach(source => {
+        const status = statusBySource.get(String(source.sourceId || '').toLowerCase());
+        if (status) {
+            source.connectionState = get(status, 'connectionState');
+            source.lastError = get(status, 'lastError');
+        }
+    });
     state.updateRateMs = Number(payload.updateRateMs || state.updateRateMs || 1000);
     state.useSubscriptions = payload.useSubscriptions !== false;
     if (el('cfgUseSubscriptions')) el('cfgUseSubscriptions').checked = state.useSubscriptions;
@@ -2958,6 +2968,7 @@ async function refresh() {
         const ua = p.ua || p.Ua || {};
         const vs = p.values || p.Values || [];
          const sources = get(b, 'sources') || [];
+         state.bridgeSources = sources;
          const apps = p.apps || p.Apps || {};
          el('dot').className = 'dot';
          el('clock').textContent = new Date().toLocaleTimeString();
@@ -3009,6 +3020,18 @@ async function refresh() {
             } else {
                 tagSrcStatus.innerHTML = '<span class="msg">—</span>';
             }
+        }
+        // Refresh live connection status on the Connectivity status list too.
+        if (document.getElementById('view-connection')?.classList.contains('active')) {
+            const statusBySource = new Map(sources.map(s => [String(get(s, 'sourceId') || '').toLowerCase(), s]));
+            state.sources.forEach(source => {
+                const status = statusBySource.get(String(source.sourceId || '').toLowerCase());
+                if (status) {
+                    source.connectionState = get(status, 'connectionState');
+                    source.lastError = get(status, 'lastError');
+                }
+            });
+            renderSourcesStatusList();
         }
         el('sourceStatusList').innerHTML = sources.length ? sources.map(source => {
             const connState = get(source,'connectionState') || '—';
