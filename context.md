@@ -71,6 +71,12 @@ The UA server is a **mirror**, not a computation path. Every value shown in the 
 - `BridgeWorker` builds one poller task per `(SourceId, distinct-rate)` group. `SourceMappingCache.GetDistinctRates` derives the set.
 - `Bridge:RateLimits` in `appsettings.json` caps tags-per-rate-group; `BridgeState.UpdateRateGroup` reports `ok`/`warning`/`saturated`/`limit-exceeded` per group.
 
+### OPC UA inbound sources (feature)
+
+- SourceType `OpcUa` connects outbound as a UA **client** to external servers (`OpcUaSourceClient` via `DaClientFactory`; endpoint URL, security mode `None`/`Sign`/`SignAndEncrypt` with policy `None`/`Basic256Sha256`, optional UserName token).
+- Bridge still hosts the outbound UA server mirror — UA sources feed the same `BridgeState` → UA node pipeline as DA sources.
+- Mapped NodeIds only (UA item id = NodeId string); subscriptions primary (poll is fallback for the mapped set); write-through supported for writable mappings.
+
 ### Manual mode (committed)
 
 When `TagMapping.Mode == "Manual"`, `BridgeWorker.ApplyManualMappings` synthesizes a `BridgeValue` from `ManualValue` (parsed by `TryConvertManualValue`) without a DA read. Supported types: BOOL, BYTE, SBYTE, INT16, UINT16, INT32, UINT32, INT64, UINT64, FLOAT, DOUBLE, DECIMAL, STRING, plus type inference.
@@ -83,7 +89,7 @@ When `TagMapping.Mode == "Manual"`, `BridgeWorker.ApplyManualMappings` synthesiz
 
 ## DA client seam
 
-`IDaClient` (`OpcBridge.Da`) is the pluggable boundary: `ConnectAsync`, `ReadAsync`, `IAsyncDisposable`. `OpcDaClient` is the only implementation.
+`IDaClient` (`OpcBridge.Da`) is the pluggable boundary: `ConnectAsync`, `ReadAsync`, `IAsyncDisposable`. Implementations: `OpcDaClient` (OPC DA) and `OpcUaSourceClient` (OPC UA sources); `DaClientFactory` picks by `SourceType`.
 
 `DaClientFactory.Create(settings, source)` returns `new OpcDaClient(source.ToOptions())`. **There is no `SimulatedDaClient` and no `Da:Mode` setting in committed code** — older notes mentioning Simulation/OpcDa runtime switching describe a pattern that is not present. Do not reintroduce it without explicit instruction.
 
