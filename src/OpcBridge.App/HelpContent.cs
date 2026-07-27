@@ -134,7 +134,7 @@ The **Monitor** tab shows both values: the configured bind address and the deriv
 The bridge can sit on **both sides** of an OPC UA connection — do not confuse them:
 
 - **OPC UA source (inbound)** — configured under **Sources → OPC UA**. The bridge acts as a UA **client** and connects **out** to an external UA server (PLC gateway, historian, another bridge). Its tags are pulled into the bridge like DA source tags.
-- **OPC UA server endpoint (outbound)** — the bridge's own built-in UA server (`opc.tcp://0.0.0.0:4840/OpcDaToUaBridge`). HMI/SCADA clients connect **to** the bridge here to read the mirrored tags. This endpoint exists regardless of whether any UA sources are configured.
+- **OPC UA server endpoint (outbound)** — the bridge's own built-in UA server (`opc.tcp://0.0.0.0:4840/OpcBridge`). HMI/SCADA clients connect **to** the bridge here to read the mirrored tags. This endpoint exists regardless of whether any UA sources are configured.
 
 ### Mapping UA source tags
 
