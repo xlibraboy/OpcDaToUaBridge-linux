@@ -77,4 +77,28 @@ public sealed class DashboardPageTests
         Assert.Contains("influxEnabled: el('fpInfluxEnabled').checked", DashboardPage.Script);
         Assert.Contains("if (name === 'influx')", DashboardPage.Script);
     }
+    [Fact]
+    public void Script_BrowsesUaSourceViaUaBrowseApi()
+    {
+        Assert.Contains("async function browseUaSource(", DashboardPage.Script);
+        Assert.Contains("/api/ua/browse", DashboardPage.Script);
+        Assert.Contains("isUaSource(source)", DashboardPage.Script);
+        Assert.Contains("if (isUaSource(currentSource()))", DashboardPage.Script);
+        Assert.Contains("nodeId: targetNodeId", DashboardPage.Script);
+        Assert.Contains("maxNodes: 200", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Script_UaVariableMapActionPostsNodeIdAsDaItemId()
+    {
+        Assert.Contains("data-action=\"add-tag\"", DashboardPage.Script);
+        Assert.Contains(">Map<", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Script_DaSourceStillUsesDaTagsApi()
+    {
+        Assert.Contains("/api/da/tags", DashboardPage.Script);
+        Assert.Contains("function browseTags(", DashboardPage.Script);
+    }
 }

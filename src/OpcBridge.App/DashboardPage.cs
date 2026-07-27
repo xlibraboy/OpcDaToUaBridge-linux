@@ -1199,6 +1199,7 @@ document.addEventListener('mouseout', e => { if (e.target.closest('.info') && ti
 const el = id => document.getElementById(id);
 const state = {
     tagPath: '',
+    uaBrowseTrail: [],
     linkBrowsePath: '',
     sources: [],
     selectedSourceId: 'default',
@@ -3549,6 +3550,7 @@ function pickSource(sourceId, opts) {
     state.editingNewSource = false;
     state.editingNewUaSource = false;
     state.tagPath = '';
+    state.uaBrowseTrail = [];
     el('tagTree').innerHTML = '<span class="msg">Browse the active source to load tags.</span>';
     el('tagStatus').textContent = 'Browse all tags, or open folders one level at a time.';
     renderCrumb();
@@ -4029,6 +4031,70 @@ function renderCrumb() {
     }
     bc.innerHTML = html;
 }
+function renderUaCrumb() {
+    const bc = el('tagBreadcrumb');
+    const trail = state.uaBrowseTrail || [];
+    if (!trail.length) {
+        bc.innerHTML = '<span class="current">root (Objects)</span>';
+        return;
+    }
+    let html = '<a data-crumb="">root</a><span class="sep">/</span>';
+    for (let i = 0; i < trail.length; i++) {
+        const step = trail[i];
+        if (i < trail.length - 1) {
+            html += `<a data-crumb="${attr(step.nodeId)}" data-crumb-depth="${i}">${esc(step.name)}</a><span class="sep">/</span>`;
+        } else {
+            html += `<span class="current">${esc(step.name)}</span>`;
+        }
+    }
+    bc.innerHTML = html;
+}
+async function browseUaSource(nodeId) {
+    const source = currentSource();
+    if (!source) return;
+    const targetNodeId = nodeId || 'i=85';
+    state.tagPath = targetNodeId;
+    renderUaCrumb();
+    el('tagTree').innerHTML = '<span class="msg">Browsing…</span>';
+    el('tagStatus').textContent = 'Loading OPC UA nodes…';
+    const body = {
+        sourceId: source.sourceId,
+        endpointUrl: source.endpointUrl || source.EndpointUrl,
+        securityMode: source.securityMode || source.SecurityMode || 'None',
+        securityPolicy: source.securityPolicy || source.SecurityPolicy || 'None',
+        nodeId: targetNodeId,
+        maxNodes: 200
+    };
+    const res = await fetch('/api/ua/browse', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const p = await res.json();
+    if (p.error) throw new Error(p.error);
+    const nodes = p.nodes || [];
+    const mappedKeys = new Set((state.mappings || []).map(m => valueKey(m.sourceId || m.SourceId || 'default', m.daItemId || m.DaItemId)));
+    const rows = [];
+    if (state.uaBrowseTrail.length) {
+        const parentTrail = state.uaBrowseTrail.slice(0, -1);
+        const parentNodeId = parentTrail.length ? parentTrail[parentTrail.length - 1].nodeId : '';
+        rows.push(`<div class="li clickable" data-action="open-branch" data-path="${attr(parentNodeId)}" data-trail-depth="${parentTrail.length}"><span class="icon folder">&#9650;</span><div style="flex:1"><div class="n">..</div><div class="p">Up one level</div></div></div>`);
+    }
+    let folders = 0, vars = 0;
+    for (const node of nodes) {
+        const nid = node.nodeId || '';
+        const name = node.displayName || node.DisplayName || nid;
+        const cls = String(node.nodeClass || node.NodeClass || '').toLowerCase();
+        const hasChildren = node.hasChildren || node.HasChildren;
+        if (cls === 'variable') {
+            vars++;
+            const isMapped = mappedKeys.has(valueKey(source.sourceId, nid));
+            rows.push(`<div class="li"><span class="icon tag">&#9878;</span><div style="flex:1"><div class="n">${esc(name)}</div><div class="p">${esc(nid)} · Variable</div></div><div class="li-actions">${isMapped ? '<span class="mapped-badge">Mapped</span>' : ''}<button class="btn ghost" data-action="add-tag" data-source-id="${attr(source.sourceId)}" data-item-id="${attr(nid)}" data-name="${attr(name)}">Map</button></div></div>`);
+        } else {
+            folders++;
+            const childIcon = hasChildren ? '&#128193;' : '&#128196;';
+            rows.push(`<div class="li clickable" data-action="open-branch" data-path="${attr(nid)}" data-node-name="${attr(name)}"><span class="icon folder">${childIcon}</span><div style="flex:1"><div class="n">${esc(name)}</div><div class="p">${esc(nid)} · ${esc(node.nodeClass || 'folder')}${hasChildren ? '' : ' (leaf)'}</div></div></div>`);
+        }
+    }
+    el('tagTree').innerHTML = rows.length ? rows.join('') : '<span class="msg">No child nodes at this node.</span>';
+    el('tagStatus').textContent = folders + ' folders · ' + vars + ' variables';
+}
 async function browseTags(path, recursive = false) {
     const source = currentSource();
     if (!source || state.editingNewSource) {
@@ -4036,6 +4102,11 @@ async function browseTags(path, recursive = false) {
         el('tagBreadcrumb').innerHTML = '';
         return;
     }
+    if (isUaSource(source)) {
+        await browseUaSource(path || '');
+        return;
+    }
+    state.uaBrowseTrail = [];
     state.tagPath = path || '';
     renderCrumb();
     el('tagTree').innerHTML = '<span class="msg">Browsing…</span>';
@@ -4155,6 +4226,17 @@ function bindDynamicButtons() {
         const actionEl = event.target.closest('[data-action]');
         if (!actionEl) return;
         if (actionEl.dataset.action === 'open-branch') {
+            if (isUaSource(currentSource())) {
+                const depth = parseInt(actionEl.dataset.trailDepth || '', 10);
+                if (!isNaN(depth)) {
+                    state.uaBrowseTrail = state.uaBrowseTrail.slice(0, depth);
+                } else {
+                    const cur = currentSource();
+                    const curNodeId = state.tagPath || 'i=85';
+                    const curName = actionEl.dataset.nodeName || curNodeId;
+                    state.uaBrowseTrail.push({ nodeId: curNodeId, name: curName });
+                }
+            }
             browseTags(actionEl.dataset.path || '').catch(e => el('tagTree').innerHTML = `<span class="bad">${esc(e.message)}</span>`);
             return;
         }
@@ -4165,6 +4247,10 @@ function bindDynamicButtons() {
     el('tagBreadcrumb').addEventListener('click', event => {
         const link = event.target.closest('a[data-crumb]');
         if (!link) return;
+        if (isUaSource(currentSource())) {
+            const depth = parseInt(link.dataset.crumbDepth || '0', 10) || 0;
+            state.uaBrowseTrail = state.uaBrowseTrail.slice(0, depth);
+        }
         browseTags(link.dataset.crumb || '').catch(e => el('tagTree').innerHTML = `<span class="bad">${esc(e.message)}</span>`);
     });
     el('linkBrowseTree').addEventListener('click', event => {
