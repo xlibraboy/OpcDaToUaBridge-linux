@@ -24,18 +24,7 @@ public sealed class BridgeState
     public void Configure(int updateRateMs, int mappingCount, IReadOnlyList<DaSourceRuntimeSettings> sources)
     {
         DaSourceStatusSnapshot[] sourceStatuses = sources
-            .Select(source => new DaSourceStatusSnapshot(
-                source.SourceId,
-                source.DisplayName,
-                source.Host,
-                source.ProgId,
-                source.UpdateRateMs,
-                "Disconnected",
-                null,
-                null,
-                0,
-                0,
-                null))
+            .Select(BuildDisconnectedSnapshot)
             .ToArray();
 
         rate_groups_.Clear();
@@ -71,18 +60,7 @@ public sealed class BridgeState
                 DaSourceRuntimeSettings source = sources[i];
                 if (!existing.TryGetValue(source.SourceId, out DaSourceStatusSnapshot? previous))
                 {
-                    previous = new DaSourceStatusSnapshot(
-                        source.SourceId,
-                        source.DisplayName,
-                        source.Host,
-                        source.ProgId,
-                        source.UpdateRateMs,
-                        "Disconnected",
-                        null,
-                        null,
-                        0,
-                        0,
-                        null);
+                    previous = BuildDisconnectedSnapshot(source);
                 }
                 else
                 {
@@ -91,7 +69,9 @@ public sealed class BridgeState
                         DisplayName = source.DisplayName,
                         Host = source.Host,
                         ProgId = source.ProgId,
-                        UpdateRateMs = source.UpdateRateMs
+                        UpdateRateMs = source.UpdateRateMs,
+                        SourceType = source.SourceType,
+                        EndpointSummary = BuildEndpointSummary(source)
                     };
                 }
 
@@ -107,6 +87,7 @@ public sealed class BridgeState
             };
         }
     }
+
 
     public void ClearValues()
     {
@@ -343,6 +324,35 @@ public sealed class BridgeState
         }
     }
 
+    private static DaSourceStatusSnapshot BuildDisconnectedSnapshot(DaSourceRuntimeSettings source) =>
+        new(
+            source.SourceId,
+            source.DisplayName,
+            source.Host,
+            source.ProgId,
+            source.UpdateRateMs,
+            "Disconnected",
+            null,
+            null,
+            0,
+            0,
+            null,
+            source.SourceType,
+            BuildEndpointSummary(source));
+
+    private static string BuildEndpointSummary(DaSourceRuntimeSettings source)
+    {
+        if (string.Equals(source.SourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase))
+        {
+            string port = source.SerialPortName ?? string.Empty;
+            return string.IsNullOrEmpty(port) ? string.Empty : $"{port}@{source.BaudRate}";
+        }
+
+        string host = string.IsNullOrWhiteSpace(source.Host) ? string.Empty : source.Host.Trim();
+        string progId = source.ProgId ?? string.Empty;
+        return string.IsNullOrEmpty(progId) ? host : $"{host}/{progId}";
+    }
+
     private static string AggregateConnectionState(IReadOnlyList<DaSourceStatusSnapshot> sources)
     {
         if (sources.Count == 0)
@@ -453,7 +463,9 @@ public sealed record DaSourceStatusSnapshot(
     string? LastError,
     int LastDaReadCount,
     double LastDaReadDurationMs,
-    double? DaClockOffsetMs);
+    double? DaClockOffsetMs,
+    string SourceType = "OpcDa",
+    string EndpointSummary = "");
 
 public sealed record BridgeValueSnapshot(
     string SourceId,

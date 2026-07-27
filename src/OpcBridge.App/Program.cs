@@ -10,6 +10,8 @@ using OpcBridge.App.Hmi;
 using OpcBridge.Client;
 using OpcBridge.Core;
 using OpcBridge.Da;
+using OpcBridge.Drivers.Melsec;
+using OpcBridge.Drivers.Melsec.Addressing;
 using OpcBridge.Mqtt;
 using OpcBridge.Influx;
 using OpcBridge.Ua;
@@ -269,10 +271,26 @@ app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings
     {
         return Results.BadRequest(new { error = "Source ID is required." });
     }
+
+    string sourceType = NormalizeSourceType(request.SourceType);
+    if (sourceType.Length == 0)
+    {
+        return Results.BadRequest(new { error = $"Unknown SourceType '{request.SourceType}'. Expected OpcDa or MelsecA3n." });
+    }
+
+    if (string.Equals(sourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase))
+    {
+        string portError = ValidateMelsecSerialPort(request, settings);
+        if (portError.Length > 0)
+        {
+            return Results.BadRequest(new { error = portError });
+        }
+    }
+
     DaRuntimeSettingsSnapshot snapshot = settings.UpsertSource(new DaSourceRuntimeSettings(
         request.SourceId,
         request.DisplayName ?? string.Empty,
-        request.SourceType ?? string.Empty,
+        sourceType,
         request.ProgId ?? string.Empty,
         request.Host ?? string.Empty,
         request.RemoteUsername,
@@ -329,6 +347,41 @@ app.MapPost("/api/da/sources/remove", (DaSourceRemoveRequest request, DaRuntimeS
     long mappingVersion = store.RemoveSource(request.SourceId);
     long daLinkVersion = daLinkStore.RemoveBySource(request.SourceId);
     return Results.Json(new { version = snapshot.Version, mappingVersion, daLinkVersion });
+});
+app.MapPost("/api/drivers/melsec-a3n/parse-address", (MelsecParseAddressRequest request) =>
+{
+    if (request is null || string.IsNullOrWhiteSpace(request.Address))
+    {
+        return Results.Json(new { ok = false, canonical = (string?)null, error = "Address is required." });
+    }
+
+    if (!MelsecAddressParser.TryParse(request.Address, out MelsecAddress address, out string error))
+    {
+        return Results.Json(new { ok = false, canonical = (string?)null, error });
+    }
+
+    return Results.Json(new { ok = true, canonical = address.Canonical, error = (string?)null });
+});
+
+app.MapPost("/api/drivers/melsec-a3n/test-connection", async (MelsecTestConnectionRequest request, DaRuntimeSettings settings) =>
+{
+    MelsecA3nClientOptions? options = ResolveMelsecTestOptions(request, settings);
+    if (options is null)
+    {
+        return Results.Json(new { ok = false, error = "SerialPortName is required, or an existing MelsecA3n sourceId must be provided." });
+    }
+
+    await using MelsecA3nClient client = new(options);
+    using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(options.TimeoutMs > 0 ? options.TimeoutMs : 3000));
+    try
+    {
+        await client.ConnectAsync(cts.Token);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
 });
 app.MapPost("/api/da/servers", async (DaServerBrowseRequest request) =>
 {
@@ -454,7 +507,7 @@ app.MapGet("/api/mappings", (MappingStore store) =>
     (IReadOnlyList<TagMapping> mappings, long version) = store.GetSnapshot();
     return Results.Json(new { mappings, version });
 });
-app.MapPost("/api/mappings/add", (MappingAddRequest request, MappingStore store) =>
+app.MapPost("/api/mappings/add", (MappingAddRequest request, MappingStore store, DaRuntimeSettings daSettings) =>
 {
     if (request.Tags is null || request.Tags.Count == 0)
     {
@@ -466,88 +519,58 @@ app.MapPost("/api/mappings/add", (MappingAddRequest request, MappingStore store)
         return Results.BadRequest(new { error = "Source ID and DA Item ID are required for every mapping." });
     }
 
-    IEnumerable<TagMapping> tags = request.Tags
-        .Select(tag => new TagMapping
-        {
-            SourceId = tag.SourceId,
-            DaItemId = tag.DaItemId,
-            DisplayName = tag.DisplayName ?? string.Empty,
-            Description = tag.Description,
-            DataType = tag.DataType ?? "Auto",
-            UaNodeId = tag.UaNodeId ?? string.Empty,
-            Enabled = tag.Enabled ?? true,
-            Mode = string.IsNullOrWhiteSpace(tag.Mode) ? TagMode.Source : tag.Mode,
-            ManualValue = string.IsNullOrWhiteSpace(tag.ManualValue) ? null : tag.ManualValue,
-            PollRateMs = tag.PollRateMs ?? 0,
-            DeadbandPct = tag.DeadbandPct ?? 0f,
-            Writeable = tag.Writeable ?? false,
-            AccessRights = string.IsNullOrWhiteSpace(tag.AccessRights) ? TagAccessRights.Read : tag.AccessRights,
-            MqttEnabled = tag.MqttEnabled ?? false,
-            MqttTopic = string.IsNullOrWhiteSpace(tag.MqttTopic) ? null : tag.MqttTopic,
-            InfluxEnabled = tag.InfluxEnabled ?? false
-        });
+    List<TagMapping> tags = request.Tags.Select(ToTagMapping).ToList();
+    if (ValidateMelsecMappings(tags, daSettings, store, out string mappingError))
+    {
+        return Results.BadRequest(new { error = mappingError });
+    }
 
     long version = store.Add(tags);
     return Results.Json(new { version });
 });
-app.MapPost("/api/mappings/bulk-add", (MappingAddRequest request, MappingStore store) =>
+app.MapPost("/api/mappings/bulk-add", (MappingAddRequest request, MappingStore store, DaRuntimeSettings daSettings) =>
 {
     if (request.Tags is null || request.Tags.Count == 0)
     {
         return Results.BadRequest(new { error = "At least one mapping is required." });
     }
 
-    IEnumerable<TagMapping> tags = request.Tags
-        .Select(tag => new TagMapping
+    List<TagMapping> tags = request.Tags
+        .Select(tag =>
         {
-            SourceId = string.IsNullOrWhiteSpace(tag.SourceId) ? "default" : tag.SourceId,
-            DaItemId = tag.DaItemId ?? string.Empty,
-            Description = tag.Description,
-            DisplayName = tag.DisplayName ?? string.Empty,
-            DataType = tag.DataType ?? "Auto",
-            UaNodeId = tag.UaNodeId ?? string.Empty,
-            Enabled = tag.Enabled ?? true,
-            Mode = string.IsNullOrWhiteSpace(tag.Mode) ? TagMode.Source : tag.Mode,
-            ManualValue = string.IsNullOrWhiteSpace(tag.ManualValue) ? null : tag.ManualValue,
-            PollRateMs = tag.PollRateMs ?? 0,
-            Writeable = tag.Writeable ?? false,
-            DeadbandPct = tag.DeadbandPct ?? 0f,
-            AccessRights = string.IsNullOrWhiteSpace(tag.AccessRights) ? TagAccessRights.Read : tag.AccessRights,
-            MqttEnabled = tag.MqttEnabled ?? false,
-            MqttTopic = string.IsNullOrWhiteSpace(tag.MqttTopic) ? null : tag.MqttTopic,
-            InfluxEnabled = tag.InfluxEnabled ?? false
+            TagMapping mapping = ToTagMapping(tag);
+            mapping.SourceId = string.IsNullOrWhiteSpace(tag.SourceId) ? "default" : tag.SourceId;
+            return mapping;
         })
-        .Where(tag => !string.IsNullOrWhiteSpace(tag.DaItemId));
+        .Where(tag => !string.IsNullOrWhiteSpace(tag.DaItemId))
+        .ToList();
+
+    if (ValidateMelsecMappings(tags, daSettings, store, out string mappingError))
+    {
+        return Results.BadRequest(new { error = mappingError });
+    }
 
     long version = store.Add(tags);
     return Results.Json(new { version, received = request.Tags.Count });
-    });
-app.MapPost("/api/mappings/update", (MappingUpdateRequest request, MappingStore store) =>
+});
+app.MapPost("/api/mappings/update", (MappingUpdateRequest request, MappingStore store, DaRuntimeSettings daSettings) =>
 {
     if (string.IsNullOrWhiteSpace(request.Tag.SourceId) || string.IsNullOrWhiteSpace(request.Tag.DaItemId))
     {
         return Results.BadRequest(new { error = "Source ID and DA Item ID are required." });
     }
 
-    TagMapping tag = new()
+    TagMapping tag = ToTagMapping(request.Tag);
+
+    DaSourceRuntimeSettings? source = daSettings.GetSnapshot().GetSource(tag.SourceId);
+    if (source is not null && string.Equals(source.SourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase))
     {
-        SourceId = request.Tag.SourceId,
-        DaItemId = request.Tag.DaItemId,
-        DisplayName = request.Tag.DisplayName ?? string.Empty,
-        Description = request.Tag.Description,
-        DataType = request.Tag.DataType ?? "Auto",
-        UaNodeId = request.Tag.UaNodeId ?? string.Empty,
-        Enabled = request.Tag.Enabled ?? true,
-        Mode = string.IsNullOrWhiteSpace(request.Tag.Mode) ? TagMode.Source : request.Tag.Mode,
-        ManualValue = string.IsNullOrWhiteSpace(request.Tag.ManualValue) ? null : request.Tag.ManualValue,
-        PollRateMs = request.Tag.PollRateMs ?? 0,
-        DeadbandPct = request.Tag.DeadbandPct ?? 0f,
-        Writeable = request.Tag.Writeable ?? false,
-        AccessRights = string.IsNullOrWhiteSpace(request.Tag.AccessRights) ? TagAccessRights.Read : request.Tag.AccessRights,
-        MqttEnabled = request.Tag.MqttEnabled ?? false,
-        MqttTopic = string.IsNullOrWhiteSpace(request.Tag.MqttTopic) ? null : request.Tag.MqttTopic,
-        InfluxEnabled = request.Tag.InfluxEnabled ?? false
-    };
+        if (!MelsecAddressParser.TryParse(tag.DaItemId, out MelsecAddress address, out string addrError))
+        {
+            return Results.BadRequest(new { error = $"Invalid Melsec address '{tag.DaItemId}': {addrError}" });
+        }
+        tag.DaItemId = address.Canonical;
+    }
 
     if (!store.TryUpdate(tag, out long version))
     {
@@ -1118,6 +1141,207 @@ static MqttPayloadField? ParsePayloadFields(string? value)
     return Enum.TryParse<MqttPayloadField>(value.Trim(), ignoreCase: true, out MqttPayloadField result)
         ? result
         : null;
+}
+
+static string NormalizeSourceType(string? sourceType)
+{
+    if (string.IsNullOrWhiteSpace(sourceType))
+    {
+        return SourceTypes.OpcDa;
+    }
+
+    string trimmed = sourceType.Trim();
+    if (string.Equals(trimmed, SourceTypes.OpcDa, StringComparison.OrdinalIgnoreCase))
+    {
+        return SourceTypes.OpcDa;
+    }
+
+    if (string.Equals(trimmed, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase))
+    {
+        return SourceTypes.MelsecA3n;
+    }
+
+    // Unknown type: API rejects; "" signals rejection to the caller.
+    return string.Empty;
+}
+
+static string ValidateMelsecSerialPort(DaServerConfigRequest request, DaRuntimeSettings settings)
+{
+    string port = (request.SerialPortName ?? string.Empty).Trim();
+    if (port.Length == 0)
+    {
+        return "SerialPortName is required for MelsecA3n sources.";
+    }
+
+    string transport = (request.Transport ?? string.Empty).Trim();
+    if (transport.Length > 0 && !string.Equals(transport, "Serial", StringComparison.OrdinalIgnoreCase))
+    {
+        return $"MelsecA3n sources only support Transport 'Serial'; '{transport}' is not allowed.";
+    }
+
+    // Reject duplicate SerialPortName across other sources (case-sensitive on Linux paths).
+    DaRuntimeSettingsSnapshot snapshot = settings.GetSnapshot();
+    foreach (DaSourceRuntimeSettings existing in snapshot.Sources)
+    {
+        if (string.Equals(existing.SourceId, request.SourceId, StringComparison.OrdinalIgnoreCase))
+        {
+            continue;
+        }
+
+        if (!string.Equals(existing.SourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase))
+        {
+            continue;
+        }
+
+        if (string.Equals(existing.SerialPortName ?? string.Empty, port, StringComparison.Ordinal))
+        {
+            return $"SerialPortName '{port}' is already used by source '{existing.SourceId}'.";
+        }
+    }
+
+    return string.Empty;
+}
+
+static MelsecA3nClientOptions? ResolveMelsecTestOptions(MelsecTestConnectionRequest request, DaRuntimeSettings settings)
+{
+    if (!string.IsNullOrWhiteSpace(request.SourceId))
+    {
+        DaSourceRuntimeSettings? source = settings.GetSnapshot().GetSource(request.SourceId);
+        if (source is null || !string.Equals(source.SourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return new MelsecA3nClientOptions
+        {
+            SourceId = source.SourceId,
+            SerialPortName = source.SerialPortName,
+            BaudRate = source.BaudRate,
+            DataBits = source.DataBits,
+            Parity = source.Parity,
+            StopBits = source.StopBits,
+            StationNo = source.StationNo,
+            PcNo = source.PcNo,
+            TimeoutMs = source.TimeoutMs,
+            RetryCount = source.RetryCount
+        };
+    }
+
+    string port = (request.SerialPortName ?? string.Empty).Trim();
+    if (port.Length == 0)
+    {
+        return null;
+    }
+
+    return new MelsecA3nClientOptions
+    {
+        SourceId = "test-connection",
+        SerialPortName = port,
+        BaudRate = request.BaudRate ?? 9600,
+        DataBits = request.DataBits ?? 8,
+        Parity = request.Parity ?? "Odd",
+        StopBits = request.StopBits ?? "One",
+        StationNo = request.StationNo ?? "00",
+        PcNo = request.PcNo ?? "FF",
+        TimeoutMs = request.TimeoutMs ?? 3000,
+        RetryCount = 0
+    };
+}
+
+static TagMapping ToTagMapping(MappingTagDto tag) => new()
+{
+    SourceId = tag.SourceId,
+    DaItemId = tag.DaItemId,
+    DisplayName = tag.DisplayName ?? string.Empty,
+    Description = tag.Description,
+    DataType = tag.DataType ?? "Auto",
+    UaNodeId = tag.UaNodeId ?? string.Empty,
+    Enabled = tag.Enabled ?? true,
+    Mode = string.IsNullOrWhiteSpace(tag.Mode) ? TagMode.Source : tag.Mode,
+    ManualValue = string.IsNullOrWhiteSpace(tag.ManualValue) ? null : tag.ManualValue,
+    PollRateMs = tag.PollRateMs ?? 0,
+    DeadbandPct = tag.DeadbandPct ?? 0f,
+    Writeable = tag.Writeable ?? false,
+    AccessRights = string.IsNullOrWhiteSpace(tag.AccessRights) ? TagAccessRights.Read : tag.AccessRights,
+    MqttEnabled = tag.MqttEnabled ?? false,
+    MqttTopic = string.IsNullOrWhiteSpace(tag.MqttTopic) ? null : tag.MqttTopic,
+    InfluxEnabled = tag.InfluxEnabled ?? false
+};
+
+static bool ValidateMelsecMappings(List<TagMapping> tags, DaRuntimeSettings daSettings, MappingStore store, out string error)
+{
+    error = string.Empty;
+    DaRuntimeSettingsSnapshot snapshot = daSettings.GetSnapshot();
+
+    // Validate + canonicalize DaItemId for every MelsecA3n-bound tag.
+    for (int i = 0; i < tags.Count; i++)
+    {
+        TagMapping tag = tags[i];
+        DaSourceRuntimeSettings? source = snapshot.GetSource(tag.SourceId);
+        if (source is null || !string.Equals(source.SourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase))
+        {
+            continue;
+        }
+
+        if (!MelsecAddressParser.TryParse(tag.DaItemId, out MelsecAddress address, out string addrError))
+        {
+            error = $"Invalid Melsec address '{tag.DaItemId}': {addrError}";
+            return true;
+        }
+
+        tag.DaItemId = address.Canonical;
+        tags[i] = tag;
+    }
+
+    // Enforce MaxMappedTags per MelsecA3n source (existing + new, de-duplicated by key).
+    Dictionary<string, int> newPerSource = new(StringComparer.OrdinalIgnoreCase);
+    HashSet<(string SourceId, string DaItemId)> newKeys = new(StringTupleComparerIgnoreCase.Instance);
+    foreach (TagMapping tag in tags)
+    {
+        DaSourceRuntimeSettings? source = snapshot.GetSource(tag.SourceId);
+        if (source is null || !string.Equals(source.SourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase))
+        {
+            continue;
+        }
+
+        if (!newKeys.Add((tag.SourceId, tag.DaItemId)))
+        {
+            continue;
+        }
+
+        newPerSource[tag.SourceId] = newPerSource.TryGetValue(tag.SourceId, out int c) ? c + 1 : 1;
+    }
+
+    foreach (KeyValuePair<string, int> entry in newPerSource)
+    {
+        DaSourceRuntimeSettings? source = snapshot.GetSource(entry.Key);
+        if (source is null)
+        {
+            continue;
+        }
+
+        int existing = store.GetBySource(entry.Key).Count;
+        int limit = source.MaxMappedTags > 0 ? source.MaxMappedTags : 2000;
+        if (existing + entry.Value > limit)
+        {
+            error = $"Mapping add would exceed max mapped tags ({limit}) for MelsecA3n source '{entry.Key}'.";
+            return true;
+        }
+    }
+
+    return false;
+}
+
+internal sealed class StringTupleComparerIgnoreCase : IEqualityComparer<(string SourceId, string DaItemId)>
+{
+    public static StringTupleComparerIgnoreCase Instance { get; } = new();
+    public bool Equals((string SourceId, string DaItemId) x, (string SourceId, string DaItemId) y) =>
+        string.Equals(x.SourceId, y.SourceId, StringComparison.OrdinalIgnoreCase)
+        && string.Equals(x.DaItemId, y.DaItemId, StringComparison.OrdinalIgnoreCase);
+    public int GetHashCode((string SourceId, string DaItemId) value) =>
+        HashCode.Combine(
+            StringComparer.OrdinalIgnoreCase.GetHashCode(value.SourceId),
+            StringComparer.OrdinalIgnoreCase.GetHashCode(value.DaItemId));
 }
 
 record MqttConfigRequest(

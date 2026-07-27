@@ -21,3 +21,16 @@ public sealed record DaServerConfigRequest(
     int RetryCount = -1,
     int MaxMappedTags = 0,
     int UpdateRateMs = 0);
+
+public sealed record MelsecTestConnectionRequest(
+    string? SourceId = null,
+    string? SerialPortName = null,
+    int? BaudRate = null,
+    int? DataBits = null,
+    string? Parity = null,
+    string? StopBits = null,
+    string? StationNo = null,
+    string? PcNo = null,
+    int? TimeoutMs = null);
+
+public sealed record MelsecParseAddressRequest(string Address);
