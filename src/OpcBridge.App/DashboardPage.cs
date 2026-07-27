@@ -12,6 +12,11 @@ namespace OpcBridge.App;
 //   function browseLinkTags(, state.linkDraft, data-action="pick-link-consumer", data-action="pick-link-provider"
 //   data-tab="opc-da", id="view-opc-da", data-route="connectivity/opc-da", text "OPC DA"
 //   Sources is a sidebar group label only (not a page); legacy connectivity/sources → opc-da
+//   data-tab="drivers", id="view-drivers", data-route="connectivity/drivers", id="wzDrv" (driver wizard)
+//   drvA3nSourceId/drvA3nName/drvA3nPort/drvA3nBaud/drvA3nDataBits/drvA3nParity/drvA3nStopBits/
+//   drvA3nStation/drvA3nPc/drvA3nTimeout/drvA3nRetry/drvA3nRate/drvA3nMaxTags
+//   ROUTE_TO_TAB 'connectivity/drivers': 'drivers', renderDrivers(/saveDriverSource(/testDriverConnection(
+//   sourceType: 'MelsecA3n' save payload, /api/drivers/melsec-a3n/test-connection
 internal static class DashboardPage
 {
     public const string Html = """
@@ -169,12 +174,12 @@ internal static class DashboardPage
         .modal-f .btn + .btn { margin-left: 0; }
         .modal.wizard { width: 480px; max-width: 94vw; }
         .wizard-steps { display: flex; gap: 6px; padding: 10px 14px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
-        .wizard-step { font-size: 11px; color: var(--muted); padding: 3px 8px; border-radius: 4px; }
-        .wizard-step.active { color: var(--accent); background: rgba(56,189,248,.12); }
-        .wizard-step.done { color: var(--good); }
+        .wizard-step, .wzdrv-step { font-size: 11px; color: var(--muted); padding: 3px 8px; border-radius: 4px; }
+        .wizard-step.active, .wzdrv-step.active { color: var(--accent); background: rgba(56,189,248,.12); }
+        .wizard-step.done, .wzdrv-step.done { color: var(--good); }
         .wizard-body { padding: 14px; max-height: 60vh; overflow-y: auto; }
-        .wizard-pane { display: none; }
-        .wizard-pane.active { display: block; }
+        .wizard-pane, .wzdrv-pane { display: none; }
+        .wizard-pane.active, .wzdrv-pane.active { display: block; }
         .wizard-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--border); }
         .wizard-summary { font-size: 12px; line-height: 1.6; }
         .wizard-summary b { color: var(--text); }
@@ -433,6 +438,7 @@ internal static class DashboardPage
   <div class="nav-group">
     <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><circle cx="7" cy="7" r="1" fill="currentColor" stroke="none"/><circle cx="7" cy="17" r="1" fill="currentColor" stroke="none"/></svg>Sources</div>
     <button class="tabbtn" data-tab="opc-da" data-route="connectivity/opc-da" onclick="navigate('connectivity/opc-da')">OPC DA</button>
+    <button class="tabbtn" data-tab="drivers" data-route="connectivity/drivers" onclick="navigate('connectivity/drivers')">Drivers</button>
     <button class="tabbtn" data-tab="diagnostics" data-route="connectivity/diagnostics" onclick="navigate('connectivity/diagnostics')">Diagnostics</button>
   </div>
   <div class="nav-group">
@@ -684,6 +690,114 @@ internal static class DashboardPage
         </div>
     </div>
 </div>
+<div class="view" id="view-drivers">
+    <div class="conn-layout">
+        <div class="conn-main">
+            <div class="box">
+                <div class="box-h">Mitsubishi Melsec A3N Driver <button class="btn" type="button" onclick="openDriverWizard()" style="margin-left:auto">+ Add Driver</button><span class="msg" id="drvA3nMessage" style="font-weight:400;text-transform:none;letter-spacing:0">Select a driver source or click New.</span></div>
+                <div class="box-b">
+                    <div class="conn-section">
+                        <div class="conn-section-h">Identity</div>
+                        <div class="field"><label class="fl">Source ID <span class="info" data-tip="Unique key with no spaces. Used internally and in UA Node IDs (ns=2;s={sourceId}/...).">i</span></label><input id="drvA3nSourceId" type="text" placeholder="plc-a3n-1" style="flex:1"></div>
+                        <div class="field"><label class="fl">Name <span class="info" data-tip="Friendly label shown in lists and the Tags tab.">i</span></label><input id="drvA3nName" type="text" placeholder="Line 1 PLC" style="flex:1"></div>
+                    </div>
+                    <div class="conn-section">
+                        <div class="conn-section-h">Serial Port <span class="info" data-tip="RS-422/RS-232C link to the A3N CPU (1C protocol, Format 1). Defaults: 9600 baud, 8 data bits, odd parity, 1 stop bit.">i</span></div>
+                        <div class="field"><label class="fl">Port</label><input id="drvA3nPort" type="text" placeholder="COM3 or /dev/ttyUSB0" style="flex:1"></div>
+                        <div class="field"><label class="fl">Baud</label><select id="drvA3nBaud"><option value="1200">1200</option><option value="2400">2400</option><option value="4800">4800</option><option value="9600" selected>9600</option><option value="19200">19200</option></select>
+                        <label class="fl" style="width:auto">Data bits</label><select id="drvA3nDataBits"><option value="7">7</option><option value="8" selected>8</option></select></div>
+                        <div class="field"><label class="fl">Parity</label><select id="drvA3nParity"><option value="None">None</option><option value="Odd" selected>Odd</option><option value="Even">Even</option></select>
+                        <label class="fl" style="width:auto">Stop bits</label><select id="drvA3nStopBits"><option value="One" selected>1</option><option value="Two">2</option></select></div>
+                    </div>
+                    <div class="conn-section">
+                        <div class="conn-section-h">PLC Addressing <span class="info" data-tip="Station 00 = directly attached CPU. PC number FF = own station (1C protocol).">i</span></div>
+                        <div class="field"><label class="fl">Station</label><input id="drvA3nStation" type="text" placeholder="00" maxlength="2" style="width:70px">
+                        <label class="fl" style="width:auto">PC No</label><input id="drvA3nPc" type="text" placeholder="FF" maxlength="2" style="width:70px"></div>
+                    </div>
+                    <div class="conn-section">
+                        <div class="conn-section-h">Defaults</div>
+                        <div class="field"><label class="fl">Timeout ms</label><input id="drvA3nTimeout" type="number" min="100" step="100" value="3000" style="width:100px">
+                        <label class="fl" style="width:auto">Retries</label><input id="drvA3nRetry" type="number" min="0" max="10" value="2" style="width:70px"></div>
+                        <div class="field"><label class="fl">Update Rate</label><select id="drvA3nRate"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000" selected>1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select>
+                        <label class="fl" style="width:auto">Max tags <span class="info" data-tip="Safety limit on mapped tags for this serial link; adding mappings beyond it is rejected.">i</span></label><input id="drvA3nMaxTags" type="number" min="1" step="1" value="2000" style="width:90px"></div>
+                    </div>
+                    <div class="toolbar" style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
+                        <button class="btn" id="drvA3nSave" type="button">Save</button>
+                        <button class="btn ghost" id="drvA3nReset" type="button">Reset</button>
+                        <button class="btn ghost" id="drvA3nNew" type="button">New</button>
+                        <button class="btn ghost" id="drvA3nRemove" type="button">Remove</button>
+                        <button class="btn ghost" id="drvA3nTest" type="button">Test connection</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="conn-side">
+            <div class="box">
+                <div class="box-h">Driver Sources <span class="msg" id="drvA3nCount" style="margin-left:auto"></span></div>
+                <div class="box-b">
+                    <div class="list" id="drvA3nList" style="max-height:280px"></div>
+                </div>
+            </div>
+            <div class="box">
+                <div class="box-h">Addressing</div>
+                <div class="box-b">
+                    <div class="hint">Map tags on the Tags page with device addresses, e.g. <span class="mono">D100</span>, <span class="mono">M10</span>, <span class="mono">X20</span>, <span class="mono">D100:8</span>.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="modal-overlay" id="wzDrv" style="display:none" onclick="if(event.target===this)closeDriverWizard()">
+    <div class="modal wizard" role="dialog" aria-modal="true" aria-labelledby="wzDrvTitle">
+        <div class="modal-head">
+            <div class="modal-title" id="wzDrvTitle">Add PLC Driver Source</div>
+            <button class="modal-close" type="button" onclick="closeDriverWizard()">&times;</button>
+        </div>
+        <div class="wizard-steps">
+            <span class="wzdrv-step" data-step="1">1. Type</span>
+            <span class="wzdrv-step" data-step="2">2. Identity</span>
+            <span class="wzdrv-step" data-step="3">3. Serial</span>
+            <span class="wzdrv-step" data-step="4">4. Defaults</span>
+            <span class="wzdrv-step" data-step="5">5. Review</span>
+        </div>
+        <div class="wizard-body">
+            <div class="wzdrv-pane active" data-pane="1">
+                <div class="field"><label class="fl">Driver Type</label><select id="wzDrvType"><option value="MelsecA3n">Mitsubishi Melsec A3N (serial 1C)</option></select></div>
+                <div class="hint">Direct serial link to the PLC CPU (RS-422/RS-232C, 1C protocol). More driver types can be added later.</div>
+            </div>
+            <div class="wzdrv-pane" data-pane="2">
+                <div class="field"><label class="fl">Source ID</label><input type="text" id="wzDrvSourceId" placeholder="plc-a3n-1"></div>
+                <div class="field"><label class="fl">Display Name</label><input type="text" id="wzDrvName" placeholder="(optional)"></div>
+                <div class="hint">Unique key with no spaces. Used in UA Node IDs (ns=2;s={sourceId}/...).</div>
+            </div>
+            <div class="wzdrv-pane" data-pane="3">
+                <div class="field"><label class="fl">Serial Port</label><input type="text" id="wzDrvPort" placeholder="COM3 or /dev/ttyUSB0"></div>
+                <div class="field"><label class="fl">Baud</label><select id="wzDrvBaud"><option value="1200">1200</option><option value="2400">2400</option><option value="4800">4800</option><option value="9600" selected>9600</option><option value="19200">19200</option></select>
+                <label class="fl" style="width:auto">Data bits</label><select id="wzDrvDataBits"><option value="7">7</option><option value="8" selected>8</option></select></div>
+                <div class="field"><label class="fl">Parity</label><select id="wzDrvParity"><option value="None">None</option><option value="Odd" selected>Odd</option><option value="Even">Even</option></select>
+                <label class="fl" style="width:auto">Stop bits</label><select id="wzDrvStopBits"><option value="One" selected>1</option><option value="Two">2</option></select></div>
+                <div class="field"><label class="fl">Station</label><input type="text" id="wzDrvStation" placeholder="00" maxlength="2" style="width:70px">
+                <label class="fl" style="width:auto">PC No</label><input type="text" id="wzDrvPc" placeholder="FF" maxlength="2" style="width:70px"></div>
+            </div>
+            <div class="wzdrv-pane" data-pane="4">
+                <div class="field"><label class="fl">Timeout ms</label><input type="number" id="wzDrvTimeout" min="100" step="100" value="3000" style="width:100px">
+                <label class="fl" style="width:auto">Retries</label><input type="number" id="wzDrvRetry" min="0" max="10" value="2" style="width:70px"></div>
+                <div class="field"><label class="fl">Update Rate</label><select id="wzDrvRate"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000" selected>1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select>
+                <label class="fl" style="width:auto">Max tags</label><input type="number" id="wzDrvMaxTags" min="1" step="1" value="2000" style="width:90px"></div>
+            </div>
+            <div class="wzdrv-pane" data-pane="5">
+                <div class="wizard-summary" id="wzDrvSummary"></div>
+                <div class="hint">Click Finish to save. You can map tags next.</div>
+            </div>
+        </div>
+        <div class="wizard-foot">
+            <button class="btn ghost" type="button" onclick="closeDriverWizard()">Cancel</button>
+            <button class="btn ghost" type="button" id="wzDrvBack" onclick="wzDrvStep(-1)">Back</button>
+            <button class="btn" type="button" id="wzDrvNext" onclick="wzDrvStep(1)">Next</button>
+            <button class="btn" type="button" id="wzDrvFinish" style="display:none" onclick="wzDrvFinish()">Finish &amp; Save</button>
+        </div>
+    </div>
+</div>
 <div class="view" id="view-tags">
     <div class="first-run-banner" id="bannerTagsNoSources" style="display:none"></div>
     <div class="box" style="margin-bottom:14px">
@@ -693,6 +807,7 @@ internal static class DashboardPage
                 <label class="fl">DA Source</label>
                 <select id="mapSourceSelect"></select>
                 <span class="msg" id="tagSourceStatus"></span>
+                <span class="msg" id="mapSourceHint"></span>
             </div>
             <div class="tag-browser-toolbar">
                 <button class="btn" id="btnBrowseAllTags" type="button">Browse All Tags</button>
@@ -1111,6 +1226,8 @@ const state = {
     sources: [],
     selectedSourceId: 'default',
     editingNewSource: false,
+    selectedDriverId: '',
+    editingNewDriver: false,
     liveValuesEnabled: true,
     lastValueCount: 0,
     updateRateMs: 1000,
@@ -2408,6 +2525,7 @@ function updateManualInputState() {
 const ROUTE_TO_TAB = {
   'connectivity/sources': 'opc-da',
   'connectivity/opc-da': 'opc-da',
+  'connectivity/drivers': 'drivers',
   'connectivity/diagnostics': 'diagnostics',
   'tags/maps': 'tags',
   'tags/links': 'links',
@@ -2447,6 +2565,10 @@ async function showTab(name, route) {
   if (activeTab === 'opc-da') {
     await loadSources().catch(e => console.warn(e));
   }
+  if (activeTab === 'drivers') {
+    await loadSources().catch(e => console.warn(e));
+    renderDrivers();
+  }
   if (activeTab === 'links') loadDaLinks().catch(e => el('linksMessage').textContent = '✗ ' + e.message);
   if (activeTab === 'diagram') {
     state.diagramLoaded = true;
@@ -2479,6 +2601,11 @@ function locTime(u) { return u ? new Date(u).toLocaleString() : '—'; }
 function get(o, k) { return o?.[k] ?? o?.[k[0].toUpperCase() + k.slice(1)]; }
 function currentSource() { return state.editingNewSource ? null : state.sources.find(s => s.sourceId === state.selectedSourceId) || null; }
 function defaultUaNodeId(sourceId, itemId) { return `ns=2;s=${sourceId}/${itemId}`; }
+function sourceTypeBadge(source) {
+    const t = String(get(source, 'sourceType') || 'OpcDa');
+    return t === 'MelsecA3n' ? badge('A3N', 'partial') : badge('DA', 'good');
+}
+function isMelsecSource(source) { return String(get(source, 'sourceType') || 'OpcDa') === 'MelsecA3n'; }
 function renderSources() {
     const select = el('selectedSource');
     const mapSelect = el('mapSourceSelect');
@@ -2502,9 +2629,16 @@ function renderSources() {
     const sideCount = el('pSourcesSide'); if (sideCount) sideCount.textContent = state.sources.length + ' source' + (state.sources.length !== 1 ? 's' : '');
     const list = el('sourcesList');
     if (list) list.innerHTML = state.sources.length ? state.sources.map(source =>
-        `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)}</div><div class="p">${esc(source.sourceId)} · ${esc(source.host || 'localhost')} · ${esc(source.progId || '')} · ${formatMs(source.updateRateMs)}</div></div><button class="btn ghost" data-action="select-source" data-source-id="${attr(source.sourceId)}">Select</button></div>`
+        `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)} ${sourceTypeBadge(source)}</div><div class="p">${esc(source.sourceId)} · ${esc(source.host || 'localhost')} · ${esc(source.progId || '')} · ${formatMs(source.updateRateMs)}</div></div><button class="btn ghost" data-action="select-source" data-source-id="${attr(source.sourceId)}">Select</button></div>`
     ).join('') : '<span class="msg">No sources configured.</span>';
+    updateMapSourceHint();
     loadSelectedSourceForm();
+}
+function updateMapSourceHint() {
+    const hint = el('mapSourceHint');
+    if (!hint) return;
+    const source = state.sources.find(s => s.sourceId === state.selectedSourceId);
+    hint.textContent = source && isMelsecSource(source) ? 'Device address e.g. D100, M10, X20, D100:8' : '';
 }
 function loadSelectedSourceForm() {
     const source = currentSource();
@@ -2518,7 +2652,9 @@ function loadSelectedSourceForm() {
     el('cfgUser').value = source.remoteUsername || '';
     el('cfgPass').value = '';
     el('cfgDomain').value = source.remoteDomain || '';
-    el('cfgMessage').textContent = 'Editing ' + (source.displayName || source.sourceId) + '.';
+    el('cfgMessage').textContent = isMelsecSource(source)
+        ? 'Serial driver source — edit it on the Drivers page.'
+        : 'Editing ' + (source.displayName || source.sourceId) + '.';
     hideSaveReset();
 }
 async function loadSources() {
@@ -2627,7 +2763,7 @@ function renderDiagnostics(p) {
             const budgetCls = budget >= 80 ? 'bad' : (budget >= 50 ? 'warn' : 'good');
             return `<div class="li"><div style="flex:1"><div class="n">${formatMs(g.rateMs)} · ${g.tagCount} tags</div><div class="p">budget <span class="${budgetCls}">${budget}%</span> · limit ${g.tagLimit || '—'}</div></div></div>`;
         }).join('') : '<span class="msg">No rate groups.</span>';
-        return `<div class="li"><div style="flex:1"><div class="n">${esc(get(src,'displayName') || sid)} ${badge(conn, stateClass(conn))}</div><div class="p">Latency: ${latency} · ${totalTags} tags in ${srcGroups.length} group(s)</div></div></div>${groupRows}`;
+        return `<div class="li"><div style="flex:1"><div class="n">${esc(get(src,'displayName') || sid)} ${sourceTypeBadge(src)} ${badge(conn, stateClass(conn))}</div><div class="p">Latency: ${latency} · ${totalTags} tags in ${srcGroups.length} group(s)</div></div></div>${groupRows}`;
     }).join('') : '<span class="msg">No sources configured.</span>';
     el('diagDaSources').innerHTML = daHtml;
     el('diagDaSummary').textContent = sources.length + ' source' + (sources.length !== 1 ? 's' : '');
@@ -3447,6 +3583,217 @@ async function removeSelectedSource() {
 }
 function showSaveReset() { el('cfgApply').style.display = ''; el('cfgReset').style.display = ''; }
 function hideSaveReset() { el('cfgApply').style.display = 'none'; el('cfgReset').style.display = 'none'; }
+
+// --- PLC driver sources (Melsec A3N) ---
+function driverSources() { return state.sources.filter(s => isMelsecSource(s)); }
+function currentDriver() { return state.editingNewDriver ? null : driverSources().find(s => s.sourceId === state.selectedDriverId) || null; }
+function renderDrivers() {
+    const drivers = driverSources();
+    if (!state.editingNewDriver && !drivers.some(s => s.sourceId === state.selectedDriverId)) {
+        state.selectedDriverId = drivers.length ? drivers[0].sourceId : '';
+    }
+    el('drvA3nCount').textContent = drivers.length + ' driver' + (drivers.length !== 1 ? 's' : '');
+    el('drvA3nList').innerHTML = drivers.length ? drivers.map(source =>
+        `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)} ${sourceTypeBadge(source)}</div><div class="p">${esc(source.sourceId)} · ${esc(source.serialPortName || '?')} @ ${esc(String(source.baudRate || ''))} · ${formatMs(source.updateRateMs)}</div></div><button class="btn ghost" data-action="select-driver" data-source-id="${attr(source.sourceId)}">Select</button></div>`
+    ).join('') : '<span class="msg">No driver sources configured. Click + Add Driver.</span>';
+    loadDriverForm();
+}
+function loadDriverForm() {
+    const source = currentDriver();
+    if (!source) return;
+    state.editingNewDriver = false;
+    el('drvA3nSourceId').value = source.sourceId || '';
+    el('drvA3nSourceId').disabled = true;
+    el('drvA3nName').value = source.displayName || '';
+    el('drvA3nPort').value = source.serialPortName || '';
+    el('drvA3nBaud').value = String(source.baudRate || 9600);
+    el('drvA3nDataBits').value = String(source.dataBits || 8);
+    el('drvA3nParity').value = source.parity || 'Odd';
+    el('drvA3nStopBits').value = source.stopBits || 'One';
+    el('drvA3nStation').value = source.stationNo || '00';
+    el('drvA3nPc').value = source.pcNo || 'FF';
+    el('drvA3nTimeout').value = String(source.timeoutMs || 3000);
+    el('drvA3nRetry').value = String(source.retryCount ?? 2);
+    el('drvA3nRate').value = String(source.updateRateMs || 1000);
+    el('drvA3nMaxTags').value = String(source.maxMappedTags || 2000);
+    el('drvA3nMessage').textContent = 'Editing ' + (source.displayName || source.sourceId) + '.';
+}
+function pickDriver(sourceId) {
+    state.selectedDriverId = sourceId;
+    state.editingNewDriver = false;
+    renderDrivers();
+}
+function newDriver() {
+    state.selectedDriverId = '';
+    state.editingNewDriver = true;
+    el('drvA3nSourceId').disabled = false;
+    el('drvA3nSourceId').value = '';
+    el('drvA3nName').value = '';
+    el('drvA3nPort').value = '';
+    el('drvA3nBaud').value = '9600';
+    el('drvA3nDataBits').value = '8';
+    el('drvA3nParity').value = 'Odd';
+    el('drvA3nStopBits').value = 'One';
+    el('drvA3nStation').value = '00';
+    el('drvA3nPc').value = 'FF';
+    el('drvA3nTimeout').value = '3000';
+    el('drvA3nRetry').value = '2';
+    el('drvA3nRate').value = '1000';
+    el('drvA3nMaxTags').value = '2000';
+    el('drvA3nMessage').textContent = 'Enter a unique Source ID and serial port, then save.';
+}
+function resetDriver() {
+    if (state.editingNewDriver) { newDriver(); return; }
+    loadDriverForm();
+    el('drvA3nMessage').textContent = 'Reverted to saved values.';
+}
+function driverFormBody() {
+    return {
+        sourceId: el('drvA3nSourceId').value.trim(),
+        displayName: el('drvA3nName').value.trim() || null,
+        sourceType: 'MelsecA3n',
+        transport: 'Serial',
+        serialPortName: el('drvA3nPort').value.trim(),
+        baudRate: Number(el('drvA3nBaud').value) || 9600,
+        dataBits: Number(el('drvA3nDataBits').value) || 8,
+        parity: el('drvA3nParity').value,
+        stopBits: el('drvA3nStopBits').value,
+        stationNo: el('drvA3nStation').value.trim() || '00',
+        pcNo: el('drvA3nPc').value.trim() || 'FF',
+        timeoutMs: Number(el('drvA3nTimeout').value) || 3000,
+        retryCount: Number(el('drvA3nRetry').value) || 0,
+        maxMappedTags: Number(el('drvA3nMaxTags').value) || 2000,
+        updateRateMs: Number(el('drvA3nRate').value) || 1000
+    };
+}
+async function saveDriverSource() {
+    const body = driverFormBody();
+    if (!body.sourceId) {
+        el('drvA3nMessage').textContent = '✗ Source ID is required.';
+        return;
+    }
+    if (!body.serialPortName) {
+        el('drvA3nMessage').textContent = '✗ Serial port is required.';
+        return;
+    }
+    const r = await fetch('/api/da/sources', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const p = await r.json();
+    if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
+    state.selectedDriverId = p.source?.sourceId || body.sourceId;
+    state.editingNewDriver = false;
+    await loadSources();
+    await refresh();
+    renderDrivers();
+    el('drvA3nMessage').textContent = 'Driver source saved.';
+}
+async function removeDriver() {
+    const source = currentDriver();
+    if (!source || state.editingNewDriver) return;
+    if (!confirm('Remove driver source "' + source.sourceId + '" and its tag mappings?')) return;
+    const r = await fetch('/api/da/sources/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId: source.sourceId }) });
+    const p = await r.json();
+    if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
+    state.selectedDriverId = '';
+    await loadSources();
+    await loadMappings();
+    await refresh();
+    renderDrivers();
+    el('drvA3nMessage').textContent = 'Driver source removed.';
+}
+async function testDriverConnection() {
+    const body = driverFormBody();
+    if (!body.serialPortName) {
+        el('drvA3nMessage').textContent = '✗ Serial port is required.';
+        return;
+    }
+    el('drvA3nMessage').textContent = 'Testing connection…';
+    const r = await fetch('/api/drivers/melsec-a3n/test-connection', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const p = await r.json();
+    el('drvA3nMessage').textContent = p.ok ? '✓ Connection OK — PLC responded.' : '✗ ' + (p.error || ('HTTP ' + r.status));
+}
+let wzDrvCurrentStep = 1;
+const WZDRV_STEPS = 5;
+function openDriverWizard() {
+    wzDrvCurrentStep = 1;
+    ['wzDrvSourceId','wzDrvName','wzDrvPort'].forEach(id => el(id).value = '');
+    el('wzDrvType').value = 'MelsecA3n';
+    el('wzDrvBaud').value = '9600';
+    el('wzDrvDataBits').value = '8';
+    el('wzDrvParity').value = 'Odd';
+    el('wzDrvStopBits').value = 'One';
+    el('wzDrvStation').value = '00';
+    el('wzDrvPc').value = 'FF';
+    el('wzDrvTimeout').value = '3000';
+    el('wzDrvRetry').value = '2';
+    el('wzDrvRate').value = '1000';
+    el('wzDrvMaxTags').value = '2000';
+    el('wzDrv').style.display = '';
+    wzDrvRender();
+}
+function closeDriverWizard() { el('wzDrv').style.display = 'none'; }
+function wzDrvRender() {
+    document.querySelectorAll('.wzdrv-pane').forEach(p => p.classList.toggle('active', Number(p.dataset.pane) === wzDrvCurrentStep));
+    document.querySelectorAll('.wzdrv-step').forEach(s => {
+        const n = Number(s.dataset.step);
+        s.classList.toggle('active', n === wzDrvCurrentStep);
+        s.classList.toggle('done', n < wzDrvCurrentStep);
+    });
+    el('wzDrvBack').style.display = wzDrvCurrentStep > 1 ? '' : 'none';
+    el('wzDrvNext').style.display = wzDrvCurrentStep < WZDRV_STEPS ? '' : 'none';
+    el('wzDrvFinish').style.display = wzDrvCurrentStep === WZDRV_STEPS ? '' : 'none';
+    if (wzDrvCurrentStep === WZDRV_STEPS) wzDrvBuildSummary();
+}
+function wzDrvStep(delta) {
+    const next = wzDrvCurrentStep + delta;
+    if (next < 1 || next > WZDRV_STEPS) return;
+    if (delta > 0 && !wzDrvValidate(wzDrvCurrentStep)) return;
+    wzDrvCurrentStep = next;
+    wzDrvRender();
+}
+function wzDrvValidate(step) {
+    if (step === 2) {
+        const id = el('wzDrvSourceId').value.trim();
+        if (!id) { alert('Source ID is required.'); return false; }
+        if (/\s/.test(id)) { alert('Source ID must not contain spaces.'); return false; }
+        if (state.sources.some(s => s.sourceId === id)) { alert('Source ID already exists.'); return false; }
+    }
+    if (step === 3 && !el('wzDrvPort').value.trim()) { alert('Serial port is required.'); return false; }
+    return true;
+}
+function wzDrvBuildSummary() {
+    el('wzDrvSummary').innerHTML =
+        `<b>Type:</b> Mitsubishi Melsec A3N (serial 1C)<br>` +
+        `<b>Source ID:</b> ${esc(el('wzDrvSourceId').value)}<br>` +
+        `<b>Display Name:</b> ${esc(el('wzDrvName').value || '—')}<br>` +
+        `<b>Serial:</b> ${esc(el('wzDrvPort').value)} @ ${el('wzDrvBaud').value} baud, ${el('wzDrvDataBits').value}${el('wzDrvParity').value[0]}${el('wzDrvStopBits').value === 'Two' ? '2' : '1'}<br>` +
+        `<b>Station / PC:</b> ${esc(el('wzDrvStation').value || '00')} / ${esc(el('wzDrvPc').value || 'FF')}<br>` +
+        `<b>Timeout:</b> ${el('wzDrvTimeout').value} ms · <b>Retries:</b> ${el('wzDrvRetry').value}<br>` +
+        `<b>Update Rate:</b> ${el('wzDrvRate').value} ms · <b>Max tags:</b> ${el('wzDrvMaxTags').value}`;
+}
+async function wzDrvFinish() {
+    el('drvA3nSourceId').disabled = false;
+    el('drvA3nSourceId').value = el('wzDrvSourceId').value.trim();
+    el('drvA3nName').value = el('wzDrvName').value.trim();
+    el('drvA3nPort').value = el('wzDrvPort').value.trim();
+    el('drvA3nBaud').value = el('wzDrvBaud').value;
+    el('drvA3nDataBits').value = el('wzDrvDataBits').value;
+    el('drvA3nParity').value = el('wzDrvParity').value;
+    el('drvA3nStopBits').value = el('wzDrvStopBits').value;
+    el('drvA3nStation').value = el('wzDrvStation').value;
+    el('drvA3nPc').value = el('wzDrvPc').value;
+    el('drvA3nTimeout').value = el('wzDrvTimeout').value;
+    el('drvA3nRetry').value = el('wzDrvRetry').value;
+    el('drvA3nRate').value = el('wzDrvRate').value;
+    el('drvA3nMaxTags').value = el('wzDrvMaxTags').value;
+    state.editingNewDriver = true;
+    try {
+        await saveDriverSource();
+        closeDriverWizard();
+        if (confirm('Driver source saved. Map tags now?')) navigate('tags/maps');
+    } catch (e) {
+        el('drvA3nMessage').textContent = '✗ ' + e.message;
+    }
+}
 function resetSource() {
     if (state.editingNewSource) { newSource(); return; }
     loadSelectedSourceForm();
@@ -3900,6 +4247,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     el('cfgReset').addEventListener('click', resetSource);
     el('cfgNew').addEventListener('click', newSource);
     el('cfgRemove').addEventListener('click', () => removeSelectedSource().catch(e => el('cfgMessage').textContent = '✗ ' + e.message));
+    el('drvA3nSave').addEventListener('click', () => saveDriverSource().catch(e => el('drvA3nMessage').textContent = '✗ ' + e.message));
+    el('drvA3nReset').addEventListener('click', resetDriver);
+    el('drvA3nNew').addEventListener('click', newDriver);
+    el('drvA3nRemove').addEventListener('click', () => removeDriver().catch(e => el('drvA3nMessage').textContent = '✗ ' + e.message));
+    el('drvA3nTest').addEventListener('click', () => testDriverConnection().catch(e => el('drvA3nMessage').textContent = '✗ ' + e.message));
+    el('drvA3nList').addEventListener('click', event => {
+        const button = event.target.closest('button[data-action="select-driver"]');
+        if (!button) return;
+        pickDriver(button.dataset.sourceId || '');
+    });
     ['cfgSourceId','cfgDisplayName','cfgProgId','cfgHost','cfgUser','cfgPass','cfgDomain'].forEach(id => {
         el(id).addEventListener('input', () => { if (!state.editingNewSource) showSaveReset(); });
     });

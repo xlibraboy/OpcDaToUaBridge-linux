@@ -42,6 +42,42 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
+    public void Html_ContainsDriversRouteAndA3nControls()
+    {
+        Assert.Contains("connectivity/drivers", DashboardPage.Html);
+        Assert.Contains("drvA3nPort", DashboardPage.Html);
+        Assert.Contains("sourceType", DashboardPage.Script); // JS save payload
+    }
+
+    [Fact]
+    public void Html_ContainsDriversNavViewFormAndWizard()
+    {
+        Assert.Contains("data-tab=\"drivers\"", DashboardPage.Html);
+        Assert.Contains("id=\"view-drivers\"", DashboardPage.Html);
+        Assert.Contains("id=\"wzDrv\"", DashboardPage.Html);
+        foreach (string id in new[]
+        {
+            "drvA3nSourceId", "drvA3nName", "drvA3nPort", "drvA3nBaud", "drvA3nDataBits",
+            "drvA3nParity", "drvA3nStopBits", "drvA3nStation", "drvA3nPc", "drvA3nTimeout",
+            "drvA3nRetry", "drvA3nRate", "drvA3nMaxTags"
+        })
+        {
+            Assert.Contains($"id=\"{id}\"", DashboardPage.Html);
+        }
+    }
+
+    [Fact]
+    public void Script_RoutesDriversTabAndSavesMelsecSource()
+    {
+        Assert.Contains("'connectivity/drivers': 'drivers'", DashboardPage.Script);
+        Assert.Contains("function renderDrivers(", DashboardPage.Script);
+        Assert.Contains("function saveDriverSource(", DashboardPage.Script);
+        Assert.Contains("function testDriverConnection(", DashboardPage.Script);
+        Assert.Contains("/api/drivers/melsec-a3n/test-connection", DashboardPage.Script);
+        Assert.Contains("sourceType: 'MelsecA3n'", DashboardPage.Script);
+    }
+
+    [Fact]
     public void Html_ContainsAppsPill()
     {
         Assert.Contains("id=\"pApps\"", DashboardPage.Html);
