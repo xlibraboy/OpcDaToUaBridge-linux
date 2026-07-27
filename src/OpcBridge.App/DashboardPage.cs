@@ -4095,6 +4095,8 @@ async function browseUaSource(nodeId) {
     const mappedKeys = new Set((state.mappings || []).map(m => valueKey(m.sourceId || m.SourceId || 'default', m.daItemId || m.DaItemId)));
     const rows = [];
     if (state.uaBrowseTrail.length) {
+        // Trail stores the NODE WE DESCENDED INTO. Parent of the currently
+        // displayed node is the previous trail entry (or '' for root).
         const parentTrail = state.uaBrowseTrail.slice(0, -1);
         const parentNodeId = parentTrail.length ? parentTrail[parentTrail.length - 1].nodeId : '';
         rows.push(`<div class="li clickable" data-action="open-branch" data-path="${attr(parentNodeId)}" data-trail-depth="${parentTrail.length}"><span class="icon folder">&#9650;</span><div style="flex:1"><div class="n">..</div><div class="p">Up one level</div></div></div>`);
@@ -4254,10 +4256,11 @@ function bindDynamicButtons() {
                 if (!isNaN(depth)) {
                     state.uaBrowseTrail = state.uaBrowseTrail.slice(0, depth);
                 } else {
-                    const cur = currentSource();
-                    const curNodeId = state.tagPath || 'i=85';
-                    const curName = actionEl.dataset.nodeName || curNodeId;
-                    state.uaBrowseTrail.push({ nodeId: curNodeId, name: curName });
+                    // Descend: trail entry stores the CHILD nodeId so the crumb link
+                    // navigates to the child and '..' derives the parent as the previous entry.
+                    const childNodeId = actionEl.dataset.path || '';
+                    const childName = actionEl.dataset.nodeName || childNodeId;
+                    state.uaBrowseTrail.push({ nodeId: childNodeId, name: childName });
                 }
             }
             browseTags(actionEl.dataset.path || '').catch(e => el('tagTree').innerHTML = `<span class="bad">${esc(e.message)}</span>`);
