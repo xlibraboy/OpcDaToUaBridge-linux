@@ -294,6 +294,47 @@ public sealed class MelsecApiTests
     }
 
     [Fact]
+    public async Task ExportImport_MelsecSource_RoundTripsSerialFields()
+    {
+        string exported;
+        await using (TestAppHandle srcApp = await StartWithMelsecSource("lineA3n", "/dev/ttyUSB0", baudRate: 19200, maxMappedTags: 500))
+        {
+            using JsonDocument export = await srcApp.GetJsonAsync("/api/config/export");
+            JsonElement exportedSource = Single(export.RootElement.GetProperty("daSources").GetProperty("sources"), "lineA3n");
+            Assert.Equal("MelsecA3n", exportedSource.GetProperty("sourceType").GetString());
+            Assert.Equal("Serial", exportedSource.GetProperty("transport").GetString());
+            Assert.Equal("/dev/ttyUSB0", exportedSource.GetProperty("serialPortName").GetString());
+            Assert.Equal(19200, exportedSource.GetProperty("baudRate").GetInt32());
+            Assert.Equal(8, exportedSource.GetProperty("dataBits").GetInt32());
+            Assert.Equal("Odd", exportedSource.GetProperty("parity").GetString());
+            Assert.Equal("One", exportedSource.GetProperty("stopBits").GetString());
+            Assert.Equal("00", exportedSource.GetProperty("stationNo").GetString());
+            Assert.Equal("FF", exportedSource.GetProperty("pcNo").GetString());
+            Assert.Equal(3000, exportedSource.GetProperty("timeoutMs").GetInt32());
+            Assert.Equal(2, exportedSource.GetProperty("retryCount").GetInt32());
+            Assert.Equal(500, exportedSource.GetProperty("maxMappedTags").GetInt32());
+            exported = export.RootElement.GetRawText();
+        }
+
+        // Import into a fresh app with no Melsec sources configured.
+        await using TestAppHandle target = await TestAppHandle.StartAsync(_ => { });
+        using HttpResponseMessage import = await target.Client.PostAsync(
+            "/api/config/import",
+            new StringContent(exported, Encoding.UTF8, "application/json"));
+        Assert.Equal(HttpStatusCode.OK, import.StatusCode);
+
+        using JsonDocument get = await target.GetJsonAsync("/api/da/sources");
+        JsonElement source = Single(get.RootElement.GetProperty("sources"), "lineA3n");
+        Assert.Equal("MelsecA3n", source.GetProperty("sourceType").GetString());
+        Assert.Equal("Serial", source.GetProperty("transport").GetString());
+        Assert.Equal("/dev/ttyUSB0", source.GetProperty("serialPortName").GetString());
+        Assert.Equal(19200, source.GetProperty("baudRate").GetInt32());
+        Assert.Equal("Odd", source.GetProperty("parity").GetString());
+        Assert.Equal("One", source.GetProperty("stopBits").GetString());
+        Assert.Equal(500, source.GetProperty("maxMappedTags").GetInt32());
+    }
+
+    [Fact]
     public async Task TestConnection_MissingPort_ReturnsError()
     {
         await using TestAppHandle app = await TestAppHandle.StartAsync(_ => { });

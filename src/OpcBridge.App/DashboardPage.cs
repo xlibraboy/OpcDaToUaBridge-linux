@@ -2758,12 +2758,13 @@ function renderDiagnostics(p) {
         const latency = formatMs(get(src, 'lastDaReadDurationMs'));
         const srcGroups = rateGroups.filter(g => g.sourceId === sid);
         const totalTags = srcGroups.reduce((sum, g) => sum + (g.tagCount || 0), 0);
+        const endpoint = get(src, 'endpointSummary') || '';
         const groupRows = srcGroups.length ? srcGroups.map(g => {
             const budget = Math.round(g.cycleBudgetPct || 0);
             const budgetCls = budget >= 80 ? 'bad' : (budget >= 50 ? 'warn' : 'good');
             return `<div class="li"><div style="flex:1"><div class="n">${formatMs(g.rateMs)} · ${g.tagCount} tags</div><div class="p">budget <span class="${budgetCls}">${budget}%</span> · limit ${g.tagLimit || '—'}</div></div></div>`;
         }).join('') : '<span class="msg">No rate groups.</span>';
-        return `<div class="li"><div style="flex:1"><div class="n">${esc(get(src,'displayName') || sid)} ${sourceTypeBadge(src)} ${badge(conn, stateClass(conn))}</div><div class="p">Latency: ${latency} · ${totalTags} tags in ${srcGroups.length} group(s)</div></div></div>${groupRows}`;
+        return `<div class="li"><div style="flex:1"><div class="n">${esc(get(src,'displayName') || sid)} ${sourceTypeBadge(src)} ${badge(conn, stateClass(conn))}</div><div class="p">${endpoint ? esc(endpoint) + ' · ' : ''}Latency: ${latency} · ${totalTags} tags in ${srcGroups.length} group(s)</div></div></div>${groupRows}`;
     }).join('') : '<span class="msg">No sources configured.</span>';
     el('diagDaSources').innerHTML = daHtml;
     el('diagDaSummary').textContent = sources.length + ' source' + (sources.length !== 1 ? 's' : '');
