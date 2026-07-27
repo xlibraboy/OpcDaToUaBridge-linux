@@ -608,7 +608,17 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                 await existing.Client.DisposeAsync().ConfigureAwait(false);
             }
 
-            if (string.IsNullOrWhiteSpace(source.ProgId))
+            if (string.Equals(source.SourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.IsNullOrWhiteSpace(source.SerialPortName))
+                {
+                    bridge_state_.SetSourceConnectionState(source.SourceId, "Disconnected");
+                    bridge_state_.SetSourceError(source.SourceId, new InvalidOperationException("Serial port is empty — enter a COM port (e.g. /dev/ttyUSB0)."));
+                    logger_.LogWarning("Source {SourceId} has no serial port, skipping connection", source.SourceId);
+                    continue;
+                }
+            }
+            else if (string.IsNullOrWhiteSpace(source.ProgId))
             {
                 bridge_state_.SetSourceConnectionState(source.SourceId, "Disconnected");
                 bridge_state_.SetSourceError(source.SourceId, new InvalidOperationException("ProgID is empty — enter a valid OPC DA server ProgID."));
