@@ -78,6 +78,14 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
+    public void Script_SaveSourceRefusesToOverwriteMelsecSource()
+    {
+        Assert.Contains("if (existing && isMelsecSource(existing))", DashboardPage.Script);
+        Assert.Contains("const saved = await saveDriverSource();", DashboardPage.Script);
+        Assert.Contains("if (!saved) return;", DashboardPage.Script);
+    }
+
+    [Fact]
     public void Html_ContainsAppsPill()
     {
         Assert.Contains("id=\"pApps\"", DashboardPage.Html);

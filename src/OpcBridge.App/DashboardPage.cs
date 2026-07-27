@@ -3530,6 +3530,11 @@ async function saveSource() {
         el('cfgMessage').textContent = '✗ Source ID is required.';
         return;
     }
+    const existing = state.sources.find(s => s.sourceId === sourceId);
+    if (existing && isMelsecSource(existing)) {
+        el('cfgMessage').textContent = 'Serial driver source — edit it on the Drivers page.';
+        return;
+    }
     const body = {
         sourceId,
         displayName: el('cfgDisplayName').value.trim() || null,
@@ -3670,11 +3675,11 @@ async function saveDriverSource() {
     const body = driverFormBody();
     if (!body.sourceId) {
         el('drvA3nMessage').textContent = '✗ Source ID is required.';
-        return;
+        return false;
     }
     if (!body.serialPortName) {
         el('drvA3nMessage').textContent = '✗ Serial port is required.';
-        return;
+        return false;
     }
     const r = await fetch('/api/da/sources', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const p = await r.json();
@@ -3685,6 +3690,7 @@ async function saveDriverSource() {
     await refresh();
     renderDrivers();
     el('drvA3nMessage').textContent = 'Driver source saved.';
+    return true;
 }
 async function removeDriver() {
     const source = currentDriver();
@@ -3787,7 +3793,8 @@ async function wzDrvFinish() {
     el('drvA3nMaxTags').value = el('wzDrvMaxTags').value;
     state.editingNewDriver = true;
     try {
-        await saveDriverSource();
+        const saved = await saveDriverSource();
+        if (!saved) return;
         closeDriverWizard();
         if (confirm('Driver source saved. Map tags now?')) navigate('tags/maps');
     } catch (e) {
