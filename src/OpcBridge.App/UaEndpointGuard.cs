@@ -67,10 +67,41 @@ public static class UaEndpointGuard
             return false;
 
         var trimmed = host.Trim().Trim('[', ']');
-        return trimmed.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+        if (trimmed.Equals("localhost", StringComparison.OrdinalIgnoreCase)
             || trimmed.Equals("127.0.0.1", StringComparison.Ordinal)
             || trimmed.Equals("::1", StringComparison.Ordinal)
-            || trimmed.Equals(Dns.GetHostName(), StringComparison.OrdinalIgnoreCase);
+            || trimmed.Equals("0.0.0.0", StringComparison.Ordinal)
+            || trimmed.Equals("::", StringComparison.Ordinal)
+            || trimmed.Equals("+", StringComparison.Ordinal)
+            || trimmed.Equals("*", StringComparison.Ordinal)
+            || trimmed.Equals(Dns.GetHostName(), StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        // Own interface addresses (LAN IPs) also target this machine.
+        if (IPAddress.TryParse(trimmed, out var ip) && IsOwnInterfaceAddress(ip))
+            return true;
+
+        return false;
+    }
+
+    private static bool IsOwnInterfaceAddress(IPAddress ip)
+    {
+        try
+        {
+            foreach (var address in Dns.GetHostAddresses(Dns.GetHostName()))
+            {
+                if (address.Equals(ip))
+                    return true;
+            }
+        }
+        catch
+        {
+            // Name resolution unavailable — fall back to literal checks above.
+        }
+
+        return false;
     }
 
     private static bool IsServerLocalOrWildcard(string host)
