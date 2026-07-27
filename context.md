@@ -8,6 +8,7 @@ A bridge that mirrors OPC DA tag values into an OPC UA server, with a web dashbo
 
 - **DA side**: connects to one or more OPC DA servers via direct COM/DCOM interop (no vendor SDK).
 - **UA side**: an in-process OPC UA server (OPCFoundation.NetStandard SDK) that mirrors DA reads as UA variables.
+- Inbound PLC drivers: `SourceType=MelsecA3n` → `MelsecA3nClient` (1C Frame serial) via `DaClientFactory`; UI under Connectivity → Drivers.
 1: - **Dashboard**: ASP.NET Core minimal API + single-page HTML dashboard for sources, mappings, browsing, live values, MQTT, InfluxDB writer config, and Diagram topology.
 - **HMI**: Avalonia desktop operator client (`OpcBridge.Hmi`) connecting to bridge HTTP + SignalR on port 8080 only. Faceplate chart loads history via bridge `GET /api/hmi/trends` (Influx proxy — HMI never holds an Influx token). Bridge can log opt-in tags to InfluxDB 2.x/3.x via writer. Auth / Android remain deferred non-goals.
 2: | `OpcBridge.Influx` | `net8.0` | Continuous opt-in historical writer to InfluxDB 2.x/3.x (`IInfluxWriter`). |

@@ -74,7 +74,7 @@ internal static class HelpContent
   │                      Web Dashboard (port 8080)                       │
   │                                                                      │
   │  Sidebar groups pages by job:                                        │
-  │  Sources ──► OPC DA, Diagnostics                                     │
+  │  Connectivity ──► OPC DA, Drivers, Diagnostics                       │
   │  Tags ──► Maps, DA Links                                             │
   │  IoT ──► MQTT, Traffic                                               │
   │  Historian ──► InfluxDB                                              │
@@ -82,6 +82,9 @@ internal static class HelpContent
   │  Help ──► Guide, About                                               │
   │                                                                      │
   │  HTTP API: /api/dashboard, /api/mappings, /api/da/sources, etc.      │
+  │                                                                      │
+  │  PLC driver sources (SourceType=MelsecA3n) are edited on the         │
+  │  Connectivity → Drivers page, not the OPC DA page.                   │
   │                                                                      │
   │  **Apps Pill**: Shows count of detected bridge instances across all    │
   │  configured DA source hosts. Updates every 10 seconds.                 │
@@ -101,16 +104,28 @@ internal static class HelpContent
 
 The sidebar groups pages by job:
 
-- **Sources** — OPC DA (connection config, rate, subscriptions, discover, backup, + Add Source), Diagnostics (DA health, time sync)
+- **Connectivity** — OPC DA (connection config, rate, subscriptions, discover, backup, + Add Source), Drivers (PLC serial drivers such as Mitsubishi A3N), Diagnostics (DA health, time sync)
 - **Tags** — Maps (browse DA, map to UA, faceplate), DA Links (DA→DA forwarding)
 - **IoT** — MQTT (broker config), Traffic (publish/subscribe monitor)
 - **Historian** — InfluxDB (config, write status, per-tag enable via faceplate)
 - **Ops** — Monitor (live values, status), Logs, Diagram
 - **Help** — Guide, About
 
-Use **Sources → OPC DA → + Add Source** for the guided setup wizard.
-Use **Sources → OPC DA** to edit ProgID/host, credentials, default rate, subscriptions, discover servers, and backup/restore.
+Use **Connectivity → OPC DA → + Add Source** for the guided setup wizard.
+Use **Connectivity → OPC DA** to edit ProgID/host, credentials, default rate, subscriptions, discover servers, and backup/restore.
 Use **IoT → MQTT → Setup Wizard** and **Historian → InfluxDB → Setup Wizard** for first-time broker/historian setup.
+
+## PLC Drivers (Mitsubishi A3N)
+
+The bridge can poll a Mitsubishi **A3NCPU** over **RS-232** using MELSEC **A-compatible 1C Frame**
+(Dedicated Protocol / Format 1).
+
+1. Open **Connectivity → Drivers** and add a Mitsubishi A3N driver.
+2. Set the serial port (e.g. `/dev/ttyUSB0`), baud **9600**, **8 data bits**, **odd parity**, **1 stop bit** (match the PLC).
+3. Map tags with device addresses: `D100`, `M10`, `X20`, `Y0F`, bit-in-word `D100:8`.
+4. Writes on writeable tags go back to the PLC. Bit-in-word uses read-modify-write.
+
+This is separate from **OPC DA** sources and from this process’s **OPC UA server** endpoint.
 
 ## OPC UA Endpoint — Bind vs Connect
 
