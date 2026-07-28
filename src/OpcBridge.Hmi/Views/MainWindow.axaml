@@ -1,7 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:OpcBridge.Hmi.ViewModels"
-        xmlns:controls="using:OpcBridge.Hmi.Controls"
+        xmlns:client="using:OpcBridge.Client"
         x:Class="OpcBridge.Hmi.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Title="OpcBridge HMI"
@@ -10,7 +10,7 @@
   <DockPanel Margin="12">
     <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto,Auto" Margin="0,0,0,8">
       <TextBox Grid.Column="0"
-               Watermark="Base URL"
+               Watermark="Bridge Base URL"
                Text="{Binding BaseUrl}"
                Margin="0,0,8,0" />
       <Button Grid.Column="1"
@@ -32,11 +32,24 @@
                 Orientation="Horizontal"
                 Spacing="8"
                 Margin="0,0,0,8">
+      <TextBlock VerticalAlignment="Center" Text="Display store:" />
+      <TextBox Width="280"
+               Watermark="http://primary:8080"
+               Text="{Binding DisplayStoreUrl}" />
+      <Button Content="Refresh displays"
+              Command="{Binding RefreshDisplaysCommand}"
+              MinWidth="120" />
       <TextBlock VerticalAlignment="Center" Text="Filter:" />
-      <TextBox Width="320"
-               Watermark="Source, name, or value"
+      <TextBox Width="240"
+               Watermark="Bridge, source, name, or value"
                Text="{Binding Filter}" />
     </StackPanel>
+
+    <TextBlock DockPanel.Dock="Bottom"
+               Margin="0,8,0,0"
+               Text="{Binding StatusMessage}"
+               TextWrapping="Wrap"
+               Opacity="0.85" />
 
     <Grid ColumnDefinitions="2*,*" >
       <Border Grid.Column="0"
@@ -47,22 +60,26 @@
               Margin="0,0,12,0">
         <DockPanel>
           <Grid DockPanel.Dock="Top"
-                ColumnDefinitions="*,2*,*,*"
+                ColumnDefinitions="*,*,2*,*,*"
                 Margin="4,0,4,6">
-            <TextBlock Grid.Column="0" FontWeight="SemiBold" Text="Source" />
-            <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="Name" />
-            <TextBlock Grid.Column="2" FontWeight="SemiBold" Text="Value" />
-            <TextBlock Grid.Column="3" FontWeight="SemiBold" Text="Q" />
+            <TextBlock Grid.Column="0" FontWeight="SemiBold" Text="Bridge" />
+            <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="Source" />
+            <TextBlock Grid.Column="2" FontWeight="SemiBold" Text="Name" />
+            <TextBlock Grid.Column="3" FontWeight="SemiBold" Text="Value" />
+            <TextBlock Grid.Column="4" FontWeight="SemiBold" Text="Q" />
           </Grid>
-          <ListBox ItemsSource="{Binding FilteredTags}"
-                   SelectedItem="{Binding SelectedTag}">
+          <ListBox x:Name="TagList"
+                   ItemsSource="{Binding FilteredTags}"
+                   SelectedItem="{Binding SelectedTag}"
+                   DoubleTapped="OnTagDoubleTapped">
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="vm:TagItemViewModel">
-                <Grid ColumnDefinitions="*,2*,*,*">
-                  <TextBlock Grid.Column="0" Text="{Binding SourceId}" TextTrimming="CharacterEllipsis" />
-                  <TextBlock Grid.Column="1" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
-                  <TextBlock Grid.Column="2" Text="{Binding ValueText}" TextTrimming="CharacterEllipsis" />
-                  <TextBlock Grid.Column="3" Text="{Binding QualityText}" TextTrimming="CharacterEllipsis" />
+                <Grid ColumnDefinitions="*,*,2*,*,*">
+                  <TextBlock Grid.Column="0" Text="{Binding BridgeId}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Grid.Column="1" Text="{Binding SourceId}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Grid.Column="2" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Grid.Column="3" Text="{Binding ValueText}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Grid.Column="4" Text="{Binding QualityText}" TextTrimming="CharacterEllipsis" />
                 </Grid>
               </DataTemplate>
             </ListBox.ItemTemplate>
@@ -75,31 +92,39 @@
               BorderThickness="1"
               CornerRadius="4"
               Padding="12">
-        <StackPanel Spacing="8">
-          <TextBlock FontSize="16" FontWeight="SemiBold" Text="Faceplate" />
-          <TextBlock Text="{Binding SelectedTag.DisplayName, StringFormat=Name: {0}}" />
-          <TextBlock Text="{Binding SelectedTag.DaItemId, StringFormat=Item: {0}}" />
-          <TextBlock Text="{Binding SelectedTag.DataType, StringFormat=Type: {0}}" />
-          <TextBlock Text="{Binding SelectedTag.ValueText, StringFormat=Value: {0}}" />
-          <TextBlock Text="{Binding SelectedTag.QualityText, StringFormat=Quality: {0}}" />
-          <TextBlock Text="{Binding SelectedTag.TimestampText, StringFormat=Timestamp: {0}}" />
-          <TextBlock Text="History (1h)" FontWeight="SemiBold" Margin="0,8,0,0" />
-          <controls:SparklineControl Height="72"
-                                     Points="{Binding TrendValues}" />
-          <TextBlock Text="{Binding TrendStatus}"
-                     Opacity="0.85"
-                     TextWrapping="Wrap" />
-          <StackPanel Orientation="Horizontal"
-                      Spacing="8"
-                      IsEnabled="{Binding SelectedTag.Writeable, FallbackValue=False, TargetNullValue=False}">
-            <TextBlock VerticalAlignment="Center" Text="Write:" />
-            <TextBox Width="160" Text="{Binding WriteValue}" />
-            <Button Content="Write" Command="{Binding WriteCommand}" MinWidth="80" />
+        <DockPanel>
+          <TextBlock DockPanel.Dock="Top"
+                     FontSize="16"
+                     FontWeight="SemiBold"
+                     Text="Selection"
+                     Margin="0,0,0,8" />
+          <Button DockPanel.Dock="Bottom"
+                  Content="Open faceplate"
+                  Command="{Binding OpenFaceplateCommand}"
+                  HorizontalAlignment="Stretch"
+                  Margin="0,12,0,0"
+                  MinHeight="36" />
+          <StackPanel Spacing="6">
+            <TextBlock Text="{Binding SelectedTag.BridgeId, StringFormat=Bridge: {0}}" />
+            <TextBlock Text="{Binding SelectedTag.DisplayName, StringFormat=Name: {0}}" />
+            <TextBlock Text="{Binding SelectedTag.DaItemId, StringFormat=Item: {0}}" />
+            <TextBlock Text="{Binding SelectedTag.DataType, StringFormat=Type: {0}}" />
+            <TextBlock Text="{Binding SelectedTag.ValueText, StringFormat=Value: {0}}" />
+            <TextBlock Text="{Binding SelectedTag.QualityText, StringFormat=Quality: {0}}" />
+            <TextBlock Text="{Binding SelectedTag.TimestampText, StringFormat=Timestamp: {0}}" />
+            <TextBlock Margin="0,12,0,0" FontWeight="SemiBold" Text="Displays on store" />
+            <ListBox Height="160" ItemsSource="{Binding Displays}">
+              <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="client:DisplayListItemDto">
+                  <TextBlock TextWrapping="NoWrap"
+                             Text="{Binding Name}" />
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+            <TextBlock Opacity="0.75" TextWrapping="Wrap"
+                       Text="Double-click a tag or use Open faceplate. Trend opens from the faceplate popup." />
           </StackPanel>
-          <TextBlock Text="{Binding StatusMessage}"
-                     TextWrapping="Wrap"
-                     Opacity="0.85" />
-        </StackPanel>
+        </DockPanel>
       </Border>
     </Grid>
   </DockPanel>

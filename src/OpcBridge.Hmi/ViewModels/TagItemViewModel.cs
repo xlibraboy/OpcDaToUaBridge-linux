@@ -1,10 +1,14 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using OpcBridge.Client;
+using OpcBridge.Hmi.Core;
 
 namespace OpcBridge.Hmi.ViewModels;
 
 public partial class TagItemViewModel : ObservableObject
 {
+    [ObservableProperty]
+    private string _bridgeId = "default";
+
     [ObservableProperty]
     private string _sourceId = string.Empty;
 
@@ -29,17 +33,41 @@ public partial class TagItemViewModel : ObservableObject
     [ObservableProperty]
     private bool _writeable;
 
-    public string Key => HmiTagCache.Key(SourceId, DaItemId);
+    public TagBindingKey BindingKey => TagBindingKey.Create(BridgeId, SourceId, DaItemId);
 
-    public static TagItemViewModel FromDto(HmiTagDto dto)
+    public string Key => BindingKey.CacheKey;
+
+    public static TagItemViewModel FromEntry(MultiBridgeTagEntry entry)
     {
         var vm = new TagItemViewModel();
-        vm.Apply(dto);
+        vm.Apply(entry);
         return vm;
     }
 
-    public void Apply(HmiTagDto dto)
+    public static TagItemViewModel FromDto(string bridgeId, HmiTagDto dto)
     {
+        var vm = new TagItemViewModel();
+        vm.Apply(bridgeId, dto);
+        return vm;
+    }
+
+    // Back-compat for older single-bridge call sites/tests.
+    public static TagItemViewModel FromDto(HmiTagDto dto) => FromDto("default", dto);
+
+    public void Apply(MultiBridgeTagEntry entry)
+    {
+        BridgeId = entry.Key.BridgeId;
+        SourceId = entry.Key.SourceId;
+        DaItemId = entry.Key.DaItemId;
+        DisplayName = string.IsNullOrWhiteSpace(entry.DisplayName) ? entry.Key.DaItemId : entry.DisplayName;
+        DataType = entry.DataType;
+        Writeable = entry.Writeable;
+        ApplyValue(entry.Value, entry.TimestampUtc, entry.DaQuality, entry.IsGood);
+    }
+
+    public void Apply(string bridgeId, HmiTagDto dto)
+    {
+        BridgeId = bridgeId;
         SourceId = dto.SourceId;
         DaItemId = dto.DaItemId;
         DisplayName = string.IsNullOrWhiteSpace(dto.DisplayName) ? dto.DaItemId : dto.DisplayName;
@@ -47,6 +75,8 @@ public partial class TagItemViewModel : ObservableObject
         Writeable = dto.Writeable;
         ApplyValue(dto.Value, dto.TimestampUtc, dto.DaQuality, dto.IsGood);
     }
+
+    public void Apply(HmiTagDto dto) => Apply("default", dto);
 
     public void ApplyDelta(HmiValueDelta delta)
     {

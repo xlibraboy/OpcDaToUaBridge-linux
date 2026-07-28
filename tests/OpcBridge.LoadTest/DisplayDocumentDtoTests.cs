@@ -76,9 +76,11 @@ public sealed class DisplayDocumentDtoTests
         Assert.Equal(1080, back.Height);
         Assert.Equal(2, back.Widgets.Count);
         Assert.Equal("numeric", back.Widgets[0].Type);
-        Assert.Equal("line1", back.Widgets[0].Binding!.BridgeId);
-        Assert.Equal("default", back.Widgets[0].Binding.SourceId);
-        Assert.Equal("Tank.Level", back.Widgets[0].Binding.DaItemId);
+        TagBindingDto? binding = back.Widgets[0].Binding;
+        Assert.NotNull(binding);
+        Assert.Equal("line1", binding!.BridgeId);
+        Assert.Equal("default", binding.SourceId);
+        Assert.Equal("Tank.Level", binding.DaItemId);
         Assert.Null(back.Widgets[1].Binding);
         Assert.True(back.Widgets[0].Props.ContainsKey("label"));
     }

@@ -1,38 +1,52 @@
 using System.Collections.ObjectModel;
-using System.Text.Json;
+using Avalonia.Controls;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using OpcBridge.Client;
+using OpcBridge.Hmi.Core;
 using OpcBridge.Hmi.Services;
+using OpcBridge.Hmi.Views;
 
 namespace OpcBridge.Hmi.ViewModels;
 
 public partial class MainViewModel : ObservableObject, IAsyncDisposable
 {
-    private readonly BridgeApiClient _api;
-    private readonly HmiHubClient _hub;
-    private readonly HmiTagCache _cache = new();
-    private readonly Dictionary<string, TagItemViewModel> _tagIndex = new(StringComparer.OrdinalIgnoreCase);
-    private readonly bool _ownsClients;
-    private CancellationTokenSource? _connectCts;
-    private int _mappingVersion;
+    private readonly BridgeConnectionManager connections_;
+    private readonly DisplayStoreClient displayStore_;
+    private readonly PopupWindowService popups_;
+    private readonly Dictionary<string, TagItemViewModel> tagIndex_ = new(StringComparer.OrdinalIgnoreCase);
+    private readonly bool ownsServices_;
+    private CancellationTokenSource? connectCts_;
+    private Window? ownerWindow_;
+    private readonly List<FaceplateViewModel> openFaceplates_ = new();
 
     public MainViewModel()
-        : this(new BridgeApiClient(), new HmiHubClient(), ownsClients: true)
+        : this(new BridgeConnectionManager(), new DisplayStoreClient(), new PopupWindowService(), ownsServices: true)
     {
     }
 
-    public MainViewModel(BridgeApiClient api, HmiHubClient hub, bool ownsClients = false)
+    public MainViewModel(
+        BridgeConnectionManager connections,
+        DisplayStoreClient displayStore,
+        PopupWindowService popups,
+        bool ownsServices = false)
     {
-        _api = api;
-        _hub = hub;
-        _ownsClients = ownsClients;
-        _hub.Reconnected += OnHubReconnectedAsync;
+        connections_ = connections;
+        displayStore_ = displayStore;
+        popups_ = popups;
+        ownsServices_ = ownsServices;
+        connections_.CacheChanged += OnCacheChanged;
+        connections_.MappingsChanged += OnMappingsChangedAsync;
     }
+
+    public void SetOwnerWindow(Window? owner) => ownerWindow_ = owner;
 
     [ObservableProperty]
     private string _baseUrl = "http://127.0.0.1:8080";
+
+    [ObservableProperty]
+    private string _displayStoreUrl = "http://127.0.0.1:8080";
 
     [ObservableProperty]
     private string _connectionState = "Disconnected";
@@ -44,24 +58,14 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     private TagItemViewModel? _selectedTag;
 
     [ObservableProperty]
-    private string _writeValue = string.Empty;
-
-    [ObservableProperty]
     private string _statusMessage = string.Empty;
 
     [ObservableProperty]
     private bool _isConnected;
 
-    [ObservableProperty]
-    private string _trendStatus = string.Empty;
-
-    [ObservableProperty]
-    private bool _trendLoading;
-
-    [ObservableProperty]
-    private IReadOnlyList<double> _trendValues = Array.Empty<double>();
-
     public ObservableCollection<TagItemViewModel> Tags { get; } = new();
+
+    public ObservableCollection<DisplayListItemDto> Displays { get; } = new();
 
     public IEnumerable<TagItemViewModel> FilteredTags =>
         string.IsNullOrWhiteSpace(Filter)
@@ -74,46 +78,51 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         ConnectCommand.NotifyCanExecuteChanged();
         DisconnectCommand.NotifyCanExecuteChanged();
-        WriteCommand.NotifyCanExecuteChanged();
+        OpenFaceplateCommand.NotifyCanExecuteChanged();
+        RefreshDisplaysCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnSelectedTagChanged(TagItemViewModel? value)
     {
-        WriteValue = value?.ValueText ?? string.Empty;
-        WriteCommand.NotifyCanExecuteChanged();
-        _ = LoadTrendsForSelectionAsync();
+        OpenFaceplateCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnBaseUrlChanged(string value)
+    {
+        if (string.IsNullOrWhiteSpace(DisplayStoreUrl) || DisplayStoreUrl == "http://127.0.0.1:8080")
+        {
+            DisplayStoreUrl = value;
+        }
     }
 
     [RelayCommand(CanExecute = nameof(CanConnect))]
     private async Task ConnectAsync()
     {
-        _connectCts?.Cancel();
-        _connectCts?.Dispose();
-        _connectCts = new CancellationTokenSource();
-        CancellationToken ct = _connectCts.Token;
+        connectCts_?.Cancel();
+        connectCts_?.Dispose();
+        connectCts_ = new CancellationTokenSource();
+        CancellationToken ct = connectCts_.Token;
 
         try
         {
             ConnectionState = "Connecting";
             StatusMessage = string.Empty;
-            _api.SetBaseAddress(BaseUrl);
 
-            await RefreshSnapshotAsync(ct).ConfigureAwait(true);
+            HmiClientConfig config = HmiClientConfig.CreateDefaultSingleBridge(BaseUrl);
+            if (!string.IsNullOrWhiteSpace(DisplayStoreUrl))
+            {
+                config.DisplayStoreUrl = DisplayStoreUrl.Trim().TrimEnd('/');
+            }
 
-            await _hub.ConnectAsync(
-                BaseUrl,
-                OnValuesAsync,
-                OnMappingsChangedAsync,
-                ct).ConfigureAwait(true);
+            // If BaseUrl differs from a multi-entry future config, single-bridge default still works.
+            displayStore_.SetBaseAddress(config.DisplayStoreUrl);
+            await connections_.ConnectAllAsync(config, ct).ConfigureAwait(true);
+            RebuildTagsFromCache();
+            await RefreshDisplaysAsync().ConfigureAwait(true);
 
             IsConnected = true;
             ConnectionState = "Connected";
-            StatusMessage = $"Loaded {Tags.Count} tags (v{_mappingVersion})";
-            _ = TrendRefreshLoopAsync(ct);
-            if (SelectedTag is not null)
-            {
-                await LoadTrendsAsync(ct).ConfigureAwait(true);
-            }
+            StatusMessage = $"Loaded {Tags.Count} tags from {connections_.ConnectedBridgeIds.Count} bridge(s)";
         }
         catch (OperationCanceledException)
         {
@@ -134,7 +143,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     [RelayCommand(CanExecute = nameof(CanDisconnect))]
     private async Task Disconnect()
     {
-        _connectCts?.Cancel();
+        connectCts_?.Cancel();
         await SafeDisconnectAsync().ConfigureAwait(true);
         ConnectionState = "Disconnected";
         StatusMessage = "Disconnected";
@@ -142,336 +151,159 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private bool CanDisconnect() => IsConnected;
 
-    [RelayCommand(CanExecute = nameof(CanWrite))]
-    private async Task WriteAsync()
+    [RelayCommand(CanExecute = nameof(CanOpenFaceplate))]
+    private void OpenFaceplate()
     {
         if (SelectedTag is null)
         {
             return;
         }
 
+        OpenFaceplateFor(SelectedTag.BindingKey);
+    }
+
+    private bool CanOpenFaceplate() => IsConnected && SelectedTag is not null;
+
+    [RelayCommand(CanExecute = nameof(CanRefreshDisplays))]
+    private async Task RefreshDisplaysAsync()
+    {
         try
         {
-            object? parsed = ParseWriteValue(WriteValue, SelectedTag.DataType);
-            HmiWriteResponse response = await _api.WriteAsync(
-                new HmiWriteRequest
-                {
-                    SourceId = SelectedTag.SourceId,
-                    DaItemId = SelectedTag.DaItemId,
-                    Value = parsed
-                },
-                CancellationToken.None).ConfigureAwait(true);
-
-            StatusMessage = response.Ok
-                ? "Write OK"
-                : (response.Error ?? "Write failed");
+            DisplayListResponse list = await displayStore_.ListAsync(CancellationToken.None).ConfigureAwait(true);
+            Displays.Clear();
+            foreach (DisplayListItemDto item in list.Items)
+            {
+                Displays.Add(item);
+            }
         }
         catch (Exception ex)
         {
-            StatusMessage = ex.Message;
+            StatusMessage = "Display list: " + ex.Message;
         }
     }
 
-    private bool CanWrite() => IsConnected && SelectedTag is { Writeable: true };
+    private bool CanRefreshDisplays() => IsConnected;
 
-    public void ApplySnapshot(HmiTagsResponse response)
+    public void OpenFaceplateFor(TagBindingKey key)
     {
-        _mappingVersion = (int)response.Version;
-        _cache.ReplaceAll(response.Tags);
+        popups_.OpenOrFocus(
+            key,
+            trend: false,
+            factory: () =>
+            {
+                if (!connections_.TryGetSession(key.BridgeId, out BridgeConnectionManager.BridgeSession? session)
+                    || session is null)
+                {
+                    throw new InvalidOperationException("Bridge not connected: " + key.BridgeId);
+                }
 
+                FaceplateViewModel vm = new(
+                    key,
+                    session.Api,
+                    connections_.Cache,
+                    openTrend: OpenTrendFor);
+                openFaceplates_.Add(vm);
+                FaceplateWindow window = new(vm);
+                window.Closed += (_, _) => openFaceplates_.Remove(vm);
+                return window;
+            },
+            owner: ownerWindow_);
+    }
+
+    public void OpenTrendFor(TagBindingKey key)
+    {
+        popups_.OpenOrFocus(
+            key,
+            trend: true,
+            factory: () =>
+            {
+                if (!connections_.TryGetSession(key.BridgeId, out BridgeConnectionManager.BridgeSession? session)
+                    || session is null)
+                {
+                    throw new InvalidOperationException("Bridge not connected: " + key.BridgeId);
+                }
+
+                TrendViewModel vm = new(key, session.Api);
+                return new TrendWindow(vm);
+            },
+            owner: ownerWindow_);
+    }
+
+    private void OnCacheChanged()
+    {
+        _ = PostToUiAsync(() =>
+        {
+            RebuildTagsFromCache();
+            foreach (FaceplateViewModel faceplate in openFaceplates_.ToArray())
+            {
+                faceplate.RefreshFromCache();
+            }
+        });
+    }
+
+    private Task OnMappingsChangedAsync(string bridgeId, HmiMappingsChanged msg)
+    {
+        return PostToUiAsync(async () =>
+        {
+            try
+            {
+                await connections_.RefreshBridgeSnapshotAsync(bridgeId, CancellationToken.None).ConfigureAwait(true);
+                StatusMessage = $"Mappings changed on {bridgeId} (v{msg.Version})";
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = ex.Message;
+            }
+        });
+    }
+
+    private void RebuildTagsFromCache()
+    {
         string? selectedKey = SelectedTag?.Key;
         Tags.Clear();
-        _tagIndex.Clear();
-
-        foreach (HmiTagDto dto in response.Tags)
+        tagIndex_.Clear();
+        foreach (MultiBridgeTagEntry entry in connections_.Cache.Tags
+                     .OrderBy(t => t.Key.BridgeId, StringComparer.OrdinalIgnoreCase)
+                     .ThenBy(t => t.DisplayName, StringComparer.OrdinalIgnoreCase))
         {
-            TagItemViewModel item = TagItemViewModel.FromDto(dto);
-            _tagIndex[item.Key] = item;
+            TagItemViewModel item = TagItemViewModel.FromEntry(entry);
+            tagIndex_[item.Key] = item;
             Tags.Add(item);
         }
 
-        SelectedTag = selectedKey is not null && _tagIndex.TryGetValue(selectedKey, out TagItemViewModel? stillThere)
-            ? stillThere
+        SelectedTag = selectedKey is not null && tagIndex_.TryGetValue(selectedKey, out TagItemViewModel? still)
+            ? still
             : null;
-
         OnPropertyChanged(nameof(FilteredTags));
-    }
-
-    public void ApplyDeltas(IEnumerable<HmiValueDelta> deltas)
-    {
-        HmiValueDelta[] batch = deltas as HmiValueDelta[] ?? deltas.ToArray();
-        _cache.ApplyDeltas(batch);
-
-        foreach (HmiValueDelta delta in batch)
-        {
-            string key = HmiTagCache.Key(delta.SourceId, delta.DaItemId);
-            if (_tagIndex.TryGetValue(key, out TagItemViewModel? item))
-            {
-                item.ApplyDelta(delta);
-            }
-        }
-    }
-
-    private async Task OnValuesAsync(HmiValueDelta[] batch)
-    {
-        await PostToUiAsync(() => ApplyDeltas(batch)).ConfigureAwait(false);
-    }
-
-    private async Task OnMappingsChangedAsync(HmiMappingsChanged msg)
-    {
-        await PostToUiAsync(async () =>
-        {
-            try
-            {
-                await RefreshSnapshotAsync(CancellationToken.None).ConfigureAwait(true);
-                StatusMessage = $"Mappings changed (v{msg.Version})";
-            }
-            catch (Exception ex)
-            {
-                StatusMessage = ex.Message;
-            }
-        }).ConfigureAwait(false);
-    }
-
-    private async Task OnHubReconnectedAsync(string? _)
-    {
-        await PostToUiAsync(async () =>
-        {
-            try
-            {
-                await RefreshSnapshotAsync(CancellationToken.None).ConfigureAwait(true);
-                ConnectionState = "Connected";
-                StatusMessage = "Reconnected; snapshot refreshed";
-            }
-            catch (Exception ex)
-            {
-                StatusMessage = ex.Message;
-            }
-        }).ConfigureAwait(false);
-    }
-
-    private async Task RefreshSnapshotAsync(CancellationToken ct)
-    {
-        HmiTagsResponse response = await _api.GetTagsAsync(ct).ConfigureAwait(true);
-        ApplySnapshot(response);
     }
 
     private async Task SafeDisconnectAsync()
     {
-        IsConnected = false;
-        await _hub.DisposeAsync().ConfigureAwait(true);
-        Tags.Clear();
-        _tagIndex.Clear();
-        _cache.ReplaceAll(Array.Empty<HmiTagDto>());
-        SelectedTag = null;
-        TrendValues = Array.Empty<double>();
-        TrendStatus = string.Empty;
-        TrendLoading = false;
-        OnPropertyChanged(nameof(FilteredTags));
-    }
-
-    private async Task LoadTrendsForSelectionAsync()
-    {
-        if (_connectCts is null || !IsConnected)
-        {
-            return;
-        }
-
-        await LoadTrendsAsync(_connectCts.Token).ConfigureAwait(true);
-    }
-
-    private async Task TrendRefreshLoopAsync(CancellationToken ct)
-    {
         try
         {
-            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
-            while (await timer.WaitForNextTickAsync(ct).ConfigureAwait(true))
-            {
-                if (SelectedTag is not null)
-                {
-                    await LoadTrendsAsync(ct).ConfigureAwait(true);
-                }
-            }
+            await connections_.DisconnectAllAsync().ConfigureAwait(true);
         }
-        catch (OperationCanceledException)
-        {
-        }
-    }
-
-    private async Task LoadTrendsAsync(CancellationToken ct)
-    {
-        TagItemViewModel? tag = SelectedTag;
-        if (!IsConnected || tag is null)
-        {
-            TrendValues = Array.Empty<double>();
-            TrendStatus = string.Empty;
-            return;
-        }
-
-        TrendLoading = true;
-        try
-        {
-            HmiTrendResponse response = await _api.GetTrendsAsync(
-                tag.SourceId,
-                tag.DaItemId,
-                fromUtc: null,
-                toUtc: null,
-                maxPoints: 500,
-                ct).ConfigureAwait(true);
-
-            List<double> ys = new();
-            foreach (HmiTrendPoint p in response.Points)
-            {
-                if (TryToDouble(p.V, out double y))
-                {
-                    ys.Add(y);
-                }
-            }
-
-            TrendValues = ys;
-            if (!string.IsNullOrWhiteSpace(response.Error))
-            {
-                TrendStatus = response.Error!;
-            }
-            else if (ys.Count == 0)
-            {
-                TrendStatus = "No history";
-            }
-            else
-            {
-                TrendStatus = string.Empty;
-            }
-        }
-        catch (OperationCanceledException)
+        catch
         {
             // ignore
         }
-        catch (Exception ex)
-        {
-            TrendValues = Array.Empty<double>();
-            TrendStatus = ex.Message;
-        }
-        finally
-        {
-            TrendLoading = false;
-        }
-    }
 
-    private static bool TryToDouble(object? value, out double y)
-    {
-        y = 0;
-        if (value is null)
-        {
-            return false;
-        }
-
-        if (value is double d)
-        {
-            y = d;
-            return true;
-        }
-
-        if (value is float f)
-        {
-            y = f;
-            return true;
-        }
-
-        if (value is int i)
-        {
-            y = i;
-            return true;
-        }
-
-        if (value is long l)
-        {
-            y = l;
-            return true;
-        }
-
-        if (value is JsonElement je)
-        {
-            if (je.ValueKind == JsonValueKind.Number && je.TryGetDouble(out d))
-            {
-                y = d;
-                return true;
-            }
-
-            return false;
-        }
-
-        return double.TryParse(
-            Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture),
-            System.Globalization.NumberStyles.Float,
-            System.Globalization.CultureInfo.InvariantCulture,
-            out y);
+        IsConnected = false;
+        Tags.Clear();
+        tagIndex_.Clear();
+        Displays.Clear();
+        SelectedTag = null;
+        OnPropertyChanged(nameof(FilteredTags));
     }
 
     private bool MatchesFilter(TagItemViewModel tag)
     {
         string f = Filter.Trim();
-        return tag.SourceId.Contains(f, StringComparison.OrdinalIgnoreCase)
-            || tag.DaItemId.Contains(f, StringComparison.OrdinalIgnoreCase)
+        return tag.BridgeId.Contains(f, StringComparison.OrdinalIgnoreCase)
+            || tag.SourceId.Contains(f, StringComparison.OrdinalIgnoreCase)
             || tag.DisplayName.Contains(f, StringComparison.OrdinalIgnoreCase)
+            || tag.DaItemId.Contains(f, StringComparison.OrdinalIgnoreCase)
             || tag.ValueText.Contains(f, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static object? ParseWriteValue(string text, string dataType)
-    {
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            return null;
-        }
-
-        string t = dataType.Trim();
-        if (t.Equals("Boolean", StringComparison.OrdinalIgnoreCase)
-            || t.Equals("Bool", StringComparison.OrdinalIgnoreCase))
-        {
-            return bool.Parse(text);
-        }
-
-        if (t.Equals("Int16", StringComparison.OrdinalIgnoreCase)
-            || t.Equals("Short", StringComparison.OrdinalIgnoreCase))
-        {
-            return short.Parse(text, System.Globalization.CultureInfo.InvariantCulture);
-        }
-
-        if (t.Equals("Int32", StringComparison.OrdinalIgnoreCase)
-            || t.Equals("Integer", StringComparison.OrdinalIgnoreCase)
-            || t.Equals("Int", StringComparison.OrdinalIgnoreCase))
-        {
-            return int.Parse(text, System.Globalization.CultureInfo.InvariantCulture);
-        }
-
-        if (t.Equals("Int64", StringComparison.OrdinalIgnoreCase)
-            || t.Equals("Long", StringComparison.OrdinalIgnoreCase))
-        {
-            return long.Parse(text, System.Globalization.CultureInfo.InvariantCulture);
-        }
-
-        if (t.Equals("Float", StringComparison.OrdinalIgnoreCase)
-            || t.Equals("Single", StringComparison.OrdinalIgnoreCase))
-        {
-            return float.Parse(text, System.Globalization.CultureInfo.InvariantCulture);
-        }
-
-        if (t.Equals("Double", StringComparison.OrdinalIgnoreCase)
-            || t.Equals("Float64", StringComparison.OrdinalIgnoreCase))
-        {
-            return double.Parse(text, System.Globalization.CultureInfo.InvariantCulture);
-        }
-
-        if (t.Equals("String", StringComparison.OrdinalIgnoreCase))
-        {
-            return text;
-        }
-
-        if (double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double d))
-        {
-            return d;
-        }
-
-        return text;
     }
 
     private static Task PostToUiAsync(Action action)
@@ -523,13 +355,14 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        _connectCts?.Cancel();
-        _connectCts?.Dispose();
-        _hub.Reconnected -= OnHubReconnectedAsync;
-        await _hub.DisposeAsync().ConfigureAwait(false);
-        if (_ownsClients)
+        connectCts_?.Cancel();
+        connectCts_?.Dispose();
+        connections_.CacheChanged -= OnCacheChanged;
+        connections_.MappingsChanged -= OnMappingsChangedAsync;
+        if (ownsServices_)
         {
-            _api.Dispose();
+            await connections_.DisposeAsync().ConfigureAwait(false);
+            displayStore_.Dispose();
         }
     }
 }
