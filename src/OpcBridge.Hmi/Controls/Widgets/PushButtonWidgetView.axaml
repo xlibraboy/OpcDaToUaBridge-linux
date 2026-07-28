@@ -1,0 +1,14 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:widgets="using:OpcBridge.Hmi.ViewModels.Widgets"
+             x:Class="OpcBridge.Hmi.Controls.Widgets.PushButtonWidgetView"
+             x:DataType="widgets:PushButtonWidgetViewModel">
+  <StackPanel Spacing="2">
+    <Button Content="{Binding Text}"
+            Command="{Binding PressCommand}"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Stretch"
+            MinHeight="28" />
+    <TextBlock Text="{Binding StatusText}" FontSize="10" Opacity="0.85" Foreground="#CCCCCC" />
+  </StackPanel>
+</UserControl>

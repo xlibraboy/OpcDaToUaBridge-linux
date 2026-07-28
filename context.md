@@ -4,16 +4,12 @@ Instruction file for AI agents working in this repo. All facts below are verifie
 
 ## What this project is
 
-A bridge that mirrors OPC DA tag values into an OPC UA server, with a web dashboard for configuration and monitoring and an optional Avalonia HMI operator client. Bridge is a single Windows process at runtime (DA COM requires Windows); the HMI is a **separate process**. Edited and built on Linux, deployed to a Windows host.
+A bridge that mirrors OPC DA tag values into an OPC UA server, with a web dashboard for configuration and monitoring and Avalonia HMI clients. Bridge is a single Windows process at runtime (DA COM requires Windows); HMI Runtime and Designer are **separate processes**. Edited and built on Linux, deployed to a Windows host.
 
 - **DA side**: connects to one or more OPC DA servers via direct COM/DCOM interop (no vendor SDK).
 - **UA side**: an in-process OPC UA server (OPCFoundation.NetStandard SDK) that mirrors DA reads as UA variables.
-1: - **Dashboard**: ASP.NET Core minimal API + single-page HTML dashboard for sources, mappings, browsing, live values, MQTT, InfluxDB writer config, and Diagram topology.
-- **HMI**: Avalonia desktop operator client (`OpcBridge.Hmi`) connecting to bridge HTTP + SignalR on port 8080 only. Faceplate chart loads history via bridge `GET /api/hmi/trends` (Influx proxy — HMI never holds an Influx token). Bridge can log opt-in tags to InfluxDB 2.x/3.x via writer. Auth / Android remain deferred non-goals.
-2: | `OpcBridge.Influx` | `net8.0` | Continuous opt-in historical writer to InfluxDB 2.x/3.x (`IInfluxWriter`). |
-| `OpcBridge.App` | `net8.0` (Web SDK) | Entrypoint, HTTP API, dashboard HTML/JS (`DashboardPage`), `BridgeWorker`, `BridgeState`, `MappingStore`, `DaRuntimeSettings`, `DaClientFactory`, `DashboardLogStore`, Influx runtime settings, HMI snapshot/write/trends API + SignalR hub. References Core, Da, Ua, Mqtt, Influx, Client. |
-| `OpcBridge.Client` | `net8.0` | Shared HMI/App wire DTOs and tag-cache merge helpers: `HmiTagDto`, `HmiTagsResponse`, `HmiValueDelta`, `HmiWriteRequest`/`HmiWriteResponse`, `HmiMappingsChanged`, `HmiTagCache`, `HmiTrendPoint`, `HmiTrendResponse`. No framework deps. |
-| `OpcBridge.Hmi` | `net8.0` (WinExe) | Avalonia 11 operator client: connect bar, tag grid, faceplate write + sparkline (last-hour trends via bridge proxy). References Client; SignalR client for `/hmi`. Separate process from the bridge. |
+- **Dashboard**: ASP.NET Core minimal API + single-page HTML dashboard for sources, mappings, browsing, live values, MQTT, InfluxDB writer config, and Diagram topology.
+- **HMI**: Avalonia desktop operator Runtime (`OpcBridge.Hmi`) and standalone Designer (`OpcBridge.Hmi.Designer`). Runtime loads process displays from primary-bridge `/api/hmi/displays`, shows live multi-bridge tags, and opens popup faceplate/trend windows. Designer authors JSON display documents. Both talk HTTP + SignalR only (no DA/UA/COM). History via bridge `GET /api/hmi/trends`.
 
 ## Project map
 
@@ -25,14 +21,14 @@ Projects under `src/`, all .NET 8, `ImplicitUsings` + `Nullable` enabled.
 | `OpcBridge.Da` | `net8.0;net8.0-windows` | DA client + browsing + server enumeration + Windows impersonation. Multi-targeted so it compiles on Linux but only runs COM on Windows. |
 | `OpcBridge.Ua` | `net8.0` | UA server: `BridgeUaServer` (extends `StandardServer`), `BridgeNodeManager` (extends `CustomNodeManager2`), `UaServerHost`. Depends on `OPCFoundation.NetStandard.Opc.Ua` 1.5.378.145. |
 | `OpcBridge.Mqtt` | `net8.0` | MQTT publish/subscribe helper for mapped tags. |
-1: - **Dashboard**: ASP.NET Core minimal API + single-page HTML dashboard for sources, mappings, browsing, live values, MQTT, InfluxDB writer config, and Diagram topology.
-- **HMI**: Avalonia desktop operator client (`OpcBridge.Hmi`) connecting to bridge HTTP + SignalR on port 8080 only. Faceplate chart loads history via bridge `GET /api/hmi/trends` (Influx proxy — HMI never holds an Influx token). Bridge can log opt-in tags to InfluxDB 2.x/3.x via writer. Auth / Android remain deferred non-goals.
-2: | `OpcBridge.Influx` | `net8.0` | Continuous opt-in historical writer to InfluxDB 2.x/3.x (`IInfluxWriter`). |
-| `OpcBridge.App` | `net8.0` (Web SDK) | Entrypoint, HTTP API, dashboard HTML/JS (`DashboardPage`), `BridgeWorker`, `BridgeState`, `MappingStore`, `DaRuntimeSettings`, `DaClientFactory`, `DashboardLogStore`, Influx runtime settings, HMI snapshot/write/trends API + SignalR hub. References Core, Da, Ua, Mqtt, Influx, Client. |
-| `OpcBridge.Client` | `net8.0` | Shared HMI/App wire DTOs and tag-cache merge helpers: `HmiTagDto`, `HmiTagsResponse`, `HmiValueDelta`, `HmiWriteRequest`/`HmiWriteResponse`, `HmiMappingsChanged`, `HmiTagCache`, `HmiTrendPoint`, `HmiTrendResponse`. No framework deps. |
-| `OpcBridge.Hmi` | `net8.0` (WinExe) | Avalonia 11 operator client: connect bar, tag grid, faceplate write + sparkline (last-hour trends via bridge proxy). References Client; SignalR client for `/hmi`. Separate process from the bridge. |
+| `OpcBridge.Influx` | `net8.0` | Continuous opt-in historical writer to InfluxDB 2.x/3.x (`IInfluxWriter`). |
+| `OpcBridge.App` | `net8.0` (Web SDK) | Entrypoint, HTTP API, dashboard, `DisplayStore`, HMI snapshot/write/trends/displays API + SignalR (`Hmi:BroadcastFlushMs`). |
+| `OpcBridge.Client` | `net8.0` | Shared wire DTOs: HMI tags/write/trends + display document types + tag-cache helpers. |
+| `OpcBridge.Hmi.Core` | `net8.0` | Pure HMI models: `TagBindingKey`, `MultiBridgeTagCache`, `HmiClientConfig`, display helpers. No Avalonia. |
+| `OpcBridge.Hmi` | `net8.0` (WinExe) | Avalonia 11 Runtime: hybrid process display + tag browser, popup faceplate/trend, v1 widgets. |
+| `OpcBridge.Hmi.Designer` | `net8.0` (WinExe) | Avalonia 11 Designer: palette, add widgets, Open/Save displays on primary store. |
 
-Reference graph: `App → {Core, Da, Ua, Mqtt, Influx, Client}`, `Hmi → Client`, `Da → Core`, `Ua → Core`, `Mqtt → Core`, `Influx → Core`. Core and Client depend on nothing.
+Reference graph: `App → {Core, Da, Ua, Mqtt, Influx, Client}`, `Hmi → {Client, Hmi.Core}`, `Hmi.Designer → {Client, Hmi.Core, Hmi}`, `Hmi.Core → Client`, `Da → Core`, `Ua → Core`, `Mqtt → Core`, `Influx → Core`.
 
 ## Key contracts (OpcBridge.Core)
 

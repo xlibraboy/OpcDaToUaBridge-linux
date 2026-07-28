@@ -36,9 +36,15 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         displayStore_ = displayStore;
         popups_ = popups;
         ownsServices_ = ownsServices;
+        DisplaySurface = new DisplaySurfaceViewModel(
+            connections_.Cache,
+            OpenFaceplateFor,
+            WriteForBindingAsync);
         connections_.CacheChanged += OnCacheChanged;
         connections_.MappingsChanged += OnMappingsChangedAsync;
     }
+
+    public DisplaySurfaceViewModel DisplaySurface { get; }
 
     public void SetOwnerWindow(Window? owner) => ownerWindow_ = owner;
 
@@ -63,6 +69,9 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty]
     private bool _isConnected;
 
+    [ObservableProperty]
+    private DisplayListItemDto? _selectedDisplay;
+
     public ObservableCollection<TagItemViewModel> Tags { get; } = new();
 
     public ObservableCollection<DisplayListItemDto> Displays { get; } = new();
@@ -80,6 +89,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         DisconnectCommand.NotifyCanExecuteChanged();
         OpenFaceplateCommand.NotifyCanExecuteChanged();
         RefreshDisplaysCommand.NotifyCanExecuteChanged();
+        LoadSelectedDisplayCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnSelectedTagChanged(TagItemViewModel? value)
@@ -184,6 +194,70 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private bool CanRefreshDisplays() => IsConnected;
 
+    [RelayCommand(CanExecute = nameof(CanLoadSelectedDisplay))]
+    private async Task LoadSelectedDisplayAsync()
+    {
+        if (SelectedDisplay is null)
+        {
+            StatusMessage = "Select a display first";
+            return;
+        }
+
+        try
+        {
+            DisplayDocumentDto? doc = await displayStore_.GetAsync(SelectedDisplay.Id, CancellationToken.None)
+                .ConfigureAwait(true);
+            if (doc is null)
+            {
+                StatusMessage = "Display not found: " + SelectedDisplay.Id;
+                DisplaySurface.Clear();
+                return;
+            }
+
+            DisplaySurface.Load(doc);
+            StatusMessage = string.IsNullOrWhiteSpace(DisplaySurface.StatusMessage)
+                ? $"Loaded display {doc.Name} ({doc.Widgets.Count} widgets)"
+                : DisplaySurface.StatusMessage;
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = "Load display: " + ex.Message;
+        }
+    }
+
+    private bool CanLoadSelectedDisplay() => IsConnected && SelectedDisplay is not null;
+
+    partial void OnSelectedDisplayChanged(DisplayListItemDto? value)
+    {
+        LoadSelectedDisplayCommand.NotifyCanExecuteChanged();
+    }
+
+    private async Task<(bool Ok, string? Error)> WriteForBindingAsync(TagBindingKey key, object? value)
+    {
+        if (!connections_.TryGetSession(key.BridgeId, out BridgeConnectionManager.BridgeSession? session)
+            || session is null)
+        {
+            return (false, "Bridge not connected: " + key.BridgeId);
+        }
+
+        try
+        {
+            HmiWriteResponse response = await session.Api.WriteAsync(
+                new HmiWriteRequest
+                {
+                    SourceId = key.SourceId,
+                    DaItemId = key.DaItemId,
+                    Value = value
+                },
+                CancellationToken.None).ConfigureAwait(true);
+            return (response.Ok, response.Error);
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
+    }
+
     public void OpenFaceplateFor(TagBindingKey key)
     {
         popups_.OpenOrFocus(
@@ -234,6 +308,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         _ = PostToUiAsync(() =>
         {
             RebuildTagsFromCache();
+            DisplaySurface.RefreshLiveValues();
             foreach (FaceplateViewModel faceplate in openFaceplates_.ToArray())
             {
                 faceplate.RefreshFromCache();
@@ -293,6 +368,8 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         tagIndex_.Clear();
         Displays.Clear();
         SelectedTag = null;
+        SelectedDisplay = null;
+        DisplaySurface.Clear();
         OnPropertyChanged(nameof(FilteredTags));
     }
 

@@ -20,6 +20,7 @@
     <ProjectReference Include="..\..\src\OpcBridge.App\OpcBridge.App.csproj" />
     <ProjectReference Include="..\..\src\OpcBridge.Client\OpcBridge.Client.csproj" />
     <ProjectReference Include="..\..\src\OpcBridge.Hmi.Core\OpcBridge.Hmi.Core.csproj" />
+    <ProjectReference Include="..\..\src\OpcBridge.Hmi\OpcBridge.Hmi.csproj" />
     <ProjectReference Include="..\..\src\OpcBridge.Influx\OpcBridge.Influx.csproj" />
   </ItemGroup>
 

@@ -1,0 +1,16 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:widgets="using:OpcBridge.Hmi.ViewModels.Widgets"
+             x:Class="OpcBridge.Hmi.Controls.Widgets.NumericWidgetView"
+             x:DataType="widgets:NumericWidgetViewModel">
+  <Border Background="#333337"
+          CornerRadius="4"
+          Padding="8,4"
+          PointerPressed="OnPointerPressed">
+    <StackPanel Spacing="2">
+      <TextBlock Text="{Binding Label}" Opacity="0.8" FontSize="11" Foreground="#CCCCCC" />
+      <TextBlock Text="{Binding ValueText}" FontSize="16" FontWeight="SemiBold" Foreground="White" />
+      <TextBlock Text="{Binding StatusText}" FontSize="10" Foreground="#F0A000" IsVisible="{Binding IsUnbound}" />
+    </StackPanel>
+  </Border>
+</UserControl>

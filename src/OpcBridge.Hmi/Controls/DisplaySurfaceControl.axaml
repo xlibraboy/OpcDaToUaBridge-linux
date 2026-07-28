@@ -1,0 +1,67 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:OpcBridge.Hmi.ViewModels"
+             xmlns:widgets="using:OpcBridge.Hmi.ViewModels.Widgets"
+             xmlns:w="using:OpcBridge.Hmi.Controls.Widgets"
+             x:Class="OpcBridge.Hmi.Controls.DisplaySurfaceControl"
+             x:DataType="vm:DisplaySurfaceViewModel">
+  <Border Background="#1E1E1E"
+          BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+          BorderThickness="1"
+          CornerRadius="4"
+          ClipToBounds="True">
+    <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+      <Canvas Width="{Binding CanvasWidth}"
+              Height="{Binding CanvasHeight}"
+              Background="#252526">
+        <ItemsControl ItemsSource="{Binding Widgets}"
+                      Width="{Binding CanvasWidth}"
+                      Height="{Binding CanvasHeight}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <Canvas />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="widgets:WidgetViewModelBase">
+              <ContentControl Width="{Binding Width}"
+                              Height="{Binding Height}"
+                              ZIndex="{Binding Z}">
+                <ContentControl.DataTemplates>
+                  <DataTemplate DataType="widgets:LabelWidgetViewModel">
+                    <w:LabelWidgetView />
+                  </DataTemplate>
+                  <DataTemplate DataType="widgets:NumericWidgetViewModel">
+                    <w:NumericWidgetView />
+                  </DataTemplate>
+                  <DataTemplate DataType="widgets:QualityLampWidgetViewModel">
+                    <w:QualityLampWidgetView />
+                  </DataTemplate>
+                  <DataTemplate DataType="widgets:BoolIndicatorWidgetViewModel">
+                    <w:BoolIndicatorWidgetView />
+                  </DataTemplate>
+                  <DataTemplate DataType="widgets:PushButtonWidgetViewModel">
+                    <w:PushButtonWidgetView />
+                  </DataTemplate>
+                  <DataTemplate DataType="widgets:UnsupportedWidgetViewModel">
+                    <w:UnsupportedWidgetView />
+                  </DataTemplate>
+                  <DataTemplate DataType="widgets:WidgetViewModelBase">
+                    <w:UnsupportedWidgetView />
+                  </DataTemplate>
+                </ContentControl.DataTemplates>
+                <ContentControl Content="{Binding}" />
+              </ContentControl>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+          <ItemsControl.Styles>
+            <Style Selector="ItemsControl > ContentPresenter" x:DataType="widgets:WidgetViewModelBase">
+              <Setter Property="Canvas.Left" Value="{Binding X}" />
+              <Setter Property="Canvas.Top" Value="{Binding Y}" />
+            </Style>
+          </ItemsControl.Styles>
+        </ItemsControl>
+      </Canvas>
+    </ScrollViewer>
+  </Border>
+</UserControl>
