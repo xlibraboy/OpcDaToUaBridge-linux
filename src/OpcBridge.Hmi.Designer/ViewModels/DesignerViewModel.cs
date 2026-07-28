@@ -19,6 +19,7 @@ public partial class DesignerViewModel : ObservableObject, IDisposable
     public DesignerViewModel()
     {
         Surface = new DisplaySurfaceViewModel(cache_, _ => { }, (_, _) => Task.FromResult((true, (string?)null)));
+        Surface.ApplyDesignMode(true);
         ReloadSurface();
     }
 
@@ -184,6 +185,7 @@ public partial class DesignerViewModel : ObservableObject, IDisposable
         try
         {
             store_.SetBaseAddress(StoreUrl);
+            SyncDocumentFromSurface();
             document_.Id = DocumentId.Trim();
             document_.Name = string.IsNullOrWhiteSpace(DocumentName) ? document_.Id : DocumentName.Trim();
             document_.Version = DocumentVersion;
@@ -220,12 +222,22 @@ public partial class DesignerViewModel : ObservableObject, IDisposable
         }
     }
 
+    private void SyncDocumentFromSurface()
+    {
+        document_.Widgets = Surface.ExportWidgetDtos().ToList();
+        document_.Width = (int)Math.Max(1, Surface.CanvasWidth);
+        document_.Height = (int)Math.Max(1, Surface.CanvasHeight);
+        document_.Id = DocumentId.Trim();
+        document_.Name = string.IsNullOrWhiteSpace(DocumentName) ? document_.Id : DocumentName.Trim();
+    }
+
     private void ReloadSurface()
     {
         // Work on a clone so Surface.Load mutations don't surprise us.
         string json = JsonSerializer.Serialize(document_);
         DisplayDocumentDto clone = JsonSerializer.Deserialize<DisplayDocumentDto>(json) ?? document_;
         Surface.Load(clone);
+        Surface.ApplyDesignMode(true);
     }
 
     private static DisplayDocumentDto NewDocument() => new()

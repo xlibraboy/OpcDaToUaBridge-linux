@@ -38,11 +38,27 @@ public partial class WidgetViewModelBase : ObservableObject
 
     public string Id { get; }
     public string Type { get; }
-    public double X { get; }
-    public double Y { get; }
-    public double Width { get; }
-    public double Height { get; }
-    public int Z { get; }
+
+    [ObservableProperty]
+    private double _x;
+
+    [ObservableProperty]
+    private double _y;
+
+    [ObservableProperty]
+    private double _width = 80;
+
+    [ObservableProperty]
+    private double _height = 32;
+
+    [ObservableProperty]
+    private int _z;
+
+    [ObservableProperty]
+    private bool _isSelected;
+
+    [ObservableProperty]
+    private bool _isDesignMode;
     public Dictionary<string, System.Text.Json.JsonElement> Props { get; }
     public TagBindingKey? Binding { get; }
 

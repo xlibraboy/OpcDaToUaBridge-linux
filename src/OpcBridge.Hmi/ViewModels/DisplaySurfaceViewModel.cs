@@ -41,11 +41,18 @@ public partial class DisplaySurfaceViewModel : ObservableObject
     [ObservableProperty]
     private bool _hasDocument;
 
+    [ObservableProperty]
+    private bool _isDesignMode;
+
+    [ObservableProperty]
+    private WidgetViewModelBase? _selectedWidget;
+
     public ObservableCollection<WidgetViewModelBase> Widgets { get; } = new();
 
     public void Clear()
     {
         Widgets.Clear();
+        SelectedWidget = null;
         DisplayId = string.Empty;
         DisplayName = string.Empty;
         HasDocument = false;
@@ -63,6 +70,7 @@ public partial class DisplaySurfaceViewModel : ObservableObject
         }
 
         Widgets.Clear();
+        SelectedWidget = null;
         DisplayId = document.Id;
         DisplayName = document.Name;
         CanvasWidth = document.Width;
@@ -74,7 +82,9 @@ public partial class DisplaySurfaceViewModel : ObservableObject
                      .OrderBy(w => w.Z)
                      .ThenBy(w => w.Id, StringComparer.OrdinalIgnoreCase))
         {
-            Widgets.Add(WidgetViewModelBase.Create(widget, cache_, openFaceplate_, writeAsync_));
+            WidgetViewModelBase vm = WidgetViewModelBase.Create(widget, cache_, openFaceplate_, writeAsync_);
+            vm.IsDesignMode = IsDesignMode;
+            Widgets.Add(vm);
         }
     }
 
@@ -84,5 +94,83 @@ public partial class DisplaySurfaceViewModel : ObservableObject
         {
             widget.RefreshFromCache();
         }
+    }
+
+    public void SelectWidget(WidgetViewModelBase? widget)
+    {
+        if (SelectedWidget is not null)
+        {
+            SelectedWidget.IsSelected = false;
+        }
+
+        SelectedWidget = widget;
+        if (widget is not null)
+        {
+            widget.IsSelected = true;
+        }
+    }
+
+    public WidgetViewModelBase? FindWidgetAt(double canvasX, double canvasY)
+    {
+        // Top-most first (higher Z, then later in collection).
+        foreach (WidgetViewModelBase widget in Widgets
+                     .OrderByDescending(w => w.Z)
+                     .ThenByDescending(w => Widgets.IndexOf(w)))
+        {
+            if (canvasX >= widget.X && canvasX <= widget.X + widget.Width
+                && canvasY >= widget.Y && canvasY <= widget.Y + widget.Height)
+            {
+                return widget;
+            }
+        }
+
+        return null;
+    }
+
+    public void MoveWidgetTo(WidgetViewModelBase widget, double x, double y)
+    {
+        widget.X = Math.Max(0, Math.Min(CanvasWidth - Math.Max(8, widget.Width), x));
+        widget.Y = Math.Max(0, Math.Min(CanvasHeight - Math.Max(8, widget.Height), y));
+    }
+
+    public void ApplyDesignMode(bool enabled)
+    {
+        IsDesignMode = enabled;
+        foreach (WidgetViewModelBase widget in Widgets)
+        {
+            widget.IsDesignMode = enabled;
+            if (!enabled)
+            {
+                widget.IsSelected = false;
+            }
+        }
+
+        if (!enabled)
+        {
+            SelectedWidget = null;
+        }
+    }
+
+    public IReadOnlyList<DisplayWidgetDto> ExportWidgetDtos()
+    {
+        return Widgets.Select(w => new DisplayWidgetDto
+        {
+            Id = w.Id,
+            Type = w.Type,
+            X = w.X,
+            Y = w.Y,
+            W = w.Width,
+            H = w.Height,
+            Z = w.Z,
+            Props = new Dictionary<string, System.Text.Json.JsonElement>(w.Props),
+            Binding = w.Binding is null
+                ? null
+                : new TagBindingDto
+                {
+                    BridgeId = w.Binding.Value.BridgeId,
+                    SourceId = w.Binding.Value.SourceId,
+                    DaItemId = w.Binding.Value.DaItemId
+                }
+        }).ToList();
     }
 }

@@ -20,6 +20,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     private CancellationTokenSource? connectCts_;
     private Window? ownerWindow_;
     private readonly List<FaceplateViewModel> openFaceplates_ = new();
+    private readonly string configPath_;
 
     public MainViewModel()
         : this(new BridgeConnectionManager(), new DisplayStoreClient(), new PopupWindowService(), ownsServices: true)
@@ -30,18 +31,26 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         BridgeConnectionManager connections,
         DisplayStoreClient displayStore,
         PopupWindowService popups,
-        bool ownsServices = false)
+        bool ownsServices = false,
+        string? configPath = null)
     {
         connections_ = connections;
         displayStore_ = displayStore;
         popups_ = popups;
         ownsServices_ = ownsServices;
+        configPath_ = string.IsNullOrWhiteSpace(configPath)
+            ? Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "OpcBridge.Hmi",
+                "hmi-config.json")
+            : configPath!;
         DisplaySurface = new DisplaySurfaceViewModel(
             connections_.Cache,
             OpenFaceplateFor,
             WriteForBindingAsync);
         connections_.CacheChanged += OnCacheChanged;
         connections_.MappingsChanged += OnMappingsChangedAsync;
+        LoadLocalConfig();
     }
 
     public DisplaySurfaceViewModel DisplaySurface { get; }
@@ -53,6 +62,16 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     [ObservableProperty]
     private string _displayStoreUrl = "http://127.0.0.1:8080";
+
+    /// <summary>
+    /// Extra bridges as lines: id|http://host:8080
+    /// Primary BaseUrl is always included as bridge id "default" unless listed.
+    /// </summary>
+    [ObservableProperty]
+    private string _bridgeListText = string.Empty;
+
+    [ObservableProperty]
+    private string _bridgeSummary = string.Empty;
 
     [ObservableProperty]
     private string _connectionState = "Disconnected";
@@ -118,20 +137,16 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             ConnectionState = "Connecting";
             StatusMessage = string.Empty;
 
-            HmiClientConfig config = HmiClientConfig.CreateDefaultSingleBridge(BaseUrl);
-            if (!string.IsNullOrWhiteSpace(DisplayStoreUrl))
-            {
-                config.DisplayStoreUrl = DisplayStoreUrl.Trim().TrimEnd('/');
-            }
-
-            // If BaseUrl differs from a multi-entry future config, single-bridge default still works.
+            HmiClientConfig config = BuildConfigFromUi();
             displayStore_.SetBaseAddress(config.DisplayStoreUrl);
             await connections_.ConnectAllAsync(config, ct).ConfigureAwait(true);
+            SaveLocalConfig(config);
             RebuildTagsFromCache();
             await RefreshDisplaysAsync().ConfigureAwait(true);
 
             IsConnected = true;
             ConnectionState = "Connected";
+            BridgeSummary = string.Join(", ", connections_.ConnectedBridgeIds);
             StatusMessage = $"Loaded {Tags.Count} tags from {connections_.ConnectedBridgeIds.Count} bridge(s)";
         }
         catch (OperationCanceledException)
@@ -371,6 +386,104 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         SelectedDisplay = null;
         DisplaySurface.Clear();
         OnPropertyChanged(nameof(FilteredTags));
+    }
+
+    private void LoadLocalConfig()
+    {
+        try
+        {
+            HmiClientConfig config = HmiClientConfig.LoadOrDefault(configPath_, BaseUrl);
+            DisplayStoreUrl = config.DisplayStoreUrl;
+            if (config.Bridges.Count > 0)
+            {
+                HmiBridgeEndpoint primary = config.Bridges[0];
+                BaseUrl = string.IsNullOrWhiteSpace(primary.BaseUrl) ? config.DisplayStoreUrl : primary.BaseUrl;
+            }
+
+            IEnumerable<string> extra = config.Bridges
+                .Skip(1)
+                .Where(b => b.Enabled)
+                .Select(b => $"{b.Id}|{b.BaseUrl}");
+            BridgeListText = string.Join(Environment.NewLine, extra);
+        }
+        catch
+        {
+            // keep defaults
+        }
+    }
+
+    private HmiClientConfig BuildConfigFromUi()
+    {
+        var config = new HmiClientConfig
+        {
+            DisplayStoreUrl = string.IsNullOrWhiteSpace(DisplayStoreUrl)
+                ? BaseUrl.Trim().TrimEnd('/')
+                : DisplayStoreUrl.Trim().TrimEnd('/'),
+            Bridges = new List<HmiBridgeEndpoint>()
+        };
+
+        string primaryUrl = string.IsNullOrWhiteSpace(BaseUrl) ? config.DisplayStoreUrl : BaseUrl.Trim().TrimEnd('/');
+        config.Bridges.Add(new HmiBridgeEndpoint
+        {
+            Id = "default",
+            BaseUrl = primaryUrl,
+            Enabled = true
+        });
+
+        foreach (string rawLine in (BridgeListText ?? string.Empty).Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            string line = rawLine.Trim();
+            if (line.Length == 0 || line.StartsWith('#'))
+            {
+                continue;
+            }
+
+            string id;
+            string url;
+            int sep = line.IndexOf('|');
+            if (sep <= 0)
+            {
+                sep = line.IndexOf('=');
+            }
+
+            if (sep > 0)
+            {
+                id = line[..sep].Trim();
+                url = line[(sep + 1)..].Trim().TrimEnd('/');
+            }
+            else
+            {
+                id = "bridge" + (config.Bridges.Count + 1);
+                url = line.TrimEnd('/');
+            }
+
+            if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(url))
+            {
+                continue;
+            }
+
+            if (string.Equals(id, "default", StringComparison.OrdinalIgnoreCase))
+            {
+                config.Bridges[0].BaseUrl = url;
+                continue;
+            }
+
+            config.Bridges.Add(new HmiBridgeEndpoint { Id = id, BaseUrl = url, Enabled = true });
+        }
+
+        return config;
+    }
+
+    private void SaveLocalConfig(HmiClientConfig config)
+    {
+        try
+        {
+            config.Save(configPath_);
+        }
+        catch
+        {
+            // non-fatal
+        }
     }
 
     private bool MatchesFilter(TagItemViewModel tag)

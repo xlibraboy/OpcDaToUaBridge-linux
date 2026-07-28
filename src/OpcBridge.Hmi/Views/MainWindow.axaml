@@ -34,13 +34,13 @@
                 Spacing="8"
                 Margin="0,0,0,8">
       <TextBlock VerticalAlignment="Center" Text="Display store:" />
-      <TextBox Width="240"
+      <TextBox Width="220"
                Watermark="http://primary:8080"
                Text="{Binding DisplayStoreUrl}" />
       <Button Content="Refresh"
               Command="{Binding RefreshDisplaysCommand}"
               MinWidth="80" />
-      <ComboBox Width="220"
+      <ComboBox Width="200"
                 ItemsSource="{Binding Displays}"
                 SelectedItem="{Binding SelectedDisplay}"
                 PlaceholderText="Select display">
@@ -54,10 +54,25 @@
               Command="{Binding LoadSelectedDisplayCommand}"
               MinWidth="110" />
       <TextBlock VerticalAlignment="Center" Text="Filter:" />
-      <TextBox Width="180"
+      <TextBox Width="160"
                Watermark="tags filter"
                Text="{Binding Filter}" />
+      <TextBlock VerticalAlignment="Center"
+                 Text="{Binding BridgeSummary, StringFormat=Bridges: {0}}"
+                 Opacity="0.85" />
     </StackPanel>
+
+    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+      <TextBlock DockPanel.Dock="Left"
+                 VerticalAlignment="Top"
+                 Margin="0,4,8,0"
+                 Text="Extra bridges:" />
+      <TextBox AcceptsReturn="True"
+               TextWrapping="NoWrap"
+               Height="54"
+               Watermark="line2|http://192.168.1.11:8080"
+               Text="{Binding BridgeListText}" />
+    </DockPanel>
 
     <TextBlock DockPanel.Dock="Bottom"
                Margin="0,8,0,0"

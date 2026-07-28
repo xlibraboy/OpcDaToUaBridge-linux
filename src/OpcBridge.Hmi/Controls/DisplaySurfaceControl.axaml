@@ -24,34 +24,40 @@
           </ItemsControl.ItemsPanel>
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="widgets:WidgetViewModelBase">
-              <ContentControl Width="{Binding Width}"
-                              Height="{Binding Height}"
-                              ZIndex="{Binding Z}">
-                <ContentControl.DataTemplates>
-                  <DataTemplate DataType="widgets:LabelWidgetViewModel">
-                    <w:LabelWidgetView />
-                  </DataTemplate>
-                  <DataTemplate DataType="widgets:NumericWidgetViewModel">
-                    <w:NumericWidgetView />
-                  </DataTemplate>
-                  <DataTemplate DataType="widgets:QualityLampWidgetViewModel">
-                    <w:QualityLampWidgetView />
-                  </DataTemplate>
-                  <DataTemplate DataType="widgets:BoolIndicatorWidgetViewModel">
-                    <w:BoolIndicatorWidgetView />
-                  </DataTemplate>
-                  <DataTemplate DataType="widgets:PushButtonWidgetViewModel">
-                    <w:PushButtonWidgetView />
-                  </DataTemplate>
-                  <DataTemplate DataType="widgets:UnsupportedWidgetViewModel">
-                    <w:UnsupportedWidgetView />
-                  </DataTemplate>
-                  <DataTemplate DataType="widgets:WidgetViewModelBase">
-                    <w:UnsupportedWidgetView />
-                  </DataTemplate>
-                </ContentControl.DataTemplates>
-                <ContentControl Content="{Binding}" />
-              </ContentControl>
+              <Panel Width="{Binding Width}"
+                     Height="{Binding Height}"
+                     ZIndex="{Binding Z}">
+                <ContentControl Content="{Binding}">
+                  <ContentControl.DataTemplates>
+                    <DataTemplate DataType="widgets:LabelWidgetViewModel">
+                      <w:LabelWidgetView />
+                    </DataTemplate>
+                    <DataTemplate DataType="widgets:NumericWidgetViewModel">
+                      <w:NumericWidgetView />
+                    </DataTemplate>
+                    <DataTemplate DataType="widgets:QualityLampWidgetViewModel">
+                      <w:QualityLampWidgetView />
+                    </DataTemplate>
+                    <DataTemplate DataType="widgets:BoolIndicatorWidgetViewModel">
+                      <w:BoolIndicatorWidgetView />
+                    </DataTemplate>
+                    <DataTemplate DataType="widgets:PushButtonWidgetViewModel">
+                      <w:PushButtonWidgetView />
+                    </DataTemplate>
+                    <DataTemplate DataType="widgets:UnsupportedWidgetViewModel">
+                      <w:UnsupportedWidgetView />
+                    </DataTemplate>
+                    <DataTemplate DataType="widgets:WidgetViewModelBase">
+                      <w:UnsupportedWidgetView />
+                    </DataTemplate>
+                  </ContentControl.DataTemplates>
+                </ContentControl>
+                <Border IsVisible="{Binding IsSelected}"
+                        BorderBrush="#4FC3F7"
+                        BorderThickness="2"
+                        CornerRadius="3"
+                        IsHitTestVisible="False" />
+              </Panel>
             </DataTemplate>
           </ItemsControl.ItemTemplate>
           <ItemsControl.Styles>

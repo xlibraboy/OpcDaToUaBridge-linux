@@ -17,6 +17,7 @@
       <Button Content="New" Command="{Binding NewDisplayCommand}" />
       <Button Content="Save" Command="{Binding SaveCommand}" />
       <TextBlock VerticalAlignment="Center" Text="{Binding DocumentVersion, StringFormat=v{0}}" />
+      <TextBlock VerticalAlignment="Center" Opacity="0.75" Text="Drag widgets on canvas to move; Save writes positions." />
     </StackPanel>
 
     <TextBlock DockPanel.Dock="Bottom"
