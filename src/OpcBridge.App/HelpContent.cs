@@ -600,6 +600,7 @@ If DA shows Faulted, check:
 |------|----------|---------|
 | `mappings.json` | `publish\` | Tag mappings (persists across restarts) |
 | `sources.json` | `publish\` | DA source connections (persists across restarts) |
+| `displays/` | `publish\displays\` | SCADA process display JSON pages (HMI Runtime/Designer) |
 | `pki/` | `publish\pki\` | OPC UA certificates (own, trusted, rejected) |
 | `bridge-task-stdout.log` | `publish\` | App stdout (info logs) |
 | `bridge-task-stderr.log` | `publish\` | App stderr (errors, crashes) |
@@ -660,6 +661,7 @@ The new `publish` folder contains updated DLLs and possibly updated scripts:
 | `scripts\windows\*.cmd, *.ps1` | ✅ If provided | Launcher and task scripts may change |
 | `mappings.json` | ❌ Never | Your tag mappings |
 | `sources.json` | ❌ Never | Your saved DA source connections |
+| `displays\` | ❌ Never | SCADA display pages (`/api/hmi/displays`) |
 | `pki\` | ❌ Never | OPC UA certificates |
 
 ## Update steps

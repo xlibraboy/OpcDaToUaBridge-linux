@@ -113,6 +113,8 @@ Endpoints (all in `Program.cs`):
 - `GET /api/hmi/tags` — HMI tag snapshot (mappings + current values) for the operator client
 - `POST /api/hmi/write` — HMI write request; gated on mapping `Writeable`; reuses `WriteQueue` / `ApplyUaWriteAsync` path
 - `GET /api/hmi/trends?sourceId=&daItemId=&from=&to=&maxPoints=` — history via bridge Influx proxy (HMI never holds Influx token). Soft-fails with empty points + `error` when Influx unavailable.
+- `GET /api/hmi/displays` — list SCADA display page summaries (`id`, `name`, `version`, `widgetCount`)
+- `GET /api/hmi/displays/{id}` — full display document JSON; `PUT` create/update with optimistic `version` (409 on conflict); `DELETE` removes page. Files under `displays/{id}.json`.
 - SignalR hub `/hmi` — events `values` (batched `HmiValueDelta[]`) and `mappingsChanged` (`HmiMappingsChanged`)
 - `GET /api/status` | `/api/dashboard` — bridge + UA status (dashboard also includes values)
 - `GET /api/logs?limit=&level=` — `DashboardLogStore` ring buffer (500 entries)
@@ -162,8 +164,9 @@ Topology views under **Diagram** (SVG canvas, live status colors):
 - `Ua:ApplicationName`, `Ua:EndpointUrl`, `Ua:AutoAcceptUntrustedCertificates`.
 - `Bridge:RateLimits` — rate→max-tags map.
 - `Bridge:Mappings` — seed mappings (used only if `mappings.json` is absent).
+- `Hmi:BroadcastFlushMs` — SignalR live-value coalesce interval (50–1000 ms, default 100). Caps HMI live update rate (~10 Hz default).
 
-Runtime state files live beside the running app in `AppContext.BaseDirectory` (`mappings.json`). Preserve these during deploy cutover or live bridge state is lost.
+Runtime state files live beside the running app in `AppContext.BaseDirectory` (`mappings.json`, `displays/*.json`). Preserve these during deploy cutover or live bridge / HMI page state is lost.
 
 ## Build
 
@@ -204,7 +207,7 @@ Package `publish.tmp` → tar.gz, SCP to host as `publish-new.tar.gz`, then run 
 
 **Deploy guards:**
 - Restore host-specific `appsettings.json` (do not ship a broken `EndpointUrl` from the build machine).
-- Preserve `mappings.json` and `pki/` across cutover.
+- Preserve `mappings.json`, `displays/`, and `pki/` across cutover.
 - Do **not** copy test platform DLLs (`Microsoft.TestPlatform.*`, `Mono.Cecil.*`, xunit, etc.) into publish.
 - Delete stale apphost / pollution before copy if the directory was previously dirtied.
 - Optional: delete `publish/pki/own/cert.der` when UA hostname/SAN must regenerate.
