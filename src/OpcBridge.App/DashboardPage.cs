@@ -526,7 +526,7 @@ internal static class DashboardPage
             <div class="values-wrap">
                 <table class="values-table">
                     <colgroup><col style="width:14%"><col style="width:29%"><col style="width:27%"><col style="width:14%"><col style="width:16%"></colgroup>
-                    <thead><tr><th>Source</th><th>DA Item ID</th><th>Value</th><th>Quality</th><th>Timestamp</th></tr></thead>
+                    <thead><tr><th>Source</th><th>Item ID</th><th>Value</th><th>Quality</th><th>Timestamp</th></tr></thead>
                     <tbody id="values"><tr><td colspan="5" class="msg">Waiting for values&#8230;</td></tr></tbody>
                 </table>
             </div>
@@ -923,11 +923,11 @@ internal static class DashboardPage
         </div>
     </div>
     <div class="box">
-        <div class="box-h">DA → OPC UA Mappings <span class="msg" id="mapCount" style="margin-left:auto"></span></div>
+        <div class="box-h">Source → OPC UA Mappings <span class="msg" id="mapCount" style="margin-left:auto"></span></div>
         <div class="box-b">
             <div class="add-mapping-box">
                 <div class="field">
-                    <input id="manualItem" type="text" placeholder="DA Item ID (e.g. Random.Real8)" style="flex:1">
+                    <input id="manualItem" type="text" placeholder="Item ID (e.g. Random.Real8, ns=2;s=Tag, D100)" style="flex:1">
                     <input id="manualUaNodeId" type="text" placeholder="UA NodeId (optional)" style="flex:1">
                 </div>
                 <div class="field" style="margin-bottom:0">
@@ -942,7 +942,7 @@ internal static class DashboardPage
                 <select id="mappingSort">
                     <option value="name">Name</option>
                     <option value="source">Server (Source)</option>
-                    <option value="item">DA Item ID</option>
+                    <option value="item">Item ID</option>
                     <option value="node">UA Node</option>
                     <option value="description">Description</option>
                     <option value="access">Access Mode</option>
@@ -1005,16 +1005,16 @@ internal static class DashboardPage
             </div>
             <div class="fp-tabpane" id="fp-pane-basic">
                 <div class="field"><label class="fl">Tag Name</label><input type="text" id="fpDisplayName" style="flex:1"></div>
-                <div class="field"><label class="fl">DA Address</label><input type="text" id="fpDaItemId" readonly style="flex:1;opacity:.72"></div>
+                <div class="field"><label class="fl">Item ID</label><input type="text" id="fpDaItemId" readonly style="flex:1;opacity:.72"></div>
                 <div class="field"><label class="fl">UA Node</label><input type="text" id="fpUaNodeId" readonly style="flex:1;opacity:.72"></div>
                 <div class="field"><label class="fl">Description</label><input type="text" id="fpDescription" placeholder="Operator notes / tag description (optional)" style="flex:1"></div>
             </div>
             <div class="fp-tabpane" id="fp-pane-setup" style="display:none">
-                <div class="field"><label class="fl">Access Rights</label><select id="fpAccess" data-action="tag-access"><option value="Read">Read (DA → UA)</option><option value="Read-Write">Read-Write (DA ↔ UA)</option><option value="Write">Write (UA → DA)</option></select></div>
+                <div class="field"><label class="fl">Access Rights</label><select id="fpAccess" data-action="tag-access"><option value="Read">Read (Source → UA)</option><option value="Read-Write">Read-Write (Source ↔ UA)</option><option value="Write">Write (UA → Source)</option></select></div>
                 <div class="field"><label class="fl">Enabled</label><input type="checkbox" id="fpEnabled" data-action="toggle-tag-enabled"></div>
                 <div class="field"><label class="fl">Update Rate</label><select id="fpPollRate" data-action="tag-poll-rate"><option value="0">Source Default</option><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
                 <div class="field"><label class="fl">Deadband %</label><input type="number" id="fpDeadband" min="0" max="100" step="0.1" value="0" style="width:80px"></div>
-                <div class="hint" style="margin-top:4px">Update Rate = DA group interval. With subscriptions on, the DA server pushes changes at this rate. With subscriptions off, the bridge polls at this rate.</div>
+                <div class="hint" style="margin-top:4px">Update Rate = source poll/publish interval. With subscriptions on, the source pushes changes at this rate when supported. With subscriptions off, the bridge polls at this rate.</div>
             </div>
             <div class="fp-tabpane" id="fp-pane-sim" style="display:none">
                 <div class="field"><label class="fl">Simulated</label><input type="checkbox" id="fpSimulated" data-action="tag-simulated"></div>
@@ -1840,7 +1840,7 @@ function renderDaUaDiagram() {
     let svg = '';
     const totalTags = mappings.length;
     const sourceCount = bySource.size;
-    svg += `<text x="50" y="28" fill="#6b7689" font-size="11" font-weight="600">DA → UA (aggregated)</text>`;
+    svg += `<text x="50" y="28" fill="#6b7689" font-size="11" font-weight="600">Source → UA (aggregated)</text>`;
     svg += `<text x="50" y="46" fill="#6b7689" font-size="10">${sourceCount} sources · ${totalTags} tags · click a tag-group to expand (page ${pageSize}) · Fit/pan for overview</text>`;
 
     const groupPositions = new Map();
@@ -2548,7 +2548,7 @@ function renderMappingRow(mapping) {
 }
 
 function renderMappingRows(mappings) {
-    return mappings.length ? mappings.map(renderMappingRow).join('') : '<span class="msg">No DA → OPC UA mappings.</span>';
+    return mappings.length ? mappings.map(renderMappingRow).join('') : '<span class="msg">No source → OPC UA mappings.</span>';
 }
 
 let faceplateOpen = false;
@@ -3789,7 +3789,7 @@ async function saveUpdateRate() {
 async function removeSelectedSource() {
     const source = currentSource();
     if (!source || state.editingNewSource || isUaSource(source)) return;
-    if (!confirm('Remove source "' + source.sourceId + '" and its DA → OPC UA mappings?')) return;
+    if (!confirm('Remove source "' + source.sourceId + '" and its source → OPC UA mappings?')) return;
     const r = await fetch('/api/da/sources/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId: source.sourceId }) });
     const p = await r.json();
     if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
