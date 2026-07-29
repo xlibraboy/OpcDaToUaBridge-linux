@@ -122,7 +122,6 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
             long connectedVersion = -1;
             Dictionary<string, SourceSession> sessions = new(StringComparer.OrdinalIgnoreCase);
             Dictionary<string, Task> pollers = new(StringComparer.OrdinalIgnoreCase);
-            CancellationTokenSource pollerCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
             SharedCacheHolder cacheHolder = new(sourceMappingCache);
             ConcurrentQueue<string> failedSourceQueue = new();
 
@@ -169,13 +168,30 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                     {
                         if (!failedSourceQueue.IsEmpty)
                         {
-                            failedSourceQueue.Clear();
-                            await StopPollersAsync(pollers, pollerCts).ConfigureAwait(false);
-                            pollerCts.Dispose();
-                            await DisposeSessionsAsync(sessions).ConfigureAwait(false);
-                            sessions.Clear();
-                            connectedVersion = -1;
-                            pollerCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+                            HashSet<string> failedIds = new(StringComparer.OrdinalIgnoreCase);
+                            while (failedSourceQueue.TryDequeue(out string? failedId))
+                            {
+                                if (!string.IsNullOrWhiteSpace(failedId))
+                                {
+                                    failedIds.Add(failedId);
+                                }
+                            }
+
+                            foreach (string failedId in failedIds)
+                            {
+                                sessions.TryGetValue(failedId, out SourceSession? failedSession);
+                                await StopPollersForSourceAsync(pollers, failedId, failedSession).ConfigureAwait(false);
+                                if (sessions.Remove(failedId, out SourceSession? removed))
+                                {
+                                    await removed.Client.DisposeAsync().ConfigureAwait(false);
+                                    bridge_state_.ClearSourceValues(failedId);
+                                }
+                            }
+
+                            if (failedIds.Count > 0)
+                            {
+                                connectedVersion = -1;
+                            }
                         }
 
                         bool mappingsChanged = mappingVersion != uaMappingVersion;
@@ -197,40 +213,111 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                                 ua_server_.SyncMappings(activeMappings);
                                 bridge_state_.RetainMappedValues(activeMappings);
                                 uaMappingVersion = mappingVersion;
-                                // Force session rebuild so DA rate groups pick up item set changes.
-                                // UA clients also reconcile MonitoredItems on the living sessions first
-                                // (and again after reconnect via ReconfigureSessionsAsync).
                                 await ReconcileUaMonitoredItemsAsync(
+                                    sessions,
+                                    cacheHolder.Cache,
+                                    stoppingToken).ConfigureAwait(false);
+
+                                // DA clients bind items into rate groups at connect — rebuild only those.
+                                HashSet<string> daDirty = new(StringComparer.OrdinalIgnoreCase);
+                                foreach (SourceSession session in sessions.Values)
+                                {
+                                    if (session.Client is OpcDaClient)
+                                    {
+                                        daDirty.Add(session.Source.SourceId);
+                                    }
+                                }
+
+                                if (daDirty.Count > 0)
+                                {
+                                    foreach (string id in daDirty)
+                                    {
+                                        sessions.TryGetValue(id, out SourceSession? sess);
+                                        await StopPollersForSourceAsync(pollers, id, sess).ConfigureAwait(false);
+                                    }
+
+                                    await ReconfigureSessionsAsync(
+                                        settings,
                                         sessions,
-                                        cacheHolder.Cache,
-                                        stoppingToken)
-                                    .ConfigureAwait(false);
-                                connectedVersion = -1;
-                                bridge_state_.UpdateSources(settings.UpdateRateMs, activeMappings.Count, settings.Sources);
-                                logger_.LogInformation("Applied tag mapping change: {Count} mappings", activeMappings.Count);
+                                        stoppingToken,
+                                        forceRebuildSourceIds: daDirty).ConfigureAwait(false);
+                                    active_sessions_ = new Dictionary<string, SourceSession>(sessions, StringComparer.OrdinalIgnoreCase);
+                                    await RestartPollersForSourcesAsync(
+                                        settings,
+                                        sessions,
+                                        cacheHolder,
+                                        failedSourceQueue,
+                                        pollers,
+                                        daDirty.Where(id => sessions.ContainsKey(id)),
+                                        stoppingToken).ConfigureAwait(false);
+                                }
                             }
 
                             if (rulesChanged)
                             {
                                 appliedDaLinkVersion = daLinkVersion;
-                                logger_.LogInformation("Applied DA link change: {Count} rules", rules.Count);
                             }
                         }
 
                         if (connectedVersion != settings.Version)
                         {
-                            bridge_state_.ClearRateGroups();
-                            await StopPollersAsync(pollers, pollerCts).ConfigureAwait(false);
-                            pollerCts.Dispose();
-                            await ReconfigureSessionsAsync(settings, sessions, stoppingToken).ConfigureAwait(false);
+                            bridge_state_.Configure(settings.UpdateRateMs, activeMappings.Count, settings.Sources);
+                            // Snapshot current ids so we can stop pollers for removed sources too.
+                            HashSet<string> beforeIds = sessions.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+                            // Stop all current pollers that might be rebuilt — cheap: stop only candidates
+                            // after we know changed set. Stop-all-then-start-changed is wrong for dirty-only.
+                            // Instead: stop pollers for every existing source id first only if Version change
+                            // could remove them — compute desired first.
+                            HashSet<string> desiredIds = settings.Sources
+                                .Select(s => s.SourceId)
+                                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                            HashSet<string> preStop = new(StringComparer.OrdinalIgnoreCase);
+                            foreach (string id in beforeIds)
+                            {
+                                if (!desiredIds.Contains(id))
+                                {
+                                    preStop.Add(id);
+                                }
+                            }
+                            // Also pre-stop sources whose connection settings changed.
+                            foreach (DaSourceRuntimeSettings src in settings.Sources)
+                            {
+                                if (sessions.TryGetValue(src.SourceId, out SourceSession? existing)
+                                    && !SourceConnectionEquals(existing.Source, src))
+                                {
+                                    preStop.Add(src.SourceId);
+                                }
+                                else if (!sessions.ContainsKey(src.SourceId))
+                                {
+                                    preStop.Add(src.SourceId);
+                                }
+                            }
+
+                            foreach (string id in preStop)
+                            {
+                                sessions.TryGetValue(id, out SourceSession? sess);
+                                await StopPollersForSourceAsync(pollers, id, sess).ConfigureAwait(false);
+                            }
+
+                            HashSet<string> changed = await ReconfigureSessionsAsync(
+                                settings,
+                                sessions,
+                                stoppingToken).ConfigureAwait(false);
                             connectedVersion = settings.Version;
                             active_sessions_ = new Dictionary<string, SourceSession>(sessions, StringComparer.OrdinalIgnoreCase);
-                            bridge_state_.UpdateSources(settings.UpdateRateMs, activeMappings.Count, settings.Sources);
-                            pollerCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
-                            StartPollers(settings, sessions, cacheHolder, failedSourceQueue, pollers, pollerCts.Token);
+                            backoffMs_ = 1000;
+                            if (changed.Count > 0)
+                            {
+                                await RestartPollersForSourcesAsync(
+                                    settings,
+                                    sessions,
+                                    cacheHolder,
+                                    failedSourceQueue,
+                                    pollers,
+                                    changed.Where(id => sessions.ContainsKey(id)),
+                                    stoppingToken).ConfigureAwait(false);
+                            }
                         }
-                        // Successful coordinator tick: reset backoff.
-                        backoffMs_ = 1000;
 
                         await Task.Delay(CoordinatorTickMs, stoppingToken).ConfigureAwait(false);
                     }
@@ -242,8 +329,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                     {
                         bridge_state_.SetError(exception);
                         logger_.LogError(exception, "Bridge coordinator loop failed");
-                        await StopPollersAsync(pollers, pollerCts).ConfigureAwait(false);
-                        pollerCts.Dispose();
+                        await StopPollersAsync(pollers, sessions).ConfigureAwait(false);
                         await DisposeSessionsAsync(sessions).ConfigureAwait(false);
                         sessions.Clear();
                         await Task.Delay(backoffMs_, stoppingToken).ConfigureAwait(false);
@@ -253,8 +339,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
             }
             finally
             {
-                await StopPollersAsync(pollers, pollerCts).ConfigureAwait(false);
-                pollerCts.Dispose();
+                await StopPollersAsync(pollers, sessions).ConfigureAwait(false);
                 await DisposeSessionsAsync(sessions).ConfigureAwait(false);
             }
         }
@@ -287,17 +372,32 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
         SharedCacheHolder cacheHolder,
         ConcurrentQueue<string> failedSourceQueue,
         Dictionary<string, Task> pollers,
-        CancellationToken pollerToken)
+        CancellationToken stoppingToken,
+        IEnumerable<string>? onlySourceIds = null)
     {
+        HashSet<string>? filter = onlySourceIds is null
+            ? null
+            : onlySourceIds.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         SourceMappingCache cache = cacheHolder.Cache;
 
         for (int i = 0; i < settings.Sources.Count; i++)
         {
             DaSourceRuntimeSettings source = settings.Sources[i];
+            if (filter is not null && !filter.Contains(source.SourceId))
+            {
+                continue;
+            }
+
             if (!sessions.TryGetValue(source.SourceId, out SourceSession? session))
             {
                 continue;
             }
+
+            CancellationTokenSource sourceCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+            session.PollerCts?.Dispose();
+            session.PollerCts = sourceCts;
+            CancellationToken pollerToken = sourceCts.Token;
 
             IReadOnlyList<int> rates = cache.GetDistinctRates(source.SourceId, settings.UpdateRateMs);
             foreach (int rate in rates)
@@ -311,23 +411,31 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                     failedSourceQueue,
                     pollerToken));
             }
-        }
 
-        // Start one write-queue consumer per connected source.
-        if (write_queue_ is not null)
-        {
-            for (int i = 0; i < settings.Sources.Count; i++)
+            if (write_queue_ is not null)
             {
-                DaSourceRuntimeSettings source = settings.Sources[i];
-                if (!sessions.TryGetValue(source.SourceId, out SourceSession? session))
-                {
-                    continue;
-                }
-
                 string writerKey = $"{source.SourceId}:write";
                 pollers[writerKey] = Task.Run(() => ProcessWriteQueueAsync(source.SourceId, session, write_queue_, pollerToken));
             }
         }
+    }
+
+    private async Task RestartPollersForSourcesAsync(
+        DaRuntimeSettingsSnapshot settings,
+        Dictionary<string, SourceSession> sessions,
+        SharedCacheHolder cacheHolder,
+        ConcurrentQueue<string> failedSourceQueue,
+        Dictionary<string, Task> pollers,
+        IEnumerable<string> sourceIds,
+        CancellationToken stoppingToken)
+    {
+        foreach (string sourceId in sourceIds.ToHashSet(StringComparer.OrdinalIgnoreCase))
+        {
+            sessions.TryGetValue(sourceId, out SourceSession? session);
+            await StopPollersForSourceAsync(pollers, sourceId, session).ConfigureAwait(false);
+        }
+
+        StartPollers(settings, sessions, cacheHolder, failedSourceQueue, pollers, stoppingToken, sourceIds);
     }
 
     private async Task RunSourcePollerAsync(
@@ -419,9 +527,55 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
     }
 
 
-    private static async Task StopPollersAsync(Dictionary<string, Task> pollers, CancellationTokenSource? pollerCts)
+    private static async Task StopPollersForSourceAsync(
+        Dictionary<string, Task> pollers,
+        string sourceId,
+        SourceSession? session)
     {
-        try { pollerCts?.Cancel(); } catch (ObjectDisposedException) { }
+        try { session?.PollerCts?.Cancel(); } catch (ObjectDisposedException) { }
+
+        string prefix = sourceId + ":";
+        List<Task> tasks = new();
+        foreach (string key in pollers.Keys.ToArray())
+        {
+            if (!key.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (pollers.Remove(key, out Task? task))
+            {
+                tasks.Add(task);
+            }
+        }
+
+        if (tasks.Count > 0)
+        {
+            try
+            {
+                await Task.WhenAll(tasks).ConfigureAwait(false);
+            }
+            catch
+            {
+            }
+        }
+
+        if (session is not null)
+        {
+            session.PollerCts?.Dispose();
+            session.PollerCts = null;
+        }
+    }
+
+    private static async Task StopPollersAsync(
+        Dictionary<string, Task> pollers,
+        Dictionary<string, SourceSession> sessions)
+    {
+        foreach (SourceSession session in sessions.Values)
+        {
+            try { session.PollerCts?.Cancel(); } catch (ObjectDisposedException) { }
+        }
+
         Task[] tasks = pollers.Values.ToArray();
         pollers.Clear();
 
@@ -433,8 +587,13 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
             }
             catch
             {
-                // Poller exceptions are logged within the poller; suppress during teardown.
             }
+        }
+
+        foreach (SourceSession session in sessions.Values)
+        {
+            session.PollerCts?.Dispose();
+            session.PollerCts = null;
         }
     }
 
@@ -586,11 +745,14 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
         }
     }
 
-    private async Task ReconfigureSessionsAsync(
+    private async Task<HashSet<string>> ReconfigureSessionsAsync(
         DaRuntimeSettingsSnapshot settings,
         Dictionary<string, SourceSession> sessions,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlySet<string>? forceRebuildSourceIds = null)
     {
+        HashSet<string> changed = new(StringComparer.OrdinalIgnoreCase);
+
         HashSet<string> desiredSources = settings.Sources
             .Select(source => source.SourceId)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -605,15 +767,42 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
             await session.Client.DisposeAsync().ConfigureAwait(false);
             sessions.Remove(sourceId);
             bridge_state_.ClearSourceValues(sourceId);
+            changed.Add(sourceId);
         }
 
         for (int i = 0; i < settings.Sources.Count; i++)
         {
             DaSourceRuntimeSettings source = settings.Sources[i];
+            bool force = forceRebuildSourceIds is not null
+                && forceRebuildSourceIds.Contains(source.SourceId);
 
-            if (sessions.Remove(source.SourceId, out SourceSession? existing))
+            if (sessions.TryGetValue(source.SourceId, out SourceSession? existing)
+                && !force
+                && SourceConnectionEquals(existing.Source, source))
             {
-                await existing.Client.DisposeAsync().ConfigureAwait(false);
+                // Connection knobs unchanged — keep live client; refresh settings snapshot only if display-only.
+                if (!SourceSettingsEquals(existing.Source, source))
+                {
+                    sessions[source.SourceId] = new SourceSession(source, existing.Client)
+                    {
+                        PollerCts = existing.PollerCts
+                    };
+                    // Rate/subscription changes still need poller restart.
+                    if (existing.Source.UpdateRateMs != source.UpdateRateMs
+                        || existing.Source.UseSubscriptions != source.UseSubscriptions)
+                    {
+                        changed.Add(source.SourceId);
+                    }
+                }
+                continue;
+            }
+
+            if (sessions.Remove(source.SourceId, out SourceSession? oldSession))
+            {
+                try { oldSession.PollerCts?.Cancel(); } catch (ObjectDisposedException) { }
+                oldSession.PollerCts?.Dispose();
+                await oldSession.Client.DisposeAsync().ConfigureAwait(false);
+                changed.Add(source.SourceId);
             }
 
             if (string.Equals(source.SourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase))
@@ -623,6 +812,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                     bridge_state_.SetSourceConnectionState(source.SourceId, "Disconnected");
                     bridge_state_.SetSourceError(source.SourceId, new InvalidOperationException("Serial port is empty — enter a COM port (e.g. /dev/ttyUSB0)."));
                     logger_.LogWarning("Source {SourceId} has no serial port, skipping connection", source.SourceId);
+                    changed.Add(source.SourceId);
                     continue;
                 }
             }
@@ -634,6 +824,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                     bridge_state_.SetSourceError(source.SourceId, new InvalidOperationException(
                         "EndpointUrl is empty — enter a valid OPC UA server endpoint (opc.tcp://...)."));
                     logger_.LogWarning("Source {SourceId} has no EndpointUrl, skipping connection", source.SourceId);
+                    changed.Add(source.SourceId);
                     continue;
                 }
 
@@ -648,6 +839,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                         source.SourceId,
                         source.EndpointUrl,
                         serverEndpointUrl);
+                    changed.Add(source.SourceId);
                     continue;
                 }
             }
@@ -656,6 +848,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                 bridge_state_.SetSourceConnectionState(source.SourceId, "Disconnected");
                 bridge_state_.SetSourceError(source.SourceId, new InvalidOperationException("ProgID is empty — enter a valid OPC DA server ProgID."));
                 logger_.LogWarning("Source {SourceId} has no ProgID, skipping connection", source.SourceId);
+                changed.Add(source.SourceId);
                 continue;
             }
 
@@ -672,6 +865,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
 
                 sessions[source.SourceId] = new SourceSession(source, client);
                 bridge_state_.SetSourceConnectionState(source.SourceId, "Connected");
+                changed.Add(source.SourceId);
 
                 if (client is OpcUaSourceClient uaClient)
                 {
@@ -689,9 +883,60 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                 bridge_state_.SetSourceConnectionState(source.SourceId, "Faulted");
                 bridge_state_.SetSourceError(source.SourceId, ex);
                 logger_.LogWarning(ex, "Source {SourceId} connection failed", source.SourceId);
+                changed.Add(source.SourceId);
             }
         }
+
+        return changed;
     }
+
+    private static bool SourceConnectionEquals(DaSourceRuntimeSettings a, DaSourceRuntimeSettings b)
+    {
+        if (!string.Equals(a.SourceType, b.SourceType, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (string.Equals(a.SourceType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
+        {
+            return string.Equals(a.EndpointUrl, b.EndpointUrl, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(a.SecurityMode, b.SecurityMode, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(a.SecurityPolicy, b.SecurityPolicy, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(a.UaUsername, b.UaUsername, StringComparison.Ordinal)
+                && string.Equals(a.UaPassword, b.UaPassword, StringComparison.Ordinal)
+                && a.SessionTimeoutMs == b.SessionTimeoutMs
+                && a.ReconnectDelayMs == b.ReconnectDelayMs;
+        }
+
+        if (string.Equals(a.SourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase))
+        {
+            return string.Equals(a.Transport, b.Transport, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(a.SerialPortName, b.SerialPortName, StringComparison.OrdinalIgnoreCase)
+                && a.BaudRate == b.BaudRate
+                && a.DataBits == b.DataBits
+                && string.Equals(a.Parity, b.Parity, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(a.StopBits, b.StopBits, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(a.StationNo, b.StationNo, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(a.PcNo, b.PcNo, StringComparison.OrdinalIgnoreCase)
+                && a.TimeoutMs == b.TimeoutMs
+                && a.RetryCount == b.RetryCount;
+        }
+
+        // OPC DA
+        return string.Equals(a.ProgId, b.ProgId, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(a.Host, b.Host, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(a.RemoteUsername, b.RemoteUsername, StringComparison.Ordinal)
+            && string.Equals(a.RemotePassword, b.RemotePassword, StringComparison.Ordinal)
+            && string.Equals(a.RemoteDomain, b.RemoteDomain, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool SourceSettingsEquals(DaSourceRuntimeSettings a, DaSourceRuntimeSettings b)
+        => a.UpdateRateMs == b.UpdateRateMs
+            && a.UseSubscriptions == b.UseSubscriptions
+            && a.MaxMappedTags == b.MaxMappedTags
+            && string.Equals(a.DisplayName, b.DisplayName, StringComparison.Ordinal)
+            && SourceConnectionEquals(a, b);
+
     private async Task ReconcileUaMonitoredItemsAsync(
         Dictionary<string, SourceSession> sessions,
         SourceMappingCache cache,
@@ -1457,5 +1702,16 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
         }
     }
 
-    private sealed record SourceSession(DaSourceRuntimeSettings Source, ISourceClient Client);
+    private sealed class SourceSession
+    {
+        public SourceSession(DaSourceRuntimeSettings source, ISourceClient client)
+        {
+            Source = source;
+            Client = client;
+        }
+
+        public DaSourceRuntimeSettings Source { get; }
+        public ISourceClient Client { get; }
+        public CancellationTokenSource? PollerCts { get; set; }
+    }
 }
