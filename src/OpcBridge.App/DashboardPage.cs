@@ -688,6 +688,17 @@ internal static class DashboardPage
         </div>
         <div class="conn-side">
             <div class="box">
+                <div class="box-h">Discover UA Servers</div>
+                <div class="box-b">
+                    <div class="field"><label class="fl">Discovery URL <span class="info" data-tip="opc.tcp URL of a Local Discovery Server (LDS) or any known UA server to probe. Leave blank to use the Endpoint URL field, or opc.tcp://localhost:4840.">i</span></label><input id="uaDiscoverUrl" type="text" placeholder="opc.tcp://localhost:4840" style="flex:1"></div>
+                    <div class="toolbar">
+                        <button class="btn ghost" id="btnUaDiscover" type="button">Scan</button>
+                        <span class="msg" id="msgUaDiscover">Click Scan to find servers. Use fills Endpoint URL.</span>
+                    </div>
+                    <div class="list" id="listUaDiscover" style="max-height:200px"></div>
+                </div>
+            </div>
+            <div class="box">
                 <div class="box-h">Saved UA Connections <span class="msg" id="pUaSourcesSide" style="margin-left:auto"></span></div>
                 <div class="box-b">
                     <div class="list" id="uaSourcesList" style="max-height:280px"></div>
@@ -3757,6 +3768,48 @@ async function testUaConnection() {
     if (p.sessionId) bits.push('session ' + p.sessionId);
     el('uaCfgMessage').textContent = '✓ Connected' + (bits.length ? ' — ' + bits.join(' · ') : '.');
 }
+async function discoverUaServers() {
+    const discoveryUrl = (el('uaDiscoverUrl').value.trim()
+        || el('uaCfgEndpointUrl').value.trim()
+        || 'opc.tcp://localhost:4840');
+    el('msgUaDiscover').textContent = 'Scanning…';
+    el('listUaDiscover').innerHTML = '';
+    const body = {
+        endpointUrl: discoveryUrl,
+        securityMode: el('uaCfgSecurityMode').value || 'None',
+        securityPolicy: el('uaCfgSecurityPolicy').value || 'None',
+        username: el('uaCfgUser').value.trim() || null,
+        password: el('uaCfgPass').value || null
+    };
+    try {
+        const r = await fetch('/api/ua/discover', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), cache: 'no-store' });
+        const p = await r.json().catch(() => ({}));
+        if (!r.ok || p.ok === false) {
+            el('msgUaDiscover').textContent = '✗ ' + (p.error || p.message || ('HTTP ' + r.status));
+            el('listUaDiscover').innerHTML = '<span class="msg">No servers found.</span>';
+            return;
+        }
+        const servers = p.servers || [];
+        el('listUaDiscover').innerHTML = servers.length ? servers.map(s => {
+            const name = s.serverName || s.serverUri || s.discoveryUrl || '(unnamed)';
+            const url = s.discoveryUrl || '';
+            const caps = (s.serverCapabilities && s.serverCapabilities.length) ? s.serverCapabilities.join(', ') : '';
+            const sub = [url, caps].filter(Boolean).join(' · ');
+            return `<div class="li"><div style="flex:1"><div class="n">${esc(name)}</div><div class="p">${esc(sub)}</div></div><button class="btn ghost" data-action="pick-ua-server" data-url="${attr(url)}" data-name="${attr(name)}">Use</button></div>`;
+        }).join('') : '<span class="msg">No servers found.</span>';
+        el('msgUaDiscover').textContent = servers.length + ' server' + (servers.length === 1 ? '' : 's') + ' at ' + discoveryUrl;
+    } catch (e) {
+        el('msgUaDiscover').textContent = '✗ ' + e.message;
+        el('listUaDiscover').innerHTML = '<span class="msg">Scan failed.</span>';
+    }
+}
+function pickUaServer(url, name) {
+    if (!url) return;
+    el('uaCfgEndpointUrl').value = url;
+    if (name && !el('uaCfgDisplayName').value.trim()) el('uaCfgDisplayName').value = name;
+    el('uaCfgMessage').textContent = 'Selected ' + (name || url) + ' — save source to apply.';
+    showUaSaveReset();
+}
 async function removeSelectedUaSource() {
     const source = currentSource();
     if (!source || !isUaSource(source) || state.editingNewUaSource) return;
@@ -4242,6 +4295,11 @@ function bindDynamicButtons() {
         if (!button) return;
         pickServer(button.dataset.progId || '', button.dataset.host || 'localhost');
     });
+    el('listUaDiscover').addEventListener('click', event => {
+        const button = event.target.closest('button[data-action="pick-ua-server"]');
+        if (!button) return;
+        pickUaServer(button.dataset.url || '', button.dataset.name || '');
+    });
     el('wzListServers').addEventListener('click', event => {
         const button = event.target.closest('button[data-action="wz-pick-server"]');
         if (!button) return;
@@ -4377,6 +4435,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     el('uaCfgNew').addEventListener('click', newUaSource);
     el('uaCfgRemove').addEventListener('click', () => removeSelectedUaSource().catch(e => el('uaCfgMessage').textContent = '✗ ' + e.message));
     el('btnUaTestConnection').addEventListener('click', () => testUaConnection().catch(e => el('uaCfgMessage').textContent = '✗ ' + e.message));
+    el('btnUaDiscover').addEventListener('click', () => discoverUaServers().catch(e => el('msgUaDiscover').textContent = e.message));
     ['uaCfgSourceId','uaCfgDisplayName','uaCfgEndpointUrl','uaCfgSecurityMode','uaCfgSecurityPolicy','uaCfgUser','uaCfgPass','uaCfgUpdateRate','uaCfgMaxMappedTags','uaCfgUseSubscriptions'].forEach(id => {
         const node = el(id);
         if (!node) return;

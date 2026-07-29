@@ -829,6 +829,49 @@ app.MapPost("/api/ua/test-connection", async (
         sessionId = result.SessionId
     });
 });
+app.MapPost("/api/ua/discover", async (
+    UaDiscoverRequest request,
+    OpcUaBrowseService browseService,
+    DaRuntimeSettings settings,
+    CancellationToken cancellationToken) =>
+{
+    if (!TryResolveUaConnection(
+            request.SourceId,
+            request.EndpointUrl,
+            request.SecurityMode,
+            request.SecurityPolicy,
+            request.Username,
+            request.Password,
+            settings,
+            out OpcUaSourceClientOptions? options,
+            out string? resolveError))
+    {
+        return Results.BadRequest(new { error = resolveError, ok = false });
+    }
+
+    UaDiscoverResult result = await browseService
+        .DiscoverServersAsync(options!, cancellationToken)
+        .ConfigureAwait(false);
+
+    if (result.Error is not null)
+    {
+        return Results.Json(new { ok = false, error = result.Error });
+    }
+
+    return Results.Json(new
+    {
+        ok = true,
+        servers = result.Servers.Select(s => new
+        {
+            serverUri = s.ServerUri,
+            recordId = s.RecordId,
+            discoveryUrl = s.DiscoveryUrl,
+            serverName = s.ServerName,
+            serverCapabilities = s.ServerCapabilities,
+            isOnline = s.IsOnline
+        }).ToList()
+    });
+});
 
 app.MapPost("/api/ua/browse", async (
     UaBrowseRequest request,

@@ -23,3 +23,14 @@ public sealed record UaBrowseRequest(
     string? SourceId = null,
     string? NodeId = null,
     int? MaxNodes = null);
+
+/// <summary>
+/// POST /api/ua/discover body. Probes an LDS or known UA server for registered/discoverable endpoints.
+/// </summary>
+public sealed record UaDiscoverRequest(
+    string? EndpointUrl = null,
+    string? SecurityMode = null,
+    string? SecurityPolicy = null,
+    string? Username = null,
+    string? Password = null,
+    string? SourceId = null);

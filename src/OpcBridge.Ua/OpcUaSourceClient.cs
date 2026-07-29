@@ -1030,7 +1030,9 @@ public sealed class OpcUaSourceClient : IDaClient, ISubscribableSourceClient
         string applicationName = string.IsNullOrWhiteSpace(options_.ApplicationName)
             ? "OpcDaToUaBridge.UaClient"
             : options_.ApplicationName.Trim();
-        string applicationUri = $"urn:ohmypi:{applicationName}:{options_.SourceId}";
+        // ApplicationUri must stay stable across sources so the shared
+        // pki/ua-client application certificate remains valid.
+        string applicationUri = $"urn:ohmypi:{applicationName}";
 
         ApplicationConfiguration configuration = new()
         {

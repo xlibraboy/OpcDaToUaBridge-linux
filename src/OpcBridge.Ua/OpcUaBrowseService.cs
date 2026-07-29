@@ -70,6 +70,130 @@ public sealed class OpcUaBrowseService
             await SafeCloseAndDisposeAsync(session).ConfigureAwait(false);
         }
     }
+    public async Task<UaDiscoverResult> DiscoverServersAsync(
+        OpcUaSourceClientOptions options,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        string endpointUrl = options.EndpointUrl?.Trim() ?? string.Empty;
+        if (endpointUrl.Length == 0)
+        {
+            return new UaDiscoverResult(Array.Empty<UaDiscoveredServerDto>(), "Endpoint URL is required.");
+        }
+
+        if (!Uri.TryCreate(endpointUrl, UriKind.Absolute, out Uri? uri)
+            || !string.Equals(uri.Scheme, "opc.tcp", StringComparison.OrdinalIgnoreCase))
+        {
+            return new UaDiscoverResult(Array.Empty<UaDiscoveredServerDto>(),
+                $"Endpoint URL must be an opc.tcp URL (got '{endpointUrl}').");
+        }
+
+        int timeoutMs = options.SessionTimeoutMs > 0
+            ? Math.Min(options.SessionTimeoutMs, DefaultTimeoutMs)
+            : DefaultTimeoutMs;
+
+        using CancellationTokenSource timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(TimeSpan.FromMilliseconds(timeoutMs));
+
+        // Phase 1: FindServersOnNetwork — only works against a Local Discovery Server (LDS/LDS-ME).
+        List<UaDiscoveredServerDto> servers = new();
+        string? lastError = null;
+
+        try
+        {
+            ApplicationConfiguration config = await BuildConfigurationAsync(options, timeoutCts.Token)
+                .ConfigureAwait(false);
+
+            using DiscoveryClient discovery = await DiscoveryClient.CreateAsync(
+                    config,
+                    uri,
+                    DiagnosticsMasks.None,
+                    timeoutCts.Token)
+                .ConfigureAwait(false);
+
+            // Try network discovery first.
+            try
+            {
+                (ServerOnNetworkCollection networkServers, DateTime _) =
+                    await discovery.FindServersOnNetworkAsync(
+                            startingRecordId: 0,
+                            maxRecordsToReturn: 0,
+                            serverCapabilityFilter: null,
+                            ct: timeoutCts.Token)
+                        .ConfigureAwait(false);
+
+                if (networkServers is not null)
+                {
+                    foreach (ServerOnNetwork record in networkServers)
+                    {
+                        servers.Add(new UaDiscoveredServerDto(
+                            ServerUri: null,
+                            RecordId: record.RecordId,
+                            DiscoveryUrl: record.DiscoveryUrl,
+                            ServerName: record.ServerName,
+                            ServerCapabilities: record.ServerCapabilities?.ToList(),
+                            IsOnline: true));
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // FindServersOnNetwork not supported on this server — fall through.
+                lastError = FlattenMessage(ex);
+            }
+
+            // Phase 2: FindServers — works against any UA server.
+            FindServersResponse fsResponse =
+                await discovery.FindServersAsync(
+                        requestHeader: null,
+                        endpointUrl: null,
+                        localeIds: null,
+                        serverUris: null,
+                        ct: timeoutCts.Token)
+                    .ConfigureAwait(false);
+
+            if (fsResponse.Servers is not null)
+            {
+                HashSet<string> seen = new(servers.Count > 0
+                    ? servers.Where(s => s.DiscoveryUrl is not null).Select(s => s.DiscoveryUrl!)
+                    : Enumerable.Empty<string>(), StringComparer.OrdinalIgnoreCase);
+
+                foreach (ApplicationDescription ad in fsResponse.Servers)
+                {
+                    if (ad.DiscoveryUrls is null) continue;
+                    foreach (string url in ad.DiscoveryUrls)
+                    {
+                        if (string.IsNullOrWhiteSpace(url) || seen.Contains(url)) continue;
+                        seen.Add(url);
+                        servers.Add(new UaDiscoveredServerDto(
+                            ServerUri: ad.ApplicationUri,
+                            RecordId: null,
+                            DiscoveryUrl: url,
+                            ServerName: ad.ApplicationName?.Text ?? ad.ApplicationUri,
+                            ServerCapabilities: null,
+                            IsOnline: true));
+                    }
+                }
+            }
+
+            return new UaDiscoverResult(servers, null);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            return new UaDiscoverResult(Array.Empty<UaDiscoveredServerDto>(), "Discovery timed out.");
+        }
+        catch (Exception ex)
+        {
+            logger_.LogDebug(ex, "UA discovery failed for {Endpoint}", endpointUrl);
+            return new UaDiscoverResult(Array.Empty<UaDiscoveredServerDto>(),
+                lastError ?? FlattenMessage(ex));
+        }
+    }
 
     public async Task<UaBrowseResult> BrowseAsync(
         OpcUaSourceClientOptions options,
@@ -288,8 +412,9 @@ public sealed class OpcUaBrowseService
         string applicationName = string.IsNullOrWhiteSpace(options.ApplicationName)
             ? "OpcDaToUaBridge.UaClient"
             : options.ApplicationName.Trim();
-        string sourceId = string.IsNullOrWhiteSpace(options.SourceId) ? "browse" : options.SourceId.Trim();
-        string applicationUri = $"urn:ohmypi:{applicationName}:{sourceId}:browse";
+        // ApplicationUri must stay stable across sources/browse calls so the shared
+        // pki/ua-client application certificate remains valid.
+        string applicationUri = $"urn:ohmypi:{applicationName}";
         int operationTimeout = options.SessionTimeoutMs > 0
             ? Math.Clamp(options.SessionTimeoutMs, 5000, DefaultTimeoutMs)
             : DefaultTimeoutMs;
@@ -688,3 +813,15 @@ public sealed record UaBrowseResult(
     IReadOnlyList<UaBrowseNodeDto> Nodes,
     string? ContinuationPoint,
     string? Error);
+
+public sealed record UaDiscoverResult(
+    IReadOnlyList<UaDiscoveredServerDto> Servers,
+    string? Error);
+
+public sealed record UaDiscoveredServerDto(
+    string? ServerUri,
+    uint? RecordId,
+    string? DiscoveryUrl,
+    string? ServerName,
+    List<string>? ServerCapabilities,
+    bool IsOnline);
