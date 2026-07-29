@@ -34,7 +34,7 @@ internal sealed class BridgeUaServer : StandardServer
         }
 
         HashSet<string> desired = mappings
-            .Select(mapping => GetMappingKey(mapping.SourceId, mapping.DaItemId))
+            .Select(mapping => GetMappingKey(mapping.SourceId, mapping.ItemId))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         HashSet<string> current = node_manager_.GetMappedKeys().ToHashSet(StringComparer.OrdinalIgnoreCase);
 
@@ -52,7 +52,7 @@ internal sealed class BridgeUaServer : StandardServer
 
         foreach (TagMapping mapping in mappings)
         {
-            if (!current.Contains(GetMappingKey(mapping.SourceId, mapping.DaItemId)))
+            if (!current.Contains(GetMappingKey(mapping.SourceId, mapping.ItemId)))
             {
                 node_manager_.AddMapping(mapping);
             }
@@ -287,9 +287,9 @@ internal sealed class BridgeUaServer : StandardServer
     }
 #pragma warning restore CS0618, CS0672
 
-    private static string GetMappingKey(string sourceId, string daItemId)
+    private static string GetMappingKey(string sourceId, string itemId)
     {
-        return string.Concat(sourceId.Trim(), "::", daItemId.Trim());
+        return string.Concat(sourceId.Trim(), "::", itemId.Trim());
     }
 }
 

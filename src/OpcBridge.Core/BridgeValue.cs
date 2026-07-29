@@ -1,8 +1,9 @@
+using System.Text.Json.Serialization;
 namespace OpcBridge.Core;
 
 public sealed record BridgeValue(
     string SourceId,
-    string DaItemId,
+    [property: JsonPropertyName("itemId")] string ItemId,
     object? Value,
     DateTime TimestampUtc,
     int DaQuality,

@@ -11,9 +11,9 @@ using OpcBridge.Drivers.Melsec.Transport;
 namespace OpcBridge.Drivers.Melsec;
 
 /// <summary>
-/// MELSEC A3N (1C Frame / ACPU common) <see cref="IDaClient"/> over <see cref="IMelsecTransport"/>.
+/// MELSEC A3N (1C Frame / ACPU common) <see cref="ISourceClient"/> over <see cref="IMelsecTransport"/>.
 /// </summary>
-public sealed class MelsecA3nClient : IDaClient
+public sealed class MelsecA3nClient : ISourceClient
 {
     private const int MaxWordsPerBatch = 64;
     private const int MaxBitsPerBatch = 256;
@@ -139,7 +139,7 @@ public sealed class MelsecA3nClient : IDaClient
             for (int i = 0; i < mappings.Count; i++)
             {
                 TagMapping mapping = mappings[i];
-                string itemId = mapping.DaItemId ?? string.Empty;
+                string itemId = mapping.ItemId ?? string.Empty;
                 if (!MelsecAddressParser.TryParse(itemId, out MelsecAddress address, out string error))
                 {
                     _logger?.LogWarning(
@@ -218,20 +218,20 @@ public sealed class MelsecA3nClient : IDaClient
         }
     }
 
-    public async Task<bool> WriteAsync(string daItemId, object? value, CancellationToken cancellationToken)
+    public async Task<bool> WriteAsync(string itemId, object? value, CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
 
-        if (string.IsNullOrWhiteSpace(daItemId))
+        if (string.IsNullOrWhiteSpace(itemId))
         {
             return false;
         }
 
-        if (!MelsecAddressParser.TryParse(daItemId, out MelsecAddress address, out string error))
+        if (!MelsecAddressParser.TryParse(itemId, out MelsecAddress address, out string error))
         {
             _logger?.LogWarning(
                 "Write rejected — invalid MELSEC address '{ItemId}': {Error}",
-                daItemId,
+                itemId,
                 error);
             return false;
         }
@@ -328,7 +328,7 @@ public sealed class MelsecA3nClient : IDaClient
         }
         catch (Exception ex) when (ex is TimeoutException or MelsecProtocolException)
         {
-            _logger?.LogWarning(ex, "MELSEC write failed for {ItemId}", daItemId);
+            _logger?.LogWarning(ex, "MELSEC write failed for {ItemId}", itemId);
             return false;
         }
         finally
@@ -337,17 +337,17 @@ public sealed class MelsecA3nClient : IDaClient
         }
     }
 
-    public bool TryGetTagMetadata(string daItemId, out short? canonicalDataType, out int? accessRights)
+    public bool TryGetTagMetadata(string itemId, out short? canonicalDataType, out int? accessRights)
     {
         canonicalDataType = null;
         accessRights = null;
 
-        if (string.IsNullOrWhiteSpace(daItemId))
+        if (string.IsNullOrWhiteSpace(itemId))
         {
             return false;
         }
 
-        if (!MelsecAddressParser.TryParse(daItemId, out MelsecAddress address, out _))
+        if (!MelsecAddressParser.TryParse(itemId, out MelsecAddress address, out _))
         {
             return false;
         }

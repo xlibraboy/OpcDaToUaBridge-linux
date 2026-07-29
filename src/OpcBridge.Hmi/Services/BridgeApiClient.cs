@@ -37,7 +37,7 @@ public sealed class BridgeApiClient : IDisposable
 
     public async Task<HmiTrendResponse> GetTrendsAsync(
         string sourceId,
-        string daItemId,
+        string itemId,
         DateTime? fromUtc,
         DateTime? toUtc,
         int? maxPoints,
@@ -46,7 +46,7 @@ public sealed class BridgeApiClient : IDisposable
         var query = new List<string>
         {
             $"sourceId={Uri.EscapeDataString(sourceId)}",
-            $"daItemId={Uri.EscapeDataString(daItemId)}"
+            $"itemId={Uri.EscapeDataString(itemId)}"
         };
         if (fromUtc is not null)
         {
@@ -67,7 +67,7 @@ public sealed class BridgeApiClient : IDisposable
         return response ?? new HmiTrendResponse
         {
             SourceId = sourceId,
-            DaItemId = daItemId,
+            ItemId = itemId,
             Error = "Empty trends response"
         };
     }

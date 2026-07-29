@@ -14,7 +14,7 @@ public sealed class HmiClientMergeTests
             new HmiTagDto
             {
                 SourceId = "default",
-                DaItemId = "Random.Int1",
+                ItemId = "Random.Int1",
                 DisplayName = "Int1",
                 Value = 1,
                 Writeable = true
@@ -26,7 +26,7 @@ public sealed class HmiClientMergeTests
             new HmiValueDelta
             {
                 SourceId = "default",
-                DaItemId = "Random.Int1",
+                ItemId = "Random.Int1",
                 Value = 42,
                 TimestampUtc = DateTime.UtcNow,
                 DaQuality = 192,
@@ -49,7 +49,7 @@ public sealed class HmiClientMergeTests
             new HmiTagDto
             {
                 SourceId = "default",
-                DaItemId = "Known",
+                ItemId = "Known",
                 Value = 1
             }
         ]);
@@ -59,7 +59,7 @@ public sealed class HmiClientMergeTests
             new HmiValueDelta
             {
                 SourceId = "default",
-                DaItemId = "Unknown",
+                ItemId = "Unknown",
                 Value = 99,
                 TimestampUtc = DateTime.UtcNow,
                 DaQuality = 192,
@@ -69,7 +69,7 @@ public sealed class HmiClientMergeTests
 
         HmiTagDto tag = cache.Tags.Single();
         Assert.Equal(1, Convert.ToInt32(tag.Value));
-        Assert.Equal("Known", tag.DaItemId);
+        Assert.Equal("Known", tag.ItemId);
     }
 
     [Fact]
@@ -78,11 +78,11 @@ public sealed class HmiClientMergeTests
         var cache = new HmiTagCache();
         cache.ReplaceAll(
         [
-            new HmiTagDto { SourceId = "a", DaItemId = "1", Value = 1 }
+            new HmiTagDto { SourceId = "a", ItemId = "1", Value = 1 }
         ]);
         cache.ReplaceAll(
         [
-            new HmiTagDto { SourceId = "b", DaItemId = "2", Value = 2 }
+            new HmiTagDto { SourceId = "b", ItemId = "2", Value = 2 }
         ]);
 
         Assert.Single(cache.Tags);

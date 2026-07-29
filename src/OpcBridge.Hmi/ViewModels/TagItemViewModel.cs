@@ -9,7 +9,7 @@ public partial class TagItemViewModel : ObservableObject
     private string _sourceId = string.Empty;
 
     [ObservableProperty]
-    private string _daItemId = string.Empty;
+    private string _itemId = string.Empty;
 
     [ObservableProperty]
     private string _displayName = string.Empty;
@@ -29,7 +29,7 @@ public partial class TagItemViewModel : ObservableObject
     [ObservableProperty]
     private bool _writeable;
 
-    public string Key => HmiTagCache.Key(SourceId, DaItemId);
+    public string Key => HmiTagCache.Key(SourceId, ItemId);
 
     public static TagItemViewModel FromDto(HmiTagDto dto)
     {
@@ -41,8 +41,8 @@ public partial class TagItemViewModel : ObservableObject
     public void Apply(HmiTagDto dto)
     {
         SourceId = dto.SourceId;
-        DaItemId = dto.DaItemId;
-        DisplayName = string.IsNullOrWhiteSpace(dto.DisplayName) ? dto.DaItemId : dto.DisplayName;
+        ItemId = dto.ItemId;
+        DisplayName = string.IsNullOrWhiteSpace(dto.DisplayName) ? dto.ItemId : dto.DisplayName;
         DataType = dto.DataType;
         Writeable = dto.Writeable;
         ApplyValue(dto.Value, dto.TimestampUtc, dto.DaQuality, dto.IsGood);

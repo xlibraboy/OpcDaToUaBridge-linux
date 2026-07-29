@@ -1024,7 +1024,7 @@ internal static class DashboardPage
             <div class="fp-tabpane" id="fp-pane-mqtt" style="display:none">
                 <div class="field"><label class="fl">MQTT</label><input type="checkbox" id="fpMqttEnabled"> <span class="msg">publish/subscribe this tag</span></div>
                 <div class="field"><label class="fl">MQTT Topic</label><input type="text" id="fpMqttTopic" placeholder="override topic (optional)"></div>
-                <div class="hint" style="margin-top:4px">When enabled, the tag's value is published to the broker and inbound broker writes are applied to it. Leave the topic blank to use the default <span class="mono">{TopicPrefix}/{SourceId}/{DaItemId}</span> scheme.</div>
+                <div class="hint" style="margin-top:4px">When enabled, the tag's value is published to the broker and inbound broker writes are applied to it. Leave the topic blank to use the default <span class="mono">{TopicPrefix}/{SourceId}/{ItemId}</span> scheme.</div>
                 <div class="field"><label class="fl">Influx log</label><input type="checkbox" id="fpInfluxEnabled"> <span class="msg">write this tag to InfluxDB</span></div>
             </div>
         </div>
@@ -1111,7 +1111,7 @@ internal static class DashboardPage
                     <div class="field"><label class="fl" for="mqttPass">Password</label><span class="info" data-tip="Password for broker authentication. Leave empty if your broker doesn't require login. Stored in mqtt.json file.">i</span><input type="password" id="mqttPass"></div>
                     <div class="field"><label class="fl" for="mqttTls">TLS</label><span class="info" data-tip="Enable encrypted connection to broker. Use this when your broker URL starts with mqtts:// (usually port 8883).">i</span><input type="checkbox" id="mqttTls"></div>
                     <div class="field"><label class="fl" for="mqttIgnoreCert">Ignore Cert</label><span class="info" data-tip="Skip broker certificate check. Only use for testing with self-signed certificates. NOT recommended for production.">i</span><input type="checkbox" id="mqttIgnoreCert"></div>
-                    <div class="field"><label class="fl" for="mqttPrefix">Topic Prefix</label><span class="info" data-tip="Prefix for all topics, e.g. bridge/tags. Publish topic = {prefix}/{sourceId}/{daItemId}; subscribe filter = {prefix}/#. A per-tag override topic can be set in the tag faceplate.">i</span><input type="text" id="mqttPrefix" placeholder="bridge/tags"></div>
+                    <div class="field"><label class="fl" for="mqttPrefix">Topic Prefix</label><span class="info" data-tip="Prefix for all topics, e.g. bridge/tags. Publish topic = {prefix}/{sourceId}/{itemId}; subscribe filter = {prefix}/#. A per-tag override topic can be set in the tag faceplate.">i</span><input type="text" id="mqttPrefix" placeholder="bridge/tags"></div>
                     <div class="field"><label class="fl" for="mqttFields">Payload Fields</label><span class="info" data-tip="Which fields are included in each published JSON payload. Default {v,t} = value + timestamp. Quality/SourceId/ItemId/DisplayName/DataType add more context.">i</span>
                         <select id="mqttFields">
                             <option>Value, Timestamp</option>
@@ -1545,9 +1545,9 @@ function renderDiagram() {
 
 function linkEndpoints(link) {
     const providerSourceId = link.providerSourceId || link.ProviderSourceId || 'default';
-    const providerItemId = link.providerItemId || link.ProviderItemId || link.providerDaItemId || link.ProviderDaItemId || '';
+    const providerItemId = link.providerItemId || link.ProviderItemId || link.providerItemId || link.ProviderItemId || '';
     const consumerSourceId = link.consumerSourceId || link.ConsumerSourceId || link.sourceId || link.SourceId || 'default';
-    const consumerItemId = link.consumerItemId || link.ConsumerItemId || link.consumerDaItemId || link.ConsumerDaItemId || link.daItemId || link.DaItemId || '';
+    const consumerItemId = link.consumerItemId || link.ConsumerItemId || link.consumerDaItemId || link.ConsumerDaItemId || link.itemId || link.ItemId || '';
     return {
         providerSourceId,
         providerItemId,
@@ -1575,13 +1575,13 @@ function collectDaLinks() {
     // legacy provider fields still present on mappings
     (state.mappings || []).forEach(m => {
         const pSid = m.providerSourceId || m.ProviderSourceId;
-        const pItem = m.providerDaItemId || m.ProviderDaItemId || m.providerItemId || m.ProviderItemId;
+        const pItem = m.providerItemId || m.ProviderItemId || m.providerItemId || m.ProviderItemId;
         if (!pSid || !pItem) return;
         push({
             providerSourceId: pSid,
             providerItemId: pItem,
             consumerSourceId: m.sourceId || m.SourceId || 'default',
-            consumerItemId: m.daItemId || m.DaItemId || '',
+            consumerItemId: m.itemId || m.ItemId || m.daItemId || m.DaItemId || '',
             enabled: (m.enabled ?? m.Enabled) !== false
         }, 'legacy');
     });
@@ -1590,7 +1590,7 @@ function collectDaLinks() {
 
 function tagShortName(tagOrItemId) {
     if (tagOrItemId && typeof tagOrItemId === 'object') {
-        const itemId = tagOrItemId.daItemId || tagOrItemId.DaItemId || '';
+        const itemId = tagOrItemId.itemId || tagOrItemId.ItemId || tagOrItemId.daItemId || tagOrItemId.DaItemId || '';
         const display = tagOrItemId.displayName || tagOrItemId.DisplayName || '';
         if (display) return String(display);
         return String(itemId).split('.').pop() || itemId || '?';
@@ -1903,7 +1903,7 @@ function renderDaUaDiagram() {
         const detailPositions = [];
         if (expanded && slice.length) {
             slice.forEach((tag, i) => {
-                const itemId = tag.daItemId || tag.DaItemId || '';
+                const itemId = tag.itemId || tag.ItemId || tag.daItemId || tag.DaItemId || '';
                 const tKey = tagKey(sourceId, itemId);
                 const tagY = sourceY + 72 + i * tagSpacing;
                 const cy = tagY + 14;
@@ -2261,7 +2261,7 @@ function renderMqttDiagram() {
         const detailPositions = [];
         if (expanded && slice.length) {
             slice.forEach((tag, i) => {
-                const itemId = tag.daItemId || tag.DaItemId || '';
+                const itemId = tag.itemId || tag.ItemId || tag.daItemId || tag.DaItemId || '';
                 const tKey = tagKey(sourceId, itemId);
                 const tagY = sourceY + 72 + i * tagSpacing;
                 const cy = tagY + 14;
@@ -2365,7 +2365,7 @@ function getTagStatus(tag) {
     if (!tag || (tag.enabled ?? tag.Enabled) === false) return 'off';
 
     const sid = tag.sourceId || tag.SourceId || 'default';
-    const itemId = tag.daItemId || tag.DaItemId || '';
+    const itemId = tag.itemId || tag.ItemId || tag.daItemId || tag.DaItemId || '';
     const value = state.valuesByKey.get(valueKey(sid, itemId));
     if (!value) return 'off';
 
@@ -2383,7 +2383,7 @@ function getLinkStatus(link) {
     const ep = linkEndpoints(link);
     if ((link.enabled ?? link.Enabled) === false) return 'off';
     const provider = (state.mappings || []).find(m =>
-        tagKey(m.sourceId || m.SourceId || 'default', m.daItemId || m.DaItemId || '') === ep.providerKey);
+        tagKey(m.sourceId || m.SourceId || 'default', m.itemId || m.ItemId || m.daItemId || m.DaItemId || '') === ep.providerKey);
     if (!provider) return 'off';
     return getTagStatus(provider);
 }
@@ -2523,7 +2523,7 @@ function clearLinkDraftSelection() {
 }
 function renderMappingRow(mapping) {
     const sourceId = mapping.sourceId || mapping.SourceId || 'default';
-    const item = mapping.daItemId || mapping.DaItemId;
+    const item = mapping.itemId || mapping.ItemId || mapping.daItemId || mapping.DaItemId;
     const name = mapping.displayName || mapping.DisplayName || item;
     const node = mapping.uaNodeId || mapping.UaNodeId || defaultUaNodeId(sourceId, item);
     const mode = mapping.mode || mapping.Mode || 'Source';
@@ -3142,7 +3142,7 @@ async function refresh() {
         const pollSaturation = formatPollSaturation(get(b, 'lastPollDurationMs'), updateRateMs);
         const pollUtilization = formatPollUtilization(get(b, 'lastPollDurationMs'), updateRateMs);
         state.updateRateMs = updateRateMs;
-        state.valuesByKey = new Map(vs.map(v => [valueKey(get(v, 'sourceId') || 'default', get(v, 'daItemId')), v]));
+        state.valuesByKey = new Map(vs.map(v => [valueKey(get(v, 'sourceId') || 'default', get(v, 'itemId') || get(v, 'daItemId')), v]));
         updateFaceplateLiveValues();
         if (state.diagramLoaded && document.querySelector('.tabbtn.active')?.dataset.tab === 'diagram') {
             renderDiagram();
@@ -3279,7 +3279,7 @@ async function refresh() {
                 const g = get(it, 'isGood');
                 const q = get(it, 'daQuality');
                 const sourceId = get(it, 'sourceId');
-                const itemId = get(it, 'daItemId');
+                const itemId = get(it, 'itemId') || get(it, 'daItemId');
                 const value = String(get(it, 'value') ?? '');
                 const timestamp = locTime(get(it, 'timestampUtc'));
                 const timestampShort = shortTime(get(it, 'timestampUtc'));
@@ -3314,7 +3314,7 @@ async function loadMappings() {
 function refreshTagBrowserMappedBadges() {
     const tree = el('tagTree');
     if (!tree) return;
-    const mappedKeys = new Set((state.mappings || []).map(m => valueKey(m.sourceId || m.SourceId || 'default', m.daItemId || m.DaItemId)));
+    const mappedKeys = new Set((state.mappings || []).map(m => valueKey(m.sourceId || m.SourceId || 'default', m.itemId || m.ItemId || m.daItemId || m.DaItemId)));
     tree.querySelectorAll('button[data-action="add-tag"]').forEach(button => {
         const sourceId = button.dataset.sourceId || '';
         const itemId = button.dataset.itemId || '';
@@ -3626,7 +3626,7 @@ function applyMappingView(mappings) {
     if (filter) {
         view = mappings.filter(m => {
             const sourceId = m.sourceId || m.SourceId || 'default';
-            const item = m.daItemId || m.DaItemId || '';
+            const item = m.itemId || m.ItemId || m.daItemId || m.DaItemId || '';
             const name = m.displayName || m.DisplayName || item;
             const node = m.uaNodeId || m.UaNodeId || defaultUaNodeId(sourceId, item);
             return [sourceId, item, name, node, m.description || m.Description || ''].some(v => String(v).toLowerCase().includes(filter));
@@ -3645,14 +3645,14 @@ function applyMappingView(mappings) {
         let av, bv;
         switch (key) {
             case 'source': av = (a.sourceId || a.SourceId || 'default'); bv = (b.sourceId || b.SourceId || 'default'); break;
-            case 'item': av = (a.daItemId || a.DaItemId || ''); bv = (b.daItemId || b.DaItemId || ''); break;
+            case 'item': av = (a.itemId || a.ItemId || a.daItemId || a.DaItemId || ''); bv = (b.itemId || b.ItemId || b.daItemId || b.DaItemId || ''); break;
             case 'node': av = (a.uaNodeId || a.UaNodeId || ''); bv = (b.uaNodeId || b.UaNodeId || ''); break;
             case 'access': av = accessRank(a); bv = accessRank(b); break;
             case 'rate': av = (a.pollRateMs ?? a.PollRateMs ?? 0); bv = (b.pollRateMs ?? b.PollRateMs ?? 0); break;
             case 'deadband': av = Number(a.deadbandPct ?? a.DeadbandPct ?? 0); bv = Number(b.deadbandPct ?? b.DeadbandPct ?? 0); break;
             case 'status': av = ((a.enabled ?? a.Enabled) !== false) ? 0 : 1; bv = ((b.enabled ?? b.Enabled) !== false) ? 0 : 1; break;
             case 'description': av = (a.description || a.Description || ''); bv = (b.description || b.Description || ''); break;
-            default: av = (a.displayName || a.DisplayName || a.daItemId || a.DaItemId || ''); bv = (b.displayName || b.DisplayName || b.daItemId || b.DaItemId || '');
+            default: av = (a.displayName || a.DisplayName || a.itemId || a.ItemId || a.daItemId || a.DaItemId || ''); bv = (b.displayName || b.DisplayName || b.itemId || b.ItemId || b.daItemId || b.DaItemId || '');
         }
         if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir;
         return String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' }) * dir;
@@ -3677,7 +3677,7 @@ function rerenderMappings() {
 function getMapping(sourceId, itemId) {
     return state.mappings.find(mapping => {
         const mappingSourceId = mapping.sourceId || mapping.SourceId || 'default';
-        const mappingItemId = mapping.daItemId || mapping.DaItemId;
+        const mappingItemId = mapping.itemId || mapping.ItemId || mapping.daItemId || mapping.DaItemId;
         return mappingSourceId === sourceId && mappingItemId === itemId;
     }) || null;
 }
@@ -3689,7 +3689,7 @@ async function updateMapping(sourceId, itemId, mutate) {
     if (!mapping) throw new Error('Mapping not found.');
     const payload = {
         sourceId,
-        daItemId: itemId,
+        itemId: itemId,
         displayName: mapping.displayName || mapping.DisplayName || itemId,
         description: mapping.description ?? mapping.Description ?? null,
         dataType: mapping.dataType || mapping.DataType || 'Auto',
@@ -4433,7 +4433,7 @@ async function browseLinkTags(path, recursive = false) {
         rows.push(`<div class="li clickable" data-action="open-link-branch" data-path="${attr(child)}"><span class="icon folder">&#128193;</span><div style="flex:1"><div class="n">${esc(branch)}</div><div class="p">folder</div></div></div>`);
     }
     for (const tag of tags) {
-        const itemId = tag.itemId || tag.ItemId;
+        const itemId = tag.itemId || tag.ItemId || tag.daItemId || tag.DaItemId;
         const name = tag.name || tag.Name || itemId;
         const key = tagKey(source.sourceId, itemId);
         const existing = findDaLinkByConsumer(key);
@@ -4502,7 +4502,7 @@ async function browseUaSource(nodeId) {
     const p = await res.json();
     if (p.error) throw new Error(p.error);
     const nodes = p.nodes || [];
-    const mappedKeys = new Set((state.mappings || []).map(m => valueKey(m.sourceId || m.SourceId || 'default', m.daItemId || m.DaItemId)));
+    const mappedKeys = new Set((state.mappings || []).map(m => valueKey(m.sourceId || m.SourceId || 'default', m.itemId || m.ItemId || m.daItemId || m.DaItemId)));
     const rows = [];
     if (state.uaBrowseTrail.length) {
         // Trail stores the NODE WE DESCENDED INTO. Parent of the currently
@@ -4560,7 +4560,7 @@ async function browseTags(path, recursive = false) {
     if (p.error) throw new Error(p.error);
     const branches = p.branches || [];
     const tags = p.tags || [];
-    const mappedKeys = new Set((state.mappings || []).map(m => valueKey(m.sourceId || m.SourceId || 'default', m.daItemId || m.DaItemId)));
+    const mappedKeys = new Set((state.mappings || []).map(m => valueKey(m.sourceId || m.SourceId || 'default', m.itemId || m.ItemId || m.daItemId || m.DaItemId)));
     const rows = [];
     if (state.tagPath) {
         const parent = state.tagPath.includes('.') ? state.tagPath.substring(0, state.tagPath.lastIndexOf('.')) : '';
@@ -4571,7 +4571,7 @@ async function browseTags(path, recursive = false) {
         rows.push(`<div class="li clickable" data-action="open-branch" data-path="${attr(child)}"><span class="icon folder">&#128193;</span><div style="flex:1"><div class="n">${esc(branch)}</div><div class="p">folder</div></div></div>`);
     }
     for (const tag of tags) {
-        const itemId = tag.itemId || tag.ItemId;
+        const itemId = tag.itemId || tag.ItemId || tag.daItemId || tag.DaItemId;
         const name = tag.name || tag.Name || itemId;
         const isMapped = mappedKeys.has(valueKey(source.sourceId, itemId));
         rows.push(`<div class="li"><span class="icon tag">&#9878;</span><div style="flex:1"><div class="n">${esc(name)}</div><div class="p">${esc(itemId)}</div></div><div class="li-actions">${isMapped ? '<span class="mapped-badge">Mapped</span>' : ''}<button class="btn ghost" data-action="add-tag" data-source-id="${attr(source.sourceId)}" data-item-id="${attr(itemId)}" data-name="${attr(name)}">Add</button></div></div>`);
@@ -4583,7 +4583,7 @@ async function addTag(sourceId, itemId, name) {
     await fetch('/api/mappings/add', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tags: [{ sourceId, daItemId: itemId, displayName: name || itemId, dataType: 'Auto', uaNodeId: defaultUaNodeId(sourceId, itemId) }] })
+        body: JSON.stringify({ tags: [{ sourceId, itemId: itemId, displayName: name || itemId, dataType: 'Auto', uaNodeId: defaultUaNodeId(sourceId, itemId) }] })
     });
     await loadMappings();
     await refresh();
@@ -4597,7 +4597,7 @@ async function addManual() {
     await fetch('/api/mappings/add', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tags: [{ sourceId, daItemId: itemId, displayName: itemId, dataType: 'Auto', uaNodeId }] })
+        body: JSON.stringify({ tags: [{ sourceId, itemId: itemId, displayName: itemId, dataType: 'Auto', uaNodeId }] })
     });
     el('manualItem').value = '';
     el('manualUaNodeId').value = '';
@@ -4608,7 +4608,7 @@ async function removeMapping(sourceId, itemId) {
     await fetch('/api/mappings/remove', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sourceId, daItemId: itemId })
+        body: JSON.stringify({ sourceId, itemId: itemId })
     });
     await loadMappings();
     await refresh();

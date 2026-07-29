@@ -22,7 +22,7 @@ public static class InfluxPointBuilder
         Dictionary<string, string> tags = new(StringComparer.Ordinal)
         {
             ["source_id"] = value.SourceId,
-            ["da_item_id"] = value.DaItemId
+            ["da_item_id"] = value.ItemId
         };
 
         if (!string.IsNullOrWhiteSpace(displayName))

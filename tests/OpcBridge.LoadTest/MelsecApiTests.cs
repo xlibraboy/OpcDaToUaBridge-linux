@@ -166,7 +166,7 @@ public sealed class MelsecApiTests
             {
                 tags = new[]
                 {
-                    new { sourceId = "lineA3n", daItemId = "Z99" }
+                    new { sourceId = "lineA3n", itemId = "Z99" }
                 }
             }));
 
@@ -186,7 +186,7 @@ public sealed class MelsecApiTests
             {
                 tags = new[]
                 {
-                    new { sourceId = "lineA3n", daItemId = "d0" }
+                    new { sourceId = "lineA3n", itemId = "d0" }
                 }
             }));
 
@@ -194,7 +194,7 @@ public sealed class MelsecApiTests
 
         using JsonDocument get = await app.GetJsonAsync("/api/mappings");
         JsonElement mapping = Single(get.RootElement.GetProperty("mappings"), "lineA3n", "D0");
-        Assert.Equal("D0", mapping.GetProperty("daItemId").GetString());
+        Assert.Equal("D0", mapping.GetProperty("itemId").GetString());
     }
 
     [Fact]
@@ -210,7 +210,7 @@ public sealed class MelsecApiTests
             {
                 tags = new[]
                 {
-                    new { sourceId = "lineA3n", daItemId = "D0" }
+                    new { sourceId = "lineA3n", itemId = "D0" }
                 }
             }));
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
@@ -222,7 +222,7 @@ public sealed class MelsecApiTests
             {
                 tags = new[]
                 {
-                    new { sourceId = "lineA3n", daItemId = "D1" }
+                    new { sourceId = "lineA3n", itemId = "D1" }
                 }
             }));
         Assert.Equal(HttpStatusCode.BadRequest, second.StatusCode);
@@ -242,9 +242,9 @@ public sealed class MelsecApiTests
             {
                 tags = new[]
                 {
-                    new { sourceId = "lineA3n", daItemId = "D0" },
-                    new { sourceId = "lineA3n", daItemId = "D1" },
-                    new { sourceId = "lineA3n", daItemId = "D2" }
+                    new { sourceId = "lineA3n", itemId = "D0" },
+                    new { sourceId = "lineA3n", itemId = "D1" },
+                    new { sourceId = "lineA3n", itemId = "D2" }
                 }
             }));
 
@@ -259,13 +259,13 @@ public sealed class MelsecApiTests
         // Seed a valid mapping first.
         await app.Client.PostAsync(
             "/api/mappings/add",
-            Json(new { tags = new[] { new { sourceId = "lineA3n", daItemId = "D0" } } }));
+            Json(new { tags = new[] { new { sourceId = "lineA3n", itemId = "D0" } } }));
 
         using HttpResponseMessage update = await app.Client.PostAsync(
             "/api/mappings/update",
             Json(new
             {
-                tag = new { sourceId = "lineA3n", daItemId = "Z99" }
+                tag = new { sourceId = "lineA3n", itemId = "Z99" }
             }));
 
         Assert.Equal(HttpStatusCode.BadRequest, update.StatusCode);
@@ -426,19 +426,19 @@ public sealed class MelsecApiTests
         throw new Xunit.Sdk.XunitException($"Source '{sourceId}' not found.");
     }
 
-    private static JsonElement Single(JsonElement array, string sourceId, string daItemId)
+    private static JsonElement Single(JsonElement array, string sourceId, string itemId)
     {
         foreach (JsonElement el in array.EnumerateArray())
         {
             if (el.TryGetProperty("sourceId", out JsonElement sid) &&
                 string.Equals(sid.GetString(), sourceId, StringComparison.OrdinalIgnoreCase) &&
-                el.TryGetProperty("daItemId", out JsonElement did) &&
-                string.Equals(did.GetString(), daItemId, StringComparison.OrdinalIgnoreCase))
+                el.TryGetProperty("itemId", out JsonElement did) &&
+                string.Equals(did.GetString(), itemId, StringComparison.OrdinalIgnoreCase))
             {
                 return el;
             }
         }
-        throw new Xunit.Sdk.XunitException($"Mapping '{sourceId}/{daItemId}' not found.");
+        throw new Xunit.Sdk.XunitException($"Mapping '{sourceId}/{itemId}' not found.");
     }
 
     private static StringContent Json(object value) =>

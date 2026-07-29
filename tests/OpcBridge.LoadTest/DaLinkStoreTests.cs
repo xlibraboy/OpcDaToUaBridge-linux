@@ -102,16 +102,16 @@ public sealed class DaLinkStoreTests
             new TagMapping
             {
                 SourceId = "consumerA",
-                DaItemId = "itemA",
+                ItemId = "itemA",
                 ProviderSourceId = "providerA",
-                ProviderDaItemId = "itemP1"
+                ProviderItemId = "itemP1"
             },
             new TagMapping
             {
                 SourceId = "consumerA",
-                DaItemId = "itemA",
+                ItemId = "itemA",
                 ProviderSourceId = "providerB",
-                ProviderDaItemId = "itemP2"
+                ProviderItemId = "itemP2"
             }
         };
 
@@ -141,16 +141,16 @@ public sealed class DaLinkStoreTests
             new()
             {
                 SourceId = "consumerA",
-                DaItemId = "itemA",
+                ItemId = "itemA",
                 ProviderSourceId = "providerA",
-                ProviderDaItemId = "itemP1"
+                ProviderItemId = "itemP1"
             },
             new()
             {
                 SourceId = "consumerA",
-                DaItemId = "itemA",
+                ItemId = "itemA",
                 ProviderSourceId = "providerB",
-                ProviderDaItemId = "itemP2"
+                ProviderItemId = "itemP2"
             }
         };
 
@@ -190,9 +190,9 @@ public sealed class DaLinkStoreTests
             new TagMapping
             {
                 SourceId = "consumerA",
-                DaItemId = "itemA",
+                ItemId = "itemA",
                 ProviderSourceId = "providerA",
-                ProviderDaItemId = "itemP"
+                ProviderItemId = "itemP"
             }
         };
 

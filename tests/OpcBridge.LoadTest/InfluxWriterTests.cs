@@ -29,7 +29,7 @@ public sealed class InfluxWriterTests
         TagMapping tag = new()
         {
             SourceId = "default",
-            DaItemId = "Random.Int1",
+            ItemId = "Random.Int1",
             InfluxEnabled = true
         };
 
@@ -51,14 +51,14 @@ public sealed class InfluxWriterTests
             new TagMapping
             {
                 SourceId = "default",
-                DaItemId = "tag.a",
+                ItemId = "tag.a",
                 DisplayName = "A",
                 InfluxEnabled = true
             }
         ]);
 
         (IReadOnlyList<TagMapping> snapshot, _) = store.GetSnapshot();
-        TagMapping mapping = Assert.Single(snapshot.Where(m => m.DaItemId == "tag.a"));
+        TagMapping mapping = Assert.Single(snapshot.Where(m => m.ItemId == "tag.a"));
         Assert.True(mapping.InfluxEnabled);
     }
 

@@ -204,9 +204,9 @@ public sealed class DaLinkStore
     private static bool TryCreateMigratedRule(TagMapping mapping, out DaLinkRule rule)
     {
         string providerSourceId = NormalizeSourceId(mapping.ProviderSourceId);
-        string providerItemId = mapping.ProviderDaItemId?.Trim() ?? string.Empty;
+        string providerItemId = mapping.ProviderItemId?.Trim() ?? string.Empty;
         string consumerSourceId = NormalizeSourceId(mapping.SourceId);
-        string consumerItemId = mapping.DaItemId?.Trim() ?? string.Empty;
+        string consumerItemId = mapping.ItemId?.Trim() ?? string.Empty;
 
         if (providerItemId.Length == 0 || consumerItemId.Length == 0)
         {

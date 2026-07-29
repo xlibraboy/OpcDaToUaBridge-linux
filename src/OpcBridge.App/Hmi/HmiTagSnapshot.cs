@@ -14,7 +14,7 @@ public static class HmiTagSnapshot
         for (int i = 0; i < values.Count; i++)
         {
             BridgeValueSnapshot v = values[i];
-            byKey[string.Concat(v.SourceId, "::", v.DaItemId)] = v;
+            byKey[string.Concat(v.SourceId, "::", v.ItemId)] = v;
         }
 
         List<HmiTagDto> tags = new();
@@ -26,12 +26,12 @@ public static class HmiTagSnapshot
                 continue;
             }
 
-            byKey.TryGetValue(string.Concat(m.SourceId, "::", m.DaItemId), out BridgeValueSnapshot? snap);
+            byKey.TryGetValue(string.Concat(m.SourceId, "::", m.ItemId), out BridgeValueSnapshot? snap);
             tags.Add(new HmiTagDto
             {
                 SourceId = m.SourceId,
-                DaItemId = m.DaItemId,
-                DisplayName = string.IsNullOrWhiteSpace(m.DisplayName) ? m.DaItemId : m.DisplayName,
+                ItemId = m.ItemId,
+                DisplayName = string.IsNullOrWhiteSpace(m.DisplayName) ? m.ItemId : m.DisplayName,
                 DataType = m.DataType,
                 Value = snap?.Value,
                 TimestampUtc = snap?.TimestampUtc,
@@ -44,7 +44,7 @@ public static class HmiTagSnapshot
         tags.Sort((a, b) =>
         {
             int c = string.Compare(a.SourceId, b.SourceId, StringComparison.OrdinalIgnoreCase);
-            return c != 0 ? c : string.Compare(a.DaItemId, b.DaItemId, StringComparison.OrdinalIgnoreCase);
+            return c != 0 ? c : string.Compare(a.ItemId, b.ItemId, StringComparison.OrdinalIgnoreCase);
         });
 
         return new HmiTagsResponse { Version = version, Tags = tags };

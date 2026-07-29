@@ -303,7 +303,7 @@ DA Links are a **separate subsystem** from DA → UA mappings. A provider change
 - The **provider** tag is read from its DA source normally and must have Access Rights that include **Read**.
 - The **consumer** tag keeps its own mapping and must have Access Rights that include **Write** or **Read-Write** so the bridge can forward provider changes into its DA server.
 - DA Links share the bridge runtime with mappings, so cross-source forwarding works even when the provider and consumer live on different OPC DA servers.
-- Runtime forwarding is driven by stored `DaLinkRule` entries. Legacy `providerSourceId` / `providerDaItemId` fields exist only for migration from older mapping files.
+- Runtime forwarding is driven by stored `DaLinkRule` entries. Legacy `providerSourceId` / `providerItemId` fields exist only for migration from older mapping files.
 
 ## Setting up links
 
@@ -340,7 +340,7 @@ DA Links are a **separate subsystem** from DA → UA mappings. A provider change
 
 - The bridge runs a built-in OPC UA server. UA clients connect to the endpoint shown on the Monitor tab.
 - Each DA tag mapping creates one UA variable node under the "OPC DA Tags" folder (namespace index 2).
-- Node IDs follow the pattern `ns=2;s={sourceId}/{daItemId}` unless a custom UA Node ID is specified.
+- Node IDs follow the pattern `ns=2;s={sourceId}/{itemId}` unless a custom UA Node ID is specified.
 - The UA server supports read, subscription (monitored items), and **writes** for tags with Read-Write or Write access rights.
 
 ## UA Writes (UA → DA passthrough)
@@ -406,7 +406,7 @@ MQTT is scoped to the **OPC UA layer** — it reads the mirrored UA tag values a
 
 ## Topics
 
-- **Publish**: `{TopicPrefix}/{SourceId}/{DaItemId}` (default prefix `bridge/tags`), or a per-tag `MqttTopic` override set in the tag faceplate.
+- **Publish**: `{TopicPrefix}/{SourceId}/{ItemId}` (default prefix `bridge/tags`), or a per-tag `MqttTopic` override set in the tag faceplate.
 - **Subscribe**: the bridge subscribes to `{TopicPrefix}/#` and resolves inbound topics to tags the same way.
 
 ## Payload
@@ -880,9 +880,9 @@ Always preserve `pki/` across updates. It's listed in the update guide as "never
 | Field | Default | Description |
 |-------|---------|-------------|
 | `sourceId` | `default` | DA source identifier |
-| `daItemId` | *(required)* | OPC DA item ID |
-| `uaNodeId` | auto | UA node ID (default `ns=2;s={sourceId}/{daItemId}`) |
-| `displayName` | = daItemId | Label shown in UA and dashboard |
+| `itemId` | *(required)* | OPC DA item ID |
+| `uaNodeId` | auto | UA node ID (default `ns=2;s={sourceId}/{itemId}`) |
+| `displayName` | = itemId | Label shown in UA and dashboard |
 | `description` | `null` | Operator-entered notes/description (shown as tooltip in tag list) |
 | `dataType` | `Double` | Data type hint for UA node |
 | `enabled` | `true` | Include in DA reads and UA publishing |

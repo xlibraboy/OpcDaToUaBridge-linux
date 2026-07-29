@@ -24,7 +24,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
     private readonly MappingStore mapping_store_;
     private readonly DaLinkStore da_link_store_;
     private readonly DaRuntimeSettings da_settings_;
-    private readonly DaClientFactory da_client_factory_;
+    private readonly SourceClientFactory da_client_factory_;
     private readonly ILogger<BridgeWorker> logger_;
     private readonly IReadOnlyDictionary<int, int> rate_limits_;
     private int backoffMs_ = 1000;
@@ -59,7 +59,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
         MappingStore mappingStore,
         DaLinkStore daLinkStore,
         DaRuntimeSettings daSettings,
-        DaClientFactory daClientFactory,
+        SourceClientFactory daClientFactory,
         IOptions<BridgeOptions> bridgeOptions,
         ILogger<BridgeWorker> logger,
         IMqttBridge mqttBridge,
@@ -94,10 +94,10 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
         bridge_state_.Configure(settings.UpdateRateMs, activeMappings.Count, settings.Sources);
 
         mqtt_enabled_keys_ = new HashSet<string>(
-            activeMappings.Where(m => m.MqttEnabled).Select(m => NormalizeKey(m.SourceId, m.DaItemId)),
+            activeMappings.Where(m => m.MqttEnabled).Select(m => NormalizeKey(m.SourceId, m.ItemId)),
             StringComparer.OrdinalIgnoreCase);
         influx_enabled_keys_ = new HashSet<string>(
-            activeMappings.Where(m => m.InfluxEnabled).Select(m => NormalizeKey(m.SourceId, m.DaItemId)),
+            activeMappings.Where(m => m.InfluxEnabled).Select(m => NormalizeKey(m.SourceId, m.ItemId)),
             StringComparer.OrdinalIgnoreCase);
 
         try
@@ -114,7 +114,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                 }
 
                 // Non-blocking enqueue; the per-source consumer resolves the TCS.
-                _ = write_queue_.EnqueueAsync(new WriteRequest(value.SourceId, value.DaItemId, value.Value, tcs), stoppingToken);
+                _ = write_queue_.EnqueueAsync(new WriteRequest(value.SourceId, value.ItemId, value.Value, tcs), stoppingToken);
             });
 
             long uaMappingVersion = mappingVersion;
@@ -189,10 +189,10 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                             {
                                 activeMappings = cacheHolder.Cache.GetActiveMappings();
                                 mqtt_enabled_keys_ = new HashSet<string>(
-                                    activeMappings.Where(m => m.MqttEnabled).Select(m => NormalizeKey(m.SourceId, m.DaItemId)),
+                                    activeMappings.Where(m => m.MqttEnabled).Select(m => NormalizeKey(m.SourceId, m.ItemId)),
                                     StringComparer.OrdinalIgnoreCase);
                                 influx_enabled_keys_ = new HashSet<string>(
-                                    activeMappings.Where(m => m.InfluxEnabled).Select(m => NormalizeKey(m.SourceId, m.DaItemId)),
+                                    activeMappings.Where(m => m.InfluxEnabled).Select(m => NormalizeKey(m.SourceId, m.ItemId)),
                                     StringComparer.OrdinalIgnoreCase);
                                 ua_server_.SyncMappings(activeMappings);
                                 bridge_state_.RetainMappedValues(activeMappings);
@@ -406,7 +406,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
 
             try
             {
-                bool success = await session.Client.WriteAsync(req.DaItemId, req.Value, cancellationToken).ConfigureAwait(false);
+                bool success = await session.Client.WriteAsync(req.ItemId, req.Value, cancellationToken).ConfigureAwait(false);
                 req.Tcs.TrySetResult(success);
                 writeQueue.RecordResult(success);
             }
@@ -502,7 +502,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
             TagMapping mapping = manualMappings[i];
             if (!TryCreateManualValue(mapping, out BridgeValue manualValue))
             {
-                bridge_state_.ClearValue(mapping.SourceId, mapping.DaItemId);
+                bridge_state_.ClearValue(mapping.SourceId, mapping.ItemId);
                 continue;
             }
 
@@ -526,7 +526,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
             return;
         }
 
-        IReadOnlyList<TagMapping> consumers = cache.GetConsumersByProvider(providerValue.SourceId, providerValue.DaItemId);
+        IReadOnlyList<TagMapping> consumers = cache.GetConsumersByProvider(providerValue.SourceId, providerValue.ItemId);
         if (consumers.Count == 0)
         {
             return;
@@ -536,7 +536,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
         bool providerReadable = false;
         foreach (TagMapping providerMapping in cache.GetMappings(providerValue.SourceId))
         {
-            if (string.Equals(providerMapping.DaItemId, providerValue.DaItemId, StringComparison.OrdinalIgnoreCase) &&
+            if (string.Equals(providerMapping.ItemId, providerValue.ItemId, StringComparison.OrdinalIgnoreCase) &&
                 !string.Equals(providerMapping.AccessRights, TagAccessRights.Write, StringComparison.OrdinalIgnoreCase))
             {
                 providerReadable = true;
@@ -572,7 +572,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
 
             TaskCompletionSource<bool> tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
             _ = write_queue_.EnqueueAsync(
-                new WriteRequest(consumer.SourceId, consumer.DaItemId, providerValue.Value, tcs),
+                new WriteRequest(consumer.SourceId, consumer.ItemId, providerValue.Value, tcs),
                 cancellationToken);
         }
     }
@@ -582,7 +582,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
         for (int i = 0; i < readMappings.Count; i++)
         {
             TagMapping mapping = readMappings[i];
-            bridge_state_.ClearValue(mapping.SourceId, mapping.DaItemId);
+            bridge_state_.ClearValue(mapping.SourceId, mapping.ItemId);
         }
     }
 
@@ -662,7 +662,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
             try
             {
                 bridge_state_.SetSourceConnectionState(source.SourceId, "Connecting");
-                IDaClient client = da_client_factory_.Create(settings, source);
+                ISourceClient client = da_client_factory_.Create(settings, source);
                 await client.ConnectAsync(cancellationToken).ConfigureAwait(false);
 
                 if (client is ISubscribableSourceClient subscribable)
@@ -741,14 +741,14 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
         }
     }
 
-    private static string NormalizeKey(string sourceId, string daItemId)
+    private static string NormalizeKey(string sourceId, string itemId)
     {
-        return string.Concat(sourceId.Trim(), "::", daItemId.Trim());
+        return string.Concat(sourceId.Trim(), "::", itemId.Trim());
     }
 
     private void OnBridgeValueUpdated(BridgeValue value)
     {
-        string key = NormalizeKey(value.SourceId, value.DaItemId);
+        string key = NormalizeKey(value.SourceId, value.ItemId);
         if (mqtt_enabled_keys_.Contains(key))
         {
             _ = mqtt_publish_channel_.Writer.WriteAsync(value);
@@ -781,16 +781,16 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
             try
             {
                 options = mqtt_settings_.GetOptions();
-                string topic = MqttPayload.BuildTopic(options, value.SourceId, value.DaItemId,
-                    ResolveMqttTopicOverride(value.SourceId, value.DaItemId));
-                string payload = MqttPayload.Serialize(value, options.PayloadFields, ResolveDisplayName(value.SourceId, value.DaItemId));
+                string topic = MqttPayload.BuildTopic(options, value.SourceId, value.ItemId,
+                    ResolveMqttTopicOverride(value.SourceId, value.ItemId));
+                string payload = MqttPayload.Serialize(value, options.PayloadFields, ResolveDisplayName(value.SourceId, value.ItemId));
                 await mqtt_bridge_.PublishAsync(topic, payload, ct).ConfigureAwait(false);
                 mqtt_settings_.IncrementPublished();
                 mqtt_values_.Set("PUB", topic, payload);
             }
             catch (Exception ex)
             {
-                logger_.LogWarning(ex, "MQTT publish failed for {SourceId}/{ItemId}", value.SourceId, value.DaItemId);
+                logger_.LogWarning(ex, "MQTT publish failed for {SourceId}/{ItemId}", value.SourceId, value.ItemId);
             }
         }
     }
@@ -823,13 +823,13 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
 
                 await influx_writer_.WritePointAsync(
                     value,
-                    ResolveDisplayName(value.SourceId, value.DaItemId),
+                    ResolveDisplayName(value.SourceId, value.ItemId),
                     ct).ConfigureAwait(false);
                 influx_settings_.IncrementWritten();
             }
             catch (Exception ex)
             {
-                logger_.LogWarning(ex, "Influx write failed for {SourceId}/{ItemId}", value.SourceId, value.DaItemId);
+                logger_.LogWarning(ex, "Influx write failed for {SourceId}/{ItemId}", value.SourceId, value.ItemId);
             }
         }
     }
@@ -839,8 +839,8 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
         mqtt_settings_.IncrementReceived();
         mqtt_values_.Set("SUB", message.Topic, message.RawValue);
 
-        (string? sourceId, string? daItemId) = ResolveTopicToMapping(message.Topic);
-        if (sourceId is null || daItemId is null)
+        (string? sourceId, string? itemId) = ResolveTopicToMapping(message.Topic);
+        if (sourceId is null || itemId is null)
         {
             logger_.LogDebug("MQTT inbound topic has no matching mapping: {Topic}", message.Topic);
             return;
@@ -849,21 +849,21 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
         var (mappings, _) = mapping_store_.GetSnapshot();
         TagMapping? mapping = mappings.FirstOrDefault(m =>
             string.Equals(m.SourceId, sourceId, StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(m.DaItemId, daItemId, StringComparison.OrdinalIgnoreCase));
+            string.Equals(m.ItemId, itemId, StringComparison.OrdinalIgnoreCase));
         if (mapping is null || !mapping.MqttEnabled)
         {
             return;
         }
 
         object? converted = ConvertIncoming(mapping, message.RawValue);
-        bool ok = await ApplyUaWriteAsync(sourceId, daItemId, converted, message.TimestampUtc ?? DateTime.UtcNow, CancellationToken.None).ConfigureAwait(false);
+        bool ok = await ApplyUaWriteAsync(sourceId, itemId, converted, message.TimestampUtc ?? DateTime.UtcNow, CancellationToken.None).ConfigureAwait(false);
         if (!ok)
         {
-            logger_.LogDebug("MQTT inbound write rejected for {SourceId}/{ItemId}", sourceId, daItemId);
+            logger_.LogDebug("MQTT inbound write rejected for {SourceId}/{ItemId}", sourceId, itemId);
         }
     }
 
-    private (string? SourceId, string? DaItemId) ResolveTopicToMapping(string topic)
+    private (string? SourceId, string? ItemId) ResolveTopicToMapping(string topic)
     {
         MqttBrokerOptions options = mqtt_settings_.GetOptions();
         string prefix = (string.IsNullOrWhiteSpace(options.TopicPrefix) ? "bridge/tags" : options.TopicPrefix.Trim().Trim('/')) + "/";
@@ -875,21 +875,21 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
         return (remainder[..slash], remainder[(slash + 1)..]);
     }
 
-    private string? ResolveMqttTopicOverride(string sourceId, string daItemId)
+    private string? ResolveMqttTopicOverride(string sourceId, string itemId)
     {
         var (mappings, _) = mapping_store_.GetSnapshot();
         TagMapping? mapping = mappings.FirstOrDefault(m =>
             string.Equals(m.SourceId, sourceId, StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(m.DaItemId, daItemId, StringComparison.OrdinalIgnoreCase));
+            string.Equals(m.ItemId, itemId, StringComparison.OrdinalIgnoreCase));
         return mapping?.MqttTopic;
     }
 
-    private string? ResolveDisplayName(string sourceId, string daItemId)
+    private string? ResolveDisplayName(string sourceId, string itemId)
     {
         var (mappings, _) = mapping_store_.GetSnapshot();
         TagMapping? mapping = mappings.FirstOrDefault(m =>
             string.Equals(m.SourceId, sourceId, StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(m.DaItemId, daItemId, StringComparison.OrdinalIgnoreCase));
+            string.Equals(m.ItemId, itemId, StringComparison.OrdinalIgnoreCase));
         return mapping?.DisplayName;
     }
 
@@ -909,12 +909,12 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
     }
 
     /// <summary>Write a value through the existing UA write path (WriteQueue → per-source consumer → DA). Same seam a UA client write uses.</summary>
-    public async Task<bool> ApplyUaWriteAsync(string sourceId, string daItemId, object? value, DateTime timestampUtc, CancellationToken ct)
+    public async Task<bool> ApplyUaWriteAsync(string sourceId, string itemId, object? value, DateTime timestampUtc, CancellationToken ct)
     {
         if (write_queue_ is null) return false;
 
         TaskCompletionSource<bool> tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        await write_queue_.EnqueueAsync(new WriteRequest(sourceId, daItemId, value, tcs), ct).ConfigureAwait(false);
+        await write_queue_.EnqueueAsync(new WriteRequest(sourceId, itemId, value, tcs), ct).ConfigureAwait(false);
 
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
         linked.CancelAfter(TimeSpan.FromSeconds(5));
@@ -931,19 +931,19 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
 
     public async Task<(bool Ok, string? Error)> TryHmiWriteAsync(
         string sourceId,
-        string daItemId,
+        string itemId,
         object? value,
         CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(sourceId) || string.IsNullOrWhiteSpace(daItemId))
+        if (string.IsNullOrWhiteSpace(sourceId) || string.IsNullOrWhiteSpace(itemId))
         {
-            return (false, "sourceId and daItemId are required");
+            return (false, "sourceId and itemId are required");
         }
 
         (IReadOnlyList<TagMapping> mappings, _) = mapping_store_.GetSnapshot();
         TagMapping? mapping = mappings.FirstOrDefault(m =>
             string.Equals(m.SourceId, sourceId, StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(m.DaItemId, daItemId, StringComparison.OrdinalIgnoreCase));
+            string.Equals(m.ItemId, itemId, StringComparison.OrdinalIgnoreCase));
 
         if (mapping is null)
         {
@@ -966,7 +966,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
         }
 
         object? converted = ConvertHmiValue(mapping, value);
-        bool ok = await ApplyUaWriteAsync(mapping.SourceId, mapping.DaItemId, converted, DateTime.UtcNow, ct)
+        bool ok = await ApplyUaWriteAsync(mapping.SourceId, mapping.ItemId, converted, DateTime.UtcNow, ct)
             .ConfigureAwait(false);
         return ok ? (true, null) : (false, "Write failed or timed out");
     }
@@ -1098,7 +1098,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
         {
             value = new BridgeValue(
                 mapping.SourceId,
-                mapping.DaItemId,
+                mapping.ItemId,
                 convertedValue,
                 DateTime.UtcNow,
                 192,
@@ -1106,7 +1106,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
             return true;
         }
 
-        value = new BridgeValue(mapping.SourceId, mapping.DaItemId, null, DateTime.UtcNow, 0, false);
+        value = new BridgeValue(mapping.SourceId, mapping.ItemId, null, DateTime.UtcNow, 0, false);
         return false;
     }
 
@@ -1305,7 +1305,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                 }
 
                 sourceMappings.Add(mapping);
-                mappingsByKey[GetMappingKey(mapping.SourceId, mapping.DaItemId)] = mapping;
+                mappingsByKey[GetMappingKey(mapping.SourceId, mapping.ItemId)] = mapping;
 
                 if (mapping.Enabled)
                 {
@@ -1412,19 +1412,19 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                 .ToArray();
         }
         /// <summary>
-        /// Returns the consumer tags linked to the given provider tag (SourceId::DaItemId).
+        /// Returns the consumer tags linked to the given provider tag (SourceId::ItemId).
         /// Empty when nothing links to it. Used to forward a provider's value into its consumers.
         /// </summary>
-        public IReadOnlyList<TagMapping> GetConsumersByProvider(string providerSourceId, string providerDaItemId)
+        public IReadOnlyList<TagMapping> GetConsumersByProvider(string providerSourceId, string providerItemId)
         {
-            return consumers_by_provider_.TryGetValue(GetMappingKey(providerSourceId, providerDaItemId), out IReadOnlyList<TagMapping>? consumers)
+            return consumers_by_provider_.TryGetValue(GetMappingKey(providerSourceId, providerItemId), out IReadOnlyList<TagMapping>? consumers)
                 ? consumers
                 : EmptyMappings;
         }
 
-        private static string GetMappingKey(string sourceId, string daItemId)
+        private static string GetMappingKey(string sourceId, string itemId)
         {
-            return string.Concat(sourceId.Trim(), "::", daItemId.Trim());
+            return string.Concat(sourceId.Trim(), "::", itemId.Trim());
         }
     }
 
@@ -1457,5 +1457,5 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
         }
     }
 
-    private sealed record SourceSession(DaSourceRuntimeSettings Source, IDaClient Client);
+    private sealed record SourceSession(DaSourceRuntimeSettings Source, ISourceClient Client);
 }

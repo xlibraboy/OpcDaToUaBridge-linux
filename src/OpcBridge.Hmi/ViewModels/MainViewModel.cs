@@ -157,7 +157,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
                 new HmiWriteRequest
                 {
                     SourceId = SelectedTag.SourceId,
-                    DaItemId = SelectedTag.DaItemId,
+                    ItemId = SelectedTag.ItemId,
                     Value = parsed
                 },
                 CancellationToken.None).ConfigureAwait(true);
@@ -204,7 +204,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         foreach (HmiValueDelta delta in batch)
         {
-            string key = HmiTagCache.Key(delta.SourceId, delta.DaItemId);
+            string key = HmiTagCache.Key(delta.SourceId, delta.ItemId);
             if (_tagIndex.TryGetValue(key, out TagItemViewModel? item))
             {
                 item.ApplyDelta(delta);
@@ -313,7 +313,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             HmiTrendResponse response = await _api.GetTrendsAsync(
                 tag.SourceId,
-                tag.DaItemId,
+                tag.ItemId,
                 fromUtc: null,
                 toUtc: null,
                 maxPoints: 500,
@@ -411,7 +411,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         string f = Filter.Trim();
         return tag.SourceId.Contains(f, StringComparison.OrdinalIgnoreCase)
-            || tag.DaItemId.Contains(f, StringComparison.OrdinalIgnoreCase)
+            || tag.ItemId.Contains(f, StringComparison.OrdinalIgnoreCase)
             || tag.DisplayName.Contains(f, StringComparison.OrdinalIgnoreCase)
             || tag.ValueText.Contains(f, StringComparison.OrdinalIgnoreCase);
     }

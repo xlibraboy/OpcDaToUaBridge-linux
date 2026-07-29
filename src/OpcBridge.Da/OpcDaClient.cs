@@ -6,7 +6,7 @@ using OpcBridge.Core;
 
 namespace OpcBridge.Da;
 
-public sealed class OpcDaClient : IDaClient, ISubscribableSourceClient
+public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
 {
     private const int OpcDataSourceDevice = 2;
     private static readonly int ItemStateSize = Marshal.SizeOf<OpcItemState>();
@@ -41,18 +41,18 @@ public sealed class OpcDaClient : IDaClient, ISubscribableSourceClient
     }
 
     [SupportedOSPlatform("windows")]
-    public bool TryGetTagMetadata(string daItemId, out short? canonicalDataType, out int? accessRights)
+    public bool TryGetTagMetadata(string itemId, out short? canonicalDataType, out int? accessRights)
     {
         canonicalDataType = null;
         accessRights = null;
 
-        if (!OperatingSystem.IsWindows() || com_thread_ is null || string.IsNullOrWhiteSpace(daItemId))
+        if (!OperatingSystem.IsWindows() || com_thread_ is null || string.IsNullOrWhiteSpace(itemId))
         {
             return false;
         }
 
         (bool found, short? canonicalType, int? rights) = com_thread_.EnqueueAndWait(
-            () => TryGetTagMetadataOnStaThread(daItemId.Trim()));
+            () => TryGetTagMetadataOnStaThread(itemId.Trim()));
         canonicalDataType = canonicalType;
         accessRights = rights;
         return found;
@@ -243,11 +243,11 @@ public sealed class OpcDaClient : IDaClient, ISubscribableSourceClient
 
         return Task.FromResult(allValues);
     }
-    public Task<bool> WriteAsync(string daItemId, object? value, CancellationToken cancellationToken)
+    public Task<bool> WriteAsync(string itemId, object? value, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (string.IsNullOrWhiteSpace(daItemId) || value is null)
+        if (string.IsNullOrWhiteSpace(itemId) || value is null)
         {
             return Task.FromResult(false);
         }
@@ -259,11 +259,11 @@ public sealed class OpcDaClient : IDaClient, ISubscribableSourceClient
             throw new PlatformNotSupportedException("OPC DA requires Windows.");
         }
 
-        bool success = com_thread_!.EnqueueAndWait(() => WriteOnStaThread(daItemId, value));
+        bool success = com_thread_!.EnqueueAndWait(() => WriteOnStaThread(itemId, value));
         return Task.FromResult(success);
     }
 
-    private bool WriteOnStaThread(string daItemId, object value)
+    private bool WriteOnStaThread(string itemId, object value)
     {
         if (!OperatingSystem.IsWindows())
         {
@@ -277,7 +277,7 @@ public sealed class OpcDaClient : IDaClient, ISubscribableSourceClient
         {
             for (int i = 0; i < group.Bindings.Length; i++)
             {
-                if (string.Equals(group.Bindings[i].DaItemId, daItemId, StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(group.Bindings[i].ItemId, itemId, StringComparison.OrdinalIgnoreCase))
                 {
                     serverHandle = group.Bindings[i].ServerHandle;
                     syncIo = group.SyncIo;
@@ -444,7 +444,7 @@ public sealed class OpcDaClient : IDaClient, ISubscribableSourceClient
             Dictionary<int, string> handleMap = new(group.Bindings.Length);
             for (int i = 0; i < group.Bindings.Length; i++)
             {
-                handleMap[i + 1] = group.Bindings[i].DaItemId;
+                handleMap[i + 1] = group.Bindings[i].ItemId;
             }
 
             Action<IReadOnlyList<BridgeValue>> handler = ValuesReceived ?? (_ => { });
@@ -506,7 +506,7 @@ public sealed class OpcDaClient : IDaClient, ISubscribableSourceClient
 
             for (int i = 0; i < group.Bindings.Length; i++)
             {
-                if (!string.Equals(group.Bindings[i].DaItemId, mappings[i].DaItemId, StringComparison.OrdinalIgnoreCase))
+                if (!string.Equals(group.Bindings[i].ItemId, mappings[i].ItemId, StringComparison.OrdinalIgnoreCase))
                 {
                     throw new InvalidOperationException("OPC DA mappings changed after the client was connected.");
                 }
@@ -522,7 +522,7 @@ public sealed class OpcDaClient : IDaClient, ISubscribableSourceClient
             definitions[i] = new OpcItemDefinition
             {
                 AccessPath = string.Empty,
-                ItemId = mappings[i].DaItemId,
+                ItemId = mappings[i].ItemId,
                 IsActive = 1,
                 ClientHandle = i + 1,
                 RequestedDataType = (short)MapVarType(mappings[i].DataType)
@@ -559,9 +559,9 @@ public sealed class OpcDaClient : IDaClient, ISubscribableSourceClient
                     Marshal.FreeCoTaskMem(result.BlobPointer);
                 }
 
-                ThrowOnFailed(itemErrors[i], $"Failed to add OPC DA item '{mappings[i].DaItemId}'.");
+                ThrowOnFailed(itemErrors[i], $"Failed to add OPC DA item '{mappings[i].ItemId}'.");
 
-                bindings[i] = new ItemBinding(mappings[i].DaItemId, result.ServerHandle);
+                bindings[i] = new ItemBinding(mappings[i].ItemId, result.ServerHandle);
                 cleanupHandles.Add(result.ServerHandle);
             }
 
@@ -630,12 +630,12 @@ public sealed class OpcDaClient : IDaClient, ISubscribableSourceClient
 
                 try
                 {
-                    ThrowOnFailed(itemErrors[i], $"OPC DA item read failed for '{bindings[i].DaItemId}'.");
+                    ThrowOnFailed(itemErrors[i], $"OPC DA item read failed for '{bindings[i].ItemId}'.");
 
                     int quality = (ushort)itemState.Quality;
                     values[i] = new BridgeValue(
                         options_.SourceId,
-                        bindings[i].DaItemId,
+                        bindings[i].ItemId,
                         itemState.Value,
                         FileTimeToUtc(itemState.Timestamp),
                         quality,
@@ -745,7 +745,7 @@ public sealed class OpcDaClient : IDaClient, ISubscribableSourceClient
     }
 
     [SupportedOSPlatform("windows")]
-    private (bool Found, short? CanonicalDataType, int? AccessRights) TryGetTagMetadataOnStaThread(string daItemId)
+    private (bool Found, short? CanonicalDataType, int? AccessRights) TryGetTagMetadataOnStaThread(string itemId)
     {
         EnsureConnected();
 
@@ -767,7 +767,7 @@ public sealed class OpcDaClient : IDaClient, ISubscribableSourceClient
                 out _,
                 ref itemManagementGuid,
                 out groupObject);
-            ThrowOnFailed(addGroupHresult, $"Failed to create OPC DA group for metadata lookup '{daItemId}'.");
+            ThrowOnFailed(addGroupHresult, $"Failed to create OPC DA group for metadata lookup '{itemId}'.");
 
             if (groupObject is not IOPCItemMgt itemManagement)
             {
@@ -779,7 +779,7 @@ public sealed class OpcDaClient : IDaClient, ISubscribableSourceClient
                 new OpcItemDefinition
                 {
                     AccessPath = string.Empty,
-                    ItemId = daItemId,
+                    ItemId = itemId,
                     IsActive = 0,
                     ClientHandle = 1,
                     RequestedDataType = 0
@@ -793,11 +793,11 @@ public sealed class OpcDaClient : IDaClient, ISubscribableSourceClient
             try
             {
                 int addItemsHresult = itemManagement.AddItems(definitions.Length, definitions, out resultsPointer, out errorsPointer);
-                ThrowOnFailed(addItemsHresult, $"Failed to add OPC DA item '{daItemId}' for metadata lookup.");
+                ThrowOnFailed(addItemsHresult, $"Failed to add OPC DA item '{itemId}' for metadata lookup.");
 
                 int[] itemErrors = new int[definitions.Length];
                 Marshal.Copy(errorsPointer, itemErrors, 0, definitions.Length);
-                ThrowOnFailed(itemErrors[0], $"Failed to resolve OPC DA item '{daItemId}' for metadata lookup.");
+                ThrowOnFailed(itemErrors[0], $"Failed to resolve OPC DA item '{itemId}' for metadata lookup.");
 
                 OpcItemResult result = Marshal.PtrToStructure<OpcItemResult>(resultsPointer);
                 if (result.BlobPointer != IntPtr.Zero)
@@ -1020,7 +1020,7 @@ public sealed class OpcDaClient : IDaClient, ISubscribableSourceClient
     }
 
 
-    private sealed record ItemBinding(string DaItemId, int ServerHandle);
+    private sealed record ItemBinding(string ItemId, int ServerHandle);
 
     private sealed class RateGroup
     {

@@ -107,9 +107,9 @@ public sealed class BridgeState
     }
     public void SetValue(BridgeValue value)
     {
-        values_by_key_[NormalizeKey(value.SourceId, value.DaItemId)] = new BridgeValueSnapshot(
+        values_by_key_[NormalizeKey(value.SourceId, value.ItemId)] = new BridgeValueSnapshot(
             value.SourceId,
-            value.DaItemId,
+            value.ItemId,
             value.Value,
             value.TimestampUtc,
             value.DaQuality,
@@ -118,15 +118,15 @@ public sealed class BridgeState
         ValueUpdated?.Invoke(value);
     }
 
-    public void ClearValue(string sourceId, string daItemId)
+    public void ClearValue(string sourceId, string itemId)
     {
-        values_by_key_.TryRemove(NormalizeKey(sourceId, daItemId), out _);
+        values_by_key_.TryRemove(NormalizeKey(sourceId, itemId), out _);
     }
 
     public void RetainMappedValues(IReadOnlyList<TagMapping> mappings)
     {
         HashSet<string> mappedKeys = mappings
-            .Select(mapping => NormalizeKey(mapping.SourceId, mapping.DaItemId))
+            .Select(mapping => NormalizeKey(mapping.SourceId, mapping.ItemId))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         foreach (string key in values_by_key_.Keys)
@@ -214,9 +214,9 @@ public sealed class BridgeState
         for (int i = 0; i < values.Count; i++)
         {
             BridgeValue value = values[i];
-            values_by_key_[NormalizeKey(value.SourceId, value.DaItemId)] = new BridgeValueSnapshot(
+            values_by_key_[NormalizeKey(value.SourceId, value.ItemId)] = new BridgeValueSnapshot(
                 value.SourceId,
-                value.DaItemId,
+                value.ItemId,
                 value.Value,
                 value.TimestampUtc,
                 value.DaQuality,
@@ -312,7 +312,7 @@ public sealed class BridgeState
     {
         return values_by_key_.Values
             .OrderBy(value => value.SourceId, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(value => value.DaItemId, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(value => value.ItemId, StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
 
@@ -409,9 +409,9 @@ public sealed class BridgeState
         return duration.TotalSeconds <= 0 ? 0 : Math.Round(valueCount / duration.TotalSeconds, 1);
     }
 
-    private static string NormalizeKey(string sourceId, string daItemId)
+    private static string NormalizeKey(string sourceId, string itemId)
     {
-        return string.Concat(sourceId.Trim(), "::", daItemId.Trim());
+        return string.Concat(sourceId.Trim(), "::", itemId.Trim());
     }
 }
 
@@ -474,7 +474,7 @@ public sealed record DaSourceStatusSnapshot(
 
 public sealed record BridgeValueSnapshot(
     string SourceId,
-    string DaItemId,
+    string ItemId,
     object? Value,
     DateTime TimestampUtc,
     int DaQuality,

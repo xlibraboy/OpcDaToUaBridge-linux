@@ -6,7 +6,7 @@ namespace OpcBridge.App;
 /// <summary>
 /// A bounded channel that serializes UA→DA writes. UA node write handlers enqueue
 /// a <see cref="WriteRequest"/> (non-blocking); per-source consumers drain the queue
-/// and call <c>IDaClient.WriteAsync</c>, keeping COM work on each source's STA thread.
+/// and call <c>ISourceClient.WriteAsync</c>, keeping COM work on each source's STA thread.
 /// </summary>
 internal sealed class WriteQueue
 {
@@ -51,6 +51,6 @@ internal sealed class WriteQueue
 
 internal sealed record WriteRequest(
     string SourceId,
-    string DaItemId,
+    string ItemId,
     object? Value,
     TaskCompletionSource<bool> Tcs);

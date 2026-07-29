@@ -9,7 +9,7 @@ internal sealed class BridgeNodeManager : CustomNodeManager2
     private const string NamespaceUri = "urn:ohmypi:opc-da-to-ua-bridge:tags";
     private readonly IReadOnlyList<TagMapping> mappings_;
     private readonly Dictionary<string, BaseDataVariableState> variables_by_mapping_key_ = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<NodeId, (string SourceId, string DaItemId)> node_to_mapping_ = new();
+    private readonly Dictionary<NodeId, (string SourceId, string ItemId)> node_to_mapping_ = new();
     private Action<BridgeValue, TaskCompletionSource<bool>>? write_handler_;
     private FolderState? root_folder_;
     private ushort namespace_index_;
@@ -52,8 +52,8 @@ internal sealed class BridgeNodeManager : CustomNodeManager2
             {
                 TagMapping mapping = mappings_[i];
                 BaseDataVariableState variable = CreateVariable(root, mapping);
-                variables_by_mapping_key_[GetMappingKey(mapping.SourceId, mapping.DaItemId)] = variable;
-                node_to_mapping_[variable.NodeId] = (mapping.SourceId, mapping.DaItemId);
+                variables_by_mapping_key_[GetMappingKey(mapping.SourceId, mapping.ItemId)] = variable;
+                node_to_mapping_[variable.NodeId] = (mapping.SourceId, mapping.ItemId);
                 AddPredefinedNode(SystemContext, variable);
             }
         }
@@ -63,7 +63,7 @@ internal sealed class BridgeNodeManager : CustomNodeManager2
     {
         lock (Lock)
         {
-            string key = GetMappingKey(mapping.SourceId, mapping.DaItemId);
+            string key = GetMappingKey(mapping.SourceId, mapping.ItemId);
             if (root_folder_ is null || variables_by_mapping_key_.ContainsKey(key))
             {
                 return;
@@ -71,16 +71,16 @@ internal sealed class BridgeNodeManager : CustomNodeManager2
 
             BaseDataVariableState variable = CreateVariable(root_folder_, mapping);
             variables_by_mapping_key_[key] = variable;
-            node_to_mapping_[variable.NodeId] = (mapping.SourceId, mapping.DaItemId);
+            node_to_mapping_[variable.NodeId] = (mapping.SourceId, mapping.ItemId);
             AddPredefinedNode(SystemContext, variable);
         }
     }
 
-    public void RemoveMapping(string sourceId, string daItemId)
+    public void RemoveMapping(string sourceId, string itemId)
     {
         lock (Lock)
         {
-            string key = GetMappingKey(sourceId, daItemId);
+            string key = GetMappingKey(sourceId, itemId);
             if (!variables_by_mapping_key_.TryGetValue(key, out BaseDataVariableState? variable))
             {
                 return;
@@ -120,7 +120,7 @@ internal sealed class BridgeNodeManager : CustomNodeManager2
     {
         lock (Lock)
         {
-            if (!variables_by_mapping_key_.TryGetValue(GetMappingKey(value.SourceId, value.DaItemId), out BaseDataVariableState? variable))
+            if (!variables_by_mapping_key_.TryGetValue(GetMappingKey(value.SourceId, value.ItemId), out BaseDataVariableState? variable))
             {
                 return;
             }
@@ -194,9 +194,9 @@ internal sealed class BridgeNodeManager : CustomNodeManager2
             BrowseName = new QualifiedName(mapping.DisplayName, namespace_index_),
             DisplayName = new LocalizedText(mapping.DisplayName),
             Description = new LocalizedText(
-                string.IsNullOrEmpty(mapping.ProviderSourceId) || string.IsNullOrEmpty(mapping.ProviderDaItemId)
-                    ? $"{mapping.SourceId}:{mapping.DaItemId}"
-                    : $"{mapping.SourceId}:{mapping.DaItemId} | fed by {mapping.ProviderSourceId}:{mapping.ProviderDaItemId}"),
+                string.IsNullOrEmpty(mapping.ProviderSourceId) || string.IsNullOrEmpty(mapping.ProviderItemId)
+                    ? $"{mapping.SourceId}:{mapping.ItemId}"
+                    : $"{mapping.SourceId}:{mapping.ItemId} | fed by {mapping.ProviderSourceId}:{mapping.ProviderItemId}"),
             WriteMask = writeMask,
             UserWriteMask = writeMask,
             DataType = dataType,
@@ -227,13 +227,13 @@ internal sealed class BridgeNodeManager : CustomNodeManager2
         ref StatusCode statusCode,
         ref DateTime timestamp)
     {
-        if (write_handler_ is null || !node_to_mapping_.TryGetValue(node.NodeId, out (string SourceId, string DaItemId) mapping))
+        if (write_handler_ is null || !node_to_mapping_.TryGetValue(node.NodeId, out (string SourceId, string ItemId) mapping))
         {
             return StatusCodes.BadWriteNotSupported;
         }
 
         TaskCompletionSource<bool> tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        BridgeValue bridgeValue = new(mapping.SourceId, mapping.DaItemId, value, DateTime.UtcNow, 192, true);
+        BridgeValue bridgeValue = new(mapping.SourceId, mapping.ItemId, value, DateTime.UtcNow, 192, true);
         write_handler_(bridgeValue, tcs);
 
         if (!tcs.Task.Wait(TimeSpan.FromSeconds(5)))
@@ -251,9 +251,9 @@ internal sealed class BridgeNodeManager : CustomNodeManager2
     }
 
 
-    private static string GetMappingKey(string sourceId, string daItemId)
+    private static string GetMappingKey(string sourceId, string itemId)
     {
-        return string.Concat(sourceId.Trim(), "::", daItemId.Trim());
+        return string.Concat(sourceId.Trim(), "::", itemId.Trim());
     }
 
     private static string ToNodeIdentifier(TagMapping mapping)
@@ -261,7 +261,7 @@ internal sealed class BridgeNodeManager : CustomNodeManager2
         string nodeId = mapping.UaNodeId.Trim();
         if (nodeId.Length == 0)
         {
-            return $"{mapping.SourceId}/{mapping.DaItemId}";
+            return $"{mapping.SourceId}/{mapping.ItemId}";
         }
 
         int stringMarker = nodeId.IndexOf(";s=", StringComparison.OrdinalIgnoreCase);

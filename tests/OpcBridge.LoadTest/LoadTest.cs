@@ -15,7 +15,7 @@ public class LoadTest
             mappings.Add(new TagMapping
             {
                 SourceId = sourceId,
-                DaItemId = $"Sim.Tag.{i}",
+                ItemId = $"Sim.Tag.{i}",
                 DisplayName = $"Tag {i}",
                 DataType = "Double",
                 Enabled = true,
@@ -100,7 +100,7 @@ public class LoadTest
             {
                 await foreach (WriteRequest req in queue.ReaderAsync(cts.Token))
                 {
-                    bool ok = await client.WriteAsync(req.DaItemId, req.Value, cts.Token);
+                    bool ok = await client.WriteAsync(req.ItemId, req.Value, cts.Token);
                     req.Tcs.TrySetResult(ok);
                 }
             }

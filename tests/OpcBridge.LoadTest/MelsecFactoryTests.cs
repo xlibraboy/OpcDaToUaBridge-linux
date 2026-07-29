@@ -32,36 +32,36 @@ public sealed class MelsecFactoryTests
     [Fact]
     public void Create_MelsecA3n_ReturnsMelsecA3nClient()
     {
-        var factory = new DaClientFactory();
+        var factory = new SourceClientFactory();
         DaSourceRuntimeSettings source = MelsecSource();
-        IDaClient client = factory.Create(Snapshot(source), source);
+        ISourceClient client = factory.Create(Snapshot(source), source);
         Assert.IsType<MelsecA3nClient>(client);
     }
 
     [Fact]
     public void Create_OpcDa_ReturnsOpcDaClient()
     {
-        var factory = new DaClientFactory();
+        var factory = new SourceClientFactory();
         DaSourceRuntimeSettings source = OpcDaSource();
-        IDaClient client = factory.Create(Snapshot(source), source);
+        ISourceClient client = factory.Create(Snapshot(source), source);
         Assert.IsType<OpcDaClient>(client);
     }
 
     [Fact]
     public void Create_MelsecA3n_SourceTypeIsCaseInsensitive()
     {
-        var factory = new DaClientFactory();
+        var factory = new SourceClientFactory();
         DaSourceRuntimeSettings source = MelsecSource();
         // Lowercase SourceType still routes to MelsecA3nClient.
         source = source with { SourceType = "melseca3n" };
-        IDaClient client = factory.Create(Snapshot(source), source);
+        ISourceClient client = factory.Create(Snapshot(source), source);
         Assert.IsType<MelsecA3nClient>(client);
     }
 
     [Fact]
     public void Create_MelsecA3n_PropagatesSerialPortAndSourceId()
     {
-        var factory = new DaClientFactory();
+        var factory = new SourceClientFactory();
         DaSourceRuntimeSettings source = MelsecSource(sourceId: "plc1", serialPort: "/dev/ttyS3");
         var melsec = Assert.IsType<MelsecA3nClient>(factory.Create(Snapshot(source), source));
         // SourceId is observable via connect failure path; assert via reflection on the

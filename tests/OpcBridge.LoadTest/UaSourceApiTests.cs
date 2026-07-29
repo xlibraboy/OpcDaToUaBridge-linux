@@ -229,8 +229,8 @@ public sealed class UaSourceApiTests
             {
                 tags = new[]
                 {
-                    new { sourceId = "kep", daItemId = "ns=2;s=A", displayName = "A", dataType = "Auto", uaNodeId = "" },
-                    new { sourceId = "kep", daItemId = "ns=2;s=B", displayName = "B", dataType = "Auto", uaNodeId = "" }
+                    new { sourceId = "kep", itemId = "ns=2;s=A", displayName = "A", dataType = "Auto", uaNodeId = "" },
+                    new { sourceId = "kep", itemId = "ns=2;s=B", displayName = "B", dataType = "Auto", uaNodeId = "" }
                 }
             }));
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
@@ -241,7 +241,7 @@ public sealed class UaSourceApiTests
             {
                 tags = new[]
                 {
-                    new { sourceId = "kep", daItemId = "ns=2;s=C", displayName = "C", dataType = "Auto", uaNodeId = "" }
+                    new { sourceId = "kep", itemId = "ns=2;s=C", displayName = "C", dataType = "Auto", uaNodeId = "" }
                 }
             }));
         Assert.Equal(HttpStatusCode.BadRequest, second.StatusCode);
@@ -275,8 +275,8 @@ public sealed class UaSourceApiTests
             {
                 tags = new[]
                 {
-                    new { sourceId = "kep", daItemId = "ns=2;s=A", displayName = "A" },
-                    new { sourceId = "kep", daItemId = "ns=2;s=B", displayName = "B" }
+                    new { sourceId = "kep", itemId = "ns=2;s=A", displayName = "A" },
+                    new { sourceId = "kep", itemId = "ns=2;s=B", displayName = "B" }
                 }
             }));
         Assert.Equal(HttpStatusCode.BadRequest, bulk.StatusCode);

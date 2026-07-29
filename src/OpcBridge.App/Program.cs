@@ -31,7 +31,7 @@ builder.Logging.Services.AddSingleton<ILoggerProvider, DashboardLogProvider>();
 
 
 builder.Services.AddSingleton<DaRuntimeSettings>();
-builder.Services.AddSingleton<DaClientFactory>();
+builder.Services.AddSingleton<SourceClientFactory>();
 builder.Services.AddSingleton<BridgeState>();
 builder.Services.AddSingleton<MappingStore>();
 builder.Services.AddSingleton<DaLinkStore>();
@@ -75,24 +75,24 @@ app.MapPost("/api/hmi/write", async (HmiWriteRequest request, BridgeWorker worke
 {
     (bool ok, string? error) = await worker.TryHmiWriteAsync(
         request.SourceId ?? string.Empty,
-        request.DaItemId ?? string.Empty,
+        request.ItemId ?? string.Empty,
         request.Value,
         ct).ConfigureAwait(false);
     return Results.Json(new HmiWriteResponse { Ok = ok, Error = error });
 });
 app.MapGet("/api/hmi/trends", async (
     string? sourceId,
-    string? daItemId,
+    string? itemId,
     DateTime? from,
     DateTime? to,
     int? maxPoints,
     IInfluxTrendQuery trends,
     CancellationToken ct) =>
 {
-    if (string.IsNullOrWhiteSpace(sourceId) || string.IsNullOrWhiteSpace(daItemId))
+    if (string.IsNullOrWhiteSpace(sourceId) || string.IsNullOrWhiteSpace(itemId))
     {
         return Results.Json(
-            new { error = "sourceId and daItemId are required" },
+            new { error = "sourceId and itemId are required" },
             statusCode: StatusCodes.Status400BadRequest);
     }
 
@@ -111,7 +111,7 @@ app.MapGet("/api/hmi/trends", async (
 
     HmiTrendResponse response = await trends.QueryAsync(
         sourceId.Trim(),
-        daItemId.Trim(),
+        itemId.Trim(),
         fromUtc,
         toUtc,
         limit,
@@ -491,7 +491,7 @@ app.MapPost("/api/mappings/add", (MappingAddRequest request, MappingStore store,
         return Results.BadRequest(new { error = "At least one mapping is required." });
     }
 
-    if (request.Tags.Any(tag => string.IsNullOrWhiteSpace(tag.SourceId) || string.IsNullOrWhiteSpace(tag.DaItemId)))
+    if (request.Tags.Any(tag => string.IsNullOrWhiteSpace(tag.SourceId) || string.IsNullOrWhiteSpace(tag.ItemId)))
     {
         return Results.BadRequest(new { error = "Source ID and DA Item ID are required for every mapping." });
     }
@@ -524,7 +524,7 @@ app.MapPost("/api/mappings/bulk-add", (MappingAddRequest request, MappingStore s
             mapping.SourceId = string.IsNullOrWhiteSpace(tag.SourceId) ? "default" : tag.SourceId;
             return mapping;
         })
-        .Where(tag => !string.IsNullOrWhiteSpace(tag.DaItemId))
+        .Where(tag => !string.IsNullOrWhiteSpace(tag.ItemId))
         .ToList();
 
     if (ValidateMelsecMappings(tags, settings, store, out string mappingError))
@@ -542,7 +542,7 @@ app.MapPost("/api/mappings/bulk-add", (MappingAddRequest request, MappingStore s
 });
 app.MapPost("/api/mappings/update", (MappingUpdateRequest request, MappingStore store, DaRuntimeSettings daSettings) =>
 {
-    if (string.IsNullOrWhiteSpace(request.Tag.SourceId) || string.IsNullOrWhiteSpace(request.Tag.DaItemId))
+    if (string.IsNullOrWhiteSpace(request.Tag.SourceId) || string.IsNullOrWhiteSpace(request.Tag.ItemId))
     {
         return Results.BadRequest(new { error = "Source ID and DA Item ID are required." });
     }
@@ -552,11 +552,11 @@ app.MapPost("/api/mappings/update", (MappingUpdateRequest request, MappingStore 
     DaSourceRuntimeSettings? source = daSettings.GetSnapshot().GetSource(tag.SourceId);
     if (source is not null && string.Equals(source.SourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase))
     {
-        if (!MelsecAddressParser.TryParse(tag.DaItemId, out MelsecAddress address, out string addrError))
+        if (!MelsecAddressParser.TryParse(tag.ItemId, out MelsecAddress address, out string addrError))
         {
-            return Results.BadRequest(new { error = $"Invalid Melsec address '{tag.DaItemId}': {addrError}" });
+            return Results.BadRequest(new { error = $"Invalid Melsec address '{tag.ItemId}': {addrError}" });
         }
-        tag.DaItemId = address.Canonical;
+        tag.ItemId = address.Canonical;
     }
 
     if (!store.TryUpdate(tag, out long version))
@@ -568,12 +568,12 @@ app.MapPost("/api/mappings/update", (MappingUpdateRequest request, MappingStore 
 });
 app.MapPost("/api/mappings/remove", (MappingRemoveRequest request, MappingStore store) =>
 {
-    if (string.IsNullOrWhiteSpace(request.SourceId) || string.IsNullOrWhiteSpace(request.DaItemId))
+    if (string.IsNullOrWhiteSpace(request.SourceId) || string.IsNullOrWhiteSpace(request.ItemId))
     {
         return Results.BadRequest(new { error = "Source ID and DA Item ID are required." });
     }
 
-    long version = store.Remove(request.SourceId, request.DaItemId);
+    long version = store.Remove(request.SourceId, request.ItemId);
     return Results.Json(new { version });
 });
 
@@ -697,7 +697,8 @@ app.MapPost("/api/config/import", async (HttpContext context, DaRuntimeSettings 
                 tags.Add(new TagMapping
                 {
                     SourceId = m.TryGetProperty("sourceId", out JsonElement sid) ? sid.GetString() ?? "default" : "default",
-                    DaItemId = m.TryGetProperty("daItemId", out JsonElement di) ? di.GetString() ?? string.Empty : string.Empty,
+                    ItemId = m.TryGetProperty("daItemId", out JsonElement di) ? di.GetString() ?? string.Empty
+                        : m.TryGetProperty("itemId", out di) ? di.GetString() ?? string.Empty : string.Empty,
                     DisplayName = m.TryGetProperty("displayName", out JsonElement dn) ? dn.GetString() ?? string.Empty : string.Empty,
                     DataType = m.TryGetProperty("dataType", out JsonElement dt) ? dt.GetString() ?? "Auto" : "Auto",
                     UaNodeId = m.TryGetProperty("uaNodeId", out JsonElement un) ? un.GetString() ?? string.Empty : string.Empty,
@@ -1565,7 +1566,7 @@ static string? TryGetMaxMappedTagsError(
         string sourceId = string.IsNullOrWhiteSpace(tag.SourceId)
             ? DaRuntimeSettings.DefaultSourceId
             : tag.SourceId.Trim();
-        string itemId = tag.DaItemId?.Trim() ?? string.Empty;
+        string itemId = tag.ItemId?.Trim() ?? string.Empty;
         if (itemId.Length == 0)
         {
             continue;
@@ -1594,9 +1595,9 @@ static string? TryGetMaxMappedTagsError(
         {
             TagMapping mapping = existing[i];
             if (string.Equals(mapping.SourceId, sourceId, StringComparison.OrdinalIgnoreCase)
-                && !string.IsNullOrWhiteSpace(mapping.DaItemId))
+                && !string.IsNullOrWhiteSpace(mapping.ItemId))
             {
-                existingItems.Add(mapping.DaItemId);
+                existingItems.Add(mapping.ItemId);
             }
         }
 
@@ -1724,7 +1725,7 @@ static MelsecA3nClientOptions? ResolveMelsecTestOptions(MelsecTestConnectionRequ
 static TagMapping ToTagMapping(MappingTagDto tag) => new()
 {
     SourceId = tag.SourceId,
-    DaItemId = tag.DaItemId,
+    ItemId = tag.ItemId,
     DisplayName = tag.DisplayName ?? string.Empty,
     Description = tag.Description,
     DataType = tag.DataType ?? "Auto",
@@ -1746,7 +1747,7 @@ static bool ValidateMelsecMappings(List<TagMapping> tags, DaRuntimeSettings daSe
     error = string.Empty;
     DaRuntimeSettingsSnapshot snapshot = daSettings.GetSnapshot();
 
-    // Validate + canonicalize DaItemId for every MelsecA3n-bound tag.
+    // Validate + canonicalize ItemId for every MelsecA3n-bound tag.
     for (int i = 0; i < tags.Count; i++)
     {
         TagMapping tag = tags[i];
@@ -1756,19 +1757,19 @@ static bool ValidateMelsecMappings(List<TagMapping> tags, DaRuntimeSettings daSe
             continue;
         }
 
-        if (!MelsecAddressParser.TryParse(tag.DaItemId, out MelsecAddress address, out string addrError))
+        if (!MelsecAddressParser.TryParse(tag.ItemId, out MelsecAddress address, out string addrError))
         {
-            error = $"Invalid Melsec address '{tag.DaItemId}': {addrError}";
+            error = $"Invalid Melsec address '{tag.ItemId}': {addrError}";
             return true;
         }
 
-        tag.DaItemId = address.Canonical;
+        tag.ItemId = address.Canonical;
         tags[i] = tag;
     }
 
     // Enforce MaxMappedTags per MelsecA3n source (existing + new, de-duplicated by key).
     Dictionary<string, int> newPerSource = new(StringComparer.OrdinalIgnoreCase);
-    HashSet<(string SourceId, string DaItemId)> newKeys = new(StringTupleComparerIgnoreCase.Instance);
+    HashSet<(string SourceId, string ItemId)> newKeys = new(StringTupleComparerIgnoreCase.Instance);
     foreach (TagMapping tag in tags)
     {
         DaSourceRuntimeSettings? source = snapshot.GetSource(tag.SourceId);
@@ -1777,7 +1778,7 @@ static bool ValidateMelsecMappings(List<TagMapping> tags, DaRuntimeSettings daSe
             continue;
         }
 
-        if (!newKeys.Add((tag.SourceId, tag.DaItemId)))
+        if (!newKeys.Add((tag.SourceId, tag.ItemId)))
         {
             continue;
         }
@@ -1805,16 +1806,16 @@ static bool ValidateMelsecMappings(List<TagMapping> tags, DaRuntimeSettings daSe
     return false;
 }
 
-internal sealed class StringTupleComparerIgnoreCase : IEqualityComparer<(string SourceId, string DaItemId)>
+internal sealed class StringTupleComparerIgnoreCase : IEqualityComparer<(string SourceId, string ItemId)>
 {
     public static StringTupleComparerIgnoreCase Instance { get; } = new();
-    public bool Equals((string SourceId, string DaItemId) x, (string SourceId, string DaItemId) y) =>
+    public bool Equals((string SourceId, string ItemId) x, (string SourceId, string ItemId) y) =>
         string.Equals(x.SourceId, y.SourceId, StringComparison.OrdinalIgnoreCase)
-        && string.Equals(x.DaItemId, y.DaItemId, StringComparison.OrdinalIgnoreCase);
-    public int GetHashCode((string SourceId, string DaItemId) value) =>
+        && string.Equals(x.ItemId, y.ItemId, StringComparison.OrdinalIgnoreCase);
+    public int GetHashCode((string SourceId, string ItemId) value) =>
         HashCode.Combine(
             StringComparer.OrdinalIgnoreCase.GetHashCode(value.SourceId),
-            StringComparer.OrdinalIgnoreCase.GetHashCode(value.DaItemId));
+            StringComparer.OrdinalIgnoreCase.GetHashCode(value.ItemId));
 }
 
 record MqttConfigRequest(

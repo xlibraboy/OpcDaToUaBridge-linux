@@ -6,7 +6,7 @@ namespace OpcBridge.Mqtt;
 
 public static class MqttPayload
 {
-    public static string BuildTopic(MqttBrokerOptions options, string sourceId, string daItemId, string? overrideTopic)
+    public static string BuildTopic(MqttBrokerOptions options, string sourceId, string itemId, string? overrideTopic)
     {
         if (!string.IsNullOrWhiteSpace(overrideTopic))
         {
@@ -14,7 +14,7 @@ public static class MqttPayload
         }
 
         string prefix = string.IsNullOrWhiteSpace(options.TopicPrefix) ? "bridge/tags" : options.TopicPrefix.Trim().Trim('/');
-        return $"{prefix}/{sourceId.Trim()}/{daItemId.Trim()}";
+        return $"{prefix}/{sourceId.Trim()}/{itemId.Trim()}";
     }
 
     public static string Serialize(BridgeValue value, MqttPayloadField fields, string? displayName = null)
@@ -43,7 +43,7 @@ public static class MqttPayload
 
         if (fields.HasFlag(MqttPayloadField.ItemId))
         {
-            obj["itemId"] = value.DaItemId;
+            obj["itemId"] = value.ItemId;
         }
 
         if (fields.HasFlag(MqttPayloadField.DisplayName))

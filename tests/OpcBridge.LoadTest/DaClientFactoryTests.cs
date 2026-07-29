@@ -11,7 +11,7 @@ public sealed class DaClientFactoryTests
     [Fact]
     public void Create_OpcUa_ReturnsOpcUaSourceClient()
     {
-        var factory = new DaClientFactory();
+        var factory = new SourceClientFactory();
         var source = new DaSourceRuntimeSettings(
             SourceId: "kep",
             DisplayName: "Kepware",
@@ -31,7 +31,7 @@ public sealed class DaClientFactoryTests
             Melsec: null);
         var snapshot = new DaRuntimeSettingsSnapshot(1000, true, new[] { source }, 1);
 
-        IDaClient client = factory.Create(snapshot, source);
+        ISourceClient client = factory.Create(snapshot, source);
 
         Assert.IsType<OpcUaSourceClient>(client);
     }
@@ -39,7 +39,7 @@ public sealed class DaClientFactoryTests
     [Fact]
     public void Create_OpcDa_ReturnsOpcDaClient()
     {
-        var factory = new DaClientFactory();
+        var factory = new SourceClientFactory();
         var source = new DaSourceRuntimeSettings(
             SourceId: "line1",
             DisplayName: "Line 1",
@@ -57,7 +57,7 @@ public sealed class DaClientFactoryTests
             Melsec: null);
         var snapshot = new DaRuntimeSettingsSnapshot(1000, true, new[] { source }, 1);
 
-        IDaClient client = factory.Create(snapshot, source);
+        ISourceClient client = factory.Create(snapshot, source);
 
         Assert.IsType<OpcDaClient>(client);
     }

@@ -9,7 +9,7 @@ using OpcBridge.Da;
 
 namespace OpcBridge.Ua;
 
-public sealed class OpcUaSourceClient : IDaClient, ISubscribableSourceClient
+public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
 {
     private const int ReadChunkSize = 500;
     private const int MonitoredItemBatchSize = 750;
@@ -190,16 +190,16 @@ public sealed class OpcUaSourceClient : IDaClient, ISubscribableSourceClient
             for (int i = 0; i < count; i++)
             {
                 TagMapping mapping = mappings[offset + i];
-                if (string.IsNullOrWhiteSpace(mapping.DaItemId))
+                if (string.IsNullOrWhiteSpace(mapping.ItemId))
                 {
                     continue;
                 }
 
-                if (!NodeId.TryParse(mapping.DaItemId.Trim(), out NodeId? nodeId) || nodeId is null)
+                if (!NodeId.TryParse(mapping.ItemId.Trim(), out NodeId? nodeId) || nodeId is null)
                 {
                     results.Add(new BridgeValue(
                         options_.SourceId,
-                        mapping.DaItemId,
+                        mapping.ItemId,
                         null,
                         DateTime.UtcNow,
                         0x00,
@@ -236,24 +236,24 @@ public sealed class OpcUaSourceClient : IDaClient, ISubscribableSourceClient
                     ? values[i]
                     : new DataValue(StatusCodes.BadUnexpectedError);
 
-                results.Add(ToBridgeValue(mapping.DaItemId, dataValue));
+                results.Add(ToBridgeValue(mapping.ItemId, dataValue));
             }
         }
 
         return results;
     }
 
-    public async Task<bool> WriteAsync(string daItemId, object? value, CancellationToken cancellationToken)
+    public async Task<bool> WriteAsync(string itemId, object? value, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (string.IsNullOrWhiteSpace(daItemId))
+        if (string.IsNullOrWhiteSpace(itemId))
         {
             return false;
         }
 
         Session session = GetConnectedSession();
-        if (!NodeId.TryParse(daItemId.Trim(), out NodeId? nodeId) || nodeId is null)
+        if (!NodeId.TryParse(itemId.Trim(), out NodeId? nodeId) || nodeId is null)
         {
             return false;
         }
@@ -285,12 +285,12 @@ public sealed class OpcUaSourceClient : IDaClient, ISubscribableSourceClient
         return StatusCode.IsGood(response.Results[0]);
     }
 
-    public bool TryGetTagMetadata(string daItemId, out short? canonicalDataType, out int? accessRights)
+    public bool TryGetTagMetadata(string itemId, out short? canonicalDataType, out int? accessRights)
     {
         canonicalDataType = null;
         accessRights = null;
 
-        if (string.IsNullOrWhiteSpace(daItemId))
+        if (string.IsNullOrWhiteSpace(itemId))
         {
             return false;
         }
@@ -305,7 +305,7 @@ public sealed class OpcUaSourceClient : IDaClient, ISubscribableSourceClient
             }
         }
 
-        if (!NodeId.TryParse(daItemId.Trim(), out NodeId? nodeId) || nodeId is null)
+        if (!NodeId.TryParse(itemId.Trim(), out NodeId? nodeId) || nodeId is null)
         {
             return false;
         }
@@ -368,7 +368,7 @@ public sealed class OpcUaSourceClient : IDaClient, ISubscribableSourceClient
         }
         catch (Exception ex)
         {
-            logger_.LogDebug(ex, "TryGetTagMetadata failed for {NodeId}", daItemId);
+            logger_.LogDebug(ex, "TryGetTagMetadata failed for {NodeId}", itemId);
             return false;
         }
     }
@@ -611,7 +611,7 @@ public sealed class OpcUaSourceClient : IDaClient, ISubscribableSourceClient
                 continue;
             }
 
-            if (string.IsNullOrWhiteSpace(mapping.DaItemId))
+            if (string.IsNullOrWhiteSpace(mapping.ItemId))
             {
                 continue;
             }
@@ -622,7 +622,7 @@ public sealed class OpcUaSourceClient : IDaClient, ISubscribableSourceClient
                 continue;
             }
 
-            string nodeId = mapping.DaItemId.Trim();
+            string nodeId = mapping.ItemId.Trim();
             int sampling = mapping.PollRateMs > 0 ? mapping.PollRateMs : defaultSampling;
             if (sampling < 0)
             {
@@ -860,14 +860,14 @@ public sealed class OpcUaSourceClient : IDaClient, ISubscribableSourceClient
         {
             MonitoredItemNotification change = notification.MonitoredItems[i];
             MonitoredItem? item = subscription.FindItemByClientHandle(change.ClientHandle);
-            string? daItemId = ResolveMonitoredItemId(item);
-            if (daItemId is null)
+            string? itemId = ResolveMonitoredItemId(item);
+            if (itemId is null)
             {
                 continue;
             }
 
             DataValue dataValue = change.Value ?? new DataValue(StatusCodes.BadNoData);
-            batch.Add(ToBridgeValue(daItemId, dataValue));
+            batch.Add(ToBridgeValue(itemId, dataValue));
 
             if (batch.Count >= NotificationFlushSize)
             {
@@ -890,14 +890,14 @@ public sealed class OpcUaSourceClient : IDaClient, ISubscribableSourceClient
             return;
         }
 
-        string? daItemId = ResolveMonitoredItemId(item);
-        if (daItemId is null || e.NotificationValue is not MonitoredItemNotification change)
+        string? itemId = ResolveMonitoredItemId(item);
+        if (itemId is null || e.NotificationValue is not MonitoredItemNotification change)
         {
             return;
         }
 
         DataValue dataValue = change.Value ?? new DataValue(StatusCodes.BadNoData);
-        RaiseValuesReceived(new List<BridgeValue>(1) { ToBridgeValue(daItemId, dataValue) });
+        RaiseValuesReceived(new List<BridgeValue>(1) { ToBridgeValue(itemId, dataValue) });
     }
 
     private string? ResolveMonitoredItemId(MonitoredItem? item)
@@ -1002,11 +1002,11 @@ public sealed class OpcUaSourceClient : IDaClient, ISubscribableSourceClient
         }
     }
 
-    private BridgeValue ToBridgeValue(string daItemId, DataValue dataValue)
+    private BridgeValue ToBridgeValue(string itemId, DataValue dataValue)
     {
         (int daQuality, bool isGood) = UaQualityMapper.FromStatusCode(dataValue.StatusCode.Code);
         DateTime timestamp = ResolveTimestamp(dataValue);
-        return new BridgeValue(options_.SourceId, daItemId, dataValue.Value, timestamp, daQuality, isGood);
+        return new BridgeValue(options_.SourceId, itemId, dataValue.Value, timestamp, daQuality, isGood);
     }
 
     private static DateTime ResolveTimestamp(DataValue dataValue)

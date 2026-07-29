@@ -3,7 +3,7 @@ namespace OpcBridge.Client;
 public sealed class HmiTagDto
 {
     public string SourceId { get; set; } = string.Empty;
-    public string DaItemId { get; set; } = string.Empty;
+    public string ItemId { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
     public string DataType { get; set; } = "Double";
     public object? Value { get; set; }

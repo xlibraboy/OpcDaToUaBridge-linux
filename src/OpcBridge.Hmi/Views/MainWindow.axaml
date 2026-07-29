@@ -78,7 +78,7 @@
         <StackPanel Spacing="8">
           <TextBlock FontSize="16" FontWeight="SemiBold" Text="Faceplate" />
           <TextBlock Text="{Binding SelectedTag.DisplayName, StringFormat=Name: {0}}" />
-          <TextBlock Text="{Binding SelectedTag.DaItemId, StringFormat=Item: {0}}" />
+          <TextBlock Text="{Binding SelectedTag.ItemId, StringFormat=Item: {0}}" />
           <TextBlock Text="{Binding SelectedTag.DataType, StringFormat=Type: {0}}" />
           <TextBlock Text="{Binding SelectedTag.ValueText, StringFormat=Value: {0}}" />
           <TextBlock Text="{Binding SelectedTag.QualityText, StringFormat=Quality: {0}}" />

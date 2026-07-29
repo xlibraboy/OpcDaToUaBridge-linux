@@ -124,9 +124,9 @@ public sealed class InfluxWriter : IInfluxWriter
         {
             logger_.LogWarning(
                 ex,
-                "Influx write failed for source={SourceId} item={DaItemId}",
+                "Influx write failed for source={SourceId} item={ItemId}",
                 value.SourceId,
-                value.DaItemId);
+                value.ItemId);
             throw;
         }
     }

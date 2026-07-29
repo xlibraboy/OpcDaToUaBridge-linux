@@ -22,7 +22,7 @@ public sealed class HmiApiTests
                     new
                     {
                         SourceId = "default",
-                        DaItemId = "Random.Int1",
+                        ItemId = "Random.Int1",
                         DisplayName = "Int1",
                         DataType = "Int32",
                         UaNodeId = "",
@@ -34,7 +34,7 @@ public sealed class HmiApiTests
                     new
                     {
                         SourceId = "default",
-                        DaItemId = "Random.Real4",
+                        ItemId = "Random.Real4",
                         DisplayName = "Real4",
                         DataType = "Float",
                         UaNodeId = "",
@@ -46,7 +46,7 @@ public sealed class HmiApiTests
                     new
                     {
                         SourceId = "default",
-                        DaItemId = "Disabled.Tag",
+                        ItemId = "Disabled.Tag",
                         DisplayName = "Disabled",
                         DataType = "Int32",
                         UaNodeId = "",
@@ -79,12 +79,12 @@ public sealed class HmiApiTests
         var list = tags.EnumerateArray().ToList();
         Assert.Equal(2, list.Count); // disabled excluded
 
-        var int1 = list.Single(t => t.GetProperty("daItemId").GetString() == "Random.Int1");
+        var int1 = list.Single(t => t.GetProperty("itemId").GetString() == "Random.Int1");
         Assert.Equal("default", int1.GetProperty("sourceId").GetString());
         Assert.Equal("Int1", int1.GetProperty("displayName").GetString());
         Assert.True(int1.GetProperty("writeable").GetBoolean());
 
-        var real4 = list.Single(t => t.GetProperty("daItemId").GetString() == "Random.Real4");
+        var real4 = list.Single(t => t.GetProperty("itemId").GetString() == "Random.Real4");
         Assert.False(real4.GetProperty("writeable").GetBoolean());
     }
 
@@ -94,7 +94,7 @@ public sealed class HmiApiTests
         await using var handle = await TestAppHandle.StartAsync(dir => WriteAppsettings(dir));
 
         using var content = new StringContent(
-            """{"sourceId":"default","daItemId":"Random.Real4","value":1.5}""",
+            """{"sourceId":"default","itemId":"Random.Real4","value":1.5}""",
             System.Text.Encoding.UTF8,
             "application/json");
         using HttpResponseMessage response = await handle.Client.PostAsync("/api/hmi/write", content);
@@ -110,7 +110,7 @@ public sealed class HmiApiTests
         await using var handle = await TestAppHandle.StartAsync(dir => WriteAppsettings(dir));
 
         using var content = new StringContent(
-            """{"sourceId":"default","daItemId":"Does.Not.Exist","value":1}""",
+            """{"sourceId":"default","itemId":"Does.Not.Exist","value":1}""",
             System.Text.Encoding.UTF8,
             "application/json");
         using HttpResponseMessage response = await handle.Client.PostAsync("/api/hmi/write", content);
@@ -125,7 +125,7 @@ public sealed class HmiApiTests
         await using var handle = await TestAppHandle.StartAsync(dir => WriteAppsettings(dir));
 
         using var content = new StringContent(
-            """{"sourceId":"default","daItemId":"Disabled.Tag","value":1}""",
+            """{"sourceId":"default","itemId":"Disabled.Tag","value":1}""",
             System.Text.Encoding.UTF8,
             "application/json");
         using HttpResponseMessage response = await handle.Client.PostAsync("/api/hmi/write", content);

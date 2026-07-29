@@ -30,7 +30,7 @@ public sealed class MelsecA3nClientTests
                 new TagMapping
                 {
                     SourceId = "a3n",
-                    DaItemId = "D100",
+                    ItemId = "D100",
                     Enabled = true,
                     Mode = TagMode.Source
                 }
@@ -40,7 +40,7 @@ public sealed class MelsecA3nClientTests
         Assert.Single(values);
         Assert.True(values[0].IsGood);
         Assert.Equal(0xC0, values[0].DaQuality);
-        Assert.Equal("D100", values[0].DaItemId);
+        Assert.Equal("D100", values[0].ItemId);
         Assert.Equal("a3n", values[0].SourceId);
         Assert.Equal((short)0x0012, values[0].Value);
         Assert.Equal(2, transport.Requests.Count);
@@ -66,7 +66,7 @@ public sealed class MelsecA3nClientTests
         IReadOnlyList<BridgeValue> values = await client.ReadAsync(
             new[]
             {
-                new TagMapping { SourceId = "a3n", DaItemId = "M10", Enabled = true, Mode = TagMode.Source }
+                new TagMapping { SourceId = "a3n", ItemId = "M10", Enabled = true, Mode = TagMode.Source }
             },
             CancellationToken.None);
 
@@ -91,13 +91,13 @@ public sealed class MelsecA3nClientTests
         IReadOnlyList<BridgeValue> values = await client.ReadAsync(
             new[]
             {
-                new TagMapping { SourceId = "a3n", DaItemId = "Z999", Enabled = true, Mode = TagMode.Source }
+                new TagMapping { SourceId = "a3n", ItemId = "Z999", Enabled = true, Mode = TagMode.Source }
             },
             CancellationToken.None);
 
         Assert.Single(values);
         Assert.False(values[0].IsGood);
-        Assert.Equal("Z999", values[0].DaItemId);
+        Assert.Equal("Z999", values[0].ItemId);
         Assert.Single(transport.Requests); // probe only
     }
 
@@ -201,7 +201,7 @@ public sealed class MelsecA3nClientTests
         IReadOnlyList<BridgeValue> values = await client.ReadAsync(
             new[]
             {
-                new TagMapping { SourceId = "a3n", DaItemId = "D5:2", Enabled = true, Mode = TagMode.Source }
+                new TagMapping { SourceId = "a3n", ItemId = "D5:2", Enabled = true, Mode = TagMode.Source }
             },
             CancellationToken.None);
 
@@ -225,8 +225,8 @@ public sealed class MelsecA3nClientTests
         IReadOnlyList<BridgeValue> values = await client.ReadAsync(
             new[]
             {
-                new TagMapping { SourceId = "a3n", DaItemId = "D10", Mode = TagMode.Source },
-                new TagMapping { SourceId = "a3n", DaItemId = "D11", Mode = TagMode.Source }
+                new TagMapping { SourceId = "a3n", ItemId = "D10", Mode = TagMode.Source },
+                new TagMapping { SourceId = "a3n", ItemId = "D11", Mode = TagMode.Source }
             },
             CancellationToken.None);
 
@@ -295,7 +295,7 @@ public sealed class MelsecA3nClientTests
         IReadOnlyList<BridgeValue> values = await client.ReadAsync(
             new[]
             {
-                new TagMapping { SourceId = "a3n", DaItemId = "D100", Mode = TagMode.Source }
+                new TagMapping { SourceId = "a3n", ItemId = "D100", Mode = TagMode.Source }
             },
             CancellationToken.None);
 

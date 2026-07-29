@@ -24,16 +24,16 @@ public sealed class DaLinkApiTests
             new()
             {
                 SourceId = "consumerA",
-                DaItemId = "itemA",
+                ItemId = "itemA",
                 ProviderSourceId = "providerA",
-                ProviderDaItemId = "itemP1"
+                ProviderItemId = "itemP1"
             },
             new()
             {
                 SourceId = "consumerA",
-                DaItemId = "itemA",
+                ItemId = "itemA",
                 ProviderSourceId = "providerB",
-                ProviderDaItemId = "itemP2"
+                ProviderItemId = "itemP2"
             }
         };
 
@@ -128,21 +128,21 @@ public sealed class DaLinkApiTests
                 new TagMapping
                 {
                     SourceId = "providerA",
-                    DaItemId = "itemP",
+                    ItemId = "itemP",
                     AccessRights = TagAccessRights.Read,
                     Enabled = true
                 },
                 new TagMapping
                 {
                     SourceId = "consumerA",
-                    DaItemId = "itemC",
+                    ItemId = "itemC",
                     AccessRights = TagAccessRights.Write,
                     Enabled = true
                 },
                 new TagMapping
                 {
                     SourceId = "otherA",
-                    DaItemId = "itemO",
+                    ItemId = "itemO",
                     AccessRights = TagAccessRights.ReadWrite,
                     Enabled = true
                 }
