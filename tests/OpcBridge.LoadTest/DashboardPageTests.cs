@@ -121,6 +121,20 @@ public sealed class DashboardPageTests
         Assert.Contains("influxEnabled: el('fpInfluxEnabled').checked", DashboardPage.Script);
         Assert.Contains("if (name === 'influx')", DashboardPage.Script);
     }
+
+    [Fact]
+    public void Html_SeparatesMqttAndTrafficViews()
+    {
+        Assert.Contains("data-tab=\"mqtt\"", DashboardPage.Html);
+        Assert.Contains("data-tab=\"iot-traffic\"", DashboardPage.Html);
+        Assert.Contains("id=\"view-mqtt\"", DashboardPage.Html);
+        Assert.Contains("id=\"view-iot-traffic\"", DashboardPage.Html);
+        Assert.Contains("id=\"mqttTraffic\"", DashboardPage.Html);
+        Assert.DoesNotContain("const activeTab = name === 'iot-traffic' ? 'mqtt' : name;", DashboardPage.Script);
+        Assert.Contains("if (activeTab === 'iot-traffic')", DashboardPage.Script);
+        Assert.Contains("#view-iot-traffic.active", DashboardPage.Script);
+        Assert.Contains("'iot/traffic': 'iot-traffic'", DashboardPage.Script);
+    }
     [Fact]
     public void Script_BrowsesUaSourceViaUaBrowseApi()
     {

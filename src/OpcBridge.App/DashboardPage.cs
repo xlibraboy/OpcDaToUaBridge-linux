@@ -1142,25 +1142,7 @@ internal static class DashboardPage
             </div>
         </div>
     </div>
-    <div class="box" style="margin-top:14px">
-         <div class="box-h">Traffic Monitor <span class="info" data-tip="Recent publish (PUB) and subscribe (SUB) messages. PUB = value sent to broker; SUB = inbound message applied via the UA write path.">i</span> <span class="msg" style="margin-left:auto"><button class="btn ghost" onclick="loadMqttValues()">Refresh</button></span></div>
-        <div class="box-b">
-            <div class="field" style="margin-bottom:10px">
-                <label class="fl" for="mqttValDir">Type</label>
-                <select id="mqttValDir" onchange="onMqttValFilterChange()">
-                    <option value="">All</option>
-                    <option value="PUB">PUB</option>
-                    <option value="SUB">SUB</option>
-                </select>
-                <label class="fl" for="mqttValTopic">Topic</label>
-                <input id="mqttValTopic" type="text" placeholder="contains…" oninput="onMqttValTopicInput()" style="flex:1;min-width:120px">
-                <label class="fl" for="mqttValAuto" style="width:auto">Auto</label>
-                <input type="checkbox" id="mqttValAuto" checked onchange="onMqttValFilterChange()">
-            </div>
-            <div class="list" id="mqttTraffic"><span class="msg">No MQTT tags yet.</span></div>
-        </div>
-    </div>
-<div class="modal-overlay" id="mqttWizard" style="display:none" onclick="if(event.target===this)closeMqttWizard()">
+    <div class="modal-overlay" id="mqttWizard" style="display:none" onclick="if(event.target===this)closeMqttWizard()">
   <div class="modal wizard" role="dialog" aria-modal="true" aria-labelledby="mqttWizardTitle">
     <div class="modal-head">
       <div class="modal-title" id="mqttWizardTitle">Connect MQTT Broker</div>
@@ -1197,6 +1179,26 @@ internal static class DashboardPage
     </div>
   </div>
 </div>
+</div>
+<div class="view" id="view-iot-traffic">
+    <div class="box">
+        <div class="box-h">Traffic Monitor <span class="info" data-tip="Recent publish (PUB) and subscribe (SUB) messages. PUB = value sent to broker; SUB = inbound message applied via the UA write path.">i</span> <span class="msg" style="margin-left:auto"><button class="btn ghost" onclick="loadMqttValues()">Refresh</button></span></div>
+        <div class="box-b">
+            <div class="field" style="margin-bottom:10px">
+                <label class="fl" for="mqttValDir">Type</label>
+                <select id="mqttValDir" onchange="onMqttValFilterChange()">
+                    <option value="">All</option>
+                    <option value="PUB">PUB</option>
+                    <option value="SUB">SUB</option>
+                </select>
+                <label class="fl" for="mqttValTopic">Topic</label>
+                <input id="mqttValTopic" type="text" placeholder="contains…" oninput="onMqttValTopicInput()" style="flex:1;min-width:120px">
+                <label class="fl" for="mqttValAuto" style="width:auto">Auto</label>
+                <input type="checkbox" id="mqttValAuto" checked onchange="onMqttValFilterChange()">
+            </div>
+            <div class="list" id="mqttTraffic"><span class="msg">No MQTT tags yet.</span></div>
+        </div>
+    </div>
 </div>
 <div class="view" id="view-influx">
     <div class="first-run-banner" id="hintInflux" style="display:none"></div>
@@ -2654,20 +2656,17 @@ function navigate(route) {
 
 async function showTab(name, route) {
   route = route || (Object.keys(ROUTE_TO_TAB).find(r => ROUTE_TO_TAB[r] === name) || DEFAULT_ROUTE);
-  const activeTab = name === 'iot-traffic' ? 'mqtt' : name;
+  const activeTab = name;
   document.querySelectorAll('.tabbtn').forEach(b => b.classList.toggle('active', b.dataset.route === route));
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + activeTab));
   if (location.hash !== '#/' + route) history.replaceState(null, '', '#/' + route);
-  if (name === 'iot-traffic') {
-    const traffic = document.getElementById('mqttTraffic');
-    if (traffic) traffic.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }
   if (activeTab === 'logs') { state.logsLoaded = false; loadLogs(true).catch(e => el('logMessage').textContent = '✗ ' + e.message); }
   if (activeTab === 'diagnostics') { diagnosticsActive = true; loadDiagnostics(); }
   else { diagnosticsActive = false; }
   if (activeTab === 'about') loadAppInfo().catch(e => el('aboutName').textContent = '✗ ' + e.message);
   if (activeTab === 'help') loadHelp().catch(e => el('helpContent').innerHTML = '<span class="msg bad">✗ ' + esc(e.message) + '</span>');
-  if (activeTab === 'mqtt') { await loadMqtt(); await loadMqttValues(); }
+  if (activeTab === 'mqtt') { await loadMqtt(); }
+  if (activeTab === 'iot-traffic') { await loadMqttValues(); }
   if (name === 'influx') { await loadInflux(); }
   if (activeTab === 'opc-da' || activeTab === 'opc-ua' || activeTab === 'connection') {
     await loadSources().catch(e => console.warn(e));
@@ -4900,6 +4899,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       links: 'tags/links',
       logs: 'ops/logs',
       mqtt: 'iot/mqtt',
+      'iot-traffic': 'iot/traffic',
       influx: 'historian/influx',
       diagram: 'ops/diagram',
       help: 'help/guide',
@@ -4919,6 +4919,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     setInterval(() => {
         if (document.querySelector('#view-mqtt.active')) {
             loadMqttStatus().catch(() => {});
+        }
+        if (document.querySelector('#view-iot-traffic.active')) {
             if (el('mqttValAuto')?.checked) loadMqttValues().catch(() => {});
         }
         if (document.querySelector('#view-influx.active')) loadInfluxStatus().catch(() => {});
