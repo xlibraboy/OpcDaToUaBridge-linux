@@ -720,7 +720,7 @@ internal static class DashboardPage
         </div>
     </div>
 </div>
-<div class="modal-overlay" id="addSourceWizard" style="display:none" onclick="if(event.target===this)closeAddSourceWizard()">
+<div class="modal-overlay" id="addSourceWizard" onclick="if(event.target===this)closeAddSourceWizard()">
     <div class="modal wizard" role="dialog" aria-modal="true" aria-labelledby="addSourceWizardTitle">
         <div class="modal-head">
             <div class="modal-title" id="addSourceWizardTitle">Add Source</div>
@@ -851,7 +851,7 @@ internal static class DashboardPage
         </div>
     </div>
 </div>
-<div class="modal-overlay" id="wzDrv" style="display:none" onclick="if(event.target===this)closeDriverWizard()">
+<div class="modal-overlay" id="wzDrv" onclick="if(event.target===this)closeDriverWizard()">
     <div class="modal wizard" role="dialog" aria-modal="true" aria-labelledby="wzDrvTitle">
         <div class="modal-head">
             <div class="modal-title" id="wzDrvTitle">Add PLC Driver Source</div>
@@ -1142,7 +1142,7 @@ internal static class DashboardPage
             </div>
         </div>
     </div>
-    <div class="modal-overlay" id="mqttWizard" style="display:none" onclick="if(event.target===this)closeMqttWizard()">
+    <div class="modal-overlay" id="mqttWizard" onclick="if(event.target===this)closeMqttWizard()">
   <div class="modal wizard" role="dialog" aria-modal="true" aria-labelledby="mqttWizardTitle">
     <div class="modal-head">
       <div class="modal-title" id="mqttWizardTitle">Connect MQTT Broker</div>
@@ -1237,7 +1237,7 @@ internal static class DashboardPage
             </div>
         </div>
     </div>
-<div class="modal-overlay" id="influxWizard" style="display:none" onclick="if(event.target===this)closeInfluxWizard()">
+<div class="modal-overlay" id="influxWizard" onclick="if(event.target===this)closeInfluxWizard()">
   <div class="modal wizard" role="dialog" aria-modal="true" aria-labelledby="influxWizardTitle">
     <div class="modal-head">
       <div class="modal-title" id="influxWizardTitle">Enable Historian (InfluxDB)</div>
@@ -3410,10 +3410,10 @@ async function openMqttWizard() {
   el('wzMqttPrefix').value = el('mqttPrefix').value || 'bridge/tags';
   el('wzMqttFields').value = el('mqttFields').value;
   el('wzMqttConnectNow').checked = true;
-  el('mqttWizard').style.display = '';
+  el('mqttWizard').classList.add('open');
   wzMqttRender();
 }
-function closeMqttWizard() { el('mqttWizard').style.display = 'none'; }
+function closeMqttWizard() { el('mqttWizard').classList.remove('open'); }
 function wzMqttRender() {
   document.querySelectorAll('#mqttWizard .wizard-pane').forEach(p => p.classList.toggle('active', Number(p.dataset.pane) === wzMqttStepCur));
   document.querySelectorAll('#mqttWizard .wizard-step').forEach(s => {
@@ -3565,10 +3565,10 @@ async function openInfluxWizard() {
   el('wzInfluxToken').value = el('influxToken').value;
   el('wzInfluxAuto').checked = el('influxEnabled').checked;
   el('wzInfluxConnectNow').checked = true;
-  el('influxWizard').style.display = '';
+  el('influxWizard').classList.add('open');
   wzInfluxRender();
 }
-function closeInfluxWizard() { el('influxWizard').style.display = 'none'; }
+function closeInfluxWizard() { el('influxWizard').classList.remove('open'); }
 function wzInfluxRender() {
   document.querySelectorAll('#influxWizard .wizard-pane').forEach(p => p.classList.toggle('active', Number(p.dataset.pane) === wzInfluxStepCur));
   document.querySelectorAll('#influxWizard .wizard-step').forEach(s => {
@@ -3946,10 +3946,10 @@ function openDriverWizard() {
     el('wzDrvRetry').value = '2';
     el('wzDrvRate').value = '1000';
     el('wzDrvMaxTags').value = '2000';
-    el('wzDrv').style.display = '';
+    el('wzDrv').classList.add('open');
     wzDrvRender();
 }
-function closeDriverWizard() { el('wzDrv').style.display = 'none'; }
+function closeDriverWizard() { el('wzDrv').classList.remove('open'); }
 function wzDrvRender() {
     document.querySelectorAll('.wzdrv-pane').forEach(p => p.classList.toggle('active', Number(p.dataset.pane) === wzDrvCurrentStep));
     document.querySelectorAll('.wzdrv-step').forEach(s => {
@@ -4211,10 +4211,10 @@ function openAddSourceWizard() {
   el('wzListServers').innerHTML = '';
   el('wzMsgServers').textContent = '';
   wzOnTypeChange();
-  el('addSourceWizard').style.display = '';
+  el('addSourceWizard').classList.add('open');
   wzRender();
 }
-function closeAddSourceWizard() { el('addSourceWizard').style.display = 'none'; }
+function closeAddSourceWizard() { el('addSourceWizard').classList.remove('open'); }
 function wzRender() {
   document.querySelectorAll('.wizard-pane').forEach(p => p.classList.toggle('active', Number(p.dataset.pane) === wzCurrentStep));
   document.querySelectorAll('.wizard-step').forEach(s => {

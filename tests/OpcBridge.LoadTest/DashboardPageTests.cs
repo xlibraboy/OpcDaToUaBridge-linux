@@ -135,6 +135,31 @@ public sealed class DashboardPageTests
         Assert.Contains("#view-iot-traffic.active", DashboardPage.Script);
         Assert.Contains("'iot/traffic': 'iot-traffic'", DashboardPage.Script);
     }
+
+    [Fact]
+    public void Script_OpensWizardsWithModalOpenClass()
+    {
+        // .modal-overlay { display:none } + .modal-overlay.open { display:flex }
+        // Inline style.display='' loses to the stylesheet and leaves wizards invisible.
+        Assert.Contains(".modal-overlay.open", DashboardPage.Html);
+        Assert.Contains("el('addSourceWizard').classList.add('open')", DashboardPage.Script);
+        Assert.Contains("el('addSourceWizard').classList.remove('open')", DashboardPage.Script);
+        Assert.Contains("el('wzDrv').classList.add('open')", DashboardPage.Script);
+        Assert.Contains("el('wzDrv').classList.remove('open')", DashboardPage.Script);
+        Assert.Contains("el('mqttWizard').classList.add('open')", DashboardPage.Script);
+        Assert.Contains("el('mqttWizard').classList.remove('open')", DashboardPage.Script);
+        Assert.Contains("el('influxWizard').classList.add('open')", DashboardPage.Script);
+        Assert.Contains("el('influxWizard').classList.remove('open')", DashboardPage.Script);
+        Assert.DoesNotContain("el('addSourceWizard').style.display", DashboardPage.Script);
+        Assert.DoesNotContain("el('mqttWizard').style.display", DashboardPage.Script);
+        Assert.DoesNotContain("el('influxWizard').style.display", DashboardPage.Script);
+        Assert.DoesNotContain("el('wzDrv').style.display = ''", DashboardPage.Script);
+        Assert.DoesNotContain("el('wzDrv').style.display = 'none'", DashboardPage.Script);
+        Assert.DoesNotContain("id=\"addSourceWizard\" style=\"display:none\"", DashboardPage.Html);
+        Assert.DoesNotContain("id=\"wzDrv\" style=\"display:none\"", DashboardPage.Html);
+        Assert.DoesNotContain("id=\"mqttWizard\" style=\"display:none\"", DashboardPage.Html);
+        Assert.DoesNotContain("id=\"influxWizard\" style=\"display:none\"", DashboardPage.Html);
+    }
     [Fact]
     public void Script_BrowsesUaSourceViaUaBrowseApi()
     {
