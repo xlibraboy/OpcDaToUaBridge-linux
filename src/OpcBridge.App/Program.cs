@@ -257,35 +257,55 @@ app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings
         return Results.BadRequest(new { error = validationError });
     }
 
+    string upsertType = request.SourceType ?? string.Empty;
+    OpcDaSourceOptions? upsertDa = null;
+    OpcUaSourceOptions? upsertUa = null;
+    MelsecA3nSourceOptions? upsertMelsec = null;
+    if (string.Equals(upsertType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
+    {
+        upsertUa = new OpcUaSourceOptions(
+            request.EndpointUrl ?? string.Empty,
+            request.SecurityMode ?? string.Empty,
+            request.SecurityPolicy ?? string.Empty,
+            request.UaUsername,
+            request.UaPassword,
+            request.SessionTimeoutMs,
+            request.ReconnectDelayMs);
+    }
+    else if (string.Equals(upsertType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase))
+    {
+        upsertMelsec = new MelsecA3nSourceOptions(
+            request.Transport ?? string.Empty,
+            request.SerialPortName ?? string.Empty,
+            request.BaudRate,
+            request.DataBits,
+            request.Parity ?? string.Empty,
+            request.StopBits ?? string.Empty,
+            request.StationNo ?? string.Empty,
+            request.PcNo ?? string.Empty,
+            request.TimeoutMs,
+            request.RetryCount);
+    }
+    else
+    {
+        upsertDa = new OpcDaSourceOptions(
+            request.ProgId ?? string.Empty,
+            request.Host ?? string.Empty,
+            request.RemoteUsername,
+            request.RemotePassword,
+            request.RemoteDomain);
+    }
+
     DaRuntimeSettingsSnapshot snapshot = settings.UpsertSource(new DaSourceRuntimeSettings(
         request.SourceId,
         request.DisplayName ?? string.Empty,
-        request.SourceType ?? string.Empty,
-        request.ProgId ?? string.Empty,
-        request.Host ?? string.Empty,
-        request.RemoteUsername,
-        request.RemotePassword,
-        request.RemoteDomain,
-        request.Transport ?? string.Empty,
-        request.SerialPortName ?? string.Empty,
-        request.BaudRate,
-        request.DataBits,
-        request.Parity ?? string.Empty,
-        request.StopBits ?? string.Empty,
-        request.StationNo ?? string.Empty,
-        request.PcNo ?? string.Empty,
-        request.TimeoutMs,
-        request.RetryCount,
-        request.EndpointUrl ?? string.Empty,
-        request.SecurityMode ?? string.Empty,
-        request.SecurityPolicy ?? string.Empty,
-        request.UaUsername,
-        request.UaPassword,
-        request.SessionTimeoutMs,
-        request.ReconnectDelayMs,
-        request.MaxMappedTags,
+        upsertType,
+        request.UpdateRateMs,
         request.UseSubscriptions ?? true,
-        request.UpdateRateMs));
+        request.MaxMappedTags,
+        upsertDa,
+        upsertUa,
+        upsertMelsec));
 
     DaSourceRuntimeSettings source = snapshot.GetSource(request.SourceId)!;
     return Results.Json(new
@@ -592,35 +612,75 @@ app.MapPost("/api/config/import", async (HttpContext context, DaRuntimeSettings 
             {
                 foreach (JsonElement s in sourcesEl.EnumerateArray())
                 {
-                    sources.Add(SourceConfigMigration.Normalize(new DaSourceRuntimeSettings(
-                        s.TryGetProperty("sourceId", out JsonElement sid) ? sid.GetString() ?? "default" : "default",
-                        s.TryGetProperty("displayName", out JsonElement dn) ? dn.GetString() ?? string.Empty : string.Empty,
-                        s.TryGetProperty("sourceType", out JsonElement st) ? st.GetString() ?? string.Empty : string.Empty,
-                        s.TryGetProperty("progId", out JsonElement pid) ? pid.GetString() ?? string.Empty : string.Empty,
-                        s.TryGetProperty("host", out JsonElement h) ? h.GetString() ?? "localhost" : "localhost",
-                        s.TryGetProperty("remoteUsername", out JsonElement ru) ? ru.GetString() : null,
-                        null, // password not exported — must be re-entered on import
-                        s.TryGetProperty("remoteDomain", out JsonElement rd) ? rd.GetString() : null,
-                        s.TryGetProperty("transport", out JsonElement tr) ? tr.GetString() ?? string.Empty : string.Empty,
-                        s.TryGetProperty("serialPortName", out JsonElement spn) ? spn.GetString() ?? string.Empty : string.Empty,
-                        s.TryGetProperty("baudRate", out JsonElement br) ? br.GetInt32() : 0,
-                        s.TryGetProperty("dataBits", out JsonElement dbits) ? dbits.GetInt32() : 0,
-                        s.TryGetProperty("parity", out JsonElement par) ? par.GetString() ?? string.Empty : string.Empty,
-                        s.TryGetProperty("stopBits", out JsonElement sb) ? sb.GetString() ?? string.Empty : string.Empty,
-                        s.TryGetProperty("stationNo", out JsonElement sn) ? sn.GetString() ?? string.Empty : string.Empty,
-                        s.TryGetProperty("pcNo", out JsonElement pn) ? pn.GetString() ?? string.Empty : string.Empty,
-                        s.TryGetProperty("timeoutMs", out JsonElement to) ? to.GetInt32() : 0,
-                        s.TryGetProperty("retryCount", out JsonElement rc) ? rc.GetInt32() : -1,
-                        s.TryGetProperty("endpointUrl", out JsonElement eu) ? eu.GetString() ?? string.Empty : string.Empty,
-                        s.TryGetProperty("securityMode", out JsonElement sm) ? sm.GetString() ?? string.Empty : string.Empty,
-                        s.TryGetProperty("securityPolicy", out JsonElement sp) ? sp.GetString() ?? string.Empty : string.Empty,
-                        s.TryGetProperty("uaUsername", out JsonElement uu) ? uu.GetString() : null,
-                        null, // UA password not exported
-                        s.TryGetProperty("sessionTimeoutMs", out JsonElement sto) ? sto.GetInt32() : 0,
-                        s.TryGetProperty("reconnectDelayMs", out JsonElement rcd) ? rcd.GetInt32() : 0,
-                        s.TryGetProperty("maxMappedTags", out JsonElement mmt) ? mmt.GetInt32() : 0,
-                        s.TryGetProperty("useSubscriptions", out JsonElement usrc) ? usrc.GetBoolean() : true,
-                        s.TryGetProperty("updateRateMs", out JsonElement sur) ? sur.GetInt32() : updateRate), updateRate));
+                    sources.Add(SourceConfigMigration.FromDto(new SourceConfigDto
+                    {
+                        SourceId = s.TryGetProperty("sourceId", out JsonElement sid) ? sid.GetString() : "default",
+                        DisplayName = s.TryGetProperty("displayName", out JsonElement dn) ? dn.GetString() : string.Empty,
+                        SourceType = s.TryGetProperty("sourceType", out JsonElement st) ? st.GetString() : string.Empty,
+                        ProgId = s.TryGetProperty("progId", out JsonElement pid) ? pid.GetString() : string.Empty,
+                        Host = s.TryGetProperty("host", out JsonElement h) ? h.GetString() ?? "localhost" : "localhost",
+                        RemoteUsername = s.TryGetProperty("remoteUsername", out JsonElement ru) ? ru.GetString() : null,
+                        RemotePassword = null, // password not exported — must be re-entered on import
+                        RemoteDomain = s.TryGetProperty("remoteDomain", out JsonElement rd) ? rd.GetString() : null,
+                        Transport = s.TryGetProperty("transport", out JsonElement tr) ? tr.GetString() : string.Empty,
+                        SerialPortName = s.TryGetProperty("serialPortName", out JsonElement spn) ? spn.GetString() : string.Empty,
+                        BaudRate = s.TryGetProperty("baudRate", out JsonElement br) ? br.GetInt32() : 0,
+                        DataBits = s.TryGetProperty("dataBits", out JsonElement dbits) ? dbits.GetInt32() : 0,
+                        Parity = s.TryGetProperty("parity", out JsonElement par) ? par.GetString() : string.Empty,
+                        StopBits = s.TryGetProperty("stopBits", out JsonElement sb) ? sb.GetString() : string.Empty,
+                        StationNo = s.TryGetProperty("stationNo", out JsonElement sn) ? sn.GetString() : string.Empty,
+                        PcNo = s.TryGetProperty("pcNo", out JsonElement pn) ? pn.GetString() : string.Empty,
+                        TimeoutMs = s.TryGetProperty("timeoutMs", out JsonElement to) ? to.GetInt32() : 0,
+                        RetryCount = s.TryGetProperty("retryCount", out JsonElement rc) ? rc.GetInt32() : -1,
+                        EndpointUrl = s.TryGetProperty("endpointUrl", out JsonElement eu) ? eu.GetString() : string.Empty,
+                        SecurityMode = s.TryGetProperty("securityMode", out JsonElement sm) ? sm.GetString() : string.Empty,
+                        SecurityPolicy = s.TryGetProperty("securityPolicy", out JsonElement sp) ? sp.GetString() : string.Empty,
+                        UaUsername = s.TryGetProperty("uaUsername", out JsonElement uu) ? uu.GetString() : null,
+                        UaPassword = null, // UA password not exported
+                        SessionTimeoutMs = s.TryGetProperty("sessionTimeoutMs", out JsonElement sto) ? sto.GetInt32() : 0,
+                        ReconnectDelayMs = s.TryGetProperty("reconnectDelayMs", out JsonElement rcd) ? rcd.GetInt32() : 0,
+                        MaxMappedTags = s.TryGetProperty("maxMappedTags", out JsonElement mmt) ? mmt.GetInt32() : 0,
+                        UseSubscriptions = s.TryGetProperty("useSubscriptions", out JsonElement usrc) ? usrc.GetBoolean() : true,
+                        UpdateRateMs = s.TryGetProperty("updateRateMs", out JsonElement sur) ? sur.GetInt32() : updateRate,
+                        // Nested export shape (if present)
+                        OpcDa = s.TryGetProperty("opcDa", out JsonElement opcDaEl) && opcDaEl.ValueKind == JsonValueKind.Object
+                            ? new OpcDaSourceOptionsDto
+                            {
+                                ProgId = opcDaEl.TryGetProperty("progId", out JsonElement opid) ? opid.GetString() : null,
+                                Host = opcDaEl.TryGetProperty("host", out JsonElement oh) ? oh.GetString() : null,
+                                RemoteUsername = opcDaEl.TryGetProperty("remoteUsername", out JsonElement oru) ? oru.GetString() : null,
+                                RemoteDomain = opcDaEl.TryGetProperty("remoteDomain", out JsonElement ord) ? ord.GetString() : null
+                            }
+                            : null,
+                        OpcUa = s.TryGetProperty("opcUa", out JsonElement opcUaEl) && opcUaEl.ValueKind == JsonValueKind.Object
+                            ? new OpcUaSourceOptionsDto
+                            {
+                                EndpointUrl = opcUaEl.TryGetProperty("endpointUrl", out JsonElement oeu) ? oeu.GetString() : null,
+                                SecurityMode = opcUaEl.TryGetProperty("securityMode", out JsonElement osm) ? osm.GetString() : null,
+                                SecurityPolicy = opcUaEl.TryGetProperty("securityPolicy", out JsonElement osp) ? osp.GetString() : null,
+                                Username = opcUaEl.TryGetProperty("username", out JsonElement oun) ? oun.GetString() : null,
+                                UaUsername = opcUaEl.TryGetProperty("uaUsername", out JsonElement ouu) ? ouu.GetString() : null,
+                                SessionTimeoutMs = opcUaEl.TryGetProperty("sessionTimeoutMs", out JsonElement osto) ? osto.GetInt32() : 0,
+                                ReconnectDelayMs = opcUaEl.TryGetProperty("reconnectDelayMs", out JsonElement orcd) ? orcd.GetInt32() : 0,
+                                MaxMappedTags = opcUaEl.TryGetProperty("maxMappedTags", out JsonElement ommt) ? ommt.GetInt32() : 0
+                            }
+                            : null,
+                        Melsec = s.TryGetProperty("melsec", out JsonElement melEl) && melEl.ValueKind == JsonValueKind.Object
+                            ? new MelsecA3nSourceOptionsDto
+                            {
+                                Transport = melEl.TryGetProperty("transport", out JsonElement mtr) ? mtr.GetString() : null,
+                                SerialPortName = melEl.TryGetProperty("serialPortName", out JsonElement msp) ? msp.GetString() : null,
+                                BaudRate = melEl.TryGetProperty("baudRate", out JsonElement mbr) ? mbr.GetInt32() : 0,
+                                DataBits = melEl.TryGetProperty("dataBits", out JsonElement mdb) ? mdb.GetInt32() : 0,
+                                Parity = melEl.TryGetProperty("parity", out JsonElement mpa) ? mpa.GetString() : null,
+                                StopBits = melEl.TryGetProperty("stopBits", out JsonElement msb) ? msb.GetString() : null,
+                                StationNo = melEl.TryGetProperty("stationNo", out JsonElement msn) ? msn.GetString() : null,
+                                PcNo = melEl.TryGetProperty("pcNo", out JsonElement mpc) ? mpc.GetString() : null,
+                                TimeoutMs = melEl.TryGetProperty("timeoutMs", out JsonElement mto) ? mto.GetInt32() : 0,
+                                RetryCount = melEl.TryGetProperty("retryCount", out JsonElement mrc) ? mrc.GetInt32() : -1
+                            }
+                            : null
+                    }, updateRate));
                 }
             }
 
