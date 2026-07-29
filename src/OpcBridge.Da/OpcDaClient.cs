@@ -6,7 +6,7 @@ using OpcBridge.Core;
 
 namespace OpcBridge.Da;
 
-public sealed class OpcDaClient : IDaClient
+public sealed class OpcDaClient : IDaClient, ISubscribableSourceClient
 {
     private const int OpcDataSourceDevice = 2;
     private static readonly int ItemStateSize = Marshal.SizeOf<OpcItemState>();
@@ -21,9 +21,9 @@ public sealed class OpcDaClient : IDaClient
 
     /// <summary>
     /// Raised when a DA subscription delivers values via IOPCDataCallback.
-    /// Subscribed to once per session by BridgeWorker.
+    /// Subscribed to once per session by BridgeWorker via <see cref="ISubscribableSourceClient"/>.
     /// </summary>
-    public event Action<IReadOnlyList<BridgeValue>>? OnCallbackValues;
+    public event Action<IReadOnlyList<BridgeValue>>? ValuesReceived;
 
     public OpcDaClient(DaClientOptions options)
     {
@@ -351,7 +351,7 @@ public sealed class OpcDaClient : IDaClient
                 TrySetupSubscription(group, rateMappings);
             }
 
-            // When a subscription is active, values flow via OnCallbackValues; only device-read
+            // When a subscription is active, values flow via ValuesReceived; only device-read
             // when subscriptions are off or never established.
             if (!subscriptions_active_ || group.ConnectionPoint is null)
             {
@@ -447,7 +447,7 @@ public sealed class OpcDaClient : IDaClient
                 handleMap[i + 1] = group.Bindings[i].DaItemId;
             }
 
-            Action<IReadOnlyList<BridgeValue>> handler = OnCallbackValues ?? (_ => { });
+            Action<IReadOnlyList<BridgeValue>> handler = ValuesReceived ?? (_ => { });
             OpcDaCallbackSink sink = new(options_.SourceId, handleMap, handler);
             hr = cp.Advise(sink, out int cookie);
             if (hr < 0)

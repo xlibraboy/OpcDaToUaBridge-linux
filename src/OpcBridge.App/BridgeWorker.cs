@@ -197,6 +197,14 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                                 ua_server_.SyncMappings(activeMappings);
                                 bridge_state_.RetainMappedValues(activeMappings);
                                 uaMappingVersion = mappingVersion;
+                                // Force session rebuild so DA rate groups pick up item set changes.
+                                // UA clients also reconcile MonitoredItems on the living sessions first
+                                // (and again after reconnect via ReconfigureSessionsAsync).
+                                await ReconcileUaMonitoredItemsAsync(
+                                        sessions,
+                                        cacheHolder.Cache,
+                                        stoppingToken)
+                                    .ConfigureAwait(false);
                                 connectedVersion = -1;
                                 bridge_state_.UpdateSources(settings.UpdateRateMs, activeMappings.Count, settings.Sources);
                                 logger_.LogInformation("Applied tag mapping change: {Count} mappings", activeMappings.Count);
@@ -618,6 +626,31 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                     continue;
                 }
             }
+            else if (string.Equals(source.SourceType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
+            {
+                if (string.IsNullOrWhiteSpace(source.EndpointUrl))
+                {
+                    bridge_state_.SetSourceConnectionState(source.SourceId, "Disconnected");
+                    bridge_state_.SetSourceError(source.SourceId, new InvalidOperationException(
+                        "EndpointUrl is empty — enter a valid OPC UA server endpoint (opc.tcp://...)."));
+                    logger_.LogWarning("Source {SourceId} has no EndpointUrl, skipping connection", source.SourceId);
+                    continue;
+                }
+
+                string serverEndpointUrl = ua_server_.GetOptions().EndpointUrl;
+                if (UaEndpointGuard.TargetsSelf(source.EndpointUrl, serverEndpointUrl))
+                {
+                    bridge_state_.SetSourceConnectionState(source.SourceId, "Faulted");
+                    bridge_state_.SetSourceError(source.SourceId, new InvalidOperationException(
+                        "Cannot use this process's own OPC UA server endpoint as a source."));
+                    logger_.LogWarning(
+                        "Source {SourceId} EndpointUrl {EndpointUrl} targets own UA server {ServerEndpoint}, refusing connect",
+                        source.SourceId,
+                        source.EndpointUrl,
+                        serverEndpointUrl);
+                    continue;
+                }
+            }
             else if (string.IsNullOrWhiteSpace(source.ProgId))
             {
                 bridge_state_.SetSourceConnectionState(source.SourceId, "Disconnected");
@@ -632,13 +665,24 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                 IDaClient client = da_client_factory_.Create(settings, source);
                 await client.ConnectAsync(cancellationToken).ConfigureAwait(false);
 
-                if (client is OpcDaClient opcDa)
+                if (client is ISubscribableSourceClient subscribable)
                 {
-                    opcDa.OnCallbackValues += values => OnSubscriptionValues(values);
+                    subscribable.ValuesReceived += values => OnSubscriptionValues(values);
                 }
 
                 sessions[source.SourceId] = new SourceSession(source, client);
                 bridge_state_.SetSourceConnectionState(source.SourceId, "Connected");
+
+                if (client is OpcUaSourceClient uaClient)
+                {
+                    SourceMappingCache? cache = source_mapping_cache_;
+                    if (cache is not null)
+                    {
+                        IReadOnlyList<TagMapping> desired = cache.GetSourceReadMappings(source.SourceId);
+                        await uaClient.ReconcileMonitoredItemsAsync(desired, cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -648,6 +692,39 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
             }
         }
     }
+    private async Task ReconcileUaMonitoredItemsAsync(
+        Dictionary<string, SourceSession> sessions,
+        SourceMappingCache cache,
+        CancellationToken cancellationToken)
+    {
+        foreach ((string sourceId, SourceSession session) in sessions)
+        {
+            if (session.Client is not OpcUaSourceClient uaClient)
+            {
+                continue;
+            }
+
+            try
+            {
+                IReadOnlyList<TagMapping> desired = cache.GetSourceReadMappings(sourceId);
+                await uaClient.ReconcileMonitoredItemsAsync(desired, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                // Reconcile itself degrades to poll; log and keep other sources moving.
+                logger_.LogWarning(
+                    ex,
+                    "UA MonitoredItem reconcile failed for source {SourceId}",
+                    sourceId);
+            }
+        }
+    }
+
     private void OnSubscriptionValues(IReadOnlyList<BridgeValue> values)
     {
         bridge_state_.UpdateDaRead(values.Count > 0 ? values[0].SourceId : string.Empty, values, TimeSpan.Zero);

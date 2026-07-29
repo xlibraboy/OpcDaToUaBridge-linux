@@ -348,6 +348,11 @@ public sealed class BridgeState
             return string.IsNullOrEmpty(port) ? string.Empty : $"{port}@{source.BaudRate}";
         }
 
+        if (string.Equals(source.SourceType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
+        {
+            return source.EndpointUrl?.Trim() ?? string.Empty;
+        }
+
         string host = string.IsNullOrWhiteSpace(source.Host) ? string.Empty : source.Host.Trim();
         string progId = source.ProgId ?? string.Empty;
         return string.IsNullOrEmpty(progId) ? host : $"{host}/{progId}";

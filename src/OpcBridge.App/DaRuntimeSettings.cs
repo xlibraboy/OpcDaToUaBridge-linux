@@ -252,7 +252,8 @@ public sealed class DaRuntimeSettings
         string? remoteUsername,
         string? remotePassword,
         string? remoteDomain,
-        int updateRateMs)
+        int updateRateMs,
+        bool useSubscriptions = true)
     {
         return new DaSourceRuntimeSettings(
             sourceId,
@@ -273,7 +274,15 @@ public sealed class DaRuntimeSettings
             "FF",
             3000,
             2,
-            2000,
+            string.Empty,
+            "None",
+            "None",
+            null,
+            null,
+            60000,
+            5000,
+            50000,
+            useSubscriptions,
             updateRateMs);
     }
 
@@ -328,7 +337,15 @@ public sealed class DaRuntimeSettings
                             PcNo = s.PcNo,
                             TimeoutMs = s.TimeoutMs,
                             RetryCount = s.RetryCount,
+                            EndpointUrl = s.EndpointUrl,
+                            SecurityMode = s.SecurityMode,
+                            SecurityPolicy = s.SecurityPolicy,
+                            UaUsername = s.UaUsername,
+                            UaPassword = s.UaPassword,
+                            SessionTimeoutMs = s.SessionTimeoutMs,
+                            ReconnectDelayMs = s.ReconnectDelayMs,
                             MaxMappedTags = s.MaxMappedTags,
+                            UseSubscriptions = s.UseSubscriptions,
                             UpdateRateMs = s.UpdateRateMs
                         })
                         .ToList()
@@ -423,7 +440,15 @@ public sealed record DaSourceRuntimeSettings(
     string PcNo,
     int TimeoutMs,
     int RetryCount,
+    string EndpointUrl,
+    string SecurityMode,
+    string SecurityPolicy,
+    string? UaUsername,
+    string? UaPassword,
+    int SessionTimeoutMs,
+    int ReconnectDelayMs,
     int MaxMappedTags,
+    bool UseSubscriptions,
     int UpdateRateMs)
 {
     public DaClientOptions ToOptions(bool useSubscriptions)
@@ -439,6 +464,25 @@ public sealed record DaSourceRuntimeSettings(
             RemoteUsername = RemoteUsername,
             RemotePassword = RemotePassword,
             RemoteDomain = RemoteDomain
+        };
+    }
+
+    public OpcBridge.Ua.OpcUaSourceClientOptions ToUaOptions(DaRuntimeSettingsSnapshot settings)
+    {
+        bool effectiveUseSubscriptions = settings.UseSubscriptions && UseSubscriptions;
+        return new OpcBridge.Ua.OpcUaSourceClientOptions
+        {
+            SourceId = SourceId,
+            DisplayName = DisplayName,
+            EndpointUrl = EndpointUrl,
+            SecurityMode = SecurityMode,
+            SecurityPolicy = SecurityPolicy,
+            Username = UaUsername,
+            Password = UaPassword,
+            UpdateRateMs = UpdateRateMs,
+            SessionTimeoutMs = SessionTimeoutMs,
+            ReconnectDelayMs = ReconnectDelayMs,
+            UseSubscriptions = effectiveUseSubscriptions
         };
     }
 }
@@ -470,7 +514,15 @@ public sealed class SourceConfigDto
     public string? PcNo { get; set; }
     public int TimeoutMs { get; set; }
     public int RetryCount { get; set; }
+    public string? EndpointUrl { get; set; }
+    public string? SecurityMode { get; set; }
+    public string? SecurityPolicy { get; set; }
+    public string? UaUsername { get; set; }
+    public string? UaPassword { get; set; }
+    public int SessionTimeoutMs { get; set; }
+    public int ReconnectDelayMs { get; set; }
     public int MaxMappedTags { get; set; }
+    public bool UseSubscriptions { get; set; } = true;
     public int UpdateRateMs { get; set; }
 }
 
@@ -497,7 +549,15 @@ public static class SourceConfigMigration
             dto.PcNo ?? string.Empty,
             dto.TimeoutMs,
             dto.RetryCount,
+            dto.EndpointUrl ?? string.Empty,
+            dto.SecurityMode ?? string.Empty,
+            dto.SecurityPolicy ?? string.Empty,
+            dto.UaUsername,
+            dto.UaPassword,
+            dto.SessionTimeoutMs,
+            dto.ReconnectDelayMs,
             dto.MaxMappedTags,
+            dto.UseSubscriptions,
             dto.UpdateRateMs), defaultUpdateRate);
     }
 
@@ -518,7 +578,12 @@ public static class SourceConfigMigration
         string pcNo = string.IsNullOrWhiteSpace(source.PcNo) ? "FF" : source.PcNo.Trim();
         int timeoutMs = source.TimeoutMs <= 0 ? 3000 : source.TimeoutMs;
         int retryCount = source.RetryCount < 0 ? 2 : source.RetryCount;
-        int maxMappedTags = source.MaxMappedTags <= 0 ? 2000 : source.MaxMappedTags;
+        int sessionTimeoutMs = source.SessionTimeoutMs <= 0 ? 60000 : source.SessionTimeoutMs;
+        int reconnectDelayMs = source.ReconnectDelayMs <= 0 ? 5000 : source.ReconnectDelayMs;
+        int maxMappedTags = source.MaxMappedTags <= 0 ? 50000 : Math.Max(1, source.MaxMappedTags);
+        string securityMode = string.IsNullOrWhiteSpace(source.SecurityMode) ? "None" : source.SecurityMode.Trim();
+        string securityPolicy = string.IsNullOrWhiteSpace(source.SecurityPolicy) ? "None" : source.SecurityPolicy.Trim();
+        string endpointUrl = source.EndpointUrl?.Trim() ?? string.Empty;
 
         return new DaSourceRuntimeSettings(
             sourceId,
@@ -539,7 +604,15 @@ public static class SourceConfigMigration
             pcNo,
             timeoutMs,
             retryCount,
+            endpointUrl,
+            securityMode,
+            securityPolicy,
+            string.IsNullOrWhiteSpace(source.UaUsername) ? null : source.UaUsername.Trim(),
+            string.IsNullOrWhiteSpace(source.UaPassword) ? null : source.UaPassword,
+            sessionTimeoutMs,
+            reconnectDelayMs,
             maxMappedTags,
+            source.UseSubscriptions,
             updateRateMs);
     }
 
@@ -554,6 +627,11 @@ public static class SourceConfigMigration
         if (string.Equals(trimmed, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase))
         {
             return SourceTypes.MelsecA3n;
+        }
+
+        if (string.Equals(trimmed, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
+        {
+            return SourceTypes.OpcUa;
         }
 
         if (string.Equals(trimmed, SourceTypes.OpcDa, StringComparison.OrdinalIgnoreCase))

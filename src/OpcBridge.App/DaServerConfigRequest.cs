@@ -19,7 +19,15 @@ public sealed record DaServerConfigRequest(
     string? PcNo = null,
     int TimeoutMs = 0,
     int RetryCount = -1,
+    string? EndpointUrl = null,
+    string? SecurityMode = null,
+    string? SecurityPolicy = null,
+    string? UaUsername = null,
+    string? UaPassword = null,
+    int SessionTimeoutMs = 0,
+    int ReconnectDelayMs = 0,
     int MaxMappedTags = 0,
+    bool? UseSubscriptions = null,
     int UpdateRateMs = 0);
 
 public sealed record MelsecTestConnectionRequest(

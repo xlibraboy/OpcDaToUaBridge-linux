@@ -378,7 +378,15 @@ public sealed class MelsecApiTests
                             "FF",
                             3000,
                             2,
+                            string.Empty,
+                            "None",
+                            "None",
+                            null,
+                            null,
+                            60000,
+                            5000,
                             maxMappedTags,
+                            true,
                             1000)
                     },
                     0)));
@@ -414,7 +422,15 @@ public sealed class MelsecApiTests
                             "FF",
                             3000,
                             2,
+                            string.Empty,
+                            "None",
+                            "None",
+                            null,
+                            null,
+                            60000,
+                            5000,
                             2000,
+                            true,
                             1000)
                     },
                     0)));

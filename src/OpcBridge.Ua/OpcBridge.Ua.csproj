@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\OpcBridge.Core\OpcBridge.Core.csproj" />
+    <ProjectReference Include="..\OpcBridge.Da\OpcBridge.Da.csproj" />
   </ItemGroup>
 
   <ItemGroup>

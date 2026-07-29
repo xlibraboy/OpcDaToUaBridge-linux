@@ -69,8 +69,14 @@ public sealed class TestAppHandle : IAsyncDisposable
     public async Task<JsonDocument> GetJsonAsync(string path)
     {
         using HttpResponseMessage response = await Client.GetAsync(path);
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        return JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        string body = await response.Content.ReadAsStringAsync();
+        if (response.StatusCode != HttpStatusCode.OK)
+        {
+            throw new Xunit.Sdk.XunitException(
+                $"GET {path} => {(int)response.StatusCode} {response.StatusCode}.{Environment.NewLine}Body: {body}{Environment.NewLine}Process output:{Environment.NewLine}{output_}");
+        }
+
+        return JsonDocument.Parse(body);
     }
 
     public async ValueTask DisposeAsync()

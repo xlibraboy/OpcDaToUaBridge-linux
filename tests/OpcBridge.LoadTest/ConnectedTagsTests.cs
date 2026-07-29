@@ -103,7 +103,7 @@ public sealed class ConnectedTagsTests
         }
 
         cts.Cancel();
-        try { await drain.ConfigureAwait(false); } catch (OperationCanceledException) { }
+        try { await drain; } catch (OperationCanceledException) { }
 
         BridgeValue written = Assert.Single(fake.Written);
         Assert.Equal("enabled", written.DaItemId);

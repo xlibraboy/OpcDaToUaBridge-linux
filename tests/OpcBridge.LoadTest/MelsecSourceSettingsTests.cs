@@ -20,7 +20,7 @@ public sealed class MelsecSourceSettingsTests
         Assert.Equal(SourceTypes.OpcDa, source.SourceType);
         Assert.Equal("Matrikon.OPC.Simulation.1", source.ProgId);
         Assert.Equal("", source.SerialPortName);
-        Assert.Equal(2000, source.MaxMappedTags);
+        Assert.Equal(50000, source.MaxMappedTags);
         Assert.Equal(9600, source.BaudRate);
         Assert.Equal("Odd", source.Parity);
     }
@@ -58,7 +58,7 @@ public sealed class MelsecSourceSettingsTests
     {
         var source = SourceConfigMigration.Normalize(new DaSourceRuntimeSettings(
             "x", "X", "UnknownDriver", "", "localhost", null, null, null,
-            "Serial", "", 9600, 8, "Odd", "One", "00", "FF", 3000, 2, 2000, 1000), 1000);
+            "Serial", "", 9600, 8, "Odd", "One", "00", "FF", 3000, 2, "", "None", "None", null, null, 60000, 5000, 2000, true, 1000), 1000);
         Assert.Equal(SourceTypes.OpcDa, source.SourceType);
     }
 }

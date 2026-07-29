@@ -21,6 +21,7 @@
     <ProjectReference Include="..\..\src\OpcBridge.Client\OpcBridge.Client.csproj" />
     <ProjectReference Include="..\..\src\OpcBridge.Influx\OpcBridge.Influx.csproj" />
     <ProjectReference Include="..\..\src\OpcBridge.Drivers.Melsec\OpcBridge.Drivers.Melsec.csproj" />
+    <ProjectReference Include="..\..\src\OpcBridge.Ua\OpcBridge.Ua.csproj" />
   </ItemGroup>
 
 </Project>

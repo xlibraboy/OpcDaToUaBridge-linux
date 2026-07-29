@@ -37,6 +37,7 @@ builder.Services.AddSingleton<MappingStore>();
 builder.Services.AddSingleton<DaLinkStore>();
 builder.Services.AddSingleton<IDaLinkMetadataResolver>(sp => sp.GetRequiredService<BridgeWorker>());
 builder.Services.AddSingleton<UaServerHost>();
+builder.Services.AddSingleton<OpcUaBrowseService>();
 builder.Services.AddSingleton<IMqttBridge, MqttBridge>();
 builder.Services.AddSingleton<MqttRuntimeSettings>();
 builder.Services.AddSingleton<MqttValueStore>();
@@ -192,28 +193,7 @@ app.MapGet("/api/da/sources", (DaRuntimeSettings settings) =>
     {
         updateRateMs = snapshot.UpdateRateMs,
         useSubscriptions = snapshot.UseSubscriptions,
-        sources = snapshot.Sources.Select(source => new
-        {
-            sourceId = source.SourceId,
-            displayName = source.DisplayName,
-            sourceType = source.SourceType,
-            progId = source.ProgId,
-            host = source.Host,
-            transport = source.Transport,
-            serialPortName = source.SerialPortName,
-            baudRate = source.BaudRate,
-            dataBits = source.DataBits,
-            parity = source.Parity,
-            stopBits = source.StopBits,
-            stationNo = source.StationNo,
-            pcNo = source.PcNo,
-            timeoutMs = source.TimeoutMs,
-            retryCount = source.RetryCount,
-            maxMappedTags = source.MaxMappedTags,
-            updateRateMs = source.UpdateRateMs,
-            remoteUsername = source.RemoteUsername,
-            remoteDomain = source.RemoteDomain
-        })
+        sources = snapshot.Sources.Select(ToSourceApiDto)
     });
 });
 app.MapPost("/api/da/update-rate", (DaUpdateRateRequest request, DaRuntimeSettings settings) =>
@@ -265,32 +245,22 @@ app.MapPost("/api/da/sources/update-rate", (DaSourceUpdateRateRequest request, D
         updateRateMs = source.UpdateRateMs
     });
 });
-app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings settings) =>
+app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings settings, UaServerHost uaServer) =>
 {
     if (string.IsNullOrWhiteSpace(request.SourceId))
     {
         return Results.BadRequest(new { error = "Source ID is required." });
     }
 
-    string sourceType = NormalizeSourceType(request.SourceType);
-    if (sourceType.Length == 0)
+    if (!TryValidateSourceUpsert(request, uaServer.GetOptions().EndpointUrl, settings, out string? validationError))
     {
-        return Results.BadRequest(new { error = $"Unknown SourceType '{request.SourceType}'. Expected OpcDa or MelsecA3n." });
-    }
-
-    if (string.Equals(sourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase))
-    {
-        string portError = ValidateMelsecSerialPort(request, settings);
-        if (portError.Length > 0)
-        {
-            return Results.BadRequest(new { error = portError });
-        }
+        return Results.BadRequest(new { error = validationError });
     }
 
     DaRuntimeSettingsSnapshot snapshot = settings.UpsertSource(new DaSourceRuntimeSettings(
         request.SourceId,
         request.DisplayName ?? string.Empty,
-        sourceType,
+        request.SourceType ?? string.Empty,
         request.ProgId ?? string.Empty,
         request.Host ?? string.Empty,
         request.RemoteUsername,
@@ -306,35 +276,22 @@ app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings
         request.PcNo ?? string.Empty,
         request.TimeoutMs,
         request.RetryCount,
+        request.EndpointUrl ?? string.Empty,
+        request.SecurityMode ?? string.Empty,
+        request.SecurityPolicy ?? string.Empty,
+        request.UaUsername,
+        request.UaPassword,
+        request.SessionTimeoutMs,
+        request.ReconnectDelayMs,
         request.MaxMappedTags,
+        request.UseSubscriptions ?? true,
         request.UpdateRateMs));
 
     DaSourceRuntimeSettings source = snapshot.GetSource(request.SourceId)!;
     return Results.Json(new
     {
         version = snapshot.Version,
-        source = new
-        {
-            sourceId = source.SourceId,
-            displayName = source.DisplayName,
-            sourceType = source.SourceType,
-            progId = source.ProgId,
-            host = source.Host,
-            transport = source.Transport,
-            serialPortName = source.SerialPortName,
-            baudRate = source.BaudRate,
-            dataBits = source.DataBits,
-            parity = source.Parity,
-            stopBits = source.StopBits,
-            stationNo = source.StationNo,
-            pcNo = source.PcNo,
-            timeoutMs = source.TimeoutMs,
-            retryCount = source.RetryCount,
-            maxMappedTags = source.MaxMappedTags,
-            updateRateMs = source.UpdateRateMs,
-            remoteUsername = source.RemoteUsername,
-            remoteDomain = source.RemoteDomain
-        }
+        source = ToSourceApiDto(source)
     });
 });
 app.MapPost("/api/da/sources/remove", (DaSourceRemoveRequest request, DaRuntimeSettings settings, MappingStore store, DaLinkStore daLinkStore) =>
@@ -507,7 +464,7 @@ app.MapGet("/api/mappings", (MappingStore store) =>
     (IReadOnlyList<TagMapping> mappings, long version) = store.GetSnapshot();
     return Results.Json(new { mappings, version });
 });
-app.MapPost("/api/mappings/add", (MappingAddRequest request, MappingStore store, DaRuntimeSettings daSettings) =>
+app.MapPost("/api/mappings/add", (MappingAddRequest request, MappingStore store, DaRuntimeSettings settings) =>
 {
     if (request.Tags is null || request.Tags.Count == 0)
     {
@@ -520,15 +477,20 @@ app.MapPost("/api/mappings/add", (MappingAddRequest request, MappingStore store,
     }
 
     List<TagMapping> tags = request.Tags.Select(ToTagMapping).ToList();
-    if (ValidateMelsecMappings(tags, daSettings, store, out string mappingError))
+    if (ValidateMelsecMappings(tags, settings, store, out string mappingError))
     {
         return Results.BadRequest(new { error = mappingError });
+    }
+
+    if (TryGetMaxMappedTagsError(tags, store, settings) is { } maxError)
+    {
+        return Results.BadRequest(new { error = maxError });
     }
 
     long version = store.Add(tags);
     return Results.Json(new { version });
 });
-app.MapPost("/api/mappings/bulk-add", (MappingAddRequest request, MappingStore store, DaRuntimeSettings daSettings) =>
+app.MapPost("/api/mappings/bulk-add", (MappingAddRequest request, MappingStore store, DaRuntimeSettings settings) =>
 {
     if (request.Tags is null || request.Tags.Count == 0)
     {
@@ -545,9 +507,14 @@ app.MapPost("/api/mappings/bulk-add", (MappingAddRequest request, MappingStore s
         .Where(tag => !string.IsNullOrWhiteSpace(tag.DaItemId))
         .ToList();
 
-    if (ValidateMelsecMappings(tags, daSettings, store, out string mappingError))
+    if (ValidateMelsecMappings(tags, settings, store, out string mappingError))
     {
         return Results.BadRequest(new { error = mappingError });
+    }
+
+    if (TryGetMaxMappedTagsError(tags, store, settings) is { } maxError)
+    {
+        return Results.BadRequest(new { error = maxError });
     }
 
     long version = store.Add(tags);
@@ -602,28 +569,7 @@ app.MapGet("/api/config/export", (DaRuntimeSettings daSettings, MappingStore map
         {
             updateRateMs = daSnapshot.UpdateRateMs,
             useSubscriptions = daSnapshot.UseSubscriptions,
-            sources = daSnapshot.Sources.Select(s => new
-            {
-                sourceId = s.SourceId,
-                displayName = s.DisplayName,
-                sourceType = s.SourceType,
-                progId = s.ProgId,
-                host = s.Host,
-                transport = s.Transport,
-                serialPortName = s.SerialPortName,
-                baudRate = s.BaudRate,
-                dataBits = s.DataBits,
-                parity = s.Parity,
-                stopBits = s.StopBits,
-                stationNo = s.StationNo,
-                pcNo = s.PcNo,
-                timeoutMs = s.TimeoutMs,
-                retryCount = s.RetryCount,
-                maxMappedTags = s.MaxMappedTags,
-                updateRateMs = s.UpdateRateMs,
-                remoteUsername = s.RemoteUsername,
-                remoteDomain = s.RemoteDomain
-            })
+            sources = daSnapshot.Sources.Select(ToSourceApiDto)
         },
         mappings = mappings
     });
@@ -665,7 +611,15 @@ app.MapPost("/api/config/import", async (HttpContext context, DaRuntimeSettings 
                         s.TryGetProperty("pcNo", out JsonElement pn) ? pn.GetString() ?? string.Empty : string.Empty,
                         s.TryGetProperty("timeoutMs", out JsonElement to) ? to.GetInt32() : 0,
                         s.TryGetProperty("retryCount", out JsonElement rc) ? rc.GetInt32() : -1,
+                        s.TryGetProperty("endpointUrl", out JsonElement eu) ? eu.GetString() ?? string.Empty : string.Empty,
+                        s.TryGetProperty("securityMode", out JsonElement sm) ? sm.GetString() ?? string.Empty : string.Empty,
+                        s.TryGetProperty("securityPolicy", out JsonElement sp) ? sp.GetString() ?? string.Empty : string.Empty,
+                        s.TryGetProperty("uaUsername", out JsonElement uu) ? uu.GetString() : null,
+                        null, // UA password not exported
+                        s.TryGetProperty("sessionTimeoutMs", out JsonElement sto) ? sto.GetInt32() : 0,
+                        s.TryGetProperty("reconnectDelayMs", out JsonElement rcd) ? rcd.GetInt32() : 0,
                         s.TryGetProperty("maxMappedTags", out JsonElement mmt) ? mmt.GetInt32() : 0,
+                        s.TryGetProperty("useSubscriptions", out JsonElement usrc) ? usrc.GetBoolean() : true,
                         s.TryGetProperty("updateRateMs", out JsonElement sur) ? sur.GetInt32() : updateRate), updateRate));
                 }
             }
@@ -844,6 +798,134 @@ app.MapPost("/api/ua/settings", async (HttpContext context, UaServerHost uaServe
     {
         return Results.BadRequest(new { error = ex.Message });
     }
+});
+
+app.MapPost("/api/ua/test-connection", async (
+    UaTestConnectionRequest request,
+    OpcUaBrowseService browseService,
+    DaRuntimeSettings settings,
+    CancellationToken cancellationToken) =>
+{
+    if (!TryResolveUaConnection(
+            request.SourceId,
+            request.EndpointUrl,
+            request.SecurityMode,
+            request.SecurityPolicy,
+            request.Username,
+            request.Password,
+            settings,
+            out OpcUaSourceClientOptions? options,
+            out string? resolveError))
+    {
+        return Results.BadRequest(new { error = resolveError, ok = false });
+    }
+
+    UaTestConnectionResult result = await browseService
+        .TestConnectionAsync(options!, cancellationToken)
+        .ConfigureAwait(false);
+
+    if (!result.Ok)
+    {
+        return Results.Json(new { ok = false, error = result.Error ?? "Connection failed." });
+    }
+
+    return Results.Json(new
+    {
+        ok = true,
+        serverProductName = result.ServerProductName,
+        sessionId = result.SessionId
+    });
+});
+app.MapPost("/api/ua/discover", async (
+    UaDiscoverRequest request,
+    OpcUaBrowseService browseService,
+    DaRuntimeSettings settings,
+    CancellationToken cancellationToken) =>
+{
+    if (!TryResolveUaConnection(
+            request.SourceId,
+            request.EndpointUrl,
+            request.SecurityMode,
+            request.SecurityPolicy,
+            request.Username,
+            request.Password,
+            settings,
+            out OpcUaSourceClientOptions? options,
+            out string? resolveError))
+    {
+        return Results.BadRequest(new { error = resolveError, ok = false });
+    }
+
+    UaDiscoverResult result = await browseService
+        .DiscoverServersAsync(options!, cancellationToken)
+        .ConfigureAwait(false);
+
+    if (result.Error is not null)
+    {
+        return Results.Json(new { ok = false, error = result.Error });
+    }
+
+    return Results.Json(new
+    {
+        ok = true,
+        servers = result.Servers.Select(s => new
+        {
+            serverUri = s.ServerUri,
+            recordId = s.RecordId,
+            discoveryUrl = s.DiscoveryUrl,
+            serverName = s.ServerName,
+            serverCapabilities = s.ServerCapabilities,
+            isOnline = s.IsOnline
+        }).ToList()
+    });
+});
+
+app.MapPost("/api/ua/browse", async (
+    UaBrowseRequest request,
+    OpcUaBrowseService browseService,
+    DaRuntimeSettings settings,
+    CancellationToken cancellationToken) =>
+{
+    if (!TryResolveUaConnection(
+            request.SourceId,
+            request.EndpointUrl,
+            request.SecurityMode,
+            request.SecurityPolicy,
+            request.Username,
+            request.Password,
+            settings,
+            out OpcUaSourceClientOptions? options,
+            out string? resolveError))
+    {
+        return Results.BadRequest(new { error = resolveError });
+    }
+
+    UaBrowseResult result = await browseService
+        .BrowseAsync(
+            options!,
+            request.NodeId,
+            request.MaxNodes ?? OpcUaBrowseService.DefaultMaxNodes,
+            cancellationToken)
+        .ConfigureAwait(false);
+
+    if (result.Error is not null
+        && result.Error.StartsWith("Invalid nodeId", StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.BadRequest(new { error = result.Error, nodes = Array.Empty<object>() });
+    }
+
+    return Results.Json(new
+    {
+        nodes = result.Nodes.Select(n => new
+        {
+            nodeId = n.NodeId,
+            displayName = n.DisplayName,
+            nodeClass = n.NodeClass,
+            hasChildren = n.HasChildren
+        }),
+        continuationPoint = result.ContinuationPoint,
+        error = result.Error
+    });
 });
 app.MapGet("/api/mqtt/config", (MqttRuntimeSettings settings) =>
 {
@@ -1124,6 +1206,359 @@ static string NormalizeDaLinkSourceId(string? sourceId)
     return value.Length == 0 ? DaRuntimeSettings.DefaultSourceId : value;
 }
 
+static object ToSourceApiDto(DaSourceRuntimeSettings source)
+{
+    return new
+    {
+        sourceId = source.SourceId,
+        displayName = source.DisplayName,
+        sourceType = source.SourceType,
+        progId = source.ProgId,
+        host = source.Host,
+        transport = source.Transport,
+        serialPortName = source.SerialPortName,
+        baudRate = source.BaudRate,
+        dataBits = source.DataBits,
+        parity = source.Parity,
+        stopBits = source.StopBits,
+        stationNo = source.StationNo,
+        pcNo = source.PcNo,
+        timeoutMs = source.TimeoutMs,
+        retryCount = source.RetryCount,
+        endpointUrl = source.EndpointUrl,
+        securityMode = source.SecurityMode,
+        securityPolicy = source.SecurityPolicy,
+        updateRateMs = source.UpdateRateMs,
+        sessionTimeoutMs = source.SessionTimeoutMs,
+        reconnectDelayMs = source.ReconnectDelayMs,
+        maxMappedTags = source.MaxMappedTags,
+        useSubscriptions = source.UseSubscriptions,
+        remoteUsername = source.RemoteUsername,
+        remoteDomain = source.RemoteDomain,
+        uaUsername = source.UaUsername
+    };
+}
+
+static bool TryValidateSourceUpsert(DaServerConfigRequest request, string serverEndpointUrl, DaRuntimeSettings settings, out string? error)
+{
+    error = null;
+    string sourceType = ResolveApiSourceType(request.SourceType, out string? typeError);
+    if (typeError is not null)
+    {
+        error = typeError;
+        return false;
+    }
+
+    if (string.Equals(sourceType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
+    {
+        string endpointUrl = request.EndpointUrl?.Trim() ?? string.Empty;
+        if (endpointUrl.Length == 0)
+        {
+            error = "Endpoint URL is required for OPC UA sources.";
+            return false;
+        }
+
+        if (!endpointUrl.StartsWith("opc.tcp://", StringComparison.OrdinalIgnoreCase))
+        {
+            error = "Endpoint URL must start with opc.tcp://.";
+            return false;
+        }
+
+        if (!TryValidateUaSecurity(request.SecurityMode, request.SecurityPolicy, out string? securityError))
+        {
+            error = securityError;
+            return false;
+        }
+
+        if (UaEndpointGuard.TargetsSelf(endpointUrl, serverEndpointUrl))
+        {
+            error = "Source endpoint cannot target this bridge's own OPC UA server.";
+            return false;
+        }
+
+        return true;
+    }
+
+    if (string.Equals(sourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase))
+    {
+        string portError = ValidateMelsecSerialPort(request, settings);
+        if (portError.Length > 0)
+        {
+            error = portError;
+            return false;
+        }
+
+        return true;
+    }
+
+    if (string.IsNullOrWhiteSpace(request.ProgId))
+    {
+        error = "ProgId is required for OPC DA sources.";
+        return false;
+    }
+
+    return true;
+}
+
+static string ResolveApiSourceType(string? sourceType, out string? error)
+{
+    error = null;
+    if (string.IsNullOrWhiteSpace(sourceType))
+    {
+        return SourceTypes.OpcDa;
+    }
+
+    string trimmed = sourceType.Trim();
+    if (string.Equals(trimmed, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
+    {
+        return SourceTypes.OpcUa;
+    }
+
+    if (string.Equals(trimmed, SourceTypes.OpcDa, StringComparison.OrdinalIgnoreCase))
+    {
+        return SourceTypes.OpcDa;
+    }
+
+    if (string.Equals(trimmed, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase))
+    {
+        return SourceTypes.MelsecA3n;
+    }
+
+    error = "Source type must be OpcDa, OpcUa, or MelsecA3n.";
+    return string.Empty;
+}
+
+static bool TryValidateUaSecurity(string? securityMode, string? securityPolicy, out string? error)
+{
+    error = null;
+    string mode = string.IsNullOrWhiteSpace(securityMode) ? "None" : securityMode.Trim();
+    string policy = string.IsNullOrWhiteSpace(securityPolicy) ? "None" : securityPolicy.Trim();
+
+    bool modeOk = mode.Equals("None", StringComparison.OrdinalIgnoreCase)
+        || mode.Equals("Sign", StringComparison.OrdinalIgnoreCase)
+        || mode.Equals("SignAndEncrypt", StringComparison.OrdinalIgnoreCase);
+    if (!modeOk)
+    {
+        error = "Security mode must be None, Sign, or SignAndEncrypt.";
+        return false;
+    }
+
+    bool policyOk = policy.Equals("None", StringComparison.OrdinalIgnoreCase)
+        || policy.Equals("Basic256Sha256", StringComparison.OrdinalIgnoreCase);
+    if (!policyOk)
+    {
+        error = "Security policy must be None or Basic256Sha256.";
+        return false;
+    }
+
+    bool modeIsNone = mode.Equals("None", StringComparison.OrdinalIgnoreCase);
+    bool policyIsNone = policy.Equals("None", StringComparison.OrdinalIgnoreCase);
+    if (modeIsNone != policyIsNone)
+    {
+        error = "Security mode None requires policy None; Sign/SignAndEncrypt require Basic256Sha256.";
+        return false;
+    }
+
+    if (!modeIsNone && !policy.Equals("Basic256Sha256", StringComparison.OrdinalIgnoreCase))
+    {
+        error = "Security mode None requires policy None; Sign/SignAndEncrypt require Basic256Sha256.";
+        return false;
+    }
+
+    return true;
+}
+
+static bool TryResolveUaConnection(
+    string? sourceId,
+    string? endpointUrl,
+    string? securityMode,
+    string? securityPolicy,
+    string? username,
+    string? password,
+    DaRuntimeSettings settings,
+    out OpcUaSourceClientOptions? options,
+    out string? error)
+{
+    options = null;
+    error = null;
+
+    string trimmedSourceId = sourceId?.Trim() ?? string.Empty;
+    if (trimmedSourceId.Length > 0)
+    {
+        DaRuntimeSettingsSnapshot snapshot = settings.GetSnapshot();
+        DaSourceRuntimeSettings? source = snapshot.GetSource(trimmedSourceId);
+        if (source is null)
+        {
+            error = $"Source '{trimmedSourceId}' was not found.";
+            return false;
+        }
+
+        if (!string.Equals(source.SourceType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
+        {
+            error = $"Source '{trimmedSourceId}' is not an OpcUa source.";
+            return false;
+        }
+
+        // Explicit body fields override stored source values when provided.
+        string resolvedEndpoint = !string.IsNullOrWhiteSpace(endpointUrl)
+            ? endpointUrl.Trim()
+            : source.EndpointUrl;
+        string resolvedMode = !string.IsNullOrWhiteSpace(securityMode)
+            ? securityMode.Trim()
+            : source.SecurityMode;
+        string resolvedPolicy = !string.IsNullOrWhiteSpace(securityPolicy)
+            ? securityPolicy.Trim()
+            : source.SecurityPolicy;
+        string? resolvedUser = username ?? source.UaUsername;
+        string? resolvedPassword = password ?? source.UaPassword;
+
+        if (!TryValidateUaConnectionFields(resolvedEndpoint, resolvedMode, resolvedPolicy, out error))
+        {
+            return false;
+        }
+
+        options = new OpcUaSourceClientOptions
+        {
+            SourceId = source.SourceId,
+            DisplayName = source.DisplayName,
+            EndpointUrl = resolvedEndpoint,
+            SecurityMode = string.IsNullOrWhiteSpace(resolvedMode) ? "None" : resolvedMode,
+            SecurityPolicy = string.IsNullOrWhiteSpace(resolvedPolicy) ? "None" : resolvedPolicy,
+            Username = resolvedUser,
+            Password = resolvedPassword,
+            SessionTimeoutMs = source.SessionTimeoutMs > 0
+                ? source.SessionTimeoutMs
+                : OpcUaBrowseService.DefaultTimeoutMs,
+            AutoAcceptUntrustedCertificates = true,
+            PkiRoot = "pki/ua-client"
+        };
+        return true;
+    }
+
+    string directEndpoint = endpointUrl?.Trim() ?? string.Empty;
+    if (!TryValidateUaConnectionFields(directEndpoint, securityMode, securityPolicy, out error))
+    {
+        return false;
+    }
+
+    options = new OpcUaSourceClientOptions
+    {
+        SourceId = "adhoc",
+        DisplayName = "Ad-hoc",
+        EndpointUrl = directEndpoint,
+        SecurityMode = string.IsNullOrWhiteSpace(securityMode) ? "None" : securityMode.Trim(),
+        SecurityPolicy = string.IsNullOrWhiteSpace(securityPolicy) ? "None" : securityPolicy.Trim(),
+        Username = username,
+        Password = password,
+        SessionTimeoutMs = OpcUaBrowseService.DefaultTimeoutMs,
+        AutoAcceptUntrustedCertificates = true,
+        PkiRoot = "pki/ua-client"
+    };
+    return true;
+}
+
+static bool TryValidateUaConnectionFields(
+    string endpointUrl,
+    string? securityMode,
+    string? securityPolicy,
+    out string? error)
+{
+    error = null;
+    if (string.IsNullOrWhiteSpace(endpointUrl))
+    {
+        error = "Endpoint URL is required (or provide a valid sourceId).";
+        return false;
+    }
+
+    string trimmed = endpointUrl.Trim();
+    if (!trimmed.StartsWith("opc.tcp://", StringComparison.OrdinalIgnoreCase))
+    {
+        error = "Endpoint URL must start with opc.tcp://.";
+        return false;
+    }
+
+    if (!TryValidateUaSecurity(securityMode, securityPolicy, out string? securityError))
+    {
+        error = securityError;
+        return false;
+    }
+
+    return true;
+}
+
+static string? TryGetMaxMappedTagsError(
+    IReadOnlyList<TagMapping> incoming,
+    MappingStore store,
+    DaRuntimeSettings settings)
+{
+    if (incoming.Count == 0)
+    {
+        return null;
+    }
+
+    (IReadOnlyList<TagMapping> existing, _) = store.GetSnapshot();
+    DaRuntimeSettingsSnapshot snapshot = settings.GetSnapshot();
+
+    Dictionary<string, HashSet<string>> incomingBySource = new(StringComparer.OrdinalIgnoreCase);
+    foreach (TagMapping tag in incoming)
+    {
+        string sourceId = string.IsNullOrWhiteSpace(tag.SourceId)
+            ? DaRuntimeSettings.DefaultSourceId
+            : tag.SourceId.Trim();
+        string itemId = tag.DaItemId?.Trim() ?? string.Empty;
+        if (itemId.Length == 0)
+        {
+            continue;
+        }
+
+        if (!incomingBySource.TryGetValue(sourceId, out HashSet<string>? items))
+        {
+            items = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            incomingBySource[sourceId] = items;
+        }
+
+        items.Add(itemId);
+    }
+
+    foreach ((string sourceId, HashSet<string> newItems) in incomingBySource)
+    {
+        DaSourceRuntimeSettings? source = snapshot.GetSource(sourceId);
+        if (source is null
+            || !string.Equals(source.SourceType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
+        {
+            continue;
+        }
+
+        HashSet<string> existingItems = new(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < existing.Count; i++)
+        {
+            TagMapping mapping = existing[i];
+            if (string.Equals(mapping.SourceId, sourceId, StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(mapping.DaItemId))
+            {
+                existingItems.Add(mapping.DaItemId);
+            }
+        }
+
+        int newUnique = 0;
+        foreach (string itemId in newItems)
+        {
+            if (!existingItems.Contains(itemId))
+            {
+                newUnique++;
+            }
+        }
+
+        int total = existingItems.Count + newUnique;
+        if (total > source.MaxMappedTags)
+        {
+            return $"Source {source.SourceId} exceeds MaxMappedTags ({source.MaxMappedTags}).";
+        }
+    }
+
+    return null;
+}
+
 static bool TryParseLogLevel(string? value, out LogLevel level)
 {
     if (string.IsNullOrWhiteSpace(value))
@@ -1141,28 +1576,6 @@ static MqttPayloadField? ParsePayloadFields(string? value)
     return Enum.TryParse<MqttPayloadField>(value.Trim(), ignoreCase: true, out MqttPayloadField result)
         ? result
         : null;
-}
-
-static string NormalizeSourceType(string? sourceType)
-{
-    if (string.IsNullOrWhiteSpace(sourceType))
-    {
-        return SourceTypes.OpcDa;
-    }
-
-    string trimmed = sourceType.Trim();
-    if (string.Equals(trimmed, SourceTypes.OpcDa, StringComparison.OrdinalIgnoreCase))
-    {
-        return SourceTypes.OpcDa;
-    }
-
-    if (string.Equals(trimmed, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase))
-    {
-        return SourceTypes.MelsecA3n;
-    }
-
-    // Unknown type: API rejects; "" signals rejection to the caller.
-    return string.Empty;
 }
 
 static string ValidateMelsecSerialPort(DaServerConfigRequest request, DaRuntimeSettings settings)

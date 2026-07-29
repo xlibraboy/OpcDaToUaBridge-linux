@@ -104,15 +104,17 @@ internal static class HelpContent
 
 The sidebar groups pages by job:
 
-- **Connectivity** — OPC DA (connection config, rate, subscriptions, discover, backup, + Add Source), Drivers (PLC serial drivers such as Mitsubishi A3N), Diagnostics (DA health, time sync)
+- **Sources** — Sources (status, + Add Source), OPC DA (connection config, rate, subscriptions, discover, backup), **OPC UA (client sources)** (external UA servers the bridge connects to), Drivers (PLC serial drivers such as Mitsubishi A3N), Diagnostics (DA health, time sync)
 - **Tags** — Maps (browse DA, map to UA, faceplate), DA Links (DA→DA forwarding)
 - **IoT** — MQTT (broker config), Traffic (publish/subscribe monitor)
 - **Historian** — InfluxDB (config, write status, per-tag enable via faceplate)
 - **Ops** — Monitor (live values, status), Logs, Diagram
 - **Help** — Guide, About
 
-Use **Connectivity → OPC DA → + Add Source** for the guided setup wizard.
-Use **Connectivity → OPC DA** to edit ProgID/host, credentials, default rate, subscriptions, discover servers, and backup/restore.
+Use **Sources → OPC DA → + Add Source** for the guided setup wizard.
+Use **Sources → OPC DA** to edit ProgID/host, credentials, default rate, subscriptions, discover servers, and backup/restore.
+Use **Sources → OPC UA** to add and configure OPC UA client sources — the bridge connects **out** to external UA servers.
+Use **Sources → Drivers** for PLC serial drivers such as Mitsubishi A3N.
 Use **IoT → MQTT → Setup Wizard** and **Historian → InfluxDB → Setup Wizard** for first-time broker/historian setup.
 
 ## PLC Drivers (Mitsubishi A3N)
@@ -142,6 +144,26 @@ The **Endpoint URL** in Connection settings has two faces:
 - Another machine on the LAN: `opc.tcp://192.168.x.x:4840/OpcBridge` or `opc.tcp://HOSTNAME:4840/OpcBridge`
 
 The **Monitor** tab shows both values: the configured bind address and the derived client connect URL.
+
+## OPC UA Source vs OPC UA Server Endpoint
+
+The bridge can sit on **both sides** of an OPC UA connection — do not confuse them:
+
+- **OPC UA source (inbound)** — configured under **Sources → OPC UA**. The bridge acts as a UA **client** and connects **out** to an external UA server (PLC gateway, historian, another bridge). Its tags are pulled into the bridge like DA source tags.
+- **OPC UA server endpoint (outbound)** — the bridge's own built-in UA server (`opc.tcp://0.0.0.0:4840/OpcBridge`). HMI/SCADA clients connect **to** the bridge here to read the mirrored tags. This endpoint exists regardless of whether any UA sources are configured.
+
+### Mapping UA source tags
+
+- The **item id** for a UA source mapping is the external server's **NodeId string** (e.g. `ns=2;s=Channel1.Device1.Tag1` or `i=2258`).
+- Browse the external address space from the source and map Variable nodes to bridge tags — the same browse-and-map flow used for DA items.
+
+### Security
+
+Supported security modes: **None**, **Sign**, **SignAndEncrypt** — with security policy **None** or **Basic256Sha256** (Sign/SignAndEncrypt require Basic256Sha256). Credentials are an optional UserName token; leave blank for anonymous access.
+
+### Scale
+
+Only **mapped** tags are subscribed on the external server — the unmapped address space is never polled. Large mapped sets are supported (per-source mapped-tag cap, default 50000). Live values arrive via UA **subscriptions**; polling is only a fallback for the mapped set. Writes from UA clients, HMI, or MQTT write **through** to the external server for mappings marked writable.
 
 ## Unified UA Address Space
 

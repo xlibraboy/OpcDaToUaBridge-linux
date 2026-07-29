@@ -61,16 +61,24 @@ internal sealed class BridgeUaServer : StandardServer
 
     public int GetConnectedSessionCount()
     {
-        ISessionManager? sessionManager = ServerInternal?.SessionManager;
-        if (sessionManager is null)
+        try
         {
+            ISessionManager? sessionManager = ServerInternal?.SessionManager;
+            if (sessionManager is null)
+            {
+                return 0;
+            }
+
+            return sessionManager
+                .GetSessions()
+                .Cast<ISession>()
+                .Count(session => session.Activated && !session.HasExpired);
+        }
+        catch (ServiceResultException)
+        {
+            // Server can be mid-start/halted while certificate/setup is still settling.
             return 0;
         }
-
-        return sessionManager
-            .GetSessions()
-            .Cast<ISession>()
-            .Count(session => session.Activated && !session.HasExpired);
     }
 
     public int GetMappedNodeCount()
@@ -89,6 +97,8 @@ internal sealed class BridgeUaServer : StandardServer
 
     public IReadOnlyList<UaSessionDiagnostic> GetSessionDiagnostics()
     {
+        try
+        {
         ISessionManager? sessionManager = ServerInternal?.SessionManager;
         if (sessionManager is null)
         {
@@ -121,6 +131,11 @@ internal sealed class BridgeUaServer : StandardServer
         }
 
         return result;
+            }
+        catch (ServiceResultException)
+        {
+            return Array.Empty<UaSessionDiagnostic>();
+        }
     }
 
     public IReadOnlyList<UaSubscriptionDiagnostic> GetSubscriptionDiagnostics()
