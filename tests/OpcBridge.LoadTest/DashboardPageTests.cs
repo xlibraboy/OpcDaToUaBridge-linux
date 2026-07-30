@@ -74,13 +74,15 @@ public sealed class DashboardPageTests
         Assert.Contains("function saveDriverSource(", DashboardPage.Script);
         Assert.Contains("function testDriverConnection(", DashboardPage.Script);
         Assert.Contains("/api/drivers/melsec-a3n/test-connection", DashboardPage.Script);
-        Assert.Contains("sourceType: 'MelsecA3n'", DashboardPage.Script);
+        Assert.Contains("/api/drivers/s7200-ppi/test-connection", DashboardPage.Script);
+        Assert.Contains("sourceType: type", DashboardPage.Script);
+        Assert.Contains("S7200Ppi", DashboardPage.Script);
     }
 
     [Fact]
     public void Script_SaveSourceRefusesToOverwriteMelsecSource()
     {
-        Assert.Contains("if (existing && isMelsecSource(existing))", DashboardPage.Script);
+        Assert.Contains("if (existing && isDriverSource(existing))", DashboardPage.Script);
         Assert.Contains("const saved = await saveDriverSource();", DashboardPage.Script);
         Assert.Contains("if (!saved) return;", DashboardPage.Script);
     }
