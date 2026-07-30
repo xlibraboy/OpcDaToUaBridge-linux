@@ -186,4 +186,28 @@ public sealed class DashboardPageTests
         Assert.Contains("/api/da/tags", DashboardPage.Script);
         Assert.Contains("function browseTags(", DashboardPage.Script);
     }
+
+    [Fact]
+    public void Html_MapsHasSourceTypeSubTabs()
+    {
+        Assert.Contains("id=\"mapTypeTabs\"", DashboardPage.Html);
+        Assert.Contains("data-map-type=\"opc-da\"", DashboardPage.Html);
+        Assert.Contains("data-map-type=\"opc-ua\"", DashboardPage.Html);
+        Assert.Contains("data-map-type=\"drivers\"", DashboardPage.Html);
+        Assert.Contains(">Source<", DashboardPage.Html);
+        Assert.DoesNotContain(">DA Source<", DashboardPage.Html);
+    }
+
+    [Fact]
+    public void Script_MapsFiltersBySourceType()
+    {
+        Assert.Contains("function setMapType(", DashboardPage.Script);
+        Assert.Contains("function opcDaSources(", DashboardPage.Script);
+        Assert.Contains("function mapTypeSources(", DashboardPage.Script);
+        Assert.Contains("function mappingsForMapType(", DashboardPage.Script);
+        Assert.Contains("tags/maps/opc-da", DashboardPage.Script);
+        Assert.Contains("tags/maps/opc-ua", DashboardPage.Script);
+        Assert.Contains("tags/maps/drivers", DashboardPage.Script);
+        Assert.Contains("mapType: 'opc-da'", DashboardPage.Script);
+    }
 }
