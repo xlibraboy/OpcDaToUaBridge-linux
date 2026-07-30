@@ -305,7 +305,8 @@ app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings
         request.MaxMappedTags,
         upsertDa,
         upsertUa,
-        upsertMelsec));
+        upsertMelsec,
+        S7200: null));
 
     DaSourceRuntimeSettings source = snapshot.GetSource(request.SourceId)!;
     return Results.Json(new

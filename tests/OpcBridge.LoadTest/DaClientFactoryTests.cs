@@ -28,7 +28,8 @@ public sealed class DaClientFactoryTests
                 null,
                 60000,
                 5000),
-            Melsec: null);
+            Melsec: null,
+            S7200: null);
         var snapshot = new DaRuntimeSettingsSnapshot(1000, true, new[] { source }, 1);
 
         ISourceClient client = factory.Create(snapshot, source);
@@ -54,7 +55,8 @@ public sealed class DaClientFactoryTests
                 null,
                 null),
             OpcUa: null,
-            Melsec: null);
+            Melsec: null,
+            S7200: null);
         var snapshot = new DaRuntimeSettingsSnapshot(1000, true, new[] { source }, 1);
 
         ISourceClient client = factory.Create(snapshot, source);

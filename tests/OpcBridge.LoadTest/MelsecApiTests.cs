@@ -380,7 +380,8 @@ public sealed class MelsecApiTests
                                 "00",
                                 "FF",
                                 3000,
-                                2))
+                                2),
+                            null)
                     },
                     0)));
         });
@@ -406,6 +407,7 @@ public sealed class MelsecApiTests
                             true,
                             2000,
                             new OpcDaSourceOptions(progId, host, null, null, null),
+                            null,
                             null,
                             null)
                     },

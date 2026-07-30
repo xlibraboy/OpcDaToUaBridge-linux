@@ -264,7 +264,8 @@ public sealed class DaRuntimeSettings
             MaxMappedTags: 50000,
             OpcDa: new OpcDaSourceOptions(progId, host, remoteUsername, remotePassword, remoteDomain),
             OpcUa: null,
-            Melsec: null);
+            Melsec: null,
+            S7200: null);
     }
 
     private static DaSourceRuntimeSettings NormalizeSource(DaSourceRuntimeSettings source, int defaultUpdateRate)
@@ -400,6 +401,19 @@ public sealed record MelsecA3nSourceOptions(
     int TimeoutMs,
     int RetryCount);
 
+public sealed record S7200PpiSourceOptions(
+    string Transport,
+    string SerialPortName,
+    int BaudRate,
+    int DataBits,
+    string Parity,
+    string StopBits,
+    int LocalPpiAddress,
+    int RemotePpiAddress,
+    int TimeoutMs,
+    int RetryCount);
+
+
 public sealed record DaSourceRuntimeSettings(
     string SourceId,
     string DisplayName,
@@ -409,7 +423,8 @@ public sealed record DaSourceRuntimeSettings(
     int MaxMappedTags,
     OpcDaSourceOptions? OpcDa,
     OpcUaSourceOptions? OpcUa,
-    MelsecA3nSourceOptions? Melsec)
+    MelsecA3nSourceOptions? Melsec,
+    S7200PpiSourceOptions? S7200)
 {
     // Compat getters — flat access for Program/UI during Phase 1.
     public string ProgId => OpcDa?.ProgId ?? string.Empty;
@@ -417,16 +432,18 @@ public sealed record DaSourceRuntimeSettings(
     public string? RemoteUsername => OpcDa?.RemoteUsername;
     public string? RemotePassword => OpcDa?.RemotePassword;
     public string? RemoteDomain => OpcDa?.RemoteDomain;
-    public string Transport => Melsec?.Transport ?? "Serial";
-    public string SerialPortName => Melsec?.SerialPortName ?? string.Empty;
-    public int BaudRate => Melsec?.BaudRate ?? 9600;
-    public int DataBits => Melsec?.DataBits ?? 8;
-    public string Parity => Melsec?.Parity ?? "Odd";
-    public string StopBits => Melsec?.StopBits ?? "One";
+    public string Transport => S7200?.Transport ?? Melsec?.Transport ?? "Serial";
+    public string SerialPortName => S7200?.SerialPortName ?? Melsec?.SerialPortName ?? string.Empty;
+    public int BaudRate => S7200?.BaudRate ?? Melsec?.BaudRate ?? 9600;
+    public int DataBits => S7200?.DataBits ?? Melsec?.DataBits ?? 8;
+    public string Parity => S7200?.Parity ?? Melsec?.Parity ?? "Odd";
+    public string StopBits => S7200?.StopBits ?? Melsec?.StopBits ?? "One";
     public string StationNo => Melsec?.StationNo ?? "00";
     public string PcNo => Melsec?.PcNo ?? "FF";
-    public int TimeoutMs => Melsec?.TimeoutMs ?? 3000;
-    public int RetryCount => Melsec?.RetryCount ?? 2;
+    public int TimeoutMs => S7200?.TimeoutMs ?? Melsec?.TimeoutMs ?? 3000;
+    public int RetryCount => S7200?.RetryCount ?? Melsec?.RetryCount ?? 2;
+    public int LocalPpiAddress => S7200?.LocalPpiAddress ?? 0;
+    public int RemotePpiAddress => S7200?.RemotePpiAddress ?? 2;
     public string EndpointUrl => OpcUa?.EndpointUrl ?? string.Empty;
     public string SecurityMode => OpcUa?.SecurityMode ?? "None";
     public string SecurityPolicy => OpcUa?.SecurityPolicy ?? "None";
@@ -495,6 +512,7 @@ public sealed class SourceConfigDto
     public OpcDaSourceOptionsDto? OpcDa { get; set; }
     public OpcUaSourceOptionsDto? OpcUa { get; set; }
     public MelsecA3nSourceOptionsDto? Melsec { get; set; }
+    public S7200PpiSourceOptionsDto? S7200 { get; set; }
 
     // Legacy flat fields (load only)
     public string? ProgId { get; set; }
@@ -558,6 +576,20 @@ public sealed class MelsecA3nSourceOptionsDto
     public int RetryCount { get; set; }
 }
 
+public sealed class S7200PpiSourceOptionsDto
+{
+    public string? Transport { get; set; }
+    public string? SerialPortName { get; set; }
+    public int BaudRate { get; set; }
+    public int DataBits { get; set; }
+    public string? Parity { get; set; }
+    public string? StopBits { get; set; }
+    public int LocalPpiAddress { get; set; }
+    public int RemotePpiAddress { get; set; }
+    public int TimeoutMs { get; set; }
+    public int RetryCount { get; set; }
+}
+
 public static class SourceConfigMigration
 {
     public static DaSourceRuntimeSettings FromDto(SourceConfigDto dto, int defaultUpdateRate)
@@ -572,6 +604,7 @@ public static class SourceConfigMigration
         OpcDaSourceOptions? opcDa = null;
         OpcUaSourceOptions? opcUa = null;
         MelsecA3nSourceOptions? melsec = null;
+        S7200PpiSourceOptions? s7200 = null;
 
         if (dto.OpcDa is not null)
         {
@@ -629,7 +662,9 @@ public static class SourceConfigMigration
                 dto.Melsec.TimeoutMs,
                 dto.Melsec.RetryCount);
         }
-        else if (HasFlatMelsec(dto))
+        else if (HasFlatMelsec(dto)
+            && !string.Equals(sourceType, SourceTypes.S7200Ppi, StringComparison.OrdinalIgnoreCase)
+            && dto.S7200 is null)
         {
             melsec = new MelsecA3nSourceOptions(
                 dto.Transport ?? string.Empty,
@@ -640,6 +675,36 @@ public static class SourceConfigMigration
                 dto.StopBits ?? string.Empty,
                 dto.StationNo ?? string.Empty,
                 dto.PcNo ?? string.Empty,
+                dto.TimeoutMs,
+                dto.RetryCount);
+        }
+
+        if (dto.S7200 is not null)
+        {
+            s7200 = new S7200PpiSourceOptions(
+                dto.S7200.Transport ?? string.Empty,
+                dto.S7200.SerialPortName ?? string.Empty,
+                dto.S7200.BaudRate,
+                dto.S7200.DataBits,
+                dto.S7200.Parity ?? string.Empty,
+                dto.S7200.StopBits ?? string.Empty,
+                dto.S7200.LocalPpiAddress,
+                dto.S7200.RemotePpiAddress,
+                dto.S7200.TimeoutMs,
+                dto.S7200.RetryCount);
+        }
+        else if (string.Equals(sourceType, SourceTypes.S7200Ppi, StringComparison.OrdinalIgnoreCase)
+            && HasFlatSerial(dto))
+        {
+            s7200 = new S7200PpiSourceOptions(
+                dto.Transport ?? string.Empty,
+                dto.SerialPortName ?? string.Empty,
+                dto.BaudRate,
+                dto.DataBits,
+                dto.Parity ?? string.Empty,
+                dto.StopBits ?? string.Empty,
+                0,
+                2,
                 dto.TimeoutMs,
                 dto.RetryCount);
         }
@@ -679,6 +744,20 @@ public static class SourceConfigMigration
                 dto.TimeoutMs,
                 dto.RetryCount);
         }
+        else if (string.Equals(sourceType, SourceTypes.S7200Ppi, StringComparison.OrdinalIgnoreCase) && s7200 is null)
+        {
+            s7200 = new S7200PpiSourceOptions(
+                dto.Transport ?? string.Empty,
+                dto.SerialPortName ?? string.Empty,
+                dto.BaudRate,
+                dto.DataBits,
+                dto.Parity ?? string.Empty,
+                dto.StopBits ?? string.Empty,
+                0,
+                2,
+                dto.TimeoutMs,
+                dto.RetryCount);
+        }
 
         return Normalize(new DaSourceRuntimeSettings(
             dto.SourceId ?? DaRuntimeSettings.DefaultSourceId,
@@ -689,7 +768,8 @@ public static class SourceConfigMigration
             maxMappedTags,
             opcDa,
             opcUa,
-            melsec), defaultUpdateRate);
+            melsec,
+            s7200), defaultUpdateRate);
     }
 
     public static SourceConfigDto ToDto(DaSourceRuntimeSettings source)
@@ -733,6 +813,19 @@ public static class SourceConfigMigration
                 PcNo = source.Melsec.PcNo,
                 TimeoutMs = source.Melsec.TimeoutMs,
                 RetryCount = source.Melsec.RetryCount
+            },
+            S7200 = source.S7200 is null ? null : new S7200PpiSourceOptionsDto
+            {
+                Transport = source.S7200.Transport,
+                SerialPortName = source.S7200.SerialPortName,
+                BaudRate = source.S7200.BaudRate,
+                DataBits = source.S7200.DataBits,
+                Parity = source.S7200.Parity,
+                StopBits = source.S7200.StopBits,
+                LocalPpiAddress = source.S7200.LocalPpiAddress,
+                RemotePpiAddress = source.S7200.RemotePpiAddress,
+                TimeoutMs = source.S7200.TimeoutMs,
+                RetryCount = source.S7200.RetryCount
             }
         };
     }
@@ -748,6 +841,7 @@ public static class SourceConfigMigration
         OpcDaSourceOptions? opcDa = null;
         OpcUaSourceOptions? opcUa = null;
         MelsecA3nSourceOptions? melsec = null;
+        S7200PpiSourceOptions? s7200 = null;
 
         if (string.Equals(sourceType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
         {
@@ -795,6 +889,32 @@ public static class SourceConfigMigration
                 raw.TimeoutMs <= 0 ? 3000 : raw.TimeoutMs,
                 raw.RetryCount < 0 ? 2 : raw.RetryCount);
         }
+        else if (string.Equals(sourceType, SourceTypes.S7200Ppi, StringComparison.OrdinalIgnoreCase))
+        {
+            S7200PpiSourceOptions raw = source.S7200 ?? new S7200PpiSourceOptions(
+                source.Transport,
+                source.SerialPortName,
+                source.BaudRate,
+                source.DataBits,
+                source.Parity,
+                source.StopBits,
+                source.LocalPpiAddress,
+                source.RemotePpiAddress,
+                source.TimeoutMs,
+                source.RetryCount);
+
+            s7200 = new S7200PpiSourceOptions(
+                string.IsNullOrWhiteSpace(raw.Transport) ? "Serial" : raw.Transport.Trim(),
+                raw.SerialPortName?.Trim() ?? string.Empty,
+                raw.BaudRate > 0 ? raw.BaudRate : 9600,
+                raw.DataBits is 7 or 8 ? raw.DataBits : 8,
+                string.IsNullOrWhiteSpace(raw.Parity) ? "Even" : raw.Parity.Trim(),
+                string.IsNullOrWhiteSpace(raw.StopBits) ? "One" : raw.StopBits.Trim(),
+                raw.LocalPpiAddress < 0 ? 0 : raw.LocalPpiAddress,
+                raw.RemotePpiAddress <= 0 ? 2 : raw.RemotePpiAddress,
+                raw.TimeoutMs <= 0 ? 3000 : raw.TimeoutMs,
+                raw.RetryCount <= 0 ? 2 : raw.RetryCount);
+        }
         else
         {
             // OpcDa (default / unknown collapsed)
@@ -822,7 +942,8 @@ public static class SourceConfigMigration
             maxMappedTags,
             opcDa,
             opcUa,
-            melsec);
+            melsec,
+            s7200);
     }
 
     private static bool HasFlatDa(SourceConfigDto dto) =>
@@ -867,6 +988,11 @@ public static class SourceConfigMigration
             return SourceTypes.MelsecA3n;
         }
 
+        if (string.Equals(trimmed, SourceTypes.S7200Ppi, StringComparison.OrdinalIgnoreCase))
+        {
+            return SourceTypes.S7200Ppi;
+        }
+
         if (string.Equals(trimmed, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
         {
             return SourceTypes.OpcUa;
@@ -896,4 +1022,14 @@ public static class SourceConfigMigration
 
         return Math.Max(100, updateRateMs);
     }
+
+    private static bool HasFlatSerial(SourceConfigDto dto) =>
+        !string.IsNullOrWhiteSpace(dto.SerialPortName) ||
+        !string.IsNullOrWhiteSpace(dto.Transport) ||
+        dto.BaudRate > 0 ||
+        dto.DataBits > 0 ||
+        !string.IsNullOrWhiteSpace(dto.Parity) ||
+        !string.IsNullOrWhiteSpace(dto.StopBits) ||
+        dto.TimeoutMs > 0 ||
+        dto.RetryCount > 0;
 }

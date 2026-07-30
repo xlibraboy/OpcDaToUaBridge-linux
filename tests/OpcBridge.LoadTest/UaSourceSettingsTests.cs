@@ -87,6 +87,7 @@ public sealed class UaSourceSettingsTests
             500,
             null,
             new OpcUaSourceOptions("opc.tcp://h:1", "None", "None", null, null, 60000, 5000),
+            null,
             null), 1000);
 
         SourceConfigDto dto = SourceConfigMigration.ToDto(source);
