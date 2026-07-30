@@ -17,6 +17,8 @@ public sealed record DaServerConfigRequest(
     string? StopBits = null,
     string? StationNo = null,
     string? PcNo = null,
+    int LocalPpiAddress = 0,
+    int RemotePpiAddress = 2,
     int TimeoutMs = 0,
     int RetryCount = -1,
     string? EndpointUrl = null,
@@ -42,3 +44,17 @@ public sealed record MelsecTestConnectionRequest(
     int? TimeoutMs = null);
 
 public sealed record MelsecParseAddressRequest(string Address);
+
+public sealed record S7200TestConnectionRequest(
+    string? SourceId = null,
+    string? SerialPortName = null,
+    int? BaudRate = null,
+    int? DataBits = null,
+    string? Parity = null,
+    string? StopBits = null,
+    int? LocalPpiAddress = null,
+    int? RemotePpiAddress = null,
+    int? TimeoutMs = null,
+    int? RetryCount = null);
+
+public sealed record S7200ParseAddressRequest(string Address);

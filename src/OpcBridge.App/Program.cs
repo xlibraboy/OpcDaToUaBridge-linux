@@ -12,6 +12,8 @@ using OpcBridge.Core;
 using OpcBridge.Da;
 using OpcBridge.Drivers.Melsec;
 using OpcBridge.Drivers.Melsec.Addressing;
+using OpcBridge.Drivers.S7;
+using OpcBridge.Drivers.S7.Addressing;
 using OpcBridge.Mqtt;
 using OpcBridge.Influx;
 using OpcBridge.Ua;
@@ -261,6 +263,7 @@ app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings
     OpcDaSourceOptions? upsertDa = null;
     OpcUaSourceOptions? upsertUa = null;
     MelsecA3nSourceOptions? upsertMelsec = null;
+    S7200PpiSourceOptions? upsertS7200 = null;
     if (string.Equals(upsertType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
     {
         upsertUa = new OpcUaSourceOptions(
@@ -286,6 +289,20 @@ app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings
             request.TimeoutMs,
             request.RetryCount);
     }
+    else if (string.Equals(upsertType, SourceTypes.S7200Ppi, StringComparison.OrdinalIgnoreCase))
+    {
+        upsertS7200 = new S7200PpiSourceOptions(
+            request.Transport ?? "Serial",
+            request.SerialPortName ?? string.Empty,
+            request.BaudRate,
+            request.DataBits,
+            request.Parity ?? "Even",
+            request.StopBits ?? "One",
+            request.LocalPpiAddress,
+            request.RemotePpiAddress,
+            request.TimeoutMs,
+            request.RetryCount);
+    }
     else
     {
         upsertDa = new OpcDaSourceOptions(
@@ -306,7 +323,7 @@ app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings
         upsertDa,
         upsertUa,
         upsertMelsec,
-        S7200: null));
+        upsertS7200));
 
     DaSourceRuntimeSettings source = snapshot.GetSource(request.SourceId)!;
     return Results.Json(new
@@ -354,6 +371,43 @@ app.MapPost("/api/drivers/melsec-a3n/test-connection", async (MelsecTestConnecti
     try
     {
         await client.ConnectAsync(cts.Token);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
+app.MapPost("/api/drivers/s7200-ppi/parse-address", (S7200ParseAddressRequest request) =>
+{
+    if (!S7AddressParser.TryParse(request.Address, out S7Address address, out string error))
+    {
+        return Results.BadRequest(new { ok = false, error });
+    }
+
+    return Results.Json(new
+    {
+        ok = true,
+        canonical = address.Canonical,
+        area = address.Area.ToString(),
+        byteOffset = address.ByteOffset,
+        sizeBytes = address.SizeBytes,
+        bitIndex = address.BitIndex
+    });
+});
+app.MapPost("/api/drivers/s7200-ppi/test-connection", async (S7200TestConnectionRequest request, DaRuntimeSettings settings) =>
+{
+    S7200ClientOptions? options = ResolveS7200TestOptions(request, settings);
+    if (options is null || string.IsNullOrWhiteSpace(options.SerialPortName))
+    {
+        return Results.Json(new { ok = false, error = "SerialPortName is required, or an existing S7200Ppi sourceId must be provided." });
+    }
+
+    try
+    {
+        await using S7200Client client = new(options);
+        await client.ConnectAsync(CancellationToken.None);
         return Results.Json(new { ok = true });
     }
     catch (Exception ex)
@@ -502,6 +556,10 @@ app.MapPost("/api/mappings/add", (MappingAddRequest request, MappingStore store,
     {
         return Results.BadRequest(new { error = mappingError });
     }
+    if (ValidateS7Mappings(tags, settings, store, out mappingError))
+    {
+        return Results.BadRequest(new { error = mappingError });
+    }
 
     if (TryGetMaxMappedTagsError(tags, store, settings) is { } maxError)
     {
@@ -529,6 +587,10 @@ app.MapPost("/api/mappings/bulk-add", (MappingAddRequest request, MappingStore s
         .ToList();
 
     if (ValidateMelsecMappings(tags, settings, store, out string mappingError))
+    {
+        return Results.BadRequest(new { error = mappingError });
+    }
+    if (ValidateS7Mappings(tags, settings, store, out mappingError))
     {
         return Results.BadRequest(new { error = mappingError });
     }
@@ -1285,6 +1347,8 @@ static object ToSourceApiDto(DaSourceRuntimeSettings source)
         stopBits = source.StopBits,
         stationNo = source.StationNo,
         pcNo = source.PcNo,
+        localPpiAddress = source.LocalPpiAddress,
+        remotePpiAddress = source.RemotePpiAddress,
         timeoutMs = source.TimeoutMs,
         retryCount = source.RetryCount,
         endpointUrl = source.EndpointUrl,
@@ -1353,6 +1417,18 @@ static bool TryValidateSourceUpsert(DaServerConfigRequest request, string server
         return true;
     }
 
+    if (string.Equals(sourceType, SourceTypes.S7200Ppi, StringComparison.OrdinalIgnoreCase))
+    {
+        string portError = ValidateS7200SerialPort(request, settings);
+        if (portError.Length > 0)
+        {
+            error = portError;
+            return false;
+        }
+
+        return true;
+    }
+
     if (string.IsNullOrWhiteSpace(request.ProgId))
     {
         error = "ProgId is required for OPC DA sources.";
@@ -1386,7 +1462,12 @@ static string ResolveApiSourceType(string? sourceType, out string? error)
         return SourceTypes.MelsecA3n;
     }
 
-    error = "Source type must be OpcDa, OpcUa, or MelsecA3n.";
+    if (string.Equals(trimmed, SourceTypes.S7200Ppi, StringComparison.OrdinalIgnoreCase))
+    {
+        return SourceTypes.S7200Ppi;
+    }
+
+    error = "Source type must be OpcDa, OpcUa, MelsecA3n, or S7200Ppi.";
     return string.Empty;
 }
 
@@ -1663,7 +1744,59 @@ static string ValidateMelsecSerialPort(DaServerConfigRequest request, DaRuntimeS
             continue;
         }
 
-        if (!string.Equals(existing.SourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase))
+        bool isSerialDriver =
+            string.Equals(existing.SourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(existing.SourceType, SourceTypes.S7200Ppi, StringComparison.OrdinalIgnoreCase);
+        if (!isSerialDriver)
+        {
+            continue;
+        }
+
+        if (string.Equals(existing.SerialPortName ?? string.Empty, port, StringComparison.Ordinal))
+        {
+            return $"SerialPortName '{port}' is already used by source '{existing.SourceId}'.";
+        }
+    }
+
+    return string.Empty;
+}
+
+static string ValidateS7200SerialPort(DaServerConfigRequest request, DaRuntimeSettings settings)
+{
+    string port = (request.SerialPortName ?? string.Empty).Trim();
+    if (port.Length == 0)
+    {
+        return "SerialPortName is required for S7200Ppi sources.";
+    }
+
+    string transport = (request.Transport ?? string.Empty).Trim();
+    if (transport.Length > 0 && !string.Equals(transport, "Serial", StringComparison.OrdinalIgnoreCase))
+    {
+        return $"S7200Ppi sources only support Transport 'Serial'; '{transport}' is not allowed.";
+    }
+
+    if (request.LocalPpiAddress is < 0 or > 126)
+    {
+        return "LocalPpiAddress must be between 0 and 126.";
+    }
+
+    if (request.RemotePpiAddress is < 0 or > 126)
+    {
+        return "RemotePpiAddress must be between 0 and 126.";
+    }
+
+    DaRuntimeSettingsSnapshot snapshot = settings.GetSnapshot();
+    foreach (DaSourceRuntimeSettings existing in snapshot.Sources)
+    {
+        if (string.Equals(existing.SourceId, request.SourceId, StringComparison.OrdinalIgnoreCase))
+        {
+            continue;
+        }
+
+        bool isSerialDriver =
+            string.Equals(existing.SourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(existing.SourceType, SourceTypes.S7200Ppi, StringComparison.OrdinalIgnoreCase);
+        if (!isSerialDriver)
         {
             continue;
         }
@@ -1800,6 +1933,114 @@ static bool ValidateMelsecMappings(List<TagMapping> tags, DaRuntimeSettings daSe
         if (existing + entry.Value > limit)
         {
             error = $"Mapping add would exceed max mapped tags ({limit}) for MelsecA3n source '{entry.Key}'.";
+            return true;
+        }
+    }
+
+    return false;
+}
+
+
+static S7200ClientOptions? ResolveS7200TestOptions(S7200TestConnectionRequest request, DaRuntimeSettings settings)
+{
+    if (!string.IsNullOrWhiteSpace(request.SourceId))
+    {
+        DaSourceRuntimeSettings? source = settings.GetSnapshot().GetSource(request.SourceId);
+        if (source is null || !string.Equals(source.SourceType, SourceTypes.S7200Ppi, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return new S7200ClientOptions
+        {
+            SourceId = source.SourceId,
+            SerialPortName = source.SerialPortName,
+            BaudRate = source.BaudRate,
+            DataBits = source.DataBits,
+            Parity = source.Parity,
+            StopBits = source.StopBits,
+            LocalPpiAddress = source.LocalPpiAddress,
+            RemotePpiAddress = source.RemotePpiAddress,
+            TimeoutMs = source.TimeoutMs,
+            RetryCount = source.RetryCount
+        };
+    }
+
+    if (string.IsNullOrWhiteSpace(request.SerialPortName))
+    {
+        return null;
+    }
+
+    return new S7200ClientOptions
+    {
+        SourceId = "test-connection",
+        SerialPortName = request.SerialPortName.Trim(),
+        BaudRate = request.BaudRate is > 0 ? request.BaudRate.Value : 9600,
+        DataBits = request.DataBits is 7 or 8 ? request.DataBits.Value : 8,
+        Parity = string.IsNullOrWhiteSpace(request.Parity) ? "Even" : request.Parity!,
+        StopBits = string.IsNullOrWhiteSpace(request.StopBits) ? "One" : request.StopBits!,
+        LocalPpiAddress = request.LocalPpiAddress ?? 0,
+        RemotePpiAddress = request.RemotePpiAddress ?? 2,
+        TimeoutMs = request.TimeoutMs is > 0 ? request.TimeoutMs.Value : 3000,
+        RetryCount = request.RetryCount is >= 0 ? request.RetryCount.Value : 2
+    };
+}
+
+static bool ValidateS7Mappings(List<TagMapping> tags, DaRuntimeSettings daSettings, MappingStore store, out string error)
+{
+    error = string.Empty;
+    DaRuntimeSettingsSnapshot snapshot = daSettings.GetSnapshot();
+
+    for (int i = 0; i < tags.Count; i++)
+    {
+        TagMapping tag = tags[i];
+        DaSourceRuntimeSettings? source = snapshot.GetSource(tag.SourceId);
+        if (source is null || !string.Equals(source.SourceType, SourceTypes.S7200Ppi, StringComparison.OrdinalIgnoreCase))
+        {
+            continue;
+        }
+
+        if (!S7AddressParser.TryParse(tag.ItemId, out S7Address address, out string addrError))
+        {
+            error = $"Invalid S7 address '{tag.ItemId}': {addrError}";
+            return true;
+        }
+
+        tag.ItemId = address.Canonical;
+        tags[i] = tag;
+    }
+
+    Dictionary<string, int> newPerSource = new(StringComparer.OrdinalIgnoreCase);
+    HashSet<(string SourceId, string ItemId)> newKeys = new(StringTupleComparerIgnoreCase.Instance);
+    foreach (TagMapping tag in tags)
+    {
+        DaSourceRuntimeSettings? source = snapshot.GetSource(tag.SourceId);
+        if (source is null || !string.Equals(source.SourceType, SourceTypes.S7200Ppi, StringComparison.OrdinalIgnoreCase))
+        {
+            continue;
+        }
+
+        if (!newKeys.Add((tag.SourceId, tag.ItemId)))
+        {
+            continue;
+        }
+
+        newPerSource[tag.SourceId] = newPerSource.TryGetValue(tag.SourceId, out int c) ? c + 1 : 1;
+    }
+
+    foreach (KeyValuePair<string, int> entry in newPerSource)
+    {
+        DaSourceRuntimeSettings? source = snapshot.GetSource(entry.Key);
+        if (source is null)
+        {
+            continue;
+        }
+
+        int existing = store.GetBySource(entry.Key).Count;
+        int limit = source.MaxMappedTags > 0 ? source.MaxMappedTags : 2000;
+        if (existing + entry.Value > limit)
+        {
+            error = $"Mapping add would exceed max mapped tags ({limit}) for S7200Ppi source '{entry.Key}'.";
             return true;
         }
     }
