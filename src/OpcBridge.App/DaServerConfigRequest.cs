@@ -41,7 +41,8 @@ public sealed record MelsecTestConnectionRequest(
     string? StopBits = null,
     string? StationNo = null,
     string? PcNo = null,
-    int? TimeoutMs = null);
+    int? TimeoutMs = null,
+    int? RetryCount = null);
 
 public sealed record MelsecParseAddressRequest(string Address);
 

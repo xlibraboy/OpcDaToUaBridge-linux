@@ -366,11 +366,12 @@ app.MapPost("/api/drivers/melsec-a3n/test-connection", async (MelsecTestConnecti
         return Results.Json(new { ok = false, error = "SerialPortName is required, or an existing MelsecA3n sourceId must be provided." });
     }
 
-    await using MelsecA3nClient client = new(options);
-    using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(options.TimeoutMs > 0 ? options.TimeoutMs : 3000));
     try
     {
-        await client.ConnectAsync(cts.Token);
+        await using MelsecA3nClient client = new(options);
+        // Probe already enforces TimeoutMs/RetryCount; do not wrap with a second CTS
+        // that races open+probe and surfaces "The operation was cancelled."
+        await client.ConnectAsync(CancellationToken.None);
         return Results.Json(new { ok = true });
     }
     catch (Exception ex)
@@ -1812,6 +1813,25 @@ static string ValidateS7200SerialPort(DaServerConfigRequest request, DaRuntimeSe
 
 static MelsecA3nClientOptions? ResolveMelsecTestOptions(MelsecTestConnectionRequest request, DaRuntimeSettings settings)
 {
+    // Prefer explicit body fields (Drivers form always sends them) so unsaved edits are tested.
+    string port = (request.SerialPortName ?? string.Empty).Trim();
+    if (port.Length > 0)
+    {
+        return new MelsecA3nClientOptions
+        {
+            SourceId = string.IsNullOrWhiteSpace(request.SourceId) ? "test-connection" : request.SourceId.Trim(),
+            SerialPortName = port,
+            BaudRate = request.BaudRate is > 0 ? request.BaudRate.Value : 9600,
+            DataBits = request.DataBits is 7 or 8 ? request.DataBits.Value : 8,
+            Parity = string.IsNullOrWhiteSpace(request.Parity) ? "Odd" : request.Parity!,
+            StopBits = string.IsNullOrWhiteSpace(request.StopBits) ? "One" : request.StopBits!,
+            StationNo = string.IsNullOrWhiteSpace(request.StationNo) ? "00" : request.StationNo!,
+            PcNo = string.IsNullOrWhiteSpace(request.PcNo) ? "FF" : request.PcNo!,
+            TimeoutMs = request.TimeoutMs is > 0 ? request.TimeoutMs.Value : 3000,
+            RetryCount = request.RetryCount is >= 0 ? request.RetryCount.Value : 0
+        };
+    }
+
     if (!string.IsNullOrWhiteSpace(request.SourceId))
     {
         DaSourceRuntimeSettings? source = settings.GetSnapshot().GetSource(request.SourceId);
@@ -1835,25 +1855,7 @@ static MelsecA3nClientOptions? ResolveMelsecTestOptions(MelsecTestConnectionRequ
         };
     }
 
-    string port = (request.SerialPortName ?? string.Empty).Trim();
-    if (port.Length == 0)
-    {
-        return null;
-    }
-
-    return new MelsecA3nClientOptions
-    {
-        SourceId = "test-connection",
-        SerialPortName = port,
-        BaudRate = request.BaudRate ?? 9600,
-        DataBits = request.DataBits ?? 8,
-        Parity = request.Parity ?? "Odd",
-        StopBits = request.StopBits ?? "One",
-        StationNo = request.StationNo ?? "00",
-        PcNo = request.PcNo ?? "FF",
-        TimeoutMs = request.TimeoutMs ?? 3000,
-        RetryCount = 0
-    };
+    return null;
 }
 
 static TagMapping ToTagMapping(MappingTagDto tag) => new()
