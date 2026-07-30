@@ -342,7 +342,8 @@ public sealed class BridgeState
 
     private static string BuildEndpointSummary(DaSourceRuntimeSettings source)
     {
-        if (string.Equals(source.SourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(source.SourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(source.SourceType, SourceTypes.S7200Ppi, StringComparison.OrdinalIgnoreCase))
         {
             string port = source.SerialPortName ?? string.Empty;
             return string.IsNullOrEmpty(port) ? string.Empty : $"{port}@{source.BaudRate}";

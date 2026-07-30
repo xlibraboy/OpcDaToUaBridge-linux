@@ -805,7 +805,8 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                 changed.Add(source.SourceId);
             }
 
-            if (string.Equals(source.SourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(source.SourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(source.SourceType, SourceTypes.S7200Ppi, StringComparison.OrdinalIgnoreCase))
             {
                 if (string.IsNullOrWhiteSpace(source.SerialPortName))
                 {
@@ -918,6 +919,20 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                 && string.Equals(a.StopBits, b.StopBits, StringComparison.OrdinalIgnoreCase)
                 && string.Equals(a.StationNo, b.StationNo, StringComparison.OrdinalIgnoreCase)
                 && string.Equals(a.PcNo, b.PcNo, StringComparison.OrdinalIgnoreCase)
+                && a.TimeoutMs == b.TimeoutMs
+                && a.RetryCount == b.RetryCount;
+        }
+
+        if (string.Equals(a.SourceType, SourceTypes.S7200Ppi, StringComparison.OrdinalIgnoreCase))
+        {
+            return string.Equals(a.Transport, b.Transport, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(a.SerialPortName, b.SerialPortName, StringComparison.OrdinalIgnoreCase)
+                && a.BaudRate == b.BaudRate
+                && a.DataBits == b.DataBits
+                && string.Equals(a.Parity, b.Parity, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(a.StopBits, b.StopBits, StringComparison.OrdinalIgnoreCase)
+                && a.LocalPpiAddress == b.LocalPpiAddress
+                && a.RemotePpiAddress == b.RemotePpiAddress
                 && a.TimeoutMs == b.TimeoutMs
                 && a.RetryCount == b.RetryCount;
         }
