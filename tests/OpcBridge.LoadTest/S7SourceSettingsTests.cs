@@ -104,4 +104,23 @@ public sealed class S7SourceSettingsTests
         Assert.Equal(original.RemotePpiAddress, again.RemotePpiAddress);
         Assert.Equal(original.SerialPortName, again.SerialPortName);
     }
+
+    [Fact]
+    public void FromDto_S7200Ppi_PreservesExplicitRemotePpiAddressZero()
+    {
+        var source = SourceConfigMigration.FromDto(new SourceConfigDto
+        {
+            SourceId = "s7-0",
+            SourceType = SourceTypes.S7200Ppi,
+            S7200 = new S7200PpiSourceOptionsDto
+            {
+                SerialPortName = "/dev/ttyUSB0",
+                LocalPpiAddress = 0,
+                RemotePpiAddress = 0
+            }
+        }, 1000);
+
+        Assert.Equal(0, source.RemotePpiAddress);
+        Assert.Equal(0, source.LocalPpiAddress);
+    }
 }

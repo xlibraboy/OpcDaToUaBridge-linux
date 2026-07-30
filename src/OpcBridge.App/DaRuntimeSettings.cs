@@ -911,7 +911,7 @@ public static class SourceConfigMigration
                 string.IsNullOrWhiteSpace(raw.Parity) ? "Even" : raw.Parity.Trim(),
                 string.IsNullOrWhiteSpace(raw.StopBits) ? "One" : raw.StopBits.Trim(),
                 raw.LocalPpiAddress < 0 ? 0 : raw.LocalPpiAddress,
-                raw.RemotePpiAddress <= 0 ? 2 : raw.RemotePpiAddress,
+                raw.RemotePpiAddress < 0 || raw.RemotePpiAddress > 126 ? 2 : raw.RemotePpiAddress,
                 raw.TimeoutMs <= 0 ? 3000 : raw.TimeoutMs,
                 raw.RetryCount <= 0 ? 2 : raw.RetryCount);
         }
