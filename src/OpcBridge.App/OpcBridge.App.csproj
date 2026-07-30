@@ -8,6 +8,7 @@
     <ProjectReference Include="..\OpcBridge.Influx\OpcBridge.Influx.csproj" />
     <ProjectReference Include="..\OpcBridge.Client\OpcBridge.Client.csproj" />
     <ProjectReference Include="..\OpcBridge.Drivers.Melsec\OpcBridge.Drivers.Melsec.csproj" />
+    <ProjectReference Include="..\OpcBridge.Drivers.S7\OpcBridge.Drivers.S7.csproj" />
   </ItemGroup>
 
   <ItemGroup>
