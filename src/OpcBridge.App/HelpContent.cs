@@ -104,7 +104,7 @@ internal static class HelpContent
 
 The sidebar groups pages by job:
 
-- **Sources** — Sources (status, + Add Source), OPC DA (connection config, rate, subscriptions, discover, backup), **OPC UA (client sources)** (external UA servers the bridge connects to), Drivers (PLC serial drivers such as Mitsubishi A3N), Diagnostics (DA health, time sync)
+- **Sources** — Sources (status, + Add Source), OPC DA (connection config, rate, subscriptions, discover, backup), **OPC UA (client sources)** (external UA servers the bridge connects to), Drivers (PLC serial drivers: Mitsubishi A3N, Siemens S7-200 PPI), Diagnostics (DA health, time sync)
 - **Tags** — Maps (browse DA, map to UA, faceplate), DA Links (DA→DA forwarding)
 - **IoT** — MQTT (broker config), Traffic (publish/subscribe monitor)
 - **Historian** — InfluxDB (config, write status, per-tag enable via faceplate)
@@ -114,7 +114,7 @@ The sidebar groups pages by job:
 Use **Sources → OPC DA → + Add Source** for the guided setup wizard.
 Use **Sources → OPC DA** to edit ProgID/host, credentials, default rate, subscriptions, discover servers, and backup/restore.
 Use **Sources → OPC UA** to add and configure OPC UA client sources — the bridge connects **out** to external UA servers.
-Use **Sources → Drivers** for PLC serial drivers such as Mitsubishi A3N.
+Use **Connectivity → Drivers** for PLC serial drivers (Mitsubishi A3N, Siemens S7-200).
 Use **IoT → MQTT → Setup Wizard** and **Historian → InfluxDB → Setup Wizard** for first-time broker/historian setup.
 
 ## PLC Drivers (Mitsubishi A3N)
@@ -128,6 +128,17 @@ The bridge can poll a Mitsubishi **A3NCPU** over **RS-232** using MELSEC **A-com
 4. Writes on writeable tags go back to the PLC. Bit-in-word uses read-modify-write.
 
 This is separate from **OPC DA** sources and from this process’s **OPC UA server** endpoint.
+
+
+## PLC Drivers (Siemens S7-200 PPI)
+
+The bridge can poll a Siemens **S7-200** over a host **PPI** serial cable (pure managed client).
+
+1. Open **Connectivity → Drivers** and add a Siemens S7-200 driver.
+2. Set serial port (e.g. `/dev/ttyUSB0`), defaults **9600 8E1**, Local PPI **0**, Remote PPI **2**.
+3. Map tags with Siemens addresses: `I0.0`, `Q0.1`, `M10.2`, `VB10`, `VW100`, `VD200`.
+4. Poll-only ingest; write-through when a mapping is Writeable.
+
 
 ## OPC UA Endpoint — Bind vs Connect
 

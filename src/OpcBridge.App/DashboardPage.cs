@@ -798,7 +798,7 @@ internal static class DashboardPage
     <div class="conn-layout">
         <div class="conn-main">
             <div class="box">
-                <div class="box-h">Mitsubishi Melsec A3N Driver <button class="btn" type="button" onclick="openDriverWizard()" style="margin-left:auto">+ Add Driver</button><span class="msg" id="drvA3nMessage" style="font-weight:400;text-transform:none;letter-spacing:0">Select a driver source or click New.</span></div>
+                <div class="box-h">PLC Driver <button class="btn" type="button" onclick="openDriverWizard()" style="margin-left:auto">+ Add Driver</button><span class="msg" id="drvA3nMessage" style="font-weight:400;text-transform:none;letter-spacing:0">Select a driver source or click New.</span></div>
                 <div class="box-b">
                     <div class="conn-section">
                         <div class="conn-section-h">Identity</div>
@@ -815,8 +815,10 @@ internal static class DashboardPage
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">PLC Addressing <span class="info" data-tip="Station 00 = directly attached CPU. PC number FF = own station (1C protocol).">i</span></div>
-                        <div class="field"><label class="fl">Station</label><input id="drvA3nStation" type="text" placeholder="00" maxlength="2" style="width:70px">
+                        <div class="field" id="drvA3nStationRow"><label class="fl">Station</label><input id="drvA3nStation" type="text" placeholder="00" maxlength="2" style="width:70px">
                         <label class="fl" style="width:auto">PC No</label><input id="drvA3nPc" type="text" placeholder="FF" maxlength="2" style="width:70px"></div>
+                        <div class="field" id="drvS7PpiRow" style="display:none"><label class="fl">Local PPI</label><input id="drvS7LocalPpi" type="number" min="0" max="126" value="0" style="width:70px">
+                        <label class="fl" style="width:auto">Remote PPI</label><input id="drvS7RemotePpi" type="number" min="0" max="126" value="2" style="width:70px"></div>
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">Defaults</div>
@@ -866,7 +868,7 @@ internal static class DashboardPage
         </div>
         <div class="wizard-body">
             <div class="wzdrv-pane active" data-pane="1">
-                <div class="field"><label class="fl">Driver Type</label><select id="wzDrvType"><option value="MelsecA3n">Mitsubishi Melsec A3N (serial 1C)</option></select></div>
+                <div class="field"><label class="fl">Driver Type</label><select id="wzDrvType" onchange="wzDrvOnTypeChange()"><option value="MelsecA3n">Mitsubishi Melsec A3N (serial 1C)</option><option value="S7200Ppi">Siemens S7-200 (PPI serial)</option></select></div>
                 <div class="hint">Direct serial link to the PLC CPU (RS-422/RS-232C, 1C protocol). More driver types can be added later.</div>
             </div>
             <div class="wzdrv-pane" data-pane="2">
@@ -880,8 +882,10 @@ internal static class DashboardPage
                 <label class="fl" style="width:auto">Data bits</label><select id="wzDrvDataBits"><option value="7">7</option><option value="8" selected>8</option></select></div>
                 <div class="field"><label class="fl">Parity</label><select id="wzDrvParity"><option value="None">None</option><option value="Odd" selected>Odd</option><option value="Even">Even</option></select>
                 <label class="fl" style="width:auto">Stop bits</label><select id="wzDrvStopBits"><option value="One" selected>1</option><option value="Two">2</option></select></div>
-                <div class="field"><label class="fl">Station</label><input type="text" id="wzDrvStation" placeholder="00" maxlength="2" style="width:70px">
+                <div class="field" id="wzDrvStationRow"><label class="fl">Station</label><input type="text" id="wzDrvStation" placeholder="00" maxlength="2" style="width:70px">
                 <label class="fl" style="width:auto">PC No</label><input type="text" id="wzDrvPc" placeholder="FF" maxlength="2" style="width:70px"></div>
+                <div class="field" id="wzDrvS7PpiRow" style="display:none"><label class="fl">Local PPI</label><input type="number" id="wzDrvLocalPpi" min="0" max="126" value="0" style="width:70px">
+                <label class="fl" style="width:auto">Remote PPI</label><input type="number" id="wzDrvRemotePpi" min="0" max="126" value="2" style="width:70px"></div>
             </div>
             <div class="wzdrv-pane" data-pane="4">
                 <div class="field"><label class="fl">Timeout ms</label><input type="number" id="wzDrvTimeout" min="100" step="100" value="3000" style="width:100px">
@@ -2712,14 +2716,31 @@ function isUaSource(source) {
     return t.toLowerCase() === 'opcua';
 }
 function isMelsecSource(source) { return String(get(source, 'sourceType') || 'OpcDa') === 'MelsecA3n'; }
+function isS7Source(source) { return String(get(source, 'sourceType') || 'OpcDa') === 'S7200Ppi'; }
+function isDriverSource(source) { return isMelsecSource(source) || isS7Source(source); }
+function setDriverFormType(type) {
+    state.driverFormType = type || 'MelsecA3n';
+    const s7 = state.driverFormType === 'S7200Ppi';
+    if (el('drvA3nStationRow')) el('drvA3nStationRow').style.display = s7 ? 'none' : '';
+    if (el('drvS7PpiRow')) el('drvS7PpiRow').style.display = s7 ? '' : 'none';
+}
+function wzDrvOnTypeChange() {
+    const s7 = el('wzDrvType') && el('wzDrvType').value === 'S7200Ppi';
+    if (el('wzDrvStationRow')) el('wzDrvStationRow').style.display = s7 ? 'none' : '';
+    if (el('wzDrvS7PpiRow')) el('wzDrvS7PpiRow').style.display = s7 ? '' : 'none';
+    if (el('wzDrvParity')) el('wzDrvParity').value = s7 ? 'Even' : 'Odd';
+}
+
 function sourceTypeLabel(source) {
     if (isUaSource(source)) return 'UA';
     if (isMelsecSource(source)) return 'A3N';
+    if (isS7Source(source)) return 'S7-200';
     return 'DA';
 }
 function sourceTypeBadge(source) {
     if (isUaSource(source)) return badge('UA', 'partial');
     if (isMelsecSource(source)) return badge('A3N', 'partial');
+    if (isS7Source(source)) return badge('S7-200', 'partial');
     return badge('DA', 'warn');
 }
 function sourceEndpointSummary(source) {
@@ -2801,7 +2822,7 @@ function updateMapSourceHint() {
     const hint = el('mapSourceHint');
     if (!hint) return;
     const source = state.sources.find(s => s.sourceId === state.selectedSourceId);
-    hint.textContent = source && isMelsecSource(source) ? 'Device address e.g. D100, M10, X20, D100:8' : '';
+    hint.textContent = source && isMelsecSource(source) ? 'Device address e.g. D100, M10, X20, D100:8' : (source && isS7Source(source) ? 'Siemens address e.g. VW100, I0.0, M10.2, QB0' : '');
 }
 function loadSelectedSourceForm() {
     if (state.editingNewSource) return;
@@ -3743,7 +3764,7 @@ async function saveSource() {
         return;
     }
     const existing = state.sources.find(s => s.sourceId === sourceId);
-    if (existing && isMelsecSource(existing)) {
+    if (existing && isDriverSource(existing)) {
         el('cfgMessage').textContent = 'Serial driver source — edit it on the Drivers page.';
         return;
     }
@@ -3803,7 +3824,7 @@ function showSaveReset() { el('cfgApply').style.display = ''; el('cfgReset').sty
 function hideSaveReset() { el('cfgApply').style.display = 'none'; el('cfgReset').style.display = 'none'; }
 
 // --- PLC driver sources (Melsec A3N) ---
-function driverSources() { return state.sources.filter(s => isMelsecSource(s)); }
+function driverSources() { return state.sources.filter(s => isDriverSource(s)); }
 function currentDriver() { return state.editingNewDriver ? null : driverSources().find(s => s.sourceId === state.selectedDriverId) || null; }
 function renderDrivers() {
     const drivers = driverSources();
@@ -3835,6 +3856,14 @@ function loadDriverForm() {
     el('drvA3nRate').value = String(source.updateRateMs || 1000);
     el('drvA3nMaxTags').value = String(source.maxMappedTags || 2000);
     el('drvA3nMessage').textContent = 'Editing ' + (source.displayName || source.sourceId) + '.';
+    if (isS7Source(source)) {
+        if (el('drvS7LocalPpi')) el('drvS7LocalPpi').value = String(source.localPpiAddress ?? 0);
+        if (el('drvS7RemotePpi')) el('drvS7RemotePpi').value = String(source.remotePpiAddress ?? 2);
+        setDriverFormType('S7200Ppi');
+        el('drvA3nParity').value = source.parity || 'Even';
+    } else {
+        setDriverFormType('MelsecA3n');
+    }
 }
 function pickDriver(sourceId) {
     state.selectedDriverId = sourceId;
@@ -3858,6 +3887,7 @@ function newDriver() {
     el('drvA3nRetry').value = '2';
     el('drvA3nRate').value = '1000';
     el('drvA3nMaxTags').value = '2000';
+    setDriverFormType('MelsecA3n');
     el('drvA3nMessage').textContent = 'Enter a unique Source ID and serial port, then save.';
 }
 function resetDriver() {
@@ -3866,23 +3896,32 @@ function resetDriver() {
     el('drvA3nMessage').textContent = 'Reverted to saved values.';
 }
 function driverFormBody() {
-    return {
+    const type = state.driverFormType || 'MelsecA3n';
+    const body = {
         sourceId: el('drvA3nSourceId').value.trim(),
         displayName: el('drvA3nName').value.trim() || null,
-        sourceType: 'MelsecA3n',
+        sourceType: type,
         transport: 'Serial',
         serialPortName: el('drvA3nPort').value.trim(),
         baudRate: Number(el('drvA3nBaud').value) || 9600,
         dataBits: Number(el('drvA3nDataBits').value) || 8,
         parity: el('drvA3nParity').value,
         stopBits: el('drvA3nStopBits').value,
-        stationNo: el('drvA3nStation').value.trim() || '00',
-        pcNo: el('drvA3nPc').value.trim() || 'FF',
         timeoutMs: Number(el('drvA3nTimeout').value) || 3000,
         retryCount: Number(el('drvA3nRetry').value) || 0,
         maxMappedTags: Number(el('drvA3nMaxTags').value) || 2000,
         updateRateMs: Number(el('drvA3nRate').value) || 1000
     };
+    if (type === 'S7200Ppi') {
+        body.localPpiAddress = Number(el('drvS7LocalPpi')?.value ?? 0);
+        body.remotePpiAddress = Number(el('drvS7RemotePpi')?.value ?? 2);
+        if (Number.isNaN(body.localPpiAddress)) body.localPpiAddress = 0;
+        if (Number.isNaN(body.remotePpiAddress)) body.remotePpiAddress = 2;
+    } else {
+        body.stationNo = el('drvA3nStation').value.trim() || '00';
+        body.pcNo = el('drvA3nPc').value.trim() || 'FF';
+    }
+    return body;
 }
 async function saveDriverSource() {
     const body = driverFormBody();
@@ -3926,7 +3965,8 @@ async function testDriverConnection() {
         return;
     }
     el('drvA3nMessage').textContent = 'Testing connection…';
-    const r = await fetch('/api/drivers/melsec-a3n/test-connection', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const url = body.sourceType === 'S7200Ppi' ? '/api/drivers/s7200-ppi/test-connection' : '/api/drivers/melsec-a3n/test-connection';
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const p = await r.json();
     el('drvA3nMessage').textContent = p.ok ? '✓ Connection OK — PLC responded.' : '✗ ' + (p.error || ('HTTP ' + r.status));
 }
@@ -3936,6 +3976,7 @@ function openDriverWizard() {
     wzDrvCurrentStep = 1;
     ['wzDrvSourceId','wzDrvName','wzDrvPort'].forEach(id => el(id).value = '');
     el('wzDrvType').value = 'MelsecA3n';
+    wzDrvOnTypeChange();
     el('wzDrvBaud').value = '9600';
     el('wzDrvDataBits').value = '8';
     el('wzDrvParity').value = 'Odd';
@@ -3980,12 +4021,17 @@ function wzDrvValidate(step) {
     return true;
 }
 function wzDrvBuildSummary() {
+    const s7 = el('wzDrvType').value === 'S7200Ppi';
+    const typeLabel = s7 ? 'Siemens S7-200 (PPI serial)' : 'Mitsubishi Melsec A3N (serial 1C)';
+    const addrLine = s7
+        ? `<b>Local / Remote PPI:</b> ${esc(el('wzDrvLocalPpi').value || '0')} / ${esc(el('wzDrvRemotePpi').value || '2')}<br>`
+        : `<b>Station / PC:</b> ${esc(el('wzDrvStation').value || '00')} / ${esc(el('wzDrvPc').value || 'FF')}<br>`;
     el('wzDrvSummary').innerHTML =
-        `<b>Type:</b> Mitsubishi Melsec A3N (serial 1C)<br>` +
+        `<b>Type:</b> ${typeLabel}<br>` +
         `<b>Source ID:</b> ${esc(el('wzDrvSourceId').value)}<br>` +
         `<b>Display Name:</b> ${esc(el('wzDrvName').value || '—')}<br>` +
         `<b>Serial:</b> ${esc(el('wzDrvPort').value)} @ ${el('wzDrvBaud').value} baud, ${el('wzDrvDataBits').value}${el('wzDrvParity').value[0]}${el('wzDrvStopBits').value === 'Two' ? '2' : '1'}<br>` +
-        `<b>Station / PC:</b> ${esc(el('wzDrvStation').value || '00')} / ${esc(el('wzDrvPc').value || 'FF')}<br>` +
+        addrLine +
         `<b>Timeout:</b> ${el('wzDrvTimeout').value} ms · <b>Retries:</b> ${el('wzDrvRetry').value}<br>` +
         `<b>Update Rate:</b> ${el('wzDrvRate').value} ms · <b>Max tags:</b> ${el('wzDrvMaxTags').value}`;
 }
@@ -4000,6 +4046,9 @@ async function wzDrvFinish() {
     el('drvA3nStopBits').value = el('wzDrvStopBits').value;
     el('drvA3nStation').value = el('wzDrvStation').value;
     el('drvA3nPc').value = el('wzDrvPc').value;
+    if (el('drvS7LocalPpi') && el('wzDrvLocalPpi')) el('drvS7LocalPpi').value = el('wzDrvLocalPpi').value;
+    if (el('drvS7RemotePpi') && el('wzDrvRemotePpi')) el('drvS7RemotePpi').value = el('wzDrvRemotePpi').value;
+    setDriverFormType(el('wzDrvType').value || 'MelsecA3n');
     el('drvA3nTimeout').value = el('wzDrvTimeout').value;
     el('drvA3nRetry').value = el('wzDrvRetry').value;
     el('drvA3nRate').value = el('wzDrvRate').value;
