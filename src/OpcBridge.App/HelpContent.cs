@@ -105,7 +105,7 @@ internal static class HelpContent
 The sidebar groups pages by job:
 
 - **Sources** — Sources (status, + Add Source), OPC DA (connection config, rate, subscriptions, discover, backup), **OPC UA (client sources)** (external UA servers the bridge connects to), Drivers (PLC serial drivers: Mitsubishi A3N, Siemens S7-200 PPI), Diagnostics (DA health, time sync)
-- **Tags** — Maps (browse DA, map to UA, faceplate), DA Links (DA→DA forwarding)
+- **Tags** — Maps (OPC DA / OPC UA / Drivers sub-tabs: browse, map to UA, faceplate), DA Links (DA→DA forwarding)
 - **IoT** — MQTT (broker config), Traffic (publish/subscribe monitor)
 - **Historian** — InfluxDB (config, write status, per-tag enable via faceplate)
 - **Ops** — Monitor (live values, status), Logs, Diagram

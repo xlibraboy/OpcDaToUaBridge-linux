@@ -20,6 +20,8 @@ namespace OpcBridge.App;
 //   data-tab="opc-ua", id="view-opc-ua", data-route="connectivity/opc-ua", text "OPC UA"
 //   data-tab="connection", id="view-connection", id="sourcesStatusList", data-route="connectivity/sources", text "Sources"
 //   id="uaCfgEndpointUrl", id="uaCfgSourceId", function saveUaSource/testUaConnection
+//   id="mapTypeTabs", data-map-type="opc-da|opc-ua|drivers", function setMapType(/opcDaSources(/mapTypeSources(
+//   tags/maps/opc-da, tags/maps/opc-ua, tags/maps/drivers
 internal static class DashboardPage
 {
     public const string Html = """
@@ -212,10 +214,10 @@ internal static class DashboardPage
         .log-entry .meta .lvl.warning { color: var(--warn); }
         .log-entry .meta .lvl.error, .log-entry .meta .lvl.critical { color: var(--bad); }
         .log-entry .message.error, .log-entry .message.critical { color: var(--bad); }
-        .help-subtabs { display: flex; gap: 2px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 4px; margin-bottom: 12px; }
-        .help-subtab { flex: 1; background: none; border: none; color: var(--muted); padding: 8px 16px; font-size: 12px; font-weight: 600; cursor: pointer; border-radius: 4px; transition: all .15s ease; }
-        .help-subtab:hover { color: var(--text); background: var(--panel2); }
-        .help-subtab.active { color: var(--text); background: var(--panel2); box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+        .help-subtabs, .map-type-tabs { display: flex; gap: 2px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 4px; margin-bottom: 12px; }
+        .help-subtab, .map-type-tab { flex: 1; background: none; border: none; color: var(--muted); padding: 8px 16px; font-size: 12px; font-weight: 600; cursor: pointer; border-radius: 4px; transition: all .15s ease; }
+        .help-subtab:hover, .map-type-tab:hover { color: var(--text); background: var(--panel2); }
+        .help-subtab.active, .map-type-tab.active { color: var(--text); background: var(--panel2); box-shadow: 0 1px 3px rgba(0,0,0,.2); }
         .help-subtab-content { display: none; }
         .help-subtab-content.active { display: block; }
         .help-accordion { display: flex; flex-direction: column; gap: 8px; }
@@ -908,16 +910,21 @@ internal static class DashboardPage
 </div>
 <div class="view" id="view-tags">
     <div class="first-run-banner" id="bannerTagsNoSources" style="display:none"></div>
+    <div class="map-type-tabs" id="mapTypeTabs">
+        <button class="map-type-tab active" type="button" data-map-type="opc-da" onclick="setMapType('opc-da')">OPC DA</button>
+        <button class="map-type-tab" type="button" data-map-type="opc-ua" onclick="setMapType('opc-ua')">OPC UA</button>
+        <button class="map-type-tab" type="button" data-map-type="drivers" onclick="setMapType('drivers')">Drivers</button>
+    </div>
     <div class="box" style="margin-bottom:14px">
         <div class="box-h">Tag Browser</div>
         <div class="box-b">
             <div class="field" style="margin-bottom:10px">
-                <label class="fl">DA Source</label>
+                <label class="fl">Source</label>
                 <select id="mapSourceSelect"></select>
                 <span class="msg" id="tagSourceStatus"></span>
                 <span class="msg" id="mapSourceHint"></span>
             </div>
-            <div class="tag-browser-toolbar">
+            <div class="tag-browser-toolbar" id="mapBrowseToolbar">
                 <button class="btn" id="btnBrowseAllTags" type="button">Browse All Tags</button>
                 <button class="btn ghost" id="btnBrowseTags" type="button">Browse Folders</button>
                 <span class="msg" id="tagStatus">Browse all tags, or open folders one level at a time.</span>
@@ -939,7 +946,7 @@ internal static class DashboardPage
                     <span class="msg">Or browse tags above and click Add.</span>
                 </div>
             </div>
-            <div class="hint" id="mappingMessage" style="margin-bottom:10px">Click a tag to open its faceplate. Disable a tag to stop publishing it, or set a manual value to override the DA source.</div>
+            <div class="hint" id="mappingMessage" style="margin-bottom:10px">Click a tag to open its faceplate. Disable a tag to stop publishing it, or set a manual value to override the source.</div>
             <div class="mapping-toolbar">
                 <input id="mappingFilter" type="text" placeholder="Filter by name, item ID, UA node, source…" style="flex:1;min-width:120px">
                 <label class="fl" style="width:auto">Sort</label>
@@ -1352,6 +1359,7 @@ const state = {
     mappingSort: 'name',
     mappingSortDir: 1,
     mappingFilter: '',
+    mapType: 'opc-da',
     mqttConfigured: false,
     mqttState: 'Disconnected',
     mqttConnectionState: 'Disconnected',
@@ -2641,6 +2649,9 @@ const ROUTE_TO_TAB = {
   'connectivity/drivers': 'drivers',
   'connectivity/diagnostics': 'diagnostics',
   'tags/maps': 'tags',
+  'tags/maps/opc-da': 'tags',
+  'tags/maps/opc-ua': 'tags',
+  'tags/maps/drivers': 'tags',
   'tags/links': 'links',
   'iot/mqtt': 'mqtt',
   'iot/traffic': 'iot-traffic',
@@ -2653,15 +2664,23 @@ const ROUTE_TO_TAB = {
 };
 const DEFAULT_ROUTE = 'ops/monitor';
 
-function navigate(route) {
+async function navigate(route) {
+  if (route === 'tags/maps') route = 'tags/maps/' + (state.mapType || 'opc-da');
+  else if (route === 'tags/maps/opc-da' || route === 'tags/maps/opc-ua' || route === 'tags/maps/drivers') {
+    state.mapType = route.slice('tags/maps/'.length);
+  }
   const tab = ROUTE_TO_TAB[route] || ROUTE_TO_TAB[DEFAULT_ROUTE];
-  showTab(tab, route);
+  await showTab(tab, route);
 }
 
 async function showTab(name, route) {
   route = route || (Object.keys(ROUTE_TO_TAB).find(r => ROUTE_TO_TAB[r] === name) || DEFAULT_ROUTE);
   const activeTab = name;
-  document.querySelectorAll('.tabbtn').forEach(b => b.classList.toggle('active', b.dataset.route === route));
+  const mapsActive = activeTab === 'tags' || (route && String(route).startsWith('tags/maps'));
+  document.querySelectorAll('.tabbtn').forEach(b => {
+    const br = b.dataset.route || '';
+    b.classList.toggle('active', br === route || (mapsActive && br === 'tags/maps'));
+  });
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + activeTab));
   if (location.hash !== '#/' + route) history.replaceState(null, '', '#/' + route);
   if (activeTab === 'logs') { state.logsLoaded = false; loadLogs(true).catch(e => el('logMessage').textContent = '✗ ' + e.message); }
@@ -2679,7 +2698,16 @@ async function showTab(name, route) {
     await loadSources().catch(e => console.warn(e));
     renderDrivers();
   }
-  if (activeTab === 'links') loadDaLinks().catch(e => el('linksMessage').textContent = '✗ ' + e.message);
+  if (activeTab === 'tags') {
+    await loadSources().catch(e => console.warn(e));
+    await loadMappings().catch(e => console.warn(e));
+    syncMapTypeUi();
+    ensureMapSourceSelection();
+    renderMapSourceSelect();
+    updateMapEmptyBanner();
+    updateMapBrowseUi();
+    rerenderMappings();
+  }
   if (activeTab === 'diagram') {
     state.diagramLoaded = true;
     await Promise.all([loadSources(), loadMappings(), loadDaLinks(), loadMqtt().catch(() => {})]);
@@ -2718,6 +2746,115 @@ function isUaSource(source) {
 function isMelsecSource(source) { return String(get(source, 'sourceType') || 'OpcDa') === 'MelsecA3n'; }
 function isS7Source(source) { return String(get(source, 'sourceType') || 'OpcDa') === 'S7200Ppi'; }
 function isDriverSource(source) { return isMelsecSource(source) || isS7Source(source); }
+function opcDaSources() { return state.sources.filter(s => !isUaSource(s) && !isDriverSource(s)); }
+function mapTypeSources(type) {
+    type = type || state.mapType || 'opc-da';
+    if (type === 'opc-ua') return uaSources();
+    if (type === 'drivers') return driverSources();
+    return opcDaSources();
+}
+function sourceMatchesMapType(source, type) {
+    type = type || state.mapType || 'opc-da';
+    if (!source) return false;
+    if (type === 'opc-ua') return isUaSource(source);
+    if (type === 'drivers') return isDriverSource(source);
+    return !isUaSource(source) && !isDriverSource(source);
+}
+function mapTypeRoute(type) { return 'tags/maps/' + (type || state.mapType || 'opc-da'); }
+function mapTypeLabel(type) {
+    type = type || state.mapType || 'opc-da';
+    if (type === 'opc-ua') return 'OPC UA';
+    if (type === 'drivers') return 'Drivers';
+    return 'OPC DA';
+}
+function mapTypeConnectivityRoute(type) {
+    type = type || state.mapType || 'opc-da';
+    if (type === 'opc-ua') return 'connectivity/opc-ua';
+    if (type === 'drivers') return 'connectivity/drivers';
+    return 'connectivity/opc-da';
+}
+function syncMapTypeUi() {
+    document.querySelectorAll('.map-type-tab').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.mapType === state.mapType);
+    });
+}
+function setMapType(type, opts) {
+    type = type || 'opc-da';
+    if (type !== 'opc-da' && type !== 'opc-ua' && type !== 'drivers') type = 'opc-da';
+    const changed = state.mapType !== type;
+    state.mapType = type;
+    syncMapTypeUi();
+    if (changed || (opts && opts.force)) {
+        state.tagPath = '';
+        state.uaBrowseTrail = [];
+        if (el('tagTree')) el('tagTree').innerHTML = '';
+        if (el('tagBreadcrumb')) el('tagBreadcrumb').innerHTML = '';
+        if (el('tagStatus')) el('tagStatus').textContent = type === 'drivers'
+            ? 'Enter a device address below, or map from known items.'
+            : 'Browse all tags, or open folders one level at a time.';
+    }
+    ensureMapSourceSelection();
+    renderMapSourceSelect();
+    updateMapSourceHint();
+    updateMapEmptyBanner();
+    updateMapBrowseUi();
+    rerenderMappings();
+    if (!(opts && opts.skipNavigate) && document.getElementById('view-tags')?.classList.contains('active')) {
+        const route = mapTypeRoute(type);
+        if (location.hash !== '#/' + route) history.replaceState(null, '', '#/' + route);
+        document.querySelectorAll('.tabbtn').forEach(b => b.classList.toggle('active', b.dataset.route === 'tags/maps' || b.dataset.route === route));
+    }
+}
+function ensureMapSourceSelection() {
+    const sources = mapTypeSources();
+    if (!sources.length) return;
+    const current = state.sources.find(s => s.sourceId === state.selectedSourceId);
+    if (!current || !sourceMatchesMapType(current)) {
+        state.selectedSourceId = sources[0].sourceId;
+    }
+}
+function renderMapSourceSelect() {
+    const mapSelect = el('mapSourceSelect');
+    if (!mapSelect) return;
+    const sources = mapTypeSources();
+    mapSelect.innerHTML = sources.map(source =>
+        `<option value="${esc(source.sourceId)}">${esc(source.displayName || source.sourceId)}</option>`
+    ).join('');
+    if (sources.some(s => s.sourceId === state.selectedSourceId)) mapSelect.value = state.selectedSourceId;
+    else if (sources.length) mapSelect.value = sources[0].sourceId;
+}
+function updateMapEmptyBanner() {
+    const banner = el('bannerTagsNoSources');
+    if (!banner) return;
+    const sources = mapTypeSources();
+    const none = sources.length === 0;
+    banner.style.display = none ? '' : 'none';
+    if (none) {
+        const label = mapTypeLabel();
+        const route = mapTypeConnectivityRoute();
+        banner.innerHTML = `No ${esc(label)} sources yet. <button class="btn" type="button" onclick="navigate('${route}')">Add ${esc(label)} Source</button>`;
+    } else {
+        banner.innerHTML = '';
+    }
+}
+function updateMapBrowseUi() {
+    const allBtn = el('btnBrowseAllTags');
+    const folderBtn = el('btnBrowseTags');
+    const drivers = state.mapType === 'drivers';
+    if (allBtn) allBtn.style.display = drivers ? 'none' : '';
+    if (folderBtn) folderBtn.style.display = drivers ? 'none' : '';
+    if (el('manualItem')) {
+        el('manualItem').placeholder = state.mapType === 'opc-ua'
+            ? 'NodeId (e.g. ns=2;s=Tag)'
+            : state.mapType === 'drivers'
+              ? 'Address (e.g. D100, VW100, I0.0)'
+              : 'Item ID (e.g. Random.Real8)';
+    }
+}
+function mappingsForMapType(mappings) {
+    const ids = new Set(mapTypeSources().map(s => s.sourceId));
+    return (mappings || []).filter(m => ids.has(m.sourceId || m.SourceId || 'default'));
+}
 function setDriverFormType(type) {
     state.driverFormType = type || 'MelsecA3n';
     const s7 = state.driverFormType === 'S7200Ppi';
@@ -2766,28 +2903,24 @@ function daSources() { return state.sources.filter(s => !isUaSource(s)); }
 function uaSources() { return state.sources.filter(s => isUaSource(s)); }
 function renderSources() {
     const select = el('selectedSource');
-    const mapSelect = el('mapSourceSelect');
     const uaSelect = el('uaSelectedSource');
-    const allOpts = state.sources.map(source => `<option value="${esc(source.sourceId)}">${esc(source.displayName || source.sourceId)} [${sourceTypeLabel(source)}]</option>`).join('');
-    const daOpts = daSources().map(source => `<option value="${esc(source.sourceId)}">${esc(source.displayName || source.sourceId)}</option>`).join('');
+    const daOpts = opcDaSources().map(source => `<option value="${esc(source.sourceId)}">${esc(source.displayName || source.sourceId)}</option>`).join('');
     const uaOpts = uaSources().map(source => `<option value="${esc(source.sourceId)}">${esc(source.displayName || source.sourceId)}</option>`).join('');
     if (select) select.innerHTML = daOpts;
-    if (mapSelect) mapSelect.innerHTML = allOpts;
     if (uaSelect) uaSelect.innerHTML = uaOpts;
     if (!state.editingNewSource && !state.editingNewUaSource && !state.sources.some(source => source.sourceId === state.selectedSourceId) && state.sources.length) {
         state.selectedSourceId = state.sources[0].sourceId;
     }
+    ensureMapSourceSelection();
     if (select) select.value = state.selectedSourceId;
-    if (mapSelect) mapSelect.value = state.selectedSourceId;
     if (uaSelect) uaSelect.value = state.selectedSourceId;
+    renderMapSourceSelect();
     el('pSources').textContent = state.sources.length;
     const noSources = state.sources.length === 0;
     const bannerNo = el('bannerNoSources');
     if (bannerNo) bannerNo.style.display = noSources ? '' : 'none';
     if (bannerNo && noSources) bannerNo.innerHTML = 'No sources configured. <button class="btn" type="button" onclick="navigate(\'connectivity/sources\')">Add Source</button>';
-    const bannerTags = el('bannerTagsNoSources');
-    if (bannerTags) bannerTags.style.display = noSources ? '' : 'none';
-    if (bannerTags && noSources) bannerTags.innerHTML = 'No sources yet. <button class="btn" type="button" onclick="navigate(\'connectivity/sources\')">Add Source</button>';
+    updateMapEmptyBanner();
     updateNoMappingsBanner();
     const sideCount = el('pSourcesSide');
     if (sideCount) {
@@ -2801,7 +2934,7 @@ function renderSources() {
     }
     const list = el('sourcesList');
     if (list) {
-        const das = daSources();
+        const das = opcDaSources();
         list.innerHTML = das.length ? das.map(source =>
             `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)} ${sourceTypeBadge(source)}</div><div class="p">${esc(source.sourceId)} · ${esc(source.host || 'localhost')} · ${esc(source.progId || '')} · ${formatMs(source.updateRateMs)}</div></div><button class="btn ghost" data-action="select-source" data-source-id="${attr(source.sourceId)}">Select</button></div>`
         ).join('') : '<span class="msg">No OPC DA sources configured.</span>';
@@ -2815,6 +2948,7 @@ function renderSources() {
     }
     renderSourcesStatusList();
     updateMapSourceHint();
+    updateMapBrowseUi();
     loadSelectedSourceForm();
     loadSelectedUaSourceForm();
 }
@@ -3326,8 +3460,9 @@ async function loadMappings() {
     const mappings = p.mappings || [];
     state.mappings = mappings;
     const view = applyMappingView(mappings);
+    const typed = mappingsForMapType(mappings);
     el('mappedList').innerHTML = renderMappingRows(view);
-    if (el('mapCount')) el('mapCount').textContent = view.length + (view.length !== mappings.length ? ' / ' + mappings.length + ' mappings' : ' mappings');
+    if (el('mapCount')) el('mapCount').textContent = view.length + (view.length !== typed.length ? ' / ' + typed.length + ' mappings' : ' mappings');
     updateNoMappingsBanner();
     refreshTagBrowserMappedBadges();
     if (document.getElementById('view-links')?.classList.contains('active')) renderLinksView();
@@ -3643,9 +3778,9 @@ async function disconnectInflux() {
 }
 function applyMappingView(mappings) {
     const filter = (state.mappingFilter || '').trim().toLowerCase();
-    let view = mappings;
+    let view = mappingsForMapType(mappings);
     if (filter) {
-        view = mappings.filter(m => {
+        view = view.filter(m => {
             const sourceId = m.sourceId || m.SourceId || 'default';
             const item = m.itemId || m.ItemId || m.daItemId || m.DaItemId || '';
             const name = m.displayName || m.DisplayName || item;
@@ -3681,17 +3816,19 @@ function applyMappingView(mappings) {
     return view.slice().sort(cmp);
 }
 function updateNoMappingsBanner() {
-    const noMappings = (state.mappings || []).length === 0;
     const bannerNoMap = el('bannerNoMappings');
     if (bannerNoMap) {
+        const typed = mappingsForMapType(state.mappings || []);
+        const noMappings = typed.length === 0;
         bannerNoMap.style.display = (noMappings && (state.sources || []).length > 0) ? '' : 'none';
         if (noMappings && (state.sources || []).length > 0) bannerNoMap.innerHTML = 'No tags mapped yet. <button class="btn" type="button" onclick="navigate(\'tags/maps\')">Map Tags</button>';
     }
 }
 function rerenderMappings() {
+    const typed = mappingsForMapType(state.mappings || []);
     const view = applyMappingView(state.mappings || []);
-    el('mapCount').textContent = view.length + (view.length !== (state.mappings || []).length ? ' / ' + (state.mappings || []).length + ' mappings' : ' mappings');
-    el('mappedList').innerHTML = renderMappingRows(view);
+    if (el('mapCount')) el('mapCount').textContent = view.length + (view.length !== typed.length ? ' / ' + typed.length + ' mappings' : ' mappings');
+    if (el('mappedList')) el('mappedList').innerHTML = renderMappingRows(view);
     updateNoMappingsBanner();
 }
 
@@ -4957,11 +5094,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     const initHashRaw = location.hash.replace(/^#\/?/, '');
     let initRoute = Object.prototype.hasOwnProperty.call(ROUTE_TO_TAB, initHashRaw) ? initHashRaw
       : (LEGACY_TAB_TO_ROUTE[initHashRaw] || DEFAULT_ROUTE);
-    navigate(initRoute);
+    await navigate(initRoute);
     await loadSources();
     await loadMappings();
+    if (document.getElementById('view-tags')?.classList.contains('active')) {
+      syncMapTypeUi();
+      ensureMapSourceSelection();
+      renderMapSourceSelect();
+      updateMapEmptyBanner();
+      updateMapBrowseUi();
+      rerenderMappings();
+    }
     updateLiveValuesUi();
-    await refresh();
     setInterval(refresh, 1000);
     setInterval(() => { if (el('logAutoRefresh')?.checked && document.querySelector('#view-logs.active')) { state.logsLoaded = false; loadLogs(true).catch(() => {}); } }, 3000);
     setInterval(() => { if (diagnosticsActive) loadDiagnostics().catch(() => {}); }, 2000);
