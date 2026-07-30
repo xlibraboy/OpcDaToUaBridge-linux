@@ -37,6 +37,13 @@ public sealed class TestAppHandle : IAsyncDisposable
             File.Copy(file, Path.Combine(appDirectory, Path.GetFileName(file)), overwrite: true);
         }
 
+        // RID-specific assets (e.g. System.IO.Ports native + unix impl) live under runtimes/.
+        string runtimesSource = Path.Combine(sourceDirectory, "runtimes");
+        if (Directory.Exists(runtimesSource))
+        {
+            CopyDirectory(runtimesSource, Path.Combine(appDirectory, "runtimes"));
+        }
+
         configureAppDirectory(appDirectory);
 
         ProcessStartInfo startInfo = new()
@@ -97,6 +104,20 @@ public sealed class TestAppHandle : IAsyncDisposable
         }
         catch
         {
+        }
+    }
+
+    private static void CopyDirectory(string sourceDir, string destDir)
+    {
+        Directory.CreateDirectory(destDir);
+        foreach (string file in Directory.GetFiles(sourceDir))
+        {
+            File.Copy(file, Path.Combine(destDir, Path.GetFileName(file)), overwrite: true);
+        }
+
+        foreach (string dir in Directory.GetDirectories(sourceDir))
+        {
+            CopyDirectory(dir, Path.Combine(destDir, Path.GetFileName(dir)));
         }
     }
 

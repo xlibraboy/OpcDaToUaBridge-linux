@@ -208,6 +208,16 @@ public sealed class S7ApiTests
         Assert.True(found);
     }
 
+    [Fact]
+    public async Task GetSerialPorts_ReturnsPortsArray()
+    {
+        await using TestAppHandle app = await TestAppHandle.StartAsync(_ => { });
+
+        using JsonDocument doc = await app.GetJsonAsync("/api/serial/ports");
+        Assert.True(doc.RootElement.TryGetProperty("ports", out JsonElement ports));
+        Assert.Equal(JsonValueKind.Array, ports.ValueKind);
+    }
+
     private static async Task<TestAppHandle> StartWithS7Source(string sourceId, string port)
     {
         TestAppHandle app = await TestAppHandle.StartAsync(_ => { });

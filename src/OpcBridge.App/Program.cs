@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.IO.Ports;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -414,6 +415,20 @@ app.MapPost("/api/drivers/s7200-ppi/test-connection", async (S7200TestConnection
     catch (Exception ex)
     {
         return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+app.MapGet("/api/serial/ports", () =>
+{
+    try
+    {
+        string[] ports = SerialPort.GetPortNames()
+            .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        return Results.Json(new { ports });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ports = Array.Empty<string>(), error = ex.Message });
     }
 });
 app.MapPost("/api/da/servers", async (DaServerBrowseRequest request) =>

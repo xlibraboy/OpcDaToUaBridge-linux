@@ -77,6 +77,10 @@ public sealed class DashboardPageTests
         Assert.Contains("/api/drivers/s7200-ppi/test-connection", DashboardPage.Script);
         Assert.Contains("sourceType: type", DashboardPage.Script);
         Assert.Contains("S7200Ppi", DashboardPage.Script);
+        Assert.Contains("btnDrvScanPorts", DashboardPage.Html);
+        Assert.Contains("btnWzDrvScanPorts", DashboardPage.Html);
+        Assert.Contains("function scanSerialPorts(", DashboardPage.Script);
+        Assert.Contains("/api/serial/ports", DashboardPage.Script);
     }
 
     [Fact]

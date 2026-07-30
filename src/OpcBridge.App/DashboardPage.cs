@@ -809,7 +809,9 @@ internal static class DashboardPage
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">Serial Port <span class="info" data-tip="RS-422/RS-232C link to the A3N CPU (1C protocol, Format 1). Defaults: 9600 baud, 8 data bits, odd parity, 1 stop bit.">i</span></div>
-                        <div class="field"><label class="fl">Port</label><input id="drvA3nPort" type="text" placeholder="COM3 or /dev/ttyUSB0" style="flex:1"></div>
+                        <div class="field"><label class="fl">Port</label><input id="drvA3nPort" type="text" placeholder="COM3 or /dev/ttyUSB0" style="flex:1"><button class="btn ghost" id="btnDrvScanPorts" type="button">Scan</button></div>
+                        <div class="list" id="listDrvPorts" style="max-height:120px;margin:0 0 8px 0"></div>
+                        <span class="msg" id="msgDrvPorts">Click Scan to list host serial ports.</span>
                         <div class="field"><label class="fl">Baud</label><select id="drvA3nBaud"><option value="1200">1200</option><option value="2400">2400</option><option value="4800">4800</option><option value="9600" selected>9600</option><option value="19200">19200</option></select>
                         <label class="fl" style="width:auto">Data bits</label><select id="drvA3nDataBits"><option value="7">7</option><option value="8" selected>8</option></select></div>
                         <div class="field"><label class="fl">Parity</label><select id="drvA3nParity"><option value="None">None</option><option value="Odd" selected>Odd</option><option value="Even">Even</option></select>
@@ -879,7 +881,9 @@ internal static class DashboardPage
                 <div class="hint">Unique key with no spaces. Used in UA Node IDs (ns=2;s={sourceId}/...).</div>
             </div>
             <div class="wzdrv-pane" data-pane="3">
-                <div class="field"><label class="fl">Serial Port</label><input type="text" id="wzDrvPort" placeholder="COM3 or /dev/ttyUSB0"></div>
+                <div class="field"><label class="fl">Serial Port</label><input type="text" id="wzDrvPort" placeholder="COM3 or /dev/ttyUSB0" style="flex:1"><button class="btn ghost" id="btnWzDrvScanPorts" type="button">Scan</button></div>
+                <div class="list" id="listWzDrvPorts" style="max-height:120px;margin:0 0 8px 0"></div>
+                <span class="msg" id="msgWzDrvPorts">Click Scan to list host serial ports.</span>
                 <div class="field"><label class="fl">Baud</label><select id="wzDrvBaud"><option value="1200">1200</option><option value="2400">2400</option><option value="4800">4800</option><option value="9600" selected>9600</option><option value="19200">19200</option></select>
                 <label class="fl" style="width:auto">Data bits</label><select id="wzDrvDataBits"><option value="7">7</option><option value="8" selected>8</option></select></div>
                 <div class="field"><label class="fl">Parity</label><select id="wzDrvParity"><option value="None">None</option><option value="Odd" selected>Odd</option><option value="Even">Even</option></select>
@@ -4107,6 +4111,44 @@ async function testDriverConnection() {
     const p = await r.json();
     el('drvA3nMessage').textContent = p.ok ? '✓ Connection OK — PLC responded.' : '✗ ' + (p.error || ('HTTP ' + r.status));
 }
+async function scanSerialPorts(targetInputId, listId, msgId) {
+    const msg = el(msgId);
+    const list = el(listId);
+    if (msg) msg.textContent = 'Scanning…';
+    if (list) list.innerHTML = '';
+    try {
+        const r = await fetch('/api/serial/ports', { cache: 'no-store' });
+        const p = await r.json().catch(() => ({}));
+        if (!r.ok) {
+            if (msg) msg.textContent = '✗ ' + (p.error || ('HTTP ' + r.status));
+            return;
+        }
+        if (p.error && msg) msg.textContent = '✗ ' + p.error;
+        const ports = p.ports || [];
+        if (list) {
+            list.innerHTML = ports.length
+                ? ports.map(port => `<div class="li"><div style="flex:1"><div class="n mono">${esc(port)}</div></div><button class="btn ghost" data-action="use-serial-port" data-port="${esc(port)}" data-target="${esc(targetInputId)}" type="button">Use</button></div>`).join('')
+                : '<span class="msg">No serial ports found.</span>';
+        }
+        if (msg && !p.error) {
+            msg.textContent = ports.length
+                ? (ports.length + ' port' + (ports.length === 1 ? '' : 's') + ' found. Click Use to fill Port.')
+                : 'No serial ports found on this host.';
+        }
+    } catch (e) {
+        if (msg) msg.textContent = '✗ ' + e.message;
+        if (list) list.innerHTML = '<span class="msg">Scan failed.</span>';
+    }
+}
+function useSerialPort(port, targetInputId) {
+    if (!port || !targetInputId) return;
+    const input = el(targetInputId);
+    if (!input) return;
+    input.value = port;
+    if (targetInputId === 'drvA3nPort') {
+        el('drvA3nMessage').textContent = 'Selected ' + port + ' — save or Test connection.';
+    }
+}
 let wzDrvCurrentStep = 1;
 const WZDRV_STEPS = 5;
 function openDriverWizard() {
@@ -4124,6 +4166,8 @@ function openDriverWizard() {
     el('wzDrvRetry').value = '2';
     el('wzDrvRate').value = '1000';
     el('wzDrvMaxTags').value = '2000';
+    if (el('listWzDrvPorts')) el('listWzDrvPorts').innerHTML = '';
+    if (el('msgWzDrvPorts')) el('msgWzDrvPorts').textContent = 'Click Scan to list host serial ports.';
     el('wzDrv').classList.add('open');
     wzDrvRender();
 }
@@ -4975,6 +5019,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     el('drvA3nNew').addEventListener('click', newDriver);
     el('drvA3nRemove').addEventListener('click', () => removeDriver().catch(e => el('drvA3nMessage').textContent = '✗ ' + e.message));
     el('drvA3nTest').addEventListener('click', () => testDriverConnection().catch(e => el('drvA3nMessage').textContent = '✗ ' + e.message));
+    if (el('btnDrvScanPorts')) el('btnDrvScanPorts').addEventListener('click', () => scanSerialPorts('drvA3nPort', 'listDrvPorts', 'msgDrvPorts').catch(e => el('msgDrvPorts').textContent = '✗ ' + e.message));
+    if (el('btnWzDrvScanPorts')) el('btnWzDrvScanPorts').addEventListener('click', () => scanSerialPorts('wzDrvPort', 'listWzDrvPorts', 'msgWzDrvPorts').catch(e => el('msgWzDrvPorts').textContent = '✗ ' + e.message));
+    const onUseSerialPort = event => {
+        const button = event.target.closest('button[data-action="use-serial-port"]');
+        if (!button) return;
+        useSerialPort(button.dataset.port || '', button.dataset.target || '');
+    };
+    if (el('listDrvPorts')) el('listDrvPorts').addEventListener('click', onUseSerialPort);
+    if (el('listWzDrvPorts')) el('listWzDrvPorts').addEventListener('click', onUseSerialPort);
     el('drvA3nList').addEventListener('click', event => {
         const button = event.target.closest('button[data-action="select-driver"]');
         if (!button) return;
