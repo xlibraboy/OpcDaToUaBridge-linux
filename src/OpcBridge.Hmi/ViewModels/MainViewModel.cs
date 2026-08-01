@@ -21,6 +21,15 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     public MainViewModel()
         : this(new BridgeApiClient(), new HmiHubClient(), ownsClients: true)
     {
+        // Restore the last known bridge URL when available (skips the discovery scan).
+        string? saved = HmiSettings.LoadBaseUrl();
+        if (!string.IsNullOrWhiteSpace(saved))
+        {
+            _baseUrl = saved;
+        }
+
+        // Auto-discover the bridge HTTP port (the bridge moves off 8080 when that port is in use).
+        _ = AutoDiscoverAsync();
     }
 
     public MainViewModel(BridgeApiClient api, HmiHubClient hub, bool ownsClients = false)
@@ -61,6 +70,14 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty]
     private IReadOnlyList<double> _trendValues = Array.Empty<double>();
 
+    /// <summary>Port summary line, e.g. "HTTP 8081 · OPC UA 4841" (empty until connected).</summary>
+    [ObservableProperty]
+    private string _portsSummary = string.Empty;
+
+    /// <summary>True when any bridge port was auto-assigned away from its default.</summary>
+    [ObservableProperty]
+    private bool _portsWarning;
+
     public ObservableCollection<TagItemViewModel> Tags { get; } = new();
 
     public IEnumerable<TagItemViewModel> FilteredTags =>
@@ -84,6 +101,33 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         _ = LoadTrendsForSelectionAsync();
     }
 
+    private async Task AutoDiscoverAsync()
+    {
+        try
+        {
+            string discovered = await BridgePortDiscovery
+                .DiscoverBaseUrlAsync(BaseUrl, CancellationToken.None)
+                .ConfigureAwait(true);
+            if (!string.Equals(discovered, BaseUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                await PostToUiAsync(() =>
+                {
+                    BaseUrl = discovered;
+                    StatusMessage = $"Bridge auto-discovered at {discovered}";
+                }).ConfigureAwait(true);
+            }
+
+            if (!string.Equals(discovered, HmiSettings.LoadBaseUrl(), StringComparison.OrdinalIgnoreCase))
+            {
+                HmiSettings.SaveBaseUrl(discovered);
+            }
+        }
+        catch
+        {
+            // discovery is best-effort; the user can still connect manually
+        }
+    }
+
     [RelayCommand(CanExecute = nameof(CanConnect))]
     private async Task ConnectAsync()
     {
@@ -105,6 +149,8 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
                 OnValuesAsync,
                 OnMappingsChangedAsync,
                 ct).ConfigureAwait(true);
+
+            await RefreshPortsSummaryAsync(ct).ConfigureAwait(true);
 
             IsConnected = true;
             ConnectionState = "Connected";
@@ -256,6 +302,40 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         ApplySnapshot(response);
     }
 
+    private async Task RefreshPortsSummaryAsync(CancellationToken ct)
+    {
+        HmiPortInfo? info = await _api.GetPortsAsync(ct).ConfigureAwait(true);
+        if (info is null)
+        {
+            return;
+        }
+
+        var parts = new List<string>();
+        if (info.HttpAutoAssigned)
+        {
+            parts.Add($"HTTP {info.HttpPort} (auto-assigned, default {info.HttpDefault} in use)");
+        }
+        else
+        {
+            parts.Add($"HTTP {info.HttpPort}");
+        }
+
+        if (info.UaAutoAssigned)
+        {
+            parts.Add($"OPC UA {info.UaPort} (auto-assigned, default {info.UaDefault} in use)");
+        }
+        else
+        {
+            parts.Add($"OPC UA {info.UaPort}");
+        }
+
+        await PostToUiAsync(() =>
+        {
+            PortsSummary = string.Join(" · ", parts);
+            PortsWarning = info.HttpAutoAssigned || info.UaAutoAssigned;
+        }).ConfigureAwait(true);
+    }
+
     private async Task SafeDisconnectAsync()
     {
         IsConnected = false;
@@ -267,6 +347,8 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         TrendValues = Array.Empty<double>();
         TrendStatus = string.Empty;
         TrendLoading = false;
+        PortsSummary = string.Empty;
+        PortsWarning = false;
         OnPropertyChanged(nameof(FilteredTags));
     }
 

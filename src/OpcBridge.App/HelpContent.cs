@@ -71,7 +71,7 @@ internal static class HelpContent
 
 
   ┌─────────────────────────────────────────────────────────────────────┐
-  │                      Web Dashboard (port 8080)                       │
+  │            Web Dashboard (HTTP port, default 8080)                     │
   │                                                                      │
   │  Sidebar groups pages by job:                                        │
   │  Connectivity ──► OPC DA, Drivers, Diagnostics                       │
@@ -558,9 +558,10 @@ The bridge runs as a **background scheduled task** — no Windows Service, no ad
 2. **OPC DA server** — installed by the vendor (e.g. Matrikon OPC Simulation, Kepware, RSLinx). Verify it appears in `dcomcnfg` → Component Services → Computers → My Computer → DCOM Config.
 
 3. **Windows Firewall** — open ports if accessing from other machines:
-   - Port **8080/TCP** — web dashboard
-   - Port **4840/TCP** — OPC UA server
+   - Port **8080/TCP** (default) — web dashboard; if the port was auto-assigned (Monitor → Bridge shows a different port), open that port instead
+   - Port **4840/TCP** (default) — OPC UA server; same note applies if auto-assigned
    - Run as admin: `netsh advfirewall firewall add rule name="OPC Bridge Dashboard" dir=in action=allow protocol=TCP localport=8080` and `... localport=4840`
+   - On first startup the bridge checks both ports; if either is already in use it silently moves to the next free port and saves it to `appsettings.json` (`Bridge:HttpPort`, `Bridge:OpcUaPort`). Check the Monitor tab or startup logs for the actual ports in use.
 
 4. **DCOM permissions** (only for remote DA servers):
    - On the DA server host, run `dcomcnfg` → DCOM Config → find the OPC DA server → Properties → Security tab

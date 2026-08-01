@@ -93,6 +93,8 @@ internal static class DashboardPage
         .alarm-bar.bad { background: rgba(248,113,113,.1); border: 1px solid rgba(248,113,113,.3); color: var(--bad); }
         .first-run-banner { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 7px; margin-bottom: 12px; font-size: 12px; background: rgba(56,189,248,.08); border: 1px solid rgba(56,189,248,.3); color: var(--text); }
         .first-run-banner button { margin-left: auto; }
+        .port-banner { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 7px; margin-bottom: 12px; font-size: 12px; font-weight: 600; background: rgba(251,191,36,.1); border: 1px solid rgba(251,191,36,.3); color: var(--warn); }
+        .port-banner button { margin-left: auto; }
         .stat .k { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
         .stat .v { margin-top: 6px; font-size: 16px; font-weight: 700; line-height: 1.1; }
         .stat .s { margin-top: 4px; color: var(--muted); font-size: 11px; }
@@ -476,6 +478,7 @@ internal static class DashboardPage
 </div>
 <div class="content">
 <div class="view active" id="view-monitor">
+    <div class="port-banner" id="portBanner" style="display:none"></div>
     <div class="first-run-banner" id="bannerNoSources" style="display:none"></div>
     <div class="first-run-banner" id="bannerNoMappings" style="display:none"></div>
     <div class="alarm-bar" id="rateAlarmBar" style="display:none"></div>
@@ -483,6 +486,11 @@ internal static class DashboardPage
         <div class="mon-stat-group">
             <div class="mon-stat-group-h">Bridge</div>
             <div class="stat"><div class="k">Runtime</div><div class="v" id="bridgeState">&#8212;</div><div class="s" id="lastError">No errors</div></div>
+        </div>
+        <div class="mon-stat-group">
+            <div class="mon-stat-group-h">Ports <span class="info" data-tip="Listening ports for this bridge. When the default port is already in use by another application, the bridge auto-assigns the next free port and saves it to appsettings.json (Bridge:HttpPort / Bridge:OpcUaPort).">i</span></div>
+            <div class="stat"><div class="k">HTTP</div><div class="v" id="httpPortVal">&#8212;</div><div class="s" id="httpPortNote">Dashboard + API</div></div>
+            <div class="stat"><div class="k">OPC UA</div><div class="v" id="uaPortVal">&#8212;</div><div class="s" id="uaPortNote">UA server endpoint</div></div>
         </div>
         <div class="mon-stat-group">
             <div class="mon-stat-group-h">OPC DA</div>
@@ -3098,6 +3106,52 @@ async function loadDiagnostics() {
     }
 }
 
+async function refreshPortsInfo() {
+    try {
+        const r = await (await fetch('/api/status/ports', { cache: 'no-store' })).json();
+        const httpPort = r.httpPort ?? r.HttpPort ?? '—';
+        const uaPort = r.uaPort ?? r.UaPort ?? '—';
+        const httpDefault = r.httpDefault ?? 8080;
+        const uaDefault = r.uaDefault ?? 4840;
+        const httpAuto = !!r.httpAutoAssigned;
+        const uaAuto = !!r.uaAutoAssigned;
+        const host = location.hostname || 'localhost';
+        const httpEl = el('httpPortVal');
+        const uaEl = el('uaPortVal');
+        if (httpEl) {
+            httpEl.textContent = httpPort;
+            httpEl.title = httpAuto ? 'Auto-assigned: the default port ' + httpDefault + ' was in use.' : 'Default port';
+        }
+        if (uaEl) {
+            uaEl.textContent = uaPort;
+            uaEl.title = uaAuto ? 'Auto-assigned: the default port ' + uaDefault + ' was in use.' : 'Default port';
+        }
+        const httpNote = el('httpPortNote');
+        if (httpNote) httpNote.textContent = httpAuto
+            ? 'auto-assigned from ' + httpDefault + ' · http://' + host + ':' + httpPort
+            : 'Dashboard + API · http://' + host + ':' + httpPort;
+        const uaNote = el('uaPortNote');
+        if (uaNote) uaNote.textContent = uaAuto
+            ? 'auto-assigned from ' + uaDefault + ' · ' + (r.uaEndpointClient || '')
+            : 'UA server endpoint · ' + (r.uaEndpointClient || '');
+        const banner = el('portBanner');
+        if (banner) {
+            const autoPorts = [];
+            if (httpAuto) autoPorts.push('HTTP ' + httpPort + ' (default ' + httpDefault + ' was in use)');
+            if (uaAuto) autoPorts.push('OPC UA ' + uaPort + ' (default ' + uaDefault + ' was in use)');
+            if (autoPorts.length) {
+                banner.style.display = '';
+                banner.innerHTML = '&#9888; Bridge is running on auto-assigned port' + (autoPorts.length > 1 ? 's' : '') + ': ' + autoPorts.join('; ') +
+                    '. <button class="btn" type="button" onclick="this.parentElement.style.display=\'none\'">Dismiss</button>';
+            } else {
+                banner.style.display = 'none';
+            }
+        }
+    } catch (e) {
+        // ports info is best-effort; never break the dashboard refresh
+    }
+}
+
 function renderDiagnostics(p) {
     // DA Source Diagnostics — reuse state data from /api/dashboard
     const sources = state.sources || [];
@@ -3315,6 +3369,7 @@ async function refresh() {
         el('pollSaturation').className = pollSaturation.className;
         if (document.activeElement !== el('cfgUpdateRate')) el('cfgUpdateRate').value = String(updateRateMs);
         el('mappingCount').textContent = (get(b, 'mappingCount') ?? 0) + ' tags';
+        refreshPortsInfo();
         el('uaEndpoint').textContent = get(ua, 'endpointUrl') || '—';
         el('uaDiagnostics').textContent = formatUaDiagnostics(ua);
         const srcCountH = el('sourceCountH'); if (srcCountH) srcCountH.textContent = sources.length + ' source' + (sources.length !== 1 ? 's' : '');

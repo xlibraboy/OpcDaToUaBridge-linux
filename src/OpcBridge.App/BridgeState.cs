@@ -21,6 +21,21 @@ public sealed class BridgeState
             concurrencyLevel, capacity, StringComparer.OrdinalIgnoreCase);
     }
 
+    /// <summary>Runtime ports. Set once at startup before any background work begins. </summary>
+    public static int HttpPort { get; private set; } = 8080;
+    public static int UaPort { get; private set; } = 4840;
+    public static bool HttpAutoAssigned { get; private set; }
+    public static bool UaAutoAssigned { get; private set; }
+
+    public static void ConfigurePorts(int httpPort, int uaPort, bool httpAuto, bool uaAuto)
+    {
+        HttpPort = httpPort;
+        UaPort = uaPort;
+        HttpAutoAssigned = httpAuto;
+        UaAutoAssigned = uaAuto;
+    }
+
+
     public void Configure(int updateRateMs, int mappingCount, IReadOnlyList<DaSourceRuntimeSettings> sources)
     {
         DaSourceStatusSnapshot[] sourceStatuses = sources

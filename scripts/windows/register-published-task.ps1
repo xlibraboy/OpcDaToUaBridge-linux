@@ -1,6 +1,6 @@
 param(
     [string]$TaskName = 'OpcDaToUaBridge',
-    [string]$HealthUrl = 'http://127.0.0.1:8080/health',
+    [string]$HealthUrl = '',
     [int]$ProbeSeconds = 20
 )
 
@@ -11,6 +11,24 @@ $scriptRoot = Split-Path -Parent $PSCommandPath
 $repoRoot = Split-Path -Parent (Split-Path -Parent $scriptRoot)
 $publishDir = Join-Path $repoRoot 'publish'
  $publishDll = Join-Path $publishDir 'OpcBridge.App.dll'
+
+# Resolve the runtime HTTP port from appsettings.json (the bridge auto-assigns
+# a non-default port when 8080 is already in use on the host).
+$appSettings = Join-Path $publishDir 'appsettings.json'
+$httpPort = 8080
+try {
+    if (Test-Path $appSettings) {
+        $cfg = Get-Content $appSettings -Raw | ConvertFrom-Json
+        if ($cfg.Bridge.HttpPort -and $cfg.Bridge.HttpPort -gt 0) {
+            $httpPort = [int]$cfg.Bridge.HttpPort
+        }
+    }
+} catch {
+    # fall back to 8080
+}
+if (-not $HealthUrl) {
+    $HealthUrl = "http://127.0.0.1:$httpPort/health"
+}
  $cmdScript = Join-Path $scriptRoot 'start-published-bridge.cmd'
  
  if (-not (Test-Path $publishDll)) {
@@ -53,7 +71,7 @@ for ($i = 0; $i -lt $ProbeSeconds; $i++) {
 
 $listener = @()
 try {
-    $listener = Get-NetTCPConnection -LocalPort 8080 -State Listen | Select-Object LocalAddress, LocalPort, OwningProcess
+    $listener = Get-NetTCPConnection -LocalPort $httpPort -State Listen | Select-Object LocalAddress, LocalPort, OwningProcess
 } catch {
 }
 

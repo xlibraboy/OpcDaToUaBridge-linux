@@ -24,7 +24,7 @@ internal sealed class BridgeAppDiscovery : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(2);
-
+    private readonly int _httpPort = 8080;
     private readonly DaRuntimeSettings _settings;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<BridgeAppDiscovery> _logger;
@@ -34,11 +34,13 @@ internal sealed class BridgeAppDiscovery : BackgroundService
     public BridgeAppDiscovery(
         DaRuntimeSettings settings,
         IHttpClientFactory httpClientFactory,
-        ILogger<BridgeAppDiscovery> logger)
+        ILogger<BridgeAppDiscovery> logger,
+        int httpPort = 8080)
     {
         _settings = settings;
         _httpClientFactory = httpClientFactory;
         _logger = logger;
+        _httpPort = httpPort;
     }
 
     public BridgeAppFleetStatus GetStatus()
@@ -176,7 +178,7 @@ internal sealed class BridgeAppDiscovery : BackgroundService
         try
         {
             var client = _httpClientFactory.CreateClient("BridgeAppDiscovery");
-            var baseUrl = $"http://{host}:8080";
+            var baseUrl = $"http://{host}:{_httpPort}";
 
             // Step 1: Check /health
             using var healthCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
