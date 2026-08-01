@@ -39,6 +39,8 @@ publish*.tar.gz
 mappings.json
 
 
+# Worktrees (user-requested location for git worktrees)
+worktrees/
 # Subagent-driven development worktrees
 .worktrees/
 #Avalonia build task cache
