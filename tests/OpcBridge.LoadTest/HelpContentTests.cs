@@ -1,45 +1,80 @@
-using OpcBridge.App;
 using Xunit;
 
 namespace OpcBridge.LoadTest;
 
+// These tests guard the MkDocs documentation site (docs/*.md, served at /docs/).
+// The docs replace the old in-app Help tab (HelpContent.Markdown + /api/help, removed).
 public sealed class HelpContentTests
 {
-    [Fact]
-    public void HelpText_DescribesDaLinksAsIndependentSubsystem()
+    private static readonly string DocsDir = FindDocsDir();
+
+    private static string FindDocsDir()
     {
-        Assert.Contains("DA Links", HelpContent.Markdown);
-        Assert.Contains("separate subsystem", HelpContent.Markdown);
-        Assert.DoesNotContain("faceplate → Setup → Provider", HelpContent.Markdown);
+        DirectoryInfo? dir = new(AppContext.BaseDirectory);
+        for (int i = 0; i < 6 && dir != null; i++)
+        {
+            string candidate = Path.Combine(dir.FullName, "docs");
+            if (Directory.Exists(candidate) && File.Exists(Path.Combine(candidate, "index.md")))
+                return candidate;
+            dir = dir.Parent;
+        }
+        throw new DirectoryNotFoundException(
+            "Could not locate the repository docs/ directory from the test output directory.");
+    }
+
+    private static string ReadPage(string name)
+    {
+        string path = Path.Combine(DocsDir, name);
+        Assert.True(File.Exists(path), $"Missing docs page: {path}");
+        return File.ReadAllText(path);
     }
 
     [Fact]
-    public void HelpText_DescribesInfluxHistoricalLogging()
+    public void Docs_DescribeDaLinksAsIndependentSubsystem()
     {
-        Assert.Contains("# InfluxDB (Historical Logging)", HelpContent.Markdown);
-        Assert.Contains("External InfluxDB 2.x/3.x server required", HelpContent.Markdown);
-        Assert.Contains("Enable per tag via faceplate Influx checkbox", HelpContent.Markdown);
-        Assert.Contains("Outage does not stop the bridge", HelpContent.Markdown);
+        string md = ReadPage("da-links.md");
+        Assert.Contains("DA Links", md);
+        Assert.Contains("separate subsystem", md);
+        Assert.DoesNotContain("faceplate → Setup → Provider", md);
     }
 
     [Fact]
-    public void HelpText_DescribesOpcUaSources()
+    public void Docs_DescribeInfluxHistoricalLogging()
     {
-        Assert.Contains("OPC UA (client sources)", HelpContent.Markdown);
-        Assert.Contains("## OPC UA Source vs OPC UA Server Endpoint", HelpContent.Markdown);
-        Assert.Contains("NodeId string", HelpContent.Markdown);
-        Assert.Contains("SignAndEncrypt", HelpContent.Markdown);
-        Assert.Contains("Basic256Sha256", HelpContent.Markdown);
-        Assert.Contains("Only **mapped** tags are subscribed", HelpContent.Markdown);
+        string md = ReadPage("influxdb.md");
+        Assert.Contains("# InfluxDB (Historical Logging)", md);
+        Assert.Contains("External InfluxDB 2.x/3.x server required", md);
+        Assert.Contains("Enable per tag via faceplate Influx checkbox", md);
+        Assert.Contains("Outage does not stop the bridge", md);
     }
 
     [Fact]
-    public void HelpText_DescribesGroupedNavigation()
+    public void Docs_DescribeOpcUaSources()
     {
-        Assert.Contains("## Dashboard Navigation", HelpContent.Markdown);
-        Assert.Contains("Sources", HelpContent.Markdown);
-        Assert.Contains("Historian", HelpContent.Markdown);
-        Assert.Contains("IoT", HelpContent.Markdown);
-        Assert.Contains("Setup Wizard", HelpContent.Markdown);
+        string md = ReadPage("opcua-endpoint.md");
+        Assert.Contains("# OPC UA Source vs OPC UA Server Endpoint", md);
+        Assert.Contains("NodeId string", md);
+        Assert.Contains("SignAndEncrypt", md);
+        Assert.Contains("Basic256Sha256", md);
+        Assert.Contains("Only **mapped** tags are subscribed", md);
+    }
+
+    [Fact]
+    public void Docs_DescribeGroupedNavigation()
+    {
+        string md = ReadPage("topology.md");
+        Assert.Contains("## Dashboard Navigation", md);
+        Assert.Contains("Sources", md);
+        Assert.Contains("Historian", md);
+        Assert.Contains("IoT", md);
+        Assert.Contains("Setup Wizard", md);
+    }
+
+    [Fact]
+    public void Docs_DocumentationMenu_EmbeddedInDashboard()
+    {
+        string md = ReadPage("topology.md");
+        Assert.Contains("Docs ──► Documentation (embedded in dashboard), About", md);
+        Assert.DoesNotContain("opens in new tab", md);
     }
 }

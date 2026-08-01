@@ -124,7 +124,7 @@ Endpoints (all in `Program.cs`):
 - `GET /api/status` | `/api/dashboard` — bridge + UA status (dashboard also includes values)
 - `GET /api/logs?limit=&level=` — `DashboardLogStore` ring buffer (500 entries)
 - `GET /api/app-info` | `/api/version` — assembly info
-- `GET /api/help` — `HelpContent.Markdown`
+- `GET /docs/` — static documentation site (MkDocs/Material, built into `docs-site`, opened in a new browser tab by the dashboard Docs menu)
 - `GET /api/da/sources` — source registry
 - `POST /api/da/sources` — upsert source; `POST /api/da/sources/remove`; `POST /api/da/sources/update-rate`; `POST /api/da/update-rate`
 - `POST /api/da/servers` — enumerate OPC DA servers (Windows-only, 10s timeout)

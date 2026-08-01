@@ -62,7 +62,7 @@ internal static class DashboardPage
         .topbar .clock { margin-left: auto; color: var(--muted); font-size: 11px; white-space: nowrap; }
 .app-shell { display: flex; flex: 1; min-height: 0; overflow: hidden; }
 .tabbar { display: flex; flex-direction: column; background: var(--panel); border-right: 1px solid var(--border2); padding: 8px 0; width: 200px; flex-shrink: 0; overflow-y: auto; }
-.tabbtn { background: none; border: none; color: var(--muted); padding: 11px 16px; font-size: 13px; font-weight: 500; cursor: pointer; border-left: 3px solid transparent; display: flex; align-items: center; gap: 8px; text-align: left; }
+.tabbtn { background: none; border: none; color: var(--muted); padding: 11px 16px; font-size: 13px; font-weight: 500; cursor: pointer; border-left: 3px solid transparent; display: flex; align-items: center; gap: 8px; text-align: left; text-decoration: none; }
 .tabbtn:hover { color: var(--text); background: var(--panel2); }
 .tabbtn.active { color: var(--accent); border-left-color: var(--accent); background: var(--panel2); }
 .nav-group { padding: 6px 0; border-bottom: 1px solid var(--border); }
@@ -216,41 +216,15 @@ internal static class DashboardPage
         .log-entry .meta .lvl.warning { color: var(--warn); }
         .log-entry .meta .lvl.error, .log-entry .meta .lvl.critical { color: var(--bad); }
         .log-entry .message.error, .log-entry .message.critical { color: var(--bad); }
-        .help-subtabs, .map-type-tabs { display: flex; gap: 2px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 4px; margin-bottom: 12px; }
-        .help-subtab, .map-type-tab { flex: 1; background: none; border: none; color: var(--muted); padding: 8px 16px; font-size: 12px; font-weight: 600; cursor: pointer; border-radius: 4px; transition: all .15s ease; }
-        .help-subtab:hover, .map-type-tab:hover { color: var(--text); background: var(--panel2); }
-        .help-subtab.active, .map-type-tab.active { color: var(--text); background: var(--panel2); box-shadow: 0 1px 3px rgba(0,0,0,.2); }
-        .help-subtab-content { display: none; }
-        .help-subtab-content.active { display: block; }
-        .help-accordion { display: flex; flex-direction: column; gap: 8px; }
-        .help-section { background: var(--panel); border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
-        .help-section > summary { padding: 10px 14px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none; list-style: none; }
-        .help-section > summary::-webkit-details-marker { display: none; }
-        .help-section > summary::before { content: '\25B6'; font-size: 10px; color: var(--muted); transition: transform .15s ease; }
-        .help-section[open] > summary::before { transform: rotate(90deg); }
-        .help-section > summary:hover { background: var(--panel2); }
-        .help-section[open] > summary { border-bottom: 1px solid var(--border); background: var(--panel2); }
-        .help-body { padding: 12px 14px; }
-        .help-body ul { padding-left: 18px; color: var(--muted); }
-        .help-body li + li { margin-top: 6px; }
-        .help-body h4 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 12px 0 6px; }
-        .help-body h4:first-child { margin-top: 0; }
-        .help-body code { background: var(--bg); padding: 1px 5px; border-radius: 3px; font-size: 12px; }
-        .help-body pre { background: var(--bg); border: 1px solid var(--border2); border-radius: 6px; padding: 12px 14px; overflow-x: auto; margin: 10px 0; }
-        .help-body pre code { background: none; padding: 0; font-size: 12px; line-height: 1.5; font-family: 'Consolas', 'SF Mono', monospace; white-space: pre; color: var(--text); }
-        .help-body h1 { display: none; }
-        .help-body h2 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 14px 0 6px; }
-        .help-body h3 { font-size: 13px; margin: 14px 0 6px; }
-        .help-body p { color: var(--muted); margin: 6px 0; }
-        .help-body em { color: var(--muted); font-size: 11px; }
-        .help-body table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 12px; }
-        .help-body th { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border2); color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
-        .help-body td { padding: 5px 8px; border-bottom: 1px solid var(--border); }
-        .help-body td:first-child { font-weight: 600; white-space: nowrap; }
-        .help-body td:nth-child(2) { text-align: center; white-space: nowrap; }
+        .map-type-tabs { display: flex; gap: 2px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 4px; margin-bottom: 12px; }
+        .map-type-tab { flex: 1; background: none; border: none; color: var(--muted); padding: 8px 16px; font-size: 12px; font-weight: 600; cursor: pointer; border-radius: 4px; transition: all .15s ease; }
+        .map-type-tab:hover { color: var(--text); background: var(--panel2); }
+        .map-type-tab.active { color: var(--text); background: var(--panel2); box-shadow: 0 1px 3px rgba(0,0,0,.2); }
         .kv { display: grid; grid-template-columns: 140px 1fr; gap: 8px 12px; align-items: start; }
         .kv .k { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
         .kv .v { word-break: break-word; }
+        #view-docs { padding: 0; height: calc(100vh - 46px); }
+        #docsFrame { width: 100%; height: 100%; border: 0; display: block; background: #fff; }
         @media (max-width: 1100px) { .split { grid-template-columns: 1fr; } }
         .conn-layout { display: grid; grid-template-columns: 1.4fr 1fr; gap: 14px; align-items: start; }
         @media (max-width: 1000px) { .conn-layout { grid-template-columns: 1fr; } }
@@ -471,8 +445,8 @@ internal static class DashboardPage
     <button class="tabbtn" data-tab="diagram" data-route="ops/diagram" onclick="navigate('ops/diagram')">Diagram</button>
   </div>
   <div class="nav-group">
-    <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2.5-3 4.5"/><circle cx="12" cy="17.2" r="0.9" fill="currentColor" stroke="none"/></svg>Help</div>
-    <button class="tabbtn" data-tab="help" data-route="help/guide" onclick="navigate('help/guide')">Guide</button>
+    <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2.5-3 4.5"/><circle cx="12" cy="17.2" r="0.9" fill="currentColor" stroke="none"/></svg>Docs</div>
+    <button class="tabbtn" data-tab="docs" data-route="help/docs" onclick="navigate('help/docs')">Documentation</button>
     <button class="tabbtn" data-tab="about" data-route="help/about" onclick="navigate('help/about')">About</button>
   </div>
 </div>
@@ -1085,21 +1059,8 @@ internal static class DashboardPage
         </div>
     </div>
 </div>
-<div class="view" id="view-help">
-    <div class="help-subtabs">
-        <button class="help-subtab active" onclick="switchHelpSubTab('getting-started')">Getting Started</button>
-        <button class="help-subtab" onclick="switchHelpSubTab('dashboard-tabs')">Dashboard Tabs</button>
-        <button class="help-subtab" onclick="switchHelpSubTab('reference')">Reference</button>
-    </div>
-    <div class="help-subtab-content active" id="help-getting-started">
-        <div class="help-accordion" id="helpContent1"><span class="msg">Loading help…</span></div>
-    </div>
-    <div class="help-subtab-content" id="help-dashboard-tabs">
-        <div class="help-accordion" id="helpContent2"></div>
-    </div>
-    <div class="help-subtab-content" id="help-reference">
-        <div class="help-accordion" id="helpContent3"></div>
-    </div>
+<div class="view" id="view-docs">
+    <iframe id="docsFrame" src="/docs/" title="Documentation"></iframe>
 </div>
 <div class="view" id="view-about">
     <div class="box">
@@ -2671,7 +2632,7 @@ const ROUTE_TO_TAB = {
   'ops/monitor': 'monitor',
   'ops/logs': 'logs',
   'ops/diagram': 'diagram',
-  'help/guide': 'help',
+  'help/docs': 'docs',
   'help/about': 'about'
 };
 const DEFAULT_ROUTE = 'ops/monitor';
@@ -2699,7 +2660,6 @@ async function showTab(name, route) {
   if (activeTab === 'diagnostics') { diagnosticsActive = true; loadDiagnostics(); }
   else { diagnosticsActive = false; }
   if (activeTab === 'about') loadAppInfo().catch(e => el('aboutName').textContent = '✗ ' + e.message);
-  if (activeTab === 'help') loadHelp().catch(e => el('helpContent').innerHTML = '<span class="msg bad">✗ ' + esc(e.message) + '</span>');
   if (activeTab === 'mqtt') { await loadMqtt(); }
   if (activeTab === 'iot-traffic') { await loadMqttValues(); }
   if (name === 'influx') { await loadInflux(); }
@@ -3250,78 +3210,6 @@ async function loadAppInfo(force = false) {
     el('aboutCreator').textContent = payload.creator || '—';
     el('aboutSection').textContent = payload.section || '—';
     state.appInfoLoaded = true;
-}
-
-let helpLoaded = false;
-function renderMarkdown(md) {
-    const lines = md.replace(/\r\n/g, '\n').split('\n');
-    let html = '', inList = false, inTable = false, inCode = false, tableHeader = false;
-    const closeList = () => { if (inList) { html += '</ul>'; inList = false; } };
-    const closeTable = () => { if (inTable) { html += '</tbody></table>'; inTable = false; } };
-    for (let i = 0; i < lines.length; i++) {
-        let line = lines[i];
-        if (/^```/.test(line)) {
-            if (inCode) { html += '</code></pre>'; inCode = false; }
-            else { closeList(); closeTable(); html += '<pre><code>'; inCode = true; }
-            continue;
-        }
-        if (inCode) { html += line + '\n'; continue; }
-        if (/^---\s*$/.test(line)) { closeList(); closeTable(); html += '<hr>'; continue; }
-        if (/^#\s+/.test(line)) { closeList(); closeTable(); html += `<h1>${line.replace(/^#\s+/, '')}</h1>`; continue; }
-        if (/^##\s+/.test(line)) { closeList(); closeTable(); html += `<h2>${line.replace(/^##\s+/, '')}</h2>`; continue; }
-        if (/^###\s+/.test(line)) { closeList(); closeTable(); html += `<h3>${line.replace(/^###\s+/, '')}</h3>`; continue; }
-        if (/^####\s+/.test(line)) { closeList(); closeTable(); html += `<h4>${line.replace(/^####\s+/, '')}</h4>`; continue; }
-        if (/^\*\s+|^-\s+/.test(line)) { closeTable(); if (!inList) { html += '<ul>'; inList = true; } html += `<li>${line.replace(/^\*\s+|^-\s+/, '')}</li>`; continue; }
-        closeList();
-        if (/^\|/.test(line)) {
-            if (line.replace(/\s/g, '').match(/^\|[-:|]+\|$/)) { tableHeader = true; continue; }
-            const cells = line.split('|').filter((_, j, a) => j > 0 && j < a.length - 1).map(c => c.trim());
-            if (!inTable) { html += '<table><thead><tr>'; html += cells.map(c => `<th>${c}</th>`).join(''); html += '</tr></thead><tbody>'; inTable = true; tableHeader = false; }
-            else if (tableHeader) { tableHeader = false; continue; }
-            else { html += '<tr>' + cells.map(c => `<td>${c}</td>`).join('') + '</tr>'; }
-            continue;
-        }
-        closeTable();
-        if (line.trim() === '') continue;
-        if (/^\*/.test(line) && /\*$/.test(line)) { html += `<p><em>${line.replace(/^\*|\*$/g, '')}</em></p>`; }
-        else { html += `<p>${line}</p>`; }
-    }
-    closeList(); closeTable();
-    if (inCode) html += '</code></pre>';
-    return html.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`(.+?)`/g, '<code>$1</code>');
-}
-async function loadHelp() {
-    if (helpLoaded) return;
-    const p = await (await fetch('/api/help', { cache: 'no-store' })).json();
-    const groups = (p.markdown || '').split(/\r?\n===\r?\n/).filter(s => s.trim());
-    
-    const renderGroup = (groupMarkdown, containerId, openCount = 2) => {
-        const sections = groupMarkdown.split(/\r?\n---\r?\n/).filter(s => s.trim());
-        const container = el(containerId);
-        if (!container) return;
-        container.innerHTML = sections.map((section, i) => {
-            const titleMatch = section.match(/^#\s+(.+)/m);
-            const title = titleMatch ? titleMatch[1] : 'Section';
-            const body = renderMarkdown(section.replace(/^#\s+.+/m, ''));
-            const openAttr = i < openCount ? ' open' : '';
-            return `<details class="help-section"${openAttr}><summary>${esc(title)}</summary><div class="help-body">${body}</div></details>`;
-        }).join('');
-    };
-    
-    renderGroup(groups[0] || '', 'helpContent1', 2);
-    renderGroup(groups[1] || '', 'helpContent2', 2);
-    renderGroup(groups[2] || '', 'helpContent3', 1);
-    
-    helpLoaded = true;
-}
-
-function switchHelpSubTab(tabName) {
-    document.querySelectorAll('.help-subtab').forEach(btn => {
-        btn.classList.toggle('active', btn.textContent.toLowerCase().replace(/\s+/g, '-') === tabName);
-    });
-    document.querySelectorAll('.help-subtab-content').forEach(content => {
-        content.classList.toggle('active', content.id === 'help-' + tabName);
-    });
 }
 
 async function refresh() {
@@ -5196,7 +5084,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       'iot-traffic': 'iot/traffic',
       influx: 'historian/influx',
       diagram: 'ops/diagram',
-      help: 'help/guide',
+      docs: 'help/docs',
       about: 'help/about'
     };
     const initHashRaw = location.hash.replace(/^#\/?/, '');
@@ -5227,7 +5115,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (document.querySelector('#view-influx.active')) loadInfluxStatus().catch(() => {});
     }, 2000);
     if (initTab === 'logs') await loadLogs();
-    if (initTab === 'help') await loadHelp();
     if (initTab === 'about') await loadAppInfo();
     fetch('/api/version').then(r => r.json()).then(p => { const v = (p.informationalVersion || p.version || '0.0.0').split('+')[0]; el('appVersion').textContent = 'v' + v; }).catch(() => {});
 });

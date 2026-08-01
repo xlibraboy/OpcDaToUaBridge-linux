@@ -5,6 +5,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using OpcBridge.App;
@@ -124,6 +125,16 @@ builder.Services.AddSingleton<IInfluxTrendQuery>(sp =>
 
 WebApplication app = builder.Build();
 TryMigrateLegacyDaLinks(app);
+
+// Static documentation site (built with MkDocs/Material) served under /docs/.
+// The built site ships as `docs-site` next to the app; absent in dev until built.
+string docsDir = Path.Combine(AppContext.BaseDirectory, "docs-site");
+if (Directory.Exists(docsDir))
+{
+    PhysicalFileProvider docsProvider = new(docsDir);
+    app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = docsProvider, RequestPath = "/docs" });
+    app.UseStaticFiles(new StaticFileOptions { FileProvider = docsProvider, RequestPath = "/docs" });
+}
 
 app.MapGet("/", (HttpContext ctx) => {
     ctx.Response.Headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
@@ -263,7 +274,6 @@ app.MapGet("/api/version", () =>
         informationalVersion = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? string.Empty
     });
 });
-app.MapGet("/api/help", () => Results.Json(new { markdown = HelpContent.Markdown }));
 app.MapGet("/api/da/sources", (DaRuntimeSettings settings) =>
 {
     DaRuntimeSettingsSnapshot snapshot = settings.GetSnapshot();

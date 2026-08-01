@@ -38,6 +38,9 @@ publish*.tar.gz
 # Runtime state (generated at runtime)
 mappings.json
 
+# MkDocs build output and local docs venv
+site/
+.venv-docs/
 
 # Worktrees (user-requested location for git worktrees)
 worktrees/

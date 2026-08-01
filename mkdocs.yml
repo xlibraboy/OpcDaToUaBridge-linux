@@ -1,0 +1,69 @@
+site_name: OPC DA → UA Bridge Documentation
+site_description: User documentation for the OPC DA → UA Bridge
+docs_dir: docs
+theme:
+  name: material
+  icon:
+    logo: material/transit-connection-variant
+  features:
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.sections
+    - navigation.top
+    - navigation.expand
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+plugins:
+  - search
+markdown_extensions:
+  - admonition
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.superfences
+  - pymdownx.details
+  - pymdownx.highlight
+  - pymdownx.inlinehilite
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Getting Started: getting-started.md
+      - Topology & Data Flow: topology.md
+  - Guides:
+      - Installation on Windows: installation.md
+      - Updating to a New Version: updating.md
+      - Troubleshooting: troubleshooting.md
+  - Concepts:
+      - PLC Drivers: plc-drivers.md
+      - OPC UA Endpoint & Sources: opcua-endpoint.md
+      - Unified UA Address Space: ua-address-space.md
+      - Update Rate & Tag Limits: update-rate.md
+      - Access Rights & Simulation: access-rights.md
+      - DA Links: da-links.md
+      - OPC UA Server: opcua-server.md
+      - MQTT: mqtt.md
+      - InfluxDB: influxdb.md
+      - OPC DA Server Discovery: da-discovery.md
+      - OPC UA Certificates (PKI): pki.md
+  - Reference:
+      - Configuration Reference: configuration.md
+exclude_docs: |
+  superpowers/
+extra:
+  generator: false
