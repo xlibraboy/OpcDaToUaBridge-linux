@@ -4,6 +4,16 @@ using OpcBridge.Client;
 
 namespace OpcBridge.Hmi.Services;
 
+/// <summary>Runtime port info from GET /api/status/ports.</summary>
+public sealed record HmiPortInfo(
+    int HttpPort,
+    int UaPort,
+    int HttpDefault,
+    int UaDefault,
+    bool HttpAutoAssigned,
+    bool UaAutoAssigned,
+    string? UaEndpointClient);
+
 public sealed class BridgeApiClient : IDisposable
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -33,6 +43,20 @@ public sealed class BridgeApiClient : IDisposable
         HmiWriteResponse? body = await http.Content.ReadFromJsonAsync<HmiWriteResponse>(JsonOptions, ct)
             .ConfigureAwait(false);
         return body ?? new HmiWriteResponse { Ok = false, Error = $"HTTP {(int)http.StatusCode}" };
+    }
+
+    public async Task<HmiPortInfo?> GetPortsAsync(CancellationToken ct)
+    {
+        try
+        {
+            HmiPortInfo? info = await client_.GetFromJsonAsync<HmiPortInfo>(
+                "api/status/ports", JsonOptions, ct).ConfigureAwait(false);
+            return info;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     public async Task<HmiTrendResponse> GetTrendsAsync(

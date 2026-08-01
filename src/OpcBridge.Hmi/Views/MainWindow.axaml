@@ -31,6 +31,20 @@
     <StackPanel DockPanel.Dock="Top"
                 Orientation="Horizontal"
                 Spacing="8"
+                Margin="0,0,0,8"
+                IsVisible="{Binding PortsSummary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+      <TextBlock VerticalAlignment="Center"
+                 Text="{Binding PortsSummary}"
+                 Opacity="0.85" />
+      <TextBlock VerticalAlignment="Center"
+                 Text="⚠ default port was in use — bridge auto-assigned"
+                 Foreground="#E6B04A"
+                 IsVisible="{Binding PortsWarning}" />
+    </StackPanel>
+
+    <StackPanel DockPanel.Dock="Top"
+                Orientation="Horizontal"
+                Spacing="8"
                 Margin="0,0,0,8">
       <TextBlock VerticalAlignment="Center" Text="Filter:" />
       <TextBox Width="320"

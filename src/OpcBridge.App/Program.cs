@@ -1,4 +1,5 @@
 using System.Reflection;
+using Newtonsoft.Json.Linq;
 using System.IO.Ports;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
@@ -19,9 +20,64 @@ using OpcBridge.Mqtt;
 using OpcBridge.Influx;
 using OpcBridge.Ua;
 
+// Port auto-assignment: check defaults, auto-roll if in use, persist to appsettings.json
+string cfgPath = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
+JObject? cfg = null;
+try { cfg = JObject.Parse(File.ReadAllText(cfgPath)); } catch { }
+
+int savedHttp = cfg?["Bridge"]?["HttpPort"]?.Value<int>() ?? PortHelper.HttpScanStart;
+int savedUa = cfg?["Bridge"]?["OpcUaPort"]?.Value<int>() ?? PortHelper.OpcUaScanStart;
+using var loggerFactory = LoggerFactory.Create(b => b.AddConsole());
+ILogger logger = loggerFactory.CreateLogger("PortSetup");
+
+// HTTP port: use saved value when free, else next free port in scan range
+int httpPort = PortHelper.IsPortAvailable(savedHttp)
+    ? savedHttp
+    : PortHelper.FindAvailablePort(PortHelper.HttpScanStart, PortHelper.HttpScanEnd);
+if (httpPort <= 0)
+    throw new InvalidOperationException($"No available HTTP port in range {PortHelper.HttpScanStart}-{PortHelper.HttpScanEnd}.");
+
+// OPC UA port: same strategy
+int uaPort = PortHelper.IsPortAvailable(savedUa)
+    ? savedUa
+    : PortHelper.FindAvailablePort(PortHelper.OpcUaScanStart, PortHelper.OpcUaScanEnd);
+if (uaPort <= 0)
+    throw new InvalidOperationException($"No available OPC UA port in range {PortHelper.OpcUaScanStart}-{PortHelper.OpcUaScanEnd}.");
+
+bool httpAuto = httpPort != savedHttp && savedHttp == PortHelper.HttpScanStart;
+bool uaAuto = uaPort != savedUa && savedUa == PortHelper.OpcUaScanStart;
+
+// Persist only when ports changed from the saved values
+if (httpPort != savedHttp || uaPort != savedUa)
+{
+    cfg ??= new JObject();
+    if (cfg["Bridge"] == null) cfg["Bridge"] = new JObject();
+    cfg["Bridge"]!["HttpPort"] = httpPort;
+    cfg["Bridge"]!["OpcUaPort"] = uaPort;
+    if (cfg["Ua"]?["EndpointUrl"] is not null)
+        cfg["Ua"]!["EndpointUrl"] = PatchPortInUrl(cfg["Ua"]!["EndpointUrl"]!.ToString(), uaPort);
+    File.WriteAllText(cfgPath, cfg.ToString(Newtonsoft.Json.Formatting.Indented));
+
+    if (httpAuto)
+        logger.LogWarning("HTTP port {Default} already in use. Auto-assigned to {Port}. appsettings.json updated.", PortHelper.HttpScanStart, httpPort);
+    if (uaAuto)
+        logger.LogWarning("OPC UA port {Default} already in use. Auto-assigned to {Port}. appsettings.json updated.", PortHelper.OpcUaScanStart, uaPort);
+
+    // Force PKI cert regen when UA port changed
+    string certDer = Path.Combine(AppContext.BaseDirectory, "pki", "own", "cert.der");
+    if (uaAuto && File.Exists(certDer))
+    {
+        File.Delete(certDer);
+        logger.LogInformation("Deleted pki/own/cert.der to trigger certificate regeneration with new UA port {Port}.", uaPort);
+    }
+}
+
+BridgeState.ConfigurePorts(httpPort, uaPort, httpAuto, uaAuto);
+logger.LogInformation("Bridge listening on http://0.0.0.0:{HttpPort}", httpPort);
+logger.LogInformation("OPC UA server endpoint: opc.tcp://0.0.0.0:{UaPort}/OpcBridge", uaPort);
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
-builder.WebHost.UseUrls("http://0.0.0.0:8080");
+builder.WebHost.UseUrls($"http://0.0.0.0:{httpPort}");
 builder.Configuration.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
 
 builder.Services.Configure<BridgeOptions>(builder.Configuration.GetSection("Bridge"));
@@ -50,7 +106,11 @@ builder.Services.AddSingleton<BridgeWorker>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<BridgeWorker>());
  builder.Services.AddHostedService<OpcBridgeMonitor>();
  builder.Services.AddHttpClient("BridgeAppDiscovery", client => client.Timeout = TimeSpan.FromSeconds(2));
- builder.Services.AddSingleton<BridgeAppDiscovery>();
+ builder.Services.AddSingleton(sp => new BridgeAppDiscovery(
+     sp.GetRequiredService<DaRuntimeSettings>(),
+     sp.GetRequiredService<IHttpClientFactory>(),
+     sp.GetRequiredService<ILogger<BridgeAppDiscovery>>(),
+     BridgeState.HttpPort));
  builder.Services.AddHostedService(sp => sp.GetRequiredService<BridgeAppDiscovery>());
 builder.Services.AddSignalR();
 builder.Services.AddHostedService<HmiBroadcastService>();
@@ -128,6 +188,21 @@ app.MapGet("/api/hmi/trends", async (
      ua = uaServer.GetStatus(),
      apps = discovery.GetStatus()
  }));
+app.MapGet("/api/status/ports", () =>
+{
+    string hostName = System.Net.Dns.GetHostName();
+    string uaBind = $"opc.tcp://0.0.0.0:{BridgeState.UaPort}/OpcBridge";
+    string uaClient = $"opc.tcp://{hostName}:{BridgeState.UaPort}/OpcBridge";
+    return Results.Json(new BridgePorts(
+        BridgeState.HttpPort,
+        BridgeState.UaPort,
+        PortHelper.HttpScanStart,
+        PortHelper.OpcUaScanStart,
+        BridgeState.HttpAutoAssigned,
+        BridgeState.UaAutoAssigned,
+        uaBind,
+        uaClient));
+});
  app.MapGet("/api/dashboard", (BridgeState state, UaServerHost uaServer, BridgeAppDiscovery discovery) => Results.Json(new
  {
      bridge = state.GetStatus(),
@@ -2063,6 +2138,31 @@ static bool ValidateS7Mappings(List<TagMapping> tags, DaRuntimeSettings daSettin
     }
 
     return false;
+}
+
+/// <summary>
+/// Replaces the port in a URL string (e.g. opc.tcp://0.0.0.0:4840/...).
+/// Handles URLs with or without explicit port.
+/// </summary>
+static string PatchPortInUrl(string url, int port)
+{
+    if (string.IsNullOrEmpty(url)) return url;
+    try
+    {
+        var uri = new Uri(url);
+        var builder = new UriBuilder(uri) { Port = port };
+        return builder.Uri.ToString().TrimEnd('/');
+    }
+    catch
+    {
+        // Fallback: manual replacement
+        int lastColon = url.LastIndexOf(':');
+        int lastSlash = url.LastIndexOf('/');
+        if (lastColon > lastSlash && int.TryParse(url[(lastColon + 1)..], out _))
+            return url[..(lastColon + 1)] + port + url[(url.IndexOf('/', lastColon)..)];
+        // No port in URL — append it
+        return url.TrimEnd('/') + $":{port}";
+    }
 }
 
 internal sealed class StringTupleComparerIgnoreCase : IEqualityComparer<(string SourceId, string ItemId)>
