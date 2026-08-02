@@ -467,6 +467,7 @@ internal static class DashboardPage
   <div class="nav-group">
     <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>Ops</div>
     <button class="tabbtn active" data-tab="monitor" data-route="ops/monitor" onclick="navigate('ops/monitor')">Monitor</button>
+    <button class="tabbtn" data-tab="values" data-route="ops/values" onclick="navigate('ops/values')">Live Values</button>
     <button class="tabbtn" data-tab="logs" data-route="ops/logs" onclick="navigate('ops/logs')">Logs</button>
     <button class="tabbtn" data-tab="diagram" data-route="ops/diagram" onclick="navigate('ops/diagram')">Diagram</button>
   </div>
@@ -530,8 +531,10 @@ internal static class DashboardPage
             </div>
         </div>
     </div>
+</div>
+<div class="view" id="view-values">
     <div class="box">
-        <div class="box-h">DA Live Values <span class="msg" id="valCount" style="margin-left:auto"></span><button class="btn ghost" id="toggleLiveValues" type="button">Disable Live Data</button></div>
+        <div class="box-h">Live Values <span class="msg" id="valCount" style="margin-left:auto"></span><button class="btn ghost" id="toggleLiveValues" type="button">Disable Live Data</button></div>
         <div class="box-b" style="padding:0">
             <div class="values-wrap">
                 <table class="values-table">
@@ -2669,6 +2672,7 @@ const ROUTE_TO_TAB = {
   'iot/traffic': 'iot-traffic',
   'historian/influx': 'influx',
   'ops/monitor': 'monitor',
+  'ops/values': 'values',
   'ops/logs': 'logs',
   'ops/diagram': 'diagram',
   'help/guide': 'help',
