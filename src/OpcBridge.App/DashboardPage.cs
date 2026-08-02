@@ -3740,7 +3740,7 @@ async function loadInfluxStatus() {
         if (hintInflux) {
             const off = !state.influxConfigured || state.influxState === 'Disconnected';
             hintInflux.style.display = off ? '' : 'none';
-            if (off) hintInflux.innerHTML = 'Historian (InfluxDB) not configured. <button class="btn" type="button" onclick="navigate(\'historian/influx\')">Configure</button>';
+            if (off) hintInflux.innerHTML = 'Historian (InfluxDB) not configured. <button class="btn" type="button" onclick="openInfluxWizard()">Configure</button>';
         }
     } catch (e) { if (el('influxMessage')) el('influxMessage').textContent = '✗ ' + e.message; }
 }
