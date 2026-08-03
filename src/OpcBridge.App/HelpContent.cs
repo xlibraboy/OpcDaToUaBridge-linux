@@ -78,7 +78,7 @@ internal static class HelpContent
   │  Tags ──► Maps, DA Links                                             │
   │  IoT ──► MQTT, Traffic                                               │
   │  Historian ──► InfluxDB                                              │
-  │  Ops ──► Monitor, Logs, Diagram                                      │
+  │  Ops ──► Monitor, Live Values, Logs, Diagram                         │
   │  Help ──► Guide, About                                               │
   │                                                                      │
   │  HTTP API: /api/dashboard, /api/mappings, /api/da/sources, etc.      │
@@ -108,7 +108,7 @@ The sidebar groups pages by job:
 - **Tags** — Maps (OPC DA / OPC UA / Drivers sub-tabs: browse, map to UA, faceplate), DA Links (DA→DA forwarding)
 - **IoT** — MQTT (broker config), Traffic (publish/subscribe monitor)
 - **Historian** — InfluxDB (config, write status, per-tag enable via faceplate)
-- **Ops** — Monitor (live values, status), Logs, Diagram
+- **Ops** — Monitor (status), Live Values (live tag values), Logs, Diagram
 - **Help** — Guide, About
 
 Use **Sources → OPC DA → + Add Source** for the guided setup wizard.
