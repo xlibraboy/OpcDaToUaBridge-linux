@@ -23,7 +23,7 @@ public sealed class TestAppHandle : IAsyncDisposable
         };
     }
 
-    public HttpClient Client { get; }
+    public HttpClient Client { get; private set; }
 
     public static async Task<TestAppHandle> StartAsync(Action<string> configureAppDirectory)
     {
@@ -138,6 +138,11 @@ public sealed class TestAppHandle : IAsyncDisposable
                 throw new Xunit.Sdk.XunitException($"OpcBridge.App exited during startup with code {process_.ExitCode}.{Environment.NewLine}{output_}");
             }
 
+            // The app auto-assigns a free port when the default 8080 is busy and persists
+            // the result to its own appsettings.json (Bridge:HttpPort) before listening.
+            // Follow that file so tests run regardless of what else occupies 8080.
+            DiscoverHttpPortFromAppSettings();
+
             try
             {
                 using CancellationTokenSource timeout = new(TimeSpan.FromMilliseconds(250));
@@ -155,5 +160,33 @@ public sealed class TestAppHandle : IAsyncDisposable
         }
 
         throw new Xunit.Sdk.XunitException($"Timed out waiting for OpcBridge.App to become healthy.{Environment.NewLine}{output_}");
+    }
+
+    private void DiscoverHttpPortFromAppSettings()
+    {
+        try
+        {
+            string path = Path.Combine(app_directory_, "appsettings.json");
+            if (!File.Exists(path))
+            {
+                return;
+            }
+
+            using JsonDocument doc = JsonDocument.Parse(File.ReadAllText(path));
+            if (doc.RootElement.TryGetProperty("Bridge", out JsonElement bridge)
+                && bridge.TryGetProperty("HttpPort", out JsonElement portElement)
+                && portElement.TryGetInt32(out int port)
+                && port > 0
+                && Client.BaseAddress?.Port != port)
+            {
+                // BaseAddress cannot be mutated after the first request — swap the client.
+                Client.Dispose();
+                Client = new HttpClient { BaseAddress = new Uri($"http://127.0.0.1:{port}") };
+            }
+        }
+        catch
+        {
+            // Config not written/readable yet — keep the current client and retry.
+        }
     }
 }
