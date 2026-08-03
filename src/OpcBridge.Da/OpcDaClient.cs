@@ -6,7 +6,7 @@ using OpcBridge.Core;
 
 namespace OpcBridge.Da;
 
-public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
+public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISubscriptionActiveSource
 {
     private const int OpcDataSourceDevice = 2;
     private static readonly int ItemStateSize = Marshal.SizeOf<OpcItemState>();
@@ -17,13 +17,21 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
     private object? server_com_object_;
     private IOPCServer? server_;
     private readonly Dictionary<int, RateGroup> rate_groups_ = new();
-    private bool subscriptions_active_;
+    private volatile bool subscriptions_active_;
 
     /// <summary>
     /// Raised when a DA subscription delivers values via IOPCDataCallback.
     /// Subscribed to once per session by BridgeWorker via <see cref="ISubscribableSourceClient"/>.
     /// </summary>
     public event Action<IReadOnlyList<BridgeValue>>? ValuesReceived;
+
+    /// <summary>
+    /// True while at least one rate group has an active <c>IOPCDataCallback</c> subscription,
+    /// i.e. values flow via callbacks and <see cref="ReadAsync"/> performs no device reads.
+    /// The bridge watchdog uses this to decide whether callback staleness means the
+    /// connection is lost (only applies to subscribed sessions).
+    /// </summary>
+    public bool IsSubscriptionActive => subscriptions_active_;
 
     public OpcDaClient(DaClientOptions options)
     {
@@ -153,8 +161,20 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
                 throw new InvalidOperationException($"OPC DA server ProgID '{progId}' is not registered on this machine.");
             }
 
-            object serverObject = Activator.CreateInstance(serverType)
-                ?? throw new InvalidOperationException($"Failed to create OPC DA server '{progId}'.");
+            object serverObject;
+            try
+            {
+                serverObject = Activator.CreateInstance(serverType)
+                    ?? throw new InvalidOperationException($"Failed to create OPC DA server '{progId}'.");
+            }
+            catch (COMException ex)
+            {
+                // Local COM activation failed at the SCM level (server process crashed,
+                // DCOM service down, RPC unavailable) — retryable, not a config error.
+                throw new SourceConnectionLostException(
+                    $"Failed to activate OPC DA server '{progId}' (HRESULT 0x{ex.HResult:X8}).",
+                    ex);
+            }
             IOPCServer server = serverObject as IOPCServer
                 ?? throw new InvalidOperationException($"COM server '{progId}' does not expose IOPCServer.");
 
@@ -186,7 +206,10 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
                 Type? serverType = Type.GetTypeFromProgID(progId, host, throwOnError: false);
                 if (serverType is null)
                 {
-                    throw new InvalidOperationException(
+                    // Remote SCM could not resolve/activate the ProgID — host unreachable,
+                    // DCOM blocked, or the class is not registered there. Unreachable is
+                    // transient; treat as connection lost so the bridge retries with backoff.
+                    throw new SourceConnectionLostException(
                         $"OPC DA server '{progId}' is not available on host '{host}'.");
                 }
 
@@ -388,7 +411,11 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
             out _,
             ref itemManagementGuid,
             out object groupObject);
-        ThrowOnFailed(addGroupHresult, $"Failed to create OPC DA group for rate {rate}ms.");
+        if (addGroupHresult < 0)
+        {
+            throw new SourceConnectionLostException(
+                $"Failed to create OPC DA group for rate {rate}ms (HRESULT 0x{addGroupHresult:X8}).");
+        }
 
         IOPCItemMgt itemManagement = groupObject as IOPCItemMgt
             ?? throw new InvalidOperationException("OPC DA group does not expose IOPCItemMgt.");
@@ -540,7 +567,12 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
                 definitions,
                 out resultsPointer,
                 out errorsPointer);
-            ThrowOnFailed(addItemsHresult, "Failed to add OPC DA items.");
+            if (addItemsHresult < 0)
+            {
+                // Whole AddItems call failed — the RPC channel to the server is gone.
+                throw new SourceConnectionLostException(
+                    $"Failed to add OPC DA items (HRESULT 0x{addItemsHresult:X8}).");
+            }
 
             int[] itemErrors = new int[definitions.Length];
             Marshal.Copy(errorsPointer, itemErrors, 0, definitions.Length);
@@ -617,7 +649,12 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
                 serverHandles,
                 out itemStatesPointer,
                 out errorsPointer);
-            ThrowOnFailed(readHresult, "OPC DA read failed.");
+            if (readHresult < 0)
+            {
+                // Whole read call failed — the RPC channel to the server is gone.
+                throw new SourceConnectionLostException(
+                    $"OPC DA read failed (HRESULT 0x{readHresult:X8}).");
+            }
 
             int[] itemErrors = new int[bindings.Length];
             Marshal.Copy(errorsPointer, itemErrors, 0, bindings.Length);
@@ -630,7 +667,20 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
 
                 try
                 {
-                    ThrowOnFailed(itemErrors[i], $"OPC DA item read failed for '{bindings[i].ItemId}'.");
+                    if (itemErrors[i] < 0)
+                    {
+                        // Item-level failure (dead handle, device error): surface bad
+                        // quality instead of tearing down the whole source — a single
+                        // bad item is indistinguishable from a dead RPC channel.
+                        values[i] = new BridgeValue(
+                            options_.SourceId,
+                            bindings[i].ItemId,
+                            null,
+                            DateTime.UtcNow,
+                            DaQuality: 0,
+                            IsGood: false);
+                        continue;
+                    }
 
                     int quality = (ushort)itemState.Quality;
                     values[i] = new BridgeValue(

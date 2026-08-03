@@ -628,6 +628,11 @@ internal static class DashboardPage
                         <div class="conn-section-h">DA Subscriptions <span class="info" data-tip="When ON, the bridge uses IOPCDataCallback to receive value changes from the DA server (faster, supports deadband). When OFF, the bridge polls with IOPCSyncIO.Read. Changing this requires a source reconnect.">i</span></div>
                         <div class="field"><label class="fl">Subscriptions</label><input type="checkbox" id="cfgUseSubscriptions" checked><span class="msg" id="subMessage">Applies on reconnect</span></div>
                     </div>
+                    <div class="conn-section">
+                        <div class="conn-section-h">Recovery <span class="info" data-tip="How the bridge reacts to a lost OPC DA connection. The source is torn down and reconnected automatically with backoff (1s, doubling to 5s) until the server is reachable again.">i</span></div>
+                        <div class="field"><label class="fl">Max Consecutive Failures <span class="info" data-tip="Failed reads tolerated before the source is torn down and reconnected. 1 = reconnect on the first failure (default). Higher values ride out flaky networks.">i</span></label><input id="cfgMaxConsecutiveFailures" type="number" min="1" value="1" style="flex:1"></div>
+                        <div class="field"><label class="fl">Watchdog Timeout (s) <span class="info" data-tip="Subscription mode: if no value callbacks arrive for this many seconds, the connection is treated as lost and reconnects. 0 disables the watchdog — use for static tags that never change.">i</span></label><input id="cfgWatchdogTimeout" type="number" min="0" value="60" style="flex:1"></div>
+                    </div>
                     <div class="toolbar" style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
                         <button class="btn" id="cfgApply" type="button" style="display:none">Save</button>
                         <button class="btn ghost" id="cfgReset" type="button" style="display:none">Reset</button>
@@ -2986,6 +2991,9 @@ function loadSelectedSourceForm() {
     el('cfgUser').value = source.remoteUsername || '';
     el('cfgPass').value = '';
     el('cfgDomain').value = source.remoteDomain || '';
+    el('cfgMaxConsecutiveFailures').value = String(source.maxConsecutiveFailures ?? 1);
+    const wdMs = source.watchdogTimeoutMs;
+    el('cfgWatchdogTimeout').value = String(wdMs == null || wdMs <= 0 ? (wdMs === 0 ? '0' : '60') : Math.round(wdMs / 1000));
     el('cfgMessage').textContent = isMelsecSource(source)
         ? 'Serial driver source — edit it on the Drivers page.'
         : 'Editing ' + (source.displayName || source.sourceId) + '.';
@@ -3968,6 +3976,10 @@ async function saveSource() {
         el('cfgMessage').textContent = 'Serial driver source — edit it on the Drivers page.';
         return;
     }
+    const mcfRaw = el('cfgMaxConsecutiveFailures').value;
+    const mcf = Number.parseInt(mcfRaw, 10);
+    const wdRaw = el('cfgWatchdogTimeout').value;
+    const wd = wdRaw === '' ? 60 : (Number(wdRaw) || 0);
     const body = {
         sourceId,
         displayName: el('cfgDisplayName').value.trim() || null,
@@ -3976,7 +3988,9 @@ async function saveSource() {
         host: el('cfgHost').value.trim() || 'localhost',
         remoteUsername: el('cfgUser').value.trim() || null,
         remotePassword: el('cfgPass').value || null,
-        remoteDomain: el('cfgDomain').value.trim() || null
+        remoteDomain: el('cfgDomain').value.trim() || null,
+        maxConsecutiveFailures: Number.isFinite(mcf) && mcf >= 1 ? mcf : 1,
+        watchdogTimeoutMs: wd * 1000
     };
     const r = await fetch('/api/da/sources', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const p = await r.json();
@@ -4323,6 +4337,8 @@ function newSource() {
     el('cfgUser').value = '';
     el('cfgPass').value = '';
     el('cfgDomain').value = '';
+    el('cfgMaxConsecutiveFailures').value = '1';
+    el('cfgWatchdogTimeout').value = '60';
     el('tagTree').innerHTML = '<span class="msg">Save the new source before browsing tags.</span>';
     el('cfgMessage').textContent = 'Enter a unique Source ID, then save.';
     showSaveReset();

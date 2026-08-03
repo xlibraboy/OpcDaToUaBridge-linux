@@ -28,6 +28,8 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
     private readonly ILogger<BridgeWorker> logger_;
     private readonly IReadOnlyDictionary<int, int> rate_limits_;
     private int backoffMs_ = 1000;
+    private readonly ConcurrentDictionary<string, int> consecutive_failures_ = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, DateTime> watchdog_activity_ = new(StringComparer.OrdinalIgnoreCase);
     private WriteQueue? write_queue_;
     private volatile Dictionary<string, SourceSession>? active_sessions_;
     private readonly IMqttBridge mqtt_bridge_;
@@ -166,6 +168,8 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
 
                     try
                     {
+                        ScanWatchdog(sessions, failedSourceQueue);
+
                         if (!failedSourceQueue.IsEmpty)
                         {
                             HashSet<string> failedIds = new(StringComparer.OrdinalIgnoreCase);
@@ -185,7 +189,14 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                                 {
                                     await removed.Client.DisposeAsync().ConfigureAwait(false);
                                     bridge_state_.ClearSourceValues(failedId);
+                                    bridge_state_.SetSourceConnectionState(failedId, "Reconnecting");
+                                    bridge_state_.SetSourceError(failedId, new InvalidOperationException(
+                                        "Connection lost — reconnecting automatically."));
+                                    logger_.LogWarning("Source {SourceId} connection lost; reconnecting with backoff", failedId);
                                 }
+
+                                consecutive_failures_.TryRemove(failedId, out _);
+                                watchdog_activity_.TryRemove(failedId, out _);
                             }
 
                             if (failedIds.Count > 0)
@@ -236,7 +247,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                                         await StopPollersForSourceAsync(pollers, id, sess).ConfigureAwait(false);
                                     }
 
-                                    await ReconfigureSessionsAsync(
+                                    (_, bool forceRebuildConnectionFailures) = await ReconfigureSessionsAsync(
                                         settings,
                                         sessions,
                                         stoppingToken,
@@ -250,6 +261,13 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                                         pollers,
                                         daDirty.Where(id => sessions.ContainsKey(id)),
                                         stoppingToken).ConfigureAwait(false);
+
+                                    // A dirty source that failed to reconnect gets retried
+                                    // by the main reconfigure branch with backoff.
+                                    if (forceRebuildConnectionFailures)
+                                    {
+                                        connectedVersion = -1;
+                                    }
                                 }
                             }
 
@@ -299,13 +317,11 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                                 await StopPollersForSourceAsync(pollers, id, sess).ConfigureAwait(false);
                             }
 
-                            HashSet<string> changed = await ReconfigureSessionsAsync(
+                            (HashSet<string> changed, bool connectionFailures) = await ReconfigureSessionsAsync(
                                 settings,
                                 sessions,
                                 stoppingToken).ConfigureAwait(false);
-                            connectedVersion = settings.Version;
                             active_sessions_ = new Dictionary<string, SourceSession>(sessions, StringComparer.OrdinalIgnoreCase);
-                            backoffMs_ = 1000;
                             if (changed.Count > 0)
                             {
                                 await RestartPollersForSourcesAsync(
@@ -316,6 +332,21 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                                     pollers,
                                     changed.Where(id => sessions.ContainsKey(id)),
                                     stoppingToken).ConfigureAwait(false);
+                            }
+
+                            if (connectionFailures)
+                            {
+                                // Some sources could not connect (server unreachable) — keep
+                                // connectedVersion stale so the next tick retries, with
+                                // exponential backoff. Pollers for successfully connected
+                                // sources above already started.
+                                await Task.Delay(backoffMs_, stoppingToken).ConfigureAwait(false);
+                                backoffMs_ = Math.Min(backoffMs_ * 2, 5000);
+                            }
+                            else
+                            {
+                                connectedVersion = settings.Version;
+                                backoffMs_ = 1000;
                             }
                         }
 
@@ -474,7 +505,23 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
 
                 if (!result.ReadSucceeded)
                 {
-                    failedSourceQueue.Enqueue(source.SourceId);
+                    if (!ShouldTearDownAfterFailure(source))
+                    {
+                        logger_.LogWarning(
+                            "Source {SourceId} rate {Rate}ms read failed ({Count}/{Max} consecutive); keeping session",
+                            source.SourceId,
+                            rate,
+                            consecutive_failures_.GetValueOrDefault(source.SourceId),
+                            source.MaxConsecutiveFailures);
+                    }
+                    else
+                    {
+                        failedSourceQueue.Enqueue(source.SourceId);
+                    }
+                }
+                else
+                {
+                    consecutive_failures_.TryRemove(source.SourceId, out _);
                 }
             }
             catch (OperationCanceledException) when (pollerToken.IsCancellationRequested)
@@ -484,7 +531,10 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
             catch (Exception exception)
             {
                 logger_.LogError(exception, "Source {SourceId} rate {Rate}ms poller failed", source.SourceId, rate);
-                failedSourceQueue.Enqueue(source.SourceId);
+                if (ShouldTearDownAfterFailure(source))
+                {
+                    failedSourceQueue.Enqueue(source.SourceId);
+                }
             }
 
             try
@@ -601,6 +651,58 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
     {
         return rate_limits_.TryGetValue(rateMs, out int limit) ? limit : 0;
     }
+
+    private bool ShouldTearDownAfterFailure(DaSourceRuntimeSettings source)
+    {
+        int max = source.MaxConsecutiveFailures < 1 ? 1 : source.MaxConsecutiveFailures;
+        int count = consecutive_failures_.AddOrUpdate(source.SourceId, 1, (_, current) => current + 1);
+        return count >= max;
+    }
+
+    /// <summary>
+    /// Subscription-mode health check: when a DA subscription is active the poller performs
+    /// no device reads, so a dead server is only detectable through <c>IOPCDataCallback</c>
+    /// traffic. A source whose callbacks have stopped arriving for longer than
+    /// <see cref="DaSourceRuntimeSettings.WatchdogTimeoutMs"/> is enqueued for teardown and
+    /// reconnect. Sources that never delivered a callback (e.g. static tags) are left alone
+    /// so quiet-but-healthy subscriptions do not flap.
+    /// </summary>
+    private void ScanWatchdog(Dictionary<string, SourceSession> sessions, ConcurrentQueue<string> failedSourceQueue)
+    {
+        DateTime now = DateTime.UtcNow;
+        foreach (SourceSession session in sessions.Values)
+        {
+            if (session.Client is not ISubscriptionActiveSource subscribed || !subscribed.IsSubscriptionActive)
+            {
+                continue;
+            }
+
+            int timeoutMs = session.Source.WatchdogTimeoutMs;
+            if (timeoutMs <= 0)
+            {
+                continue;
+            }
+
+            if (!watchdog_activity_.TryGetValue(session.Source.SourceId, out DateTime lastActivity))
+            {
+                continue;
+            }
+
+            double elapsedMs = (now - lastActivity).TotalMilliseconds;
+            if (elapsedMs <= timeoutMs)
+            {
+                continue;
+            }
+
+            logger_.LogWarning(
+                "Source {SourceId} subscription watchdog: no callbacks for {ElapsedMs}ms (limit {TimeoutMs}ms); reconnecting",
+                session.Source.SourceId,
+                (long)elapsedMs,
+                timeoutMs);
+            failedSourceQueue.Enqueue(session.Source.SourceId);
+        }
+    }
+
     private async Task<SourcePollResult> PollSourceAsync(
         DaSourceRuntimeSettings source,
         SourceSession session,
@@ -745,13 +847,14 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
         }
     }
 
-    private async Task<HashSet<string>> ReconfigureSessionsAsync(
+    private async Task<(HashSet<string> Changed, bool ConnectionFailures)> ReconfigureSessionsAsync(
         DaRuntimeSettingsSnapshot settings,
         Dictionary<string, SourceSession> sessions,
         CancellationToken cancellationToken,
         IReadOnlySet<string>? forceRebuildSourceIds = null)
     {
         HashSet<string> changed = new(StringComparer.OrdinalIgnoreCase);
+        bool connectionFailures = false;
 
         HashSet<string> desiredSources = settings.Sources
             .Select(source => source.SourceId)
@@ -787,9 +890,12 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                     {
                         PollerCts = existing.PollerCts
                     };
-                    // Rate/subscription changes still need poller restart.
+                    // Rate/subscription/recovery-knob changes still need poller restart
+                    // so pollers pick up the new source settings.
                     if (existing.Source.UpdateRateMs != source.UpdateRateMs
-                        || existing.Source.UseSubscriptions != source.UseSubscriptions)
+                        || existing.Source.UseSubscriptions != source.UseSubscriptions
+                        || existing.Source.MaxConsecutiveFailures != source.MaxConsecutiveFailures
+                        || existing.Source.WatchdogTimeoutMs != source.WatchdogTimeoutMs)
                     {
                         changed.Add(source.SourceId);
                     }
@@ -867,6 +973,8 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                 sessions[source.SourceId] = new SourceSession(source, client);
                 bridge_state_.SetSourceConnectionState(source.SourceId, "Connected");
                 changed.Add(source.SourceId);
+                consecutive_failures_.TryRemove(source.SourceId, out _);
+                watchdog_activity_.TryRemove(source.SourceId, out _);
 
                 if (client is OpcUaSourceClient uaClient)
                 {
@@ -879,6 +987,17 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                     }
                 }
             }
+            catch (SourceConnectionLostException ex)
+            {
+                // Server unreachable / channel dead — transient. Do not create a session
+                // (no poller) and report "Reconnecting": the coordinator retries with
+                // backoff on the next tick until the server is reachable again.
+                bridge_state_.SetSourceConnectionState(source.SourceId, "Reconnecting");
+                bridge_state_.SetSourceError(source.SourceId, ex);
+                logger_.LogWarning(ex, "Source {SourceId} connection lost; will retry", source.SourceId);
+                connectionFailures = true;
+                consecutive_failures_.TryRemove(source.SourceId, out _);
+            }
             catch (Exception ex)
             {
                 bridge_state_.SetSourceConnectionState(source.SourceId, "Faulted");
@@ -888,7 +1007,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
             }
         }
 
-        return changed;
+        return (changed, connectionFailures);
     }
 
     private static bool SourceConnectionEquals(DaSourceRuntimeSettings a, DaSourceRuntimeSettings b)
@@ -987,7 +1106,16 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
 
     private void OnSubscriptionValues(IReadOnlyList<BridgeValue> values)
     {
-        bridge_state_.UpdateDaRead(values.Count > 0 ? values[0].SourceId : string.Empty, values, TimeSpan.Zero);
+        if (values.Count > 0)
+        {
+            watchdog_activity_[values[0].SourceId] = DateTime.UtcNow;
+            bridge_state_.UpdateDaRead(values[0].SourceId, values, TimeSpan.Zero);
+        }
+        else
+        {
+            bridge_state_.UpdateDaRead(string.Empty, values, TimeSpan.Zero);
+        }
+
         SourceMappingCache? cache = source_mapping_cache_;
         for (int i = 0; i < values.Count; i++)
         {
@@ -1717,7 +1845,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
         }
     }
 
-    private sealed class SourceSession
+    internal sealed class SourceSession
     {
         public SourceSession(DaSourceRuntimeSettings source, ISourceClient client)
         {

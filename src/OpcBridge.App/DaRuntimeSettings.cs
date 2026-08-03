@@ -378,7 +378,9 @@ public sealed record OpcDaSourceOptions(
     string Host,
     string? RemoteUsername,
     string? RemotePassword,
-    string? RemoteDomain);
+    string? RemoteDomain,
+    int MaxConsecutiveFailures = 1,
+    int WatchdogTimeoutMs = 60000);
 
 public sealed record OpcUaSourceOptions(
     string EndpointUrl,
@@ -451,6 +453,8 @@ public sealed record DaSourceRuntimeSettings(
     public string? UaPassword => OpcUa?.Password;
     public int SessionTimeoutMs => OpcUa?.SessionTimeoutMs ?? 60000;
     public int ReconnectDelayMs => OpcUa?.ReconnectDelayMs ?? 5000;
+    public int MaxConsecutiveFailures => OpcDa?.MaxConsecutiveFailures ?? 1;
+    public int WatchdogTimeoutMs => OpcDa?.WatchdogTimeoutMs ?? 60000;
 
     public DaClientOptions ToOptions(bool useSubscriptions)
     {
@@ -520,6 +524,8 @@ public sealed class SourceConfigDto
     public string? RemoteUsername { get; set; }
     public string? RemotePassword { get; set; }
     public string? RemoteDomain { get; set; }
+    public int? MaxConsecutiveFailures { get; set; }
+    public int? WatchdogTimeoutMs { get; set; }
     public string? Transport { get; set; }
     public string? SerialPortName { get; set; }
     public int BaudRate { get; set; }
@@ -546,6 +552,8 @@ public sealed class OpcDaSourceOptionsDto
     public string? RemoteUsername { get; set; }
     public string? RemotePassword { get; set; }
     public string? RemoteDomain { get; set; }
+    public int? MaxConsecutiveFailures { get; set; }
+    public int? WatchdogTimeoutMs { get; set; }
 }
 
 public sealed class OpcUaSourceOptionsDto
@@ -613,7 +621,9 @@ public static class SourceConfigMigration
                 dto.OpcDa.Host ?? string.Empty,
                 dto.OpcDa.RemoteUsername,
                 dto.OpcDa.RemotePassword,
-                dto.OpcDa.RemoteDomain);
+                dto.OpcDa.RemoteDomain,
+                dto.OpcDa.MaxConsecutiveFailures ?? 1,
+                dto.OpcDa.WatchdogTimeoutMs ?? 60000);
         }
         else if (HasFlatDa(dto))
         {
@@ -622,7 +632,9 @@ public static class SourceConfigMigration
                 dto.Host ?? string.Empty,
                 dto.RemoteUsername,
                 dto.RemotePassword,
-                dto.RemoteDomain);
+                dto.RemoteDomain,
+                dto.MaxConsecutiveFailures ?? 1,
+                dto.WatchdogTimeoutMs ?? 60000);
         }
 
         if (dto.OpcUa is not null)
@@ -717,7 +729,9 @@ public static class SourceConfigMigration
                 dto.Host ?? string.Empty,
                 dto.RemoteUsername,
                 dto.RemotePassword,
-                dto.RemoteDomain);
+                dto.RemoteDomain,
+                dto.MaxConsecutiveFailures ?? 1,
+                dto.WatchdogTimeoutMs ?? 60000);
         }
         else if (string.Equals(sourceType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase) && opcUa is null)
         {
@@ -789,7 +803,9 @@ public static class SourceConfigMigration
                 Host = source.OpcDa.Host,
                 RemoteUsername = source.OpcDa.RemoteUsername,
                 RemotePassword = source.OpcDa.RemotePassword,
-                RemoteDomain = source.OpcDa.RemoteDomain
+                RemoteDomain = source.OpcDa.RemoteDomain,
+                MaxConsecutiveFailures = source.OpcDa.MaxConsecutiveFailures,
+                WatchdogTimeoutMs = source.OpcDa.WatchdogTimeoutMs
             },
             OpcUa = source.OpcUa is null ? null : new OpcUaSourceOptionsDto
             {
@@ -930,7 +946,9 @@ public static class SourceConfigMigration
                 string.IsNullOrWhiteSpace(raw.Host) ? "localhost" : raw.Host.Trim(),
                 string.IsNullOrWhiteSpace(raw.RemoteUsername) ? null : raw.RemoteUsername.Trim(),
                 string.IsNullOrWhiteSpace(raw.RemotePassword) ? null : raw.RemotePassword,
-                string.IsNullOrWhiteSpace(raw.RemoteDomain) ? null : raw.RemoteDomain.Trim());
+                string.IsNullOrWhiteSpace(raw.RemoteDomain) ? null : raw.RemoteDomain.Trim(),
+                raw.MaxConsecutiveFailures < 1 ? 1 : raw.MaxConsecutiveFailures,
+                raw.WatchdogTimeoutMs < 0 ? 0 : raw.WatchdogTimeoutMs);
         }
 
         return new DaSourceRuntimeSettings(

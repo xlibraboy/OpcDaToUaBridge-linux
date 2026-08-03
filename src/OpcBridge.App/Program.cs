@@ -386,7 +386,9 @@ app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings
             request.Host ?? string.Empty,
             request.RemoteUsername,
             request.RemotePassword,
-            request.RemoteDomain);
+            request.RemoteDomain,
+            request.MaxConsecutiveFailures ?? 1,
+            request.WatchdogTimeoutMs ?? 60000);
     }
 
     DaRuntimeSettingsSnapshot snapshot = settings.UpsertSource(new DaSourceRuntimeSettings(
@@ -796,6 +798,8 @@ app.MapPost("/api/config/import", async (HttpContext context, DaRuntimeSettings 
                         MaxMappedTags = s.TryGetProperty("maxMappedTags", out JsonElement mmt) ? mmt.GetInt32() : 0,
                         UseSubscriptions = s.TryGetProperty("useSubscriptions", out JsonElement usrc) ? usrc.GetBoolean() : true,
                         UpdateRateMs = s.TryGetProperty("updateRateMs", out JsonElement sur) ? sur.GetInt32() : updateRate,
+                        MaxConsecutiveFailures = s.TryGetProperty("maxConsecutiveFailures", out JsonElement smcf) ? smcf.GetInt32() : null,
+                        WatchdogTimeoutMs = s.TryGetProperty("watchdogTimeoutMs", out JsonElement swd) ? swd.GetInt32() : null,
                         // Nested export shape (if present)
                         OpcDa = s.TryGetProperty("opcDa", out JsonElement opcDaEl) && opcDaEl.ValueKind == JsonValueKind.Object
                             ? new OpcDaSourceOptionsDto
@@ -803,7 +807,9 @@ app.MapPost("/api/config/import", async (HttpContext context, DaRuntimeSettings 
                                 ProgId = opcDaEl.TryGetProperty("progId", out JsonElement opid) ? opid.GetString() : null,
                                 Host = opcDaEl.TryGetProperty("host", out JsonElement oh) ? oh.GetString() : null,
                                 RemoteUsername = opcDaEl.TryGetProperty("remoteUsername", out JsonElement oru) ? oru.GetString() : null,
-                                RemoteDomain = opcDaEl.TryGetProperty("remoteDomain", out JsonElement ord) ? ord.GetString() : null
+                                RemoteDomain = opcDaEl.TryGetProperty("remoteDomain", out JsonElement ord) ? ord.GetString() : null,
+                                MaxConsecutiveFailures = opcDaEl.TryGetProperty("maxConsecutiveFailures", out JsonElement omcf) ? omcf.GetInt32() : null,
+                                WatchdogTimeoutMs = opcDaEl.TryGetProperty("watchdogTimeoutMs", out JsonElement owd) ? owd.GetInt32() : null
                             }
                             : null,
                         OpcUa = s.TryGetProperty("opcUa", out JsonElement opcUaEl) && opcUaEl.ValueKind == JsonValueKind.Object
@@ -1450,6 +1456,8 @@ static object ToSourceApiDto(DaSourceRuntimeSettings source)
         reconnectDelayMs = source.ReconnectDelayMs,
         maxMappedTags = source.MaxMappedTags,
         useSubscriptions = source.UseSubscriptions,
+        maxConsecutiveFailures = source.MaxConsecutiveFailures,
+        watchdogTimeoutMs = source.WatchdogTimeoutMs,
         remoteUsername = source.RemoteUsername,
         remoteDomain = source.RemoteDomain,
         uaUsername = source.UaUsername

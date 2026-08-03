@@ -6,9 +6,9 @@ using OpcBridge.Ua;
 
 namespace OpcBridge.App;
 
-public sealed class SourceClientFactory
+public class SourceClientFactory
 {
-    public ISourceClient Create(DaRuntimeSettingsSnapshot settings, DaSourceRuntimeSettings source)
+    public virtual ISourceClient Create(DaRuntimeSettingsSnapshot settings, DaSourceRuntimeSettings source)
     {
         if (string.Equals(source.SourceType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
         {
