@@ -12,8 +12,11 @@ namespace OpcUaSimServer;
 /// The first SIM_WRITEABLE nodes are writeable (AccessLevel Read|Write): a UA write
 /// is accepted and the node is then frozen (no longer overwritten by UpdateAll) so
 /// the written value persists and can be read back through a bridge.
+/// SIM_BAD_TAGS="9,10" fault-injects Tag00009/Tag00010: they flip to BadOutOfService
+/// and freeze (SIM_BAD_AFTER_MS ms after start; 0 = on the first update tick), so a
+/// bridge sees a live good→bad quality transition for a connected tag.
 /// Env: SIM_NODES (default 20000), SIM_UPDATE_MS (default 1000), SIM_PORT (default 4840),
-///      SIM_WRITEABLE (default 10).
+///      SIM_WRITEABLE (default 10), SIM_BAD_TAGS (default none), SIM_BAD_AFTER_MS (default 0).
 /// Endpoint: opc.tcp://0.0.0.0:{SIM_PORT}/opcuasim/  (SecurityMode None, anonymous).
 /// </summary>
 internal static class Program
@@ -29,9 +32,12 @@ internal static class Program
             writeableCount = nodeCount;
         }
 
+        HashSet<int> badTags = ParseBadTags();
+        int badAfterMs = ParseEnv("SIM_BAD_AFTER_MS", 0);
+
         try
         {
-            return RunAsync(nodeCount, updateMs, port, writeableCount).GetAwaiter().GetResult();
+            return RunAsync(nodeCount, updateMs, port, writeableCount, badTags, badAfterMs).GetAwaiter().GetResult();
         }
         catch (Exception ex)
         {
@@ -54,15 +60,37 @@ internal static class Program
             : fallback;
     }
 
-    private static async Task<int> RunAsync(int nodeCount, int updateMs, int port, int writeableCount)
+    /// <summary>SIM_BAD_TAGS="9,10" → Tag00009 and Tag00010 flip to BadOutOfService and freeze.</summary>
+    private static HashSet<int> ParseBadTags()
+    {
+        HashSet<int> result = new();
+        string? raw = Environment.GetEnvironmentVariable("SIM_BAD_TAGS");
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return result;
+        }
+
+        foreach (string part in raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            if (int.TryParse(part, out int n) && n > 0)
+            {
+                result.Add(n);
+            }
+        }
+
+        return result;
+    }
+
+    private static async Task<int> RunAsync(int nodeCount, int updateMs, int port, int writeableCount, HashSet<int> badTags, int badAfterMs)
     {
         string endpoint = $"opc.tcp://0.0.0.0:{port}/opcuasim/";
-        Console.WriteLine($"Starting sim: {nodeCount} nodes ({writeableCount} writeable), {updateMs} ms update, {endpoint}");
+        string badInfo = badTags.Count == 0 ? "none" : string.Join(",", badTags.OrderBy(n => n)) + (badAfterMs > 0 ? $" after {badAfterMs}ms" : " at start");
+        Console.WriteLine($"Starting sim: {nodeCount} nodes ({writeableCount} writeable), bad tags: {badInfo}, {updateMs} ms update, {endpoint}");
 
         ApplicationConfiguration configuration = BuildConfiguration(endpoint);
         await configuration.ValidateAsync(ApplicationType.Server).ConfigureAwait(false);
 
-        SimServer server = new(nodeCount, writeableCount, endpoint);
+        SimServer server = new(nodeCount, writeableCount, badTags, badAfterMs, endpoint);
         ApplicationInstance application = new()
         {
             ApplicationName = "OpcUaSimServer",
@@ -181,12 +209,16 @@ internal static class Program
     {
         private readonly int node_count_;
         private readonly int writeable_count_;
+        private readonly HashSet<int> bad_tags_;
+        private readonly int bad_after_ms_;
         private SimNodeManager? node_manager_;
 
-        public SimServer(int nodeCount, int writeableCount, string endpoint)
+        public SimServer(int nodeCount, int writeableCount, HashSet<int> badTags, int badAfterMs, string endpoint)
         {
             node_count_ = nodeCount;
             writeable_count_ = writeableCount;
+            bad_tags_ = badTags;
+            bad_after_ms_ = badAfterMs;
             _ = endpoint;
         }
 
@@ -199,7 +231,7 @@ internal static class Program
             IServerInternal server,
             ApplicationConfiguration configuration)
         {
-            node_manager_ = new SimNodeManager(server, configuration, node_count_, writeable_count_);
+            node_manager_ = new SimNodeManager(server, configuration, node_count_, writeable_count_, bad_tags_, bad_after_ms_);
             return new MasterNodeManager(server, configuration, null, new INodeManager[] { node_manager_ });
         }
 
@@ -222,14 +254,27 @@ internal static class Program
         private const string NamespaceUri = "urn:opcuasim:server";
         private readonly BaseDataVariableState[] nodes_;
         private readonly bool[] written_;
+        private readonly bool[] bad_;
+        private readonly HashSet<int> bad_numbers_;
         private readonly int writeable_count_;
+        private readonly int bad_after_ms_;
+        private bool bad_activated_;
         private ushort namespace_index_;
 
-        public SimNodeManager(IServerInternal server, ApplicationConfiguration configuration, int nodeCount, int writeableCount)
+        public SimNodeManager(
+            IServerInternal server,
+            ApplicationConfiguration configuration,
+            int nodeCount,
+            int writeableCount,
+            HashSet<int> badTags,
+            int badAfterMs)
             : base(server, configuration, NamespaceUri)
         {
             nodes_ = new BaseDataVariableState[nodeCount];
             written_ = new bool[nodeCount];
+            bad_ = new bool[nodeCount];
+            bad_numbers_ = badTags;
+            bad_after_ms_ = badAfterMs;
             writeable_count_ = writeableCount;
         }
 
@@ -301,14 +346,20 @@ internal static class Program
 
         public void UpdateAll(long tick, long elapsedMs)
         {
+            if (!bad_activated_ && bad_numbers_.Count > 0
+                && (bad_after_ms_ == 0 || elapsedMs >= bad_after_ms_))
+            {
+                ActivateBadTags();
+            }
+
             double t = elapsedMs / 1000.0;
             DateTime ts = DateTime.UtcNow;
             for (int i = 0; i < nodes_.Length; i++)
             {
-                if (written_[i])
+                if (written_[i] || bad_[i])
                 {
-                    // UA client wrote this node; keep the written value frozen so a
-                    // bridge can read it back and prove the write landed.
+                    // UA client wrote this node, or it is fault-injected bad: keep the
+                    // current state frozen so a bridge can observe it.
                     continue;
                 }
 
@@ -317,6 +368,25 @@ internal static class Program
                 variable.Value = new Variant(value);
                 variable.Timestamp = ts;
                 variable.StatusCode = StatusCodes.Good;
+                variable.ClearChangeMasks(SystemContext, false);
+            }
+        }
+
+        /// <summary>Flip fault-injected tags to BadOutOfService (frozen) so a bridge sees the quality transition.</summary>
+        private void ActivateBadTags()
+        {
+            bad_activated_ = true;
+            foreach (int number in bad_numbers_)
+            {
+                int index = number - 1;
+                if (index < 0 || index >= nodes_.Length)
+                {
+                    continue;
+                }
+
+                bad_[index] = true;
+                BaseDataVariableState variable = nodes_[index];
+                variable.StatusCode = StatusCodes.BadOutOfService;
                 variable.ClearChangeMasks(SystemContext, false);
             }
         }
