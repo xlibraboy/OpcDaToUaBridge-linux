@@ -23,6 +23,9 @@ add_source() {
   echo "[type-rig] source $id created"
 }
 
+# Drop the image's baked-in DA "default" source (COM-only, always Faulted on Linux).
+curl -s -X POST "$API/api/da/sources/remove" -H 'Content-Type: application/json' -d '{"sourceId":"default"}' >/dev/null || true
+
 bulk_add() {
   local source="$1" start="$2" count="$3"
   local end=$((start + count - 1)) n payload
@@ -44,10 +47,15 @@ for ((start = 1; start <= 50000; start += CHUNK)); do bulk_add ua-a "$start" "$C
 for ((start = 1; start <= 30000; start += CHUNK)); do bulk_add ua-b "$start" "$CHUNK"; done
 for ((start = 1; start <= 20000; start += CHUNK)); do bulk_add ua-c "$start" "$CHUNK"; done
 
-echo "[type-rig] adding manual type-demo tags on ua-a (Tag00001..3)..."
-curl -sf -X POST "$API/api/mappings/add" -H 'Content-Type: application/json' -d '{"tags":[
-  {"sourceId":"ua-a","itemId":"ns=2;s=Tag00001","displayName":"Tag00001","dataType":"Int32","mode":"Manual","manualValue":"7","pollRateMs":1000},
-  {"sourceId":"ua-a","itemId":"ns=2;s=Tag00002","displayName":"Tag00002","dataType":"Boolean","mode":"Manual","manualValue":"true","pollRateMs":1000},
-  {"sourceId":"ua-a","itemId":"ns=2;s=Tag00003","displayName":"Tag00003","dataType":"String","mode":"Manual","manualValue":"hello","pollRateMs":1000}
-]}' >/dev/null
+echo "[type-rig] updating manual type-demo tags on ua-a (Tag00001..4)..."
+# Demo tags already exist from the bulk Double import; /api/mappings/add is
+# insert-only (skips duplicates), so use the update endpoint to change them.
+for t in \
+  '{"sourceId":"ua-a","itemId":"ns=2;s=Tag00001","dataType":"Int32","mode":"Manual","manualValue":"7"}' \
+  '{"sourceId":"ua-a","itemId":"ns=2;s=Tag00002","dataType":"Boolean","mode":"Manual","manualValue":"true"}' \
+  '{"sourceId":"ua-a","itemId":"ns=2;s=Tag00003","dataType":"String","mode":"Manual","manualValue":"hello"}' \
+  '{"sourceId":"ua-a","itemId":"ns=2;s=Tag00004","dataType":"Auto","mode":"Manual","manualValue":"42"}'
+do
+  curl -sf -X POST "$API/api/mappings/update" -H 'Content-Type: application/json' -d "{\"tag\":$t}" >/dev/null
+done
 echo "[type-rig] done"
