@@ -20,6 +20,10 @@ using OpcBridge.Mqtt;
 using OpcBridge.Influx;
 using OpcBridge.Ua;
 
+// Dashboard UI feed cap: the live-values payload is re-fetched and re-rendered every
+// poll cycle; beyond this many values it freezes browsers. UI shows total separately.
+const int DashboardValuesLimit = 2000;
+
 // Port auto-assignment: check defaults, auto-roll if in use, persist to appsettings.json
 string cfgPath = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
 JObject? cfg = null;
@@ -203,12 +207,13 @@ app.MapGet("/api/status/ports", () =>
         uaBind,
         uaClient));
 });
- app.MapGet("/api/dashboard", (BridgeState state, UaServerHost uaServer, BridgeAppDiscovery discovery) => Results.Json(new
+ app.MapGet("/api/dashboard", (BridgeState state, UaServerHost uaServer, BridgeAppDiscovery discovery, int? limit) => Results.Json(new
  {
      bridge = state.GetStatus(),
      ua = uaServer.GetStatus(),
      apps = discovery.GetStatus(),
-     values = state.GetValues()
+     values = state.GetValues(limit ?? DashboardValuesLimit),
+     valuesTotal = state.GetValueCount()
  }));
 app.MapGet("/api/diagnostics", (BridgeWorker worker, UaServerHost uaServer) => Results.Json(new
 {

@@ -2574,8 +2574,13 @@ function renderMappingRow(mapping) {
     return `<div class="li clickable" data-action="open-faceplate" data-source-id="${attr(sourceId)}" data-item-id="${attr(item)}">${descIcon}<div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="n">${esc(name)}</span> <span class="p">${esc(sourceId)} · ${esc(item)} · UA: ${esc(node)}</span></div><div class="li-badge">${accessBadge}${deadbandBadge}${rateBadge}${mqttBadge}${influxBadge}</div></div>`;
 }
 
+const MAPPING_ROWS_CAP = 1000;
 function renderMappingRows(mappings) {
-    return mappings.length ? mappings.map(renderMappingRow).join('') : '<span class="msg">No source → OPC UA mappings.</span>';
+    const rows = mappings.length > MAPPING_ROWS_CAP ? mappings.slice(0, MAPPING_ROWS_CAP) : mappings;
+    const note = mappings.length > MAPPING_ROWS_CAP
+        ? `<span class="msg">… showing first ${MAPPING_ROWS_CAP} of ${mappings.length} mappings — use the search box to filter</span>`
+        : '';
+    return (rows.length ? rows.map(renderMappingRow).join('') : '<span class="msg">No source → OPC UA mappings.</span>') + note;
 }
 
 let faceplateOpen = false;
@@ -3361,7 +3366,7 @@ function switchHelpSubTab(tabName) {
 
 async function refresh() {
     try {
-        const p = await (await fetch('/api/dashboard', { cache: 'no-store' })).json();
+        const p = await (await fetch('/api/dashboard?limit=2000', { cache: 'no-store' })).json();
         const b = p.bridge || p.Bridge || {};
         const ua = p.ua || p.Ua || {};
         const vs = p.values || p.Values || [];
@@ -3521,7 +3526,7 @@ async function refresh() {
                 if (resAD) resAD.textContent = 'Resource counters are Windows-only.';
             }
         }
-        state.lastValueCount = vs.length;
+        state.lastValueCount = get(p, 'valuesTotal') ?? vs.length;
         updateLiveValuesUi();
         if (state.liveValuesEnabled) {
             el('values').innerHTML = vs.length ? vs.map(it => {
