@@ -534,7 +534,7 @@ internal static class DashboardPage
 </div>
 <div class="view" id="view-values">
     <div class="box">
-        <div class="box-h">Live Values <span class="msg" id="valCount" style="margin-left:auto"></span><button class="btn ghost" id="toggleLiveValues" type="button">Disable Live Data</button></div>
+        <div class="box-h">Live Values <span class="msg" id="valCount" style="margin-left:auto"></span><select id="liveValuesSource" title="Filter live values by source" style="margin-left:8px"><option value="">All sources</option></select><button class="btn ghost" id="toggleLiveValues" type="button">Disable Live Data</button></div>
         <div class="box-b" style="padding:0">
             <div class="values-wrap">
                 <table class="values-table">
@@ -1363,6 +1363,7 @@ const state = {
     editingNewDriver: false,
     editingNewUaSource: false,
     liveValuesEnabled: true,
+    liveValuesSource: '',
     lastValueCount: 0,
     updateRateMs: 1000,
     useSubscriptions: true,
@@ -3063,11 +3064,23 @@ async function loadSources() {
     if (el('cfgUseSubscriptions')) el('cfgUseSubscriptions').checked = state.useSubscriptions;
     if (el('cfgUpdateRate') && document.activeElement !== el('cfgUpdateRate')) el('cfgUpdateRate').value = String(state.updateRateMs);
     renderSources();
+    populateLiveValuesSource();
     if (document.getElementById('view-links')?.classList.contains('active')) renderLinksView();
 }
 function updateLiveValuesUi() {
     el('toggleLiveValues').textContent = state.liveValuesEnabled ? 'Disable Live Data' : 'Enable Live Data';
-    el('valCount').textContent = state.lastValueCount + ' values' + (state.liveValuesEnabled ? '' : ' · paused');
+    const filtered = state.liveValuesSource ? ' · ' + state.liveValuesSource : '';
+    el('valCount').textContent = state.lastValueCount + ' values' + filtered + (state.liveValuesEnabled ? '' : ' · paused');
+}
+
+function populateLiveValuesSource() {
+    const select = el('liveValuesSource');
+    if (!select) return;
+    const current = state.liveValuesSource || '';
+    select.innerHTML = '<option value="">All sources</option>' + (state.sources || []).map(source =>
+        `<option value="${attr(source.sourceId)}">${esc(source.displayName || source.sourceId)}</option>`
+    ).join('');
+    select.value = current;
 }
 
 function formatMs(value) {
@@ -3366,7 +3379,8 @@ function switchHelpSubTab(tabName) {
 
 async function refresh() {
     try {
-        const p = await (await fetch('/api/dashboard?limit=2000', { cache: 'no-store' })).json();
+        const lvSource = state.liveValuesSource || '';
+        const p = await (await fetch('/api/dashboard?limit=2000' + (lvSource ? '&sourceId=' + encodeURIComponent(lvSource) : ''), { cache: 'no-store' })).json();
         const b = p.bridge || p.Bridge || {};
         const ua = p.ua || p.Ua || {};
         const vs = p.values || p.Values || [];
@@ -5199,6 +5213,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     el('mappingSort').addEventListener('change', e => { state.mappingSort = e.target.value; rerenderMappings(); });
     el('mappingSortDir').addEventListener('click', () => { state.mappingSortDir *= -1; el('mappingSortDir').textContent = state.mappingSortDir > 0 ? '↑' : '↓'; rerenderMappings(); });
     el('toggleLiveValues').addEventListener('click', toggleLiveValues);
+    const lvSourceSelect = el('liveValuesSource');
+    if (lvSourceSelect) lvSourceSelect.addEventListener('change', e => {
+        state.liveValuesSource = e.target.value || '';
+        updateLiveValuesUi();
+        refresh().catch(err => {
+            el('dot').className = 'dot off';
+            el('clock').textContent = 'offline';
+        });
+    });
     el('btnRefreshLogs').addEventListener('click', () => loadLogs(true).catch(e => el('logMessage').textContent = '✗ ' + e.message));
     el('logLevel').addEventListener('change', () => {
         state.logsLoaded = false;
