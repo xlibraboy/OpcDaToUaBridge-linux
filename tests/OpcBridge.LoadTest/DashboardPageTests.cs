@@ -256,7 +256,7 @@ public sealed class DashboardPageTests
         // capped value window: failed monitored items (auto-retrying), bad-quality values,
         // and the per-source connection state. The refresh() payload populates the sets.
         Assert.Contains("state.disconnectedKeys = new Set((p.disconnected || []).map(d => valueKey(get(d, 'sourceId') || '', get(d, 'itemId') || '')));", DashboardPage.Script);
-        Assert.Contains("state.badQualityKeys = new Set((p.badQuality || []).map(k => String(k)));", DashboardPage.Script);
+        Assert.Contains("state.badQualityKeys = new Set((p.badQuality || []).map(d => valueKey(get(d, 'sourceId') || '', get(d, 'itemId') || '')));", DashboardPage.Script);
         Assert.Contains("state.disconnectedSources = new Set((sources || []).filter(s => String(get(s, 'connectionState') || '').toLowerCase() !== 'connected')", DashboardPage.Script);
         Assert.Contains("const sourceDown = enabled && state.disconnectedSources.has(sourceId);", DashboardPage.Script);
         Assert.Contains("const failedItem = enabled && state.disconnectedKeys.has(valueKey(sourceId, item));", DashboardPage.Script);
