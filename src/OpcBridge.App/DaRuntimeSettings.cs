@@ -387,7 +387,8 @@ public sealed record OpcUaSourceOptions(
     string? Username,
     string? Password,
     int SessionTimeoutMs,
-    int ReconnectDelayMs);
+    int ReconnectDelayMs,
+    int WatchdogTimeoutMs = 60000);
 
 public sealed record MelsecA3nSourceOptions(
     string Transport,
@@ -451,6 +452,7 @@ public sealed record DaSourceRuntimeSettings(
     public string? UaPassword => OpcUa?.Password;
     public int SessionTimeoutMs => OpcUa?.SessionTimeoutMs ?? 60000;
     public int ReconnectDelayMs => OpcUa?.ReconnectDelayMs ?? 5000;
+    public int WatchdogTimeoutMs => OpcUa?.WatchdogTimeoutMs ?? 60000;
 
     public DaClientOptions ToOptions(bool useSubscriptions)
     {
@@ -537,6 +539,7 @@ public sealed class SourceConfigDto
     public string? UaPassword { get; set; }
     public int SessionTimeoutMs { get; set; }
     public int ReconnectDelayMs { get; set; }
+    public int? WatchdogTimeoutMs { get; set; }
 }
 
 public sealed class OpcDaSourceOptionsDto
@@ -560,6 +563,7 @@ public sealed class OpcUaSourceOptionsDto
     public int SessionTimeoutMs { get; set; }
     public int ReconnectDelayMs { get; set; }
     public int MaxMappedTags { get; set; }
+    public int? WatchdogTimeoutMs { get; set; }
 }
 
 public sealed class MelsecA3nSourceOptionsDto
@@ -634,7 +638,8 @@ public static class SourceConfigMigration
                 FirstNonEmpty(dto.OpcUa.Username, dto.OpcUa.UaUsername),
                 FirstNonEmpty(dto.OpcUa.Password, dto.OpcUa.UaPassword),
                 dto.OpcUa.SessionTimeoutMs,
-                dto.OpcUa.ReconnectDelayMs);
+                dto.OpcUa.ReconnectDelayMs,
+                dto.OpcUa.WatchdogTimeoutMs ?? 60000);
         }
         else if (HasFlatUa(dto))
         {
@@ -645,7 +650,8 @@ public static class SourceConfigMigration
                 dto.UaUsername,
                 dto.UaPassword,
                 dto.SessionTimeoutMs,
-                dto.ReconnectDelayMs);
+                dto.ReconnectDelayMs,
+                dto.WatchdogTimeoutMs ?? 60000);
         }
 
         if (dto.Melsec is not null)
@@ -799,7 +805,8 @@ public static class SourceConfigMigration
                 Username = source.OpcUa.Username,
                 Password = source.OpcUa.Password,
                 SessionTimeoutMs = source.OpcUa.SessionTimeoutMs,
-                ReconnectDelayMs = source.OpcUa.ReconnectDelayMs
+                ReconnectDelayMs = source.OpcUa.ReconnectDelayMs,
+                WatchdogTimeoutMs = source.OpcUa.WatchdogTimeoutMs
             },
             Melsec = source.Melsec is null ? null : new MelsecA3nSourceOptionsDto
             {
@@ -861,7 +868,8 @@ public static class SourceConfigMigration
                 string.IsNullOrWhiteSpace(raw.Username) ? null : raw.Username.Trim(),
                 string.IsNullOrWhiteSpace(raw.Password) ? null : raw.Password,
                 raw.SessionTimeoutMs <= 0 ? 60000 : raw.SessionTimeoutMs,
-                raw.ReconnectDelayMs <= 0 ? 5000 : raw.ReconnectDelayMs);
+                raw.ReconnectDelayMs <= 0 ? 5000 : raw.ReconnectDelayMs,
+                raw.WatchdogTimeoutMs < 0 ? 0 : raw.WatchdogTimeoutMs);
         }
         else if (string.Equals(sourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase))
         {
