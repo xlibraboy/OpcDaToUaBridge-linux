@@ -33,6 +33,7 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> node_id_by_display_ =
         new(StringComparer.Ordinal);
+    private readonly SemaphoreSlim reconcile_gate_ = new(1, 1);
     private bool subscriptions_active_;
     private bool disposed_;
 
@@ -518,6 +519,25 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
         // Retained for self-recovery after a session-level reconnect.
         last_desired_mappings_ = desiredMappings ?? Array.Empty<TagMapping>();
 
+        // Reconciles can be fired concurrently: the BridgeWorker mapping-change loop, the
+        // connect path, and the detached session-reconnect recovery (OnReconnectComplete).
+        // Unsynchronized diffs against monitored_items_ and the live Subscription can leave
+        // stale MonitoredItems behind (e.g. a tag that flipped to Write stays subscribed).
+        await reconcile_gate_.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await ReconcileMonitoredItemsCoreAsync(desiredMappings, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            reconcile_gate_.Release();
+        }
+    }
+
+    private async Task ReconcileMonitoredItemsCoreAsync(
+        IReadOnlyList<TagMapping> desiredMappings,
+        CancellationToken cancellationToken)
+    {
         if (!options_.UseSubscriptions)
         {
             await TearDownSubscriptionAsync(keepSession: true).ConfigureAwait(false);
@@ -720,6 +740,8 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
         }
 
         await TearDownSubscriptionAsync(keepSession: false).ConfigureAwait(false);
+
+        reconcile_gate_.Dispose();
 
         if (session is null)
         {
