@@ -174,17 +174,19 @@ internal sealed class BridgeNodeManager : CustomNodeManager2
         return folder;
     }
 
+    internal static byte ToAccessLevel(string accessRights)
+    {
+        return string.IsNullOrWhiteSpace(accessRights) ? AccessLevels.CurrentRead
+            : accessRights.Trim().ToUpperInvariant() switch
+            {
+                "WRITE" => AccessLevels.CurrentWrite,
+                "READ-WRITE" => (byte)(AccessLevels.CurrentRead | AccessLevels.CurrentWrite),
+                _ => AccessLevels.CurrentRead
+            };
+    }
+
     private BaseDataVariableState CreateVariable(FolderState parent, TagMapping mapping)
     {
-        NodeId dataType = ToDataTypeId(mapping.DataType);
-        byte accessLevel = mapping.AccessRights switch
-        {
-            "Write" => AccessLevels.CurrentWrite,
-            "Read-Write" => (byte)(AccessLevels.CurrentRead | AccessLevels.CurrentWrite),
-            _ => AccessLevels.CurrentRead
-        };
-        AttributeWriteMask writeMask = AttributeWriteMask.None;
-
         BaseDataVariableState variable = new(parent)
         {
             SymbolicName = mapping.DisplayName,
@@ -192,22 +194,13 @@ internal sealed class BridgeNodeManager : CustomNodeManager2
             TypeDefinitionId = VariableTypeIds.BaseDataVariableType,
             NodeId = new NodeId(ToNodeIdentifier(mapping), namespace_index_),
             BrowseName = new QualifiedName(mapping.DisplayName, namespace_index_),
-            DisplayName = new LocalizedText(mapping.DisplayName),
-            Description = new LocalizedText(
-                string.IsNullOrEmpty(mapping.ProviderSourceId) || string.IsNullOrEmpty(mapping.ProviderItemId)
-                    ? $"{mapping.SourceId}:{mapping.ItemId}"
-                    : $"{mapping.SourceId}:{mapping.ItemId} | fed by {mapping.ProviderSourceId}:{mapping.ProviderItemId}"),
-            WriteMask = writeMask,
-            UserWriteMask = writeMask,
-            DataType = dataType,
             ValueRank = ValueRanks.Scalar,
-            AccessLevel = accessLevel,
-            UserAccessLevel = accessLevel,
             Historizing = false,
-            Value = CreateInitialValue(mapping.DataType),
             StatusCode = StatusCodes.BadWaitingForInitialData,
             Timestamp = DateTime.UtcNow
         };
+
+        ApplyMappingAttributes(variable, mapping, refreshValue: true);
 
         parent.AddChild(variable);
 
@@ -217,6 +210,67 @@ internal sealed class BridgeNodeManager : CustomNodeManager2
         }
 
         return variable;
+    }
+
+    /// <summary>
+    /// Refreshes every mapping-driven attribute on an existing UA node so runtime mapping
+    /// updates (AccessRights, DataType, display metadata) are reflected in the address space
+    /// without recreating the node. Node identity (NodeId/BrowseName) is intentionally stable.
+    /// </summary>
+    internal void UpdateMapping(TagMapping mapping)
+    {
+        lock (Lock)
+        {
+            if (!variables_by_mapping_key_.TryGetValue(GetMappingKey(mapping.SourceId, mapping.ItemId), out BaseDataVariableState? variable))
+            {
+                AddMapping(mapping);
+                return;
+            }
+
+            ApplyMappingAttributes(variable, mapping, refreshValue: false);
+        }
+    }
+
+    private void ApplyMappingAttributes(BaseDataVariableState variable, TagMapping mapping, bool refreshValue)
+    {
+        NodeId dataType = ToDataTypeId(mapping.DataType);
+        byte accessLevel = ToAccessLevel(mapping.AccessRights);
+        AttributeWriteMask writeMask = AttributeWriteMask.None;
+
+        bool typeChanged = !NodeId.IsNull(variable.DataType) && variable.DataType != dataType;
+        bool hasWriteHandler = variable.OnWriteValue is not null;
+        if (!refreshValue && !typeChanged
+            && variable.AccessLevel == accessLevel
+            && variable.DataType == dataType
+            && hasWriteHandler == mapping.Writeable
+            && string.Equals(variable.DisplayName?.Text, mapping.DisplayName, StringComparison.Ordinal))
+        {
+            // No mapping-driven attribute changed; leave the node untouched.
+            return;
+        }
+
+        variable.DataType = dataType;
+        variable.DisplayName = new LocalizedText(mapping.DisplayName);
+        variable.Description = new LocalizedText(
+            string.IsNullOrEmpty(mapping.ProviderSourceId) || string.IsNullOrEmpty(mapping.ProviderItemId)
+                ? $"{mapping.SourceId}:{mapping.ItemId}"
+                : $"{mapping.SourceId}:{mapping.ItemId} | fed by {mapping.ProviderSourceId}:{mapping.ProviderItemId}");
+        variable.WriteMask = writeMask;
+        variable.UserWriteMask = writeMask;
+        variable.AccessLevel = accessLevel;
+        variable.UserAccessLevel = accessLevel;
+        variable.OnWriteValue = mapping.Writeable ? HandleWriteValue : null;
+
+        if (refreshValue || typeChanged)
+        {
+            // New node (or the declared type changed): reset to a type-consistent initial
+            // value. Live values replace it on the next source read.
+            variable.Value = CreateInitialValue(mapping.DataType);
+            variable.StatusCode = StatusCodes.BadWaitingForInitialData;
+            variable.Timestamp = DateTime.UtcNow;
+        }
+
+        variable.ClearChangeMasks(SystemContext, false);
     }
     private ServiceResult HandleWriteValue(
         ISystemContext context,
@@ -273,7 +327,7 @@ internal sealed class BridgeNodeManager : CustomNodeManager2
         return nodeId;
     }
 
-    private static NodeId ToDataTypeId(string dataType)
+    internal static NodeId ToDataTypeId(string dataType)
     {
         return dataType.Trim().ToUpperInvariant() switch
         {

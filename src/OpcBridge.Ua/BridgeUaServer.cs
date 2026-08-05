@@ -56,6 +56,12 @@ internal sealed class BridgeUaServer : StandardServer
             {
                 node_manager_.AddMapping(mapping);
             }
+            else
+            {
+                // Mapping already has a node: refresh mapping-driven attributes
+                // (AccessLevel, DataType, display metadata) in place.
+                node_manager_.UpdateMapping(mapping);
+            }
         }
     }
 
