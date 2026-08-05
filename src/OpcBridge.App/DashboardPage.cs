@@ -150,7 +150,9 @@ internal static class DashboardPage
         .li .li-desc:hover { color: var(--accent); }
         .li.clickable { cursor: pointer; }
         .li.clickable:hover { border-color: var(--accent); }
-        .li .li-badge { margin-left: auto; display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; overflow: hidden; min-width: 0; mask-image: linear-gradient(to right, black calc(100% - 14px), transparent); -webkit-mask-image: linear-gradient(to right, black calc(100% - 14px), transparent); }
+        .li .li-badge { margin-left: auto; display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; overflow: hidden; min-width: 0; }
+        .li .li-badge-clip { display: flex; align-items: center; gap: 6px; overflow: hidden; min-width: 0; mask-image: linear-gradient(to right, black calc(100% - 14px), transparent); -webkit-mask-image: linear-gradient(to right, black calc(100% - 14px), transparent); }
+        .li .li-badge-status { flex-shrink: 0; margin-left: 2px; display: flex; align-items: center; }
         .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 1000; justify-content: center; align-items: center; }
         .modal-overlay.open { display: flex; }
         .modal { background: var(--panel); border: 1px solid var(--border2); border-radius: 8px; width: min(560px, 92vw); max-height: 90vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,.4); }
@@ -2576,10 +2578,12 @@ function renderMappingRow(mapping) {
     const mappedType = (live && get(live, 'dataType')) || mapping.dataType || mapping.DataType || '—';
     const typeBadge = `<span class="pill" style="padding:1px 6px;font-size:10px" title="Data type">${esc(mappedType)}</span>`;
     // Full status summary — clipped badges stay discoverable via the row tooltip.
-    const statusSummary = [mappedType + ' type', access + (simulated && access !== 'Write' ? ' / Sim' : ''), deadband > 0 ? 'db ' + deadband + '%' : null, pollRate > 0 ? pollRate + 'ms' : null, mqttOn ? 'MQTT' : null, influxOn ? 'Influx' : null].filter(Boolean).join(' · ');
+    const statusSummary = [mappedType + ' type', deadband > 0 ? 'db ' + deadband + '%' : null, pollRate > 0 ? pollRate + 'ms' : null, mqttOn ? 'MQTT' : null, influxOn ? 'Influx' : null, access + (simulated && access !== 'Write' ? ' / Sim' : '')].filter(Boolean).join(' · ');
     const desc = (mapping.description || mapping.Description || '').trim();
     const descIcon = desc ? `<span class="li-desc" title="${attr(desc)}" data-action="open-faceplate" data-source-id="${attr(sourceId)}" data-item-id="${attr(item)}">&#8505;</span>` : '';
-    return `<div class="li clickable" data-action="open-faceplate" data-source-id="${attr(sourceId)}" data-item-id="${attr(item)}">${descIcon}<div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="n">${esc(name)}</span> <span class="p">${esc(sourceId)} · ${esc(item)} · UA: ${esc(node)}</span></div><div class="li-badge" title="${attr(statusSummary)}">${typeBadge}${accessBadge}${deadbandBadge}${rateBadge}${mqttBadge}${influxBadge}</div></div>`;
+    // Config badges clip/fade first; the colored access status is pinned at the far
+    // right and never gets cut off.
+    return `<div class="li clickable" data-action="open-faceplate" data-source-id="${attr(sourceId)}" data-item-id="${attr(item)}">${descIcon}<div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="n">${esc(name)}</span> <span class="p">${esc(sourceId)} · ${esc(item)} · UA: ${esc(node)}</span></div><div class="li-badge" title="${attr(statusSummary)}"><span class="li-badge-clip">${typeBadge}${deadbandBadge}${rateBadge}${mqttBadge}${influxBadge}</span><span class="li-badge-status">${accessBadge}</span></div></div>`;
 }
 
 const MAPPING_ROWS_CAP = 1000;
