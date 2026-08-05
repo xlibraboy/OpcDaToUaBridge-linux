@@ -203,11 +203,12 @@ public sealed class BridgeState
     {
         lock (status_lock_)
         {
+            // Error text only — connection state is owned by the caller (e.g. "Reconnecting"
+            // for retryable failures must survive setting the error).
             DaSourceStatusSnapshot[] updated = status_.Sources
                 .Select(source => string.Equals(source.SourceId, sourceId, StringComparison.OrdinalIgnoreCase)
                     ? source with
                     {
-                        ConnectionState = "Faulted",
                         LastError = exception.Message
                     }
                     : source)

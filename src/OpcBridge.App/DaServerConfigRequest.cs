@@ -30,7 +30,8 @@ public sealed record DaServerConfigRequest(
     int ReconnectDelayMs = 0,
     int MaxMappedTags = 0,
     bool? UseSubscriptions = null,
-    int UpdateRateMs = 0);
+    int UpdateRateMs = 0,
+    int? WatchdogTimeoutMs = null);
 
 public sealed record MelsecTestConnectionRequest(
     string? SourceId = null,

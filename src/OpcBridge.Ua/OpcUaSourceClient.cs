@@ -9,11 +9,12 @@ using OpcBridge.Da;
 
 namespace OpcBridge.Ua;
 
-public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
+public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient, ISubscriptionActiveSource
 {
     private const int ReadChunkSize = 500;
     private const int MonitoredItemBatchSize = 750;
     private const int NotificationFlushSize = 1000;
+    private const int MaxReconnectPeriodMs = 30000;
 
     private readonly OpcUaSourceClientOptions options_;
     private readonly ILogger logger_;
@@ -26,6 +27,8 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
     private ApplicationConfiguration? configuration_;
     private Session? session_;
     private Subscription? subscription_;
+    private SessionReconnectHandler? reconnect_handler_;
+    private IReadOnlyList<TagMapping> last_desired_mappings_ = Array.Empty<TagMapping>();
     private readonly Dictionary<string, MonitoredItem> monitored_items_ =
         new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> node_id_by_display_ =
@@ -37,6 +40,9 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
     /// Raised when a UA subscription delivers values via MonitoredItems.
     /// </summary>
     public event Action<IReadOnlyList<BridgeValue>>? ValuesReceived;
+
+    /// <inheritdoc />
+    public bool IsSubscriptionActive => subscriptions_active_;
 
     public OpcUaSourceClient(OpcUaSourceClientOptions options, ILogger? logger = null)
     {
@@ -129,12 +135,14 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
                     monitored_items_.Clear();
                     node_id_by_display_.Clear();
                     subscriptions_active_ = false;
+                    session.KeepAlive += OnSessionKeepAlive;
                     session = null!; // ownership transferred
                 }
             }
 
             if (previous is not null)
             {
+                previous.KeepAlive -= OnSessionKeepAlive;
                 await SafeCloseAndDisposeAsync(previous).ConfigureAwait(false);
             }
 
@@ -154,9 +162,132 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
         }
         catch (Exception ex) when (ex is not OperationCanceledException && ex is not InvalidOperationException)
         {
-            throw new InvalidOperationException(
+            // Connection-level failures (server unreachable, session/channel errors) are
+            // transient: the coordinator treats SourceConnectionLostException as retryable
+            // and reconnects with backoff instead of marking the source Faulted forever.
+            throw new SourceConnectionLostException(
                 $"Failed to connect OPC UA source '{options_.SourceId}' to '{endpointUrl}': {ex.Message}",
                 ex);
+        }
+    }
+
+    /// <summary>
+    /// Session-level keepalive handler (canonical OPC Foundation pattern). When the server
+    /// stops responding, <see cref="SessionReconnectHandler"/> re-activates the session or
+    /// re-creates it with jittered exponential backoff. This recovers dropped connections
+    /// in seconds without coordinator involvement; the bridge watchdog is the outer backstop.
+    /// </summary>
+    private void OnSessionKeepAlive(ISession session, KeepAliveEventArgs e)
+    {
+        if (!ServiceResult.IsBad(e.Status))
+        {
+            return;
+        }
+
+        lock (gate_)
+        {
+            if (disposed_)
+            {
+                return;
+            }
+
+            // Ignore events from discarded sessions (e.g. an old session being disposed).
+            if (!ReferenceEquals(session, session_) || session_ is null || !session_.Connected)
+            {
+                return;
+            }
+
+            if (reconnect_handler_ is not null)
+            {
+                return; // reconnect already in progress
+            }
+
+            logger_.LogWarning(
+                "OPC UA source {SourceId} keepalive lost ({Status}); reconnecting to {EndpointUrl}",
+                options_.SourceId,
+                e.Status,
+                options_.EndpointUrl);
+
+#pragma warning disable CS0618 // Telemetry-less ctor is obsolete but fine for the source client.
+            reconnect_handler_ = new SessionReconnectHandler(
+                reconnectAbort: true,
+                maxReconnectPeriod: MaxReconnectPeriodMs);
+#pragma warning restore CS0618
+
+            reconnect_handler_.BeginReconnect(
+                session_,
+                Math.Max(SessionReconnectHandler.MinReconnectPeriod, options_.ReconnectDelayMs),
+                OnReconnectComplete);
+
+            // Cancel sending a new keepalive request because a reconnect is triggered.
+            e.CancelKeepAlive = true;
+        }
+    }
+
+    /// <summary>
+    /// Fired by <see cref="SessionReconnectHandler"/> after a successful reconnect.
+    /// A re-activated session keeps its subscriptions; a re-created session must be
+    /// adopted and its MonitoredItems re-established.
+    /// </summary>
+    private void OnReconnectComplete(object? sender, EventArgs e)
+    {
+        Session? recreated = null;
+        bool recreatedAdopted = false;
+
+        lock (gate_)
+        {
+            if (!ReferenceEquals(sender, reconnect_handler_) || reconnect_handler_ is null)
+            {
+                return; // callback from a discarded handler
+            }
+
+            reconnect_handler_.Dispose();
+            reconnect_handler_ = null;
+
+            if (disposed_)
+            {
+                return;
+            }
+
+            Session? handlerSession = (sender as SessionReconnectHandler)?.Session as Session;
+            if (handlerSession is not null && !ReferenceEquals(handlerSession, session_))
+            {
+                // Session was re-created server-side: adopt the new session and reset
+                // subscription bookkeeping; MonitoredItems are re-established below.
+                if (session_ is not null)
+                {
+                    session_.KeepAlive -= OnSessionKeepAlive;
+                }
+
+                session_ = handlerSession;
+                handlerSession.KeepAlive += OnSessionKeepAlive;
+                subscription_ = null;
+                monitored_items_.Clear();
+                node_id_by_display_.Clear();
+                subscriptions_active_ = false;
+                recreated = handlerSession;
+                recreatedAdopted = true;
+                logger_.LogInformation(
+                    "OPC UA source {SourceId} reconnected with new session {SessionId}",
+                    options_.SourceId,
+                    handlerSession.SessionId);
+            }
+            else
+            {
+                logger_.LogInformation(
+                    "OPC UA source {SourceId} session re-activated after reconnect",
+                    options_.SourceId);
+            }
+        }
+
+        if (recreatedAdopted && recreated is not null)
+        {
+            // Re-establish the subscription on the new session. Best-effort, detached from
+            // the caller; failures are logged (the watchdog/coordinator will retry the source).
+            _ = ReconcileMonitoredItemsAsync(last_desired_mappings_, CancellationToken.None)
+                .ContinueWith(
+                    task => logger_.LogError(task.Exception, "Reconnect reconcile failed for source {SourceId}", options_.SourceId),
+                    TaskContinuationOptions.OnlyOnFaulted);
         }
     }
 
@@ -384,6 +515,9 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
         cancellationToken.ThrowIfCancellationRequested();
         ObjectDisposedException.ThrowIf(disposed_, this);
 
+        // Retained for self-recovery after a session-level reconnect.
+        last_desired_mappings_ = desiredMappings ?? Array.Empty<TagMapping>();
+
         if (!options_.UseSubscriptions)
         {
             await TearDownSubscriptionAsync(keepSession: true).ConfigureAwait(false);
@@ -576,6 +710,13 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
             session = session_;
             session_ = null;
             configuration_ = null;
+            if (session is not null)
+            {
+                session.KeepAlive -= OnSessionKeepAlive;
+            }
+
+            reconnect_handler_?.Dispose();
+            reconnect_handler_ = null;
         }
 
         await TearDownSubscriptionAsync(keepSession: false).ConfigureAwait(false);
@@ -1201,8 +1342,10 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
             }
             catch (Exception fallbackEx)
             {
-                throw new InvalidOperationException(
-                    $"Endpoint discovery failed for '{endpointUrl}': {ex.Message}",
+                // Discovery reached the server but endpoint selection failed, or the server
+                // is unreachable — both are transport-level and retryable.
+                throw new SourceConnectionLostException(
+                    $"Endpoint discovery failed for '{endpointUrl}': {fallbackEx.Message}",
                     fallbackEx);
             }
         }
