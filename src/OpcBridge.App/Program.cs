@@ -207,12 +207,12 @@ app.MapGet("/api/status/ports", () =>
         uaBind,
         uaClient));
 });
- app.MapGet("/api/dashboard", (BridgeState state, UaServerHost uaServer, BridgeAppDiscovery discovery, int? limit) => Results.Json(new
+ app.MapGet("/api/dashboard", (BridgeState state, UaServerHost uaServer, BridgeAppDiscovery discovery, int? limit, string? sourceId) => Results.Json(new
  {
      bridge = state.GetStatus(),
      ua = uaServer.GetStatus(),
      apps = discovery.GetStatus(),
-     values = state.GetValues(limit ?? DashboardValuesLimit),
+     values = state.GetValues(limit ?? DashboardValuesLimit, sourceId),
      valuesTotal = state.GetValueCount()
  }));
 app.MapGet("/api/diagnostics", (BridgeWorker worker, UaServerHost uaServer) => Results.Json(new

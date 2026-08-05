@@ -336,20 +336,61 @@ public sealed class BridgeState
 
     /// <summary>
     /// Sorted but capped — for UI feeds (dashboard) where the full list is megabytes
-    /// and would freeze the browser when re-rendered every poll cycle.
+    /// and would freeze the browser when re-rendered every poll cycle. When no source
+    /// filter is given, rows are interleaved round-robin across sources so every source
+    /// stays visible even when one source alone exceeds the cap.
     /// </summary>
-    public IReadOnlyList<BridgeValueSnapshot> GetValues(int limit)
+    public IReadOnlyList<BridgeValueSnapshot> GetValues(int limit, string? sourceId = null)
     {
         if (limit <= 0)
         {
             return GetValues();
         }
 
-        return values_by_key_.Values
+        IOrderedEnumerable<BridgeValueSnapshot> ordered = values_by_key_.Values
             .OrderBy(value => value.SourceId, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(value => value.ItemId, StringComparer.OrdinalIgnoreCase)
-            .Take(limit)
+            .ThenBy(value => value.ItemId, StringComparer.OrdinalIgnoreCase);
+
+        if (!string.IsNullOrWhiteSpace(sourceId))
+        {
+            return ordered
+                .Where(value => string.Equals(value.SourceId, sourceId, StringComparison.OrdinalIgnoreCase))
+                .Take(limit)
+                .ToArray();
+        }
+
+        BridgeValueSnapshot[][] bySource = values_by_key_.Values
+            .GroupBy(value => value.SourceId, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group
+                .OrderBy(value => value.ItemId, StringComparer.OrdinalIgnoreCase)
+                .ToArray())
             .ToArray();
+
+        int capacity = Math.Min(limit, values_by_key_.Count);
+        List<BridgeValueSnapshot> result = new(capacity);
+        int[] cursors = new int[bySource.Length];
+        int total = 0;
+        while (total < capacity)
+        {
+            bool progressed = false;
+            for (int s = 0; s < bySource.Length && total < capacity; s++)
+            {
+                if (cursors[s] < bySource[s].Length)
+                {
+                    result.Add(bySource[s][cursors[s]++]);
+                    total++;
+                    progressed = true;
+                }
+            }
+
+            if (!progressed)
+            {
+                break;
+            }
+        }
+
+        return result;
     }
 
     public BridgeRuntimeStatus GetStatus()
