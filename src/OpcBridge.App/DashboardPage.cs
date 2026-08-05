@@ -2977,7 +2977,21 @@ function updateMapSourceHint() {
 function loadSelectedSourceForm() {
     if (state.editingNewSource) return;
     const source = currentSource();
-    if (!source || isUaSource(source)) return;
+    if (!source || isUaSource(source)) {
+        el('cfgSourceId').disabled = false;
+        el('cfgSourceId').value = '';
+        el('cfgDisplayName').value = '';
+        el('cfgProgId').value = '';
+        el('cfgHost').value = 'localhost';
+        el('cfgUser').value = '';
+        el('cfgPass').value = '';
+        el('cfgDomain').value = '';
+        el('cfgMessage').textContent = source
+            ? 'Select a saved OPC DA connection or click New.'
+            : 'No OPC DA sources configured. Click + Add Source or New.';
+        hideSaveReset();
+        return;
+    }
     el('cfgSourceId').value = source.sourceId || '';
     el('cfgSourceId').disabled = true;
     el('cfgDisplayName').value = source.displayName || '';
@@ -2994,7 +3008,24 @@ function loadSelectedSourceForm() {
 function loadSelectedUaSourceForm() {
     if (state.editingNewUaSource) return;
     const source = currentSource();
-    if (!source || !isUaSource(source)) return;
+    if (!source || !isUaSource(source)) {
+        el('uaCfgSourceId').disabled = false;
+        el('uaCfgSourceId').value = '';
+        el('uaCfgDisplayName').value = '';
+        el('uaCfgEndpointUrl').value = '';
+        el('uaCfgSecurityMode').value = 'None';
+        el('uaCfgSecurityPolicy').value = 'None';
+        el('uaCfgUser').value = '';
+        el('uaCfgPass').value = '';
+        el('uaCfgUpdateRate').value = String(state.updateRateMs || 1000);
+        el('uaCfgMaxMappedTags').value = String(50000);
+        el('uaCfgUseSubscriptions').checked = true;
+        el('uaCfgMessage').textContent = source
+            ? 'Select a saved OPC UA connection or click New.'
+            : 'No OPC UA sources configured. Click + Add Source or New.';
+        hideUaSaveReset();
+        return;
+    }
     el('uaCfgSourceId').value = source.sourceId || '';
     el('uaCfgSourceId').disabled = true;
     el('uaCfgDisplayName').value = source.displayName || '';

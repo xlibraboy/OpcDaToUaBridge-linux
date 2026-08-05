@@ -189,6 +189,51 @@ public sealed class DaLinkApiTests
     }
 
     [Fact]
+    public async Task RemoveLastSource_ReturnsOk_AndSourcesBecomeEmpty()
+    {
+        await using TestAppHandle app = await TestAppHandle.StartAsync(appDirectory =>
+        {
+            File.WriteAllText(
+                Path.Combine(appDirectory, "sources.json"),
+                JsonSerializer.Serialize(new DaRuntimeSettingsSnapshot(
+                    1000,
+                    true,
+                    new[]
+                    {
+                        DaRuntimeSettings.CreateDaSource("onlyA", "Only", string.Empty, "localhost", null, null, null, 1000)
+                    },
+                    0)));
+        });
+
+        using HttpResponseMessage response = await app.Client.PostAsync(
+            "/api/da/sources/remove",
+            CreateJsonContent(new DaSourceRemoveRequest("onlyA")));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using JsonDocument sourcesBody = await app.GetJsonAsync("/api/da/sources");
+        Assert.Empty(sourcesBody.RootElement.GetProperty("sources").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task EmptySourcesConfig_DoesNotReseedDefaultSource()
+    {
+        await using TestAppHandle app = await TestAppHandle.StartAsync(appDirectory =>
+        {
+            File.WriteAllText(
+                Path.Combine(appDirectory, "sources.json"),
+                JsonSerializer.Serialize(new DaRuntimeSettingsSnapshot(
+                    1000,
+                    true,
+                    Array.Empty<DaSourceRuntimeSettings>(),
+                    0)));
+        });
+
+        using JsonDocument sourcesBody = await app.GetJsonAsync("/api/da/sources");
+        Assert.Empty(sourcesBody.RootElement.GetProperty("sources").EnumerateArray());
+    }
+
+    [Fact]
     public void ValidateLink_RejectsTypeMismatch()
     {
         DaLinkDto request = new(

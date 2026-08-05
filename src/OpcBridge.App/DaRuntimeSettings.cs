@@ -79,12 +79,6 @@ public sealed class DaRuntimeSettings
 
         lock (sync_)
         {
-            if (snapshot_.Sources.Count <= 1)
-            {
-                snapshot = snapshot_;
-                return false;
-            }
-
             List<DaSourceRuntimeSettings> sources = snapshot_.Sources
                 .Where(source => !string.Equals(source.SourceId, normalizedSourceId, StringComparison.OrdinalIgnoreCase))
                 .ToList();
@@ -324,8 +318,6 @@ public sealed class DaRuntimeSettings
             List<DaSourceRuntimeSettings> sources = dto.Sources?
                 .Select(s => SourceConfigMigration.FromDto(s, defaultRate))
                 .ToList() ?? new List<DaSourceRuntimeSettings>();
-
-            if (sources.Count == 0) return null;
 
             return new DaRuntimeSettingsSnapshot(defaultRate, dto.UseSubscriptions, sources, 0);
         }

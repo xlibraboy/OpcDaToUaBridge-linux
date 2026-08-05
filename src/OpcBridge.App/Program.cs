@@ -412,7 +412,7 @@ app.MapPost("/api/da/sources/remove", (DaSourceRemoveRequest request, DaRuntimeS
 {
     if (!settings.TryRemoveSource(request.SourceId, out DaRuntimeSettingsSnapshot snapshot))
     {
-        return Results.BadRequest(new { error = "Cannot remove the last source or source was not found." });
+        return Results.BadRequest(new { error = "Source was not found." });
     }
 
     long mappingVersion = store.RemoveSource(request.SourceId);
