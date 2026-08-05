@@ -331,6 +331,26 @@ public sealed class BridgeState
             .ToArray();
     }
 
+    public int GetValueCount() => values_by_key_.Count;
+
+    /// <summary>
+    /// Sorted but capped — for UI feeds (dashboard) where the full list is megabytes
+    /// and would freeze the browser when re-rendered every poll cycle.
+    /// </summary>
+    public IReadOnlyList<BridgeValueSnapshot> GetValues(int limit)
+    {
+        if (limit <= 0)
+        {
+            return GetValues();
+        }
+
+        return values_by_key_.Values
+            .OrderBy(value => value.SourceId, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(value => value.ItemId, StringComparer.OrdinalIgnoreCase)
+            .Take(limit)
+            .ToArray();
+    }
+
     public BridgeRuntimeStatus GetStatus()
     {
         lock (status_lock_)
