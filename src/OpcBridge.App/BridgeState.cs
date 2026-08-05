@@ -499,7 +499,7 @@ public sealed class BridgeState
         return duration.TotalSeconds <= 0 ? 0 : Math.Round(valueCount / duration.TotalSeconds, 1);
     }
 
-    private static string NormalizeKey(string sourceId, string itemId)
+    internal static string NormalizeKey(string sourceId, string itemId)
     {
         return string.Concat(sourceId.Trim(), "::", itemId.Trim());
     }

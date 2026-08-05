@@ -538,9 +538,9 @@ internal static class DashboardPage
         <div class="box-b" style="padding:0">
             <div class="values-wrap">
                 <table class="values-table">
-                    <colgroup><col style="width:14%"><col style="width:29%"><col style="width:27%"><col style="width:14%"><col style="width:16%"></colgroup>
-                    <thead><tr><th>Source</th><th>Item ID</th><th>Value</th><th>Quality</th><th>Timestamp</th></tr></thead>
-                    <tbody id="values"><tr><td colspan="5" class="msg">Waiting for values&#8230;</td></tr></tbody>
+                    <colgroup><col style="width:12%"><col style="width:25%"><col style="width:22%"><col style="width:10%"><col style="width:12%"><col style="width:19%"></colgroup>
+                    <thead><tr><th>Source</th><th>Item ID</th><th>Value</th><th>Type</th><th>Quality</th><th>Timestamp</th></tr></thead>
+                    <tbody id="values"><tr><td colspan="6" class="msg">Waiting for values&#8230;</td></tr></tbody>
                 </table>
             </div>
         </div>
@@ -3551,14 +3551,14 @@ async function refresh() {
                 const value = String(get(it, 'value') ?? '');
                 const timestamp = locTime(get(it, 'timestampUtc'));
                 const timestampShort = shortTime(get(it, 'timestampUtc'));
-                return `<tr><td><code title="${attr(sourceId)}">${esc(sourceId)}</code></td><td><code title="${attr(itemId)}">${esc(itemId)}</code></td><td class="mono" title="${attr(value)}">${esc(value)}</td><td title="${attr(String(q ?? ''))}"><span class="quality">${badge(g ? 'Good' : 'Bad', g ? 'good' : 'bad')} <span class="${g ? 'good' : 'bad'}">(${q})</span></span></td><td class="msg timestamp" title="${attr(timestamp)}">${esc(timestampShort)}</td></tr>`;
-            }).join('') : '<tr><td colspan="5" class="msg">No values yet.</td></tr>';
+                return `<tr><td><code title="${attr(sourceId)}">${esc(sourceId)}</code></td><td><code title="${attr(itemId)}">${esc(itemId)}</code></td><td class="mono" title="${attr(value)}">${esc(value)}</td><td class="msg" title="${attr(get(it, 'dataType') || '')}">${esc(get(it, 'dataType') || '—')}</td><td title="${attr(String(q ?? ''))}"><span class="quality">${badge(g ? 'Good' : 'Bad', g ? 'good' : 'bad')} <span class="${g ? 'good' : 'bad'}">(${q})</span></span></td><td class="msg timestamp" title="${attr(timestamp)}">${esc(timestampShort)}</td></tr>`;
+            }).join('') : '<tr><td colspan="6" class="msg">No values yet.</td></tr>';
         }
     } catch (e) {
         el('dot').className = 'dot off';
         el('clock').textContent = 'offline';
         if (state.liveValuesEnabled) {
-            el('values').innerHTML = `<tr><td colspan="5" class="bad">${esc(e.message)}</td></tr>`;
+            el('values').innerHTML = `<tr><td colspan="6" class="bad">${esc(e.message)}</td></tr>`;
         }
     }
 }
@@ -4959,7 +4959,7 @@ function toggleLiveValues() {
         refresh().catch(e => {
             el('dot').className = 'dot off';
             el('clock').textContent = 'offline';
-            el('values').innerHTML = `<tr><td colspan="5" class="bad">${esc(e.message)}</td></tr>`;
+            el('values').innerHTML = `<tr><td colspan="6" class="bad">${esc(e.message)}</td></tr>`;
         });
     }
 }
