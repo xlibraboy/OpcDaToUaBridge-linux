@@ -1,6 +1,6 @@
 # context.md — OpcDaToUaBridge
 
-Instruction file for AI agents working in this repo. All facts below are verified against committed code on `main` as of 2026-08-06 (`ca427dd`).
+Instruction file for AI agents working in this repo. All facts below are verified against committed code on `main` as of 2026-08-06 (`039f104`).
 
 ## What this project is
 
@@ -73,6 +73,7 @@ The UA server is a **mirror**, not a computation path. Every value shown in the 
 - Mapped NodeIds only (UA item id = NodeId string); subscriptions primary (poll is fallback for the mapped set); write-through supported: UA client writes to the bridge mirror node drain through `WriteQueue` → per-source consumer → `OpcUaSourceClient.WriteAsync` → the external server.
 - The `AccessRights` of a UA-source mapping gate the mirror node exactly like DA (see above); Write-only tags are not subscribed/read from the source.
 - `OpcUaSourceClient` keeps a `last_desired_mappings_` list and re-reconciles monitored items on session reconnect. **All reconciles (connect, mapping-change, reconnect) are serialized through a `SemaphoreSlim`** — do not remove; concurrent reconciles left stale monitored items (a tag flipped to Write stayed subscribed).
+- **Failed monitored-item creates are retried on a 15s timer** (since `fix/monitored-item-retry`): a tag that does not exist at the source yet (or transiently rejected) is re-attempted automatically until it succeeds or the mapping stops being desired. Without this it stayed disconnected until the next mapping change or reconnect.
 
 ### Manual mode
 
@@ -149,7 +150,7 @@ HMI note: the operator UI is not embedded in the dashboard; run `dotnet run --pr
 - Sidebar: Sources (OPC DA / OPC UA / Diagnostics tabs), Drivers, Maps, DA Links, MQTT, Traffic, InfluxDB, Monitor (Live Values / Logs / Diagram / Guide / About).
 - Live Values: 6-column table (Source | Item ID | Value | Type | Quality | Timestamp) fed by `/api/dashboard`; `colgroup` 12/25/22/10/12/19%.
 - Maps tab defaults to the **opc-da** subtab — on UA-only rigs click `[data-map-type="opc-ua"]` to see rows.
-- Mapping rows: value + badge cluster (type, deadband, rate, MQTT, Influx) clipped with a right-edge mask fade; the **status badge (access rights) is pinned right outside the fade** (`flex-shrink:0`) and never clipped; row height fixed 34px.
+- Mapping rows: value + badge cluster (type, deadband, rate, MQTT, Influx) clipped with a right-edge mask fade; the **status cluster (connection-state + access rights) is pinned right outside the fade** (`flex-shrink:0`) and never clipped; row height fixed 34px. Connection state (since `fix/ui-disconnected-badge`): no live value → pinned **Disc** badge ("Disconnected — no value received"); bad-quality value → pinned **Bad** badge. Disabled mappings excluded.
 - Faceplate: big value + meta row (type pill, quality, timestamp); no "Real value" label.
 - The browser caches the dashboard page — after a container rebuild, force-reload with `?force=<timestamp>` or the old script is served to the DOM.
 
@@ -194,9 +195,9 @@ docker run --rm -v "$PWD/<worktree>":/src -w /src -v "$HOME/.nuget-cache":/home/
 
 ## Load-test rig & harness
 
-- **Harness** (committed, branch `test/test-load-opcua`, also pushed): `tests/loadtest/` — `OpcUaSimServer/` (net8.0 UA sim: N Double tags `Tag00001..Tag{N:00000}`, sine updates; env `SIM_NODES`, `SIM_UPDATE_MS`, `SIM_PORT`, **`SIM_WRITEABLE`** — first N nodes accept UA writes and then **freeze** so a written value persists and can be read back through a bridge), `opcuasim.Dockerfile`, `run-loadtest.sh`, `provision-type-rig.sh` (this one also on main: 3 sources + 100k bulk mappings + demo tags via the update endpoint), `rss-trend.sh/.py`.
-- **Rig (current):** container `opcbridge-fix` (image `opcbridge:type7` = main `ca427dd`), HTTP `18082→8080`, UA `4842→4840`; env `Bridge__ExpectedTagCount=150000` + rate limits 150000. Sims: `opcua-sim-20k` (50k, 49321), `opcua-sim-b` (30k, 49322), `opcua-sim-c` (20k, 49323), all `opcuasim:loadtest` with `SIM_WRITEABLE=10`; endpoints `opc.tcp://172.17.0.1:<port>/opcuasim/`. UA probe: freeopcua python client inside the `opcua-sim` container (probe script pattern in `/tmp/ua-probe.py` — construct NodeIds as `ua.NodeId("ua-a/ns=2;s=Tag00001", 2)`; freeopcua 0.98 mis-parses NodeId strings containing `;s=`).
-- **Demo tags (ua-a):** Tag00001 Int32 manual 7, Tag00002 Boolean source, Tag00003 String manual, Tag00004 Auto manual 42, Tag00005 Double + all badges (Read), **Tag00006 Read-Write (123.45), Tag00007 Write (77.5), Tag00008 Read** — the access-rights demo.
+- **Harness** (committed, branch `test/test-load-opcua`, also pushed): `tests/loadtest/` — `OpcUaSimServer/` (net8.0 UA sim: N Double tags `Tag00001..Tag{N:00000}`, sine updates; env `SIM_NODES`, `SIM_UPDATE_MS`, `SIM_PORT`, **`SIM_WRITEABLE`** — first N nodes accept UA writes and then **freeze** so a written value persists and can be read back through a bridge; **`SIM_BAD_TAGS`** + `SIM_BAD_AFTER_MS` — fault-inject tags to `BadOutOfService` (frozen) for good→bad transition tests; **`SIM_EXTRA_TAGS`** + `SIM_EXTRA_AFTER_MS` — add tags to the address space at runtime, simulating a tag appearing later at the source), `opcuasim.Dockerfile`, `run-loadtest.sh`, `provision-type-rig.sh` (this one also on main: 3 sources + 100k bulk mappings + demo tags via the update endpoint), `rss-trend.sh/.py`.
+- **Rig (current):** container `opcbridge-fix` (image `opcbridge:type8` = main `039f104`), HTTP `18082→8080`, UA `4842→4840`; env `Bridge__ExpectedTagCount=150000` + rate limits 150000. Sims: `opcua-sim-20k` (50k, 49321, currently with `SIM_WRITEABLE=10 SIM_BAD_TAGS=12 SIM_EXTRA_TAGS=99999 SIM_EXTRA_AFTER_MS=240000`), `opcua-sim-b` (30k, 49322), `opcua-sim-c` (20k, 49323), all `opcuasim:loadtest`; endpoints `opc.tcp://172.17.0.1:<port>/opcuasim/`. UA probe: freeopcua python client inside the `opcua-sim` container (probe script pattern in `/tmp/ua-probe.py` — construct NodeIds as `ua.NodeId("ua-a/ns=2;s=Tag00001", 2)`; freeopcua 0.98 mis-parses NodeId strings containing `;s=`).
+- **Demo tags (ua-a):** Tag00001 Int32 manual 7, Tag00002 Boolean source, Tag00003 String manual, Tag00004 Auto manual 42, Tag00005 Double + all badges (Read), **Tag00006 Read-Write (123.45), Tag00007 Write (77.5), Tag00008 Read** — access-rights demo; **AAAZZZ nonexistent → Disc badge; Tag00012 BadOutOfService → Bad badge; Tag99999 appears at the source later → auto-reconnected by the retry timer** — disconnect-handling demo.
 - Fresh container FS each recreate → full reprovision required (script exists; ~2–3.5 min). Reconnect after sim restarts is automatic (watchdog, <4s).
 
 ## Deploy to Windows
