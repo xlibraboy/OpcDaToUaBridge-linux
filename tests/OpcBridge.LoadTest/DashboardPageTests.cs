@@ -238,6 +238,17 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
+    public void Html_MappingStatusBadgePinnedRightAndNeverClipped()
+    {
+        // The colored access status belongs at the far right of the row: config
+        // badges (type/deadband/rate/MQTT/Influx) form a clipping group while the
+        // status sits outside it with flex-shrink:0 so it can never be cut off.
+        Assert.Contains(".li .li-badge-clip { display: flex;", DashboardPage.Html);
+        Assert.Contains(".li .li-badge-status { flex-shrink: 0; margin-left: 2px;", DashboardPage.Html);
+        Assert.Contains("<span class=\"li-badge-clip\">${typeBadge}${deadbandBadge}${rateBadge}${mqttBadge}${influxBadge}</span><span class=\"li-badge-status\">${accessBadge}</span>", DashboardPage.Script);
+    }
+
+    [Fact]
     public void Script_FaceplateLivePanelShowDataType()
     {
         // Faceplate real-value panel shows the tag's data type, with the mapping's
