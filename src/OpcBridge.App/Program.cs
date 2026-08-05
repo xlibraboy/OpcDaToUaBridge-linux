@@ -211,8 +211,9 @@ app.MapGet("/api/status/ports", () =>
  {
      IReadOnlyList<BridgeValueSnapshot> values = state.GetValues(limit ?? DashboardValuesLimit, sourceId);
 
-     // Join the configured data type from the mapping store (read path only —
-     // keeps the per-value update hot path untouched).
+     // Resolve the displayed data type: the runtime type of the actual source
+     // value wins; the mapping's configured type is the fallback (read path
+     // only — keeps the per-value update hot path untouched).
      (IReadOnlyList<TagMapping> mappings, _) = mappingStore.GetSnapshot();
      Dictionary<string, string> dataTypeByKey = DashboardValues.BuildDataTypeLookup(mappings);
 
@@ -229,7 +230,7 @@ app.MapGet("/api/status/ports", () =>
              timestampUtc = value.TimestampUtc,
              daQuality = value.DaQuality,
              isGood = value.IsGood,
-             dataType = DashboardValues.LookupDataType(dataTypeByKey, value.SourceId, value.ItemId)
+             dataType = DashboardValues.ResolveDataType(value.Value, dataTypeByKey, value.SourceId, value.ItemId)
          }),
          valuesTotal = state.GetValueCount(sourceId)
      });
