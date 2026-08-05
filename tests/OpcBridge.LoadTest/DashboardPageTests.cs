@@ -226,6 +226,18 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
+    public void Html_MappingRowBadgesStayOnOneLine()
+    {
+        // Badge cluster must never wrap vertically — single line with clipped
+        // overflow (fade) and a tooltip summarizing the full status set.
+        Assert.Contains(".li .li-badge { margin-left: auto; display: flex;", DashboardPage.Html);
+        Assert.Contains("flex-wrap: nowrap; overflow: hidden;", DashboardPage.Html);
+        Assert.Contains("mask-image: linear-gradient(to right", DashboardPage.Html);
+        Assert.Contains("const statusSummary", DashboardPage.Script);
+        Assert.Contains("title=\"${attr(statusSummary)}\"", DashboardPage.Script);
+    }
+
+    [Fact]
     public void Script_FaceplateLivePanelShowDataType()
     {
         // Faceplate real-value panel shows the tag's data type, with the mapping's
