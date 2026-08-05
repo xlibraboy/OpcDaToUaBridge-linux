@@ -242,10 +242,26 @@ public sealed class DashboardPageTests
     {
         // The colored access status belongs at the far right of the row: config
         // badges (type/deadband/rate/MQTT/Influx) form a clipping group while the
-        // status sits outside it with flex-shrink:0 so it can never be cut off.
+        // status (connection-state + access) sits outside it with flex-shrink:0 so
+        // it can never be cut off.
         Assert.Contains(".li .li-badge-clip { display: flex;", DashboardPage.Html);
         Assert.Contains(".li .li-badge-status { flex-shrink: 0; margin-left: 2px;", DashboardPage.Html);
-        Assert.Contains("<span class=\"li-badge-clip\">${typeBadge}${deadbandBadge}${rateBadge}${mqttBadge}${influxBadge}</span><span class=\"li-badge-status\">${accessBadge}</span>", DashboardPage.Script);
+        Assert.Contains("<span class=\"li-badge-clip\">${typeBadge}${deadbandBadge}${rateBadge}${mqttBadge}${influxBadge}</span><span class=\"li-badge-status\">${discBadge ? `<span title=\"${attr(discTitle)}\">${discBadge}</span>` : ''}${accessBadge}</span>", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Script_MappingRowsShowDisconnectedBadge()
+    {
+        // A mapping with no live value (tag missing at source / source down) gets a
+        // pinned Disc badge; bad-quality values get a Bad badge instead.
+        Assert.Contains("if (enabled && !live) { discBadge = badge('Disc', 'bad'); discTitle = 'Disconnected — no value received from source'; }", DashboardPage.Script);
+        Assert.Contains("else if (enabled && !liveGood) { discBadge = badge('Bad', 'bad'); discTitle = 'Bad quality from source'; }", DashboardPage.Script);
+        Assert.Contains("const liveGood = live && get(live, 'isGood') !== false && get(live, 'value') !== null && get(live, 'value') !== undefined;", DashboardPage.Script);
+        // The summary tooltip carries the connection state too.
+        Assert.Contains("!live ? 'Disconnected' : null", DashboardPage.Script);
+        Assert.Contains("live && !liveGood ? 'Bad quality' : null", DashboardPage.Script);
+        // Disabled mappings are excluded — they already show a Disabled badge.
+        Assert.DoesNotContain("!enabled && !live", DashboardPage.Script);
     }
 
     [Fact]
