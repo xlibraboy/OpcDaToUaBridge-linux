@@ -1385,6 +1385,9 @@ const state = {
     influxState: 'Disconnected',
     mqttValFilter: { direction: '', topic: '' },
     valuesByKey: new Map(),
+    disconnectedKeys: new Set(),
+    badQualityKeys: new Set(),
+    disconnectedSources: new Set(),
     handleHistory: [],
     handleBaseline: null,
     diagramTab: 'all',
@@ -2577,15 +2580,19 @@ function renderMappingRow(mapping) {
     const live = currentValue(sourceId, item);
     const mappedType = (live && get(live, 'dataType')) || mapping.dataType || mapping.DataType || '—';
     const typeBadge = `<span class="pill" style="padding:1px 6px;font-size:10px" title="Data type">${esc(mappedType)}</span>`;
-    // Connection state: no value ever received (tag missing at the source / source down) or
-    // the source reports a bad quality. Pinned with the access badge, never clipped.
-    const liveGood = live && get(live, 'isGood') !== false && get(live, 'value') !== null && get(live, 'value') !== undefined;
+    // Connection state comes from server-side signals, never from absence in the capped
+    // value window: the bridge reports tags whose monitored item failed (auto-retrying),
+    // tags whose last value is bad quality, and the per-source connection state.
+    const sourceDown = enabled && state.disconnectedSources.has(sourceId);
+    const failedItem = enabled && state.disconnectedKeys.has(valueKey(sourceId, item));
+    const badQuality = enabled && state.badQualityKeys.has(valueKey(sourceId, item));
     let discBadge = '';
     let discTitle = '';
-    if (enabled && !live) { discBadge = badge('Disc', 'bad'); discTitle = 'Disconnected — no value received from source'; }
-    else if (enabled && !liveGood) { discBadge = badge('Bad', 'bad'); discTitle = 'Bad quality from source'; }
+    if (sourceDown) { discBadge = badge('Disc', 'bad'); discTitle = 'Disconnected — source is not connected'; }
+    else if (failedItem) { discBadge = badge('Disc', 'bad'); discTitle = 'Disconnected — no value received (auto-retrying)'; }
+    else if (badQuality) { discBadge = badge('Bad', 'bad'); discTitle = 'Bad quality from source'; }
     // Full status summary — clipped badges stay discoverable via the row tooltip.
-    const statusSummary = [mappedType + ' type', deadband > 0 ? 'db ' + deadband + '%' : null, pollRate > 0 ? pollRate + 'ms' : null, mqttOn ? 'MQTT' : null, influxOn ? 'Influx' : null, !live ? 'Disconnected' : null, live && !liveGood ? 'Bad quality' : null, access + (simulated && access !== 'Write' ? ' / Sim' : '')].filter(Boolean).join(' · ');
+    const statusSummary = [mappedType + ' type', deadband > 0 ? 'db ' + deadband + '%' : null, pollRate > 0 ? pollRate + 'ms' : null, mqttOn ? 'MQTT' : null, influxOn ? 'Influx' : null, sourceDown ? 'Source disconnected' : null, failedItem ? 'Disconnected (auto-retrying)' : null, badQuality ? 'Bad quality' : null, access + (simulated && access !== 'Write' ? ' / Sim' : '')].filter(Boolean).join(' · ');
     const desc = (mapping.description || mapping.Description || '').trim();
     const descIcon = desc ? `<span class="li-desc" title="${attr(desc)}" data-action="open-faceplate" data-source-id="${attr(sourceId)}" data-item-id="${attr(item)}">&#8505;</span>` : '';
     // Config badges clip/fade first; the colored access status is pinned at the far
@@ -3428,9 +3435,17 @@ async function refresh() {
         const pollUtilization = formatPollUtilization(get(b, 'lastPollDurationMs'), updateRateMs);
         state.updateRateMs = updateRateMs;
         state.valuesByKey = new Map(vs.map(v => [valueKey(get(v, 'sourceId') || 'default', get(v, 'itemId') || get(v, 'daItemId')), v]));
+        state.disconnectedKeys = new Set((p.disconnected || []).map(d => valueKey(get(d, 'sourceId') || '', get(d, 'itemId') || '')));
+        state.badQualityKeys = new Set((p.badQuality || []).map(k => String(k)));
+        state.disconnectedSources = new Set((sources || []).filter(s => String(get(s, 'connectionState') || '').toLowerCase() !== 'connected').map(s => String(get(s, 'sourceId') || '')));
         updateFaceplateLiveValues();
         if (state.diagramLoaded && document.querySelector('.tabbtn.active')?.dataset.tab === 'diagram') {
             renderDiagram();
+        }
+        // Maps rows carry connection badges driven by these sets — re-render while the
+        // Maps tab is visible so Disc/Bad state tracks the live payload.
+        if (document.querySelector('.tabbtn.active')?.dataset.tab === 'tags') {
+            rerenderMappings();
         }
         el('updateRate').textContent = updateRateMs + ' ms';
         el('pollUtilizationFill').style.width = pollUtilization.width;

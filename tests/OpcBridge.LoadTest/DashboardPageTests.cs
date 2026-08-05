@@ -252,16 +252,26 @@ public sealed class DashboardPageTests
     [Fact]
     public void Script_MappingRowsShowDisconnectedBadge()
     {
-        // A mapping with no live value (tag missing at source / source down) gets a
-        // pinned Disc badge; bad-quality values get a Bad badge instead.
-        Assert.Contains("if (enabled && !live) { discBadge = badge('Disc', 'bad'); discTitle = 'Disconnected — no value received from source'; }", DashboardPage.Script);
-        Assert.Contains("else if (enabled && !liveGood) { discBadge = badge('Bad', 'bad'); discTitle = 'Bad quality from source'; }", DashboardPage.Script);
-        Assert.Contains("const liveGood = live && get(live, 'isGood') !== false && get(live, 'value') !== null && get(live, 'value') !== undefined;", DashboardPage.Script);
+        // Disc/Bad badges are driven by server-side signals, never by absence from the
+        // capped value window: failed monitored items (auto-retrying), bad-quality values,
+        // and the per-source connection state. The refresh() payload populates the sets.
+        Assert.Contains("state.disconnectedKeys = new Set((p.disconnected || []).map(d => valueKey(get(d, 'sourceId') || '', get(d, 'itemId') || '')));", DashboardPage.Script);
+        Assert.Contains("state.badQualityKeys = new Set((p.badQuality || []).map(k => String(k)));", DashboardPage.Script);
+        Assert.Contains("state.disconnectedSources = new Set((sources || []).filter(s => String(get(s, 'connectionState') || '').toLowerCase() !== 'connected')", DashboardPage.Script);
+        Assert.Contains("const sourceDown = enabled && state.disconnectedSources.has(sourceId);", DashboardPage.Script);
+        Assert.Contains("const failedItem = enabled && state.disconnectedKeys.has(valueKey(sourceId, item));", DashboardPage.Script);
+        Assert.Contains("const badQuality = enabled && state.badQualityKeys.has(valueKey(sourceId, item));", DashboardPage.Script);
+        Assert.Contains("discTitle = 'Disconnected — no value received (auto-retrying)';", DashboardPage.Script);
+        Assert.Contains("discTitle = 'Bad quality from source';", DashboardPage.Script);
         // The summary tooltip carries the connection state too.
-        Assert.Contains("!live ? 'Disconnected' : null", DashboardPage.Script);
-        Assert.Contains("live && !liveGood ? 'Bad quality' : null", DashboardPage.Script);
-        // Disabled mappings are excluded — they already show a Disabled badge.
-        Assert.DoesNotContain("!enabled && !live", DashboardPage.Script);
+        Assert.Contains("failedItem ? 'Disconnected (auto-retrying)' : null", DashboardPage.Script);
+        Assert.Contains("badQuality ? 'Bad quality' : null", DashboardPage.Script);
+        // The badge must not depend on the sampled value window.
+        Assert.DoesNotContain("enabled && !live", DashboardPage.Script);
+        Assert.DoesNotContain("!liveGood", DashboardPage.Script);
+        // Refresh re-renders the Maps rows while that tab is visible so badges track live state.
+        Assert.Contains("if (document.querySelector('.tabbtn.active')?.dataset.tab === 'tags') {", DashboardPage.Script);
+        Assert.Contains("rerenderMappings();", DashboardPage.Script);
     }
 
     [Fact]
