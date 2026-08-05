@@ -207,14 +207,33 @@ app.MapGet("/api/status/ports", () =>
         uaBind,
         uaClient));
 });
- app.MapGet("/api/dashboard", (BridgeState state, UaServerHost uaServer, BridgeAppDiscovery discovery, int? limit, string? sourceId) => Results.Json(new
+ app.MapGet("/api/dashboard", (BridgeState state, UaServerHost uaServer, BridgeAppDiscovery discovery, MappingStore mappingStore, int? limit, string? sourceId) =>
  {
-     bridge = state.GetStatus(),
-     ua = uaServer.GetStatus(),
-     apps = discovery.GetStatus(),
-     values = state.GetValues(limit ?? DashboardValuesLimit, sourceId),
-     valuesTotal = state.GetValueCount(sourceId)
- }));
+     IReadOnlyList<BridgeValueSnapshot> values = state.GetValues(limit ?? DashboardValuesLimit, sourceId);
+
+     // Join the configured data type from the mapping store (read path only —
+     // keeps the per-value update hot path untouched).
+     (IReadOnlyList<TagMapping> mappings, _) = mappingStore.GetSnapshot();
+     Dictionary<string, string> dataTypeByKey = DashboardValues.BuildDataTypeLookup(mappings);
+
+     return Results.Json(new
+     {
+         bridge = state.GetStatus(),
+         ua = uaServer.GetStatus(),
+         apps = discovery.GetStatus(),
+         values = values.Select(value => new
+         {
+             sourceId = value.SourceId,
+             itemId = value.ItemId,
+             value = value.Value,
+             timestampUtc = value.TimestampUtc,
+             daQuality = value.DaQuality,
+             isGood = value.IsGood,
+             dataType = DashboardValues.LookupDataType(dataTypeByKey, value.SourceId, value.ItemId)
+         }),
+         valuesTotal = state.GetValueCount(sourceId)
+     });
+ });
 app.MapGet("/api/diagnostics", (BridgeWorker worker, UaServerHost uaServer) => Results.Json(new
 {
     bridge = worker.GetDiagnostics(),
