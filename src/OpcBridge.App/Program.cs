@@ -349,7 +349,8 @@ app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings
             request.UaUsername,
             request.UaPassword,
             request.SessionTimeoutMs,
-            request.ReconnectDelayMs);
+            request.ReconnectDelayMs,
+            request.WatchdogTimeoutMs ?? 60000);
     }
     else if (string.Equals(upsertType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase))
     {
