@@ -15,8 +15,12 @@ namespace OpcUaSimServer;
 /// SIM_BAD_TAGS="9,10" fault-injects Tag00009/Tag00010: they flip to BadOutOfService
 /// and freeze (SIM_BAD_AFTER_MS ms after start; 0 = on the first update tick), so a
 /// bridge sees a live good→bad quality transition for a connected tag.
+/// SIM_EXTRA_TAGS="99999" adds Tag99999 to the address space at runtime
+/// (SIM_EXTRA_AFTER_MS ms after start; 0 = first tick) — simulates a tag appearing at
+/// the source later; a bridge retries its failed monitored item automatically.
 /// Env: SIM_NODES (default 20000), SIM_UPDATE_MS (default 1000), SIM_PORT (default 4840),
-///      SIM_WRITEABLE (default 10), SIM_BAD_TAGS (default none), SIM_BAD_AFTER_MS (default 0).
+///      SIM_WRITEABLE (default 10), SIM_BAD_TAGS (default none), SIM_BAD_AFTER_MS (default 0),
+///      SIM_EXTRA_TAGS (default none), SIM_EXTRA_AFTER_MS (default 0).
 /// Endpoint: opc.tcp://0.0.0.0:{SIM_PORT}/opcuasim/  (SecurityMode None, anonymous).
 /// </summary>
 internal static class Program
@@ -32,12 +36,14 @@ internal static class Program
             writeableCount = nodeCount;
         }
 
-        HashSet<int> badTags = ParseBadTags();
+        HashSet<int> badTags = ParseTagList("SIM_BAD_TAGS");
         int badAfterMs = ParseEnv("SIM_BAD_AFTER_MS", 0);
+        HashSet<int> extraTags = ParseTagList("SIM_EXTRA_TAGS");
+        int extraAfterMs = ParseEnv("SIM_EXTRA_AFTER_MS", 0);
 
         try
         {
-            return RunAsync(nodeCount, updateMs, port, writeableCount, badTags, badAfterMs).GetAwaiter().GetResult();
+            return RunAsync(nodeCount, updateMs, port, writeableCount, badTags, badAfterMs, extraTags, extraAfterMs).GetAwaiter().GetResult();
         }
         catch (Exception ex)
         {
@@ -60,11 +66,11 @@ internal static class Program
             : fallback;
     }
 
-    /// <summary>SIM_BAD_TAGS="9,10" → Tag00009 and Tag00010 flip to BadOutOfService and freeze.</summary>
-    private static HashSet<int> ParseBadTags()
+    /// <summary>Comma-separated 1-based tag numbers from an env var (SIM_BAD_TAGS / SIM_EXTRA_TAGS).</summary>
+    private static HashSet<int> ParseTagList(string envName)
     {
         HashSet<int> result = new();
-        string? raw = Environment.GetEnvironmentVariable("SIM_BAD_TAGS");
+        string? raw = Environment.GetEnvironmentVariable(envName);
         if (string.IsNullOrWhiteSpace(raw))
         {
             return result;
@@ -81,16 +87,25 @@ internal static class Program
         return result;
     }
 
-    private static async Task<int> RunAsync(int nodeCount, int updateMs, int port, int writeableCount, HashSet<int> badTags, int badAfterMs)
+    private static async Task<int> RunAsync(
+        int nodeCount,
+        int updateMs,
+        int port,
+        int writeableCount,
+        HashSet<int> badTags,
+        int badAfterMs,
+        HashSet<int> extraTags,
+        int extraAfterMs)
     {
         string endpoint = $"opc.tcp://0.0.0.0:{port}/opcuasim/";
         string badInfo = badTags.Count == 0 ? "none" : string.Join(",", badTags.OrderBy(n => n)) + (badAfterMs > 0 ? $" after {badAfterMs}ms" : " at start");
-        Console.WriteLine($"Starting sim: {nodeCount} nodes ({writeableCount} writeable), bad tags: {badInfo}, {updateMs} ms update, {endpoint}");
+        string extraInfo = extraTags.Count == 0 ? "none" : string.Join(",", extraTags.OrderBy(n => n)) + (extraAfterMs > 0 ? $" after {extraAfterMs}ms" : " at start");
+        Console.WriteLine($"Starting sim: {nodeCount} nodes ({writeableCount} writeable), bad tags: {badInfo}, extra tags: {extraInfo}, {updateMs} ms update, {endpoint}");
 
         ApplicationConfiguration configuration = BuildConfiguration(endpoint);
         await configuration.ValidateAsync(ApplicationType.Server).ConfigureAwait(false);
 
-        SimServer server = new(nodeCount, writeableCount, badTags, badAfterMs, endpoint);
+        SimServer server = new(nodeCount, writeableCount, badTags, badAfterMs, extraTags, extraAfterMs, endpoint);
         ApplicationInstance application = new()
         {
             ApplicationName = "OpcUaSimServer",
@@ -211,14 +226,25 @@ internal static class Program
         private readonly int writeable_count_;
         private readonly HashSet<int> bad_tags_;
         private readonly int bad_after_ms_;
+        private readonly HashSet<int> extra_tags_;
+        private readonly int extra_after_ms_;
         private SimNodeManager? node_manager_;
 
-        public SimServer(int nodeCount, int writeableCount, HashSet<int> badTags, int badAfterMs, string endpoint)
+        public SimServer(
+            int nodeCount,
+            int writeableCount,
+            HashSet<int> badTags,
+            int badAfterMs,
+            HashSet<int> extraTags,
+            int extraAfterMs,
+            string endpoint)
         {
             node_count_ = nodeCount;
             writeable_count_ = writeableCount;
             bad_tags_ = badTags;
             bad_after_ms_ = badAfterMs;
+            extra_tags_ = extraTags;
+            extra_after_ms_ = extraAfterMs;
             _ = endpoint;
         }
 
@@ -231,7 +257,15 @@ internal static class Program
             IServerInternal server,
             ApplicationConfiguration configuration)
         {
-            node_manager_ = new SimNodeManager(server, configuration, node_count_, writeable_count_, bad_tags_, bad_after_ms_);
+            node_manager_ = new SimNodeManager(
+                server,
+                configuration,
+                node_count_,
+                writeable_count_,
+                bad_tags_,
+                bad_after_ms_,
+                extra_tags_,
+                extra_after_ms_);
             return new MasterNodeManager(server, configuration, null, new INodeManager[] { node_manager_ });
         }
 
@@ -253,12 +287,17 @@ internal static class Program
     {
         private const string NamespaceUri = "urn:opcuasim:server";
         private readonly BaseDataVariableState[] nodes_;
+        private readonly List<BaseDataVariableState> extra_nodes_ = new();
         private readonly bool[] written_;
         private readonly bool[] bad_;
         private readonly HashSet<int> bad_numbers_;
+        private readonly HashSet<int> extra_numbers_;
         private readonly int writeable_count_;
         private readonly int bad_after_ms_;
+        private readonly int extra_after_ms_;
         private bool bad_activated_;
+        private bool extra_activated_;
+        private FolderState? root_;
         private ushort namespace_index_;
 
         public SimNodeManager(
@@ -267,14 +306,18 @@ internal static class Program
             int nodeCount,
             int writeableCount,
             HashSet<int> badTags,
-            int badAfterMs)
+            int badAfterMs,
+            HashSet<int> extraTags,
+            int extraAfterMs)
             : base(server, configuration, NamespaceUri)
         {
             nodes_ = new BaseDataVariableState[nodeCount];
             written_ = new bool[nodeCount];
             bad_ = new bool[nodeCount];
             bad_numbers_ = badTags;
+            extra_numbers_ = extraTags;
             bad_after_ms_ = badAfterMs;
+            extra_after_ms_ = extraAfterMs;
             writeable_count_ = writeableCount;
         }
 
@@ -305,6 +348,7 @@ internal static class Program
                 root.AddReference(ReferenceTypeIds.Organizes, true, ObjectIds.ObjectsFolder);
                 references.Add(new NodeStateReference(ReferenceTypeIds.Organizes, false, root.NodeId));
                 AddPredefinedNode(SystemContext, root);
+                root_ = root;
 
                 for (int i = 0; i < nodes_.Length; i++)
                 {
@@ -352,6 +396,12 @@ internal static class Program
                 ActivateBadTags();
             }
 
+            if (!extra_activated_ && extra_numbers_.Count > 0
+                && (extra_after_ms_ == 0 || elapsedMs >= extra_after_ms_))
+            {
+                ActivateExtraTags();
+            }
+
             double t = elapsedMs / 1000.0;
             DateTime ts = DateTime.UtcNow;
             for (int i = 0; i < nodes_.Length; i++)
@@ -369,6 +419,63 @@ internal static class Program
                 variable.Timestamp = ts;
                 variable.StatusCode = StatusCodes.Good;
                 variable.ClearChangeMasks(SystemContext, false);
+            }
+
+            for (int i = 0; i < extra_nodes_.Count; i++)
+            {
+                double value = 100.0 + 10.0 * Math.Sin(t + ((nodes_.Length + i) * 0.001));
+                BaseDataVariableState variable = extra_nodes_[i];
+                variable.Value = new Variant(value);
+                variable.Timestamp = ts;
+                variable.StatusCode = StatusCodes.Good;
+                variable.ClearChangeMasks(SystemContext, false);
+            }
+        }
+
+        /// <summary>
+        /// Add SIM_EXTRA_TAGS nodes to the address space at runtime (after SIM_EXTRA_AFTER_MS),
+        /// simulating a tag that appears at the source later. A bridge whose monitored-item
+        /// create failed earlier picks it up via its retry timer.
+        /// </summary>
+        private void ActivateExtraTags()
+        {
+            extra_activated_ = true;
+            if (root_ is null)
+            {
+                return;
+            }
+
+            foreach (int number in extra_numbers_)
+            {
+                int index = number - 1;
+                if (index >= 0 && index < nodes_.Length)
+                {
+                    continue; // already part of the base address space
+                }
+
+                string name = $"Tag{number:00000}";
+                BaseDataVariableState variable = new(root_)
+                {
+                    SymbolicName = name,
+                    ReferenceTypeId = ReferenceTypeIds.Organizes,
+                    TypeDefinitionId = VariableTypeIds.BaseDataVariableType,
+                    NodeId = new NodeId(name, namespace_index_),
+                    BrowseName = new QualifiedName(name, namespace_index_),
+                    DisplayName = new LocalizedText(name),
+                    WriteMask = AttributeWriteMask.None,
+                    UserWriteMask = AttributeWriteMask.None,
+                    DataType = DataTypeIds.Double,
+                    ValueRank = ValueRanks.Scalar,
+                    AccessLevel = AccessLevels.CurrentRead,
+                    UserAccessLevel = AccessLevels.CurrentRead,
+                    Historizing = false,
+                    Value = new DataValue(new Variant(100.0)),
+                    StatusCode = StatusCodes.Good,
+                    Timestamp = DateTime.UtcNow
+                };
+                root_.AddChild(variable);
+                AddPredefinedNode(SystemContext, variable);
+                extra_nodes_.Add(variable);
             }
         }
 

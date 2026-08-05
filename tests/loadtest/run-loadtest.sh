@@ -15,6 +15,8 @@
 #   WRITEABLE      sim nodes that accept UA writes (default 10; written nodes freeze)
 #   BAD_TAGS       comma list of 1-based tag numbers fault-injected BadOutOfService (default none)
 #   BAD_AFTER_MS   delay before bad tags flip (default 0 = first tick)
+#   EXTRA_TAGS     comma list of 1-based tag numbers added to the address space later (default none)
+#   EXTRA_AFTER_MS delay before extra tags appear (default 0 = first tick)
 set -euo pipefail
 
 NODES="${NODES:-20000}"
@@ -25,6 +27,8 @@ UPDATE_MS="${UPDATE_MS:-1000}"
 WRITEABLE="${WRITEABLE:-10}"
 BAD_TAGS="${BAD_TAGS:-}"
 BAD_AFTER_MS="${BAD_AFTER_MS:-0}"
+EXTRA_TAGS="${EXTRA_TAGS:-}"
+EXTRA_AFTER_MS="${EXTRA_AFTER_MS:-0}"
 BRIDGE_IMG="${BRIDGE_IMG:-opcbridge:loadtest}"
 SIM_IMG="${SIM_IMG:-opcuasim:loadtest}"
 WORKTREE="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -48,10 +52,11 @@ docker build -f "$WORKTREE/tests/loadtest/opcuasim.Dockerfile" -t "$SIM_IMG" "$W
 log "building bridge image ($BRIDGE_IMG) from Dockerfile.local..."
 docker build -f "$WORKTREE/Dockerfile.local" -t "$BRIDGE_IMG" "$WORKTREE"
 
-log "starting sim container (NODES=$NODES, WRITEABLE=$WRITEABLE, BAD_TAGS=$BAD_TAGS)..."
+log "starting sim container (NODES=$NODES, WRITEABLE=$WRITEABLE, BAD_TAGS=$BAD_TAGS, EXTRA_TAGS=$EXTRA_TAGS)..."
 docker run -d --name opcua-sim-20k \
   -e SIM_NODES="$NODES" -e SIM_UPDATE_MS="$UPDATE_MS" -e SIM_WRITEABLE="$WRITEABLE" \
   -e SIM_BAD_TAGS="$BAD_TAGS" -e SIM_BAD_AFTER_MS="$BAD_AFTER_MS" \
+  -e SIM_EXTRA_TAGS="$EXTRA_TAGS" -e SIM_EXTRA_AFTER_MS="$EXTRA_AFTER_MS" \
   -p "$SIM_HOST_PORT":4840 "$SIM_IMG" >/dev/null
 
 log "starting bridge container (http $HTTP_HOST_PORT, ua $UA_HOST_PORT)..."
