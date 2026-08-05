@@ -2452,13 +2452,14 @@ function currentValue(sourceId, itemId) {
     return state.valuesByKey.get(valueKey(sourceId, itemId)) || null;
 }
 
-function renderLiveValue(value) {
+function renderLiveValue(value, fallbackType) {
     if (!value) return '<span class="msg">No live value</span>';
     const text = String(get(value, 'value') ?? '');
     const quality = get(value, 'daQuality');
     const isGood = !!get(value, 'isGood');
     const timestamp = locTime(get(value, 'timestampUtc'));
-    return `<div class="fp-k">Real value</div><div class="fp-v mono" title="${attr(text)}">${esc(text)}</div><div class="fp-meta"><span>${badge(isGood ? 'Good' : 'Bad', isGood ? 'good' : 'bad')} <span class="${isGood ? 'good' : 'bad'}">(${esc(String(quality ?? '—'))})</span></span><span class="timestamp">${esc(timestamp)}</span></div>`;
+    const type = get(value, 'dataType') || fallbackType || '—';
+    return `<div class="fp-k">Real value</div><div class="fp-v mono" title="${attr(text)}">${esc(text)}</div><div class="fp-meta"><span class="pill" style="padding:1px 6px;font-size:10px" title="Data type">${esc(type)}</span><span>${badge(isGood ? 'Good' : 'Bad', isGood ? 'good' : 'bad')} <span class="${isGood ? 'good' : 'bad'}">(${esc(String(quality ?? '—'))})</span></span><span class="timestamp">${esc(timestamp)}</span></div>`;
 }
 
 function linkTagLabel(sourceId, itemId, nameOverride = null) {
@@ -2570,9 +2571,13 @@ function renderMappingRow(mapping) {
     const mqttBadge = mqttOn ? `<span class="pill" style="padding:1px 6px;font-size:10px">MQTT</span>` : '';
     const influxOn = (mapping.influxEnabled ?? mapping.InfluxEnabled) === true;
     const influxBadge = influxOn ? `<span class="pill" style="padding:1px 6px;font-size:10px">Influx</span>` : '';
+    // Runtime type from the live value when present (matches Live Values); otherwise the configured type.
+    const live = currentValue(sourceId, item);
+    const mappedType = (live && get(live, 'dataType')) || mapping.dataType || mapping.DataType || '—';
+    const typeBadge = `<span class="pill" style="padding:1px 6px;font-size:10px" title="Data type">${esc(mappedType)}</span>`;
     const desc = (mapping.description || mapping.Description || '').trim();
     const descIcon = desc ? `<span class="li-desc" title="${attr(desc)}" data-action="open-faceplate" data-source-id="${attr(sourceId)}" data-item-id="${attr(item)}">&#8505;</span>` : '';
-    return `<div class="li clickable" data-action="open-faceplate" data-source-id="${attr(sourceId)}" data-item-id="${attr(item)}">${descIcon}<div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="n">${esc(name)}</span> <span class="p">${esc(sourceId)} · ${esc(item)} · UA: ${esc(node)}</span></div><div class="li-badge">${accessBadge}${deadbandBadge}${rateBadge}${mqttBadge}${influxBadge}</div></div>`;
+    return `<div class="li clickable" data-action="open-faceplate" data-source-id="${attr(sourceId)}" data-item-id="${attr(item)}">${descIcon}<div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="n">${esc(name)}</span> <span class="p">${esc(sourceId)} · ${esc(item)} · UA: ${esc(node)}</span></div><div class="li-badge">${typeBadge}${accessBadge}${deadbandBadge}${rateBadge}${mqttBadge}${influxBadge}</div></div>`;
 }
 
 const MAPPING_ROWS_CAP = 1000;
@@ -2623,7 +2628,7 @@ function openFaceplate(sourceId, itemId) {
     el('fpRemove').dataset.itemId = itemId;
     el('fpEnabled').dataset.sourceId = sourceId;
     el('fpEnabled').dataset.itemId = itemId;
-    el('fpLivePanel').innerHTML = renderLiveValue(currentValue(sourceId, itemId));
+    el('fpLivePanel').innerHTML = renderLiveValue(currentValue(sourceId, itemId), mapping.dataType || mapping.DataType || null);
     el('faceplateOverlay').classList.add('open');
 }
 function deriveAccess(mapping) {
