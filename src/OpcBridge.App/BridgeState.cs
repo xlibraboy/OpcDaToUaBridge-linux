@@ -334,6 +334,18 @@ public sealed class BridgeState
 
     public int GetValueCount() => values_by_key_.Count;
 
+    /// <summary>Value count for a specific source, or the global total when sourceId is blank.</summary>
+    public int GetValueCount(string? sourceId)
+    {
+        if (string.IsNullOrWhiteSpace(sourceId))
+        {
+            return values_by_key_.Count;
+        }
+
+        return values_by_key_.Values.Count(value =>
+            string.Equals(value.SourceId, sourceId, StringComparison.OrdinalIgnoreCase));
+    }
+
     /// <summary>
     /// Sorted but capped — for UI feeds (dashboard) where the full list is megabytes
     /// and would freeze the browser when re-rendered every poll cycle. When no source

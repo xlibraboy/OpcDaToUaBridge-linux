@@ -213,7 +213,7 @@ app.MapGet("/api/status/ports", () =>
      ua = uaServer.GetStatus(),
      apps = discovery.GetStatus(),
      values = state.GetValues(limit ?? DashboardValuesLimit, sourceId),
-     valuesTotal = state.GetValueCount()
+     valuesTotal = state.GetValueCount(sourceId)
  }));
 app.MapGet("/api/diagnostics", (BridgeWorker worker, UaServerHost uaServer) => Results.Json(new
 {
