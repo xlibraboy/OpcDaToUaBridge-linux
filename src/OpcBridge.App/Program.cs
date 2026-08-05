@@ -234,7 +234,7 @@ app.MapGet("/api/status/ports", () =>
          }),
          valuesTotal = state.GetValueCount(sourceId),
          disconnected = worker.GetDisconnectedTags(),
-         badQuality = state.GetBadQualityKeys()
+         badQuality = state.GetBadQualityTags().Select(tag => new { sourceId = tag.SourceId, itemId = tag.ItemId })
      });
  });
 app.MapGet("/api/diagnostics", (BridgeWorker worker, UaServerHost uaServer) => Results.Json(new

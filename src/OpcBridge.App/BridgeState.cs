@@ -335,18 +335,18 @@ public sealed class BridgeState
     public int GetValueCount() => values_by_key_.Count;
 
     /// <summary>
-    /// Normalized keys of all values whose last quality is bad (IsGood false). Used by the
-    /// dashboard for the per-tag "Bad" badge — the value sample is capped, but the bad set
-    /// is always complete because it is scanned from the full store.
+    /// All values whose last quality is bad (IsGood false), as (source, item) pairs. Used by
+    /// the dashboard for the per-tag "Bad" badge — the value sample is capped, but the bad
+    /// set is always complete because it is scanned from the full store.
     /// </summary>
-    public IReadOnlyList<string> GetBadQualityKeys()
+    public IReadOnlyList<(string SourceId, string ItemId)> GetBadQualityTags()
     {
-        List<string> result = new();
+        List<(string, string)> result = new();
         foreach (KeyValuePair<string, BridgeValueSnapshot> pair in values_by_key_)
         {
             if (!pair.Value.IsGood)
             {
-                result.Add(pair.Key);
+                result.Add((pair.Value.SourceId, pair.Value.ItemId));
             }
         }
 
