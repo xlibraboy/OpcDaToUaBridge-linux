@@ -207,7 +207,7 @@ app.MapGet("/api/status/ports", () =>
         uaBind,
         uaClient));
 });
- app.MapGet("/api/dashboard", (BridgeState state, UaServerHost uaServer, BridgeAppDiscovery discovery, MappingStore mappingStore, int? limit, string? sourceId) =>
+ app.MapGet("/api/dashboard", (BridgeState state, UaServerHost uaServer, BridgeAppDiscovery discovery, MappingStore mappingStore, BridgeWorker worker, int? limit, string? sourceId) =>
  {
      IReadOnlyList<BridgeValueSnapshot> values = state.GetValues(limit ?? DashboardValuesLimit, sourceId);
 
@@ -232,7 +232,9 @@ app.MapGet("/api/status/ports", () =>
              isGood = value.IsGood,
              dataType = DashboardValues.ResolveDataType(value.Value, dataTypeByKey, value.SourceId, value.ItemId)
          }),
-         valuesTotal = state.GetValueCount(sourceId)
+         valuesTotal = state.GetValueCount(sourceId),
+         disconnected = worker.GetDisconnectedTags(),
+         badQuality = state.GetBadQualityKeys()
      });
  });
 app.MapGet("/api/diagnostics", (BridgeWorker worker, UaServerHost uaServer) => Results.Json(new

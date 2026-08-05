@@ -1280,6 +1280,35 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
         }
     }
 
+    /// <summary>
+    /// Tags whose monitored-item create failed and are being auto-retried (source-side
+    /// disconnect signal for the dashboard's per-tag Disc badge).
+    /// </summary>
+    public IReadOnlyList<DisconnectedTag> GetDisconnectedTags()
+    {
+        Dictionary<string, SourceSession> sessions = active_sessions_;
+        List<DisconnectedTag> result = new();
+        if (sessions is null)
+        {
+            return result;
+        }
+
+        foreach ((string sourceId, SourceSession session) in sessions)
+        {
+            if (session.Client is not OpcUaSourceClient uaClient)
+            {
+                continue;
+            }
+
+            foreach (string itemId in uaClient.GetFailedItemIds())
+            {
+                result.Add(new DisconnectedTag(sourceId, itemId));
+            }
+        }
+
+        return result;
+    }
+
     public async Task<(bool Ok, string? Error)> TryHmiWriteAsync(
         string sourceId,
         string itemId,
@@ -1617,6 +1646,8 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
         convertedValue = text;
         return true;
     }
+
+    public sealed record DisconnectedTag(string SourceId, string ItemId);
 
     internal sealed class SourceMappingCache
     {

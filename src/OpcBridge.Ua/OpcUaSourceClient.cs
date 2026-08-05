@@ -777,6 +777,15 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
     /// <summary>True when MonitoredItems are delivering values (poll ReadAsync is a no-op).</summary>
     public bool SubscriptionsActive => subscriptions_active_;
 
+    /// <summary>Snapshot of node ids whose monitored-item create failed and are being retried.</summary>
+    public IReadOnlyList<string> GetFailedItemIds()
+    {
+        lock (gate_)
+        {
+            return failed_items_.ToArray();
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
         Session? session;
