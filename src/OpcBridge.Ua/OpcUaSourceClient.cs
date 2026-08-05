@@ -34,6 +34,9 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
     private readonly Dictionary<string, string> node_id_by_display_ =
         new(StringComparer.Ordinal);
     private readonly SemaphoreSlim reconcile_gate_ = new(1, 1);
+    private const int FailedItemRetryIntervalMs = 15_000;
+    private readonly HashSet<string> failed_items_ = new(StringComparer.Ordinal);
+    private Timer? failed_item_retry_timer_;
     private bool subscriptions_active_;
     private bool disposed_;
 
@@ -560,6 +563,21 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
             Dictionary<string, int> desiredSampling = BuildDesiredSampling(desiredMappings);
             IReadOnlyCollection<string> desiredIds = desiredSampling.Keys;
 
+            lock (gate_)
+            {
+                // Drop bookkeeping for failures that are no longer desired (mapping
+                // removed/changed); stop the retry timer once nothing is left to retry.
+                if (failed_items_.Count > 0)
+                {
+                    failed_items_.RemoveWhere(id => !desiredIds.Contains(id));
+                    if (failed_items_.Count == 0)
+                    {
+                        failed_item_retry_timer_?.Dispose();
+                        failed_item_retry_timer_ = null;
+                    }
+                }
+            }
+
             Subscription subscription = await EnsureSubscriptionAsync(session, cancellationToken)
                 .ConfigureAwait(false);
 
@@ -666,11 +684,13 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
                                 createError?.StatusCode);
                             item.Notification -= OnMonitoredItemNotification;
                             subscription.RemoveItem(item);
+                            NoteItemCreateFailure(key);
                             continue;
                         }
 
                         monitored_items_[key] = item;
                         node_id_by_display_[item.DisplayName] = key;
+                        failed_items_.Remove(key);
                     }
                 }
 
@@ -713,6 +733,47 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
         }
     }
 
+    /// <summary>
+    /// Track a monitored-item create failure so it can be retried periodically. Tags that
+    /// do not exist at the source yet (or transiently failed) are re-attempted on a timer;
+    /// without this they would stay disconnected until the next mapping change or reconnect.
+    /// </summary>
+    private void NoteItemCreateFailure(string nodeId)
+    {
+        lock (gate_)
+        {
+            if (failed_items_.Add(nodeId) && failed_item_retry_timer_ is null)
+            {
+                failed_item_retry_timer_ = new Timer(
+                    _ => RetryFailedItems(),
+                    null,
+                    FailedItemRetryIntervalMs,
+                    FailedItemRetryIntervalMs);
+            }
+        }
+    }
+
+    private void RetryFailedItems()
+    {
+        bool any;
+        lock (gate_)
+        {
+            any = failed_items_.Count > 0;
+        }
+
+        if (!any || disposed_)
+        {
+            return;
+        }
+
+        // Serialized with other reconciles by reconcile_gate_; a success clears the item
+        // from failed_items_ and the timer stops itself on the next reconcile/purge.
+        _ = ReconcileMonitoredItemsAsync(last_desired_mappings_, CancellationToken.None)
+            .ContinueWith(
+                task => logger_.LogError(task.Exception, "Failed-item retry reconcile failed for source {SourceId}", options_.SourceId),
+                TaskContinuationOptions.OnlyOnFaulted);
+    }
+
     /// <summary>True when MonitoredItems are delivering values (poll ReadAsync is a no-op).</summary>
     public bool SubscriptionsActive => subscriptions_active_;
 
@@ -741,6 +802,8 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
 
         await TearDownSubscriptionAsync(keepSession: false).ConfigureAwait(false);
 
+        failed_item_retry_timer_?.Dispose();
+        failed_item_retry_timer_ = null;
         reconcile_gate_.Dispose();
 
         if (session is null)
