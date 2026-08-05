@@ -2577,13 +2577,20 @@ function renderMappingRow(mapping) {
     const live = currentValue(sourceId, item);
     const mappedType = (live && get(live, 'dataType')) || mapping.dataType || mapping.DataType || '—';
     const typeBadge = `<span class="pill" style="padding:1px 6px;font-size:10px" title="Data type">${esc(mappedType)}</span>`;
+    // Connection state: no value ever received (tag missing at the source / source down) or
+    // the source reports a bad quality. Pinned with the access badge, never clipped.
+    const liveGood = live && get(live, 'isGood') !== false && get(live, 'value') !== null && get(live, 'value') !== undefined;
+    let discBadge = '';
+    let discTitle = '';
+    if (enabled && !live) { discBadge = badge('Disc', 'bad'); discTitle = 'Disconnected — no value received from source'; }
+    else if (enabled && !liveGood) { discBadge = badge('Bad', 'bad'); discTitle = 'Bad quality from source'; }
     // Full status summary — clipped badges stay discoverable via the row tooltip.
-    const statusSummary = [mappedType + ' type', deadband > 0 ? 'db ' + deadband + '%' : null, pollRate > 0 ? pollRate + 'ms' : null, mqttOn ? 'MQTT' : null, influxOn ? 'Influx' : null, access + (simulated && access !== 'Write' ? ' / Sim' : '')].filter(Boolean).join(' · ');
+    const statusSummary = [mappedType + ' type', deadband > 0 ? 'db ' + deadband + '%' : null, pollRate > 0 ? pollRate + 'ms' : null, mqttOn ? 'MQTT' : null, influxOn ? 'Influx' : null, !live ? 'Disconnected' : null, live && !liveGood ? 'Bad quality' : null, access + (simulated && access !== 'Write' ? ' / Sim' : '')].filter(Boolean).join(' · ');
     const desc = (mapping.description || mapping.Description || '').trim();
     const descIcon = desc ? `<span class="li-desc" title="${attr(desc)}" data-action="open-faceplate" data-source-id="${attr(sourceId)}" data-item-id="${attr(item)}">&#8505;</span>` : '';
     // Config badges clip/fade first; the colored access status is pinned at the far
     // right and never gets cut off.
-    return `<div class="li clickable" data-action="open-faceplate" data-source-id="${attr(sourceId)}" data-item-id="${attr(item)}">${descIcon}<div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="n">${esc(name)}</span> <span class="p">${esc(sourceId)} · ${esc(item)} · UA: ${esc(node)}</span></div><div class="li-badge" title="${attr(statusSummary)}"><span class="li-badge-clip">${typeBadge}${deadbandBadge}${rateBadge}${mqttBadge}${influxBadge}</span><span class="li-badge-status">${accessBadge}</span></div></div>`;
+    return `<div class="li clickable" data-action="open-faceplate" data-source-id="${attr(sourceId)}" data-item-id="${attr(item)}">${descIcon}<div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="n">${esc(name)}</span> <span class="p">${esc(sourceId)} · ${esc(item)} · UA: ${esc(node)}</span></div><div class="li-badge" title="${attr(statusSummary)}"><span class="li-badge-clip">${typeBadge}${deadbandBadge}${rateBadge}${mqttBadge}${influxBadge}</span><span class="li-badge-status">${discBadge ? `<span title="${attr(discTitle)}">${discBadge}</span>` : ''}${accessBadge}</span></div></div>`;
 }
 
 const MAPPING_ROWS_CAP = 1000;
