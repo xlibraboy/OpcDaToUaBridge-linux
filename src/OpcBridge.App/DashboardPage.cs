@@ -2459,7 +2459,7 @@ function renderLiveValue(value, fallbackType) {
     const isGood = !!get(value, 'isGood');
     const timestamp = locTime(get(value, 'timestampUtc'));
     const type = get(value, 'dataType') || fallbackType || '—';
-    return `<div class="fp-k">Real value</div><div class="fp-v mono" title="${attr(text)}">${esc(text)}</div><div class="fp-meta"><span class="pill" style="padding:1px 6px;font-size:10px" title="Data type">${esc(type)}</span><span>${badge(isGood ? 'Good' : 'Bad', isGood ? 'good' : 'bad')} <span class="${isGood ? 'good' : 'bad'}">(${esc(String(quality ?? '—'))})</span></span><span class="timestamp">${esc(timestamp)}</span></div>`;
+    return `<div class="fp-v mono" title="${attr(text)}">${esc(text)}</div><div class="fp-meta"><span class="pill" style="padding:1px 6px;font-size:10px" title="Data type">${esc(type)}</span><span>${badge(isGood ? 'Good' : 'Bad', isGood ? 'good' : 'bad')} <span class="${isGood ? 'good' : 'bad'}">(${esc(String(quality ?? '—'))})</span></span><span class="timestamp">${esc(timestamp)}</span></div>`;
 }
 
 function linkTagLabel(sourceId, itemId, nameOverride = null) {

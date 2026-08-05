@@ -233,5 +233,7 @@ public sealed class DashboardPageTests
         Assert.Contains("function renderLiveValue(value, fallbackType)", DashboardPage.Script);
         Assert.Contains("const type = get(value, 'dataType') || fallbackType || '—';", DashboardPage.Script);
         Assert.Contains("renderLiveValue(currentValue(sourceId, itemId), mapping.dataType || mapping.DataType || null)", DashboardPage.Script);
+        // The panel header label is redundant — the big value + meta row carry the context.
+        Assert.DoesNotContain("Real value", DashboardPage.Script);
     }
 }
