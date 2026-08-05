@@ -176,7 +176,7 @@ public sealed class ConnectedTagsTests
         InvokePrivateVoid(worker, "OnSubscriptionValues", new List<BridgeValue> { value });
 
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(2));
-        await using IAsyncEnumerator<WriteRequest> reader = queue.ReaderAsync(timeout.Token).GetAsyncEnumerator();
+        await using IAsyncEnumerator<WriteRequest> reader = queue.ReaderAsync("consumerA", timeout.Token).GetAsyncEnumerator();
         Assert.True(await reader.MoveNextAsync());
 
         WriteRequest request = reader.Current;

@@ -115,7 +115,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                 }
 
                 // Non-blocking enqueue; the per-source consumer resolves the TCS.
-                _ = write_queue_.EnqueueAsync(new WriteRequest(value.SourceId, value.ItemId, value.Value, tcs), stoppingToken);
+                write_queue_.Enqueue(value.SourceId, new WriteRequest(value.SourceId, value.ItemId, value.Value, tcs));
             });
 
             long uaMappingVersion = mappingVersion;
@@ -532,15 +532,10 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
         WriteQueue writeQueue,
         CancellationToken cancellationToken)
     {
-        await foreach (WriteRequest req in writeQueue.ReaderAsync(cancellationToken).ConfigureAwait(false))
+        // Each source's consumer reads only that source's channel (WriteQueue routes by
+        // source at enqueue time), so no cross-source re-enqueue is ever needed.
+        await foreach (WriteRequest req in writeQueue.ReaderAsync(sourceId, cancellationToken).ConfigureAwait(false))
         {
-            if (!string.Equals(req.SourceId, sourceId, StringComparison.OrdinalIgnoreCase))
-            {
-                // Not for this source; re-enqueue so the correct consumer can pick it up.
-                await writeQueue.EnqueueAsync(req, cancellationToken).ConfigureAwait(false);
-                continue;
-            }
-
             try
             {
                 bool success = await session.Client.WriteAsync(req.ItemId, req.Value, cancellationToken).ConfigureAwait(false);
@@ -804,9 +799,9 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
             }
 
             TaskCompletionSource<bool> tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            _ = write_queue_.EnqueueAsync(
-                new WriteRequest(consumer.SourceId, consumer.ItemId, providerValue.Value, tcs),
-                cancellationToken);
+            write_queue_.Enqueue(
+                consumer.SourceId,
+                new WriteRequest(consumer.SourceId, consumer.ItemId, providerValue.Value, tcs));
         }
     }
 
@@ -1270,7 +1265,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
         if (write_queue_ is null) return false;
 
         TaskCompletionSource<bool> tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        await write_queue_.EnqueueAsync(new WriteRequest(sourceId, itemId, value, tcs), ct).ConfigureAwait(false);
+        write_queue_.Enqueue(sourceId, new WriteRequest(sourceId, itemId, value, tcs));
 
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
         linked.CancelAfter(TimeSpan.FromSeconds(5));
