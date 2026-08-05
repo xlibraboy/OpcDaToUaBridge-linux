@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Logging;
 using OpcBridge.Core;
 using OpcBridge.Da;
 using OpcBridge.Drivers.Melsec;
@@ -8,11 +9,20 @@ namespace OpcBridge.App;
 
 public class SourceClientFactory
 {
+    private readonly ILoggerFactory? logger_factory_;
+
+    public SourceClientFactory(ILoggerFactory? loggerFactory = null)
+    {
+        logger_factory_ = loggerFactory;
+    }
+
     public virtual ISourceClient Create(DaRuntimeSettingsSnapshot settings, DaSourceRuntimeSettings source)
     {
         if (string.Equals(source.SourceType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
         {
-            return new OpcUaSourceClient(source.ToUaOptions(settings));
+            return new OpcUaSourceClient(
+                source.ToUaOptions(settings),
+                logger_factory_ is null ? null : logger_factory_.CreateLogger<OpcUaSourceClient>());
         }
 
         if (string.Equals(source.SourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase))
