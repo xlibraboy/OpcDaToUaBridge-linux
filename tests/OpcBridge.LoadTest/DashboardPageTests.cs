@@ -214,4 +214,24 @@ public sealed class DashboardPageTests
         Assert.Contains("tags/maps/drivers", DashboardPage.Script);
         Assert.Contains("mapType: 'opc-da'", DashboardPage.Script);
     }
+
+    [Fact]
+    public void Script_MappingRowsShowDataTypePill()
+    {
+        // Maps tab rows carry a type pill: runtime type from the live value when
+        // available (same source as Live Values), configured type otherwise.
+        Assert.Contains("const live = currentValue(sourceId, item);", DashboardPage.Script);
+        Assert.Contains("const mappedType = (live && get(live, 'dataType')) || mapping.dataType || mapping.DataType || '—';", DashboardPage.Script);
+        Assert.Contains("typeBadge", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Script_FaceplateLivePanelShowDataType()
+    {
+        // Faceplate real-value panel shows the tag's data type, with the mapping's
+        // configured type as fallback when no live value exists yet.
+        Assert.Contains("function renderLiveValue(value, fallbackType)", DashboardPage.Script);
+        Assert.Contains("const type = get(value, 'dataType') || fallbackType || '—';", DashboardPage.Script);
+        Assert.Contains("renderLiveValue(currentValue(sourceId, itemId), mapping.dataType || mapping.DataType || null)", DashboardPage.Script);
+    }
 }
