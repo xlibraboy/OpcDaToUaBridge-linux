@@ -361,6 +361,9 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                         await StopPollersAsync(pollers, sessions).ConfigureAwait(false);
                         await DisposeSessionsAsync(sessions).ConfigureAwait(false);
                         sessions.Clear();
+                        // Never leave the version stale-valid: re-evaluate every source
+                        // (including reconnects) on the next tick.
+                        connectedVersion = -1;
                         await Task.Delay(backoffMs_, stoppingToken).ConfigureAwait(false);
                         backoffMs_ = Math.Min(backoffMs_ * 2, 5000);
                     }

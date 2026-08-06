@@ -129,8 +129,21 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
                 throw new InvalidOperationException($"OPC DA server ProgID '{progId}' is not registered on this machine.");
             }
 
-            object serverObject = Activator.CreateInstance(serverType)
-                ?? throw new InvalidOperationException($"Failed to create OPC DA server '{progId}'.");
+            object serverObject;
+            try
+            {
+                serverObject = Activator.CreateInstance(serverType)
+                    ?? throw new InvalidOperationException($"Failed to create OPC DA server '{progId}'.");
+            }
+            catch (Exception ex) when (DaConnectErrorClassifier.IsActivationRetryable(ex))
+            {
+                // Registered but not launchable (server process killed, crashed, RPC dead):
+                // transient — the coordinator retries with backoff.
+                throw new SourceConnectionLostException(
+                    $"Failed to create OPC DA server '{progId}': {ex.Message}",
+                    ex);
+            }
+
             IOPCServer server = serverObject as IOPCServer
                 ?? throw new InvalidOperationException($"COM server '{progId}' does not expose IOPCServer.");
 
@@ -176,15 +189,37 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
     [SupportedOSPlatform("windows")]
     private void ConnectRemote(string progId, string host)
     {
-        Type? serverType = Type.GetTypeFromProgID(progId, host, throwOnError: false);
-        if (serverType is null)
+        Type? serverType;
+        try
         {
-            throw new InvalidOperationException(
-                $"OPC DA server '{progId}' is not available on host '{host}'.");
+            serverType = Type.GetTypeFromProgID(progId, host, throwOnError: false);
+            if (serverType is null)
+            {
+                throw new InvalidOperationException(
+                    $"OPC DA server '{progId}' is not available on host '{host}'.");
+            }
+        }
+        catch (Exception ex) when (DaConnectErrorClassifier.IsRetryable(ex, isRemote: true))
+        {
+            // Server down / unreachable — transient. The coordinator retries with backoff
+            // instead of marking the source Faulted forever.
+            throw new SourceConnectionLostException(
+                $"OPC DA server '{progId}' is not reachable on host '{host}': {ex.Message}",
+                ex);
         }
 
-        object serverObject = Activator.CreateInstance(serverType)
-            ?? throw new InvalidOperationException($"Failed to create OPC DA server '{progId}' on host '{host}'.");
+        object serverObject;
+        try
+        {
+            serverObject = Activator.CreateInstance(serverType)
+                ?? throw new InvalidOperationException($"Failed to create OPC DA server '{progId}' on host '{host}'.");
+        }
+        catch (Exception ex) when (DaConnectErrorClassifier.IsActivationRetryable(ex))
+        {
+            throw new SourceConnectionLostException(
+                $"Failed to create OPC DA server '{progId}' on host '{host}': {ex.Message}",
+                ex);
+        }
 
         IOPCServer server = serverObject as IOPCServer
             ?? throw new InvalidOperationException($"Remote COM server '{progId}' does not expose IOPCServer.");
@@ -345,6 +380,12 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
                 IReadOnlyList<BridgeValue> groupValues = ReadGroup(group);
                 values.AddRange(groupValues);
             }
+            else
+            {
+                // Items that failed AddItems never arrive via callbacks — surface them
+                // as BAD until the server accepts them again (retried each poll cycle).
+                values.AddRange(ReadUnboundValues(group));
+            }
         }
 
         return values;
@@ -491,7 +532,7 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
     }
 
 
-    private static void EnsureGroupItemsConfigured(RateGroup group, IReadOnlyList<TagMapping> mappings)
+    private void EnsureGroupItemsConfigured(RateGroup group, IReadOnlyList<TagMapping> mappings)
     {
         if (group.Bindings.Length != 0)
         {
@@ -507,27 +548,60 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
                     throw new InvalidOperationException("OPC DA mappings changed after the client was connected.");
                 }
             }
+        }
 
+        // (Re)add items whose AddItems failed on an earlier cycle — the server may now
+        // know them again (e.g. it was restarted and the tag is back). Individual
+        // failures are isolated: the item is reported BAD and retried, the source stays up.
+        AddMissingItems(group, mappings);
+    }
+
+    private void AddMissingItems(RateGroup group, IReadOnlyList<TagMapping> mappings)
+    {
+        IOPCItemMgt itemManagement = group.ItemManagement!;
+
+        List<int> missing = new();
+        if (group.Bindings.Length == 0)
+        {
+            for (int i = 0; i < mappings.Count; i++)
+            {
+                missing.Add(i);
+            }
+        }
+        else
+        {
+            for (int i = 0; i < group.Bindings.Length; i++)
+            {
+                if (!group.Bindings[i].IsBound)
+                {
+                    missing.Add(i);
+                }
+            }
+        }
+
+        if (missing.Count == 0)
+        {
             return;
         }
 
-        IOPCItemMgt itemManagement = group.ItemManagement!;
-        OpcItemDefinition[] definitions = new OpcItemDefinition[mappings.Count];
-        for (int i = 0; i < mappings.Count; i++)
+        OpcItemDefinition[] definitions = new OpcItemDefinition[missing.Count];
+        for (int k = 0; k < missing.Count; k++)
         {
-            definitions[i] = new OpcItemDefinition
+            int mappingIndex = missing[k];
+            TagMapping mapping = mappings[mappingIndex];
+            definitions[k] = new OpcItemDefinition
             {
                 AccessPath = string.Empty,
-                ItemId = mappings[i].ItemId,
+                ItemId = mapping.ItemId,
                 IsActive = 1,
-                ClientHandle = i + 1,
-                RequestedDataType = (short)MapVarType(mappings[i].DataType)
+                ClientHandle = mappingIndex + 1,
+                RequestedDataType = (short)MapVarType(mapping.DataType)
             };
         }
 
         IntPtr resultsPointer = IntPtr.Zero;
         IntPtr errorsPointer = IntPtr.Zero;
-        List<int>? cleanupHandles = null;
+        List<int> cleanupHandles = new(definitions.Length);
 
         try
         {
@@ -541,13 +615,18 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
             int[] itemErrors = new int[definitions.Length];
             Marshal.Copy(errorsPointer, itemErrors, 0, definitions.Length);
 
-            ItemBinding[] bindings = new ItemBinding[definitions.Length];
-            cleanupHandles = new List<int>(definitions.Length);
+            if (group.Bindings.Length == 0)
+            {
+                group.Bindings = new ItemBinding[mappings.Count];
+            }
+
+            ItemBinding[] bindings = group.Bindings;
             int resultSize = Marshal.SizeOf<OpcItemResult>();
 
-            for (int i = 0; i < definitions.Length; i++)
+            for (int k = 0; k < definitions.Length; k++)
             {
-                IntPtr resultPointer = IntPtr.Add(resultsPointer, i * resultSize);
+                int mappingIndex = missing[k];
+                IntPtr resultPointer = IntPtr.Add(resultsPointer, k * resultSize);
                 OpcItemResult result = Marshal.PtrToStructure<OpcItemResult>(resultPointer);
 
                 if (result.BlobPointer != IntPtr.Zero)
@@ -555,17 +634,34 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
                     Marshal.FreeCoTaskMem(result.BlobPointer);
                 }
 
-                ThrowOnFailed(itemErrors[i], $"Failed to add OPC DA item '{mappings[i].ItemId}'.");
+                string itemId = mappings[mappingIndex].ItemId;
+                if (itemErrors[k] < 0)
+                {
+                    // Per-item AddItems failure (item unknown to the server, access denied, …):
+                    // keep the source alive, report the item as BAD, retry on the next cycle.
+                    bindings[mappingIndex] = new ItemBinding(itemId, 0, IsBound: false);
+                    if (group.MissingItemWarnings.Add(itemId))
+                    {
+                        Warning?.Invoke(
+                            $"OPC DA item '{itemId}' could not be added (0x{itemErrors[k]:X8}); " +
+                            "reporting BAD and retrying.");
+                    }
 
-                bindings[i] = new ItemBinding(mappings[i].ItemId, result.ServerHandle);
+                    continue;
+                }
+
+                bindings[mappingIndex] = new ItemBinding(itemId, result.ServerHandle, IsBound: true);
+                if (group.MissingItemWarnings.Remove(itemId))
+                {
+                    Warning?.Invoke($"OPC DA item '{itemId}' recovered.");
+                }
+
                 cleanupHandles.Add(result.ServerHandle);
             }
-
-            group.Bindings = bindings;
         }
         catch
         {
-            if (cleanupHandles is { Count: > 0 })
+            if (cleanupHandles.Count > 0)
             {
                 RemoveItems(group.ItemManagement, cleanupHandles.ToArray());
             }
@@ -596,10 +692,55 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
             return Array.Empty<BridgeValue>();
         }
 
-        int[] serverHandles = new int[bindings.Length];
+        // Items that failed AddItems (e.g. deleted on the server) are reported as BAD
+        // without a server round-trip; AddMissingItems retries them on every poll cycle.
+        int boundCount = 0;
         for (int i = 0; i < bindings.Length; i++)
         {
-            serverHandles[i] = bindings[i].ServerHandle;
+            if (bindings[i].IsBound)
+            {
+                boundCount++;
+            }
+        }
+
+        BridgeValue[] values = new BridgeValue[bindings.Length];
+        if (boundCount == 0)
+        {
+            for (int i = 0; i < bindings.Length; i++)
+            {
+                values[i] = new BridgeValue(
+                    options_.SourceId,
+                    bindings[i].ItemId,
+                    null,
+                    DateTime.UtcNow,
+                    0,
+                    false);
+            }
+
+            return values;
+        }
+
+        int[] serverHandles = new int[boundCount];
+        int[] boundToIndex = new int[boundCount];
+        int boundIndex = 0;
+        for (int i = 0; i < bindings.Length; i++)
+        {
+            if (bindings[i].IsBound)
+            {
+                serverHandles[boundIndex] = bindings[i].ServerHandle;
+                boundToIndex[boundIndex] = i;
+                boundIndex++;
+            }
+            else
+            {
+                values[i] = new BridgeValue(
+                    options_.SourceId,
+                    bindings[i].ItemId,
+                    null,
+                    DateTime.UtcNow,
+                    0,
+                    false);
+            }
         }
 
         IntPtr itemStatesPointer = IntPtr.Zero;
@@ -615,18 +756,18 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
                 out errorsPointer);
             ThrowOnFailed(readHresult, "OPC DA read failed.");
 
-            int[] itemErrors = new int[bindings.Length];
-            Marshal.Copy(errorsPointer, itemErrors, 0, bindings.Length);
+            int[] itemErrors = new int[serverHandles.Length];
+            Marshal.Copy(errorsPointer, itemErrors, 0, serverHandles.Length);
 
-            BridgeValue[] values = new BridgeValue[bindings.Length];
-            for (int i = 0; i < bindings.Length; i++)
+            for (int j = 0; j < serverHandles.Length; j++)
             {
-                IntPtr itemStatePointer = IntPtr.Add(itemStatesPointer, i * ItemStateSize);
+                int i = boundToIndex[j];
+                IntPtr itemStatePointer = IntPtr.Add(itemStatesPointer, j * ItemStateSize);
                 OpcItemState itemState = Marshal.PtrToStructure<OpcItemState>(itemStatePointer);
 
                 try
                 {
-                    if (itemErrors[i] < 0)
+                    if (itemErrors[j] < 0)
                     {
                         // Per-item read failure (e.g. a write-only or fault-injected item):
                         // mirror it as a BAD value instead of failing the whole group,
@@ -670,6 +811,26 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
                 Marshal.FreeCoTaskMem(itemStatesPointer);
             }
         }
+    }
+
+    private IReadOnlyList<BridgeValue> ReadUnboundValues(RateGroup group)
+    {
+        List<BridgeValue>? unbound = null;
+        for (int i = 0; i < group.Bindings.Length; i++)
+        {
+            if (!group.Bindings[i].IsBound)
+            {
+                (unbound ??= new List<BridgeValue>()).Add(new BridgeValue(
+                    options_.SourceId,
+                    group.Bindings[i].ItemId,
+                    null,
+                    DateTime.UtcNow,
+                    0,
+                    false));
+            }
+        }
+
+        return unbound ?? (IReadOnlyList<BridgeValue>)Array.Empty<BridgeValue>();
     }
 
     public ValueTask DisposeAsync()
@@ -723,7 +884,14 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
 
             if (server_ is not null && group.ServerGroupHandle != 0)
             {
-                server_.RemoveGroup(group.ServerGroupHandle, 0);
+                try
+                {
+                    server_.RemoveGroup(group.ServerGroupHandle, 0);
+                }
+                catch (Exception)
+                {
+                    // Server may be gone — group removal is best-effort teardown.
+                }
             }
 
             if (group.DeadbandPtr != IntPtr.Zero)
@@ -866,14 +1034,18 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
             return;
         }
 
-        int[] serverHandles = new int[group.Bindings.Length];
+        List<int> boundHandles = new(group.Bindings.Length);
         for (int i = 0; i < group.Bindings.Length; i++)
         {
-            serverHandles[i] = group.Bindings[i].ServerHandle;
+            if (group.Bindings[i].IsBound)
+            {
+                boundHandles.Add(group.Bindings[i].ServerHandle);
+            }
         }
 
-        RemoveItems(group.ItemManagement, serverHandles);
+        RemoveItems(group.ItemManagement, boundHandles.ToArray());
         group.Bindings = [];
+        group.MissingItemWarnings.Clear();
     }
 
     private static void RemoveItems(IOPCItemMgt? itemManagement, int[] serverHandles)
@@ -887,6 +1059,11 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
         try
         {
             itemManagement.RemoveItems(serverHandles.Length, serverHandles, out errorsPointer);
+        }
+        catch (Exception)
+        {
+            // The server may be gone (RPC dead) — item removal is best-effort cleanup
+            // and must never take down the coordinator's teardown path.
         }
         finally
         {
@@ -1029,7 +1206,7 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
     }
 
 
-    private sealed record ItemBinding(string ItemId, int ServerHandle);
+    private sealed record ItemBinding(string ItemId, int ServerHandle, bool IsBound = true);
 
     private sealed class RateGroup
     {
@@ -1043,6 +1220,9 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
         public IConnectionPoint? ConnectionPoint;
         public int CallbackCookie;
         public OpcDaCallbackSink? Sink;
+
+        /// <summary>Item ids whose AddItems failed; used to warn once per failure/recovery transition.</summary>
+        public HashSet<string> MissingItemWarnings = new(StringComparer.OrdinalIgnoreCase);
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
