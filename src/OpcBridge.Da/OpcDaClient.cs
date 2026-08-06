@@ -630,7 +630,20 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
 
                 try
                 {
-                    ThrowOnFailed(itemErrors[i], $"OPC DA item read failed for '{bindings[i].ItemId}'.");
+                    if (itemErrors[i] < 0)
+                    {
+                        // Per-item read failure (e.g. a write-only or fault-injected item):
+                        // mirror it as a BAD value instead of failing the whole group,
+                        // so one bad tag cannot take down the source.
+                        values[i] = new BridgeValue(
+                            options_.SourceId,
+                            bindings[i].ItemId,
+                            null,
+                            DateTime.UtcNow,
+                            0,
+                            false);
+                        continue;
+                    }
 
                     int quality = (ushort)itemState.Quality;
                     values[i] = new BridgeValue(
