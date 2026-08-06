@@ -33,7 +33,7 @@ public sealed class DaRecoveryCoordinatorTests
         MappingStore mappingStore = new(Options.Create(new BridgeOptions()));
         DaLinkStore linkStore = new(Options.Create(new BridgeOptions()));
         UaServerHost uaServer = new(
-            Options.Create(new UaServerOptions { EndpointUrl = "opc.tcp://127.0.0.1:4859/OpcBridge" }),
+            Options.Create(new UaServerOptions { EndpointUrl = "opc.tcp://127.0.0.1:4100/OpcBridge" }),
             loggerFactory.CreateLogger<UaServerHost>(),
             loggerFactory);
 
@@ -195,7 +195,7 @@ public sealed class DaRecoveryCoordinatorTests
         MappingStore mappingStore = new(Options.Create(new BridgeOptions()));
         DaLinkStore linkStore = new(Options.Create(new BridgeOptions()));
         UaServerHost uaServer = new(
-            Options.Create(new UaServerOptions { EndpointUrl = "opc.tcp://127.0.0.1:4859/OpcBridge" }),
+            Options.Create(new UaServerOptions { EndpointUrl = "opc.tcp://127.0.0.1:4100/OpcBridge" }),
             loggerFactory.CreateLogger<UaServerHost>(),
             loggerFactory);
         SourceClientFactory factory = new SubscriptionSourceClientFactory(new SubscriptionSourceClient(subscriptionActive));

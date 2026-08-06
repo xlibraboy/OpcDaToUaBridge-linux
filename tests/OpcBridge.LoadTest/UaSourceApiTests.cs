@@ -129,7 +129,7 @@ public sealed class UaSourceApiTests
                 sourceId = "self",
                 displayName = "Self",
                 sourceType = "OpcUa",
-                endpointUrl = "opc.tcp://127.0.0.1:4840/OpcBridge",
+                endpointUrl = $"opc.tcp://127.0.0.1:{handle.UaPort}/OpcBridge",
                 securityMode = "None",
                 securityPolicy = "None"
             }));

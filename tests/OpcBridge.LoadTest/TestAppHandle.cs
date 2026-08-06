@@ -17,13 +17,13 @@ public sealed class TestAppHandle : IAsyncDisposable
     {
         process_ = process;
         app_directory_ = appDirectory;
-        Client = new HttpClient
-        {
-            BaseAddress = new Uri("http://127.0.0.1:8080")
-        };
+        Client = new HttpClient();
     }
 
     public HttpClient Client { get; }
+
+    /// <summary>OPC UA port the app under test actually listens on (PortSetup auto-assigns when 4840 is taken).</summary>
+    public int UaPort { get; private set; } = 4840;
 
     public static async Task<TestAppHandle> StartAsync(Action<string> configureAppDirectory)
     {
@@ -70,6 +70,8 @@ public sealed class TestAppHandle : IAsyncDisposable
         process.BeginErrorReadLine();
 
         await handle.WaitForHealthyAsync();
+        handle.UaPort = ReadBridgeIntSetting(
+            Path.Combine(appDirectory, "appsettings.json"), "OpcUaPort") ?? 4840;
         return handle;
     }
 
@@ -129,8 +131,17 @@ public sealed class TestAppHandle : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// PortSetup auto-assigns a free HTTP port when 8080 is taken and persists the choice to
+    /// appsettings.json (Bridge:HttpPort) before the app starts listening. Re-read the port on
+    /// every attempt so the health probe follows the app's actual port instead of whatever else
+    /// occupies 8080.
+    /// </summary>
     private async Task WaitForHealthyAsync()
     {
+        string settingsPath = Path.Combine(app_directory_, "appsettings.json");
+        using HttpClient probe = new();
+
         for (int attempt = 0; attempt < 80; attempt++)
         {
             if (process_.HasExited)
@@ -138,12 +149,14 @@ public sealed class TestAppHandle : IAsyncDisposable
                 throw new Xunit.Sdk.XunitException($"OpcBridge.App exited during startup with code {process_.ExitCode}.{Environment.NewLine}{output_}");
             }
 
+            int port = ReadBridgeIntSetting(settingsPath, "HttpPort") ?? 8080;
             try
             {
                 using CancellationTokenSource timeout = new(TimeSpan.FromMilliseconds(250));
-                using HttpResponseMessage response = await Client.GetAsync("/health", timeout.Token);
+                using HttpResponseMessage response = await probe.GetAsync($"http://127.0.0.1:{port}/health", timeout.Token);
                 if (response.StatusCode == HttpStatusCode.OK)
                 {
+                    Client.BaseAddress = new Uri($"http://127.0.0.1:{port}");
                     return;
                 }
             }
@@ -155,5 +168,25 @@ public sealed class TestAppHandle : IAsyncDisposable
         }
 
         throw new Xunit.Sdk.XunitException($"Timed out waiting for OpcBridge.App to become healthy.{Environment.NewLine}{output_}");
+    }
+
+    private static int? ReadBridgeIntSetting(string settingsPath, string key)
+    {
+        try
+        {
+            using JsonDocument settings = JsonDocument.Parse(File.ReadAllText(settingsPath));
+            if (settings.RootElement.TryGetProperty("Bridge", out JsonElement bridge) &&
+                bridge.TryGetProperty(key, out JsonElement valueElement) &&
+                valueElement.TryGetInt32(out int value) &&
+                value is > 0 and < 65536)
+            {
+                return value;
+            }
+        }
+        catch
+        {
+        }
+
+        return null;
     }
 }
