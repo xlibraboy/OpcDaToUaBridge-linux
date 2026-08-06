@@ -25,6 +25,12 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
     /// </summary>
     public event Action<IReadOnlyList<BridgeValue>>? ValuesReceived;
 
+    /// <summary>
+    /// Raised on non-fatal operational warnings (e.g. subscription setup failing so a
+    /// group silently falls back to polling). Subscribed by BridgeWorker for logging.
+    /// </summary>
+    public event Action<string>? Warning;
+
     public OpcDaClient(DaClientOptions options)
     {
         options_ = options;
@@ -429,6 +435,9 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
             if (group.ComObject is not IConnectionPointContainer cpc)
             {
                 subscriptions_active_ = false;
+                Warning?.Invoke(
+                    $"OPC DA group for rate {group.Rate}ms does not expose IConnectionPointContainer; " +
+                    "subscription unavailable, falling back to polling.");
                 return;
             }
 
@@ -437,6 +446,9 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
             if (hr < 0)
             {
                 subscriptions_active_ = false;
+                Warning?.Invoke(
+                    $"OPC DA callback connection point unavailable for rate {group.Rate}ms " +
+                    $"(0x{hr:X8}); falling back to polling.");
                 return;
             }
 
@@ -453,6 +465,9 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
             if (hr < 0)
             {
                 subscriptions_active_ = false;
+                Warning?.Invoke(
+                    $"OPC DA callback Advise failed for rate {group.Rate}ms (0x{hr:X8}); " +
+                    "falling back to polling.");
                 return;
             }
 

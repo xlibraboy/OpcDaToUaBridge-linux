@@ -935,6 +935,12 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                     subscribable.ValuesReceived += values => OnSubscriptionValues(values);
                 }
 
+                if (client is OpcDaClient daClient)
+                {
+                    daClient.Warning += message =>
+                        logger_.LogWarning("OPC DA source {SourceId}: {Message}", source.SourceId, message);
+                }
+
                 sessions[source.SourceId] = new SourceSession(source, client);
                 bridge_state_.SetSourceConnectionState(source.SourceId, "Connected");
                 changed.Add(source.SourceId);
