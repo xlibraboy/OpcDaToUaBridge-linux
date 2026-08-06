@@ -69,10 +69,25 @@ public sealed class TestAppHandle : IAsyncDisposable
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 
-        await handle.WaitForHealthyAsync();
-        handle.UaPort = ReadBridgeIntSetting(
-            Path.Combine(appDirectory, "appsettings.json"), "OpcUaPort") ?? 4840;
-        return handle;
+        try
+        {
+            await handle.WaitForHealthyAsync();
+            handle.UaPort = ReadBridgeIntSetting(
+                Path.Combine(appDirectory, "appsettings.json"), "OpcUaPort") ?? 4840;
+            return handle;
+        }
+        catch
+        {
+            // Startup failed (e.g. health timeout): never leak the app process.
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+                await process.WaitForExitAsync();
+            }
+
+            process.Dispose();
+            throw;
+        }
     }
 
     public async Task<JsonDocument> GetJsonAsync(string path)
