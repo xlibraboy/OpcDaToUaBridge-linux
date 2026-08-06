@@ -118,36 +118,6 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
     }
 
     [SupportedOSPlatform("windows")]
-    private void ConnectWithImpersonation(string progId, string host)
-    {
-        string username = options_.RemoteUsername!.Trim();
-        string password = options_.RemotePassword ?? string.Empty;
-        string domain   = string.IsNullOrWhiteSpace(options_.RemoteDomain)
-            ? host  // use host as domain for local accounts on remote machine
-            : options_.RemoteDomain.Trim();
-
-        // LOGON32_LOGON_NEW_CREDENTIALS (9) — best for network/DCOM impersonation
-        // LOGON32_PROVIDER_WINNT50 (3)
-        if (!LogonUser(username, domain, password, 9, 3, out nint token))
-        {
-            int error = Marshal.GetLastWin32Error();
-            throw new InvalidOperationException(
-                $"Logon failed for '{domain}\\{username}' (Win32 error {error}). " +
-                "Check RemoteUsername, RemotePassword, RemoteDomain.");
-        }
-
-        try
-        {
-            using var identity = new WindowsIdentity(token);
-            WindowsIdentity.RunImpersonated(identity.AccessToken, () => ConnectDirect(progId, host));
-        }
-        finally
-        {
-            CloseHandle(token);
-        }
-    }
-
-    [SupportedOSPlatform("windows")]
     private void ConnectDirect(string progId, string? host)
     {
         if (host is null)
@@ -169,47 +139,58 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
             return;
         }
 
-        // Remote DCOM activation: use LogonUser + impersonation + Type.GetTypeFromProgID.
-        // This avoids the fragile CoCreateInstanceEx P/Invoke with COAUTHINFO marshalling
-        // that caused 0xC0000005 (access violation) and 0x80070057 (invalid arg) crashes.
+        // Remote DCOM activation. With explicit credentials: LogonUser + impersonation
+        // so the COM machinery activates with that identity (also makes per-user HKCU
+        // registrations on the remote host visible). Without credentials: activate
+        // directly with the process identity (null COAUTHINFO -> default credentials).
         string username = options_.RemoteUsername ?? string.Empty;
         string password = options_.RemotePassword ?? string.Empty;
         string domain = string.IsNullOrWhiteSpace(options_.RemoteDomain) ? host! : options_.RemoteDomain!;
 
-        if (!LogonUser(username, domain, password, 9, 3, out nint token))
+        if (!string.IsNullOrWhiteSpace(username))
         {
-            int error = Marshal.GetLastWin32Error();
-            throw new InvalidOperationException(
-                $"Logon failed for '{domain}\\{username}' (Win32 error {error}). " +
-                "Check RemoteUsername, RemotePassword, RemoteDomain.");
-        }
-
-        try
-        {
-            using var identity = new WindowsIdentity(token);
-            WindowsIdentity.RunImpersonated(identity.AccessToken, () =>
+            if (!LogonUser(username, domain, password, 9, 3, out nint token))
             {
-                Type? serverType = Type.GetTypeFromProgID(progId, host, throwOnError: false);
-                if (serverType is null)
-                {
-                    throw new InvalidOperationException(
-                        $"OPC DA server '{progId}' is not available on host '{host}'.");
-                }
+                int error = Marshal.GetLastWin32Error();
+                throw new InvalidOperationException(
+                    $"Logon failed for '{domain}\\{username}' (Win32 error {error}). " +
+                    "Check RemoteUsername, RemotePassword, RemoteDomain.");
+            }
 
-                object serverObject = Activator.CreateInstance(serverType)
-                    ?? throw new InvalidOperationException($"Failed to create OPC DA server '{progId}' on host '{host}'.");
+            try
+            {
+                using var identity = new WindowsIdentity(token);
+                WindowsIdentity.RunImpersonated(identity.AccessToken, () => ConnectRemote(progId, host));
+            }
+            finally
+            {
+                CloseHandle(token);
+            }
 
-                IOPCServer server = serverObject as IOPCServer
-                    ?? throw new InvalidOperationException($"Remote COM server '{progId}' does not expose IOPCServer.");
-
-                server_com_object_ = serverObject;
-                server_ = server;
-            });
+            return;
         }
-        finally
+
+        ConnectRemote(progId, host);
+    }
+
+    [SupportedOSPlatform("windows")]
+    private void ConnectRemote(string progId, string host)
+    {
+        Type? serverType = Type.GetTypeFromProgID(progId, host, throwOnError: false);
+        if (serverType is null)
         {
-            CloseHandle(token);
+            throw new InvalidOperationException(
+                $"OPC DA server '{progId}' is not available on host '{host}'.");
         }
+
+        object serverObject = Activator.CreateInstance(serverType)
+            ?? throw new InvalidOperationException($"Failed to create OPC DA server '{progId}' on host '{host}'.");
+
+        IOPCServer server = serverObject as IOPCServer
+            ?? throw new InvalidOperationException($"Remote COM server '{progId}' does not expose IOPCServer.");
+
+        server_com_object_ = serverObject;
+        server_ = server;
     }
 
     public Task<IReadOnlyList<BridgeValue>> ReadAsync(
