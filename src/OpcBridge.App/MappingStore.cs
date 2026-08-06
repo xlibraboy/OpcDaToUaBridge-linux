@@ -306,11 +306,15 @@ public sealed class MappingStore
     private static string NormalizeAccessRights(string? accessRights, string mode, bool writeable)
     {
         string value = accessRights?.Trim() ?? string.Empty;
-        if (string.Equals(value, TagAccessRights.ReadWrite, StringComparison.OrdinalIgnoreCase))
+        // Tolerate common spellings ("ReadWrite", "Read-Write", "readwrite") so a
+        // variant can never silently downgrade rights to Read.
+        string compact = value.Replace("-", string.Empty, StringComparison.Ordinal)
+                              .Replace(" ", string.Empty, StringComparison.Ordinal);
+        if (string.Equals(compact, "ReadWrite", StringComparison.OrdinalIgnoreCase))
             return TagAccessRights.ReadWrite;
-        if (string.Equals(value, TagAccessRights.Write, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(compact, "Write", StringComparison.OrdinalIgnoreCase))
             return TagAccessRights.Write;
-        if (string.Equals(value, TagAccessRights.Read, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(compact, "Read", StringComparison.OrdinalIgnoreCase))
             return TagAccessRights.Read;
         // Migration from legacy Mode+Writeable when AccessRights is absent
         if (string.Equals(mode, TagMode.Manual, StringComparison.OrdinalIgnoreCase) && writeable)
