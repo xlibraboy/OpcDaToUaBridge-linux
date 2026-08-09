@@ -68,7 +68,7 @@ public sealed class MxComponentApiTests
             {
                 sourceId = "mxbad",
                 sourceType = "MxComponent",
-                logicalStationNumber = 17
+                logicalStationNumber = 4096
             }));
 
         Assert.Equal(HttpStatusCode.BadRequest, post.StatusCode);

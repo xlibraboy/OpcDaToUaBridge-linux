@@ -1591,9 +1591,9 @@ static bool TryValidateSourceUpsert(DaServerConfigRequest request, string server
 
     if (string.Equals(sourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
     {
-        if (request.LogicalStationNumber is < 0 or > 16)
+        if (request.LogicalStationNumber is < 0 or > 1023)
         {
-            error = "LogicalStationNumber must be between 0 and 16 (configure the station in MX Component's Communication Settings Utility).";
+            error = "LogicalStationNumber must be between 0 and 1023 (configure the station in MX Component's Communication Settings Utility).";
             return false;
         }
 

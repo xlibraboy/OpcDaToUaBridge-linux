@@ -973,7 +973,7 @@ public static class SourceConfigMigration
                 source.RetryCount);
 
             mx = new MxComponentSourceOptions(
-                raw.LogicalStationNumber < 0 || raw.LogicalStationNumber > 16 ? 0 : raw.LogicalStationNumber,
+                raw.LogicalStationNumber < 0 || raw.LogicalStationNumber > 1023 ? 0 : raw.LogicalStationNumber,
                 raw.TimeoutMs <= 0 ? 3000 : raw.TimeoutMs,
                 raw.RetryCount <= 0 ? 2 : raw.RetryCount);
         }

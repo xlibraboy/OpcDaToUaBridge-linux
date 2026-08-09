@@ -85,10 +85,10 @@ public sealed class MxComponentSourceSettingsTests
             null,
             null,
             null,
-            new MxComponentSourceOptions(17, 0, 0)), 1000);
+            new MxComponentSourceOptions(4096, 0, 0)), 1000);
 
         Assert.NotNull(source.MxComponent);
-        // 17 is outside the 0-16 station range → 0; zero timeout/retry → defaults.
+        // 4096 is outside the 0-1023 station range → 0; zero timeout/retry → defaults.
         Assert.Equal(0, source.MxComponent.LogicalStationNumber);
         Assert.Equal(3000, source.MxComponent.TimeoutMs);
         Assert.Equal(2, source.MxComponent.RetryCount);
