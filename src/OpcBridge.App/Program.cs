@@ -14,6 +14,7 @@ using OpcBridge.Core;
 using OpcBridge.Da;
 using OpcBridge.Drivers.Melsec;
 using OpcBridge.Drivers.Melsec.Addressing;
+using OpcBridge.Drivers.MxComponent;
 using OpcBridge.Drivers.S7;
 using OpcBridge.Drivers.S7.Addressing;
 using OpcBridge.Mqtt;
@@ -367,6 +368,7 @@ app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings
     OpcUaSourceOptions? upsertUa = null;
     MelsecA3nSourceOptions? upsertMelsec = null;
     S7200PpiSourceOptions? upsertS7200 = null;
+    MxComponentSourceOptions? upsertMx = null;
     if (string.Equals(upsertType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
     {
         upsertUa = new OpcUaSourceOptions(
@@ -407,6 +409,13 @@ app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings
             request.TimeoutMs,
             request.RetryCount);
     }
+    else if (string.Equals(upsertType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
+    {
+        upsertMx = new MxComponentSourceOptions(
+            request.LogicalStationNumber,
+            request.TimeoutMs,
+            request.RetryCount);
+    }
     else
     {
         upsertDa = new OpcDaSourceOptions(
@@ -427,7 +436,8 @@ app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings
         upsertDa,
         upsertUa,
         upsertMelsec,
-        upsertS7200));
+        upsertS7200,
+        upsertMx));
 
     DaSourceRuntimeSettings source = snapshot.GetSource(request.SourceId)!;
     return Results.Json(new
@@ -475,6 +485,26 @@ app.MapPost("/api/drivers/melsec-a3n/test-connection", async (MelsecTestConnecti
         await using MelsecA3nClient client = new(options);
         // Probe already enforces TimeoutMs/RetryCount; do not wrap with a second CTS
         // that races open+probe and surfaces "The operation was cancelled."
+        await client.ConnectAsync(CancellationToken.None);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
+app.MapPost("/api/drivers/mx-component/test-connection", async (MxComponentTestConnectionRequest request, DaRuntimeSettings settings) =>
+{
+    MxComponentClientOptions? options = ResolveMxComponentTestOptions(request, settings);
+    if (options is null)
+    {
+        return Results.Json(new { ok = false, error = "LogicalStationNumber is required, or an existing MxComponent sourceId must be provided." });
+    }
+
+    try
+    {
+        await using MxComponentClient client = new(options);
         await client.ConnectAsync(CancellationToken.None);
         return Results.Json(new { ok = true });
     }
@@ -732,7 +762,8 @@ app.MapPost("/api/mappings/update", (MappingUpdateRequest request, MappingStore 
     TagMapping tag = ToTagMapping(request.Tag);
 
     DaSourceRuntimeSettings? source = daSettings.GetSnapshot().GetSource(tag.SourceId);
-    if (source is not null && string.Equals(source.SourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase))
+    if (source is not null && (string.Equals(source.SourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(source.SourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase)))
     {
         if (!MelsecAddressParser.TryParse(tag.ItemId, out MelsecAddress address, out string addrError))
         {
@@ -814,6 +845,7 @@ app.MapPost("/api/config/import", async (HttpContext context, DaRuntimeSettings 
                         PcNo = s.TryGetProperty("pcNo", out JsonElement pn) ? pn.GetString() : string.Empty,
                         TimeoutMs = s.TryGetProperty("timeoutMs", out JsonElement to) ? to.GetInt32() : 0,
                         RetryCount = s.TryGetProperty("retryCount", out JsonElement rc) ? rc.GetInt32() : -1,
+                        LogicalStationNumber = s.TryGetProperty("logicalStationNumber", out JsonElement lsn) ? lsn.GetInt32() : 0,
                         EndpointUrl = s.TryGetProperty("endpointUrl", out JsonElement eu) ? eu.GetString() : string.Empty,
                         SecurityMode = s.TryGetProperty("securityMode", out JsonElement sm) ? sm.GetString() : string.Empty,
                         SecurityPolicy = s.TryGetProperty("securityPolicy", out JsonElement sp) ? sp.GetString() : string.Empty,
@@ -860,6 +892,14 @@ app.MapPost("/api/config/import", async (HttpContext context, DaRuntimeSettings 
                                 PcNo = melEl.TryGetProperty("pcNo", out JsonElement mpc) ? mpc.GetString() : null,
                                 TimeoutMs = melEl.TryGetProperty("timeoutMs", out JsonElement mto) ? mto.GetInt32() : 0,
                                 RetryCount = melEl.TryGetProperty("retryCount", out JsonElement mrc) ? mrc.GetInt32() : -1
+                            }
+                            : null,
+                        MxComponent = s.TryGetProperty("mxComponent", out JsonElement mxEl) && mxEl.ValueKind == JsonValueKind.Object
+                            ? new MxComponentSourceOptionsDto
+                            {
+                                LogicalStationNumber = mxEl.TryGetProperty("logicalStationNumber", out JsonElement xlsn) ? xlsn.GetInt32() : 0,
+                                TimeoutMs = mxEl.TryGetProperty("timeoutMs", out JsonElement xto) ? xto.GetInt32() : 0,
+                                RetryCount = mxEl.TryGetProperty("retryCount", out JsonElement xrc) ? xrc.GetInt32() : -1
                             }
                             : null
                     }, updateRate));
@@ -1480,7 +1520,8 @@ static object ToSourceApiDto(DaSourceRuntimeSettings source)
         useSubscriptions = source.UseSubscriptions,
         remoteUsername = source.RemoteUsername,
         remoteDomain = source.RemoteDomain,
-        uaUsername = source.UaUsername
+        uaUsername = source.UaUsername,
+        logicalStationNumber = source.LogicalStationNumber
     };
 }
 
@@ -1548,6 +1589,17 @@ static bool TryValidateSourceUpsert(DaServerConfigRequest request, string server
         return true;
     }
 
+    if (string.Equals(sourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
+    {
+        if (request.LogicalStationNumber is < 0 or > 16)
+        {
+            error = "LogicalStationNumber must be between 0 and 16 (configure the station in MX Component's Communication Settings Utility).";
+            return false;
+        }
+
+        return true;
+    }
+
     if (string.IsNullOrWhiteSpace(request.ProgId))
     {
         error = "ProgId is required for OPC DA sources.";
@@ -1586,7 +1638,12 @@ static string ResolveApiSourceType(string? sourceType, out string? error)
         return SourceTypes.S7200Ppi;
     }
 
-    error = "Source type must be OpcDa, OpcUa, MelsecA3n, or S7200Ppi.";
+    if (string.Equals(trimmed, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
+    {
+        return SourceTypes.MxComponent;
+    }
+
+    error = "Source type must be OpcDa, OpcUa, MelsecA3n, S7200Ppi, or MxComponent.";
     return string.Empty;
 }
 
@@ -1976,6 +2033,40 @@ static MelsecA3nClientOptions? ResolveMelsecTestOptions(MelsecTestConnectionRequ
     return null;
 }
 
+static MxComponentClientOptions? ResolveMxComponentTestOptions(MxComponentTestConnectionRequest request, DaRuntimeSettings settings)
+{
+    // Prefer explicit body fields (Drivers form always sends them) so unsaved edits are tested.
+    if (request.LogicalStationNumber is not null)
+    {
+        return new MxComponentClientOptions
+        {
+            SourceId = string.IsNullOrWhiteSpace(request.SourceId) ? "test-connection" : request.SourceId.Trim(),
+            LogicalStationNumber = request.LogicalStationNumber.Value,
+            TimeoutMs = request.TimeoutMs is > 0 ? request.TimeoutMs.Value : 3000,
+            RetryCount = request.RetryCount is >= 0 ? request.RetryCount.Value : 0
+        };
+    }
+
+    if (!string.IsNullOrWhiteSpace(request.SourceId))
+    {
+        DaSourceRuntimeSettings? source = settings.GetSnapshot().GetSource(request.SourceId);
+        if (source is null || !string.Equals(source.SourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return new MxComponentClientOptions
+        {
+            SourceId = source.SourceId,
+            LogicalStationNumber = source.LogicalStationNumber,
+            TimeoutMs = source.MxComponentTimeoutMs,
+            RetryCount = source.MxComponentRetryCount
+        };
+    }
+
+    return null;
+}
+
 static TagMapping ToTagMapping(MappingTagDto tag) => new()
 {
     SourceId = tag.SourceId,
@@ -2001,12 +2092,12 @@ static bool ValidateMelsecMappings(List<TagMapping> tags, DaRuntimeSettings daSe
     error = string.Empty;
     DaRuntimeSettingsSnapshot snapshot = daSettings.GetSnapshot();
 
-    // Validate + canonicalize ItemId for every MelsecA3n-bound tag.
+    // Validate + canonicalize ItemId for every MelsecA3n / MxComponent-bound tag (same A3N address space).
     for (int i = 0; i < tags.Count; i++)
     {
         TagMapping tag = tags[i];
         DaSourceRuntimeSettings? source = snapshot.GetSource(tag.SourceId);
-        if (source is null || !string.Equals(source.SourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase))
+        if (source is null || !IsMelsecAddressSource(source))
         {
             continue;
         }
@@ -2021,13 +2112,13 @@ static bool ValidateMelsecMappings(List<TagMapping> tags, DaRuntimeSettings daSe
         tags[i] = tag;
     }
 
-    // Enforce MaxMappedTags per MelsecA3n source (existing + new, de-duplicated by key).
+    // Enforce MaxMappedTags per MelsecA3n / MxComponent source (existing + new, de-duplicated by key).
     Dictionary<string, int> newPerSource = new(StringComparer.OrdinalIgnoreCase);
     HashSet<(string SourceId, string ItemId)> newKeys = new(StringTupleComparerIgnoreCase.Instance);
     foreach (TagMapping tag in tags)
     {
         DaSourceRuntimeSettings? source = snapshot.GetSource(tag.SourceId);
-        if (source is null || !string.Equals(source.SourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase))
+        if (source is null || !IsMelsecAddressSource(source))
         {
             continue;
         }
@@ -2052,12 +2143,18 @@ static bool ValidateMelsecMappings(List<TagMapping> tags, DaRuntimeSettings daSe
         int limit = source.MaxMappedTags > 0 ? source.MaxMappedTags : 2000;
         if (existing + entry.Value > limit)
         {
-            error = $"Mapping add would exceed max mapped tags ({limit}) for MelsecA3n source '{entry.Key}'.";
+            error = $"Mapping add would exceed max mapped tags ({limit}) for source '{entry.Key}'.";
             return true;
         }
     }
 
     return false;
+}
+
+static bool IsMelsecAddressSource(DaSourceRuntimeSettings source)
+{
+    return string.Equals(source.SourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(source.SourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase);
 }
 
 

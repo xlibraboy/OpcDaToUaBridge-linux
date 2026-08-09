@@ -76,6 +76,7 @@ public sealed class DaRecoverySettingsTests
             null,
             new OpcUaSourceOptions("opc.tcp://host:4840/", "None", "None", null, null, 60000, 5000, -5),
             null,
+            null,
             null);
         DaSourceRuntimeSettings normalized = SourceConfigMigration.Normalize(negative, 1000);
 
@@ -95,6 +96,7 @@ public sealed class DaRecoverySettingsTests
             50000,
             null,
             new OpcUaSourceOptions("opc.tcp://host:4840/", "None", "None", null, null, 60000, 5000, 30000),
+            null,
             null,
             null);
 

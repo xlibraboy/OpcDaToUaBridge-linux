@@ -244,6 +244,7 @@ public sealed class DaRecoveryCoordinatorTests
                 5000,
                 watchdogTimeoutMs),
             null,
+            null,
             null);
         var sessions = new Dictionary<string, BridgeWorker.SourceSession>(StringComparer.OrdinalIgnoreCase)
         {

@@ -457,6 +457,11 @@ public sealed class BridgeState
             return string.IsNullOrEmpty(port) ? string.Empty : $"{port}@{source.BaudRate}";
         }
 
+        if (string.Equals(source.SourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
+        {
+            return $"MX station {source.LogicalStationNumber}";
+        }
+
         if (string.Equals(source.SourceType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
         {
             return source.EndpointUrl?.Trim() ?? string.Empty;

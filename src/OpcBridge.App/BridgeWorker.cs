@@ -918,6 +918,18 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                     continue;
                 }
             }
+            else if (string.Equals(source.SourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
+            {
+                if (source.LogicalStationNumber is < 0 or > 16)
+                {
+                    bridge_state_.SetSourceConnectionState(source.SourceId, "Disconnected");
+                    bridge_state_.SetSourceError(source.SourceId, new InvalidOperationException(
+                        "Logical station number must be between 0 and 16 — configure the station in MX Component's Communication Settings Utility."));
+                    logger_.LogWarning("Source {SourceId} has an invalid logical station, skipping connection", source.SourceId);
+                    changed.Add(source.SourceId);
+                    continue;
+                }
+            }
             else if (string.IsNullOrWhiteSpace(source.ProgId))
             {
                 bridge_state_.SetSourceConnectionState(source.SourceId, "Disconnected");
@@ -1027,6 +1039,13 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                 && a.RemotePpiAddress == b.RemotePpiAddress
                 && a.TimeoutMs == b.TimeoutMs
                 && a.RetryCount == b.RetryCount;
+        }
+
+        if (string.Equals(a.SourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
+        {
+            return a.LogicalStationNumber == b.LogicalStationNumber
+                && a.MxComponentTimeoutMs == b.MxComponentTimeoutMs
+                && a.MxComponentRetryCount == b.MxComponentRetryCount;
         }
 
         // OPC DA

@@ -130,6 +130,24 @@ The bridge can poll a Mitsubishi **A3NCPU** over **RS-232** using MELSEC **A-com
 This is separate from **OPC DA** sources and from this process’s **OPC UA server** endpoint.
 
 
+## PLC Drivers (Mitsubishi A3N — MX Component 4)
+
+The bridge can also poll a Mitsubishi **A3NCPU** through **MELSOFT MX Component 4** (Windows COM,
+`ActUtlType`). This is the option for hosts that already run MX Component.
+
+1. **On the Windows host**, install MELSOFT MX Component 4 and configure the PLC connection
+   (serial RS-422/RS-232C or Ethernet, baud, protocol) once in its **Communication Settings
+   Utility**, which assigns a **logical station number**.
+2. In the bridge, open **Connectivity → Drivers** and add a **Mitsubishi A3N (MX Component 4)** driver.
+3. Enter the **logical station number** configured in step 1 (0–16).
+4. Map tags with the same A3N device addresses as the serial driver: `D100`, `M10`, `X20`, `Y0F`, bit-in-word `D100:8`.
+5. Writes on writeable tags go back to the PLC. Bit-in-word uses read-modify-write.
+
+**Platform note:** MX Component is a Windows-only COM component — this driver connects only on
+Windows hosts. On Linux it shows a clear "requires Windows" error, matching the OPC DA sources.
+The serial A3N driver above works on any platform.
+
+
 ## PLC Drivers (Siemens S7-200 PPI)
 
 The bridge can poll a Siemens **S7-200** over a host **PPI** serial cable (pure managed client).
