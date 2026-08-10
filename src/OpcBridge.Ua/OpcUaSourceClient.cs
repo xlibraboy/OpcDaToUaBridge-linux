@@ -513,14 +513,15 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
     /// On failure keeps the session and falls back to poll (<see cref="subscriptions_active_"/> false).
     /// </summary>
     public async Task ReconcileMonitoredItemsAsync(
-        IReadOnlyList<TagMapping> desiredMappings,
+        IReadOnlyList<TagMapping>? desiredMappings,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         ObjectDisposedException.ThrowIf(disposed_, this);
 
-        // Retained for self-recovery after a session-level reconnect.
-        last_desired_mappings_ = desiredMappings ?? Array.Empty<TagMapping>();
+        // Null means "no desired items"; retained for self-recovery after a session-level reconnect.
+        IReadOnlyList<TagMapping> mappings = desiredMappings ?? Array.Empty<TagMapping>();
+        last_desired_mappings_ = mappings;
 
         // Reconciles can be fired concurrently: the BridgeWorker mapping-change loop, the
         // connect path, and the detached session-reconnect recovery (OnReconnectComplete).
@@ -529,7 +530,7 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
         await reconcile_gate_.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            await ReconcileMonitoredItemsCoreAsync(desiredMappings, cancellationToken).ConfigureAwait(false);
+            await ReconcileMonitoredItemsCoreAsync(mappings, cancellationToken).ConfigureAwait(false);
         }
         finally
         {

@@ -12,6 +12,7 @@ using Xunit;
 
 namespace OpcBridge.LoadTest;
 
+[Collection(nameof(DaLinkApiAppCollection))]
 public sealed class ConnectedTagsTests
 {
     private static DaLinkStore CreateLinkStore()

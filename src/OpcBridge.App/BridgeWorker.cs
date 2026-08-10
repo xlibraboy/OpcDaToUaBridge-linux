@@ -1314,7 +1314,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
     /// </summary>
     public IReadOnlyList<DisconnectedTag> GetDisconnectedTags()
     {
-        Dictionary<string, SourceSession> sessions = active_sessions_;
+        Dictionary<string, SourceSession>? sessions = active_sessions_;
         List<DisconnectedTag> result = new();
         if (sessions is null)
         {

@@ -5,6 +5,7 @@ using Xunit;
 
 namespace OpcBridge.LoadTest;
 
+[Collection(nameof(DaLinkApiAppCollection))]
 public sealed class DaLinkStoreTests
 {
     // DaLinkStore persists to a fixed file under AppContext.BaseDirectory. Clear it before each
