@@ -212,6 +212,27 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
+    public void Script_LinkBrowseRefusesNonDaSource()
+    {
+        // DA Links forward DA→DA only. The active source can be a UA/driver/MX source
+        // selected on another tab, so the link browser must refuse to post it to the
+        // OPC DA browse endpoint instead of failing with a confusing error.
+        Assert.Contains("if (!sourceMatchesMapType(source, 'opc-da')) {", DashboardPage.Script);
+        Assert.Contains("DA Links browse OPC DA sources only", DashboardPage.Script);
+        Assert.Contains("DA Links require an OPC DA source", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Script_BrowseRefusesSourceOutsideActiveMapType()
+    {
+        // The maps tag browser must never fall through to the OPC DA browse when a
+        // source of a different type is selected (e.g. a DA source left selected while
+        // the OPC UA map tab has no UA sources). Browse must refuse instead.
+        Assert.Contains("if (!sourceMatchesMapType(source)) {", DashboardPage.Script);
+        Assert.Contains("This tab browses ${mapTypeLabel()} sources only", DashboardPage.Script);
+    }
+
+    [Fact]
     public void Html_MapsHasSourceTypeSubTabs()
     {
         Assert.Contains("id=\"mapTypeTabs\"", DashboardPage.Html);

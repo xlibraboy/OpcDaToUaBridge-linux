@@ -2533,6 +2533,10 @@ function renderLinkSourceStatus() {
     if (!sourceStatus) return;
     const source = currentSource();
     if (source) {
+        if (!sourceMatchesMapType(source, 'opc-da')) {
+            sourceStatus.innerHTML = `<span class="msg">${esc(source.displayName || source.sourceId)} is not an OPC DA source — DA Links require an OPC DA source.</span>`;
+            return;
+        }
         const cs = get(source, 'connectionState') || '—';
         sourceStatus.innerHTML = `${badge(cs, stateClass(cs))} <span class="msg">${esc(source.displayName || source.sourceId)} · ${esc(source.sourceId)}</span>`;
         return;
@@ -4956,6 +4960,14 @@ async function browseLinkTags(path, recursive = false) {
         el('linkBrowseBreadcrumb').innerHTML = '';
         return;
     }
+    if (!sourceMatchesMapType(source, 'opc-da')) {
+        // DA Links forward DA→DA only, but the active source comes from any tab
+        // (e.g. an OPC UA source selected on the OPC UA maps tab). A non-DA source
+        // must never be posted to the OPC DA browse endpoint.
+        el('linkBrowseTree').innerHTML = '<span class="msg">DA Links browse OPC DA sources only — select an OPC DA source from Connection or Tags first.</span>';
+        el('linkBrowseBreadcrumb').innerHTML = '';
+        return;
+    }
     state.linkBrowsePath = path || '';
     renderLinkCrumb();
     el('linkBrowseTree').innerHTML = '<span class="msg">Browsing…</span>';
@@ -5085,6 +5097,15 @@ async function browseTags(path, recursive = false) {
     const source = currentSource();
     if (!source || state.editingNewSource) {
         el('tagTree').innerHTML = '<span class="msg">Select or save a source before browsing tags.</span>';
+        el('tagBreadcrumb').innerHTML = '';
+        return;
+    }
+    if (!sourceMatchesMapType(source)) {
+        // The active map-type tab (OPC DA / OPC UA / Drivers / MX) may only browse
+        // sources of its own type. A stale selection from another type — e.g. an OPC DA
+        // source left selected while the OPC UA tab has no sources — must never fall
+        // through to the DA browse and show DA tags on the wrong tab.
+        el('tagTree').innerHTML = `<span class="msg">This tab browses ${mapTypeLabel()} sources only — select one from the Source dropdown.</span>`;
         el('tagBreadcrumb').innerHTML = '';
         return;
     }
