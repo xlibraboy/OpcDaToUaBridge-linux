@@ -207,6 +207,20 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                         bool rulesChanged = daLinkVersion != appliedDaLinkVersion;
                         if (mappingsChanged || rulesChanged)
                         {
+                            // Snapshot each source's current distinct rate set before the cache is
+                            // rebuilt, so a mapping change only restarts pollers whose rate set
+                            // actually changed.
+                            Dictionary<string, HashSet<int>> previousRates = new(StringComparer.OrdinalIgnoreCase);
+                            if (mappingsChanged)
+                            {
+                                foreach (SourceSession session in sessions.Values)
+                                {
+                                    previousRates[session.Source.SourceId] = cacheHolder.Cache
+                                        .GetDistinctRates(session.Source.SourceId, settings.UpdateRateMs)
+                                        .ToHashSet();
+                                }
+                            }
+
                             cacheHolder.Cache = SourceMappingCache.Build(mappings, rules);
                             source_mapping_cache_ = cacheHolder.Cache;
 
@@ -265,6 +279,42 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                                         failedSourceQueue,
                                         pollers,
                                         daDirty.Where(id => sessions.ContainsKey(id)),
+                                        stoppingToken).ConfigureAwait(false);
+                                }
+
+                                // Non-DA clients (MX Component, serial drivers, UA sources) do not
+                                // bind items into OPC groups at connect — their pollers are created
+                                // per distinct mapping rate and re-read the cache every cycle. A
+                                // per-tag poll-rate change can introduce a rate group with no running
+                                // poller (values freeze) or leave a stale poller behind, so restart
+                                // their pollers whenever the rate set changed.
+                                HashSet<string> nonDaDirty = new(StringComparer.OrdinalIgnoreCase);
+                                foreach (SourceSession session in sessions.Values)
+                                {
+                                    if (session.Client is OpcDaClient)
+                                    {
+                                        continue;
+                                    }
+
+                                    HashSet<int> newRates = cacheHolder.Cache
+                                        .GetDistinctRates(session.Source.SourceId, settings.UpdateRateMs)
+                                        .ToHashSet();
+                                    if (!previousRates.TryGetValue(session.Source.SourceId, out HashSet<int>? oldRates)
+                                        || !oldRates.SetEquals(newRates))
+                                    {
+                                        nonDaDirty.Add(session.Source.SourceId);
+                                    }
+                                }
+
+                                if (nonDaDirty.Count > 0)
+                                {
+                                    await RestartPollersForSourcesAsync(
+                                        settings,
+                                        sessions,
+                                        cacheHolder,
+                                        failedSourceQueue,
+                                        pollers,
+                                        nonDaDirty,
                                         stoppingToken).ConfigureAwait(false);
                                 }
                             }
