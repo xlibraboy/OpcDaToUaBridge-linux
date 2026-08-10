@@ -67,6 +67,26 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
+    public void Html_HasDedicatedMxComponentSectionSeparateFromDrivers()
+    {
+        // MX Component connections live on their own page, not in the serial-drivers section.
+        Assert.Contains("data-tab=\"mx-component\"", DashboardPage.Html);
+        Assert.Contains("id=\"view-mx-component\"", DashboardPage.Html);
+        Assert.Contains("id=\"mxStation\"", DashboardPage.Html);
+        Assert.Contains("id=\"mxList\"", DashboardPage.Html);
+        Assert.Contains("'connectivity/mx-component': 'mx-component'", DashboardPage.Script);
+        Assert.Contains("function renderMx(", DashboardPage.Script);
+        Assert.Contains("function saveMxSource(", DashboardPage.Script);
+        Assert.Contains("/api/drivers/mx-component/test-connection", DashboardPage.Script);
+        // MX is no longer offered in the serial-driver wizard, and isDriverSource is serial-only.
+        Assert.DoesNotContain("<option value=\"MxComponent\">", DashboardPage.Html);
+        Assert.DoesNotContain("drvMxStation", DashboardPage.Html);
+        Assert.Contains("function isDriverSource(source) { return isMelsecSource(source) || isS7Source(source); }", DashboardPage.Script);
+        Assert.Contains("if (type === 'mx') return mxSources();", DashboardPage.Script);
+        Assert.Contains("data-map-type=\"mx\"", DashboardPage.Html);
+    }
+
+    [Fact]
     public void Script_RoutesDriversTabAndSavesMelsecSource()
     {
         Assert.Contains("'connectivity/drivers': 'drivers'", DashboardPage.Script);

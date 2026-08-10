@@ -17,6 +17,9 @@ namespace OpcBridge.App;
 //   drvA3nStation/drvA3nPc/drvA3nTimeout/drvA3nRetry/drvA3nRate/drvA3nMaxTags
 //   ROUTE_TO_TAB 'connectivity/drivers': 'drivers', renderDrivers(/saveDriverSource(/testDriverConnection(
 //   sourceType: 'MelsecA3n' save payload, /api/drivers/melsec-a3n/test-connection
+//   data-tab="mx-component", id="view-mx-component", data-route="connectivity/mx-component"
+//   renderMx(/saveMxSource(/testMxConnection(/mxFormBody(, /api/drivers/mx-component/test-connection
+//   MX sources are separate from serial drivers: isDriverSource excludes MxComponent
 //   data-tab="opc-ua", id="view-opc-ua", data-route="connectivity/opc-ua", text "OPC UA"
 //   data-tab="connection", id="view-connection", id="sourcesStatusList", data-route="connectivity/sources", text "Sources"
 //   id="uaCfgEndpointUrl", id="uaCfgSourceId", function saveUaSource/testUaConnection
@@ -450,6 +453,7 @@ internal static class DashboardPage
     <button class="tabbtn" data-tab="opc-da" data-route="connectivity/opc-da" onclick="navigate('connectivity/opc-da')">OPC DA</button>
     <button class="tabbtn" data-tab="opc-ua" data-route="connectivity/opc-ua" onclick="navigate('connectivity/opc-ua')">OPC UA</button>
     <button class="tabbtn" data-tab="drivers" data-route="connectivity/drivers" onclick="navigate('connectivity/drivers')">Drivers</button>
+    <button class="tabbtn" data-tab="mx-component" data-route="connectivity/mx-component" onclick="navigate('connectivity/mx-component')">MX Component</button>
     <button class="tabbtn" data-tab="diagnostics" data-route="connectivity/diagnostics" onclick="navigate('connectivity/diagnostics')">Diagnostics</button>
   </div>
   <div class="nav-group">
@@ -809,6 +813,55 @@ internal static class DashboardPage
         </div>
     </div>
 </div>
+<div class="view" id="view-mx-component">
+    <div class="conn-layout">
+        <div class="conn-main">
+            <div class="box">
+                <div class="box-h">MELSOFT MX Component 4 <button class="btn" type="button" onclick="newMxSource()" style="margin-left:auto">+ Add Connection</button><span class="msg" id="mxMessage" style="font-weight:400;text-transform:none;letter-spacing:0">Select an MX Component connection or click New.</span></div>
+                <div class="box-b">
+                    <div class="conn-section">
+                        <div class="conn-section-h">Connection <span class="info" data-tip="MX Component is a local COM driver that owns the physical link to the PLC. Configure that link (serial, Ethernet, or GX Simulator) once in MX Component's own Communication Settings Utility — it assigns a logical station number that this app references.">i</span></div>
+                        <div class="field" style="display:block;background:var(--bg);border:1px solid var(--border2);border-radius:5px;padding:9px 11px;color:var(--muted)">The physical link (serial RS-422/RS-232C, Ethernet, or <b>GX Simulator</b>) is configured <b>once in MX Component's own Communication Settings Utility</b> — this app only needs the <b>logical station number</b> (0–1023) that the utility assigned. For an <b>A3NCPU</b>: pick <b>A series → A3N</b> in the utility's wizard (1C frame); if "A series" is missing, an <b>FX-series CPU type</b> usually still talks to it.</div>
+                        <div class="field"><label class="fl">Logical Station</label><input id="mxStation" type="number" min="0" max="1023" value="0" style="width:90px"><span class="msg">Assigned in the MX Component Communication Settings Utility.</span></div>
+                    </div>
+                    <div class="conn-section">
+                        <div class="conn-section-h">Identity</div>
+                        <div class="field"><label class="fl">Source ID <span class="info" data-tip="Unique key with no spaces. Used internally and in UA Node IDs (ns=2;s={sourceId}/...).">i</span></label><input id="mxSourceId" type="text" placeholder="plc-mx-1" style="flex:1"></div>
+                        <div class="field"><label class="fl">Name <span class="info" data-tip="Friendly label shown in lists and the Tags tab.">i</span></label><input id="mxName" type="text" placeholder="Line 1 PLC" style="flex:1"></div>
+                    </div>
+                    <div class="conn-section">
+                        <div class="conn-section-h">Defaults</div>
+                        <div class="field"><label class="fl">Timeout ms</label><input id="mxTimeout" type="number" min="100" step="100" value="3000" style="width:100px">
+                        <label class="fl" style="width:auto">Retries</label><input id="mxRetry" type="number" min="0" max="10" value="2" style="width:70px"></div>
+                        <div class="field"><label class="fl">Update Rate</label><select id="mxRate"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000" selected>1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select>
+                        <label class="fl" style="width:auto">Max tags <span class="info" data-tip="Safety limit on mapped tags for this source; adding mappings beyond it is rejected.">i</span></label><input id="mxMaxTags" type="number" min="1" step="1" value="2000" style="width:90px"></div>
+                    </div>
+                    <div class="toolbar" style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
+                        <button class="btn" id="mxSave" type="button">Save</button>
+                        <button class="btn ghost" id="mxReset" type="button">Reset</button>
+                        <button class="btn ghost" id="mxNew" type="button">New</button>
+                        <button class="btn ghost" id="mxRemove" type="button">Remove</button>
+                        <button class="btn ghost" id="mxTest" type="button">Test connection</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="conn-side">
+            <div class="box">
+                <div class="box-h">MX Component Connections <span class="msg" id="mxCount" style="margin-left:auto"></span></div>
+                <div class="box-b">
+                    <div class="list" id="mxList" style="max-height:280px"></div>
+                </div>
+            </div>
+            <div class="box">
+                <div class="box-h">Addressing</div>
+                <div class="box-b">
+                    <div class="hint">Map tags on the Tags page with device addresses, e.g. <span class="mono">D100</span>, <span class="mono">M10</span>, <span class="mono">X20</span>, <span class="mono">D100:8</span>.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 <div class="view" id="view-drivers">
     <div class="conn-layout">
         <div class="conn-main">
@@ -886,7 +939,7 @@ internal static class DashboardPage
         <div class="wizard-body">
             <div class="wzdrv-pane active" data-pane="1">
                 <div class="field"><label class="fl">Driver Type</label><select id="wzDrvType" onchange="wzDrvOnTypeChange()"><option value="MelsecA3n">Mitsubishi Melsec A3N (serial 1C)</option><option value="S7200Ppi">Siemens S7-200 (PPI serial)</option></select></div>
-                <div class="hint">Direct serial link to the PLC CPU (RS-422/RS-232C, 1C protocol). More driver types can be added later.</div>
+                <div class="hint">Serial link to the PLC CPU (RS-422/RS-232C, 1C protocol). For MELSOFT MX Component 4, use the MX Component tab — its link is configured in MX Component's own Communication Settings Utility.</div>
             </div>
             <div class="wzdrv-pane" data-pane="2">
                 <div class="field"><label class="fl">Source ID</label><input type="text" id="wzDrvSourceId" placeholder="plc-a3n-1"></div>
@@ -931,6 +984,7 @@ internal static class DashboardPage
         <button class="map-type-tab active" type="button" data-map-type="opc-da" onclick="setMapType('opc-da')">OPC DA</button>
         <button class="map-type-tab" type="button" data-map-type="opc-ua" onclick="setMapType('opc-ua')">OPC UA</button>
         <button class="map-type-tab" type="button" data-map-type="drivers" onclick="setMapType('drivers')">Drivers</button>
+        <button class="map-type-tab" type="button" data-map-type="mx" onclick="setMapType('mx')">MX</button>
     </div>
     <div class="box" style="margin-bottom:14px">
         <div class="box-h">Tag Browser</div>
@@ -1363,6 +1417,8 @@ const state = {
     editingNewSource: false,
     selectedDriverId: '',
     editingNewDriver: false,
+    selectedMxId: '',
+    editingNewMx: false,
     editingNewUaSource: false,
     liveValuesEnabled: true,
     liveValuesSource: '',
@@ -2693,11 +2749,13 @@ const ROUTE_TO_TAB = {
   'connectivity/opc-da': 'opc-da',
   'connectivity/opc-ua': 'opc-ua',
   'connectivity/drivers': 'drivers',
+  'connectivity/mx-component': 'mx-component',
   'connectivity/diagnostics': 'diagnostics',
   'tags/maps': 'tags',
   'tags/maps/opc-da': 'tags',
   'tags/maps/opc-ua': 'tags',
   'tags/maps/drivers': 'tags',
+  'tags/maps/mx': 'tags',
   'tags/links': 'links',
   'iot/mqtt': 'mqtt',
   'iot/traffic': 'iot-traffic',
@@ -2713,7 +2771,7 @@ const DEFAULT_ROUTE = 'ops/monitor';
 
 async function navigate(route) {
   if (route === 'tags/maps') route = 'tags/maps/' + (state.mapType || 'opc-da');
-  else if (route === 'tags/maps/opc-da' || route === 'tags/maps/opc-ua' || route === 'tags/maps/drivers') {
+  else if (route === 'tags/maps/opc-da' || route === 'tags/maps/opc-ua' || route === 'tags/maps/drivers' || route === 'tags/maps/mx') {
     state.mapType = route.slice('tags/maps/'.length);
   }
   const tab = ROUTE_TO_TAB[route] || ROUTE_TO_TAB[DEFAULT_ROUTE];
@@ -2735,6 +2793,7 @@ async function showTab(name, route) {
   else { diagnosticsActive = false; }
   if (activeTab === 'about') loadAppInfo().catch(e => el('aboutName').textContent = '✗ ' + e.message);
   if (activeTab === 'help') loadHelp().catch(e => el('helpContent').innerHTML = '<span class="msg bad">✗ ' + esc(e.message) + '</span>');
+  if (activeTab === 'mx-component') { renderMx(); }
   if (activeTab === 'mqtt') { await loadMqtt(); }
   if (activeTab === 'iot-traffic') { await loadMqttValues(); }
   if (name === 'influx') { await loadInflux(); }
@@ -2792,12 +2851,15 @@ function isUaSource(source) {
 }
 function isMelsecSource(source) { return String(get(source, 'sourceType') || 'OpcDa') === 'MelsecA3n'; }
 function isS7Source(source) { return String(get(source, 'sourceType') || 'OpcDa') === 'S7200Ppi'; }
+function isMxSource(source) { return String(get(source, 'sourceType') || 'OpcDa') === 'MxComponent'; }
+// Serial PLC drivers (configured in-app). MX Component sources live on their own tab.
 function isDriverSource(source) { return isMelsecSource(source) || isS7Source(source); }
-function opcDaSources() { return state.sources.filter(s => !isUaSource(s) && !isDriverSource(s)); }
+function opcDaSources() { return state.sources.filter(s => !isUaSource(s) && !isDriverSource(s) && !isMxSource(s)); }
 function mapTypeSources(type) {
     type = type || state.mapType || 'opc-da';
     if (type === 'opc-ua') return uaSources();
     if (type === 'drivers') return driverSources();
+    if (type === 'mx') return mxSources();
     return opcDaSources();
 }
 function sourceMatchesMapType(source, type) {
@@ -2805,19 +2867,22 @@ function sourceMatchesMapType(source, type) {
     if (!source) return false;
     if (type === 'opc-ua') return isUaSource(source);
     if (type === 'drivers') return isDriverSource(source);
-    return !isUaSource(source) && !isDriverSource(source);
+    if (type === 'mx') return isMxSource(source);
+    return !isUaSource(source) && !isDriverSource(source) && !isMxSource(source);
 }
 function mapTypeRoute(type) { return 'tags/maps/' + (type || state.mapType || 'opc-da'); }
 function mapTypeLabel(type) {
     type = type || state.mapType || 'opc-da';
     if (type === 'opc-ua') return 'OPC UA';
     if (type === 'drivers') return 'Drivers';
+    if (type === 'mx') return 'MX Component';
     return 'OPC DA';
 }
 function mapTypeConnectivityRoute(type) {
     type = type || state.mapType || 'opc-da';
     if (type === 'opc-ua') return 'connectivity/opc-ua';
     if (type === 'drivers') return 'connectivity/drivers';
+    if (type === 'mx') return 'connectivity/mx-component';
     return 'connectivity/opc-da';
 }
 function syncMapTypeUi() {
@@ -2827,7 +2892,7 @@ function syncMapTypeUi() {
 }
 function setMapType(type, opts) {
     type = type || 'opc-da';
-    if (type !== 'opc-da' && type !== 'opc-ua' && type !== 'drivers') type = 'opc-da';
+    if (type !== 'opc-da' && type !== 'opc-ua' && type !== 'drivers' && type !== 'mx') type = 'opc-da';
     const changed = state.mapType !== type;
     state.mapType = type;
     syncMapTypeUi();
@@ -2836,7 +2901,7 @@ function setMapType(type, opts) {
         state.uaBrowseTrail = [];
         if (el('tagTree')) el('tagTree').innerHTML = '';
         if (el('tagBreadcrumb')) el('tagBreadcrumb').innerHTML = '';
-        if (el('tagStatus')) el('tagStatus').textContent = type === 'drivers'
+        if (el('tagStatus')) el('tagStatus').textContent = (type === 'drivers' || type === 'mx')
             ? 'Enter a device address below, or map from known items.'
             : 'Browse all tags, or open folders one level at a time.';
     }
@@ -2887,15 +2952,17 @@ function updateMapEmptyBanner() {
 function updateMapBrowseUi() {
     const allBtn = el('btnBrowseAllTags');
     const folderBtn = el('btnBrowseTags');
-    const drivers = state.mapType === 'drivers';
-    if (allBtn) allBtn.style.display = drivers ? 'none' : '';
-    if (folderBtn) folderBtn.style.display = drivers ? 'none' : '';
+    const addressBased = state.mapType === 'drivers' || state.mapType === 'mx';
+    if (allBtn) allBtn.style.display = addressBased ? 'none' : '';
+    if (folderBtn) folderBtn.style.display = addressBased ? 'none' : '';
     if (el('manualItem')) {
         el('manualItem').placeholder = state.mapType === 'opc-ua'
             ? 'NodeId (e.g. ns=2;s=Tag)'
             : state.mapType === 'drivers'
               ? 'Address (e.g. D100, VW100, I0.0)'
-              : 'Item ID (e.g. Random.Real8)';
+              : state.mapType === 'mx'
+                ? 'Address (e.g. D100, M10, X20, D100:8)'
+                : 'Item ID (e.g. Random.Real8)';
     }
 }
 function mappingsForMapType(mappings) {
@@ -2918,18 +2985,23 @@ function wzDrvOnTypeChange() {
 function sourceTypeLabel(source) {
     if (isUaSource(source)) return 'UA';
     if (isMelsecSource(source)) return 'A3N';
+    if (isMxSource(source)) return 'MX';
     if (isS7Source(source)) return 'S7-200';
     return 'DA';
 }
 function sourceTypeBadge(source) {
     if (isUaSource(source)) return badge('UA', 'partial');
     if (isMelsecSource(source)) return badge('A3N', 'partial');
+    if (isMxSource(source)) return badge('MX', 'partial');
     if (isS7Source(source)) return badge('S7-200', 'partial');
     return badge('DA', 'warn');
 }
 function sourceEndpointSummary(source) {
     if (isUaSource(source)) {
         return esc(source.endpointUrl || source.EndpointUrl || '—');
+    }
+    if (isMxSource(source)) {
+        return esc('MX station ' + (source.logicalStationNumber ?? 0));
     }
     return `${esc(source.host || 'localhost')} · ${esc(source.progId || '')}`;
 }
@@ -3003,7 +3075,7 @@ function updateMapSourceHint() {
     const hint = el('mapSourceHint');
     if (!hint) return;
     const source = state.sources.find(s => s.sourceId === state.selectedSourceId);
-    hint.textContent = source && isMelsecSource(source) ? 'Device address e.g. D100, M10, X20, D100:8' : (source && isS7Source(source) ? 'Siemens address e.g. VW100, I0.0, M10.2, QB0' : '');
+    hint.textContent = source && (isMelsecSource(source) || isMxSource(source)) ? 'Device address e.g. D100, M10, X20, D100:8' : (source && isS7Source(source) ? 'Siemens address e.g. VW100, I0.0, M10.2, QB0' : '');
 }
 function loadSelectedSourceForm() {
     if (state.editingNewSource) return;
@@ -3031,9 +3103,11 @@ function loadSelectedSourceForm() {
     el('cfgUser').value = source.remoteUsername || '';
     el('cfgPass').value = '';
     el('cfgDomain').value = source.remoteDomain || '';
-    el('cfgMessage').textContent = isMelsecSource(source)
+    el('cfgMessage').textContent = (isMelsecSource(source) || isS7Source(source))
         ? 'Serial driver source — edit it on the Drivers page.'
-        : 'Editing ' + (source.displayName || source.sourceId) + '.';
+        : (isMxSource(source)
+            ? 'MX Component source — edit it on the MX Component page.'
+            : 'Editing ' + (source.displayName || source.sourceId) + '.');
     hideSaveReset();
 }
 function loadSelectedUaSourceForm() {
@@ -4051,6 +4125,10 @@ async function saveSource() {
         el('cfgMessage').textContent = 'Serial driver source — edit it on the Drivers page.';
         return;
     }
+    if (existing && isMxSource(existing)) {
+        el('cfgMessage').textContent = 'MX Component source — edit it on the MX Component page.';
+        return;
+    }
     const body = {
         sourceId,
         displayName: el('cfgDisplayName').value.trim() || null,
@@ -4107,6 +4185,105 @@ function showSaveReset() { el('cfgApply').style.display = ''; el('cfgReset').sty
 function hideSaveReset() { el('cfgApply').style.display = 'none'; el('cfgReset').style.display = 'none'; }
 
 // --- PLC driver sources (Melsec A3N) ---
+function mxSources() { return state.sources.filter(s => isMxSource(s)); }
+function currentMx() { return state.editingNewMx ? null : mxSources().find(s => s.sourceId === state.selectedMxId) || null; }
+function renderMx() {
+    const sources = mxSources();
+    if (!state.editingNewMx && !sources.some(s => s.sourceId === state.selectedMxId)) {
+        state.selectedMxId = sources.length ? sources[0].sourceId : '';
+    }
+    el('mxCount').textContent = sources.length + ' connection' + (sources.length !== 1 ? 's' : '');
+    el('mxList').innerHTML = sources.length ? sources.map(source =>
+        `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)} ${sourceTypeBadge(source)}</div><div class="p">${esc(source.sourceId)} · MX station ${esc(String(source.logicalStationNumber ?? 0))} · ${formatMs(source.updateRateMs)}</div></div><button class="btn ghost" data-action="select-mx" data-source-id="${attr(source.sourceId)}">Select</button></div>`
+    ).join('') : '<span class="msg">No MX Component connections configured. Click + Add Connection.</span>';
+    loadMxForm();
+}
+function pickMxSource(sourceId) {
+    state.selectedMxId = sourceId;
+    state.editingNewMx = false;
+    renderMx();
+}
+function loadMxForm() {
+    const source = currentMx();
+    if (!source) return;
+    state.editingNewMx = false;
+    el('mxSourceId').value = source.sourceId || '';
+    el('mxSourceId').disabled = true;
+    el('mxName').value = source.displayName || '';
+    el('mxStation').value = String(source.logicalStationNumber ?? 0);
+    el('mxTimeout').value = String(source.timeoutMs || 3000);
+    el('mxRetry').value = String(source.retryCount ?? 2);
+    el('mxRate').value = String(source.updateRateMs || 1000);
+    el('mxMaxTags').value = String(source.maxMappedTags || 2000);
+    el('mxMessage').textContent = 'Editing ' + (source.displayName || source.sourceId) + '.';
+}
+function newMxSource() {
+    state.selectedMxId = '';
+    state.editingNewMx = true;
+    el('mxSourceId').disabled = false;
+    el('mxSourceId').value = '';
+    el('mxName').value = '';
+    el('mxStation').value = '0';
+    el('mxTimeout').value = '3000';
+    el('mxRetry').value = '2';
+    el('mxRate').value = '1000';
+    el('mxMaxTags').value = '2000';
+    el('mxMessage').textContent = 'Enter a unique Source ID and the logical station number assigned in MX Component.';
+}
+function resetMx() {
+    if (state.editingNewMx) { newMxSource(); return; }
+    loadMxForm();
+    el('mxMessage').textContent = 'Reverted to saved values.';
+}
+function mxFormBody() {
+    return {
+        sourceId: el('mxSourceId').value.trim(),
+        displayName: el('mxName').value.trim() || null,
+        sourceType: 'MxComponent',
+        logicalStationNumber: Number(el('mxStation').value) || 0,
+        timeoutMs: Number(el('mxTimeout').value) || 3000,
+        retryCount: Number(el('mxRetry').value) || 0,
+        maxMappedTags: Number(el('mxMaxTags').value) || 2000,
+        updateRateMs: Number(el('mxRate').value) || 1000
+    };
+}
+async function saveMxSource() {
+    const body = mxFormBody();
+    if (!body.sourceId) {
+        el('mxMessage').textContent = '✗ Source ID is required.';
+        return false;
+    }
+    const r = await fetch('/api/da/sources', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const p = await r.json();
+    if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
+    state.selectedMxId = p.source?.sourceId || body.sourceId;
+    state.editingNewMx = false;
+    await loadSources();
+    await refresh();
+    renderMx();
+    el('mxMessage').textContent = 'MX Component connection saved.';
+    return true;
+}
+async function removeMxSource() {
+    const source = currentMx();
+    if (!source || state.editingNewMx) return;
+    if (!confirm('Remove MX Component connection "' + source.sourceId + '" and its tag mappings?')) return;
+    const r = await fetch('/api/da/sources/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId: source.sourceId }) });
+    const p = await r.json();
+    if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
+    state.selectedMxId = '';
+    await loadSources();
+    await loadMappings();
+    await refresh();
+    renderMx();
+    el('mxMessage').textContent = 'MX Component connection removed.';
+}
+async function testMxConnection() {
+    el('mxMessage').textContent = 'Testing connection…';
+    const r = await fetch('/api/drivers/mx-component/test-connection', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(mxFormBody()) });
+    const p = await r.json();
+    el('mxMessage').textContent = p.ok ? '✓ Connection OK — MX Component opened the station.' : '✗ ' + (p.error || ('HTTP ' + r.status));
+}
 function driverSources() { return state.sources.filter(s => isDriverSource(s)); }
 function currentDriver() { return state.editingNewDriver ? null : driverSources().find(s => s.sourceId === state.selectedDriverId) || null; }
 function renderDrivers() {
@@ -4115,9 +4292,10 @@ function renderDrivers() {
         state.selectedDriverId = drivers.length ? drivers[0].sourceId : '';
     }
     el('drvA3nCount').textContent = drivers.length + ' driver' + (drivers.length !== 1 ? 's' : '');
-    el('drvA3nList').innerHTML = drivers.length ? drivers.map(source =>
-        `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)} ${sourceTypeBadge(source)}</div><div class="p">${esc(source.sourceId)} · ${esc(source.serialPortName || '?')} @ ${esc(String(source.baudRate || ''))} · ${formatMs(source.updateRateMs)}</div></div><button class="btn ghost" data-action="select-driver" data-source-id="${attr(source.sourceId)}">Select</button></div>`
-    ).join('') : '<span class="msg">No driver sources configured. Click + Add Driver.</span>';
+    el('drvA3nList').innerHTML = drivers.length ? drivers.map(source => {
+        const detail = `${esc(source.sourceId)} · ${esc(source.serialPortName || '?')} @ ${esc(String(source.baudRate || ''))} · ${formatMs(source.updateRateMs)}`;
+        return `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)} ${sourceTypeBadge(source)}</div><div class="p">${detail}</div></div><button class="btn ghost" data-action="select-driver" data-source-id="${attr(source.sourceId)}">Select</button></div>`;
+    }).join('') : '<span class="msg">No driver sources configured. Click + Add Driver.</span>';
     loadDriverForm();
 }
 function loadDriverForm() {
@@ -4346,6 +4524,7 @@ function wzDrvValidate(step) {
 function wzDrvBuildSummary() {
     const s7 = el('wzDrvType').value === 'S7200Ppi';
     const typeLabel = s7 ? 'Siemens S7-200 (PPI serial)' : 'Mitsubishi Melsec A3N (serial 1C)';
+    const serialLine = `<b>Serial:</b> ${esc(el('wzDrvPort').value)} @ ${el('wzDrvBaud').value} baud, ${el('wzDrvDataBits').value}${el('wzDrvParity').value[0]}${el('wzDrvStopBits').value === 'Two' ? '2' : '1'}<br>`;
     const addrLine = s7
         ? `<b>Local / Remote PPI:</b> ${esc(el('wzDrvLocalPpi').value || '0')} / ${esc(el('wzDrvRemotePpi').value || '2')}<br>`
         : `<b>Station / PC:</b> ${esc(el('wzDrvStation').value || '00')} / ${esc(el('wzDrvPc').value || 'FF')}<br>`;
@@ -4353,7 +4532,7 @@ function wzDrvBuildSummary() {
         `<b>Type:</b> ${typeLabel}<br>` +
         `<b>Source ID:</b> ${esc(el('wzDrvSourceId').value)}<br>` +
         `<b>Display Name:</b> ${esc(el('wzDrvName').value || '—')}<br>` +
-        `<b>Serial:</b> ${esc(el('wzDrvPort').value)} @ ${el('wzDrvBaud').value} baud, ${el('wzDrvDataBits').value}${el('wzDrvParity').value[0]}${el('wzDrvStopBits').value === 'Two' ? '2' : '1'}<br>` +
+        serialLine +
         addrLine +
         `<b>Timeout:</b> ${el('wzDrvTimeout').value} ms · <b>Retries:</b> ${el('wzDrvRetry').value}<br>` +
         `<b>Update Rate:</b> ${el('wzDrvRate').value} ms · <b>Max tags:</b> ${el('wzDrvMaxTags').value}`;
@@ -5161,6 +5340,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     el('drvA3nNew').addEventListener('click', newDriver);
     el('drvA3nRemove').addEventListener('click', () => removeDriver().catch(e => el('drvA3nMessage').textContent = '✗ ' + e.message));
     el('drvA3nTest').addEventListener('click', () => testDriverConnection().catch(e => el('drvA3nMessage').textContent = '✗ ' + e.message));
+    if (el('mxSave')) el('mxSave').addEventListener('click', () => saveMxSource().catch(e => el('mxMessage').textContent = '✗ ' + e.message));
+    if (el('mxReset')) el('mxReset').addEventListener('click', resetMx);
+    if (el('mxNew')) el('mxNew').addEventListener('click', newMxSource);
+    if (el('mxRemove')) el('mxRemove').addEventListener('click', () => removeMxSource().catch(e => el('mxMessage').textContent = '✗ ' + e.message));
+    if (el('mxTest')) el('mxTest').addEventListener('click', () => testMxConnection().catch(e => el('mxMessage').textContent = '✗ ' + e.message));
+    if (el('mxList')) {
+        el('mxList').addEventListener('click', event => {
+            const button = event.target.closest('button[data-action="select-mx"]');
+            if (!button) return;
+            pickMxSource(button.dataset.sourceId || '');
+        });
+    }
     if (el('btnDrvScanPorts')) el('btnDrvScanPorts').addEventListener('click', () => scanSerialPorts('drvA3nPort', 'listDrvPorts', 'msgDrvPorts').catch(e => el('msgDrvPorts').textContent = '✗ ' + e.message));
     if (el('btnWzDrvScanPorts')) el('btnWzDrvScanPorts').addEventListener('click', () => scanSerialPorts('wzDrvPort', 'listWzDrvPorts', 'msgWzDrvPorts').catch(e => el('msgWzDrvPorts').textContent = '✗ ' + e.message));
     const onUseSerialPort = event => {

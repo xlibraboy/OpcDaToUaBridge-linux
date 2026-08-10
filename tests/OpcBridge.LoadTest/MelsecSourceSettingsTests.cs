@@ -103,6 +103,7 @@ public sealed class MelsecSourceSettingsTests
             new OpcDaSourceOptions("", "localhost", null, null, null),
             null,
             null,
+            null,
             null), 1000);
         Assert.Equal(SourceTypes.OpcDa, source.SourceType);
         Assert.NotNull(source.OpcDa);

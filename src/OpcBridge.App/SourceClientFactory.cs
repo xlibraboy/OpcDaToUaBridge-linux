@@ -2,6 +2,7 @@ using Microsoft.Extensions.Logging;
 using OpcBridge.Core;
 using OpcBridge.Da;
 using OpcBridge.Drivers.Melsec;
+using OpcBridge.Drivers.MxComponent;
 using OpcBridge.Drivers.S7;
 using OpcBridge.Ua;
 
@@ -35,6 +36,11 @@ public class SourceClientFactory
             return new S7200Client(ToS7200Options(source));
         }
 
+        if (string.Equals(source.SourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
+        {
+            return new MxComponentClient(ToMxComponentOptions(source));
+        }
+
         return new OpcDaClient(source.ToOptions(settings.UseSubscriptions));
     }
 
@@ -64,5 +70,13 @@ public class SourceClientFactory
         RemotePpiAddress = source.RemotePpiAddress,
         TimeoutMs = source.S7200?.TimeoutMs ?? source.TimeoutMs,
         RetryCount = source.S7200?.RetryCount ?? source.RetryCount
+    };
+
+    private static MxComponentClientOptions ToMxComponentOptions(DaSourceRuntimeSettings source) => new()
+    {
+        SourceId = source.SourceId,
+        LogicalStationNumber = source.MxComponent?.LogicalStationNumber ?? 0,
+        TimeoutMs = source.MxComponent?.TimeoutMs ?? 3000,
+        RetryCount = source.MxComponent?.RetryCount ?? 2
     };
 }

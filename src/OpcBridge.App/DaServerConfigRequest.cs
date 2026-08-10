@@ -31,7 +31,8 @@ public sealed record DaServerConfigRequest(
     int MaxMappedTags = 0,
     bool? UseSubscriptions = null,
     int UpdateRateMs = 0,
-    int? WatchdogTimeoutMs = null);
+    int? WatchdogTimeoutMs = null,
+    int LogicalStationNumber = 0);
 
 public sealed record MelsecTestConnectionRequest(
     string? SourceId = null,
@@ -60,3 +61,9 @@ public sealed record S7200TestConnectionRequest(
     int? RetryCount = null);
 
 public sealed record S7200ParseAddressRequest(string Address);
+
+public sealed record MxComponentTestConnectionRequest(
+    string? SourceId = null,
+    int? LogicalStationNumber = null,
+    int? TimeoutMs = null,
+    int? RetryCount = null);

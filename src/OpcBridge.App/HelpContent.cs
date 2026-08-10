@@ -130,6 +130,39 @@ The bridge can poll a Mitsubishi **A3NCPU** over **RS-232** using MELSEC **A-com
 This is separate from **OPC DA** sources and from this process’s **OPC UA server** endpoint.
 
 
+## PLC Drivers (Mitsubishi A3N — MX Component 4)
+
+The bridge can poll a Mitsubishi **A3NCPU** through **MELSOFT MX Component 4** (Windows COM,
+`ActUtlType`). MX Component is a local COM driver that owns the physical link to the PLC —
+this option is for hosts that already run MX Component.
+
+1. **On the Windows host**, install MELSOFT MX Component 4 and configure the PLC connection
+   once in its **Communication Settings Utility**, which assigns a **logical station number**
+   (0–1023).
+2. In the bridge, open **Connectivity → MX Component** (its own section, separate from the
+   serial Drivers page) and add a connection.
+3. Enter the **logical station number** configured in step 1.
+4. Map tags with the same A3N device addresses as the serial driver: `D100`, `M10`, `X20`, `Y0F`, bit-in-word `D100:8`.
+5. Writes on writeable tags go back to the PLC. Bit-in-word uses read-modify-write.
+
+**Setting up the logical station (A3N):** in the Communication Settings Utility, create a new
+logical station, then: **PC side I/F** = RS-232C/RS-422 serial (or Ethernet); **PLC side I/F** =
+built-in CPU port (or an A-series module); **PLC series** = **A series**; **CPU type** = **A3N**
+(AnN/AnU family); **frame** = **1C frame** (A-compatible); then serial port, baud 9600, 8 data
+bits, odd parity, 1 stop bit and the PLC station number. If a given MX Component build does not
+offer "A series" in the wizard, **select an FX-series CPU type instead** — the serial MC framing
+is shared, and it usually still talks to the A3N (verify a couple of addresses first).
+
+**GX Simulator (no hardware):** pick **GX Simulator** as the connection target for a logical
+station in the Communication Settings Utility (set the CPU type you are simulating). The bridge
+connects to it unchanged — ideal for end-to-end testing of the MX Component path before
+connecting a real PLC.
+
+**Platform note:** MX Component is a Windows-only COM component — this connection works only on
+Windows hosts. On Linux it shows a clear "requires Windows" error, matching the OPC DA sources.
+The serial A3N driver on the Drivers page works on any platform.
+
+
 ## PLC Drivers (Siemens S7-200 PPI)
 
 The bridge can poll a Siemens **S7-200** over a host **PPI** serial cable (pure managed client).

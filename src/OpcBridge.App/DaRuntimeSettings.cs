@@ -259,7 +259,8 @@ public sealed class DaRuntimeSettings
             OpcDa: new OpcDaSourceOptions(progId, host, remoteUsername, remotePassword, remoteDomain),
             OpcUa: null,
             Melsec: null,
-            S7200: null);
+            S7200: null,
+            MxComponent: null);
     }
 
     private static DaSourceRuntimeSettings NormalizeSource(DaSourceRuntimeSettings source, int defaultUpdateRate)
@@ -406,6 +407,11 @@ public sealed record S7200PpiSourceOptions(
     int TimeoutMs,
     int RetryCount);
 
+public sealed record MxComponentSourceOptions(
+    int LogicalStationNumber,
+    int TimeoutMs,
+    int RetryCount);
+
 
 public sealed record DaSourceRuntimeSettings(
     string SourceId,
@@ -417,7 +423,8 @@ public sealed record DaSourceRuntimeSettings(
     OpcDaSourceOptions? OpcDa,
     OpcUaSourceOptions? OpcUa,
     MelsecA3nSourceOptions? Melsec,
-    S7200PpiSourceOptions? S7200)
+    S7200PpiSourceOptions? S7200,
+    MxComponentSourceOptions? MxComponent)
 {
     // Compat getters — flat access for Program/UI during Phase 1.
     public string ProgId => OpcDa?.ProgId ?? string.Empty;
@@ -433,10 +440,13 @@ public sealed record DaSourceRuntimeSettings(
     public string StopBits => S7200?.StopBits ?? Melsec?.StopBits ?? "One";
     public string StationNo => Melsec?.StationNo ?? "00";
     public string PcNo => Melsec?.PcNo ?? "FF";
-    public int TimeoutMs => S7200?.TimeoutMs ?? Melsec?.TimeoutMs ?? 3000;
-    public int RetryCount => S7200?.RetryCount ?? Melsec?.RetryCount ?? 2;
+    public int TimeoutMs => S7200?.TimeoutMs ?? Melsec?.TimeoutMs ?? MxComponent?.TimeoutMs ?? 3000;
+    public int RetryCount => S7200?.RetryCount ?? Melsec?.RetryCount ?? MxComponent?.RetryCount ?? 2;
     public int LocalPpiAddress => S7200?.LocalPpiAddress ?? 0;
     public int RemotePpiAddress => S7200?.RemotePpiAddress ?? 2;
+    public int LogicalStationNumber => MxComponent?.LogicalStationNumber ?? 0;
+    public int MxComponentTimeoutMs => MxComponent?.TimeoutMs ?? 3000;
+    public int MxComponentRetryCount => MxComponent?.RetryCount ?? 2;
     public string EndpointUrl => OpcUa?.EndpointUrl ?? string.Empty;
     public string SecurityMode => OpcUa?.SecurityMode ?? "None";
     public string SecurityPolicy => OpcUa?.SecurityPolicy ?? "None";
@@ -507,6 +517,7 @@ public sealed class SourceConfigDto
     public OpcUaSourceOptionsDto? OpcUa { get; set; }
     public MelsecA3nSourceOptionsDto? Melsec { get; set; }
     public S7200PpiSourceOptionsDto? S7200 { get; set; }
+    public MxComponentSourceOptionsDto? MxComponent { get; set; }
 
     // Legacy flat fields (load only)
     public string? ProgId { get; set; }
@@ -524,6 +535,7 @@ public sealed class SourceConfigDto
     public string? PcNo { get; set; }
     public int TimeoutMs { get; set; }
     public int RetryCount { get; set; }
+    public int LogicalStationNumber { get; set; }
     public string? EndpointUrl { get; set; }
     public string? SecurityMode { get; set; }
     public string? SecurityPolicy { get; set; }
@@ -586,6 +598,13 @@ public sealed class S7200PpiSourceOptionsDto
     public int RetryCount { get; set; }
 }
 
+public sealed class MxComponentSourceOptionsDto
+{
+    public int LogicalStationNumber { get; set; }
+    public int TimeoutMs { get; set; }
+    public int RetryCount { get; set; }
+}
+
 public static class SourceConfigMigration
 {
     public static DaSourceRuntimeSettings FromDto(SourceConfigDto dto, int defaultUpdateRate)
@@ -601,6 +620,7 @@ public static class SourceConfigMigration
         OpcUaSourceOptions? opcUa = null;
         MelsecA3nSourceOptions? melsec = null;
         S7200PpiSourceOptions? s7200 = null;
+        MxComponentSourceOptions? mx = null;
 
         if (dto.OpcDa is not null)
         {
@@ -707,6 +727,21 @@ public static class SourceConfigMigration
                 dto.RetryCount);
         }
 
+        if (dto.MxComponent is not null)
+        {
+            mx = new MxComponentSourceOptions(
+                dto.MxComponent.LogicalStationNumber,
+                dto.MxComponent.TimeoutMs,
+                dto.MxComponent.RetryCount);
+        }
+        else if (string.Equals(sourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
+        {
+            mx = new MxComponentSourceOptions(
+                dto.LogicalStationNumber,
+                dto.TimeoutMs,
+                dto.RetryCount);
+        }
+
         // Seed missing nest from flat defaults when type is known but nest empty (legacy partial rows).
         if (string.Equals(sourceType, SourceTypes.OpcDa, StringComparison.OrdinalIgnoreCase) && opcDa is null)
         {
@@ -756,6 +791,13 @@ public static class SourceConfigMigration
                 dto.TimeoutMs,
                 dto.RetryCount);
         }
+        else if (string.Equals(sourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase) && mx is null)
+        {
+            mx = new MxComponentSourceOptions(
+                dto.LogicalStationNumber,
+                dto.TimeoutMs,
+                dto.RetryCount);
+        }
 
         return Normalize(new DaSourceRuntimeSettings(
             dto.SourceId ?? DaRuntimeSettings.DefaultSourceId,
@@ -767,7 +809,8 @@ public static class SourceConfigMigration
             opcDa,
             opcUa,
             melsec,
-            s7200), defaultUpdateRate);
+            s7200,
+            mx), defaultUpdateRate);
     }
 
     public static SourceConfigDto ToDto(DaSourceRuntimeSettings source)
@@ -825,6 +868,12 @@ public static class SourceConfigMigration
                 RemotePpiAddress = source.S7200.RemotePpiAddress,
                 TimeoutMs = source.S7200.TimeoutMs,
                 RetryCount = source.S7200.RetryCount
+            },
+            MxComponent = source.MxComponent is null ? null : new MxComponentSourceOptionsDto
+            {
+                LogicalStationNumber = source.MxComponent.LogicalStationNumber,
+                TimeoutMs = source.MxComponent.TimeoutMs,
+                RetryCount = source.MxComponent.RetryCount
             }
         };
     }
@@ -841,6 +890,7 @@ public static class SourceConfigMigration
         OpcUaSourceOptions? opcUa = null;
         MelsecA3nSourceOptions? melsec = null;
         S7200PpiSourceOptions? s7200 = null;
+        MxComponentSourceOptions? mx = null;
 
         if (string.Equals(sourceType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
         {
@@ -915,6 +965,18 @@ public static class SourceConfigMigration
                 raw.TimeoutMs <= 0 ? 3000 : raw.TimeoutMs,
                 raw.RetryCount <= 0 ? 2 : raw.RetryCount);
         }
+        else if (string.Equals(sourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
+        {
+            MxComponentSourceOptions raw = source.MxComponent ?? new MxComponentSourceOptions(
+                source.LogicalStationNumber,
+                source.TimeoutMs,
+                source.RetryCount);
+
+            mx = new MxComponentSourceOptions(
+                raw.LogicalStationNumber < 0 || raw.LogicalStationNumber > 1023 ? 0 : raw.LogicalStationNumber,
+                raw.TimeoutMs <= 0 ? 3000 : raw.TimeoutMs,
+                raw.RetryCount <= 0 ? 2 : raw.RetryCount);
+        }
         else
         {
             // OpcDa (default / unknown collapsed)
@@ -943,7 +1005,8 @@ public static class SourceConfigMigration
             opcDa,
             opcUa,
             melsec,
-            s7200);
+            s7200,
+            mx);
     }
 
     private static bool HasFlatDa(SourceConfigDto dto) =>
@@ -991,6 +1054,11 @@ public static class SourceConfigMigration
         if (string.Equals(trimmed, SourceTypes.S7200Ppi, StringComparison.OrdinalIgnoreCase))
         {
             return SourceTypes.S7200Ppi;
+        }
+
+        if (string.Equals(trimmed, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
+        {
+            return SourceTypes.MxComponent;
         }
 
         if (string.Equals(trimmed, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))

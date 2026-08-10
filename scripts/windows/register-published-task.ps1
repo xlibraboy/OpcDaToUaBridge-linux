@@ -1,7 +1,12 @@
 param(
     [string]$TaskName = 'OpcDaToUaBridge',
     [string]$HealthUrl = '',
-    [int]$ProbeSeconds = 20
+    [int]$ProbeSeconds = 20,
+    # S4U runs the bridge in session 0 (no interactive desktop). Use 'Interactive'
+    # when a source needs an interactive session — e.g. MELSOFT MX Component
+    # talking to GX Simulator, whose shared memory is session-bound.
+    [ValidateSet('S4U', 'Interactive')]
+    [string]$LogonType = 'S4U'
 )
 
 Set-StrictMode -Version Latest
@@ -47,7 +52,7 @@ if (-not (Test-Path $cmdScript)) {
 
 $action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument "/c `"$cmdScript`""
 $trigger = New-ScheduledTaskTrigger -AtStartup
-$principal = New-ScheduledTaskPrincipal -UserId "$env:COMPUTERNAME\$env:USERNAME" -LogonType S4U -RunLevel Highest
+$principal = New-ScheduledTaskPrincipal -UserId "$env:COMPUTERNAME\$env:USERNAME" -LogonType $LogonType -RunLevel Highest
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 0)
 
 $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
