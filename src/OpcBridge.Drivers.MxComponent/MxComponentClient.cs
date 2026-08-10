@@ -227,7 +227,7 @@ public sealed class MxComponentClient : ISourceClient
                 }
 
                 await ExecuteWithRetryAsync(
-                    () => _session.WriteWordsAsync(DeviceName(address), new[] { bit ? (ushort)1 : (ushort)0 }, cancellationToken),
+                    () => _session.WriteBitAsync(DeviceName(address), bit, cancellationToken),
                     cancellationToken).ConfigureAwait(false);
                 return true;
             }
@@ -363,24 +363,33 @@ public sealed class MxComponentClient : ISourceClient
             int count = Math.Min(MaxBitsPerBatch, total - offset);
             int batchStart = start + offset;
             ParsedReadItem first = parsed[batchStart]!;
-            string device = DeviceName(first.Address);
+
+            // MX Component packs 16 bit devices per element and requires the start
+            // device to be a multiple of 16 (Programming Manual §"How to specify
+            // devices", ReadDeviceBlock2). Align the request down and mask the
+            // addressed bits out of the returned words.
+            int baseNumber = (first.Address.Number / 16) * 16;
+            int words = ((first.Address.Number - baseNumber) + count + 15) / 16;
+            string device = BitDeviceName(first.Address.Device, baseNumber);
 
             try
             {
                 ushort[] data = await ExecuteWithRetryAsync(
-                    () => _session.ReadWordsAsync(device, count, cancellationToken),
+                    () => _session.ReadWordsAsync(device, words, cancellationToken),
                     cancellationToken).ConfigureAwait(false);
 
                 DateTime ts = DateTime.UtcNow;
                 for (int i = 0; i < count; i++)
                 {
                     ParsedReadItem item = parsed[batchStart + i]!;
-                    results[item.Index] = Good(item.ItemId, data[i] != 0, ts);
+                    int bitIndex = item.Address.Number - baseNumber;
+                    bool bit = ((data[bitIndex / 16] >> (bitIndex % 16)) & 1) != 0;
+                    results[item.Index] = Good(item.ItemId, bit, ts);
                 }
             }
             catch (Exception ex) when (ex is TimeoutException or InvalidOperationException)
             {
-                _logger?.LogWarning(ex, "MX Component bit read failed for {Device} count {Count}", device, count);
+                _logger?.LogWarning(ex, "MX Component bit read failed for {Device} words {Words}", device, words);
                 for (int i = 0; i < count; i++)
                 {
                     ParsedReadItem item = parsed[batchStart + i]!;
@@ -554,6 +563,20 @@ public sealed class MxComponentClient : ISourceClient
     {
         // Canonical is already e.g. "D100" / "M10" / "X020"; MX Component accepts leading zeros.
         return address.Canonical;
+    }
+
+    /// <summary>Device name for a 16-aligned bit base number (M/X/Y). X/Y are octal in
+    /// the AnN series (Programming Manual §"Device Types"), so the base number is
+    /// formatted back as octal, matching the canonical form of parsed X/Y addresses.</summary>
+    private static string BitDeviceName(MelsecDeviceKind device, int baseNumber)
+    {
+        return device switch
+        {
+            MelsecDeviceKind.M => "M" + baseNumber.ToString(CultureInfo.InvariantCulture),
+            MelsecDeviceKind.X => "X" + Convert.ToString(baseNumber, 8).ToUpperInvariant().PadLeft(3, '0'),
+            MelsecDeviceKind.Y => "Y" + Convert.ToString(baseNumber, 8).ToUpperInvariant().PadLeft(3, '0'),
+            _ => throw new ArgumentOutOfRangeException(nameof(device), device, "Unsupported bit device kind.")
+        };
     }
 
     /// <summary>Plain word device for a D register (canonical without any :bit suffix).</summary>

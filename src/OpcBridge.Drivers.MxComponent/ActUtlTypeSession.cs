@@ -17,8 +17,11 @@ namespace OpcBridge.Drivers.MxComponent;
 /// </summary>
 internal sealed class ActUtlTypeSession : IMxComponentSession
 {
-    // ProgID of the ActUtlType coclass as registered by the MX Component 4 installer.
-    private const string ActUtlTypeProgId = "MITSUBISHI.ActUtlType.1";
+    // ProgID of the ActUtlType coclass as registered by the MX Component 4 installer
+    // (verified against a live MX Component 4 install: ActUtlType.ActUtlType.1 ->
+    // CLSID 63885648-1785-41a4-82d5-c578d29e4da8). The MITSUBISHI.* ProgID used in
+    // early drafts is not registered by the installer.
+    private const string ActUtlTypeProgId = "ActUtlType.ActUtlType.1";
 
     private readonly MxComponentClientOptions _options;
     private readonly ILogger? _logger;
@@ -125,10 +128,10 @@ internal sealed class ActUtlTypeSession : IMxComponentSession
         }
 
         short[] data = new short[count];
-        int rc = Call(() => ((dynamic)_com!).ReadDeviceBlock(device, count, ref data[0]));
+        int rc = Call(() => ((dynamic)_com!).ReadDeviceBlock2(device, count, ref data[0]));
         if (rc != 0)
         {
-            throw MxError("ReadDeviceBlock", rc, device);
+            throw MxError("ReadDeviceBlock2", rc, device);
         }
 
         var result = new ushort[count];
@@ -163,10 +166,35 @@ internal sealed class ActUtlTypeSession : IMxComponentSession
             data[i] = unchecked((short)words[i]);
         }
 
-        int rc = Call(() => ((dynamic)_com!).WriteDeviceBlock(device, data.Length, ref data[0]));
+        int rc = Call(() => ((dynamic)_com!).WriteDeviceBlock2(device, data.Length, ref data[0]));
         if (rc != 0)
         {
-            throw MxError("WriteDeviceBlock", rc, device);
+            throw MxError("WriteDeviceBlock2", rc, device);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    public Task WriteBitAsync(string device, bool value, CancellationToken cancellationToken)
+    {
+        ThrowIfDisposed();
+        ThrowIfNotWindows();
+        cancellationToken.ThrowIfCancellationRequested();
+        EnsureOpen();
+
+        if (string.IsNullOrWhiteSpace(device))
+        {
+            throw new ArgumentException("Device is required.", nameof(device));
+        }
+
+        // WriteDeviceRandom2 writes the LSB of the 2-byte value to the addressed bit device
+        // (Programming Manual, "WriteDeviceRandom2": the target device is only one point and
+        // the least significant bit of the set 2-byte data is written as the device value).
+        short bit = value ? (short)1 : (short)0;
+        int rc = Call(() => ((dynamic)_com!).WriteDeviceRandom2(device, 1, ref bit));
+        if (rc != 0)
+        {
+            throw MxError("WriteDeviceRandom2", rc, device);
         }
 
         return Task.CompletedTask;
@@ -203,16 +231,19 @@ internal sealed class ActUtlTypeSession : IMxComponentSession
 
     private (string CpuName, string CpuCode) GetCpuTypeCore(dynamic act)
     {
+        // Programming Manual §GetCpuType (Dispatch interface, C#):
+        //   iRet = object.GetCpuType(out szCpuName, out iCpuType)
+        // The CPU code is a LONG (int), not a string.
         string cpuName = string.Empty;
-        string cpuCode = string.Empty;
+        int cpuCode = 0;
         int rc = Call(() => act.GetCpuType(out cpuName, out cpuCode));
         if (rc != 0)
         {
             throw MxError("GetCpuType", rc, null);
         }
 
-        _logger?.LogDebug("MX Component CPU type: {CpuName} ({CpuCode})", cpuName, cpuCode);
-        return (cpuName, cpuCode);
+        _logger?.LogDebug("MX Component CPU type: {CpuName} (code 0x{CpuCode:X4})", cpuName, cpuCode);
+        return (cpuName, cpuCode.ToString("X4", System.Globalization.CultureInfo.InvariantCulture));
     }
 
     private static int Call(Func<int> comCall)

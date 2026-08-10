@@ -39,7 +39,7 @@ public sealed class MxComponentClientTests
     public async Task ReadAsync_Bit_ReturnsBool()
     {
         var session = new ScriptedMxSession();
-        session.ReadResponses.Enqueue(new ushort[] { 1 }); // M10 = ON
+        session.ReadResponses.Enqueue(new ushort[] { 0x0400 }); // M10 = ON (bit 10 of the M0 word)
 
         await using var client = new MxComponentClient(
             new MxComponentClientOptions { SourceId = "mx", RetryCount = 0 },
@@ -56,7 +56,10 @@ public sealed class MxComponentClientTests
         Assert.Single(values);
         Assert.True(values[0].IsGood);
         Assert.Equal(true, values[0].Value);
-        Assert.Equal(("M10", 1), session.Reads[0]);
+
+        // MX Component packs 16 bits per word and requires a multiple-of-16 start:
+        // reading M10 must align down to M0 and read one word.
+        Assert.Equal(("M0", 1), session.Reads[0]);
     }
 
     [Fact]
@@ -187,11 +190,11 @@ public sealed class MxComponentClientTests
         Assert.True(await client.WriteAsync("M10", true, CancellationToken.None));
         Assert.True(await client.WriteAsync("M11", false, CancellationToken.None));
 
-        Assert.Equal(2, session.Writes.Count);
-        Assert.Equal("M10", session.Writes[0].Device);
-        Assert.Equal(new ushort[] { 1 }, session.Writes[0].Words);
-        Assert.Equal("M11", session.Writes[1].Device);
-        Assert.Equal(new ushort[] { 0 }, session.Writes[1].Words);
+        // Single-bit writes go through WriteDeviceRandom2 (per-bit), not a full word write.
+        Assert.Equal(2, session.BitWrites.Count);
+        Assert.Equal(("M10", true), session.BitWrites[0]);
+        Assert.Equal(("M11", false), session.BitWrites[1]);
+        Assert.Empty(session.Writes);
     }
 
     [Fact]
@@ -288,6 +291,7 @@ public sealed class MxComponentClientTests
         public int OpenCalls { get; private set; }
         public List<(string Device, int Count)> Reads { get; } = new();
         public List<(string Device, IReadOnlyList<ushort> Words)> Writes { get; } = new();
+        public List<(string Device, bool Value)> BitWrites { get; } = new();
         public Queue<ushort[]> ReadResponses { get; } = new();
         public bool FailConnect { get; set; }
         public bool FailReads { get; set; }
@@ -332,6 +336,12 @@ public sealed class MxComponentClientTests
         public Task WriteWordsAsync(string device, IReadOnlyList<ushort> words, CancellationToken cancellationToken)
         {
             Writes.Add((device, words.ToArray()));
+            return Task.CompletedTask;
+        }
+
+        public Task WriteBitAsync(string device, bool value, CancellationToken cancellationToken)
+        {
+            BitWrites.Add((device, value));
             return Task.CompletedTask;
         }
 
