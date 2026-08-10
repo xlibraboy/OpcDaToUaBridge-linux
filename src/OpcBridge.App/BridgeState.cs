@@ -562,6 +562,11 @@ public sealed record BridgeRuntimeStatus(
         null);
 }
 
+/// <summary>
+/// Tags of one source polled at one update rate (a rate bucket). Applies to every
+/// driver; it corresponds to an OPC DA COM group only for OpcDa sources — MX
+/// Component and other native clients batch internally and never create COM groups.
+/// </summary>
 public sealed record RateGroupStatus(
     string SourceId,
     int RateMs,
