@@ -96,6 +96,12 @@ public sealed class Melsec1CFrameCodecTests
     [InlineData(MelsecDeviceKind.X, 0, "X0000")]
     [InlineData(MelsecDeviceKind.X, 0x7FF, "X3777")] // AnN max 2047 = 3777 octal
     [InlineData(MelsecDeviceKind.Y, 0x1FF, "Y0777")] // 511 = 0777 octal
+    [InlineData(MelsecDeviceKind.TN, 10, "TN0010")]
+    [InlineData(MelsecDeviceKind.TS, 5, "TS0005")]
+    [InlineData(MelsecDeviceKind.TC, 5, "TC0005")]
+    [InlineData(MelsecDeviceKind.CN, 200, "CN0200")]
+    [InlineData(MelsecDeviceKind.CS, 7, "CS0007")]
+    [InlineData(MelsecDeviceKind.CC, 7, "CC0007")]
     public void FormatHead_AcpuStyle(MelsecDeviceKind kind, int number, string expected)
     {
         var address = new MelsecAddress(kind, number, null, "n/a");

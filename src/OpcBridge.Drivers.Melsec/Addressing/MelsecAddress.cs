@@ -13,6 +13,8 @@ public static class MelsecAddressParser
     private const int MaxD = 1023;
     private const int MaxM = 2047;
     private const int MaxXy = 0x7FF;
+    private const int MaxT = 2047;
+    private const int MaxC = 2047;
     private const int MaxBit = 15;
 
     public static bool TryParse(string? input, out MelsecAddress address, out string error)
@@ -33,14 +35,11 @@ public static class MelsecAddressParser
             return false;
         }
 
-        var deviceChar = char.ToUpperInvariant(raw[0]);
-        if (!TryMapDevice(deviceChar, out var device))
+        if (!TryMapDevice(raw, out var device, out var body))
         {
-            error = $"Unsupported device '{raw[0]}'. Expected D, M, X, or Y.";
+            error = $"Unsupported device '{raw[0]}'. Expected D, M, X, Y, T (TN), or C (CN).";
             return false;
         }
-
-        var body = raw[1..];
         int? bitIndex = null;
 
         var bitSep = body.IndexOfAny([':', '.']);
@@ -78,6 +77,12 @@ public static class MelsecAddressParser
         {
             case MelsecDeviceKind.D:
             case MelsecDeviceKind.M:
+            case MelsecDeviceKind.TS:
+            case MelsecDeviceKind.TC:
+            case MelsecDeviceKind.TN:
+            case MelsecDeviceKind.CS:
+            case MelsecDeviceKind.CC:
+            case MelsecDeviceKind.CN:
                 if (!IsAllDecimalDigits(body)
                     || !int.TryParse(body, NumberStyles.None, CultureInfo.InvariantCulture, out number))
                 {
@@ -127,21 +132,73 @@ public static class MelsecAddressParser
         return address.Canonical;
     }
 
-    private static bool TryMapDevice(char deviceChar, out MelsecDeviceKind device)
+    /// <summary>
+    /// Maps the device prefix of <paramref name="raw"/> (case-insensitive) to a device kind
+    /// and returns the remaining number body. Supports 2-character prefixes for
+    /// timers/counters (TS/TC/TN/CS/CC/CN — MX Component Programming Manual §"Device Types")
+    /// and single-character aliases T→TN and C→CN (the "present value" a user means by T0/C0).
+    /// </summary>
+    private static bool TryMapDevice(string raw, out MelsecDeviceKind device, out string body)
     {
-        switch (deviceChar)
+        body = "";
+
+        if (raw.Length >= 2)
+        {
+            string prefix = raw[..2].ToUpperInvariant();
+            switch (prefix)
+            {
+                case "TS":
+                    device = MelsecDeviceKind.TS;
+                    body = raw[2..];
+                    return true;
+                case "TC":
+                    device = MelsecDeviceKind.TC;
+                    body = raw[2..];
+                    return true;
+                case "TN":
+                    device = MelsecDeviceKind.TN;
+                    body = raw[2..];
+                    return true;
+                case "CS":
+                    device = MelsecDeviceKind.CS;
+                    body = raw[2..];
+                    return true;
+                case "CC":
+                    device = MelsecDeviceKind.CC;
+                    body = raw[2..];
+                    return true;
+                case "CN":
+                    device = MelsecDeviceKind.CN;
+                    body = raw[2..];
+                    return true;
+            }
+        }
+
+        switch (char.ToUpperInvariant(raw[0]))
         {
             case 'D':
                 device = MelsecDeviceKind.D;
+                body = raw[1..];
                 return true;
             case 'M':
                 device = MelsecDeviceKind.M;
+                body = raw[1..];
                 return true;
             case 'X':
                 device = MelsecDeviceKind.X;
+                body = raw[1..];
                 return true;
             case 'Y':
                 device = MelsecDeviceKind.Y;
+                body = raw[1..];
+                return true;
+            case 'T':
+                device = MelsecDeviceKind.TN; // T0 → timer present value (TN0)
+                body = raw[1..];
+                return true;
+            case 'C':
+                device = MelsecDeviceKind.CN; // C0 → counter present value (CN0)
+                body = raw[1..];
                 return true;
             default:
                 device = default;
@@ -254,6 +311,26 @@ public static class MelsecAddressParser
                 if (number is < 0 or > MaxXy)
                 {
                     error = $"{device} device number must be 0–0x{MaxXy:X}.";
+                    return false;
+                }
+
+                return true;
+            case MelsecDeviceKind.TS:
+            case MelsecDeviceKind.TC:
+            case MelsecDeviceKind.TN:
+                if (number is < 0 or > MaxT)
+                {
+                    error = $"Timer {device} device number must be 0–{MaxT}.";
+                    return false;
+                }
+
+                return true;
+            case MelsecDeviceKind.CS:
+            case MelsecDeviceKind.CC:
+            case MelsecDeviceKind.CN:
+                if (number is < 0 or > MaxC)
+                {
+                    error = $"Counter {device} device number must be 0–{MaxC}.";
                     return false;
                 }
 

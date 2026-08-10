@@ -9,9 +9,9 @@ namespace OpcBridge.Drivers.Melsec.Protocol;
 public static class Melsec1CDeviceCodes
 {
     /// <summary>
-    /// Head device string as required by 1C body, e.g. "D0100", "M0010", "X0020".
-    /// D/M: letter + 4 decimal digits. X/Y: letter + 4 zero-padded octal digits
-    /// (fixed width covers full AnN range X0000–X07FF / 0–0x7FF).
+    /// Head device string as required by 1C body, e.g. "D0100", "M0010", "X0020", "TN0010".
+    /// D/M/TN/TS/TC/CN/CS/CC: prefix + 4 decimal digits. X/Y: prefix + 4 zero-padded octal
+    /// digits (fixed width covers full AnN range X0000–X07FF / 0–0x7FF).
     /// </summary>
     public static string FormatHead(MelsecAddress address)
     {
@@ -21,6 +21,12 @@ public static class Melsec1CDeviceCodes
         {
             MelsecDeviceKind.D => "D" + address.Number.ToString("D4", CultureInfo.InvariantCulture),
             MelsecDeviceKind.M => "M" + address.Number.ToString("D4", CultureInfo.InvariantCulture),
+            MelsecDeviceKind.TS => "TS" + address.Number.ToString("D4", CultureInfo.InvariantCulture),
+            MelsecDeviceKind.TC => "TC" + address.Number.ToString("D4", CultureInfo.InvariantCulture),
+            MelsecDeviceKind.TN => "TN" + address.Number.ToString("D4", CultureInfo.InvariantCulture),
+            MelsecDeviceKind.CS => "CS" + address.Number.ToString("D4", CultureInfo.InvariantCulture),
+            MelsecDeviceKind.CC => "CC" + address.Number.ToString("D4", CultureInfo.InvariantCulture),
+            MelsecDeviceKind.CN => "CN" + address.Number.ToString("D4", CultureInfo.InvariantCulture),
             MelsecDeviceKind.X => "X" + ToOctal4(address.Number),
             MelsecDeviceKind.Y => "Y" + ToOctal4(address.Number),
             _ => throw new ArgumentOutOfRangeException(nameof(address), address.Device, "Unsupported MELSEC device kind.")

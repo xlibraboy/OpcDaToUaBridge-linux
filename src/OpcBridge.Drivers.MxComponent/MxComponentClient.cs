@@ -550,10 +550,17 @@ public sealed class MxComponentClient : ISourceClient
 
     private static bool IsPureBit(MelsecAddress address) =>
         address.BitIndex is null
-        && address.Device is MelsecDeviceKind.M or MelsecDeviceKind.X or MelsecDeviceKind.Y;
+        && address.Device is MelsecDeviceKind.M
+            or MelsecDeviceKind.X
+            or MelsecDeviceKind.Y
+            or MelsecDeviceKind.TS
+            or MelsecDeviceKind.TC
+            or MelsecDeviceKind.CS
+            or MelsecDeviceKind.CC;
 
     private static bool IsPureDWord(MelsecAddress address) =>
-        address.Device == MelsecDeviceKind.D && address.BitIndex is null;
+        address.BitIndex is null
+        && address.Device is MelsecDeviceKind.D or MelsecDeviceKind.TN or MelsecDeviceKind.CN;
 
     private static bool IsBitInWord(MelsecAddress address) =>
         address.Device == MelsecDeviceKind.D && address.BitIndex is not null;
@@ -565,16 +572,22 @@ public sealed class MxComponentClient : ISourceClient
         return address.Canonical;
     }
 
-    /// <summary>Device name for a 16-aligned bit base number (M/X/Y). X/Y are octal in
-    /// the AnN series (Programming Manual §"Device Types"), so the base number is
-    /// formatted back as octal, matching the canonical form of parsed X/Y addresses.</summary>
+    /// <summary>Device name for a 16-aligned bit base number (M/X/Y/TS/TC/CS/CC). X/Y are
+    /// octal in the AnN series; timers/counters are decimal (Programming Manual §"Device
+    /// Types"). The base number is formatted back in the device's native base, matching the
+    /// canonical form of parsed addresses.</summary>
     private static string BitDeviceName(MelsecDeviceKind device, int baseNumber)
     {
+        string number = baseNumber.ToString(CultureInfo.InvariantCulture);
         return device switch
         {
-            MelsecDeviceKind.M => "M" + baseNumber.ToString(CultureInfo.InvariantCulture),
+            MelsecDeviceKind.M => "M" + number,
             MelsecDeviceKind.X => "X" + Convert.ToString(baseNumber, 8).ToUpperInvariant().PadLeft(3, '0'),
             MelsecDeviceKind.Y => "Y" + Convert.ToString(baseNumber, 8).ToUpperInvariant().PadLeft(3, '0'),
+            MelsecDeviceKind.TS => "TS" + number,
+            MelsecDeviceKind.TC => "TC" + number,
+            MelsecDeviceKind.CS => "CS" + number,
+            MelsecDeviceKind.CC => "CC" + number,
             _ => throw new ArgumentOutOfRangeException(nameof(device), device, "Unsupported bit device kind.")
         };
     }

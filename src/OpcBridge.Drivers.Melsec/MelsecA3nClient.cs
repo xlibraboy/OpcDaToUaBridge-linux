@@ -620,10 +620,17 @@ public sealed class MelsecA3nClient : ISourceClient
 
     private static bool IsPureBit(MelsecAddress address) =>
         address.BitIndex is null
-        && address.Device is MelsecDeviceKind.M or MelsecDeviceKind.X or MelsecDeviceKind.Y;
+        && address.Device is MelsecDeviceKind.M
+            or MelsecDeviceKind.X
+            or MelsecDeviceKind.Y
+            or MelsecDeviceKind.TS
+            or MelsecDeviceKind.TC
+            or MelsecDeviceKind.CS
+            or MelsecDeviceKind.CC;
 
     private static bool IsPureDWord(MelsecAddress address) =>
-        address.Device == MelsecDeviceKind.D && address.BitIndex is null;
+        address.BitIndex is null
+        && address.Device is MelsecDeviceKind.D or MelsecDeviceKind.TN or MelsecDeviceKind.CN;
 
     private static bool IsBitInWord(MelsecAddress address) =>
         address.Device == MelsecDeviceKind.D && address.BitIndex is not null;
