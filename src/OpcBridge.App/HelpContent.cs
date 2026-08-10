@@ -158,6 +158,26 @@ station in the Communication Settings Utility (set the CPU type you are simulati
 connects to it unchanged — ideal for end-to-end testing of the MX Component path before
 connecting a real PLC.
 
+**GX Simulator requires the interactive Windows session.** GX Simulator communication runs over a
+**session-bound shared memory** server (`PROTOCOL_SHAREDMEMORY` — MX Component 4 Programming
+Manual, §4.11 “GX Simulator2 Communication”). The bridge can only reach the simulator when both
+run in the **same logged-in desktop session**. In practice this means:
+
+- The Windows scheduled task that runs the bridge must use **Interactive** logon — register it
+  with `-LogonType Interactive` (see `register-published-task.ps1`). The default **S4U** mode runs
+  the task headless in session 0, where GX Simulator's shared memory is invisible, and the MX
+  source cannot connect (it shows the MX Open error and stays in Reconnecting).
+- Mitsubishi documents the same constraint for its own OPC server: the MX OPC Server manual
+  states that to use GX Simulator the server *"should NOT BE INSTALLED AS A SERVICE"*.
+- A **console login is required** — after a log-off or reboot the task waits for that user
+  (the account registered in the task, e.g. `DESKTOP-NAME\user`) to log in, then starts
+  automatically.
+- A **locked screen is fine** — the session stays active and the bridge keeps polling.
+- **Connection drops auto-recover** — the bridge re-creates the ActUtlType session and reconnects
+  with backoff; transient MX/COM errors need no login and no manual restart.
+- For **fully headless** operation, use a **real PLC** over serial or Ethernet instead of
+  GX Simulator — Windows sessions are irrelevant for physical links.
+
 **Platform note:** MX Component is a Windows-only COM component — this connection works only on
 Windows hosts. On Linux it shows a clear "requires Windows" error, matching the OPC DA sources.
 The serial A3N driver on the Drivers page works on any platform.
@@ -663,11 +683,14 @@ powershell -ExecutionPolicy Bypass -File scripts\windows\register-published-task
 ```
 
 This creates a Windows Scheduled Task named **OpcDaToUaBridge** that:
-- Starts automatically at **system startup** (not just logon)
+- Starts automatically at **system startup** with the default S4U logon (with `-LogonType Interactive` it instead starts at the user's next logon)
 - Runs as the current user with highest privileges
 - Launches via `start-published-bridge.cmd` → `C:\Program Files (x86)\dotnet\dotnet.exe OpcBridge.App.dll`
 - Redirects stdout/stderr to `publish\bridge-task-stdout.log` and `bridge-task-stderr.log`
 - The script starts the task immediately and probes health for 20 seconds
+
+**MX Component + GX Simulator:** register the task with **Interactive** logon instead of the
+S4U default: `powershell -ExecutionPolicy Bypass -File scripts\windows\register-published-task.ps1 -LogonType Interactive`. GX Simulator's shared memory is session-bound, so the bridge must run in the logged-in desktop session; S4U (session 0) breaks MX connections to GX Simulator. Trade-off: with Interactive logon the task only runs while that user is logged into the console (it starts automatically at their next logon).
 
 ### Step 4 — Verify
 
