@@ -1045,7 +1045,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
         return (changed, connectionFailures);
     }
 
-    private static bool SourceConnectionEquals(DaSourceRuntimeSettings a, DaSourceRuntimeSettings b)
+    internal static bool SourceConnectionEquals(DaSourceRuntimeSettings a, DaSourceRuntimeSettings b)
     {
         if (!string.Equals(a.SourceType, b.SourceType, StringComparison.OrdinalIgnoreCase))
         {
@@ -1054,13 +1054,19 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
 
         if (string.Equals(a.SourceType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
         {
+            // UpdateRateMs is connection identity for UA sources: it drives the
+            // subscription's PublishingInterval, which is fixed when the client is
+            // created. A rate change must recreate the session so a new subscription
+            // (and its publishing cadence) is built — otherwise the API reports
+            // success but values keep arriving at the old interval.
             return string.Equals(a.EndpointUrl, b.EndpointUrl, StringComparison.OrdinalIgnoreCase)
                 && string.Equals(a.SecurityMode, b.SecurityMode, StringComparison.OrdinalIgnoreCase)
                 && string.Equals(a.SecurityPolicy, b.SecurityPolicy, StringComparison.OrdinalIgnoreCase)
                 && string.Equals(a.UaUsername, b.UaUsername, StringComparison.Ordinal)
                 && string.Equals(a.UaPassword, b.UaPassword, StringComparison.Ordinal)
                 && a.SessionTimeoutMs == b.SessionTimeoutMs
-                && a.ReconnectDelayMs == b.ReconnectDelayMs;
+                && a.ReconnectDelayMs == b.ReconnectDelayMs
+                && a.UpdateRateMs == b.UpdateRateMs;
         }
 
         if (string.Equals(a.SourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase))

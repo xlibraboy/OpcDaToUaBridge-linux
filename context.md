@@ -74,6 +74,7 @@ The UA server is a **mirror**, not a computation path. Every value shown in the 
 - Mapped NodeIds only (UA item id = NodeId string); subscriptions primary (poll is fallback for the mapped set); write-through supported: UA client writes to the bridge mirror node drain through `WriteQueue` → per-source consumer → `OpcUaSourceClient.WriteAsync` → the external server.
 - The `AccessRights` of a UA-source mapping gate the mirror node exactly like DA (see above); Write-only tags are not subscribed/read from the source.
 - `OpcUaSourceClient` keeps a `last_desired_mappings_` list and re-reconciles monitored items on session reconnect. **All reconciles (connect, mapping-change, reconnect) are serialized through a `SemaphoreSlim`** — do not remove; concurrent reconciles left stale monitored items (a tag flipped to Write stayed subscribed).
+- **Per-source update-rate changes recreate the UA session** (`UpdateRateMs` is part of `SourceConnectionEquals` for UA sources — it drives the subscription `PublishingInterval`, which is fixed at client creation). Without this, `POST /api/da/sources/update-rate` reported success while values kept arriving at the old cadence (regression-tested in `SourceConnectionEqualsTests`).
 - **Failed monitored-item creates are retried on a 15s timer** (since `fix/monitored-item-retry`): a tag that does not exist at the source yet (or transiently rejected) is re-attempted automatically until it succeeds or the mapping stops being desired. Without this it stayed disconnected until the next mapping change or reconnect.
 
 ### Manual mode
