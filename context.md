@@ -130,7 +130,7 @@ ASP.NET Core minimal API, listens on `http://0.0.0.0:8080` (runtime port from `B
 Endpoints (all in `Program.cs`):
 - `GET /` — dashboard HTML
 - `GET /api/values` — current `BridgeState` values
-- `GET /api/dashboard?limit=&sourceId=` — Live Values payload: `values[]` with `{sourceId, itemId, value, timestampUtc, daQuality, isGood, dataType}` (dataType resolved via `DashboardValues`), `valuesTotal`, plus bridge/UA status blocks
+- `GET /api/dashboard?limit=&sourceId=` — Live Values payload: `values[]` with `{sourceId, itemId, value, timestampUtc, daQuality, isGood, dataType, updateRate}` (dataType + updateRate resolved via `DashboardValues`; `updateRate` = effective ms per tag — per-tag `PollRateMs` wins, else the source default), `valuesTotal`, plus bridge/UA status blocks
 - `GET /api/status` | `/api/diagnostics` — bridge + UA status; diagnostics includes writeQueue stats, uaBandwidth, UA sessions/subscriptions
 - `GET /api/hmi/tags` — HMI tag snapshot (mappings + current values)
 - `POST /api/hmi/write` — HMI write; gated on mapping access rights; reuses `WriteQueue` / `ApplyUaWriteAsync`
@@ -154,7 +154,7 @@ HMI note: the operator UI is not embedded in the dashboard; run `dotnet run --pr
 ### Dashboard UI (DashboardPage.cs)
 
 - Sidebar: Sources (OPC DA / OPC UA / Diagnostics tabs), Drivers, Maps, DA Links, MQTT, Traffic, InfluxDB, Monitor (Live Values / Logs / Diagram / Guide / About).
-- Live Values: 6-column table (Source | Item ID | Value | Type | Quality | Timestamp) fed by `/api/dashboard`; `colgroup` 12/25/22/10/12/19%.
+- Live Values: 7-column table (Source | Item ID | Value | Type | Rate | Quality | Timestamp) fed by `/api/dashboard`; `colgroup` 11/23/20/9/9/10/18%. The **Rate** column shows each tag's effective update rate (`updateRate` per value — per-tag `PollRateMs` override, else the source default; `formatMs` renders `—` for unknown).
 - Maps tab defaults to the **opc-da** subtab — on UA-only rigs click `[data-map-type="opc-ua"]` to see rows.
 - Mapping rows: value + badge cluster (type, deadband, rate, MQTT, Influx) clipped with a right-edge mask fade; the **status cluster (connection-state + access rights) is pinned right outside the fade** (`flex-shrink:0`) and never clipped; row height fixed 34px. Connection badges (since `fix/ui-disconnect-badges`, main `cc97b52`) are driven by **server-side signals in the `/api/dashboard` payload — never by absence from the capped 2000-value window** (that bug showed Disc on ~98% of rows after reload): `disconnected` = failed monitored items (auto-retrying) → pinned **Disc** badge; `badQuality` = full-store scan of `IsGood=false` values → pinned **Bad** badge; source `connectionState != Connected` → **Disc** on all its rows. `refresh()` re-renders Maps rows while the Maps tab is visible so badges track live state. Disabled mappings excluded.
 - Faceplate: big value + meta row (type pill, quality, timestamp); no "Real value" label.

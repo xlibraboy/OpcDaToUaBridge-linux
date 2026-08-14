@@ -218,6 +218,12 @@ app.MapGet("/api/status/ports", () =>
      (IReadOnlyList<TagMapping> mappings, _) = mappingStore.GetSnapshot();
      Dictionary<string, string> dataTypeByKey = DashboardValues.BuildDataTypeLookup(mappings);
 
+     // Effective update rate per tag: per-tag PollRateMs wins, else the source default.
+     Dictionary<string, int> sourceRates = state.GetStatus().Sources
+         .GroupBy(source => source.SourceId, StringComparer.OrdinalIgnoreCase)
+         .ToDictionary(group => group.Key, group => group.First().UpdateRateMs, StringComparer.OrdinalIgnoreCase);
+     Dictionary<string, int> updateRateByKey = DashboardValues.BuildUpdateRateLookup(mappings, sourceRates);
+
      return Results.Json(new
      {
          bridge = state.GetStatus(),
@@ -231,7 +237,8 @@ app.MapGet("/api/status/ports", () =>
              timestampUtc = value.TimestampUtc,
              daQuality = value.DaQuality,
              isGood = value.IsGood,
-             dataType = DashboardValues.ResolveDataType(value.Value, dataTypeByKey, value.SourceId, value.ItemId)
+             dataType = DashboardValues.ResolveDataType(value.Value, dataTypeByKey, value.SourceId, value.ItemId),
+             updateRate = DashboardValues.LookupUpdateRate(updateRateByKey, value.SourceId, value.ItemId)
          }),
          valuesTotal = state.GetValueCount(sourceId),
          disconnected = worker.GetDisconnectedTags(),

@@ -544,9 +544,9 @@ internal static class DashboardPage
         <div class="box-b" style="padding:0">
             <div class="values-wrap">
                 <table class="values-table">
-                    <colgroup><col style="width:12%"><col style="width:25%"><col style="width:22%"><col style="width:10%"><col style="width:12%"><col style="width:19%"></colgroup>
-                    <thead><tr><th>Source</th><th>Item ID</th><th>Value</th><th>Type</th><th>Quality</th><th>Timestamp</th></tr></thead>
-                    <tbody id="values"><tr><td colspan="6" class="msg">Waiting for values&#8230;</td></tr></tbody>
+                    <colgroup><col style="width:11%"><col style="width:23%"><col style="width:20%"><col style="width:9%"><col style="width:9%"><col style="width:10%"><col style="width:18%"></colgroup>
+                    <thead><tr><th>Source</th><th>Item ID</th><th>Value</th><th>Type</th><th>Rate</th><th>Quality</th><th>Timestamp</th></tr></thead>
+                    <tbody id="values"><tr><td colspan="7" class="msg">Waiting for values&#8230;</td></tr></tbody>
                 </table>
             </div>
         </div>
@@ -2843,9 +2843,12 @@ function relTime(u) {
 }
 function shortTime(u) {
     if (!u) return '—';
-    return new Date(u).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    return new Date(u).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 });
 }
-function locTime(u) { return u ? new Date(u).toLocaleString() : '—'; }
+function locTime(u) {
+    if (!u) return '—';
+    return new Date(u).toLocaleString([], { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 });
+}
 function get(o, k) { return o?.[k] ?? o?.[k[0].toUpperCase() + k.slice(1)]; }
 function currentSource() { return state.editingNewSource ? null : state.sources.find(s => s.sourceId === state.selectedSourceId) || null; }
 function defaultUaNodeId(sourceId, itemId) { return `ns=2;s=${sourceId}/${itemId}`; }
@@ -3662,14 +3665,14 @@ async function refresh() {
                 const value = String(get(it, 'value') ?? '');
                 const timestamp = locTime(get(it, 'timestampUtc'));
                 const timestampShort = shortTime(get(it, 'timestampUtc'));
-                return `<tr><td><code title="${attr(sourceId)}">${esc(sourceId)}</code></td><td><code title="${attr(itemId)}">${esc(itemId)}</code></td><td class="mono" title="${attr(value)}">${esc(value)}</td><td class="msg" title="${attr(get(it, 'dataType') || '')}">${esc(get(it, 'dataType') || '—')}</td><td title="${attr(String(q ?? ''))}"><span class="quality">${badge(g ? 'Good' : 'Bad', g ? 'good' : 'bad')} <span class="${g ? 'good' : 'bad'}">(${q})</span></span></td><td class="msg timestamp" title="${attr(timestamp)}">${esc(timestampShort)}</td></tr>`;
-            }).join('') : '<tr><td colspan="6" class="msg">No values yet.</td></tr>';
+                return `<tr><td><code title="${attr(sourceId)}">${esc(sourceId)}</code></td><td><code title="${attr(itemId)}">${esc(itemId)}</code></td><td class="mono" title="${attr(value)}">${esc(value)}</td><td class="msg" title="${attr(get(it, 'dataType') || '')}">${esc(get(it, 'dataType') || '—')}</td><td class="msg" title="Update rate">${formatMs(get(it, 'updateRate'))}</td><td title="${attr(String(q ?? ''))}"><span class="quality">${badge(g ? 'Good' : 'Bad', g ? 'good' : 'bad')} <span class="${g ? 'good' : 'bad'}">(${q})</span></span></td><td class="msg timestamp" title="${attr(timestamp)}">${esc(timestampShort)}</td></tr>`;
+            }).join('') : '<tr><td colspan="7" class="msg">No values yet.</td></tr>';
         }
     } catch (e) {
         el('dot').className = 'dot off';
         el('clock').textContent = 'offline';
         if (state.liveValuesEnabled) {
-            el('values').innerHTML = `<tr><td colspan="6" class="bad">${esc(e.message)}</td></tr>`;
+            el('values').innerHTML = `<tr><td colspan="7" class="bad">${esc(e.message)}</td></tr>`;
         }
     }
 }
@@ -5192,7 +5195,7 @@ function toggleLiveValues() {
         refresh().catch(e => {
             el('dot').className = 'dot off';
             el('clock').textContent = 'offline';
-            el('values').innerHTML = `<tr><td colspan="6" class="bad">${esc(e.message)}</td></tr>`;
+            el('values').innerHTML = `<tr><td colspan="7" class="bad">${esc(e.message)}</td></tr>`;
         });
     }
 }

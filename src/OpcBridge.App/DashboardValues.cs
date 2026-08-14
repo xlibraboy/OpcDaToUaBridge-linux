@@ -29,6 +29,32 @@ internal static class DashboardValues
             : null;
     }
 
+    /// <summary>
+    /// Effective update rate per mapped tag: the per-tag <c>PollRateMs</c> override wins;
+    /// otherwise the source's default rate applies. Unknown sources fall back to 0.
+    /// </summary>
+    public static Dictionary<string, int> BuildUpdateRateLookup(
+        IReadOnlyList<TagMapping> mappings,
+        IReadOnlyDictionary<string, int> sourceDefaultRates)
+    {
+        Dictionary<string, int> lookup = new(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < mappings.Count; i++)
+        {
+            TagMapping mapping = mappings[i];
+            int rate = mapping.PollRateMs > 0
+                ? mapping.PollRateMs
+                : (sourceDefaultRates.TryGetValue(mapping.SourceId, out int sourceRate) ? sourceRate : 0);
+            lookup[BridgeState.NormalizeKey(mapping.SourceId, mapping.ItemId)] = rate;
+        }
+
+        return lookup;
+    }
+
+    public static int LookupUpdateRate(Dictionary<string, int> lookup, string sourceId, string itemId)
+    {
+        return lookup.TryGetValue(BridgeState.NormalizeKey(sourceId, itemId), out int rate) ? rate : 0;
+    }
+
     /// <summary>Maps the value's CLR type to the UA-style type name shown in the UI.</summary>
     public static string? InferDataType(object? value)
     {
