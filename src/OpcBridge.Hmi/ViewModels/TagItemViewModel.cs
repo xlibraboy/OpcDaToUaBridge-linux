@@ -27,6 +27,9 @@ public partial class TagItemViewModel : ObservableObject
     private string _timestampText = string.Empty;
 
     [ObservableProperty]
+    private string _rateText = string.Empty;
+
+    [ObservableProperty]
     private bool _writeable;
 
     public string Key => HmiTagCache.Key(SourceId, ItemId);
@@ -45,6 +48,7 @@ public partial class TagItemViewModel : ObservableObject
         DisplayName = string.IsNullOrWhiteSpace(dto.DisplayName) ? dto.ItemId : dto.DisplayName;
         DataType = dto.DataType;
         Writeable = dto.Writeable;
+        RateText = dto.UpdateRateMs > 0 ? $"{dto.UpdateRateMs} ms" : "—";
         ApplyValue(dto.Value, dto.TimestampUtc, dto.DaQuality, dto.IsGood);
     }
 
@@ -59,7 +63,7 @@ public partial class TagItemViewModel : ObservableObject
         QualityText = FormatQuality(daQuality, isGood);
         TimestampText = timestampUtc is null
             ? string.Empty
-            : timestampUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss");
+            : timestampUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss.fff");
     }
 
     private static string FormatValue(object? value) => value switch

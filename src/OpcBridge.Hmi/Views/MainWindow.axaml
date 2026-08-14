@@ -96,6 +96,7 @@
           <TextBlock Text="{Binding SelectedTag.DataType, StringFormat=Type: {0}}" />
           <TextBlock Text="{Binding SelectedTag.ValueText, StringFormat=Value: {0}}" />
           <TextBlock Text="{Binding SelectedTag.QualityText, StringFormat=Quality: {0}}" />
+          <TextBlock Text="{Binding SelectedTag.RateText, StringFormat=Rate: {0}}" />
           <TextBlock Text="{Binding SelectedTag.TimestampText, StringFormat=Timestamp: {0}}" />
           <TextBlock Text="History (1h)" FontWeight="SemiBold" Margin="0,8,0,0" />
           <controls:SparklineControl Height="72"

@@ -11,4 +11,7 @@ public sealed class HmiTagDto
     public int? DaQuality { get; set; }
     public bool? IsGood { get; set; }
     public bool Writeable { get; set; }
+
+    /// <summary>Effective update rate in ms (per-tag override, else the source default). 0 = unknown.</summary>
+    public int UpdateRateMs { get; set; }
 }

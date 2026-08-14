@@ -17,6 +17,12 @@ public static class HmiTagSnapshot
             byKey[string.Concat(v.SourceId, "::", v.ItemId)] = v;
         }
 
+        // Effective update rate per tag: per-tag PollRateMs wins, else the source default.
+        Dictionary<string, int> sourceRates = bridgeState.GetStatus().Sources
+            .GroupBy(source => source.SourceId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First().UpdateRateMs, StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, int> updateRateByKey = DashboardValues.BuildUpdateRateLookup(mappings, sourceRates);
+
         List<HmiTagDto> tags = new();
         for (int i = 0; i < mappings.Count; i++)
         {
@@ -37,7 +43,8 @@ public static class HmiTagSnapshot
                 TimestampUtc = snap?.TimestampUtc,
                 DaQuality = snap?.DaQuality,
                 IsGood = snap?.IsGood,
-                Writeable = m.Writeable
+                Writeable = m.Writeable,
+                UpdateRateMs = DashboardValues.LookupUpdateRate(updateRateByKey, m.SourceId, m.ItemId)
             });
         }
 
