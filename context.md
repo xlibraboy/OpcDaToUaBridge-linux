@@ -1,6 +1,6 @@
 # context.md — OpcDaToUaBridge
 
-Instruction file for AI agents working in this repo. All facts below are verified against committed code on `main` as of 2026-08-06 (`039f104`).
+Instruction file for AI agents working in this repo. All facts below are verified against committed code on `main` as of 2026-08-07 (`a55e3da`).
 
 ## What this project is
 
@@ -20,7 +20,7 @@ Projects under `src/`, all .NET 8, `ImplicitUsings` + `Nullable` enabled.
 | Project | TFM | Role |
 |---|---|---|
 | `OpcBridge.Core` | `net8.0` | Cross-project contract types: `TagMapping`, `BridgeValue`, `BridgeOptions`, `TagMode`/`TagAccessRights` constants. No dependencies. |
-| `OpcBridge.Da` | `net8.0;net8.0-windows` | DA client + browsing + server enumeration + Windows impersonation. Multi-targeted so it compiles on Linux but only runs COM on Windows. |
+| `OpcBridge.Da` | `net8.0;net8.0-windows` | DA client + browsing + server enumeration + Windows impersonation. Multi-targeted so it compiles on Linux but only runs COM on Windows. `InternalsVisibleTo OpcBridge.LoadTest` (for `DaConnectErrorClassifier`). |
 | `OpcBridge.Ua` | `net8.0` | UA server: `BridgeUaServer` (extends `StandardServer`), `BridgeNodeManager` (extends `CustomNodeManager2`), `UaServerHost`, plus `OpcUaSourceClient` (the UA **inbound** source client). Depends on `OPCFoundation.NetStandard.Opc.Ua` 1.5.378.145. `InternalsVisibleTo OpcBridge.LoadTest`. |
 | `OpcBridge.App` | `net8.0` (Web SDK) | Entrypoint, HTTP API, dashboard HTML/JS (`DashboardPage`), `BridgeWorker`, `BridgeState`, `MappingStore`, `DaRuntimeSettings`, `SourceClientFactory`, `WriteQueue`, `DashboardValues` (data-type inference), `DashboardLogStore`, Influx runtime settings, HMI snapshot/write/trends API + SignalR hub. References Core, Da, Ua, Mqtt, Influx, Client. |
 | `OpcBridge.Mqtt` | `net8.0` | MQTT publish/subscribe helper for mapped tags. |
@@ -60,6 +60,7 @@ The UA server is a **mirror**, not a computation path. Every value shown in the 
 - UA nodes are namespaced by source: default `UaNodeId` is `ns=2;s={SourceId}/{ItemId}`; `BridgeNodeManager` keys variables by `"{SourceId}::{ItemId}"` (`BridgeState.NormalizeKey` is the same key, `internal`).
 - `MappingStore` enforces uniqueness on `(SourceId, ItemId)` and persists to `mappings.json` in `AppContext.BaseDirectory`.
 - **API gotchas (verified):** `POST /api/mappings/add` and `/bulk-add` are **insert-only** (silently skip existing keys). `POST /api/mappings/update` **replaces** the mapping — omitted fields reset to defaults (DataType→"Auto", Mode→"Source", AccessRights→"Read", PollRateMs→0) — always send all fields. Source deletion is `POST /api/da/sources/remove` with `{"sourceId":...}`; `DELETE /api/da/sources/{id}` does nothing.
+- **Access-rights normalization (since `32ba712`):** `ToTagMapping` passes the raw `accessRights` through (empty = absent), and `MappingStore.NormalizeAccessRights` matches case- and hyphen-insensitively. So `writeable: true` alone (no `accessRights`) migrates to `Read-Write`, both `ReadWrite` and `Read-Write` spellings normalize the same (no silent downgrade to `Read`), and an explicit `accessRights` wins over `writeable`.
 
 ### Per-tag poll rates
 
@@ -87,6 +88,7 @@ When `TagMapping.Mode == "Manual"`, `BridgeWorker.ApplyManualMappings` synthesiz
 ### Failure resilience
 
 - A failed source read enqueues the source id to `failedSourceQueue`; the coordinator loop tears down all pollers + sessions and rebuilds on the next tick. The app stays alive. The subscription watchdog (`ScanWatchdog`) detects dead subscriptions and reconnects the source.
+- **Per-item failures are handled in the DA client, not the coordinator** (see above): a single bad tag yields a BAD value + retry, never a source teardown. `connectedVersion` is invalidated on any reconfigure failure so every source (including reconnects) is re-evaluated on the next tick.
 - `BridgeState.SetSourceError` marks the source `"Faulted"` and surfaces the message; aggregate `DaConnectionState` becomes `"Partial"` if some sources are connected.
 - Empty `ProgId` on a DA source → state `"Disconnected"` with a clear error, no crash. The baked-in DA `default` source always fails on Linux (`PlatformNotSupportedException`, COM) — expected; remove it via the API on UA-only rigs.
 
@@ -100,7 +102,10 @@ When `TagMapping.Mode == "Manual"`, `BridgeWorker.ApplyManualMappings` synthesiz
 - Direct COM interop via `IOPCServer`, `IOPCItemMgt`, `IOPCSyncIO` (declared inline as `[ComImport]` interfaces with the OPC DA GUIDs).
 - One OPC DA group per poll rate, created lazily on first read at that rate.
 - Sync device reads (`OPCDataSourceDevice = 2`).
-- Remote DCOM with credentials → `LogonUser` (`LOGON32_LOGON_NEW_CREDENTIALS`) + `WindowsIdentity.RunImpersonated` wrapping `ConnectDirect`. See `WindowsImpersonation.cs`.
+- Remote DCOM with credentials → `LogonUser` (`LOGON32_LOGON_NEW_CREDENTIALS`) + `WindowsIdentity.RunImpersonated` wrapping `ConnectRemote`; **without credentials the remote server is activated directly with the process identity (null `COAUTHINFO` → default credentials)** — a DCOM source with a host but no `RemoteUsername` is valid (was Win32 error 87 before). See `WindowsImpersonation.cs`.
+- **Per-item failures are isolated** (since `d23ee4e`/`5d86771`): an item that fails `AddItems` (deleted tag, access denied) or a poll-fallback read is mirrored as a BAD `BridgeValue` and retried every poll cycle (`AddMissingItems`) — one bad tag can no longer abort a whole group and trigger a reconnect storm. Teardown COM calls (`RemoveItems`/`RemoveGroup`) are exception-safe so a dead server cannot crash the coordinator mid-drain and strand the source in Faulted forever.
+- `OpcDaClient.Warning` event surfaces non-fatal operational warnings — subscription setup failure → polling fallback, per-item AddItems failures, item recovery; `BridgeWorker` subscribes and logs them, so operators see why a source is polling instead of receiving callbacks.
+- `DaConnectErrorClassifier` (`OpcBridge.Da`, internal, unit-tested) classifies server-activation failures for the coordinator: registered-but-dead servers (RPC unavailable, crash on start) and unreachable hosts throw `SourceConnectionLostException` so the coordinator retries with backoff; local config errors (class not registered `0x80040154`, logon failure) stay terminal Faulted.
 - All COM-touching methods are `[SupportedOSPlatform("windows")]`; non-Windows calls throw `PlatformNotSupportedException`. `OperatingSystem.IsWindows()` guards in `Program.cs` keep browse/enumerate endpoints from invoking COM on Linux.
 
 ## UA server
@@ -187,7 +192,7 @@ docker run --rm -v "$PWD/<worktree>":/src -w /src -v "$HOME/.nuget-cache":/home/
   -e HOME=/home/build -e DOTNET_CLI_HOME=/home/build --user "$(id -u):$(id -g)" \
   mcr.microsoft.com/dotnet/sdk:8.0 dotnet test tests/OpcBridge.LoadTest/OpcBridge.LoadTest.csproj
 ```
-`--user` keeps build artifacts iwan-owned (rootful daemon). Full suite: **317 tests** (xUnit, `tests/OpcBridge.LoadTest`), ~2.5 min in Docker. Known flaky: `InfluxApiTests.InfluxConfig_Post_Persists_EnabledFlag` (fails in full-suite order, passes isolated — pre-existing).
+`--user` keeps build artifacts iwan-owned (rootful daemon). Full suite: **358 tests** (xUnit, `tests/OpcBridge.LoadTest`), ~2 min in Docker. Since the last refresh, `DaConnectErrorClassifierTests` (5) and `AccessRightsNormalizationTests` (6) joined the suite. Known flaky: `InfluxApiTests.InfluxConfig_Post_Persists_EnabledFlag` (fails in full-suite order, passes isolated — pre-existing).
 
 **Worktree workflow (session convention):** fixes live in `git worktree add .worktrees/<branch-slug> -b <branch> main`; one worktree per branch; full suite per branch before merge; merge to main with `--no-ff`; push to origin. **Tool path quirk:** `edit`/`write` with relative `.worktrees/...` paths sometimes land in the main checkout — always use absolute paths and verify with grep after. `.dockerignore` excludes `.worktrees/` (7+ GB) so images can be built from the main checkout.
 
@@ -232,20 +237,20 @@ Package `publish.tmp` → tar.gz, SCP to host as `publish-new.tar.gz`, then run 
 - **Failure-resilient by default.** Errors are surfaced in the dashboard (per-source state, `LastError`), not fatal. A failed connect must leave the app alive and recoverable.
 - **Backend-first.** Verify the backend seam (`ISourceClient`, `BridgeWorker`, `BridgeState`) before wiring dashboard controls.
 - **Conventional commits** (`feat:`, `fix:`, etc.). Committed code on `main` is authoritative; uncommitted changes are a known risk.
-- **Tests exist** under `tests/OpcBridge.LoadTest` (xUnit, 317 tests). Prefer `InternalsVisibleTo` over making types public for tests. Run in Docker (command above). Primary verification is the full suite + rig/browser proof after deploy.
+- **Tests exist** under `tests/OpcBridge.LoadTest` (xUnit, 358 tests). Prefer `InternalsVisibleTo` over making types public for tests. Run in Docker (command above). Primary verification is the full suite + rig/browser proof after deploy.
 
 ## Gotchas
 
 - The mental-model notes about `Da:Mode` / `SimulatedDaClient` / `POST /api/da/mode` / "mode switching" describe a pattern **not present** in committed code. Trust committed code, not those notes.
 - `appsettings.json` is `reloadOnChange: true`, but `DaRuntimeSettings` is a singleton seeded once at startup; runtime source changes go through the API, not by editing the file.
 - `MappingStore` loads from `mappings.json` if it exists, ignoring `Bridge:Mappings` in `appsettings.json`. Delete `mappings.json` to reseed from config.
-- **Mapping API semantics:** `/add` + `/bulk-add` are insert-only (silently skip existing keys); `/update` replaces with defaults for omitted fields (send all fields); removal is `POST /api/mappings/remove`; source removal is `POST /api/da/sources/remove` (the `DELETE` route does nothing).
+- **Mapping API semantics:** `/add` + `/bulk-add` are insert-only (silently skip existing keys); `/update` replaces with defaults for omitted fields (send all fields); removal is `POST /api/mappings/remove`; source removal is `POST /api/da/sources/remove` (the `DELETE` route does nothing). Access-rights fields are normalized case-/hyphen-insensitively (`writeable: true` alone → `Read-Write`; explicit `accessRights` wins) — see API gotchas above.
 - **Runtime mapping updates DO refresh UA node attributes** (since `fix/ua-node-sync`, main `2746864`): AccessLevel, DataType, display metadata update in place on the next SyncMappings cycle — no remove+re-add needed. Node identity (NodeId/BrowseName) is stable.
 - **Write-only tags are not source-read.** They hold a write-only mirror node (reads rejected `BadNotReadable`); the dashboard shows the last value read before the flip, then freezes.
 - `OpcDaClient.DisposeAsync` releases COM objects only on Windows; on Linux it nulls references (the client never connected there).
 - 32-bit COM alignment: if the Windows runtime uses 32-bit OPC DA servers, publish with `-r win-x86`; a 64-bit process cannot activate them without DCOM surrogate setup.
 - **Deadband under subscriptions only.** `TagMapping.DeadbandPct` is applied as the OPC DA group's `percentDeadband` and only filters at the source via `IOPCDataCallback` callbacks. If a source falls back to polling, deadband has no effect — do not add client-side filtering.
-- **Subscriptions are opt-in via `Da:UseSubscriptions`** (default `true`). If `IConnectionPointContainer.FindConnectionPoint` for `IOPCDataCallback` fails, `OpcDaClient` silently falls back to device reads and `OnCallbackValues` never fires.
+- **Subscriptions are opt-in via `Da:UseSubscriptions`** (default `true`). If `IConnectionPointContainer.FindConnectionPoint` for `IOPCDataCallback` fails, `OpcDaClient` falls back to device reads and `OnCallbackValues` never fires — but it now raises the `Warning` event (logged by `BridgeWorker`), so the fallback is no longer silent.
 - **Write queue:** per-source channels, no re-enqueue (since `fix/write-queue-leak`). A shared-queue re-enqueue design must not return — it starves the matching consumer (tens of thousands of hops per write).
 - **Reconcile serialization:** `OpcUaSourceClient.ReconcileMonitoredItemsAsync` is serialized via a `SemaphoreSlim` (since `fix/write-tag-subscription`). Concurrent reconciles previously left stale monitored items on Write-flipped tags.
 - **UA client logging:** `SourceClientFactory` must pass a real `ILoggerFactory` — the UA client's reconcile logs are the primary tool for verifying monitored-item behavior.

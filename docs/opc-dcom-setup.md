@@ -512,20 +512,26 @@ For a dedicated OPC server VM, prefer a fixed identity (§2.6) and grant the cli
 
 ### 3.6 How this maps to opc-bridge (this repo)
 
-The DA client in `src/OpcBridge.Da/OpcDaClient.cs` uses two activation strategies
-(repo source, `ConnectDirect` / `ConnectWithImpersonation`):
+The DA client in `src/OpcBridge.Da/OpcDaClient.cs` activates remote servers via
+`Type.GetTypeFromProgID(progId, host)` + `Activator.CreateInstance` (`ConnectDirect` dispatches to
+`ConnectRemote`; the legacy `CoCreateInstanceEx`/`ConnectWithImpersonation` paths are gone):
 
-1. **COAUTHINFO/COAUTHIDENTITY via `CoCreateInstanceEx`** — the explicit-identity path; the
-   credentials are used for the server's **launch permission check** (per §3.3/§1.2). No thread
-   impersonation involved, so cloaking is not required for the activation identity.
-2. **`LogonUser(…, LOGON32_LOGON_NEW_CREDENTIALS=9)` + `WindowsIdentity.RunImpersonated` +
-   `Type.GetTypeFromProgID(progId, host)`** — thread-impersonation path. Per §3.4, for the SCM to
-   see the impersonated identity, the COM apartment must have **EOAC_DYNAMIC_CLOAKING** configured
-   (activation checks use the thread token only when cloaking is set
+1. **With `RemoteUsername` configured** — `LogonUser(…, LOGON32_LOGON_NEW_CREDENTIALS=9)` +
+   `WindowsIdentity.RunImpersonated` wrapping `ConnectRemote` (thread-impersonation path). Per
+   §3.4, for the SCM to see the impersonated identity, the COM apartment must have
+   **EOAC_DYNAMIC_CLOAKING** configured (activation checks use the thread token only when cloaking
+   is set
    ([Activation Security](https://learn.microsoft.com/en-us/windows/win32/com/activation-security)));
-   otherwise the server checks the *process* identity. If method calls on the returned proxy must
-   run as the remote account and the proxy does not carry `COAUTHIDENTITY`, set the proxy blanket
-   to the matching identity or enable dynamic cloaking.
+   otherwise the server checks the *process* identity.
+2. **Without credentials** (host set, `RemoteUsername` empty) — `ConnectRemote` runs directly with
+   the process identity (null `COAUTHINFO` → default credentials). A host-only DCOM source is
+   valid; you no longer need to supply credentials for the activation to succeed.
+
+Activation failures are classified by `DaConnectErrorClassifier` (`OpcBridge.Da`): a
+registered-but-dead server (RPC unavailable, crash on start) or an unreachable host throws
+`SourceConnectionLostException`, which the coordinator treats as transient and retries with
+backoff; only an explicit "class not registered" (`0x80040154`) or a logon failure stays terminal
+(Faulted).
 
 The workgroup requirement from §3.1 applies to both paths: the `RemoteUsername`/`RemotePassword`
 must match a local account on DESKTOP-BC2AU7H with an identical password, and the account must be

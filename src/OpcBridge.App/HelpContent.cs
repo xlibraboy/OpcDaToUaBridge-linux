@@ -573,6 +573,7 @@ The bridge can discover OPC DA servers installed on the **local machine** or on 
 - **No credentials needed** — servers installed normally (machine-wide, admin install)
 - **Credentials needed** — server installed by a specific user (per-user COM registration), or remote host requiring DCOM authentication
 - **Manual ProgID** — if a server doesn't appear in scan, type the ProgID directly in Sources → OPC DA → ProgID field and provide credentials
+- **Remote DCOM without credentials** — a remote source with a host but no `RemoteUsername` connects with the process identity. Credentials are only required when the remote server's launch/access ACLs (or a per-user registration) demand a specific account.
 
 ## Limitations
 
@@ -592,7 +593,9 @@ The bridge can discover OPC DA servers installed on the **local machine** or on 
 - **UA write rejected** — verify the tag's Access Rights is **Read-Write** or **Write** (Tags tab → faceplate → Setup tab). Read-only tags return `BadWriteNotSupported`. A write that times out (DA server unresponsive for 5s) returns `BadRequestTimeout`; a DA-side failure returns `BadNoCommunication`.
 - **Deadband not filtering** — deadband only works under **subscriptions** (Sources → OPC DA → DA Subscriptions ON). If the DA server doesn't support `IOPCDataCallback`, the bridge falls back to polling and deadband has no effect. Check Logs for the subscription fallback warning.
 - **Handle count growing** — a steady upward trend in Monitor → Resources → Handles indicates a COM object or handle leak. Restart the scheduled task if it grows unbounded; report the source for investigation.
-- **Subscription fallback** — if `/api/logs` shows "OPC DA server does not support subscriptions", the bridge silently switched to polling. Values still flow at the update rate. This is non-fatal.
+- **Subscription fallback** — if `/api/logs` shows "OPC DA server does not support subscriptions", the bridge logged a warning and switched to polling. Values still flow at the update rate. This is non-fatal.
+- **DA source shows "Reconnecting"** — a transient connection failure (server down, host unreachable, RPC dead, server crashed on start) is retried automatically with backoff; no action needed. A source stuck in **Faulted** means a configuration error — check the ProgID registration, logon credentials, and DCOM permissions.
+- **One tag shows Bad quality** — that tag failed to be added or read (deleted on the server, access denied, fault-injected). The bridge reports it as Bad and retries it every poll cycle while the rest of the source keeps flowing — restore the tag on the server to recover it. A single bad tag never takes the whole source down.
 
 ---
 
@@ -703,6 +706,8 @@ S4U default: `powershell -ExecutionPolicy Bypass -File scripts\windows\register-
 | UA server | Monitor → UA | Running |
 | Scheduled task | `schtasks /query /tn OpcDaToUaBridge` | State: Running |
 | Version | Topbar badge or `http://localhost:8080/api/version` | e.g. v1.0.0 |
+
+A source that is merely unreachable (server down, RPC dead) shows **Reconnecting** and is retried automatically with backoff — give it a few seconds before assuming a config problem.
 
 If DA shows Faulted, check:
 - `appsettings.json` Da:ProgId is correct
@@ -954,7 +959,7 @@ Always preserve `pki/` across updates. It's listed in the update guide as "never
 | `description` | `null` | Operator-entered notes/description (shown as tooltip in tag list) |
 | `dataType` | `Double` | Data type hint for UA node |
 | `enabled` | `true` | Include in DA reads and UA publishing |
-| `accessRights` | `Read` | `Read` (DA→UA), `Read-Write` (DA↔UA), or `Write` (UA→DA only) |
+| `accessRights` | `Read` | `Read` (DA→UA), `Read-Write` (DA↔UA), or `Write` (UA→DA only). Spellings `ReadWrite`/`Read-Write` are equivalent; `writeable: true` with no `accessRights` maps to `Read-Write`, and an explicit `accessRights` wins over `writeable` |
 | `mode` | `Source` | `Source` (live DA value) or `Manual` (simulation — publishes ManualValue) |
 | `manualValue` | `null` | Fixed value when mode is `Manual` (simulation) |
 | `pollRateMs` | `0` | Per-tag update rate in ms (0 = source default) |
