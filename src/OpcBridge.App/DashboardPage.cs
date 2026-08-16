@@ -1084,6 +1084,7 @@ internal static class DashboardPage
                 <button class="fp-subtab" type="button" data-fptab="setup" onclick="showFpTab('setup')">Setup</button>
                 <button class="fp-subtab" type="button" data-fptab="sim" onclick="showFpTab('sim')">Simulation</button>
                 <button class="fp-subtab" type="button" data-fptab="mqtt" onclick="showFpTab('mqtt')">MQTT</button>
+                <button class="fp-subtab" type="button" data-fptab="influx" onclick="showFpTab('influx')">Influx</button>
             </div>
             <div class="fp-tabpane" id="fp-pane-basic">
                 <div class="field"><label class="fl">Tag Name</label><input type="text" id="fpDisplayName" style="flex:1"></div>
@@ -1107,7 +1108,10 @@ internal static class DashboardPage
                 <div class="field"><label class="fl">MQTT</label><input type="checkbox" id="fpMqttEnabled"> <span class="msg">publish/subscribe this tag</span></div>
                 <div class="field"><label class="fl">MQTT Topic</label><input type="text" id="fpMqttTopic" placeholder="override topic (optional)"></div>
                 <div class="hint" style="margin-top:4px">When enabled, the tag's value is published to the broker and inbound broker writes are applied to it. Leave the topic blank to use the default <span class="mono">{TopicPrefix}/{SourceId}/{ItemId}</span> scheme.</div>
+            </div>
+            <div class="fp-tabpane" id="fp-pane-influx" style="display:none">
                 <div class="field"><label class="fl">Influx log</label><input type="checkbox" id="fpInfluxEnabled"> <span class="msg">write this tag to InfluxDB</span></div>
+                <div class="hint" style="margin-top:4px">When enabled, each value change of this tag is written to the configured InfluxDB bucket.</div>
             </div>
         </div>
         <div class="modal-f">
