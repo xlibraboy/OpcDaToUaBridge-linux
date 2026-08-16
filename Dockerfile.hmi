@@ -1,0 +1,20 @@
+# Builds the Avalonia HMI (OpcBridge.Hmi) for linux-x64 and runs it on a
+# host X11 display. Usage:
+#   docker build -f Dockerfile.hmi -t opcbridge:hmi .
+#   docker run --rm -d --name opcbridge-hmi --network host \
+#     -e DISPLAY=:0 -v /tmp/.X11-unix:/tmp/.X11-unix \
+#     --user "$(id -u):$(id -g)" opcbridge:hmi
+FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
+WORKDIR /src
+COPY . .
+RUN dotnet publish src/OpcBridge.Hmi/OpcBridge.Hmi.csproj -c Release -r linux-x64 --self-contained false -o /out
+
+FROM mcr.microsoft.com/dotnet/runtime:8.0
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libx11-6 libxcb1 libxext6 libxrender1 libxfixes3 libxkbcommon0 \
+        libice6 libsm6 libglib2.0-0 libfontconfig1 libfreetype6 \
+        libgl1 libegl1 libxrandr2 libxi6 libxcursor1 \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY --from=build /out .
+ENTRYPOINT ["dotnet", "OpcBridge.Hmi.dll"]

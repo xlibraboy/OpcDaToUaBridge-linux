@@ -37,6 +37,7 @@ publish*.tar.gz
 
 # Runtime state (generated at runtime)
 mappings.json
+hmi-settings.json
 
 
 # Worktrees (user-requested location for git worktrees)
