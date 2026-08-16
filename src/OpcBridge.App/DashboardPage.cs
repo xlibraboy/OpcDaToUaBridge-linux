@@ -2925,6 +2925,10 @@ function setMapType(type, opts) {
     }
 }
 function ensureMapSourceSelection() {
+    // Maps-tab source selection only applies while the Maps view is active — it must not
+    // clobber a source picked on the Connectivity pages (e.g. a UA source selected on the
+    // OPC UA tab would otherwise revert to the first DA source immediately).
+    if (!document.getElementById('view-tags')?.classList.contains('active')) return;
     const sources = mapTypeSources();
     if (!sources.length) return;
     const current = state.sources.find(s => s.sourceId === state.selectedSourceId);
@@ -5537,9 +5541,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         if (document.querySelector('#view-influx.active')) loadInfluxStatus().catch(() => {});
     }, 2000);
-    if (initTab === 'logs') await loadLogs();
-    if (initTab === 'help') await loadHelp();
-    if (initTab === 'about') await loadAppInfo();
+    if (initRoute === 'logs') await loadLogs();
+    if (initRoute === 'help') await loadHelp();
+    if (initRoute === 'about') await loadAppInfo();
     fetch('/api/version').then(r => r.json()).then(p => { const v = (p.informationalVersion || p.version || '0.0.0').split('+')[0]; el('appVersion').textContent = 'v' + v; }).catch(() => {});
 });
 </script>
