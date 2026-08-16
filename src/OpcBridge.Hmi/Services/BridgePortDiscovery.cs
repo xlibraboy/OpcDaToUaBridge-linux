@@ -41,11 +41,15 @@ public static class BridgePortDiscovery
 
         using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(1.5) };
 
-        // 1. Try the configured URL first — fast path when the bridge is on the default port.
+        // 1. Try the configured URL first — fast path when the bridge is already reachable there.
+        //    Keep the URL as configured: the app's self-reported port can differ from the
+        //    externally reachable one (e.g. behind a container port-publish), so rewriting it
+        //    would point at a port where nothing answers. Only follow a port move when the
+        //    configured URL is dead (scan path below).
         if (Uri.TryCreate(configuredBaseUrl, UriKind.Absolute, out Uri? first) &&
-            await TryGetHttpPortAsync(client, first, cancellationToken).ConfigureAwait(false) is { } firstPort)
+            await TryGetHttpPortAsync(client, first, cancellationToken).ConfigureAwait(false) is not null)
         {
-            return BuildBaseUrl(first, firstPort);
+            return configuredBaseUrl.TrimEnd('/');
         }
 
         // 2. Scan the range on the same host until a bridge answers.
