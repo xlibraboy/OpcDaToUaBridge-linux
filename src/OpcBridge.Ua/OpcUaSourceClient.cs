@@ -561,8 +561,10 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
 
         try
         {
-            Dictionary<string, int> desiredSampling = BuildDesiredSampling(desiredMappings);
+            int defaultSampling = Math.Max(100, options_.UpdateRateMs);
+            Dictionary<string, int> desiredSampling = UaSamplingRates.BuildDesiredSampling(desiredMappings, defaultSampling);
             IReadOnlyCollection<string> desiredIds = desiredSampling.Keys;
+            int desiredPublishing = UaSamplingRates.DesiredPublishingInterval(desiredSampling, defaultSampling);
 
             lock (gate_)
             {
@@ -579,7 +581,7 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
                 }
             }
 
-            Subscription subscription = await EnsureSubscriptionAsync(session, cancellationToken)
+            Subscription subscription = await EnsureSubscriptionAsync(session, desiredPublishing, cancellationToken)
                 .ConfigureAwait(false);
 
             string[] activeIds;
@@ -702,8 +704,31 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
                 }
             }
 
-            // Keep sampling intervals aligned for items that remain desired.
-            // (Add/remove covered; existing items keep prior sampling — acceptable for v1.)
+            // Keep sampling intervals aligned for items that remain desired. The set-diff
+            // above is by NodeId, so a rate-only change (same tag, new PollRateMs) shows up
+            // as neither add nor remove — update the existing items so the per-tag rate
+            // from the Maps faceplate takes effect without a session bounce.
+            bool samplingChanged = false;
+            lock (gate_)
+            {
+                foreach (KeyValuePair<string, int> kv in desiredSampling)
+                {
+                    if (monitored_items_.TryGetValue(kv.Key, out MonitoredItem? item))
+                    {
+                        int desired = kv.Value > 0 ? kv.Value : defaultSampling;
+                        if (item.SamplingInterval != desired)
+                        {
+                            item.SamplingInterval = desired;
+                            samplingChanged = true;
+                        }
+                    }
+                }
+            }
+
+            if (samplingChanged)
+            {
+                await subscription.ApplyChangesAsync(cancellationToken).ConfigureAwait(false);
+            }
 
             lock (gate_)
             {
@@ -825,77 +850,26 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
 
     }
 
-    private Dictionary<string, int> BuildDesiredSampling(IReadOnlyList<TagMapping>? desiredMappings)
+    private async Task<Subscription> EnsureSubscriptionAsync(Session session, int publishingIntervalMs, CancellationToken cancellationToken)
     {
-        Dictionary<string, int> desired = new(StringComparer.Ordinal);
-        if (desiredMappings is null)
-        {
-            return desired;
-        }
+        int publishing = Math.Max(100, publishingIntervalMs);
 
-        int defaultSampling = Math.Max(100, options_.UpdateRateMs);
-        for (int i = 0; i < desiredMappings.Count; i++)
-        {
-            TagMapping mapping = desiredMappings[i];
-            if (!mapping.Enabled)
-            {
-                continue;
-            }
-
-            if (string.Equals(mapping.Mode, TagMode.Manual, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            if (string.IsNullOrWhiteSpace(mapping.ItemId))
-            {
-                continue;
-            }
-
-            // Write-only tags are not source-read (matches SourceMappingCache.SourceRead filter).
-            if (string.Equals(mapping.AccessRights, TagAccessRights.Write, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            string nodeId = mapping.ItemId.Trim();
-            int sampling = mapping.PollRateMs > 0 ? mapping.PollRateMs : defaultSampling;
-            if (sampling < 0)
-            {
-                sampling = defaultSampling;
-            }
-
-            // First wins; Diff keys are unique.
-            if (!desired.ContainsKey(nodeId))
-            {
-                desired[nodeId] = sampling;
-            }
-        }
-
-        return desired;
-    }
-
-    private async Task<Subscription> EnsureSubscriptionAsync(Session session, CancellationToken cancellationToken)
-    {
-        Subscription? existing;
         lock (gate_)
         {
-            existing = subscription_;
-            if (existing is not null
-                && ReferenceEquals(existing.Session, session)
-                && existing.Created)
+            Subscription? current = subscription_;
+            if (current is not null
+                && ReferenceEquals(current.Session, session)
+                && current.Created
+                && current.PublishingInterval == publishing)
             {
-                int desiredPublishing = Math.Max(100, options_.UpdateRateMs);
-                if (existing.PublishingInterval != desiredPublishing)
-                {
-                    existing.PublishingInterval = desiredPublishing;
-                }
-
-                return existing;
+                return current;
             }
         }
 
-        // Drop stale subscription bookkeeping (session may have changed).
+        // Drop stale subscription bookkeeping (session may have changed), or a subscription
+        // whose publishing interval no longer matches the fastest configured rate. Servers
+        // don't reliably apply a publishing-interval change to a live subscription, so
+        // recreate it — the caller's reconcile re-adds the monitored items afterwards.
         await TearDownSubscriptionAsync(keepSession: true).ConfigureAwait(false);
         // No ITelemetryContext on source client yet — parameterless ctor is obsolete but fine.
 #pragma warning disable CS0618
@@ -903,7 +877,7 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
         {
             DisplayName = $"OpcBridge_{options_.SourceId}",
             PublishingEnabled = true,
-            PublishingInterval = Math.Max(100, options_.UpdateRateMs),
+            PublishingInterval = publishing,
             KeepAliveCount = 10,
             LifetimeCount = 1000,
             MaxNotificationsPerPublish = 0,
