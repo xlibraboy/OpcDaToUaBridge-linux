@@ -13,15 +13,16 @@ namespace OpcBridge.LoadTest;
 
 /// <summary>
 /// A non-DA source (MX Component, serial drivers, UA sources) must start a poller for a
-/// newly introduced per-tag poll rate. Regression: changing a tag's update rate on the
-/// Maps faceplate froze its values, because only <see cref="OpcDaClient"/> sources had
-/// their pollers rebuilt when mappings changed — the new rate group had no running poller.
+/// newly introduced per-tag poll rate, and that poller must run at the tag's rate.
+/// Regression: changing a tag's update rate on the Maps faceplate froze its values,
+/// because only <see cref="OpcDaClient"/> sources had their pollers rebuilt when mappings
+/// changed — the new rate group had no running poller.
 /// </summary>
 [Collection(nameof(DaLinkApiAppCollection))]
 public sealed class MappingRateChangeTests
 {
     [Fact]
-    public async Task NonDaSource_PerTagRateChange_StartsPollerForNewRate()
+    public async Task NonDaSource_PerTagRateChange_DrivesPollCadence()
     {
         // MappingStore persists to mappings.json in the test bin directory; a stale file
         // from a previous run would silently pre-seed the store (keys already exist, so
@@ -92,13 +93,34 @@ public sealed class MappingRateChangeTests
             // any in-flight reads. With the bug, D1 is never read again after this settle point
             // (its values freeze). With the fix, a new 500 ms poller keeps reading it.
             await Task.Delay(TimeSpan.FromSeconds(3), CancellationToken.None);
-            int readsAfterSettle = factory.Client.ReadCount("D1");
-            await Task.Delay(TimeSpan.FromSeconds(3), CancellationToken.None);
-            int readsAfterWindow = factory.Client.ReadCount("D1");
+
+            // The per-tag rate from the Maps faceplate must drive the poll frequency, not just
+            // keep reads flowing: D1 at 500 ms should be read ~2x/s while D0 (still 1 s) stays
+            // ~1x/s. Measure both over the same window so the cadence difference is visible.
+            const double windowSeconds = 5.0;
+            int d1Start = factory.Client.ReadCount("D1");
+            int d0Start = factory.Client.ReadCount("D0");
+            await Task.Delay(TimeSpan.FromSeconds(windowSeconds), CancellationToken.None);
+            int d1Reads = factory.Client.ReadCount("D1") - d1Start;
+            int d0Reads = factory.Client.ReadCount("D0") - d0Start;
+            double d1Rate = d1Reads / windowSeconds;
+            double d0Rate = d0Reads / windowSeconds;
 
             Assert.True(
-                readsAfterWindow > readsAfterSettle,
-                $"D1 stopped being read after its poll rate changed (reads frozen at {readsAfterSettle}) — no poller exists for the new rate");
+                d1Reads > 0,
+                "D1 stopped being read after its poll rate changed — no poller exists for the new rate");
+
+            Assert.True(
+                d1Rate is >= 1.2 and <= 3.5,
+                $"D1 at 500 ms should be read ~2x/s, measured {d1Rate:F1}/s ({d1Reads} reads in {windowSeconds}s)");
+
+            Assert.True(
+                d0Rate is >= 0.4 and <= 1.8,
+                $"D0 at 1000 ms should stay ~1x/s, measured {d0Rate:F1}/s ({d0Reads} reads in {windowSeconds}s)");
+
+            Assert.True(
+                d1Rate > d0Rate + 0.5,
+                $"D1 ({d1Rate:F1}/s) must be polled faster than D0 ({d0Rate:F1}/s) — the per-tag rate is not driving the cadence");
         }
         finally
         {
