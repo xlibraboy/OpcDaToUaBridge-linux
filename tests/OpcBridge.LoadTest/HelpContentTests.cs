@@ -21,4 +21,25 @@ public sealed class HelpContentTests
         Assert.Contains("Enable per tag via faceplate Influx checkbox", HelpContent.Markdown);
         Assert.Contains("Outage does not stop the bridge", HelpContent.Markdown);
     }
+
+    [Fact]
+    public void HelpText_DescribesOpcUaSources()
+    {
+        Assert.Contains("OPC UA (client sources)", HelpContent.Markdown);
+        Assert.Contains("## OPC UA Source vs OPC UA Server Endpoint", HelpContent.Markdown);
+        Assert.Contains("NodeId string", HelpContent.Markdown);
+        Assert.Contains("SignAndEncrypt", HelpContent.Markdown);
+        Assert.Contains("Basic256Sha256", HelpContent.Markdown);
+        Assert.Contains("Only **mapped** tags are subscribed", HelpContent.Markdown);
+    }
+
+    [Fact]
+    public void HelpText_DescribesGroupedNavigation()
+    {
+        Assert.Contains("## Dashboard Navigation", HelpContent.Markdown);
+        Assert.Contains("Sources", HelpContent.Markdown);
+        Assert.Contains("Historian", HelpContent.Markdown);
+        Assert.Contains("IoT", HelpContent.Markdown);
+        Assert.Contains("Setup Wizard", HelpContent.Markdown);
+    }
 }

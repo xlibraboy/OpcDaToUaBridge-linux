@@ -69,8 +69,8 @@ public partial class TagItemViewModel : ObservableObject
     {
         BridgeId = bridgeId;
         SourceId = dto.SourceId;
-        DaItemId = dto.DaItemId;
-        DisplayName = string.IsNullOrWhiteSpace(dto.DisplayName) ? dto.DaItemId : dto.DisplayName;
+        DaItemId = dto.ItemId;
+        DisplayName = string.IsNullOrWhiteSpace(dto.DisplayName) ? dto.ItemId : dto.DisplayName;
         DataType = dto.DataType;
         Writeable = dto.Writeable;
         ApplyValue(dto.Value, dto.TimestampUtc, dto.DaQuality, dto.IsGood);

@@ -21,21 +21,25 @@ public sealed class BridgeState
             concurrencyLevel, capacity, StringComparer.OrdinalIgnoreCase);
     }
 
+    /// <summary>Runtime ports. Set once at startup before any background work begins. </summary>
+    public static int HttpPort { get; private set; } = 8080;
+    public static int UaPort { get; private set; } = 4840;
+    public static bool HttpAutoAssigned { get; private set; }
+    public static bool UaAutoAssigned { get; private set; }
+
+    public static void ConfigurePorts(int httpPort, int uaPort, bool httpAuto, bool uaAuto)
+    {
+        HttpPort = httpPort;
+        UaPort = uaPort;
+        HttpAutoAssigned = httpAuto;
+        UaAutoAssigned = uaAuto;
+    }
+
+
     public void Configure(int updateRateMs, int mappingCount, IReadOnlyList<DaSourceRuntimeSettings> sources)
     {
         DaSourceStatusSnapshot[] sourceStatuses = sources
-            .Select(source => new DaSourceStatusSnapshot(
-                source.SourceId,
-                source.DisplayName,
-                source.Host,
-                source.ProgId,
-                source.UpdateRateMs,
-                "Disconnected",
-                null,
-                null,
-                0,
-                0,
-                null))
+            .Select(BuildDisconnectedSnapshot)
             .ToArray();
 
         rate_groups_.Clear();
@@ -71,18 +75,7 @@ public sealed class BridgeState
                 DaSourceRuntimeSettings source = sources[i];
                 if (!existing.TryGetValue(source.SourceId, out DaSourceStatusSnapshot? previous))
                 {
-                    previous = new DaSourceStatusSnapshot(
-                        source.SourceId,
-                        source.DisplayName,
-                        source.Host,
-                        source.ProgId,
-                        source.UpdateRateMs,
-                        "Disconnected",
-                        null,
-                        null,
-                        0,
-                        0,
-                        null);
+                    previous = BuildDisconnectedSnapshot(source);
                 }
                 else
                 {
@@ -91,7 +84,9 @@ public sealed class BridgeState
                         DisplayName = source.DisplayName,
                         Host = source.Host,
                         ProgId = source.ProgId,
-                        UpdateRateMs = source.UpdateRateMs
+                        UpdateRateMs = source.UpdateRateMs,
+                        SourceType = source.SourceType,
+                        EndpointSummary = BuildEndpointSummary(source)
                     };
                 }
 
@@ -107,6 +102,7 @@ public sealed class BridgeState
             };
         }
     }
+
 
     public void ClearValues()
     {
@@ -126,9 +122,9 @@ public sealed class BridgeState
     }
     public void SetValue(BridgeValue value)
     {
-        values_by_key_[NormalizeKey(value.SourceId, value.DaItemId)] = new BridgeValueSnapshot(
+        values_by_key_[NormalizeKey(value.SourceId, value.ItemId)] = new BridgeValueSnapshot(
             value.SourceId,
-            value.DaItemId,
+            value.ItemId,
             value.Value,
             value.TimestampUtc,
             value.DaQuality,
@@ -137,15 +133,15 @@ public sealed class BridgeState
         ValueUpdated?.Invoke(value);
     }
 
-    public void ClearValue(string sourceId, string daItemId)
+    public void ClearValue(string sourceId, string itemId)
     {
-        values_by_key_.TryRemove(NormalizeKey(sourceId, daItemId), out _);
+        values_by_key_.TryRemove(NormalizeKey(sourceId, itemId), out _);
     }
 
     public void RetainMappedValues(IReadOnlyList<TagMapping> mappings)
     {
         HashSet<string> mappedKeys = mappings
-            .Select(mapping => NormalizeKey(mapping.SourceId, mapping.DaItemId))
+            .Select(mapping => NormalizeKey(mapping.SourceId, mapping.ItemId))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         foreach (string key in values_by_key_.Keys)
@@ -207,11 +203,12 @@ public sealed class BridgeState
     {
         lock (status_lock_)
         {
+            // Error text only — connection state is owned by the caller (e.g. "Reconnecting"
+            // for retryable failures must survive setting the error).
             DaSourceStatusSnapshot[] updated = status_.Sources
                 .Select(source => string.Equals(source.SourceId, sourceId, StringComparison.OrdinalIgnoreCase)
                     ? source with
                     {
-                        ConnectionState = "Faulted",
                         LastError = exception.Message
                     }
                     : source)
@@ -233,9 +230,9 @@ public sealed class BridgeState
         for (int i = 0; i < values.Count; i++)
         {
             BridgeValue value = values[i];
-            values_by_key_[NormalizeKey(value.SourceId, value.DaItemId)] = new BridgeValueSnapshot(
+            values_by_key_[NormalizeKey(value.SourceId, value.ItemId)] = new BridgeValueSnapshot(
                 value.SourceId,
-                value.DaItemId,
+                value.ItemId,
                 value.Value,
                 value.TimestampUtc,
                 value.DaQuality,
@@ -331,8 +328,100 @@ public sealed class BridgeState
     {
         return values_by_key_.Values
             .OrderBy(value => value.SourceId, StringComparer.OrdinalIgnoreCase)
-            .ThenBy(value => value.DaItemId, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(value => value.ItemId, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+    }
+
+    public int GetValueCount() => values_by_key_.Count;
+
+    /// <summary>
+    /// All values whose last quality is bad (IsGood false), as (source, item) pairs. Used by
+    /// the dashboard for the per-tag "Bad" badge — the value sample is capped, but the bad
+    /// set is always complete because it is scanned from the full store.
+    /// </summary>
+    public IReadOnlyList<(string SourceId, string ItemId)> GetBadQualityTags()
+    {
+        List<(string, string)> result = new();
+        foreach (KeyValuePair<string, BridgeValueSnapshot> pair in values_by_key_)
+        {
+            if (!pair.Value.IsGood)
+            {
+                result.Add((pair.Value.SourceId, pair.Value.ItemId));
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>Value count for a specific source, or the global total when sourceId is blank.</summary>
+    public int GetValueCount(string? sourceId)
+    {
+        if (string.IsNullOrWhiteSpace(sourceId))
+        {
+            return values_by_key_.Count;
+        }
+
+        return values_by_key_.Values.Count(value =>
+            string.Equals(value.SourceId, sourceId, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Sorted but capped — for UI feeds (dashboard) where the full list is megabytes
+    /// and would freeze the browser when re-rendered every poll cycle. When no source
+    /// filter is given, rows are interleaved round-robin across sources so every source
+    /// stays visible even when one source alone exceeds the cap.
+    /// </summary>
+    public IReadOnlyList<BridgeValueSnapshot> GetValues(int limit, string? sourceId = null)
+    {
+        if (limit <= 0)
+        {
+            return GetValues();
+        }
+
+        IOrderedEnumerable<BridgeValueSnapshot> ordered = values_by_key_.Values
+            .OrderBy(value => value.SourceId, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(value => value.ItemId, StringComparer.OrdinalIgnoreCase);
+
+        if (!string.IsNullOrWhiteSpace(sourceId))
+        {
+            return ordered
+                .Where(value => string.Equals(value.SourceId, sourceId, StringComparison.OrdinalIgnoreCase))
+                .Take(limit)
+                .ToArray();
+        }
+
+        BridgeValueSnapshot[][] bySource = values_by_key_.Values
+            .GroupBy(value => value.SourceId, StringComparer.OrdinalIgnoreCase)
+            .OrderBy(group => group.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group
+                .OrderBy(value => value.ItemId, StringComparer.OrdinalIgnoreCase)
+                .ToArray())
+            .ToArray();
+
+        int capacity = Math.Min(limit, values_by_key_.Count);
+        List<BridgeValueSnapshot> result = new(capacity);
+        int[] cursors = new int[bySource.Length];
+        int total = 0;
+        while (total < capacity)
+        {
+            bool progressed = false;
+            for (int s = 0; s < bySource.Length && total < capacity; s++)
+            {
+                if (cursors[s] < bySource[s].Length)
+                {
+                    result.Add(bySource[s][cursors[s]++]);
+                    total++;
+                    progressed = true;
+                }
+            }
+
+            if (!progressed)
+            {
+                break;
+            }
+        }
+
+        return result;
     }
 
     public BridgeRuntimeStatus GetStatus()
@@ -341,6 +430,46 @@ public sealed class BridgeState
         {
             return status_;
         }
+    }
+
+    private static DaSourceStatusSnapshot BuildDisconnectedSnapshot(DaSourceRuntimeSettings source) =>
+        new(
+            source.SourceId,
+            source.DisplayName,
+            source.Host,
+            source.ProgId,
+            source.UpdateRateMs,
+            "Disconnected",
+            null,
+            null,
+            0,
+            0,
+            null,
+            source.SourceType,
+            BuildEndpointSummary(source));
+
+    private static string BuildEndpointSummary(DaSourceRuntimeSettings source)
+    {
+        if (string.Equals(source.SourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(source.SourceType, SourceTypes.S7200Ppi, StringComparison.OrdinalIgnoreCase))
+        {
+            string port = source.SerialPortName ?? string.Empty;
+            return string.IsNullOrEmpty(port) ? string.Empty : $"{port}@{source.BaudRate}";
+        }
+
+        if (string.Equals(source.SourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
+        {
+            return $"MX station {source.LogicalStationNumber}";
+        }
+
+        if (string.Equals(source.SourceType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
+        {
+            return source.EndpointUrl?.Trim() ?? string.Empty;
+        }
+
+        string host = string.IsNullOrWhiteSpace(source.Host) ? string.Empty : source.Host.Trim();
+        string progId = source.ProgId ?? string.Empty;
+        return string.IsNullOrEmpty(progId) ? host : $"{host}/{progId}";
     }
 
     private static string AggregateConnectionState(IReadOnlyList<DaSourceStatusSnapshot> sources)
@@ -394,9 +523,9 @@ public sealed class BridgeState
         return duration.TotalSeconds <= 0 ? 0 : Math.Round(valueCount / duration.TotalSeconds, 1);
     }
 
-    private static string NormalizeKey(string sourceId, string daItemId)
+    internal static string NormalizeKey(string sourceId, string itemId)
     {
-        return string.Concat(sourceId.Trim(), "::", daItemId.Trim());
+        return string.Concat(sourceId.Trim(), "::", itemId.Trim());
     }
 }
 
@@ -433,6 +562,11 @@ public sealed record BridgeRuntimeStatus(
         null);
 }
 
+/// <summary>
+/// Tags of one source polled at one update rate (a rate bucket). Applies to every
+/// driver; it corresponds to an OPC DA COM group only for OpcDa sources — MX
+/// Component and other native clients batch internally and never create COM groups.
+/// </summary>
 public sealed record RateGroupStatus(
     string SourceId,
     int RateMs,
@@ -453,11 +587,13 @@ public sealed record DaSourceStatusSnapshot(
     string? LastError,
     int LastDaReadCount,
     double LastDaReadDurationMs,
-    double? DaClockOffsetMs);
+    double? DaClockOffsetMs,
+    string SourceType = "OpcDa",
+    string EndpointSummary = "");
 
 public sealed record BridgeValueSnapshot(
     string SourceId,
-    string DaItemId,
+    string ItemId,
     object? Value,
     DateTime TimestampUtc,
     int DaQuality,

@@ -24,16 +24,16 @@ public sealed class DaLinkApiTests
             new()
             {
                 SourceId = "consumerA",
-                DaItemId = "itemA",
+                ItemId = "itemA",
                 ProviderSourceId = "providerA",
-                ProviderDaItemId = "itemP1"
+                ProviderItemId = "itemP1"
             },
             new()
             {
                 SourceId = "consumerA",
-                DaItemId = "itemA",
+                ItemId = "itemA",
                 ProviderSourceId = "providerB",
-                ProviderDaItemId = "itemP2"
+                ProviderItemId = "itemP2"
             }
         };
 
@@ -128,21 +128,21 @@ public sealed class DaLinkApiTests
                 new TagMapping
                 {
                     SourceId = "providerA",
-                    DaItemId = "itemP",
+                    ItemId = "itemP",
                     AccessRights = TagAccessRights.Read,
                     Enabled = true
                 },
                 new TagMapping
                 {
                     SourceId = "consumerA",
-                    DaItemId = "itemC",
+                    ItemId = "itemC",
                     AccessRights = TagAccessRights.Write,
                     Enabled = true
                 },
                 new TagMapping
                 {
                     SourceId = "otherA",
-                    DaItemId = "itemO",
+                    ItemId = "itemO",
                     AccessRights = TagAccessRights.ReadWrite,
                     Enabled = true
                 }
@@ -155,9 +155,9 @@ public sealed class DaLinkApiTests
                     true,
                     new[]
                     {
-                        new DaSourceRuntimeSettings("providerA", "Provider", string.Empty, "localhost", null, null, null, 1000),
-                        new DaSourceRuntimeSettings("consumerA", "Consumer", string.Empty, "localhost", null, null, null, 1000),
-                        new DaSourceRuntimeSettings("otherA", "Other", string.Empty, "localhost", null, null, null, 1000)
+                        DaRuntimeSettings.CreateDaSource("providerA", "Provider", string.Empty, "localhost", null, null, null, 1000),
+                        DaRuntimeSettings.CreateDaSource("consumerA", "Consumer", string.Empty, "localhost", null, null, null, 1000),
+                        DaRuntimeSettings.CreateDaSource("otherA", "Other", string.Empty, "localhost", null, null, null, 1000)
                     },
                     0)));
 
@@ -186,6 +186,51 @@ public sealed class DaLinkApiTests
         Assert.DoesNotContain(providerRuleId, remainingIds);
         Assert.DoesNotContain(consumerRuleId, remainingIds);
         Assert.Contains(retainedRuleId, remainingIds);
+    }
+
+    [Fact]
+    public async Task RemoveLastSource_ReturnsOk_AndSourcesBecomeEmpty()
+    {
+        await using TestAppHandle app = await TestAppHandle.StartAsync(appDirectory =>
+        {
+            File.WriteAllText(
+                Path.Combine(appDirectory, "sources.json"),
+                JsonSerializer.Serialize(new DaRuntimeSettingsSnapshot(
+                    1000,
+                    true,
+                    new[]
+                    {
+                        DaRuntimeSettings.CreateDaSource("onlyA", "Only", string.Empty, "localhost", null, null, null, 1000)
+                    },
+                    0)));
+        });
+
+        using HttpResponseMessage response = await app.Client.PostAsync(
+            "/api/da/sources/remove",
+            CreateJsonContent(new DaSourceRemoveRequest("onlyA")));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        using JsonDocument sourcesBody = await app.GetJsonAsync("/api/da/sources");
+        Assert.Empty(sourcesBody.RootElement.GetProperty("sources").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task EmptySourcesConfig_DoesNotReseedDefaultSource()
+    {
+        await using TestAppHandle app = await TestAppHandle.StartAsync(appDirectory =>
+        {
+            File.WriteAllText(
+                Path.Combine(appDirectory, "sources.json"),
+                JsonSerializer.Serialize(new DaRuntimeSettingsSnapshot(
+                    1000,
+                    true,
+                    Array.Empty<DaSourceRuntimeSettings>(),
+                    0)));
+        });
+
+        using JsonDocument sourcesBody = await app.GetJsonAsync("/api/da/sources");
+        Assert.Empty(sourcesBody.RootElement.GetProperty("sources").EnumerateArray());
     }
 
     [Fact]

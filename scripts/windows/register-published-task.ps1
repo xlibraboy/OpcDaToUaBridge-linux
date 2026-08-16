@@ -1,7 +1,12 @@
 param(
     [string]$TaskName = 'OpcDaToUaBridge',
-    [string]$HealthUrl = 'http://127.0.0.1:8080/health',
-    [int]$ProbeSeconds = 20
+    [string]$HealthUrl = '',
+    [int]$ProbeSeconds = 20,
+    # S4U runs the bridge in session 0 (no interactive desktop). Use 'Interactive'
+    # when a source needs an interactive session — e.g. MELSOFT MX Component
+    # talking to GX Simulator, whose shared memory is session-bound.
+    [ValidateSet('S4U', 'Interactive')]
+    [string]$LogonType = 'S4U'
 )
 
 Set-StrictMode -Version Latest
@@ -11,6 +16,24 @@ $scriptRoot = Split-Path -Parent $PSCommandPath
 $repoRoot = Split-Path -Parent (Split-Path -Parent $scriptRoot)
 $publishDir = Join-Path $repoRoot 'publish'
  $publishDll = Join-Path $publishDir 'OpcBridge.App.dll'
+
+# Resolve the runtime HTTP port from appsettings.json (the bridge auto-assigns
+# a non-default port when 8080 is already in use on the host).
+$appSettings = Join-Path $publishDir 'appsettings.json'
+$httpPort = 8080
+try {
+    if (Test-Path $appSettings) {
+        $cfg = Get-Content $appSettings -Raw | ConvertFrom-Json
+        if ($cfg.Bridge.HttpPort -and $cfg.Bridge.HttpPort -gt 0) {
+            $httpPort = [int]$cfg.Bridge.HttpPort
+        }
+    }
+} catch {
+    # fall back to 8080
+}
+if (-not $HealthUrl) {
+    $HealthUrl = "http://127.0.0.1:$httpPort/health"
+}
  $cmdScript = Join-Path $scriptRoot 'start-published-bridge.cmd'
  
  if (-not (Test-Path $publishDll)) {
@@ -29,7 +52,7 @@ if (-not (Test-Path $cmdScript)) {
 
 $action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument "/c `"$cmdScript`""
 $trigger = New-ScheduledTaskTrigger -AtStartup
-$principal = New-ScheduledTaskPrincipal -UserId "$env:COMPUTERNAME\$env:USERNAME" -LogonType S4U -RunLevel Highest
+$principal = New-ScheduledTaskPrincipal -UserId "$env:COMPUTERNAME\$env:USERNAME" -LogonType $LogonType -RunLevel Highest
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 0)
 
 $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
@@ -53,7 +76,7 @@ for ($i = 0; $i -lt $ProbeSeconds; $i++) {
 
 $listener = @()
 try {
-    $listener = Get-NetTCPConnection -LocalPort 8080 -State Listen | Select-Object LocalAddress, LocalPort, OwningProcess
+    $listener = Get-NetTCPConnection -LocalPort $httpPort -State Listen | Select-Object LocalAddress, LocalPort, OwningProcess
 } catch {
 }
 

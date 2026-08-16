@@ -261,7 +261,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
                 new HmiWriteRequest
                 {
                     SourceId = key.SourceId,
-                    DaItemId = key.DaItemId,
+                    ItemId = key.DaItemId,
                     Value = value
                 },
                 CancellationToken.None).ConfigureAwait(true);

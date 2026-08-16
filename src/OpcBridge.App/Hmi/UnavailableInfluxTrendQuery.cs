@@ -6,7 +6,7 @@ public sealed class UnavailableInfluxTrendQuery : IInfluxTrendQuery
 {
     public Task<HmiTrendResponse> QueryAsync(
         string sourceId,
-        string daItemId,
+        string itemId,
         DateTime fromUtc,
         DateTime toUtc,
         int maxPoints,
@@ -15,7 +15,7 @@ public sealed class UnavailableInfluxTrendQuery : IInfluxTrendQuery
         return Task.FromResult(new HmiTrendResponse
         {
             SourceId = sourceId,
-            DaItemId = daItemId,
+            ItemId = itemId,
             FromUtc = fromUtc,
             ToUtc = toUtc,
             Points = Array.Empty<HmiTrendPoint>(),

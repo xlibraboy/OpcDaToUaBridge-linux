@@ -11,7 +11,7 @@ public sealed class HmiTagCache
         tags_.Clear();
         foreach (HmiTagDto tag in tags)
         {
-            tags_[Key(tag.SourceId, tag.DaItemId)] = tag;
+            tags_[Key(tag.SourceId, tag.ItemId)] = tag;
         }
     }
 
@@ -19,7 +19,7 @@ public sealed class HmiTagCache
     {
         foreach (HmiValueDelta d in deltas)
         {
-            if (!tags_.TryGetValue(Key(d.SourceId, d.DaItemId), out HmiTagDto? tag))
+            if (!tags_.TryGetValue(Key(d.SourceId, d.ItemId), out HmiTagDto? tag))
             {
                 continue;
             }
@@ -31,5 +31,5 @@ public sealed class HmiTagCache
         }
     }
 
-    public static string Key(string sourceId, string daItemId) => string.Concat(sourceId, "::", daItemId);
+    public static string Key(string sourceId, string itemId) => string.Concat(sourceId, "::", itemId);
 }

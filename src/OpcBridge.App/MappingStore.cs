@@ -42,10 +42,10 @@ public sealed class MappingStore
         {
             // Build a HashSet of existing keys for O(1) duplicate lookup
             // instead of O(n) per-tag scan (O(n²) total for bulk imports).
-            HashSet<(string SourceId, string DaItemId)> existing = new(mappings_.Count, StringTupleComparer.Instance);
+            HashSet<(string SourceId, string ItemId)> existing = new(mappings_.Count, StringTupleComparer.Instance);
             for (int i = 0; i < mappings_.Count; i++)
             {
-                existing.Add((mappings_[i].SourceId, mappings_[i].DaItemId));
+                existing.Add((mappings_[i].SourceId, mappings_[i].ItemId));
             }
 
             bool changed = false;
@@ -53,12 +53,12 @@ public sealed class MappingStore
             foreach (TagMapping tag in tags)
             {
                 TagMapping normalized = Normalize(tag);
-                if (normalized.DaItemId.Length == 0)
+                if (normalized.ItemId.Length == 0)
                 {
                     continue;
                 }
 
-                if (!existing.Add((normalized.SourceId, normalized.DaItemId)))
+                if (!existing.Add((normalized.SourceId, normalized.ItemId)))
                 {
                     continue;
                 }
@@ -97,7 +97,7 @@ public sealed class MappingStore
             TagMapping normalized = Normalize(tag);
             int index = mappings_.FindIndex(mapping =>
                 string.Equals(mapping.SourceId, normalized.SourceId, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(mapping.DaItemId, normalized.DaItemId, StringComparison.OrdinalIgnoreCase));
+                string.Equals(mapping.ItemId, normalized.ItemId, StringComparison.OrdinalIgnoreCase));
 
             if (index < 0)
             {
@@ -121,10 +121,10 @@ public sealed class MappingStore
         return true;
     }
 
-    public long Remove(string sourceId, string daItemId)
+    public long Remove(string sourceId, string itemId)
     {
         string normalizedSourceId = NormalizeSourceId(sourceId);
-        string normalizedItemId = daItemId?.Trim() ?? string.Empty;
+        string normalizedItemId = itemId?.Trim() ?? string.Empty;
 
         long raisedVersion = 0;
         bool raise = false;
@@ -132,7 +132,7 @@ public sealed class MappingStore
         {
             int removed = mappings_.RemoveAll(mapping =>
                 string.Equals(mapping.SourceId, normalizedSourceId, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(mapping.DaItemId, normalizedItemId, StringComparison.OrdinalIgnoreCase));
+                string.Equals(mapping.ItemId, normalizedItemId, StringComparison.OrdinalIgnoreCase));
 
             if (removed > 0)
             {
@@ -220,8 +220,8 @@ public sealed class MappingStore
     {
         return tags
             .Select(Normalize)
-            .Where(tag => tag.DaItemId.Length > 0)
-            .GroupBy(tag => (tag.SourceId, tag.DaItemId), StringTupleComparer.Instance)
+            .Where(tag => tag.ItemId.Length > 0)
+            .GroupBy(tag => (tag.SourceId, tag.ItemId), StringTupleComparer.Instance)
             .Select(group => group.First())
             .ToList();
     }
@@ -229,7 +229,7 @@ public sealed class MappingStore
     private static TagMapping Normalize(TagMapping tag)
     {
         string sourceId = NormalizeSourceId(tag.SourceId);
-        string itemId = tag.DaItemId?.Trim() ?? string.Empty;
+        string itemId = tag.ItemId?.Trim() ?? string.Empty;
         string defaultNodeId = itemId.Length == 0 ? string.Empty : $"ns=2;s={sourceId}/{itemId}";
 
         string accessRights = NormalizeAccessRights(tag.AccessRights, tag.Mode, tag.Writeable);
@@ -241,14 +241,14 @@ public sealed class MappingStore
             mode = TagMode.Source;
         }
 
-        (string? providerSourceId, string? providerDaItemId) = NormalizeProvider(tag, sourceId, itemId);
+        (string? providerSourceId, string? providerItemId) = NormalizeProvider(tag, sourceId, itemId);
 
         return new TagMapping
         {
             ProviderSourceId = providerSourceId,
-            ProviderDaItemId = providerDaItemId,
+            ProviderItemId = providerItemId,
             SourceId = sourceId,
-            DaItemId = itemId,
+            ItemId = itemId,
             UaNodeId = string.IsNullOrWhiteSpace(tag.UaNodeId) ? defaultNodeId : tag.UaNodeId.Trim(),
             DisplayName = string.IsNullOrWhiteSpace(tag.DisplayName) ? itemId : tag.DisplayName.Trim(),
             Description = string.IsNullOrWhiteSpace(tag.Description) ? null : tag.Description.Trim(),
@@ -270,24 +270,24 @@ public sealed class MappingStore
     /// Normalizes the optional provider link. Returns nulls when no link is set, or when the
     /// link points at the tag itself (a self-link is rejected to avoid a write loop).
     /// </summary>
-    private static (string? SourceId, string? DaItemId) NormalizeProvider(TagMapping tag, string sourceId, string itemId)
+    private static (string? SourceId, string? ItemId) NormalizeProvider(TagMapping tag, string sourceId, string itemId)
     {
         string? providerSourceId = tag.ProviderSourceId?.Trim();
-        string? providerDaItemId = tag.ProviderDaItemId?.Trim();
-        if (string.IsNullOrEmpty(providerSourceId) || string.IsNullOrEmpty(providerDaItemId))
+        string? providerItemId = tag.ProviderItemId?.Trim();
+        if (string.IsNullOrEmpty(providerSourceId) || string.IsNullOrEmpty(providerItemId))
         {
             return (null, null);
         }
 
         providerSourceId = NormalizeSourceId(providerSourceId);
         if (string.Equals(providerSourceId, sourceId, StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(providerDaItemId, itemId, StringComparison.OrdinalIgnoreCase))
+            string.Equals(providerItemId, itemId, StringComparison.OrdinalIgnoreCase))
         {
             // Self-link would create a write loop; drop it.
             return (null, null);
         }
 
-        return (providerSourceId, providerDaItemId);
+        return (providerSourceId, providerItemId);
     }
 
     private static string NormalizeSourceId(string? sourceId)
@@ -306,11 +306,15 @@ public sealed class MappingStore
     private static string NormalizeAccessRights(string? accessRights, string mode, bool writeable)
     {
         string value = accessRights?.Trim() ?? string.Empty;
-        if (string.Equals(value, TagAccessRights.ReadWrite, StringComparison.OrdinalIgnoreCase))
+        // Tolerate common spellings ("ReadWrite", "Read-Write", "readwrite") so a
+        // variant can never silently downgrade rights to Read.
+        string compact = value.Replace("-", string.Empty, StringComparison.Ordinal)
+                              .Replace(" ", string.Empty, StringComparison.Ordinal);
+        if (string.Equals(compact, "ReadWrite", StringComparison.OrdinalIgnoreCase))
             return TagAccessRights.ReadWrite;
-        if (string.Equals(value, TagAccessRights.Write, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(compact, "Write", StringComparison.OrdinalIgnoreCase))
             return TagAccessRights.Write;
-        if (string.Equals(value, TagAccessRights.Read, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(compact, "Read", StringComparison.OrdinalIgnoreCase))
             return TagAccessRights.Read;
         // Migration from legacy Mode+Writeable when AccessRights is absent
         if (string.Equals(mode, TagMode.Manual, StringComparison.OrdinalIgnoreCase) && writeable)
@@ -339,6 +343,10 @@ public sealed class MappingStore
         {
             if (!File.Exists(persist_path_)) return null;
             string json = File.ReadAllText(persist_path_);
+            // Phase 2: accept legacy DaItemId / ProviderDaItemId on disk.
+            json = json
+                .Replace("\"DaItemId\"", "\"itemId\"", StringComparison.Ordinal)
+                .Replace("\"ProviderDaItemId\"", "\"providerItemId\"", StringComparison.Ordinal);
             return JsonSerializer.Deserialize<List<TagMapping>>(json);
         }
         catch
@@ -347,21 +355,21 @@ public sealed class MappingStore
         }
     }
 
-    private sealed class StringTupleComparer : IEqualityComparer<(string SourceId, string DaItemId)>
+    private sealed class StringTupleComparer : IEqualityComparer<(string SourceId, string ItemId)>
     {
         public static StringTupleComparer Instance { get; } = new();
 
-        public bool Equals((string SourceId, string DaItemId) x, (string SourceId, string DaItemId) y)
+        public bool Equals((string SourceId, string ItemId) x, (string SourceId, string ItemId) y)
         {
             return string.Equals(x.SourceId, y.SourceId, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(x.DaItemId, y.DaItemId, StringComparison.OrdinalIgnoreCase);
+                && string.Equals(x.ItemId, y.ItemId, StringComparison.OrdinalIgnoreCase);
         }
 
-        public int GetHashCode((string SourceId, string DaItemId) value)
+        public int GetHashCode((string SourceId, string ItemId) value)
         {
             return HashCode.Combine(
                 StringComparer.OrdinalIgnoreCase.GetHashCode(value.SourceId),
-                StringComparer.OrdinalIgnoreCase.GetHashCode(value.DaItemId));
+                StringComparer.OrdinalIgnoreCase.GetHashCode(value.ItemId));
         }
     }
 }

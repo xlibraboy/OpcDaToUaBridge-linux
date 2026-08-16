@@ -4,7 +4,7 @@ public interface IInfluxTrendQuery
 {
     Task<HmiTrendResponse> QueryAsync(
         string sourceId,
-        string daItemId,
+        string itemId,
         DateTime fromUtc,
         DateTime toUtc,
         int maxPoints,

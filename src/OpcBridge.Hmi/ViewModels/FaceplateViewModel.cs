@@ -129,7 +129,7 @@ public partial class FaceplateViewModel : ObservableObject, IAsyncDisposable
                 new HmiWriteRequest
                 {
                     SourceId = SourceId,
-                    DaItemId = DaItemId,
+                    ItemId = DaItemId,
                     Value = value ?? WriteValue
                 },
                 CancellationToken.None).ConfigureAwait(true);

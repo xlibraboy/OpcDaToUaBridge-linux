@@ -1,4 +1,6 @@
 using System.Reflection;
+using Newtonsoft.Json.Linq;
+using System.IO.Ports;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -10,13 +12,77 @@ using OpcBridge.App.Hmi;
 using OpcBridge.Client;
 using OpcBridge.Core;
 using OpcBridge.Da;
+using OpcBridge.Drivers.Melsec;
+using OpcBridge.Drivers.Melsec.Addressing;
+using OpcBridge.Drivers.MxComponent;
+using OpcBridge.Drivers.S7;
+using OpcBridge.Drivers.S7.Addressing;
 using OpcBridge.Mqtt;
 using OpcBridge.Influx;
 using OpcBridge.Ua;
 
+// Dashboard UI feed cap: the live-values payload is re-fetched and re-rendered every
+// poll cycle; beyond this many values it freezes browsers. UI shows total separately.
+const int DashboardValuesLimit = 2000;
+
+// Port auto-assignment: check defaults, auto-roll if in use, persist to appsettings.json
+string cfgPath = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
+JObject? cfg = null;
+try { cfg = JObject.Parse(File.ReadAllText(cfgPath)); } catch { }
+
+int savedHttp = cfg?["Bridge"]?["HttpPort"]?.Value<int>() ?? PortHelper.HttpScanStart;
+int savedUa = cfg?["Bridge"]?["OpcUaPort"]?.Value<int>() ?? PortHelper.OpcUaScanStart;
+using var loggerFactory = LoggerFactory.Create(b => b.AddConsole());
+ILogger logger = loggerFactory.CreateLogger("PortSetup");
+
+// HTTP port: use saved value when free, else next free port in scan range
+int httpPort = PortHelper.IsPortAvailable(savedHttp)
+    ? savedHttp
+    : PortHelper.FindAvailablePort(PortHelper.HttpScanStart, PortHelper.HttpScanEnd);
+if (httpPort <= 0)
+    throw new InvalidOperationException($"No available HTTP port in range {PortHelper.HttpScanStart}-{PortHelper.HttpScanEnd}.");
+
+// OPC UA port: same strategy
+int uaPort = PortHelper.IsPortAvailable(savedUa)
+    ? savedUa
+    : PortHelper.FindAvailablePort(PortHelper.OpcUaScanStart, PortHelper.OpcUaScanEnd);
+if (uaPort <= 0)
+    throw new InvalidOperationException($"No available OPC UA port in range {PortHelper.OpcUaScanStart}-{PortHelper.OpcUaScanEnd}.");
+
+bool httpAuto = httpPort != savedHttp && savedHttp == PortHelper.HttpScanStart;
+bool uaAuto = uaPort != savedUa && savedUa == PortHelper.OpcUaScanStart;
+
+// Persist only when ports changed from the saved values
+if (httpPort != savedHttp || uaPort != savedUa)
+{
+    cfg ??= new JObject();
+    if (cfg["Bridge"] == null) cfg["Bridge"] = new JObject();
+    cfg["Bridge"]!["HttpPort"] = httpPort;
+    cfg["Bridge"]!["OpcUaPort"] = uaPort;
+    if (cfg["Ua"]?["EndpointUrl"] is not null)
+        cfg["Ua"]!["EndpointUrl"] = PatchPortInUrl(cfg["Ua"]!["EndpointUrl"]!.ToString(), uaPort);
+    File.WriteAllText(cfgPath, cfg.ToString(Newtonsoft.Json.Formatting.Indented));
+
+    if (httpAuto)
+        logger.LogWarning("HTTP port {Default} already in use. Auto-assigned to {Port}. appsettings.json updated.", PortHelper.HttpScanStart, httpPort);
+    if (uaAuto)
+        logger.LogWarning("OPC UA port {Default} already in use. Auto-assigned to {Port}. appsettings.json updated.", PortHelper.OpcUaScanStart, uaPort);
+
+    // Force PKI cert regen when UA port changed
+    string certDer = Path.Combine(AppContext.BaseDirectory, "pki", "own", "cert.der");
+    if (uaAuto && File.Exists(certDer))
+    {
+        File.Delete(certDer);
+        logger.LogInformation("Deleted pki/own/cert.der to trigger certificate regeneration with new UA port {Port}.", uaPort);
+    }
+}
+
+BridgeState.ConfigurePorts(httpPort, uaPort, httpAuto, uaAuto);
+logger.LogInformation("Bridge listening on http://0.0.0.0:{HttpPort}", httpPort);
+logger.LogInformation("OPC UA server endpoint: opc.tcp://0.0.0.0:{UaPort}/OpcBridge", uaPort);
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 
-builder.WebHost.UseUrls("http://0.0.0.0:8080");
+builder.WebHost.UseUrls($"http://0.0.0.0:{httpPort}");
 builder.Configuration.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
 
 builder.Services.Configure<BridgeOptions>(builder.Configuration.GetSection("Bridge"));
@@ -30,12 +96,13 @@ builder.Logging.Services.AddSingleton<ILoggerProvider, DashboardLogProvider>();
 
 
 builder.Services.AddSingleton<DaRuntimeSettings>();
-builder.Services.AddSingleton<DaClientFactory>();
+builder.Services.AddSingleton<SourceClientFactory>();
 builder.Services.AddSingleton<BridgeState>();
 builder.Services.AddSingleton<MappingStore>();
 builder.Services.AddSingleton<DaLinkStore>();
 builder.Services.AddSingleton<IDaLinkMetadataResolver>(sp => sp.GetRequiredService<BridgeWorker>());
 builder.Services.AddSingleton<UaServerHost>();
+builder.Services.AddSingleton<OpcUaBrowseService>();
 builder.Services.AddSingleton<IMqttBridge, MqttBridge>();
 builder.Services.AddSingleton<MqttRuntimeSettings>();
 builder.Services.AddSingleton<MqttValueStore>();
@@ -45,7 +112,11 @@ builder.Services.AddSingleton<BridgeWorker>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<BridgeWorker>());
  builder.Services.AddHostedService<OpcBridgeMonitor>();
  builder.Services.AddHttpClient("BridgeAppDiscovery", client => client.Timeout = TimeSpan.FromSeconds(2));
- builder.Services.AddSingleton<BridgeAppDiscovery>();
+ builder.Services.AddSingleton(sp => new BridgeAppDiscovery(
+     sp.GetRequiredService<DaRuntimeSettings>(),
+     sp.GetRequiredService<IHttpClientFactory>(),
+     sp.GetRequiredService<ILogger<BridgeAppDiscovery>>(),
+     BridgeState.HttpPort));
  builder.Services.AddHostedService(sp => sp.GetRequiredService<BridgeAppDiscovery>());
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<DisplayStore>();
@@ -74,24 +145,24 @@ app.MapPost("/api/hmi/write", async (HmiWriteRequest request, BridgeWorker worke
 {
     (bool ok, string? error) = await worker.TryHmiWriteAsync(
         request.SourceId ?? string.Empty,
-        request.DaItemId ?? string.Empty,
+        request.ItemId ?? string.Empty,
         request.Value,
         ct).ConfigureAwait(false);
     return Results.Json(new HmiWriteResponse { Ok = ok, Error = error });
 });
 app.MapGet("/api/hmi/trends", async (
     string? sourceId,
-    string? daItemId,
+    string? itemId,
     DateTime? from,
     DateTime? to,
     int? maxPoints,
     IInfluxTrendQuery trends,
     CancellationToken ct) =>
 {
-    if (string.IsNullOrWhiteSpace(sourceId) || string.IsNullOrWhiteSpace(daItemId))
+    if (string.IsNullOrWhiteSpace(sourceId) || string.IsNullOrWhiteSpace(itemId))
     {
         return Results.Json(
-            new { error = "sourceId and daItemId are required" },
+            new { error = "sourceId and itemId are required" },
             statusCode: StatusCodes.Status400BadRequest);
     }
 
@@ -110,7 +181,7 @@ app.MapGet("/api/hmi/trends", async (
 
     HmiTrendResponse response = await trends.QueryAsync(
         sourceId.Trim(),
-        daItemId.Trim(),
+        itemId.Trim(),
         fromUtc,
         toUtc,
         limit,
@@ -192,13 +263,58 @@ app.MapDelete("/api/hmi/displays/{id}", (string id, DisplayStore displayStore) =
      ua = uaServer.GetStatus(),
      apps = discovery.GetStatus()
  }));
- app.MapGet("/api/dashboard", (BridgeState state, UaServerHost uaServer, BridgeAppDiscovery discovery) => Results.Json(new
+app.MapGet("/api/status/ports", () =>
+{
+    string hostName = System.Net.Dns.GetHostName();
+    string uaBind = $"opc.tcp://0.0.0.0:{BridgeState.UaPort}/OpcBridge";
+    string uaClient = $"opc.tcp://{hostName}:{BridgeState.UaPort}/OpcBridge";
+    return Results.Json(new BridgePorts(
+        BridgeState.HttpPort,
+        BridgeState.UaPort,
+        PortHelper.HttpScanStart,
+        PortHelper.OpcUaScanStart,
+        BridgeState.HttpAutoAssigned,
+        BridgeState.UaAutoAssigned,
+        uaBind,
+        uaClient));
+});
+ app.MapGet("/api/dashboard", (BridgeState state, UaServerHost uaServer, BridgeAppDiscovery discovery, MappingStore mappingStore, BridgeWorker worker, int? limit, string? sourceId) =>
  {
-     bridge = state.GetStatus(),
-     ua = uaServer.GetStatus(),
-     apps = discovery.GetStatus(),
-     values = state.GetValues()
- }));
+     IReadOnlyList<BridgeValueSnapshot> values = state.GetValues(limit ?? DashboardValuesLimit, sourceId);
+
+     // Resolve the displayed data type: the runtime type of the actual source
+     // value wins; the mapping's configured type is the fallback (read path
+     // only — keeps the per-value update hot path untouched).
+     (IReadOnlyList<TagMapping> mappings, _) = mappingStore.GetSnapshot();
+     Dictionary<string, string> dataTypeByKey = DashboardValues.BuildDataTypeLookup(mappings);
+
+     // Effective update rate per tag: per-tag PollRateMs wins, else the source default.
+     Dictionary<string, int> sourceRates = state.GetStatus().Sources
+         .GroupBy(source => source.SourceId, StringComparer.OrdinalIgnoreCase)
+         .ToDictionary(group => group.Key, group => group.First().UpdateRateMs, StringComparer.OrdinalIgnoreCase);
+     Dictionary<string, int> updateRateByKey = DashboardValues.BuildUpdateRateLookup(mappings, sourceRates);
+
+     return Results.Json(new
+     {
+         bridge = state.GetStatus(),
+         ua = uaServer.GetStatus(),
+         apps = discovery.GetStatus(),
+         values = values.Select(value => new
+         {
+             sourceId = value.SourceId,
+             itemId = value.ItemId,
+             value = value.Value,
+             timestampUtc = value.TimestampUtc,
+             daQuality = value.DaQuality,
+             isGood = value.IsGood,
+             dataType = DashboardValues.ResolveDataType(value.Value, dataTypeByKey, value.SourceId, value.ItemId),
+             updateRate = DashboardValues.LookupUpdateRate(updateRateByKey, value.SourceId, value.ItemId)
+         }),
+         valuesTotal = state.GetValueCount(sourceId),
+         disconnected = worker.GetDisconnectedTags(),
+         badQuality = state.GetBadQualityTags().Select(tag => new { sourceId = tag.SourceId, itemId = tag.ItemId })
+     });
+ });
 app.MapGet("/api/diagnostics", (BridgeWorker worker, UaServerHost uaServer) => Results.Json(new
 {
     bridge = worker.GetDiagnostics(),
@@ -260,16 +376,7 @@ app.MapGet("/api/da/sources", (DaRuntimeSettings settings) =>
     {
         updateRateMs = snapshot.UpdateRateMs,
         useSubscriptions = snapshot.UseSubscriptions,
-        sources = snapshot.Sources.Select(source => new
-        {
-            sourceId = source.SourceId,
-            displayName = source.DisplayName,
-            progId = source.ProgId,
-            host = source.Host,
-            updateRateMs = source.UpdateRateMs,
-            remoteUsername = source.RemoteUsername,
-            remoteDomain = source.RemoteDomain
-        })
+        sources = snapshot.Sources.Select(ToSourceApiDto)
     });
 });
 app.MapPost("/api/da/update-rate", (DaUpdateRateRequest request, DaRuntimeSettings settings) =>
@@ -321,48 +428,218 @@ app.MapPost("/api/da/sources/update-rate", (DaSourceUpdateRateRequest request, D
         updateRateMs = source.UpdateRateMs
     });
 });
-app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings settings) =>
+app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings settings, UaServerHost uaServer) =>
 {
     if (string.IsNullOrWhiteSpace(request.SourceId))
     {
         return Results.BadRequest(new { error = "Source ID is required." });
     }
+
+    if (!TryValidateSourceUpsert(request, uaServer.GetOptions().EndpointUrl, settings, out string? validationError))
+    {
+        return Results.BadRequest(new { error = validationError });
+    }
+
+    string upsertType = request.SourceType ?? string.Empty;
+    OpcDaSourceOptions? upsertDa = null;
+    OpcUaSourceOptions? upsertUa = null;
+    MelsecA3nSourceOptions? upsertMelsec = null;
+    S7200PpiSourceOptions? upsertS7200 = null;
+    MxComponentSourceOptions? upsertMx = null;
+    if (string.Equals(upsertType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
+    {
+        upsertUa = new OpcUaSourceOptions(
+            request.EndpointUrl ?? string.Empty,
+            request.SecurityMode ?? string.Empty,
+            request.SecurityPolicy ?? string.Empty,
+            request.UaUsername,
+            request.UaPassword,
+            request.SessionTimeoutMs,
+            request.ReconnectDelayMs,
+            request.WatchdogTimeoutMs ?? 60000);
+    }
+    else if (string.Equals(upsertType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase))
+    {
+        upsertMelsec = new MelsecA3nSourceOptions(
+            request.Transport ?? string.Empty,
+            request.SerialPortName ?? string.Empty,
+            request.BaudRate,
+            request.DataBits,
+            request.Parity ?? string.Empty,
+            request.StopBits ?? string.Empty,
+            request.StationNo ?? string.Empty,
+            request.PcNo ?? string.Empty,
+            request.TimeoutMs,
+            request.RetryCount);
+    }
+    else if (string.Equals(upsertType, SourceTypes.S7200Ppi, StringComparison.OrdinalIgnoreCase))
+    {
+        upsertS7200 = new S7200PpiSourceOptions(
+            request.Transport ?? "Serial",
+            request.SerialPortName ?? string.Empty,
+            request.BaudRate,
+            request.DataBits,
+            request.Parity ?? "Even",
+            request.StopBits ?? "One",
+            request.LocalPpiAddress,
+            request.RemotePpiAddress,
+            request.TimeoutMs,
+            request.RetryCount);
+    }
+    else if (string.Equals(upsertType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
+    {
+        upsertMx = new MxComponentSourceOptions(
+            request.LogicalStationNumber,
+            request.TimeoutMs,
+            request.RetryCount);
+    }
+    else
+    {
+        upsertDa = new OpcDaSourceOptions(
+            request.ProgId ?? string.Empty,
+            request.Host ?? string.Empty,
+            request.RemoteUsername,
+            request.RemotePassword,
+            request.RemoteDomain);
+    }
+
     DaRuntimeSettingsSnapshot snapshot = settings.UpsertSource(new DaSourceRuntimeSettings(
         request.SourceId,
         request.DisplayName ?? string.Empty,
-        request.ProgId,
-        request.Host,
-        request.RemoteUsername,
-        request.RemotePassword,
-        request.RemoteDomain,
-        request.UpdateRateMs));
+        upsertType,
+        request.UpdateRateMs,
+        request.UseSubscriptions ?? true,
+        request.MaxMappedTags,
+        upsertDa,
+        upsertUa,
+        upsertMelsec,
+        upsertS7200,
+        upsertMx));
 
     DaSourceRuntimeSettings source = snapshot.GetSource(request.SourceId)!;
     return Results.Json(new
     {
         version = snapshot.Version,
-        source = new
-        {
-            sourceId = source.SourceId,
-            displayName = source.DisplayName,
-            progId = source.ProgId,
-            host = source.Host,
-            updateRateMs = source.UpdateRateMs,
-            remoteUsername = source.RemoteUsername,
-            remoteDomain = source.RemoteDomain
-        }
+        source = ToSourceApiDto(source)
     });
 });
 app.MapPost("/api/da/sources/remove", (DaSourceRemoveRequest request, DaRuntimeSettings settings, MappingStore store, DaLinkStore daLinkStore) =>
 {
     if (!settings.TryRemoveSource(request.SourceId, out DaRuntimeSettingsSnapshot snapshot))
     {
-        return Results.BadRequest(new { error = "Cannot remove the last source or source was not found." });
+        return Results.BadRequest(new { error = "Source was not found." });
     }
 
     long mappingVersion = store.RemoveSource(request.SourceId);
     long daLinkVersion = daLinkStore.RemoveBySource(request.SourceId);
     return Results.Json(new { version = snapshot.Version, mappingVersion, daLinkVersion });
+});
+app.MapPost("/api/drivers/melsec-a3n/parse-address", (MelsecParseAddressRequest request) =>
+{
+    if (request is null || string.IsNullOrWhiteSpace(request.Address))
+    {
+        return Results.Json(new { ok = false, canonical = (string?)null, error = "Address is required." });
+    }
+
+    if (!MelsecAddressParser.TryParse(request.Address, out MelsecAddress address, out string error))
+    {
+        return Results.Json(new { ok = false, canonical = (string?)null, error });
+    }
+
+    return Results.Json(new { ok = true, canonical = address.Canonical, error = (string?)null });
+});
+
+app.MapPost("/api/drivers/melsec-a3n/test-connection", async (MelsecTestConnectionRequest request, DaRuntimeSettings settings) =>
+{
+    MelsecA3nClientOptions? options = ResolveMelsecTestOptions(request, settings);
+    if (options is null)
+    {
+        return Results.Json(new { ok = false, error = "SerialPortName is required, or an existing MelsecA3n sourceId must be provided." });
+    }
+
+    try
+    {
+        await using MelsecA3nClient client = new(options);
+        // Probe already enforces TimeoutMs/RetryCount; do not wrap with a second CTS
+        // that races open+probe and surfaces "The operation was cancelled."
+        await client.ConnectAsync(CancellationToken.None);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
+app.MapPost("/api/drivers/mx-component/test-connection", async (MxComponentTestConnectionRequest request, DaRuntimeSettings settings) =>
+{
+    MxComponentClientOptions? options = ResolveMxComponentTestOptions(request, settings);
+    if (options is null)
+    {
+        return Results.Json(new { ok = false, error = "LogicalStationNumber is required, or an existing MxComponent sourceId must be provided." });
+    }
+
+    try
+    {
+        await using MxComponentClient client = new(options);
+        await client.ConnectAsync(CancellationToken.None);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+
+app.MapPost("/api/drivers/s7200-ppi/parse-address", (S7200ParseAddressRequest request) =>
+{
+    if (!S7AddressParser.TryParse(request.Address, out S7Address address, out string error))
+    {
+        return Results.BadRequest(new { ok = false, error });
+    }
+
+    return Results.Json(new
+    {
+        ok = true,
+        canonical = address.Canonical,
+        area = address.Area.ToString(),
+        byteOffset = address.ByteOffset,
+        sizeBytes = address.SizeBytes,
+        bitIndex = address.BitIndex
+    });
+});
+app.MapPost("/api/drivers/s7200-ppi/test-connection", async (S7200TestConnectionRequest request, DaRuntimeSettings settings) =>
+{
+    S7200ClientOptions? options = ResolveS7200TestOptions(request, settings);
+    if (options is null || string.IsNullOrWhiteSpace(options.SerialPortName))
+    {
+        return Results.Json(new { ok = false, error = "SerialPortName is required, or an existing S7200Ppi sourceId must be provided." });
+    }
+
+    try
+    {
+        await using S7200Client client = new(options);
+        await client.ConnectAsync(CancellationToken.None);
+        return Results.Json(new { ok = true });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ok = false, error = ex.Message });
+    }
+});
+app.MapGet("/api/serial/ports", () =>
+{
+    try
+    {
+        string[] ports = SerialPort.GetPortNames()
+            .OrderBy(p => p, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        return Results.Json(new { ports });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { ports = Array.Empty<string>(), error = ex.Message });
+    }
 });
 app.MapPost("/api/da/servers", async (DaServerBrowseRequest request) =>
 {
@@ -488,100 +765,89 @@ app.MapGet("/api/mappings", (MappingStore store) =>
     (IReadOnlyList<TagMapping> mappings, long version) = store.GetSnapshot();
     return Results.Json(new { mappings, version });
 });
-app.MapPost("/api/mappings/add", (MappingAddRequest request, MappingStore store) =>
+app.MapPost("/api/mappings/add", (MappingAddRequest request, MappingStore store, DaRuntimeSettings settings) =>
 {
     if (request.Tags is null || request.Tags.Count == 0)
     {
         return Results.BadRequest(new { error = "At least one mapping is required." });
     }
 
-    if (request.Tags.Any(tag => string.IsNullOrWhiteSpace(tag.SourceId) || string.IsNullOrWhiteSpace(tag.DaItemId)))
+    if (request.Tags.Any(tag => string.IsNullOrWhiteSpace(tag.SourceId) || string.IsNullOrWhiteSpace(tag.ItemId)))
     {
         return Results.BadRequest(new { error = "Source ID and DA Item ID are required for every mapping." });
     }
 
-    IEnumerable<TagMapping> tags = request.Tags
-        .Select(tag => new TagMapping
-        {
-            SourceId = tag.SourceId,
-            DaItemId = tag.DaItemId,
-            DisplayName = tag.DisplayName ?? string.Empty,
-            Description = tag.Description,
-            DataType = tag.DataType ?? "Auto",
-            UaNodeId = tag.UaNodeId ?? string.Empty,
-            Enabled = tag.Enabled ?? true,
-            Mode = string.IsNullOrWhiteSpace(tag.Mode) ? TagMode.Source : tag.Mode,
-            ManualValue = string.IsNullOrWhiteSpace(tag.ManualValue) ? null : tag.ManualValue,
-            PollRateMs = tag.PollRateMs ?? 0,
-            DeadbandPct = tag.DeadbandPct ?? 0f,
-            Writeable = tag.Writeable ?? false,
-            AccessRights = string.IsNullOrWhiteSpace(tag.AccessRights) ? TagAccessRights.Read : tag.AccessRights,
-            MqttEnabled = tag.MqttEnabled ?? false,
-            MqttTopic = string.IsNullOrWhiteSpace(tag.MqttTopic) ? null : tag.MqttTopic,
-            InfluxEnabled = tag.InfluxEnabled ?? false
-        });
+    List<TagMapping> tags = request.Tags.Select(ToTagMapping).ToList();
+    if (ValidateMelsecMappings(tags, settings, store, out string mappingError))
+    {
+        return Results.BadRequest(new { error = mappingError });
+    }
+    if (ValidateS7Mappings(tags, settings, store, out mappingError))
+    {
+        return Results.BadRequest(new { error = mappingError });
+    }
+
+    if (TryGetMaxMappedTagsError(tags, store, settings) is { } maxError)
+    {
+        return Results.BadRequest(new { error = maxError });
+    }
 
     long version = store.Add(tags);
     return Results.Json(new { version });
 });
-app.MapPost("/api/mappings/bulk-add", (MappingAddRequest request, MappingStore store) =>
+app.MapPost("/api/mappings/bulk-add", (MappingAddRequest request, MappingStore store, DaRuntimeSettings settings) =>
 {
     if (request.Tags is null || request.Tags.Count == 0)
     {
         return Results.BadRequest(new { error = "At least one mapping is required." });
     }
 
-    IEnumerable<TagMapping> tags = request.Tags
-        .Select(tag => new TagMapping
+    List<TagMapping> tags = request.Tags
+        .Select(tag =>
         {
-            SourceId = string.IsNullOrWhiteSpace(tag.SourceId) ? "default" : tag.SourceId,
-            DaItemId = tag.DaItemId ?? string.Empty,
-            Description = tag.Description,
-            DisplayName = tag.DisplayName ?? string.Empty,
-            DataType = tag.DataType ?? "Auto",
-            UaNodeId = tag.UaNodeId ?? string.Empty,
-            Enabled = tag.Enabled ?? true,
-            Mode = string.IsNullOrWhiteSpace(tag.Mode) ? TagMode.Source : tag.Mode,
-            ManualValue = string.IsNullOrWhiteSpace(tag.ManualValue) ? null : tag.ManualValue,
-            PollRateMs = tag.PollRateMs ?? 0,
-            Writeable = tag.Writeable ?? false,
-            DeadbandPct = tag.DeadbandPct ?? 0f,
-            AccessRights = string.IsNullOrWhiteSpace(tag.AccessRights) ? TagAccessRights.Read : tag.AccessRights,
-            MqttEnabled = tag.MqttEnabled ?? false,
-            MqttTopic = string.IsNullOrWhiteSpace(tag.MqttTopic) ? null : tag.MqttTopic,
-            InfluxEnabled = tag.InfluxEnabled ?? false
+            TagMapping mapping = ToTagMapping(tag);
+            mapping.SourceId = string.IsNullOrWhiteSpace(tag.SourceId) ? "default" : tag.SourceId;
+            return mapping;
         })
-        .Where(tag => !string.IsNullOrWhiteSpace(tag.DaItemId));
+        .Where(tag => !string.IsNullOrWhiteSpace(tag.ItemId))
+        .ToList();
+
+    if (ValidateMelsecMappings(tags, settings, store, out string mappingError))
+    {
+        return Results.BadRequest(new { error = mappingError });
+    }
+    if (ValidateS7Mappings(tags, settings, store, out mappingError))
+    {
+        return Results.BadRequest(new { error = mappingError });
+    }
+
+    if (TryGetMaxMappedTagsError(tags, store, settings) is { } maxError)
+    {
+        return Results.BadRequest(new { error = maxError });
+    }
 
     long version = store.Add(tags);
     return Results.Json(new { version, received = request.Tags.Count });
-    });
-app.MapPost("/api/mappings/update", (MappingUpdateRequest request, MappingStore store) =>
+});
+app.MapPost("/api/mappings/update", (MappingUpdateRequest request, MappingStore store, DaRuntimeSettings daSettings) =>
 {
-    if (string.IsNullOrWhiteSpace(request.Tag.SourceId) || string.IsNullOrWhiteSpace(request.Tag.DaItemId))
+    if (string.IsNullOrWhiteSpace(request.Tag.SourceId) || string.IsNullOrWhiteSpace(request.Tag.ItemId))
     {
         return Results.BadRequest(new { error = "Source ID and DA Item ID are required." });
     }
 
-    TagMapping tag = new()
+    TagMapping tag = ToTagMapping(request.Tag);
+
+    DaSourceRuntimeSettings? source = daSettings.GetSnapshot().GetSource(tag.SourceId);
+    if (source is not null && (string.Equals(source.SourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(source.SourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase)))
     {
-        SourceId = request.Tag.SourceId,
-        DaItemId = request.Tag.DaItemId,
-        DisplayName = request.Tag.DisplayName ?? string.Empty,
-        Description = request.Tag.Description,
-        DataType = request.Tag.DataType ?? "Auto",
-        UaNodeId = request.Tag.UaNodeId ?? string.Empty,
-        Enabled = request.Tag.Enabled ?? true,
-        Mode = string.IsNullOrWhiteSpace(request.Tag.Mode) ? TagMode.Source : request.Tag.Mode,
-        ManualValue = string.IsNullOrWhiteSpace(request.Tag.ManualValue) ? null : request.Tag.ManualValue,
-        PollRateMs = request.Tag.PollRateMs ?? 0,
-        DeadbandPct = request.Tag.DeadbandPct ?? 0f,
-        Writeable = request.Tag.Writeable ?? false,
-        AccessRights = string.IsNullOrWhiteSpace(request.Tag.AccessRights) ? TagAccessRights.Read : request.Tag.AccessRights,
-        MqttEnabled = request.Tag.MqttEnabled ?? false,
-        MqttTopic = string.IsNullOrWhiteSpace(request.Tag.MqttTopic) ? null : request.Tag.MqttTopic,
-        InfluxEnabled = request.Tag.InfluxEnabled ?? false
-    };
+        if (!MelsecAddressParser.TryParse(tag.ItemId, out MelsecAddress address, out string addrError))
+        {
+            return Results.BadRequest(new { error = $"Invalid Melsec address '{tag.ItemId}': {addrError}" });
+        }
+        tag.ItemId = address.Canonical;
+    }
 
     if (!store.TryUpdate(tag, out long version))
     {
@@ -592,12 +858,12 @@ app.MapPost("/api/mappings/update", (MappingUpdateRequest request, MappingStore 
 });
 app.MapPost("/api/mappings/remove", (MappingRemoveRequest request, MappingStore store) =>
 {
-    if (string.IsNullOrWhiteSpace(request.SourceId) || string.IsNullOrWhiteSpace(request.DaItemId))
+    if (string.IsNullOrWhiteSpace(request.SourceId) || string.IsNullOrWhiteSpace(request.ItemId))
     {
         return Results.BadRequest(new { error = "Source ID and DA Item ID are required." });
     }
 
-    long version = store.Remove(request.SourceId, request.DaItemId);
+    long version = store.Remove(request.SourceId, request.ItemId);
     return Results.Json(new { version });
 });
 
@@ -613,16 +879,7 @@ app.MapGet("/api/config/export", (DaRuntimeSettings daSettings, MappingStore map
         {
             updateRateMs = daSnapshot.UpdateRateMs,
             useSubscriptions = daSnapshot.UseSubscriptions,
-            sources = daSnapshot.Sources.Select(s => new
-            {
-                sourceId = s.SourceId,
-                displayName = s.DisplayName,
-                progId = s.ProgId,
-                host = s.Host,
-                updateRateMs = s.UpdateRateMs,
-                remoteUsername = s.RemoteUsername,
-                remoteDomain = s.RemoteDomain
-            })
+            sources = daSnapshot.Sources.Select(ToSourceApiDto)
         },
         mappings = mappings
     });
@@ -645,15 +902,84 @@ app.MapPost("/api/config/import", async (HttpContext context, DaRuntimeSettings 
             {
                 foreach (JsonElement s in sourcesEl.EnumerateArray())
                 {
-                    sources.Add(new DaSourceRuntimeSettings(
-                        s.TryGetProperty("sourceId", out JsonElement sid) ? sid.GetString() ?? "default" : "default",
-                        s.TryGetProperty("displayName", out JsonElement dn) ? dn.GetString() ?? string.Empty : string.Empty,
-                        s.TryGetProperty("progId", out JsonElement pid) ? pid.GetString() ?? string.Empty : string.Empty,
-                        s.TryGetProperty("host", out JsonElement h) ? h.GetString() ?? "localhost" : "localhost",
-                        s.TryGetProperty("remoteUsername", out JsonElement ru) ? ru.GetString() : null,
-                        null, // password not exported — must be re-entered on import
-                        s.TryGetProperty("remoteDomain", out JsonElement rd) ? rd.GetString() : null,
-                        s.TryGetProperty("updateRateMs", out JsonElement sur) ? sur.GetInt32() : updateRate));
+                    sources.Add(SourceConfigMigration.FromDto(new SourceConfigDto
+                    {
+                        SourceId = s.TryGetProperty("sourceId", out JsonElement sid) ? sid.GetString() : "default",
+                        DisplayName = s.TryGetProperty("displayName", out JsonElement dn) ? dn.GetString() : string.Empty,
+                        SourceType = s.TryGetProperty("sourceType", out JsonElement st) ? st.GetString() : string.Empty,
+                        ProgId = s.TryGetProperty("progId", out JsonElement pid) ? pid.GetString() : string.Empty,
+                        Host = s.TryGetProperty("host", out JsonElement h) ? h.GetString() ?? "localhost" : "localhost",
+                        RemoteUsername = s.TryGetProperty("remoteUsername", out JsonElement ru) ? ru.GetString() : null,
+                        RemotePassword = null, // password not exported — must be re-entered on import
+                        RemoteDomain = s.TryGetProperty("remoteDomain", out JsonElement rd) ? rd.GetString() : null,
+                        Transport = s.TryGetProperty("transport", out JsonElement tr) ? tr.GetString() : string.Empty,
+                        SerialPortName = s.TryGetProperty("serialPortName", out JsonElement spn) ? spn.GetString() : string.Empty,
+                        BaudRate = s.TryGetProperty("baudRate", out JsonElement br) ? br.GetInt32() : 0,
+                        DataBits = s.TryGetProperty("dataBits", out JsonElement dbits) ? dbits.GetInt32() : 0,
+                        Parity = s.TryGetProperty("parity", out JsonElement par) ? par.GetString() : string.Empty,
+                        StopBits = s.TryGetProperty("stopBits", out JsonElement sb) ? sb.GetString() : string.Empty,
+                        StationNo = s.TryGetProperty("stationNo", out JsonElement sn) ? sn.GetString() : string.Empty,
+                        PcNo = s.TryGetProperty("pcNo", out JsonElement pn) ? pn.GetString() : string.Empty,
+                        TimeoutMs = s.TryGetProperty("timeoutMs", out JsonElement to) ? to.GetInt32() : 0,
+                        RetryCount = s.TryGetProperty("retryCount", out JsonElement rc) ? rc.GetInt32() : -1,
+                        LogicalStationNumber = s.TryGetProperty("logicalStationNumber", out JsonElement lsn) ? lsn.GetInt32() : 0,
+                        EndpointUrl = s.TryGetProperty("endpointUrl", out JsonElement eu) ? eu.GetString() : string.Empty,
+                        SecurityMode = s.TryGetProperty("securityMode", out JsonElement sm) ? sm.GetString() : string.Empty,
+                        SecurityPolicy = s.TryGetProperty("securityPolicy", out JsonElement sp) ? sp.GetString() : string.Empty,
+                        UaUsername = s.TryGetProperty("uaUsername", out JsonElement uu) ? uu.GetString() : null,
+                        UaPassword = null, // UA password not exported
+                        SessionTimeoutMs = s.TryGetProperty("sessionTimeoutMs", out JsonElement sto) ? sto.GetInt32() : 0,
+                        ReconnectDelayMs = s.TryGetProperty("reconnectDelayMs", out JsonElement rcd) ? rcd.GetInt32() : 0,
+                        MaxMappedTags = s.TryGetProperty("maxMappedTags", out JsonElement mmt) ? mmt.GetInt32() : 0,
+                        UseSubscriptions = s.TryGetProperty("useSubscriptions", out JsonElement usrc) ? usrc.GetBoolean() : true,
+                        UpdateRateMs = s.TryGetProperty("updateRateMs", out JsonElement sur) ? sur.GetInt32() : updateRate,
+                        // Nested export shape (if present)
+                        OpcDa = s.TryGetProperty("opcDa", out JsonElement opcDaEl) && opcDaEl.ValueKind == JsonValueKind.Object
+                            ? new OpcDaSourceOptionsDto
+                            {
+                                ProgId = opcDaEl.TryGetProperty("progId", out JsonElement opid) ? opid.GetString() : null,
+                                Host = opcDaEl.TryGetProperty("host", out JsonElement oh) ? oh.GetString() : null,
+                                RemoteUsername = opcDaEl.TryGetProperty("remoteUsername", out JsonElement oru) ? oru.GetString() : null,
+                                RemoteDomain = opcDaEl.TryGetProperty("remoteDomain", out JsonElement ord) ? ord.GetString() : null
+                            }
+                            : null,
+                        OpcUa = s.TryGetProperty("opcUa", out JsonElement opcUaEl) && opcUaEl.ValueKind == JsonValueKind.Object
+                            ? new OpcUaSourceOptionsDto
+                            {
+                                EndpointUrl = opcUaEl.TryGetProperty("endpointUrl", out JsonElement oeu) ? oeu.GetString() : null,
+                                SecurityMode = opcUaEl.TryGetProperty("securityMode", out JsonElement osm) ? osm.GetString() : null,
+                                SecurityPolicy = opcUaEl.TryGetProperty("securityPolicy", out JsonElement osp) ? osp.GetString() : null,
+                                Username = opcUaEl.TryGetProperty("username", out JsonElement oun) ? oun.GetString() : null,
+                                UaUsername = opcUaEl.TryGetProperty("uaUsername", out JsonElement ouu) ? ouu.GetString() : null,
+                                SessionTimeoutMs = opcUaEl.TryGetProperty("sessionTimeoutMs", out JsonElement osto) ? osto.GetInt32() : 0,
+                                ReconnectDelayMs = opcUaEl.TryGetProperty("reconnectDelayMs", out JsonElement orcd) ? orcd.GetInt32() : 0,
+                                MaxMappedTags = opcUaEl.TryGetProperty("maxMappedTags", out JsonElement ommt) ? ommt.GetInt32() : 0
+                            }
+                            : null,
+                        Melsec = s.TryGetProperty("melsec", out JsonElement melEl) && melEl.ValueKind == JsonValueKind.Object
+                            ? new MelsecA3nSourceOptionsDto
+                            {
+                                Transport = melEl.TryGetProperty("transport", out JsonElement mtr) ? mtr.GetString() : null,
+                                SerialPortName = melEl.TryGetProperty("serialPortName", out JsonElement msp) ? msp.GetString() : null,
+                                BaudRate = melEl.TryGetProperty("baudRate", out JsonElement mbr) ? mbr.GetInt32() : 0,
+                                DataBits = melEl.TryGetProperty("dataBits", out JsonElement mdb) ? mdb.GetInt32() : 0,
+                                Parity = melEl.TryGetProperty("parity", out JsonElement mpa) ? mpa.GetString() : null,
+                                StopBits = melEl.TryGetProperty("stopBits", out JsonElement msb) ? msb.GetString() : null,
+                                StationNo = melEl.TryGetProperty("stationNo", out JsonElement msn) ? msn.GetString() : null,
+                                PcNo = melEl.TryGetProperty("pcNo", out JsonElement mpc) ? mpc.GetString() : null,
+                                TimeoutMs = melEl.TryGetProperty("timeoutMs", out JsonElement mto) ? mto.GetInt32() : 0,
+                                RetryCount = melEl.TryGetProperty("retryCount", out JsonElement mrc) ? mrc.GetInt32() : -1
+                            }
+                            : null,
+                        MxComponent = s.TryGetProperty("mxComponent", out JsonElement mxEl) && mxEl.ValueKind == JsonValueKind.Object
+                            ? new MxComponentSourceOptionsDto
+                            {
+                                LogicalStationNumber = mxEl.TryGetProperty("logicalStationNumber", out JsonElement xlsn) ? xlsn.GetInt32() : 0,
+                                TimeoutMs = mxEl.TryGetProperty("timeoutMs", out JsonElement xto) ? xto.GetInt32() : 0,
+                                RetryCount = mxEl.TryGetProperty("retryCount", out JsonElement xrc) ? xrc.GetInt32() : -1
+                            }
+                            : null
+                    }, updateRate));
                 }
             }
 
@@ -670,7 +996,8 @@ app.MapPost("/api/config/import", async (HttpContext context, DaRuntimeSettings 
                 tags.Add(new TagMapping
                 {
                     SourceId = m.TryGetProperty("sourceId", out JsonElement sid) ? sid.GetString() ?? "default" : "default",
-                    DaItemId = m.TryGetProperty("daItemId", out JsonElement di) ? di.GetString() ?? string.Empty : string.Empty,
+                    ItemId = m.TryGetProperty("daItemId", out JsonElement di) ? di.GetString() ?? string.Empty
+                        : m.TryGetProperty("itemId", out di) ? di.GetString() ?? string.Empty : string.Empty,
                     DisplayName = m.TryGetProperty("displayName", out JsonElement dn) ? dn.GetString() ?? string.Empty : string.Empty,
                     DataType = m.TryGetProperty("dataType", out JsonElement dt) ? dt.GetString() ?? "Auto" : "Auto",
                     UaNodeId = m.TryGetProperty("uaNodeId", out JsonElement un) ? un.GetString() ?? string.Empty : string.Empty,
@@ -831,6 +1158,134 @@ app.MapPost("/api/ua/settings", async (HttpContext context, UaServerHost uaServe
     {
         return Results.BadRequest(new { error = ex.Message });
     }
+});
+
+app.MapPost("/api/ua/test-connection", async (
+    UaTestConnectionRequest request,
+    OpcUaBrowseService browseService,
+    DaRuntimeSettings settings,
+    CancellationToken cancellationToken) =>
+{
+    if (!TryResolveUaConnection(
+            request.SourceId,
+            request.EndpointUrl,
+            request.SecurityMode,
+            request.SecurityPolicy,
+            request.Username,
+            request.Password,
+            settings,
+            out OpcUaSourceClientOptions? options,
+            out string? resolveError))
+    {
+        return Results.BadRequest(new { error = resolveError, ok = false });
+    }
+
+    UaTestConnectionResult result = await browseService
+        .TestConnectionAsync(options!, cancellationToken)
+        .ConfigureAwait(false);
+
+    if (!result.Ok)
+    {
+        return Results.Json(new { ok = false, error = result.Error ?? "Connection failed." });
+    }
+
+    return Results.Json(new
+    {
+        ok = true,
+        serverProductName = result.ServerProductName,
+        sessionId = result.SessionId
+    });
+});
+app.MapPost("/api/ua/discover", async (
+    UaDiscoverRequest request,
+    OpcUaBrowseService browseService,
+    DaRuntimeSettings settings,
+    CancellationToken cancellationToken) =>
+{
+    if (!TryResolveUaConnection(
+            request.SourceId,
+            request.EndpointUrl,
+            request.SecurityMode,
+            request.SecurityPolicy,
+            request.Username,
+            request.Password,
+            settings,
+            out OpcUaSourceClientOptions? options,
+            out string? resolveError))
+    {
+        return Results.BadRequest(new { error = resolveError, ok = false });
+    }
+
+    UaDiscoverResult result = await browseService
+        .DiscoverServersAsync(options!, cancellationToken)
+        .ConfigureAwait(false);
+
+    if (result.Error is not null)
+    {
+        return Results.Json(new { ok = false, error = result.Error });
+    }
+
+    return Results.Json(new
+    {
+        ok = true,
+        servers = result.Servers.Select(s => new
+        {
+            serverUri = s.ServerUri,
+            recordId = s.RecordId,
+            discoveryUrl = s.DiscoveryUrl,
+            serverName = s.ServerName,
+            serverCapabilities = s.ServerCapabilities,
+            isOnline = s.IsOnline
+        }).ToList()
+    });
+});
+
+app.MapPost("/api/ua/browse", async (
+    UaBrowseRequest request,
+    OpcUaBrowseService browseService,
+    DaRuntimeSettings settings,
+    CancellationToken cancellationToken) =>
+{
+    if (!TryResolveUaConnection(
+            request.SourceId,
+            request.EndpointUrl,
+            request.SecurityMode,
+            request.SecurityPolicy,
+            request.Username,
+            request.Password,
+            settings,
+            out OpcUaSourceClientOptions? options,
+            out string? resolveError))
+    {
+        return Results.BadRequest(new { error = resolveError });
+    }
+
+    UaBrowseResult result = await browseService
+        .BrowseAsync(
+            options!,
+            request.NodeId,
+            request.MaxNodes ?? OpcUaBrowseService.DefaultMaxNodes,
+            cancellationToken)
+        .ConfigureAwait(false);
+
+    if (result.Error is not null
+        && result.Error.StartsWith("Invalid nodeId", StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.BadRequest(new { error = result.Error, nodes = Array.Empty<object>() });
+    }
+
+    return Results.Json(new
+    {
+        nodes = result.Nodes.Select(n => new
+        {
+            nodeId = n.NodeId,
+            displayName = n.DisplayName,
+            nodeClass = n.NodeClass,
+            hasChildren = n.HasChildren
+        }),
+        continuationPoint = result.ContinuationPoint,
+        error = result.Error
+    });
 });
 app.MapGet("/api/mqtt/config", (MqttRuntimeSettings settings) =>
 {
@@ -1111,6 +1566,395 @@ static string NormalizeDaLinkSourceId(string? sourceId)
     return value.Length == 0 ? DaRuntimeSettings.DefaultSourceId : value;
 }
 
+static object ToSourceApiDto(DaSourceRuntimeSettings source)
+{
+    return new
+    {
+        sourceId = source.SourceId,
+        displayName = source.DisplayName,
+        sourceType = source.SourceType,
+        progId = source.ProgId,
+        host = source.Host,
+        transport = source.Transport,
+        serialPortName = source.SerialPortName,
+        baudRate = source.BaudRate,
+        dataBits = source.DataBits,
+        parity = source.Parity,
+        stopBits = source.StopBits,
+        stationNo = source.StationNo,
+        pcNo = source.PcNo,
+        localPpiAddress = source.LocalPpiAddress,
+        remotePpiAddress = source.RemotePpiAddress,
+        timeoutMs = source.TimeoutMs,
+        retryCount = source.RetryCount,
+        endpointUrl = source.EndpointUrl,
+        securityMode = source.SecurityMode,
+        securityPolicy = source.SecurityPolicy,
+        updateRateMs = source.UpdateRateMs,
+        sessionTimeoutMs = source.SessionTimeoutMs,
+        reconnectDelayMs = source.ReconnectDelayMs,
+        maxMappedTags = source.MaxMappedTags,
+        useSubscriptions = source.UseSubscriptions,
+        remoteUsername = source.RemoteUsername,
+        remoteDomain = source.RemoteDomain,
+        uaUsername = source.UaUsername,
+        logicalStationNumber = source.LogicalStationNumber
+    };
+}
+
+static bool TryValidateSourceUpsert(DaServerConfigRequest request, string serverEndpointUrl, DaRuntimeSettings settings, out string? error)
+{
+    error = null;
+    string sourceType = ResolveApiSourceType(request.SourceType, out string? typeError);
+    if (typeError is not null)
+    {
+        error = typeError;
+        return false;
+    }
+
+    if (string.Equals(sourceType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
+    {
+        string endpointUrl = request.EndpointUrl?.Trim() ?? string.Empty;
+        if (endpointUrl.Length == 0)
+        {
+            error = "Endpoint URL is required for OPC UA sources.";
+            return false;
+        }
+
+        if (!endpointUrl.StartsWith("opc.tcp://", StringComparison.OrdinalIgnoreCase))
+        {
+            error = "Endpoint URL must start with opc.tcp://.";
+            return false;
+        }
+
+        if (!TryValidateUaSecurity(request.SecurityMode, request.SecurityPolicy, out string? securityError))
+        {
+            error = securityError;
+            return false;
+        }
+
+        if (UaEndpointGuard.TargetsSelf(endpointUrl, serverEndpointUrl))
+        {
+            error = "Source endpoint cannot target this bridge's own OPC UA server.";
+            return false;
+        }
+
+        return true;
+    }
+
+    if (string.Equals(sourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase))
+    {
+        string portError = ValidateMelsecSerialPort(request, settings);
+        if (portError.Length > 0)
+        {
+            error = portError;
+            return false;
+        }
+
+        return true;
+    }
+
+    if (string.Equals(sourceType, SourceTypes.S7200Ppi, StringComparison.OrdinalIgnoreCase))
+    {
+        string portError = ValidateS7200SerialPort(request, settings);
+        if (portError.Length > 0)
+        {
+            error = portError;
+            return false;
+        }
+
+        return true;
+    }
+
+    if (string.Equals(sourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
+    {
+        if (request.LogicalStationNumber is < 0 or > 1023)
+        {
+            error = "LogicalStationNumber must be between 0 and 1023 (configure the station in MX Component's Communication Settings Utility).";
+            return false;
+        }
+
+        return true;
+    }
+
+    if (string.IsNullOrWhiteSpace(request.ProgId))
+    {
+        error = "ProgId is required for OPC DA sources.";
+        return false;
+    }
+
+    return true;
+}
+
+static string ResolveApiSourceType(string? sourceType, out string? error)
+{
+    error = null;
+    if (string.IsNullOrWhiteSpace(sourceType))
+    {
+        return SourceTypes.OpcDa;
+    }
+
+    string trimmed = sourceType.Trim();
+    if (string.Equals(trimmed, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
+    {
+        return SourceTypes.OpcUa;
+    }
+
+    if (string.Equals(trimmed, SourceTypes.OpcDa, StringComparison.OrdinalIgnoreCase))
+    {
+        return SourceTypes.OpcDa;
+    }
+
+    if (string.Equals(trimmed, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase))
+    {
+        return SourceTypes.MelsecA3n;
+    }
+
+    if (string.Equals(trimmed, SourceTypes.S7200Ppi, StringComparison.OrdinalIgnoreCase))
+    {
+        return SourceTypes.S7200Ppi;
+    }
+
+    if (string.Equals(trimmed, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
+    {
+        return SourceTypes.MxComponent;
+    }
+
+    error = "Source type must be OpcDa, OpcUa, MelsecA3n, S7200Ppi, or MxComponent.";
+    return string.Empty;
+}
+
+static bool TryValidateUaSecurity(string? securityMode, string? securityPolicy, out string? error)
+{
+    error = null;
+    string mode = string.IsNullOrWhiteSpace(securityMode) ? "None" : securityMode.Trim();
+    string policy = string.IsNullOrWhiteSpace(securityPolicy) ? "None" : securityPolicy.Trim();
+
+    bool modeOk = mode.Equals("None", StringComparison.OrdinalIgnoreCase)
+        || mode.Equals("Sign", StringComparison.OrdinalIgnoreCase)
+        || mode.Equals("SignAndEncrypt", StringComparison.OrdinalIgnoreCase);
+    if (!modeOk)
+    {
+        error = "Security mode must be None, Sign, or SignAndEncrypt.";
+        return false;
+    }
+
+    bool policyOk = policy.Equals("None", StringComparison.OrdinalIgnoreCase)
+        || policy.Equals("Basic256Sha256", StringComparison.OrdinalIgnoreCase);
+    if (!policyOk)
+    {
+        error = "Security policy must be None or Basic256Sha256.";
+        return false;
+    }
+
+    bool modeIsNone = mode.Equals("None", StringComparison.OrdinalIgnoreCase);
+    bool policyIsNone = policy.Equals("None", StringComparison.OrdinalIgnoreCase);
+    if (modeIsNone != policyIsNone)
+    {
+        error = "Security mode None requires policy None; Sign/SignAndEncrypt require Basic256Sha256.";
+        return false;
+    }
+
+    if (!modeIsNone && !policy.Equals("Basic256Sha256", StringComparison.OrdinalIgnoreCase))
+    {
+        error = "Security mode None requires policy None; Sign/SignAndEncrypt require Basic256Sha256.";
+        return false;
+    }
+
+    return true;
+}
+
+static bool TryResolveUaConnection(
+    string? sourceId,
+    string? endpointUrl,
+    string? securityMode,
+    string? securityPolicy,
+    string? username,
+    string? password,
+    DaRuntimeSettings settings,
+    out OpcUaSourceClientOptions? options,
+    out string? error)
+{
+    options = null;
+    error = null;
+
+    string trimmedSourceId = sourceId?.Trim() ?? string.Empty;
+    if (trimmedSourceId.Length > 0)
+    {
+        DaRuntimeSettingsSnapshot snapshot = settings.GetSnapshot();
+        DaSourceRuntimeSettings? source = snapshot.GetSource(trimmedSourceId);
+        if (source is null)
+        {
+            error = $"Source '{trimmedSourceId}' was not found.";
+            return false;
+        }
+
+        if (!string.Equals(source.SourceType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
+        {
+            error = $"Source '{trimmedSourceId}' is not an OpcUa source.";
+            return false;
+        }
+
+        // Explicit body fields override stored source values when provided.
+        string resolvedEndpoint = !string.IsNullOrWhiteSpace(endpointUrl)
+            ? endpointUrl.Trim()
+            : source.EndpointUrl;
+        string resolvedMode = !string.IsNullOrWhiteSpace(securityMode)
+            ? securityMode.Trim()
+            : source.SecurityMode;
+        string resolvedPolicy = !string.IsNullOrWhiteSpace(securityPolicy)
+            ? securityPolicy.Trim()
+            : source.SecurityPolicy;
+        string? resolvedUser = username ?? source.UaUsername;
+        string? resolvedPassword = password ?? source.UaPassword;
+
+        if (!TryValidateUaConnectionFields(resolvedEndpoint, resolvedMode, resolvedPolicy, out error))
+        {
+            return false;
+        }
+
+        options = new OpcUaSourceClientOptions
+        {
+            SourceId = source.SourceId,
+            DisplayName = source.DisplayName,
+            EndpointUrl = resolvedEndpoint,
+            SecurityMode = string.IsNullOrWhiteSpace(resolvedMode) ? "None" : resolvedMode,
+            SecurityPolicy = string.IsNullOrWhiteSpace(resolvedPolicy) ? "None" : resolvedPolicy,
+            Username = resolvedUser,
+            Password = resolvedPassword,
+            SessionTimeoutMs = source.SessionTimeoutMs > 0
+                ? source.SessionTimeoutMs
+                : OpcUaBrowseService.DefaultTimeoutMs,
+            AutoAcceptUntrustedCertificates = true,
+            PkiRoot = "pki/ua-client"
+        };
+        return true;
+    }
+
+    string directEndpoint = endpointUrl?.Trim() ?? string.Empty;
+    if (!TryValidateUaConnectionFields(directEndpoint, securityMode, securityPolicy, out error))
+    {
+        return false;
+    }
+
+    options = new OpcUaSourceClientOptions
+    {
+        SourceId = "adhoc",
+        DisplayName = "Ad-hoc",
+        EndpointUrl = directEndpoint,
+        SecurityMode = string.IsNullOrWhiteSpace(securityMode) ? "None" : securityMode.Trim(),
+        SecurityPolicy = string.IsNullOrWhiteSpace(securityPolicy) ? "None" : securityPolicy.Trim(),
+        Username = username,
+        Password = password,
+        SessionTimeoutMs = OpcUaBrowseService.DefaultTimeoutMs,
+        AutoAcceptUntrustedCertificates = true,
+        PkiRoot = "pki/ua-client"
+    };
+    return true;
+}
+
+static bool TryValidateUaConnectionFields(
+    string endpointUrl,
+    string? securityMode,
+    string? securityPolicy,
+    out string? error)
+{
+    error = null;
+    if (string.IsNullOrWhiteSpace(endpointUrl))
+    {
+        error = "Endpoint URL is required (or provide a valid sourceId).";
+        return false;
+    }
+
+    string trimmed = endpointUrl.Trim();
+    if (!trimmed.StartsWith("opc.tcp://", StringComparison.OrdinalIgnoreCase))
+    {
+        error = "Endpoint URL must start with opc.tcp://.";
+        return false;
+    }
+
+    if (!TryValidateUaSecurity(securityMode, securityPolicy, out string? securityError))
+    {
+        error = securityError;
+        return false;
+    }
+
+    return true;
+}
+
+static string? TryGetMaxMappedTagsError(
+    IReadOnlyList<TagMapping> incoming,
+    MappingStore store,
+    DaRuntimeSettings settings)
+{
+    if (incoming.Count == 0)
+    {
+        return null;
+    }
+
+    (IReadOnlyList<TagMapping> existing, _) = store.GetSnapshot();
+    DaRuntimeSettingsSnapshot snapshot = settings.GetSnapshot();
+
+    Dictionary<string, HashSet<string>> incomingBySource = new(StringComparer.OrdinalIgnoreCase);
+    foreach (TagMapping tag in incoming)
+    {
+        string sourceId = string.IsNullOrWhiteSpace(tag.SourceId)
+            ? DaRuntimeSettings.DefaultSourceId
+            : tag.SourceId.Trim();
+        string itemId = tag.ItemId?.Trim() ?? string.Empty;
+        if (itemId.Length == 0)
+        {
+            continue;
+        }
+
+        if (!incomingBySource.TryGetValue(sourceId, out HashSet<string>? items))
+        {
+            items = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            incomingBySource[sourceId] = items;
+        }
+
+        items.Add(itemId);
+    }
+
+    foreach ((string sourceId, HashSet<string> newItems) in incomingBySource)
+    {
+        DaSourceRuntimeSettings? source = snapshot.GetSource(sourceId);
+        if (source is null
+            || !string.Equals(source.SourceType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
+        {
+            continue;
+        }
+
+        HashSet<string> existingItems = new(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < existing.Count; i++)
+        {
+            TagMapping mapping = existing[i];
+            if (string.Equals(mapping.SourceId, sourceId, StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(mapping.ItemId))
+            {
+                existingItems.Add(mapping.ItemId);
+            }
+        }
+
+        int newUnique = 0;
+        foreach (string itemId in newItems)
+        {
+            if (!existingItems.Contains(itemId))
+            {
+                newUnique++;
+            }
+        }
+
+        int total = existingItems.Count + newUnique;
+        if (total > source.MaxMappedTags)
+        {
+            return $"Source {source.SourceId} exceeds MaxMappedTags ({source.MaxMappedTags}).";
+        }
+    }
+
+    return null;
+}
+
 static bool TryParseLogLevel(string? value, out LogLevel level)
 {
     if (string.IsNullOrWhiteSpace(value))
@@ -1128,6 +1972,411 @@ static MqttPayloadField? ParsePayloadFields(string? value)
     return Enum.TryParse<MqttPayloadField>(value.Trim(), ignoreCase: true, out MqttPayloadField result)
         ? result
         : null;
+}
+
+static string ValidateMelsecSerialPort(DaServerConfigRequest request, DaRuntimeSettings settings)
+{
+    string port = (request.SerialPortName ?? string.Empty).Trim();
+    if (port.Length == 0)
+    {
+        return "SerialPortName is required for MelsecA3n sources.";
+    }
+
+    string transport = (request.Transport ?? string.Empty).Trim();
+    if (transport.Length > 0 && !string.Equals(transport, "Serial", StringComparison.OrdinalIgnoreCase))
+    {
+        return $"MelsecA3n sources only support Transport 'Serial'; '{transport}' is not allowed.";
+    }
+
+    // Reject duplicate SerialPortName across other sources (case-sensitive on Linux paths).
+    DaRuntimeSettingsSnapshot snapshot = settings.GetSnapshot();
+    foreach (DaSourceRuntimeSettings existing in snapshot.Sources)
+    {
+        if (string.Equals(existing.SourceId, request.SourceId, StringComparison.OrdinalIgnoreCase))
+        {
+            continue;
+        }
+
+        bool isSerialDriver =
+            string.Equals(existing.SourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(existing.SourceType, SourceTypes.S7200Ppi, StringComparison.OrdinalIgnoreCase);
+        if (!isSerialDriver)
+        {
+            continue;
+        }
+
+        if (string.Equals(existing.SerialPortName ?? string.Empty, port, StringComparison.Ordinal))
+        {
+            return $"SerialPortName '{port}' is already used by source '{existing.SourceId}'.";
+        }
+    }
+
+    return string.Empty;
+}
+
+static string ValidateS7200SerialPort(DaServerConfigRequest request, DaRuntimeSettings settings)
+{
+    string port = (request.SerialPortName ?? string.Empty).Trim();
+    if (port.Length == 0)
+    {
+        return "SerialPortName is required for S7200Ppi sources.";
+    }
+
+    string transport = (request.Transport ?? string.Empty).Trim();
+    if (transport.Length > 0 && !string.Equals(transport, "Serial", StringComparison.OrdinalIgnoreCase))
+    {
+        return $"S7200Ppi sources only support Transport 'Serial'; '{transport}' is not allowed.";
+    }
+
+    if (request.LocalPpiAddress is < 0 or > 126)
+    {
+        return "LocalPpiAddress must be between 0 and 126.";
+    }
+
+    if (request.RemotePpiAddress is < 0 or > 126)
+    {
+        return "RemotePpiAddress must be between 0 and 126.";
+    }
+
+    DaRuntimeSettingsSnapshot snapshot = settings.GetSnapshot();
+    foreach (DaSourceRuntimeSettings existing in snapshot.Sources)
+    {
+        if (string.Equals(existing.SourceId, request.SourceId, StringComparison.OrdinalIgnoreCase))
+        {
+            continue;
+        }
+
+        bool isSerialDriver =
+            string.Equals(existing.SourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(existing.SourceType, SourceTypes.S7200Ppi, StringComparison.OrdinalIgnoreCase);
+        if (!isSerialDriver)
+        {
+            continue;
+        }
+
+        if (string.Equals(existing.SerialPortName ?? string.Empty, port, StringComparison.Ordinal))
+        {
+            return $"SerialPortName '{port}' is already used by source '{existing.SourceId}'.";
+        }
+    }
+
+    return string.Empty;
+}
+
+static MelsecA3nClientOptions? ResolveMelsecTestOptions(MelsecTestConnectionRequest request, DaRuntimeSettings settings)
+{
+    // Prefer explicit body fields (Drivers form always sends them) so unsaved edits are tested.
+    string port = (request.SerialPortName ?? string.Empty).Trim();
+    if (port.Length > 0)
+    {
+        return new MelsecA3nClientOptions
+        {
+            SourceId = string.IsNullOrWhiteSpace(request.SourceId) ? "test-connection" : request.SourceId.Trim(),
+            SerialPortName = port,
+            BaudRate = request.BaudRate is > 0 ? request.BaudRate.Value : 9600,
+            DataBits = request.DataBits is 7 or 8 ? request.DataBits.Value : 8,
+            Parity = string.IsNullOrWhiteSpace(request.Parity) ? "Odd" : request.Parity!,
+            StopBits = string.IsNullOrWhiteSpace(request.StopBits) ? "One" : request.StopBits!,
+            StationNo = string.IsNullOrWhiteSpace(request.StationNo) ? "00" : request.StationNo!,
+            PcNo = string.IsNullOrWhiteSpace(request.PcNo) ? "FF" : request.PcNo!,
+            TimeoutMs = request.TimeoutMs is > 0 ? request.TimeoutMs.Value : 3000,
+            RetryCount = request.RetryCount is >= 0 ? request.RetryCount.Value : 0
+        };
+    }
+
+    if (!string.IsNullOrWhiteSpace(request.SourceId))
+    {
+        DaSourceRuntimeSettings? source = settings.GetSnapshot().GetSource(request.SourceId);
+        if (source is null || !string.Equals(source.SourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return new MelsecA3nClientOptions
+        {
+            SourceId = source.SourceId,
+            SerialPortName = source.SerialPortName,
+            BaudRate = source.BaudRate,
+            DataBits = source.DataBits,
+            Parity = source.Parity,
+            StopBits = source.StopBits,
+            StationNo = source.StationNo,
+            PcNo = source.PcNo,
+            TimeoutMs = source.TimeoutMs,
+            RetryCount = source.RetryCount
+        };
+    }
+
+    return null;
+}
+
+static MxComponentClientOptions? ResolveMxComponentTestOptions(MxComponentTestConnectionRequest request, DaRuntimeSettings settings)
+{
+    // Prefer explicit body fields (Drivers form always sends them) so unsaved edits are tested.
+    if (request.LogicalStationNumber is not null)
+    {
+        return new MxComponentClientOptions
+        {
+            SourceId = string.IsNullOrWhiteSpace(request.SourceId) ? "test-connection" : request.SourceId.Trim(),
+            LogicalStationNumber = request.LogicalStationNumber.Value,
+            TimeoutMs = request.TimeoutMs is > 0 ? request.TimeoutMs.Value : 3000,
+            RetryCount = request.RetryCount is >= 0 ? request.RetryCount.Value : 0
+        };
+    }
+
+    if (!string.IsNullOrWhiteSpace(request.SourceId))
+    {
+        DaSourceRuntimeSettings? source = settings.GetSnapshot().GetSource(request.SourceId);
+        if (source is null || !string.Equals(source.SourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return new MxComponentClientOptions
+        {
+            SourceId = source.SourceId,
+            LogicalStationNumber = source.LogicalStationNumber,
+            TimeoutMs = source.MxComponentTimeoutMs,
+            RetryCount = source.MxComponentRetryCount
+        };
+    }
+
+    return null;
+}
+
+static TagMapping ToTagMapping(MappingTagDto tag) => new()
+{
+    SourceId = tag.SourceId,
+    ItemId = tag.ItemId,
+    DisplayName = tag.DisplayName ?? string.Empty,
+    Description = tag.Description,
+    DataType = tag.DataType ?? "Auto",
+    UaNodeId = tag.UaNodeId ?? string.Empty,
+    Enabled = tag.Enabled ?? true,
+    Mode = string.IsNullOrWhiteSpace(tag.Mode) ? TagMode.Source : tag.Mode,
+    ManualValue = string.IsNullOrWhiteSpace(tag.ManualValue) ? null : tag.ManualValue,
+    PollRateMs = tag.PollRateMs ?? 0,
+    DeadbandPct = tag.DeadbandPct ?? 0f,
+    Writeable = tag.Writeable ?? false,
+    AccessRights = tag.AccessRights ?? string.Empty,
+    MqttEnabled = tag.MqttEnabled ?? false,
+    MqttTopic = string.IsNullOrWhiteSpace(tag.MqttTopic) ? null : tag.MqttTopic,
+    InfluxEnabled = tag.InfluxEnabled ?? false
+};
+
+static bool ValidateMelsecMappings(List<TagMapping> tags, DaRuntimeSettings daSettings, MappingStore store, out string error)
+{
+    error = string.Empty;
+    DaRuntimeSettingsSnapshot snapshot = daSettings.GetSnapshot();
+
+    // Validate + canonicalize ItemId for every MelsecA3n / MxComponent-bound tag (same A3N address space).
+    for (int i = 0; i < tags.Count; i++)
+    {
+        TagMapping tag = tags[i];
+        DaSourceRuntimeSettings? source = snapshot.GetSource(tag.SourceId);
+        if (source is null || !IsMelsecAddressSource(source))
+        {
+            continue;
+        }
+
+        if (!MelsecAddressParser.TryParse(tag.ItemId, out MelsecAddress address, out string addrError))
+        {
+            error = $"Invalid Melsec address '{tag.ItemId}': {addrError}";
+            return true;
+        }
+
+        tag.ItemId = address.Canonical;
+        tags[i] = tag;
+    }
+
+    // Enforce MaxMappedTags per MelsecA3n / MxComponent source (existing + new, de-duplicated by key).
+    Dictionary<string, int> newPerSource = new(StringComparer.OrdinalIgnoreCase);
+    HashSet<(string SourceId, string ItemId)> newKeys = new(StringTupleComparerIgnoreCase.Instance);
+    foreach (TagMapping tag in tags)
+    {
+        DaSourceRuntimeSettings? source = snapshot.GetSource(tag.SourceId);
+        if (source is null || !IsMelsecAddressSource(source))
+        {
+            continue;
+        }
+
+        if (!newKeys.Add((tag.SourceId, tag.ItemId)))
+        {
+            continue;
+        }
+
+        newPerSource[tag.SourceId] = newPerSource.TryGetValue(tag.SourceId, out int c) ? c + 1 : 1;
+    }
+
+    foreach (KeyValuePair<string, int> entry in newPerSource)
+    {
+        DaSourceRuntimeSettings? source = snapshot.GetSource(entry.Key);
+        if (source is null)
+        {
+            continue;
+        }
+
+        int existing = store.GetBySource(entry.Key).Count;
+        int limit = source.MaxMappedTags > 0 ? source.MaxMappedTags : 2000;
+        if (existing + entry.Value > limit)
+        {
+            error = $"Mapping add would exceed max mapped tags ({limit}) for source '{entry.Key}'.";
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static bool IsMelsecAddressSource(DaSourceRuntimeSettings source)
+{
+    return string.Equals(source.SourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(source.SourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase);
+}
+
+
+static S7200ClientOptions? ResolveS7200TestOptions(S7200TestConnectionRequest request, DaRuntimeSettings settings)
+{
+    if (!string.IsNullOrWhiteSpace(request.SourceId))
+    {
+        DaSourceRuntimeSettings? source = settings.GetSnapshot().GetSource(request.SourceId);
+        if (source is null || !string.Equals(source.SourceType, SourceTypes.S7200Ppi, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return new S7200ClientOptions
+        {
+            SourceId = source.SourceId,
+            SerialPortName = source.SerialPortName,
+            BaudRate = source.BaudRate,
+            DataBits = source.DataBits,
+            Parity = source.Parity,
+            StopBits = source.StopBits,
+            LocalPpiAddress = source.LocalPpiAddress,
+            RemotePpiAddress = source.RemotePpiAddress,
+            TimeoutMs = source.TimeoutMs,
+            RetryCount = source.RetryCount
+        };
+    }
+
+    if (string.IsNullOrWhiteSpace(request.SerialPortName))
+    {
+        return null;
+    }
+
+    return new S7200ClientOptions
+    {
+        SourceId = "test-connection",
+        SerialPortName = request.SerialPortName.Trim(),
+        BaudRate = request.BaudRate is > 0 ? request.BaudRate.Value : 9600,
+        DataBits = request.DataBits is 7 or 8 ? request.DataBits.Value : 8,
+        Parity = string.IsNullOrWhiteSpace(request.Parity) ? "Even" : request.Parity!,
+        StopBits = string.IsNullOrWhiteSpace(request.StopBits) ? "One" : request.StopBits!,
+        LocalPpiAddress = request.LocalPpiAddress ?? 0,
+        RemotePpiAddress = request.RemotePpiAddress ?? 2,
+        TimeoutMs = request.TimeoutMs is > 0 ? request.TimeoutMs.Value : 3000,
+        RetryCount = request.RetryCount is >= 0 ? request.RetryCount.Value : 2
+    };
+}
+
+static bool ValidateS7Mappings(List<TagMapping> tags, DaRuntimeSettings daSettings, MappingStore store, out string error)
+{
+    error = string.Empty;
+    DaRuntimeSettingsSnapshot snapshot = daSettings.GetSnapshot();
+
+    for (int i = 0; i < tags.Count; i++)
+    {
+        TagMapping tag = tags[i];
+        DaSourceRuntimeSettings? source = snapshot.GetSource(tag.SourceId);
+        if (source is null || !string.Equals(source.SourceType, SourceTypes.S7200Ppi, StringComparison.OrdinalIgnoreCase))
+        {
+            continue;
+        }
+
+        if (!S7AddressParser.TryParse(tag.ItemId, out S7Address address, out string addrError))
+        {
+            error = $"Invalid S7 address '{tag.ItemId}': {addrError}";
+            return true;
+        }
+
+        tag.ItemId = address.Canonical;
+        tags[i] = tag;
+    }
+
+    Dictionary<string, int> newPerSource = new(StringComparer.OrdinalIgnoreCase);
+    HashSet<(string SourceId, string ItemId)> newKeys = new(StringTupleComparerIgnoreCase.Instance);
+    foreach (TagMapping tag in tags)
+    {
+        DaSourceRuntimeSettings? source = snapshot.GetSource(tag.SourceId);
+        if (source is null || !string.Equals(source.SourceType, SourceTypes.S7200Ppi, StringComparison.OrdinalIgnoreCase))
+        {
+            continue;
+        }
+
+        if (!newKeys.Add((tag.SourceId, tag.ItemId)))
+        {
+            continue;
+        }
+
+        newPerSource[tag.SourceId] = newPerSource.TryGetValue(tag.SourceId, out int c) ? c + 1 : 1;
+    }
+
+    foreach (KeyValuePair<string, int> entry in newPerSource)
+    {
+        DaSourceRuntimeSettings? source = snapshot.GetSource(entry.Key);
+        if (source is null)
+        {
+            continue;
+        }
+
+        int existing = store.GetBySource(entry.Key).Count;
+        int limit = source.MaxMappedTags > 0 ? source.MaxMappedTags : 2000;
+        if (existing + entry.Value > limit)
+        {
+            error = $"Mapping add would exceed max mapped tags ({limit}) for S7200Ppi source '{entry.Key}'.";
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/// <summary>
+/// Replaces the port in a URL string (e.g. opc.tcp://0.0.0.0:4840/...).
+/// Handles URLs with or without explicit port.
+/// </summary>
+static string PatchPortInUrl(string url, int port)
+{
+    if (string.IsNullOrEmpty(url)) return url;
+    try
+    {
+        var uri = new Uri(url);
+        var builder = new UriBuilder(uri) { Port = port };
+        return builder.Uri.ToString().TrimEnd('/');
+    }
+    catch
+    {
+        // Fallback: manual replacement
+        int lastColon = url.LastIndexOf(':');
+        int lastSlash = url.LastIndexOf('/');
+        if (lastColon > lastSlash && int.TryParse(url[(lastColon + 1)..], out _))
+            return url[..(lastColon + 1)] + port + url[(url.IndexOf('/', lastColon)..)];
+        // No port in URL — append it
+        return url.TrimEnd('/') + $":{port}";
+    }
+}
+
+internal sealed class StringTupleComparerIgnoreCase : IEqualityComparer<(string SourceId, string ItemId)>
+{
+    public static StringTupleComparerIgnoreCase Instance { get; } = new();
+    public bool Equals((string SourceId, string ItemId) x, (string SourceId, string ItemId) y) =>
+        string.Equals(x.SourceId, y.SourceId, StringComparison.OrdinalIgnoreCase)
+        && string.Equals(x.ItemId, y.ItemId, StringComparison.OrdinalIgnoreCase);
+    public int GetHashCode((string SourceId, string ItemId) value) =>
+        HashCode.Combine(
+            StringComparer.OrdinalIgnoreCase.GetHashCode(value.SourceId),
+            StringComparer.OrdinalIgnoreCase.GetHashCode(value.ItemId));
 }
 
 record MqttConfigRequest(

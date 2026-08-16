@@ -7,12 +7,16 @@
     <ProjectReference Include="..\OpcBridge.Mqtt\OpcBridge.Mqtt.csproj" />
     <ProjectReference Include="..\OpcBridge.Influx\OpcBridge.Influx.csproj" />
     <ProjectReference Include="..\OpcBridge.Client\OpcBridge.Client.csproj" />
+    <ProjectReference Include="..\OpcBridge.Drivers.Melsec\OpcBridge.Drivers.Melsec.csproj" />
+    <ProjectReference Include="..\OpcBridge.Drivers.S7\OpcBridge.Drivers.S7.csproj" />
+    <ProjectReference Include="..\OpcBridge.Drivers.MxComponent\OpcBridge.Drivers.MxComponent.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.9" />
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.9" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.9" />
+    <PackageReference Include="System.IO.Ports" Version="8.0.0" />
   </ItemGroup>
 
   <ItemGroup>

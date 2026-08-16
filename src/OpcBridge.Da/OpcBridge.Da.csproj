@@ -4,6 +4,10 @@
     <ProjectReference Include="..\OpcBridge.Core\OpcBridge.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="OpcBridge.LoadTest" />
+  </ItemGroup>
+
   <PropertyGroup>
     <TargetFrameworks>net8.0;net8.0-windows</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>

@@ -22,6 +22,10 @@
     <ProjectReference Include="..\..\src\OpcBridge.Hmi.Core\OpcBridge.Hmi.Core.csproj" />
     <ProjectReference Include="..\..\src\OpcBridge.Hmi\OpcBridge.Hmi.csproj" />
     <ProjectReference Include="..\..\src\OpcBridge.Influx\OpcBridge.Influx.csproj" />
+    <ProjectReference Include="..\..\src\OpcBridge.Drivers.Melsec\OpcBridge.Drivers.Melsec.csproj" />
+    <ProjectReference Include="..\..\src\OpcBridge.Drivers.S7\OpcBridge.Drivers.S7.csproj" />
+    <ProjectReference Include="..\..\src\OpcBridge.Drivers.MxComponent\OpcBridge.Drivers.MxComponent.csproj" />
+    <ProjectReference Include="..\..\src\OpcBridge.Ua\OpcBridge.Ua.csproj" />
   </ItemGroup>
 
 </Project>

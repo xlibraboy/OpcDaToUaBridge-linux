@@ -12,6 +12,7 @@ using Xunit;
 
 namespace OpcBridge.LoadTest;
 
+[Collection(nameof(DaLinkApiAppCollection))]
 public sealed class ConnectedTagsTests
 {
     private static DaLinkStore CreateLinkStore()
@@ -47,7 +48,7 @@ public sealed class ConnectedTagsTests
             mappingStore,
             linkStore,
             settings,
-            new DaClientFactory(),
+            new SourceClientFactory(),
             Options.Create(new BridgeOptions()),
             loggerFactory.CreateLogger<BridgeWorker>(),
             new MqttBridge(loggerFactory.CreateLogger<MqttBridge>()),
@@ -106,7 +107,7 @@ public sealed class ConnectedTagsTests
         try { await drain; } catch (OperationCanceledException) { }
 
         BridgeValue written = Assert.Single(fake.Written);
-        Assert.Equal("enabled", written.DaItemId);
+        Assert.Equal("enabled", written.ItemId);
         Assert.Equal("default", written.SourceId);
     }
 
@@ -147,14 +148,14 @@ public sealed class ConnectedTagsTests
             new TagMapping
             {
                 SourceId = "providerA",
-                DaItemId = "itemP",
+                ItemId = "itemP",
                 Enabled = true,
                 AccessRights = TagAccessRights.Read
             },
             new TagMapping
             {
                 SourceId = "consumerA",
-                DaItemId = "itemC",
+                ItemId = "itemC",
                 Enabled = true,
                 AccessRights = TagAccessRights.Write
             }
@@ -176,12 +177,12 @@ public sealed class ConnectedTagsTests
         InvokePrivateVoid(worker, "OnSubscriptionValues", new List<BridgeValue> { value });
 
         using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(2));
-        await using IAsyncEnumerator<WriteRequest> reader = queue.ReaderAsync(timeout.Token).GetAsyncEnumerator();
+        await using IAsyncEnumerator<WriteRequest> reader = queue.ReaderAsync("consumerA", timeout.Token).GetAsyncEnumerator();
         Assert.True(await reader.MoveNextAsync());
 
         WriteRequest request = reader.Current;
         Assert.Equal("consumerA", request.SourceId);
-        Assert.Equal("itemC", request.DaItemId);
+        Assert.Equal("itemC", request.ItemId);
         Assert.Equal(42.0, Assert.IsType<double>(request.Value));
     }
 
@@ -189,7 +190,7 @@ public sealed class ConnectedTagsTests
     public void MappingRequestDto_DoesNotExposeProviderEditFields()
     {
         Assert.Null(typeof(MappingTagDto).GetProperty("ProviderSourceId"));
-        Assert.Null(typeof(MappingTagDto).GetProperty("ProviderDaItemId"));
+        Assert.Null(typeof(MappingTagDto).GetProperty("ProviderItemId"));
     }
 
     [Fact]
@@ -198,19 +199,19 @@ public sealed class ConnectedTagsTests
         var tag = new TagMapping
         {
             SourceId = "consumerA",
-            DaItemId = "itemC",
+            ItemId = "itemC",
             ProviderSourceId = "providerA",
-            ProviderDaItemId = "itemP"
+            ProviderItemId = "itemP"
         };
 
         string json = JsonSerializer.Serialize(tag);
         Assert.Contains("\"ProviderSourceId\"", json);
-        Assert.Contains("\"ProviderDaItemId\"", json);
+        Assert.Contains("\"providerItemId\"", json);
 
         TagMapping? roundTripped = JsonSerializer.Deserialize<TagMapping>(json);
         Assert.NotNull(roundTripped);
         Assert.Equal("providerA", roundTripped!.ProviderSourceId);
-        Assert.Equal("itemP", roundTripped.ProviderDaItemId);
+        Assert.Equal("itemP", roundTripped.ProviderItemId);
     }
 
     [Fact]
@@ -224,9 +225,9 @@ public sealed class ConnectedTagsTests
                 new TagMapping
                 {
                     SourceId = "consumerA",
-                    DaItemId = "itemC",
+                    ItemId = "itemC",
                     ProviderSourceId = "providerA",
-                    ProviderDaItemId = "itemP",
+                    ProviderItemId = "itemP",
                     Enabled = true
                 }
             });
@@ -256,9 +257,9 @@ public sealed class ConnectedTagsTests
                 new()
                 {
                     SourceId = "consumerA",
-                    DaItemId = "itemC",
+                    ItemId = "itemC",
                     ProviderSourceId = "legacyProvider",
-                    ProviderDaItemId = "legacyItem",
+                    ProviderItemId = "legacyItem",
                     AccessRights = TagAccessRights.Write
                 }
             },
@@ -267,7 +268,7 @@ public sealed class ConnectedTagsTests
         IReadOnlyList<TagMapping> consumers = cache.GetConsumersByProvider("providerA", "itemP");
         TagMapping consumer = Assert.Single(consumers);
         Assert.Equal("consumerA", consumer.SourceId);
-        Assert.Equal("itemC", consumer.DaItemId);
+        Assert.Equal("itemC", consumer.ItemId);
 
         IReadOnlyList<TagMapping> legacyConsumers = cache.GetConsumersByProvider("legacyProvider", "legacyItem");
         Assert.Empty(legacyConsumers);

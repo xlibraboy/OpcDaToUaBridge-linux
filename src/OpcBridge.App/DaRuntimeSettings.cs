@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.Extensions.Options;
+using OpcBridge.Core;
 using OpcBridge.Da;
 
 namespace OpcBridge.App;
@@ -78,12 +79,6 @@ public sealed class DaRuntimeSettings
 
         lock (sync_)
         {
-            if (snapshot_.Sources.Count <= 1)
-            {
-                snapshot = snapshot_;
-                return false;
-            }
-
             List<DaSourceRuntimeSettings> sources = snapshot_.Sources
                 .Where(source => !string.Equals(source.SourceId, normalizedSourceId, StringComparison.OrdinalIgnoreCase))
                 .ToList();
@@ -171,7 +166,7 @@ public sealed class DaRuntimeSettings
         string? password = null,
         string? domain = null)
     {
-        return UpsertSource(new DaSourceRuntimeSettings(
+        return UpsertSource(CreateDaSource(
             DefaultSourceId,
             "Default Source",
             progId,
@@ -191,7 +186,7 @@ public sealed class DaRuntimeSettings
         {
             foreach (DaSourceOptions source in options.Sources)
             {
-                configuredSources.Add(NormalizeSource(new DaSourceRuntimeSettings(
+                configuredSources.Add(NormalizeSource(CreateDaSource(
                     source.SourceId,
                     source.DisplayName,
                     source.ProgId,
@@ -204,7 +199,7 @@ public sealed class DaRuntimeSettings
         }
         else
         {
-            configuredSources.Add(NormalizeSource(new DaSourceRuntimeSettings(
+            configuredSources.Add(NormalizeSource(CreateDaSource(
                 string.IsNullOrWhiteSpace(options.SourceId) ? DefaultSourceId : options.SourceId,
                 string.IsNullOrWhiteSpace(options.DisplayName) ? "Default Source" : options.DisplayName,
                 options.ProgId,
@@ -229,26 +224,48 @@ public sealed class DaRuntimeSettings
 
         if (dedupedSources.Count == 0)
         {
-            dedupedSources.Add(new DaSourceRuntimeSettings(DefaultSourceId, "Default Source", string.Empty, "localhost", null, null, null, NormalizeUpdateRate(0)));
+            dedupedSources.Add(NormalizeSource(CreateDaSource(
+                DefaultSourceId,
+                "Default Source",
+                string.Empty,
+                "localhost",
+                null,
+                null,
+                null,
+                NormalizeUpdateRate(0)), defaultRate));
         }
 
         return dedupedSources;
     }
 
-    private static DaSourceRuntimeSettings NormalizeSource(DaSourceRuntimeSettings source, int defaultUpdateRate)
+    internal static DaSourceRuntimeSettings CreateDaSource(
+        string sourceId,
+        string displayName,
+        string progId,
+        string host,
+        string? remoteUsername,
+        string? remotePassword,
+        string? remoteDomain,
+        int updateRateMs,
+        bool useSubscriptions = true)
     {
-        string sourceId = NormalizeSourceId(source.SourceId);
-        string displayName = string.IsNullOrWhiteSpace(source.DisplayName) ? sourceId : source.DisplayName.Trim();
-
         return new DaSourceRuntimeSettings(
             sourceId,
             displayName,
-            source.ProgId?.Trim() ?? string.Empty,
-            string.IsNullOrWhiteSpace(source.Host) ? "localhost" : source.Host.Trim(),
-            string.IsNullOrWhiteSpace(source.RemoteUsername) ? null : source.RemoteUsername.Trim(),
-            string.IsNullOrWhiteSpace(source.RemotePassword) ? null : source.RemotePassword,
-            string.IsNullOrWhiteSpace(source.RemoteDomain) ? null : source.RemoteDomain.Trim(),
-            NormalizeUpdateRate(source.UpdateRateMs <= 0 ? defaultUpdateRate : source.UpdateRateMs));
+            SourceTypes.OpcDa,
+            updateRateMs,
+            useSubscriptions,
+            MaxMappedTags: 50000,
+            OpcDa: new OpcDaSourceOptions(progId, host, remoteUsername, remotePassword, remoteDomain),
+            OpcUa: null,
+            Melsec: null,
+            S7200: null,
+            MxComponent: null);
+    }
+
+    private static DaSourceRuntimeSettings NormalizeSource(DaSourceRuntimeSettings source, int defaultUpdateRate)
+    {
+        return SourceConfigMigration.Normalize(source, defaultUpdateRate);
     }
 
     private static string NormalizeSourceId(string? sourceId)
@@ -277,17 +294,7 @@ public sealed class DaRuntimeSettings
                     UpdateRateMs = snapshot_.UpdateRateMs,
                     UseSubscriptions = snapshot_.UseSubscriptions,
                     Sources = snapshot_.Sources
-                        .Select(s => new SourceConfigDto
-                        {
-                            SourceId = s.SourceId,
-                            DisplayName = s.DisplayName,
-                            ProgId = s.ProgId,
-                            Host = s.Host,
-                            RemoteUsername = s.RemoteUsername,
-                            RemotePassword = s.RemotePassword,
-                            RemoteDomain = s.RemoteDomain,
-                            UpdateRateMs = s.UpdateRateMs
-                        })
+                        .Select(SourceConfigMigration.ToDto)
                         .ToList()
                 };
                 string json = JsonSerializer.Serialize(dto, JsonOptions);
@@ -308,21 +315,12 @@ public sealed class DaRuntimeSettings
             SourcesConfigDto? dto = JsonSerializer.Deserialize<SourcesConfigDto>(json);
             if (dto is null) return null;
 
+            int defaultRate = NormalizeUpdateRate(dto.UpdateRateMs);
             List<DaSourceRuntimeSettings> sources = dto.Sources?
-                .Select(s => new DaSourceRuntimeSettings(
-                    s.SourceId ?? DefaultSourceId,
-                    s.DisplayName ?? string.Empty,
-                    s.ProgId ?? string.Empty,
-                    string.IsNullOrWhiteSpace(s.Host) ? "localhost" : s.Host,
-                    string.IsNullOrWhiteSpace(s.RemoteUsername) ? null : s.RemoteUsername,
-                    string.IsNullOrWhiteSpace(s.RemotePassword) ? null : s.RemotePassword,
-                    string.IsNullOrWhiteSpace(s.RemoteDomain) ? null : s.RemoteDomain,
-                    s.UpdateRateMs <= 0 ? dto.UpdateRateMs : s.UpdateRateMs))
+                .Select(s => SourceConfigMigration.FromDto(s, defaultRate))
                 .ToList() ?? new List<DaSourceRuntimeSettings>();
 
-            if (sources.Count == 0) return null;
-
-            return new DaRuntimeSettingsSnapshot(dto.UpdateRateMs, dto.UseSubscriptions, sources, 0);
+            return new DaRuntimeSettingsSnapshot(defaultRate, dto.UseSubscriptions, sources, 0);
         }
         catch
         {
@@ -334,7 +332,17 @@ public sealed class DaRuntimeSettings
     {
         lock (sync_)
         {
-            snapshot_ = snapshot with { Version = snapshot_.Version + 1 };
+            int defaultRate = NormalizeUpdateRate(snapshot.UpdateRateMs);
+            IReadOnlyList<DaSourceRuntimeSettings> normalizedSources = snapshot.Sources
+                .Select(source => NormalizeSource(source, defaultRate))
+                .ToList();
+
+            snapshot_ = snapshot with
+            {
+                UpdateRateMs = defaultRate,
+                Sources = normalizedSources,
+                Version = snapshot_.Version + 1
+            };
             Persist();
         }
     }
@@ -358,29 +366,130 @@ public sealed record DaRuntimeSettingsSnapshot(
     }
 }
 
-public sealed record DaSourceRuntimeSettings(
-    string SourceId,
-    string DisplayName,
+public sealed record OpcDaSourceOptions(
     string ProgId,
     string Host,
     string? RemoteUsername,
     string? RemotePassword,
-    string? RemoteDomain,
-    int UpdateRateMs)
+    string? RemoteDomain);
+
+public sealed record OpcUaSourceOptions(
+    string EndpointUrl,
+    string SecurityMode,
+    string SecurityPolicy,
+    string? Username,
+    string? Password,
+    int SessionTimeoutMs,
+    int ReconnectDelayMs,
+    int WatchdogTimeoutMs = 60000);
+
+public sealed record MelsecA3nSourceOptions(
+    string Transport,
+    string SerialPortName,
+    int BaudRate,
+    int DataBits,
+    string Parity,
+    string StopBits,
+    string StationNo,
+    string PcNo,
+    int TimeoutMs,
+    int RetryCount);
+
+public sealed record S7200PpiSourceOptions(
+    string Transport,
+    string SerialPortName,
+    int BaudRate,
+    int DataBits,
+    string Parity,
+    string StopBits,
+    int LocalPpiAddress,
+    int RemotePpiAddress,
+    int TimeoutMs,
+    int RetryCount);
+
+public sealed record MxComponentSourceOptions(
+    int LogicalStationNumber,
+    int TimeoutMs,
+    int RetryCount);
+
+
+public sealed record DaSourceRuntimeSettings(
+    string SourceId,
+    string DisplayName,
+    string SourceType,
+    int UpdateRateMs,
+    bool UseSubscriptions,
+    int MaxMappedTags,
+    OpcDaSourceOptions? OpcDa,
+    OpcUaSourceOptions? OpcUa,
+    MelsecA3nSourceOptions? Melsec,
+    S7200PpiSourceOptions? S7200,
+    MxComponentSourceOptions? MxComponent)
 {
+    // Compat getters — flat access for Program/UI during Phase 1.
+    public string ProgId => OpcDa?.ProgId ?? string.Empty;
+    public string Host => OpcDa?.Host ?? string.Empty;
+    public string? RemoteUsername => OpcDa?.RemoteUsername;
+    public string? RemotePassword => OpcDa?.RemotePassword;
+    public string? RemoteDomain => OpcDa?.RemoteDomain;
+    public string Transport => S7200?.Transport ?? Melsec?.Transport ?? "Serial";
+    public string SerialPortName => S7200?.SerialPortName ?? Melsec?.SerialPortName ?? string.Empty;
+    public int BaudRate => S7200?.BaudRate ?? Melsec?.BaudRate ?? 9600;
+    public int DataBits => S7200?.DataBits ?? Melsec?.DataBits ?? 8;
+    public string Parity => S7200?.Parity ?? Melsec?.Parity ?? "Odd";
+    public string StopBits => S7200?.StopBits ?? Melsec?.StopBits ?? "One";
+    public string StationNo => Melsec?.StationNo ?? "00";
+    public string PcNo => Melsec?.PcNo ?? "FF";
+    public int TimeoutMs => S7200?.TimeoutMs ?? Melsec?.TimeoutMs ?? MxComponent?.TimeoutMs ?? 3000;
+    public int RetryCount => S7200?.RetryCount ?? Melsec?.RetryCount ?? MxComponent?.RetryCount ?? 2;
+    public int LocalPpiAddress => S7200?.LocalPpiAddress ?? 0;
+    public int RemotePpiAddress => S7200?.RemotePpiAddress ?? 2;
+    public int LogicalStationNumber => MxComponent?.LogicalStationNumber ?? 0;
+    public int MxComponentTimeoutMs => MxComponent?.TimeoutMs ?? 3000;
+    public int MxComponentRetryCount => MxComponent?.RetryCount ?? 2;
+    public string EndpointUrl => OpcUa?.EndpointUrl ?? string.Empty;
+    public string SecurityMode => OpcUa?.SecurityMode ?? "None";
+    public string SecurityPolicy => OpcUa?.SecurityPolicy ?? "None";
+    public string? UaUsername => OpcUa?.Username;
+    public string? UaPassword => OpcUa?.Password;
+    public int SessionTimeoutMs => OpcUa?.SessionTimeoutMs ?? 60000;
+    public int ReconnectDelayMs => OpcUa?.ReconnectDelayMs ?? 5000;
+    public int WatchdogTimeoutMs => OpcUa?.WatchdogTimeoutMs ?? 60000;
+
     public DaClientOptions ToOptions(bool useSubscriptions)
     {
+        OpcDaSourceOptions da = OpcDa ?? new OpcDaSourceOptions(string.Empty, "localhost", null, null, null);
         return new DaClientOptions
         {
             SourceId = SourceId,
             DisplayName = DisplayName,
-            ProgId = ProgId,
-            Host = Host,
+            ProgId = da.ProgId,
+            Host = da.Host,
             UpdateRateMs = UpdateRateMs,
             UseSubscriptions = useSubscriptions,
-            RemoteUsername = RemoteUsername,
-            RemotePassword = RemotePassword,
-            RemoteDomain = RemoteDomain
+            RemoteUsername = da.RemoteUsername,
+            RemotePassword = da.RemotePassword,
+            RemoteDomain = da.RemoteDomain
+        };
+    }
+
+    public OpcBridge.Ua.OpcUaSourceClientOptions ToUaOptions(DaRuntimeSettingsSnapshot settings)
+    {
+        OpcUaSourceOptions ua = OpcUa ?? new OpcUaSourceOptions(string.Empty, "None", "None", null, null, 60000, 5000);
+        bool effectiveUseSubscriptions = settings.UseSubscriptions && UseSubscriptions;
+        return new OpcBridge.Ua.OpcUaSourceClientOptions
+        {
+            SourceId = SourceId,
+            DisplayName = DisplayName,
+            EndpointUrl = ua.EndpointUrl,
+            SecurityMode = ua.SecurityMode,
+            SecurityPolicy = ua.SecurityPolicy,
+            Username = ua.Username,
+            Password = ua.Password,
+            UpdateRateMs = UpdateRateMs,
+            SessionTimeoutMs = ua.SessionTimeoutMs,
+            ReconnectDelayMs = ua.ReconnectDelayMs,
+            UseSubscriptions = effectiveUseSubscriptions
         };
     }
 }
@@ -392,14 +501,603 @@ internal sealed class SourcesConfigDto
     public List<SourceConfigDto> Sources { get; set; } = new();
 }
 
-internal sealed class SourceConfigDto
+public sealed class SourceConfigDto
 {
     public string? SourceId { get; set; }
     public string? DisplayName { get; set; }
+    public string? SourceType { get; set; }
+
+    // Shared header
+    public bool UseSubscriptions { get; set; } = true;
+    public int UpdateRateMs { get; set; }
+    public int MaxMappedTags { get; set; }
+
+    // Nested (preferred on disk)
+    public OpcDaSourceOptionsDto? OpcDa { get; set; }
+    public OpcUaSourceOptionsDto? OpcUa { get; set; }
+    public MelsecA3nSourceOptionsDto? Melsec { get; set; }
+    public S7200PpiSourceOptionsDto? S7200 { get; set; }
+    public MxComponentSourceOptionsDto? MxComponent { get; set; }
+
+    // Legacy flat fields (load only)
     public string? ProgId { get; set; }
     public string? Host { get; set; }
     public string? RemoteUsername { get; set; }
     public string? RemotePassword { get; set; }
     public string? RemoteDomain { get; set; }
-    public int UpdateRateMs { get; set; }
+    public string? Transport { get; set; }
+    public string? SerialPortName { get; set; }
+    public int BaudRate { get; set; }
+    public int DataBits { get; set; }
+    public string? Parity { get; set; }
+    public string? StopBits { get; set; }
+    public string? StationNo { get; set; }
+    public string? PcNo { get; set; }
+    public int TimeoutMs { get; set; }
+    public int RetryCount { get; set; }
+    public int LogicalStationNumber { get; set; }
+    public string? EndpointUrl { get; set; }
+    public string? SecurityMode { get; set; }
+    public string? SecurityPolicy { get; set; }
+    public string? UaUsername { get; set; }
+    public string? UaPassword { get; set; }
+    public int SessionTimeoutMs { get; set; }
+    public int ReconnectDelayMs { get; set; }
+    public int? WatchdogTimeoutMs { get; set; }
+}
+
+public sealed class OpcDaSourceOptionsDto
+{
+    public string? ProgId { get; set; }
+    public string? Host { get; set; }
+    public string? RemoteUsername { get; set; }
+    public string? RemotePassword { get; set; }
+    public string? RemoteDomain { get; set; }
+}
+
+public sealed class OpcUaSourceOptionsDto
+{
+    public string? EndpointUrl { get; set; }
+    public string? SecurityMode { get; set; }
+    public string? SecurityPolicy { get; set; }
+    public string? Username { get; set; }
+    public string? Password { get; set; }
+    public string? UaUsername { get; set; }
+    public string? UaPassword { get; set; }
+    public int SessionTimeoutMs { get; set; }
+    public int ReconnectDelayMs { get; set; }
+    public int MaxMappedTags { get; set; }
+    public int? WatchdogTimeoutMs { get; set; }
+}
+
+public sealed class MelsecA3nSourceOptionsDto
+{
+    public string? Transport { get; set; }
+    public string? SerialPortName { get; set; }
+    public int BaudRate { get; set; }
+    public int DataBits { get; set; }
+    public string? Parity { get; set; }
+    public string? StopBits { get; set; }
+    public string? StationNo { get; set; }
+    public string? PcNo { get; set; }
+    public int TimeoutMs { get; set; }
+    public int RetryCount { get; set; }
+}
+
+public sealed class S7200PpiSourceOptionsDto
+{
+    public string? Transport { get; set; }
+    public string? SerialPortName { get; set; }
+    public int BaudRate { get; set; }
+    public int DataBits { get; set; }
+    public string? Parity { get; set; }
+    public string? StopBits { get; set; }
+    public int LocalPpiAddress { get; set; }
+    public int RemotePpiAddress { get; set; }
+    public int TimeoutMs { get; set; }
+    public int RetryCount { get; set; }
+}
+
+public sealed class MxComponentSourceOptionsDto
+{
+    public int LogicalStationNumber { get; set; }
+    public int TimeoutMs { get; set; }
+    public int RetryCount { get; set; }
+}
+
+public static class SourceConfigMigration
+{
+    public static DaSourceRuntimeSettings FromDto(SourceConfigDto dto, int defaultUpdateRate)
+    {
+        string sourceType = NormalizeSourceType(dto.SourceType);
+        int maxMappedTags = dto.MaxMappedTags;
+        if (maxMappedTags <= 0 && dto.OpcUa is not null && dto.OpcUa.MaxMappedTags > 0)
+        {
+            maxMappedTags = dto.OpcUa.MaxMappedTags;
+        }
+
+        OpcDaSourceOptions? opcDa = null;
+        OpcUaSourceOptions? opcUa = null;
+        MelsecA3nSourceOptions? melsec = null;
+        S7200PpiSourceOptions? s7200 = null;
+        MxComponentSourceOptions? mx = null;
+
+        if (dto.OpcDa is not null)
+        {
+            opcDa = new OpcDaSourceOptions(
+                dto.OpcDa.ProgId ?? string.Empty,
+                dto.OpcDa.Host ?? string.Empty,
+                dto.OpcDa.RemoteUsername,
+                dto.OpcDa.RemotePassword,
+                dto.OpcDa.RemoteDomain);
+        }
+        else if (HasFlatDa(dto))
+        {
+            opcDa = new OpcDaSourceOptions(
+                dto.ProgId ?? string.Empty,
+                dto.Host ?? string.Empty,
+                dto.RemoteUsername,
+                dto.RemotePassword,
+                dto.RemoteDomain);
+        }
+
+        if (dto.OpcUa is not null)
+        {
+            opcUa = new OpcUaSourceOptions(
+                dto.OpcUa.EndpointUrl ?? string.Empty,
+                dto.OpcUa.SecurityMode ?? string.Empty,
+                dto.OpcUa.SecurityPolicy ?? string.Empty,
+                FirstNonEmpty(dto.OpcUa.Username, dto.OpcUa.UaUsername),
+                FirstNonEmpty(dto.OpcUa.Password, dto.OpcUa.UaPassword),
+                dto.OpcUa.SessionTimeoutMs,
+                dto.OpcUa.ReconnectDelayMs,
+                dto.OpcUa.WatchdogTimeoutMs ?? 60000);
+        }
+        else if (HasFlatUa(dto))
+        {
+            opcUa = new OpcUaSourceOptions(
+                dto.EndpointUrl ?? string.Empty,
+                dto.SecurityMode ?? string.Empty,
+                dto.SecurityPolicy ?? string.Empty,
+                dto.UaUsername,
+                dto.UaPassword,
+                dto.SessionTimeoutMs,
+                dto.ReconnectDelayMs,
+                dto.WatchdogTimeoutMs ?? 60000);
+        }
+
+        if (dto.Melsec is not null)
+        {
+            melsec = new MelsecA3nSourceOptions(
+                dto.Melsec.Transport ?? string.Empty,
+                dto.Melsec.SerialPortName ?? string.Empty,
+                dto.Melsec.BaudRate,
+                dto.Melsec.DataBits,
+                dto.Melsec.Parity ?? string.Empty,
+                dto.Melsec.StopBits ?? string.Empty,
+                dto.Melsec.StationNo ?? string.Empty,
+                dto.Melsec.PcNo ?? string.Empty,
+                dto.Melsec.TimeoutMs,
+                dto.Melsec.RetryCount);
+        }
+        else if (HasFlatMelsec(dto)
+            && !string.Equals(sourceType, SourceTypes.S7200Ppi, StringComparison.OrdinalIgnoreCase)
+            && dto.S7200 is null)
+        {
+            melsec = new MelsecA3nSourceOptions(
+                dto.Transport ?? string.Empty,
+                dto.SerialPortName ?? string.Empty,
+                dto.BaudRate,
+                dto.DataBits,
+                dto.Parity ?? string.Empty,
+                dto.StopBits ?? string.Empty,
+                dto.StationNo ?? string.Empty,
+                dto.PcNo ?? string.Empty,
+                dto.TimeoutMs,
+                dto.RetryCount);
+        }
+
+        if (dto.S7200 is not null)
+        {
+            s7200 = new S7200PpiSourceOptions(
+                dto.S7200.Transport ?? string.Empty,
+                dto.S7200.SerialPortName ?? string.Empty,
+                dto.S7200.BaudRate,
+                dto.S7200.DataBits,
+                dto.S7200.Parity ?? string.Empty,
+                dto.S7200.StopBits ?? string.Empty,
+                dto.S7200.LocalPpiAddress,
+                dto.S7200.RemotePpiAddress,
+                dto.S7200.TimeoutMs,
+                dto.S7200.RetryCount);
+        }
+        else if (string.Equals(sourceType, SourceTypes.S7200Ppi, StringComparison.OrdinalIgnoreCase)
+            && HasFlatSerial(dto))
+        {
+            s7200 = new S7200PpiSourceOptions(
+                dto.Transport ?? string.Empty,
+                dto.SerialPortName ?? string.Empty,
+                dto.BaudRate,
+                dto.DataBits,
+                dto.Parity ?? string.Empty,
+                dto.StopBits ?? string.Empty,
+                0,
+                2,
+                dto.TimeoutMs,
+                dto.RetryCount);
+        }
+
+        if (dto.MxComponent is not null)
+        {
+            mx = new MxComponentSourceOptions(
+                dto.MxComponent.LogicalStationNumber,
+                dto.MxComponent.TimeoutMs,
+                dto.MxComponent.RetryCount);
+        }
+        else if (string.Equals(sourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
+        {
+            mx = new MxComponentSourceOptions(
+                dto.LogicalStationNumber,
+                dto.TimeoutMs,
+                dto.RetryCount);
+        }
+
+        // Seed missing nest from flat defaults when type is known but nest empty (legacy partial rows).
+        if (string.Equals(sourceType, SourceTypes.OpcDa, StringComparison.OrdinalIgnoreCase) && opcDa is null)
+        {
+            opcDa = new OpcDaSourceOptions(
+                dto.ProgId ?? string.Empty,
+                dto.Host ?? string.Empty,
+                dto.RemoteUsername,
+                dto.RemotePassword,
+                dto.RemoteDomain);
+        }
+        else if (string.Equals(sourceType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase) && opcUa is null)
+        {
+            opcUa = new OpcUaSourceOptions(
+                dto.EndpointUrl ?? string.Empty,
+                dto.SecurityMode ?? string.Empty,
+                dto.SecurityPolicy ?? string.Empty,
+                dto.UaUsername,
+                dto.UaPassword,
+                dto.SessionTimeoutMs,
+                dto.ReconnectDelayMs);
+        }
+        else if (string.Equals(sourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase) && melsec is null)
+        {
+            melsec = new MelsecA3nSourceOptions(
+                dto.Transport ?? string.Empty,
+                dto.SerialPortName ?? string.Empty,
+                dto.BaudRate,
+                dto.DataBits,
+                dto.Parity ?? string.Empty,
+                dto.StopBits ?? string.Empty,
+                dto.StationNo ?? string.Empty,
+                dto.PcNo ?? string.Empty,
+                dto.TimeoutMs,
+                dto.RetryCount);
+        }
+        else if (string.Equals(sourceType, SourceTypes.S7200Ppi, StringComparison.OrdinalIgnoreCase) && s7200 is null)
+        {
+            s7200 = new S7200PpiSourceOptions(
+                dto.Transport ?? string.Empty,
+                dto.SerialPortName ?? string.Empty,
+                dto.BaudRate,
+                dto.DataBits,
+                dto.Parity ?? string.Empty,
+                dto.StopBits ?? string.Empty,
+                0,
+                2,
+                dto.TimeoutMs,
+                dto.RetryCount);
+        }
+        else if (string.Equals(sourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase) && mx is null)
+        {
+            mx = new MxComponentSourceOptions(
+                dto.LogicalStationNumber,
+                dto.TimeoutMs,
+                dto.RetryCount);
+        }
+
+        return Normalize(new DaSourceRuntimeSettings(
+            dto.SourceId ?? DaRuntimeSettings.DefaultSourceId,
+            dto.DisplayName ?? string.Empty,
+            sourceType,
+            dto.UpdateRateMs,
+            dto.UseSubscriptions,
+            maxMappedTags,
+            opcDa,
+            opcUa,
+            melsec,
+            s7200,
+            mx), defaultUpdateRate);
+    }
+
+    public static SourceConfigDto ToDto(DaSourceRuntimeSettings source)
+    {
+        // Persist nested only (no flat driver fields).
+        return new SourceConfigDto
+        {
+            SourceId = source.SourceId,
+            DisplayName = source.DisplayName,
+            SourceType = source.SourceType,
+            UpdateRateMs = source.UpdateRateMs,
+            UseSubscriptions = source.UseSubscriptions,
+            MaxMappedTags = source.MaxMappedTags,
+            OpcDa = source.OpcDa is null ? null : new OpcDaSourceOptionsDto
+            {
+                ProgId = source.OpcDa.ProgId,
+                Host = source.OpcDa.Host,
+                RemoteUsername = source.OpcDa.RemoteUsername,
+                RemotePassword = source.OpcDa.RemotePassword,
+                RemoteDomain = source.OpcDa.RemoteDomain
+            },
+            OpcUa = source.OpcUa is null ? null : new OpcUaSourceOptionsDto
+            {
+                EndpointUrl = source.OpcUa.EndpointUrl,
+                SecurityMode = source.OpcUa.SecurityMode,
+                SecurityPolicy = source.OpcUa.SecurityPolicy,
+                Username = source.OpcUa.Username,
+                Password = source.OpcUa.Password,
+                SessionTimeoutMs = source.OpcUa.SessionTimeoutMs,
+                ReconnectDelayMs = source.OpcUa.ReconnectDelayMs,
+                WatchdogTimeoutMs = source.OpcUa.WatchdogTimeoutMs
+            },
+            Melsec = source.Melsec is null ? null : new MelsecA3nSourceOptionsDto
+            {
+                Transport = source.Melsec.Transport,
+                SerialPortName = source.Melsec.SerialPortName,
+                BaudRate = source.Melsec.BaudRate,
+                DataBits = source.Melsec.DataBits,
+                Parity = source.Melsec.Parity,
+                StopBits = source.Melsec.StopBits,
+                StationNo = source.Melsec.StationNo,
+                PcNo = source.Melsec.PcNo,
+                TimeoutMs = source.Melsec.TimeoutMs,
+                RetryCount = source.Melsec.RetryCount
+            },
+            S7200 = source.S7200 is null ? null : new S7200PpiSourceOptionsDto
+            {
+                Transport = source.S7200.Transport,
+                SerialPortName = source.S7200.SerialPortName,
+                BaudRate = source.S7200.BaudRate,
+                DataBits = source.S7200.DataBits,
+                Parity = source.S7200.Parity,
+                StopBits = source.S7200.StopBits,
+                LocalPpiAddress = source.S7200.LocalPpiAddress,
+                RemotePpiAddress = source.S7200.RemotePpiAddress,
+                TimeoutMs = source.S7200.TimeoutMs,
+                RetryCount = source.S7200.RetryCount
+            },
+            MxComponent = source.MxComponent is null ? null : new MxComponentSourceOptionsDto
+            {
+                LogicalStationNumber = source.MxComponent.LogicalStationNumber,
+                TimeoutMs = source.MxComponent.TimeoutMs,
+                RetryCount = source.MxComponent.RetryCount
+            }
+        };
+    }
+
+    public static DaSourceRuntimeSettings Normalize(DaSourceRuntimeSettings source, int defaultUpdateRate)
+    {
+        string sourceId = NormalizeSourceId(source.SourceId);
+        string displayName = string.IsNullOrWhiteSpace(source.DisplayName) ? sourceId : source.DisplayName.Trim();
+        string sourceType = NormalizeSourceType(source.SourceType);
+        int updateRateMs = NormalizeUpdateRate(source.UpdateRateMs <= 0 ? defaultUpdateRate : source.UpdateRateMs);
+        int maxMappedTags = source.MaxMappedTags <= 0 ? 50000 : Math.Max(1, source.MaxMappedTags);
+
+        OpcDaSourceOptions? opcDa = null;
+        OpcUaSourceOptions? opcUa = null;
+        MelsecA3nSourceOptions? melsec = null;
+        S7200PpiSourceOptions? s7200 = null;
+        MxComponentSourceOptions? mx = null;
+
+        if (string.Equals(sourceType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
+        {
+            OpcUaSourceOptions raw = source.OpcUa ?? new OpcUaSourceOptions(
+                source.EndpointUrl,
+                source.SecurityMode,
+                source.SecurityPolicy,
+                source.UaUsername,
+                source.UaPassword,
+                source.SessionTimeoutMs,
+                source.ReconnectDelayMs);
+
+            opcUa = new OpcUaSourceOptions(
+                raw.EndpointUrl?.Trim() ?? string.Empty,
+                string.IsNullOrWhiteSpace(raw.SecurityMode) ? "None" : raw.SecurityMode.Trim(),
+                string.IsNullOrWhiteSpace(raw.SecurityPolicy) ? "None" : raw.SecurityPolicy.Trim(),
+                string.IsNullOrWhiteSpace(raw.Username) ? null : raw.Username.Trim(),
+                string.IsNullOrWhiteSpace(raw.Password) ? null : raw.Password,
+                raw.SessionTimeoutMs <= 0 ? 60000 : raw.SessionTimeoutMs,
+                raw.ReconnectDelayMs <= 0 ? 5000 : raw.ReconnectDelayMs,
+                raw.WatchdogTimeoutMs < 0 ? 0 : raw.WatchdogTimeoutMs);
+        }
+        else if (string.Equals(sourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase))
+        {
+            MelsecA3nSourceOptions raw = source.Melsec ?? new MelsecA3nSourceOptions(
+                source.Transport,
+                source.SerialPortName,
+                source.BaudRate,
+                source.DataBits,
+                source.Parity,
+                source.StopBits,
+                source.StationNo,
+                source.PcNo,
+                source.TimeoutMs,
+                source.RetryCount);
+
+            melsec = new MelsecA3nSourceOptions(
+                string.IsNullOrWhiteSpace(raw.Transport) ? "Serial" : raw.Transport.Trim(),
+                raw.SerialPortName?.Trim() ?? string.Empty,
+                raw.BaudRate > 0 ? raw.BaudRate : 9600,
+                raw.DataBits is 7 or 8 ? raw.DataBits : 8,
+                string.IsNullOrWhiteSpace(raw.Parity) ? "Odd" : raw.Parity.Trim(),
+                string.IsNullOrWhiteSpace(raw.StopBits) ? "One" : raw.StopBits.Trim(),
+                string.IsNullOrWhiteSpace(raw.StationNo) ? "00" : raw.StationNo.Trim(),
+                string.IsNullOrWhiteSpace(raw.PcNo) ? "FF" : raw.PcNo.Trim(),
+                raw.TimeoutMs <= 0 ? 3000 : raw.TimeoutMs,
+                raw.RetryCount < 0 ? 2 : raw.RetryCount);
+        }
+        else if (string.Equals(sourceType, SourceTypes.S7200Ppi, StringComparison.OrdinalIgnoreCase))
+        {
+            S7200PpiSourceOptions raw = source.S7200 ?? new S7200PpiSourceOptions(
+                source.Transport,
+                source.SerialPortName,
+                source.BaudRate,
+                source.DataBits,
+                source.Parity,
+                source.StopBits,
+                source.LocalPpiAddress,
+                source.RemotePpiAddress,
+                source.TimeoutMs,
+                source.RetryCount);
+
+            s7200 = new S7200PpiSourceOptions(
+                string.IsNullOrWhiteSpace(raw.Transport) ? "Serial" : raw.Transport.Trim(),
+                raw.SerialPortName?.Trim() ?? string.Empty,
+                raw.BaudRate > 0 ? raw.BaudRate : 9600,
+                raw.DataBits is 7 or 8 ? raw.DataBits : 8,
+                string.IsNullOrWhiteSpace(raw.Parity) ? "Even" : raw.Parity.Trim(),
+                string.IsNullOrWhiteSpace(raw.StopBits) ? "One" : raw.StopBits.Trim(),
+                raw.LocalPpiAddress < 0 ? 0 : raw.LocalPpiAddress,
+                raw.RemotePpiAddress < 0 || raw.RemotePpiAddress > 126 ? 2 : raw.RemotePpiAddress,
+                raw.TimeoutMs <= 0 ? 3000 : raw.TimeoutMs,
+                raw.RetryCount <= 0 ? 2 : raw.RetryCount);
+        }
+        else if (string.Equals(sourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
+        {
+            MxComponentSourceOptions raw = source.MxComponent ?? new MxComponentSourceOptions(
+                source.LogicalStationNumber,
+                source.TimeoutMs,
+                source.RetryCount);
+
+            mx = new MxComponentSourceOptions(
+                raw.LogicalStationNumber < 0 || raw.LogicalStationNumber > 1023 ? 0 : raw.LogicalStationNumber,
+                raw.TimeoutMs <= 0 ? 3000 : raw.TimeoutMs,
+                raw.RetryCount <= 0 ? 2 : raw.RetryCount);
+        }
+        else
+        {
+            // OpcDa (default / unknown collapsed)
+            OpcDaSourceOptions raw = source.OpcDa ?? new OpcDaSourceOptions(
+                source.ProgId,
+                source.Host,
+                source.RemoteUsername,
+                source.RemotePassword,
+                source.RemoteDomain);
+
+            opcDa = new OpcDaSourceOptions(
+                raw.ProgId?.Trim() ?? string.Empty,
+                string.IsNullOrWhiteSpace(raw.Host) ? "localhost" : raw.Host.Trim(),
+                string.IsNullOrWhiteSpace(raw.RemoteUsername) ? null : raw.RemoteUsername.Trim(),
+                string.IsNullOrWhiteSpace(raw.RemotePassword) ? null : raw.RemotePassword,
+                string.IsNullOrWhiteSpace(raw.RemoteDomain) ? null : raw.RemoteDomain.Trim());
+        }
+
+        return new DaSourceRuntimeSettings(
+            sourceId,
+            displayName,
+            sourceType,
+            updateRateMs,
+            source.UseSubscriptions,
+            maxMappedTags,
+            opcDa,
+            opcUa,
+            melsec,
+            s7200,
+            mx);
+    }
+
+    private static bool HasFlatDa(SourceConfigDto dto) =>
+        !string.IsNullOrWhiteSpace(dto.ProgId) ||
+        !string.IsNullOrWhiteSpace(dto.Host) ||
+        !string.IsNullOrWhiteSpace(dto.RemoteUsername) ||
+        !string.IsNullOrWhiteSpace(dto.RemoteDomain);
+
+    private static bool HasFlatUa(SourceConfigDto dto) =>
+        !string.IsNullOrWhiteSpace(dto.EndpointUrl) ||
+        !string.IsNullOrWhiteSpace(dto.SecurityMode) ||
+        !string.IsNullOrWhiteSpace(dto.SecurityPolicy) ||
+        !string.IsNullOrWhiteSpace(dto.UaUsername) ||
+        dto.SessionTimeoutMs > 0 ||
+        dto.ReconnectDelayMs > 0;
+
+    private static bool HasFlatMelsec(SourceConfigDto dto) =>
+        !string.IsNullOrWhiteSpace(dto.SerialPortName) ||
+        !string.IsNullOrWhiteSpace(dto.Transport) ||
+        dto.BaudRate > 0 ||
+        dto.DataBits > 0 ||
+        !string.IsNullOrWhiteSpace(dto.Parity) ||
+        !string.IsNullOrWhiteSpace(dto.StopBits) ||
+        !string.IsNullOrWhiteSpace(dto.StationNo) ||
+        !string.IsNullOrWhiteSpace(dto.PcNo) ||
+        dto.TimeoutMs > 0 ||
+        dto.RetryCount > 0;
+
+    private static string? FirstNonEmpty(string? a, string? b) =>
+        !string.IsNullOrWhiteSpace(a) ? a : (!string.IsNullOrWhiteSpace(b) ? b : null);
+
+    private static string NormalizeSourceType(string? sourceType)
+    {
+        if (string.IsNullOrWhiteSpace(sourceType))
+        {
+            return SourceTypes.OpcDa;
+        }
+
+        string trimmed = sourceType.Trim();
+        if (string.Equals(trimmed, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase))
+        {
+            return SourceTypes.MelsecA3n;
+        }
+
+        if (string.Equals(trimmed, SourceTypes.S7200Ppi, StringComparison.OrdinalIgnoreCase))
+        {
+            return SourceTypes.S7200Ppi;
+        }
+
+        if (string.Equals(trimmed, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
+        {
+            return SourceTypes.MxComponent;
+        }
+
+        if (string.Equals(trimmed, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
+        {
+            return SourceTypes.OpcUa;
+        }
+
+        if (string.Equals(trimmed, SourceTypes.OpcDa, StringComparison.OrdinalIgnoreCase))
+        {
+            return SourceTypes.OpcDa;
+        }
+
+        // Load resilience: unknown types collapse to OpcDa; API validates on write.
+        return SourceTypes.OpcDa;
+    }
+
+    private static string NormalizeSourceId(string? sourceId)
+    {
+        string value = sourceId?.Trim() ?? string.Empty;
+        return value.Length == 0 ? DaRuntimeSettings.DefaultSourceId : value;
+    }
+
+    private static int NormalizeUpdateRate(int updateRateMs)
+    {
+        if (updateRateMs <= 0)
+        {
+            return 1000;
+        }
+
+        return Math.Max(100, updateRateMs);
+    }
+
+    private static bool HasFlatSerial(SourceConfigDto dto) =>
+        !string.IsNullOrWhiteSpace(dto.SerialPortName) ||
+        !string.IsNullOrWhiteSpace(dto.Transport) ||
+        dto.BaudRate > 0 ||
+        dto.DataBits > 0 ||
+        !string.IsNullOrWhiteSpace(dto.Parity) ||
+        !string.IsNullOrWhiteSpace(dto.StopBits) ||
+        dto.TimeoutMs > 0 ||
+        dto.RetryCount > 0;
 }

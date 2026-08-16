@@ -15,7 +15,7 @@ public class LoadTest
             mappings.Add(new TagMapping
             {
                 SourceId = sourceId,
-                DaItemId = $"Sim.Tag.{i}",
+                ItemId = $"Sim.Tag.{i}",
                 DisplayName = $"Tag {i}",
                 DataType = "Double",
                 Enabled = true,
@@ -98,9 +98,9 @@ public class LoadTest
         {
             try
             {
-                await foreach (WriteRequest req in queue.ReaderAsync(cts.Token))
+                await foreach (WriteRequest req in queue.ReaderAsync(sourceId, cts.Token))
                 {
-                    bool ok = await client.WriteAsync(req.DaItemId, req.Value, cts.Token);
+                    bool ok = await client.WriteAsync(req.ItemId, req.Value, cts.Token);
                     req.Tcs.TrySetResult(ok);
                 }
             }
@@ -115,7 +115,7 @@ public class LoadTest
         for (int i = 0; i < writeCount; i++)
         {
             TaskCompletionSource<bool> tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
-            await queue.EnqueueAsync(new WriteRequest(sourceId, $"Sim.Tag.{i}", 42.0, tcs), cts.Token);
+            queue.Enqueue(sourceId, new WriteRequest(sourceId, $"Sim.Tag.{i}", 42.0, tcs));
             writeResults.Add(tcs.Task);
         }
 
@@ -133,5 +133,38 @@ public class LoadTest
 
         cts.Cancel();
         await consumer;
+    }
+
+    [Fact]
+    public async Task WriteQueue_RoutesRequestsToPerSourceChannels()
+    {
+        WriteQueue queue = new();
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(5));
+
+        // A write for one source must never surface on another source's reader
+        // (the old shared-queue re-enqueue pattern starved the matching consumer).
+        for (int i = 0; i < 3; i++)
+        {
+            string sourceId = i == 0 ? "ua-a" : $"ua-{i}";
+            TaskCompletionSource<bool> tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            queue.Enqueue(sourceId, new WriteRequest(sourceId, $"Tag.{i}", 42.0, tcs));
+        }
+
+        await using IAsyncEnumerator<WriteRequest> readerA = queue.ReaderAsync("ua-a", cts.Token).GetAsyncEnumerator();
+        Assert.True(await readerA.MoveNextAsync());
+        Assert.Equal("ua-a", readerA.Current.SourceId);
+        Assert.Equal("Tag.0", readerA.Current.ItemId);
+
+        await using IAsyncEnumerator<WriteRequest> readerB = queue.ReaderAsync("ua-1", cts.Token).GetAsyncEnumerator();
+        Assert.True(await readerB.MoveNextAsync());
+        Assert.Equal("ua-1", readerB.Current.SourceId);
+
+        // A fresh reader for ua-a sees nothing else queued for it (cancel the pending
+        // read before disposal — disposing a ReadAllAsync enumerator with an in-flight
+        // MoveNextAsync throws NotSupportedException).
+        using CancellationTokenSource idle = new();
+        idle.CancelAfter(TimeSpan.FromMilliseconds(300));
+        await using IAsyncEnumerator<WriteRequest> idleReader = queue.ReaderAsync("ua-a", idle.Token).GetAsyncEnumerator();
+        await Assert.ThrowsAsync<OperationCanceledException>(async () => await idleReader.MoveNextAsync());
     }
 }

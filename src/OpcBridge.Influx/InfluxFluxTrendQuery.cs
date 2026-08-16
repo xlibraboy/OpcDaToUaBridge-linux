@@ -24,7 +24,7 @@ public sealed class InfluxFluxTrendQuery : IInfluxTrendQuery
 
     public async Task<HmiTrendResponse> QueryAsync(
         string sourceId,
-        string daItemId,
+        string itemId,
         DateTime fromUtc,
         DateTime toUtc,
         int maxPoints,
@@ -46,7 +46,7 @@ public sealed class InfluxFluxTrendQuery : IInfluxTrendQuery
             || string.IsNullOrWhiteSpace(bucket)
             || string.IsNullOrWhiteSpace(token))
         {
-            return Empty(sourceId, daItemId, from, to, "Influx not available");
+            return Empty(sourceId, itemId, from, to, "Influx not available");
         }
 
         int limit = maxPoints;
@@ -55,10 +55,10 @@ public sealed class InfluxFluxTrendQuery : IInfluxTrendQuery
 
         if (from > to)
         {
-            return Empty(sourceId, daItemId, from, to, "from must be less than or equal to to");
+            return Empty(sourceId, itemId, from, to, "from must be less than or equal to to");
         }
 
-        string flux = BuildFlux(bucket, measurement, sourceId, daItemId, from, to, limit);
+        string flux = BuildFlux(bucket, measurement, sourceId, itemId, from, to, limit);
 
         try
         {
@@ -83,7 +83,7 @@ public sealed class InfluxFluxTrendQuery : IInfluxTrendQuery
             return new HmiTrendResponse
             {
                 SourceId = sourceId,
-                DaItemId = daItemId,
+                ItemId = itemId,
                 FromUtc = from,
                 ToUtc = to,
                 Points = points,
@@ -97,8 +97,8 @@ public sealed class InfluxFluxTrendQuery : IInfluxTrendQuery
         }
         catch (Exception ex)
         {
-            logger_.LogWarning(ex, "Influx trend query failed for {SourceId}/{DaItemId}", sourceId, daItemId);
-            return Empty(sourceId, daItemId, from, to, "Influx query failed");
+            logger_.LogWarning(ex, "Influx trend query failed for {SourceId}/{ItemId}", sourceId, itemId);
+            return Empty(sourceId, itemId, from, to, "Influx query failed");
         }
     }
 
@@ -106,7 +106,7 @@ public sealed class InfluxFluxTrendQuery : IInfluxTrendQuery
         string bucket,
         string measurement,
         string sourceId,
-        string daItemId,
+        string itemId,
         DateTime fromUtc,
         DateTime toUtc,
         int maxPoints)
@@ -114,7 +114,7 @@ public sealed class InfluxFluxTrendQuery : IInfluxTrendQuery
         string b = EscapeFluxString(bucket);
         string m = EscapeFluxString(measurement);
         string s = EscapeFluxString(sourceId);
-        string d = EscapeFluxString(daItemId);
+        string d = EscapeFluxString(itemId);
         string start = fromUtc.ToUniversalTime().ToString("o", CultureInfo.InvariantCulture);
         string stop = toUtc.ToUniversalTime().ToString("o", CultureInfo.InvariantCulture);
 
@@ -261,12 +261,12 @@ public sealed class InfluxFluxTrendQuery : IInfluxTrendQuery
         }
     }
 
-    private static HmiTrendResponse Empty(string sourceId, string daItemId, DateTime from, DateTime to, string? error)
+    private static HmiTrendResponse Empty(string sourceId, string itemId, DateTime from, DateTime to, string? error)
     {
         return new HmiTrendResponse
         {
             SourceId = sourceId,
-            DaItemId = daItemId,
+            ItemId = itemId,
             FromUtc = from,
             ToUtc = to,
             Points = Array.Empty<HmiTrendPoint>(),

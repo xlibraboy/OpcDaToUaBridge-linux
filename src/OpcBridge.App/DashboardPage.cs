@@ -1,5 +1,30 @@
 namespace OpcBridge.App;
 
+// Test-asserted DOM/JS contract (see tests/OpcBridge.LoadTest/DashboardPageTests.cs, HelpContentTests.cs).
+// Do NOT rename without updating tests:
+//   data-tab="influx", id="view-influx", id="fpInfluxEnabled", id="influxUrl", id="influxWritten"
+//   function loadInfluxConfig/loadInfluxStatus/saveInflux/connectInflux/disconnectInflux
+//   /api/influx/config, influxEnabled: el('fpInfluxEnabled').checked, if (name === 'influx')
+//   id="pApps", text "Apps", "pApps" in script, "detectedCount" in script
+//   text "DA Links", id="linkSourceStatus", id="linkBrowseTree", id="btnClearLinkSelection"
+//   text "Clear Selection", text "Delete Saved Link", function clearLinkDraftSelection
+//   state.linkDraft.consumer = null, state.linkDraft.provider = null
+//   function browseLinkTags(, state.linkDraft, data-action="pick-link-consumer", data-action="pick-link-provider"
+//   data-tab="opc-da", id="view-opc-da", data-route="connectivity/opc-da", text "OPC DA"
+//   Sources is a sidebar group label only (not a page); legacy connectivity/sources → opc-da
+//   data-tab="drivers", id="view-drivers", data-route="connectivity/drivers", id="wzDrv" (driver wizard)
+//   drvA3nSourceId/drvA3nName/drvA3nPort/drvA3nBaud/drvA3nDataBits/drvA3nParity/drvA3nStopBits/
+//   drvA3nStation/drvA3nPc/drvA3nTimeout/drvA3nRetry/drvA3nRate/drvA3nMaxTags
+//   ROUTE_TO_TAB 'connectivity/drivers': 'drivers', renderDrivers(/saveDriverSource(/testDriverConnection(
+//   sourceType: 'MelsecA3n' save payload, /api/drivers/melsec-a3n/test-connection
+//   data-tab="mx-component", id="view-mx-component", data-route="connectivity/mx-component"
+//   renderMx(/saveMxSource(/testMxConnection(/mxFormBody(, /api/drivers/mx-component/test-connection
+//   MX sources are separate from serial drivers: isDriverSource excludes MxComponent
+//   data-tab="opc-ua", id="view-opc-ua", data-route="connectivity/opc-ua", text "OPC UA"
+//   data-tab="connection", id="view-connection", id="sourcesStatusList", data-route="connectivity/sources", text "Sources"
+//   id="uaCfgEndpointUrl", id="uaCfgSourceId", function saveUaSource/testUaConnection
+//   id="mapTypeTabs", data-map-type="opc-da|opc-ua|drivers", function setMapType(/opcDaSources(/mapTypeSources(
+//   tags/maps/opc-da, tags/maps/opc-ua, tags/maps/drivers
 internal static class DashboardPage
 {
     public const string Html = """
@@ -39,14 +64,19 @@ internal static class DashboardPage
         .pill .k { color: var(--muted); text-transform: uppercase; font-size: 10px; letter-spacing: .05em; }
         .topbar .clock { margin-left: auto; color: var(--muted); font-size: 11px; white-space: nowrap; }
 .app-shell { display: flex; flex: 1; min-height: 0; overflow: hidden; }
-.tabbar { display: flex; flex-direction: column; background: var(--panel); border-right: 1px solid var(--border2); padding: 8px 0; width: 152px; flex-shrink: 0; overflow-y: auto; }
+.tabbar { display: flex; flex-direction: column; background: var(--panel); border-right: 1px solid var(--border2); padding: 8px 0; width: 200px; flex-shrink: 0; overflow-y: auto; }
 .tabbtn { background: none; border: none; color: var(--muted); padding: 11px 16px; font-size: 13px; font-weight: 500; cursor: pointer; border-left: 3px solid transparent; display: flex; align-items: center; gap: 8px; text-align: left; }
 .tabbtn:hover { color: var(--text); background: var(--panel2); }
 .tabbtn.active { color: var(--accent); border-left-color: var(--accent); background: var(--panel2); }
+.nav-group { padding: 6px 0; border-bottom: 1px solid var(--border); }
+.nav-group:last-child { border-bottom: none; }
+.nav-group-h { display: flex; align-items: center; gap: 7px; padding: 8px 16px 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+.nav-group-h .nav-ico { width: 13px; height: 13px; flex-shrink: 0; opacity: .85; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.nav-group .tabbtn { padding-left: 22px; }
 .content { flex: 1; min-width: 0; overflow: auto; }
 .view { display: none; padding: 16px 18px; }
 .view.active { display: block; }
-@media (max-width: 600px) { .app-shell { flex-direction: column; } .tabbar { flex-direction: row; width: 100%; border-right: none; border-bottom: 1px solid var(--border2); padding: 0 8px; overflow-x: auto; } .tabbtn { border-left: none; border-bottom: 3px solid transparent; padding: 10px 14px; } .tabbtn.active { border-left: none; border-bottom-color: var(--accent); } }
+@media (max-width: 600px) { .app-shell { flex-direction: column; } .tabbar { flex-direction: row; width: 100%; border-right: none; border-bottom: 1px solid var(--border2); padding: 0 8px; overflow-x: auto; } .tabbtn { border-left: none; border-bottom: 3px solid transparent; padding: 10px 14px; } .tabbtn.active { border-left: none; border-bottom-color: var(--accent); } .nav-group { border-bottom: none; } .nav-group-h { display: none; } }
         .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
         @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
         .box { background: var(--panel); border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
@@ -64,6 +94,10 @@ internal static class DashboardPage
         .alarm-bar.ok { background: rgba(52,211,153,.1); border: 1px solid rgba(52,211,153,.3); color: var(--good); }
         .alarm-bar.warning { background: rgba(251,191,36,.1); border: 1px solid rgba(251,191,36,.3); color: var(--warn); }
         .alarm-bar.bad { background: rgba(248,113,113,.1); border: 1px solid rgba(248,113,113,.3); color: var(--bad); }
+        .first-run-banner { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 7px; margin-bottom: 12px; font-size: 12px; background: rgba(56,189,248,.08); border: 1px solid rgba(56,189,248,.3); color: var(--text); }
+        .first-run-banner button { margin-left: auto; }
+        .port-banner { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 7px; margin-bottom: 12px; font-size: 12px; font-weight: 600; background: rgba(251,191,36,.1); border: 1px solid rgba(251,191,36,.3); color: var(--warn); }
+        .port-banner button { margin-left: auto; }
         .stat .k { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
         .stat .v { margin-top: 6px; font-size: 16px; font-weight: 700; line-height: 1.1; }
         .stat .s { margin-top: 4px; color: var(--muted); font-size: 11px; }
@@ -119,7 +153,9 @@ internal static class DashboardPage
         .li .li-desc:hover { color: var(--accent); }
         .li.clickable { cursor: pointer; }
         .li.clickable:hover { border-color: var(--accent); }
-        .li .li-badge { margin-left: auto; }
+        .li .li-badge { margin-left: auto; display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; overflow: hidden; min-width: 0; }
+        .li .li-badge-clip { display: flex; align-items: center; gap: 6px; overflow: hidden; min-width: 0; mask-image: linear-gradient(to right, black calc(100% - 14px), transparent); -webkit-mask-image: linear-gradient(to right, black calc(100% - 14px), transparent); }
+        .li .li-badge-status { flex-shrink: 0; margin-left: 2px; display: flex; align-items: center; }
         .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 1000; justify-content: center; align-items: center; }
         .modal-overlay.open { display: flex; }
         .modal { background: var(--panel); border: 1px solid var(--border2); border-radius: 8px; width: min(560px, 92vw); max-height: 90vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,.4); }
@@ -148,6 +184,17 @@ internal static class DashboardPage
         .modal-f .field { margin-bottom: 0; flex: 1; min-width: 200px; }
         .modal-f .btn { margin-left: auto; }
         .modal-f .btn + .btn { margin-left: 0; }
+        .modal.wizard { width: 480px; max-width: 94vw; }
+        .wizard-steps { display: flex; gap: 6px; padding: 10px 14px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+        .wizard-step, .wzdrv-step { font-size: 11px; color: var(--muted); padding: 3px 8px; border-radius: 4px; }
+        .wizard-step.active, .wzdrv-step.active { color: var(--accent); background: rgba(56,189,248,.12); }
+        .wizard-step.done, .wzdrv-step.done { color: var(--good); }
+        .wizard-body { padding: 14px; max-height: 60vh; overflow-y: auto; }
+        .wizard-pane, .wzdrv-pane { display: none; }
+        .wizard-pane.active, .wzdrv-pane.active { display: block; }
+        .wizard-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--border); }
+        .wizard-summary { font-size: 12px; line-height: 1.6; }
+        .wizard-summary b { color: var(--text); }
         .endpoint { background: var(--bg); border: 1px solid var(--border2); border-radius: 5px; padding: 7px 11px; font-family: 'Consolas', monospace; font-size: 12px; color: var(--accent); word-break: break-all; }
         .split { display: grid; grid-template-columns: 1.2fr 1fr; gap: 12px; }
         .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
@@ -174,10 +221,10 @@ internal static class DashboardPage
         .log-entry .meta .lvl.warning { color: var(--warn); }
         .log-entry .meta .lvl.error, .log-entry .meta .lvl.critical { color: var(--bad); }
         .log-entry .message.error, .log-entry .message.critical { color: var(--bad); }
-        .help-subtabs { display: flex; gap: 2px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 4px; margin-bottom: 12px; }
-        .help-subtab { flex: 1; background: none; border: none; color: var(--muted); padding: 8px 16px; font-size: 12px; font-weight: 600; cursor: pointer; border-radius: 4px; transition: all .15s ease; }
-        .help-subtab:hover { color: var(--text); background: var(--panel2); }
-        .help-subtab.active { color: var(--text); background: var(--panel2); box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+        .help-subtabs, .map-type-tabs { display: flex; gap: 2px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 4px; margin-bottom: 12px; }
+        .help-subtab, .map-type-tab { flex: 1; background: none; border: none; color: var(--muted); padding: 8px 16px; font-size: 12px; font-weight: 600; cursor: pointer; border-radius: 4px; transition: all .15s ease; }
+        .help-subtab:hover, .map-type-tab:hover { color: var(--text); background: var(--panel2); }
+        .help-subtab.active, .map-type-tab.active { color: var(--text); background: var(--panel2); box-shadow: 0 1px 3px rgba(0,0,0,.2); }
         .help-subtab-content { display: none; }
         .help-subtab-content.active { display: block; }
         .help-accordion { display: flex; flex-direction: column; gap: 8px; }
@@ -400,25 +447,57 @@ internal static class DashboardPage
 </div>
 <div class="app-shell">
 <div class="tabbar">
-    <button class="tabbtn active" data-tab="monitor" onclick="showTab('monitor')">Monitor</button>
-    <button class="tabbtn" data-tab="connection" onclick="showTab('connection')">Connection</button>
-    <button class="tabbtn" data-tab="diagnostics" onclick="showTab('diagnostics')">Diagnostics</button>
-    <button class="tabbtn" data-tab="tags" onclick="showTab('tags')">Tags</button>
-    <button class="tabbtn" data-tab="links" onclick="showTab('links')">OPC DA to DA</button>
-    <button class="tabbtn" data-tab="logs" onclick="showTab('logs')">Logs</button>
-    <button class="tabbtn" data-tab="mqtt" onclick="showTab('mqtt')">MQTT</button>
-    <button class="tabbtn" data-tab="influx" onclick="showTab('influx')">InfluxDB</button>
-    <button class="tabbtn" data-tab="diagram" onclick="showTab('diagram')">Diagram</button>
-    <button class="tabbtn" data-tab="help" onclick="showTab('help')">Help</button>
-    <button class="tabbtn" data-tab="about" onclick="showTab('about')">About</button>
+  <div class="nav-group">
+    <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><circle cx="7" cy="7" r="1" fill="currentColor" stroke="none"/><circle cx="7" cy="17" r="1" fill="currentColor" stroke="none"/></svg>Sources</div>
+    <button class="tabbtn" data-tab="connection" data-route="connectivity/sources" onclick="navigate('connectivity/sources')">Sources</button>
+    <button class="tabbtn" data-tab="opc-da" data-route="connectivity/opc-da" onclick="navigate('connectivity/opc-da')">OPC DA</button>
+    <button class="tabbtn" data-tab="opc-ua" data-route="connectivity/opc-ua" onclick="navigate('connectivity/opc-ua')">OPC UA</button>
+    <button class="tabbtn" data-tab="drivers" data-route="connectivity/drivers" onclick="navigate('connectivity/drivers')">Drivers</button>
+    <button class="tabbtn" data-tab="mx-component" data-route="connectivity/mx-component" onclick="navigate('connectivity/mx-component')">MX Component</button>
+    <button class="tabbtn" data-tab="diagnostics" data-route="connectivity/diagnostics" onclick="navigate('connectivity/diagnostics')">Diagnostics</button>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><circle cx="7" cy="7" r="1.5" fill="currentColor" stroke="none"/></svg>Tags</div>
+    <button class="tabbtn" data-tab="tags" data-route="tags/maps" onclick="navigate('tags/maps')">Maps</button>
+    <button class="tabbtn" data-tab="links" data-route="tags/links" onclick="navigate('tags/links')">DA Links</button>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1.2" fill="currentColor" stroke="none"/></svg>IoT</div>
+    <button class="tabbtn" data-tab="mqtt" data-route="iot/mqtt" onclick="navigate('iot/mqtt')">MQTT</button>
+    <button class="tabbtn" data-tab="iot-traffic" data-route="iot/traffic" onclick="navigate('iot/traffic')">Traffic</button>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"/></svg>Historian</div>
+    <button class="tabbtn" data-tab="influx" data-route="historian/influx" onclick="navigate('historian/influx')">InfluxDB</button>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>Ops</div>
+    <button class="tabbtn active" data-tab="monitor" data-route="ops/monitor" onclick="navigate('ops/monitor')">Monitor</button>
+    <button class="tabbtn" data-tab="values" data-route="ops/values" onclick="navigate('ops/values')">Live Values</button>
+    <button class="tabbtn" data-tab="logs" data-route="ops/logs" onclick="navigate('ops/logs')">Logs</button>
+    <button class="tabbtn" data-tab="diagram" data-route="ops/diagram" onclick="navigate('ops/diagram')">Diagram</button>
+  </div>
+  <div class="nav-group">
+    <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2.5-3 4.5"/><circle cx="12" cy="17.2" r="0.9" fill="currentColor" stroke="none"/></svg>Help</div>
+    <button class="tabbtn" data-tab="help" data-route="help/guide" onclick="navigate('help/guide')">Guide</button>
+    <button class="tabbtn" data-tab="about" data-route="help/about" onclick="navigate('help/about')">About</button>
+  </div>
 </div>
 <div class="content">
 <div class="view active" id="view-monitor">
+    <div class="port-banner" id="portBanner" style="display:none"></div>
+    <div class="first-run-banner" id="bannerNoSources" style="display:none"></div>
+    <div class="first-run-banner" id="bannerNoMappings" style="display:none"></div>
     <div class="alarm-bar" id="rateAlarmBar" style="display:none"></div>
     <div class="mon-stats">
         <div class="mon-stat-group">
             <div class="mon-stat-group-h">Bridge</div>
             <div class="stat"><div class="k">Runtime</div><div class="v" id="bridgeState">&#8212;</div><div class="s" id="lastError">No errors</div></div>
+        </div>
+        <div class="mon-stat-group">
+            <div class="mon-stat-group-h">Ports <span class="info" data-tip="Listening ports for this bridge. When the default port is already in use by another application, the bridge auto-assigns the next free port and saves it to appsettings.json (Bridge:HttpPort / Bridge:OpcUaPort).">i</span></div>
+            <div class="stat"><div class="k">HTTP</div><div class="v" id="httpPortVal">&#8212;</div><div class="s" id="httpPortNote">Dashboard + API</div></div>
+            <div class="stat"><div class="k">OPC UA</div><div class="v" id="uaPortVal">&#8212;</div><div class="s" id="uaPortNote">UA server endpoint</div></div>
         </div>
         <div class="mon-stat-group">
             <div class="mon-stat-group-h">OPC DA</div>
@@ -458,14 +537,16 @@ internal static class DashboardPage
             </div>
         </div>
     </div>
+</div>
+<div class="view" id="view-values">
     <div class="box">
-        <div class="box-h">DA Live Values <span class="msg" id="valCount" style="margin-left:auto"></span><button class="btn ghost" id="toggleLiveValues" type="button">Disable Live Data</button></div>
+        <div class="box-h">Live Values <span class="msg" id="valCount" style="margin-left:auto"></span><select id="liveValuesSource" title="Filter live values by source" style="margin-left:8px"><option value="">All sources</option></select><button class="btn ghost" id="toggleLiveValues" type="button">Disable Live Data</button></div>
         <div class="box-b" style="padding:0">
             <div class="values-wrap">
                 <table class="values-table">
-                    <colgroup><col style="width:14%"><col style="width:29%"><col style="width:27%"><col style="width:14%"><col style="width:16%"></colgroup>
-                    <thead><tr><th>Source</th><th>DA Item ID</th><th>Value</th><th>Quality</th><th>Timestamp</th></tr></thead>
-                    <tbody id="values"><tr><td colspan="5" class="msg">Waiting for values&#8230;</td></tr></tbody>
+                    <colgroup><col style="width:11%"><col style="width:23%"><col style="width:20%"><col style="width:9%"><col style="width:9%"><col style="width:10%"><col style="width:18%"></colgroup>
+                    <thead><tr><th>Source</th><th>Item ID</th><th>Value</th><th>Type</th><th>Rate</th><th>Quality</th><th>Timestamp</th></tr></thead>
+                    <tbody id="values"><tr><td colspan="7" class="msg">Waiting for values&#8230;</td></tr></tbody>
                 </table>
             </div>
         </div>
@@ -516,10 +597,19 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="view" id="view-connection">
+    <div class="box">
+        <div class="box-h">Sources <button class="btn" type="button" onclick="openAddSourceWizard()" style="margin-left:auto">+ Add Source</button></div>
+        <div class="box-b">
+            <div class="hint" id="sourcesStatusHint">Select a source to open its OPC DA or OPC UA configuration.</div>
+            <div class="list" id="sourcesStatusList" style="max-height:none"></div>
+        </div>
+    </div>
+</div>
+<div class="view" id="view-opc-da">
     <div class="conn-layout">
         <div class="conn-main">
             <div class="box">
-                <div class="box-h">Server Connection <span class="msg" id="cfgMessage" style="margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0">Select a saved connection or click New.</span></div>
+                <div class="box-h">OPC DA Configuration <button class="btn" type="button" onclick="openAddSourceWizard()" style="margin-left:auto">+ Add Source</button><span class="msg" id="cfgMessage" style="font-weight:400;text-transform:none;letter-spacing:0">Select a saved connection or click New.</span></div>
                 <div class="box-b">
                     <div class="field"><label class="fl">Selected</label><select id="selectedSource"></select></div>
                     <div class="conn-section">
@@ -584,16 +674,328 @@ internal static class DashboardPage
         </div>
     </div>
 </div>
+<div class="view" id="view-opc-ua">
+    <div class="conn-layout">
+        <div class="conn-main">
+            <div class="box">
+                <div class="box-h">OPC UA Configuration <button class="btn" type="button" onclick="openAddSourceWizard()" style="margin-left:auto">+ Add Source</button><span class="msg" id="uaCfgMessage" style="font-weight:400;text-transform:none;letter-spacing:0">Select a saved connection or click New.</span></div>
+                <div class="box-b">
+                    <div class="field"><label class="fl">Selected</label><select id="uaSelectedSource"></select></div>
+                    <div class="conn-section">
+                        <div class="conn-section-h">Identity</div>
+                        <div class="field"><label class="fl">Source ID <span class="info" data-tip="Unique key with no spaces. Used internally and in UA Node IDs (ns=2;s={sourceId}/...).">i</span></label><input id="uaCfgSourceId" type="text" placeholder="ua-plant-a" style="flex:1"></div>
+                        <div class="field"><label class="fl">Name <span class="info" data-tip="Friendly label shown in lists and the Tags tab.">i</span></label><input id="uaCfgDisplayName" type="text" placeholder="Plant UA Server" style="flex:1"></div>
+                    </div>
+                    <div class="conn-section">
+                        <div class="conn-section-h">Endpoint</div>
+                        <div class="field"><label class="fl">Endpoint URL <span class="info" data-tip="opc.tcp URL of the external OPC UA server the bridge connects to as a client (not this bridge's own endpoint).">i</span></label><input id="uaCfgEndpointUrl" type="text" placeholder="opc.tcp://192.168.1.10:4840" style="flex:1"></div>
+                        <div class="field"><label class="fl">Security Mode</label><select id="uaCfgSecurityMode"><option value="None">None</option><option value="Sign">Sign</option><option value="SignAndEncrypt">SignAndEncrypt</option></select></div>
+                        <div class="field"><label class="fl">Security Policy</label><select id="uaCfgSecurityPolicy"><option value="None">None</option><option value="Basic256Sha256">Basic256Sha256</option></select></div>
+                    </div>
+                    <div class="conn-section">
+                        <div class="conn-section-h">Credentials <span class="info" data-tip="Optional UserName token. Leave blank for anonymous.">i</span></div>
+                        <div class="field"><label class="fl">User</label><input id="uaCfgUser" type="text" placeholder="username" style="flex:1"><input id="uaCfgPass" type="password" placeholder="password" style="flex:1"></div>
+                    </div>
+                    <div class="conn-section">
+                        <div class="conn-section-h">Update &amp; Scale</div>
+                        <div class="field"><label class="fl">Update Rate</label><select id="uaCfgUpdateRate"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
+                        <div class="field"><label class="fl">Max Mapped Tags <span class="info" data-tip="Hard cap on mappings for this UA source. Only mapped NodeIds are subscribed.">i</span></label><input id="uaCfgMaxMappedTags" type="number" min="1" value="50000" style="flex:1"></div>
+                        <div class="field"><label class="fl">Subscriptions</label><input type="checkbox" id="uaCfgUseSubscriptions" checked><span class="msg" id="uaSubMessage">MonitoredItems for mapped tags</span></div>
+                    </div>
+                    <div class="toolbar" style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
+                        <button class="btn" id="btnUaTestConnection" type="button">Test Connection</button>
+                        <button class="btn" id="uaCfgApply" type="button" style="display:none">Save</button>
+                        <button class="btn ghost" id="uaCfgReset" type="button" style="display:none">Reset</button>
+                        <button class="btn ghost" id="uaCfgNew" type="button">New</button>
+                        <button class="btn ghost" id="uaCfgRemove" type="button">Remove</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="conn-side">
+            <div class="box">
+                <div class="box-h">Discover UA Servers</div>
+                <div class="box-b">
+                    <div class="field"><label class="fl">Discovery URL <span class="info" data-tip="opc.tcp URL of a Local Discovery Server (LDS) or any known UA server to probe. Leave blank to use the Endpoint URL field, or opc.tcp://localhost:4840.">i</span></label><input id="uaDiscoverUrl" type="text" placeholder="opc.tcp://localhost:4840" style="flex:1"></div>
+                    <div class="toolbar">
+                        <button class="btn ghost" id="btnUaDiscover" type="button">Scan</button>
+                        <span class="msg" id="msgUaDiscover">Click Scan to find servers. Use fills Endpoint URL.</span>
+                    </div>
+                    <div class="list" id="listUaDiscover" style="max-height:200px"></div>
+                </div>
+            </div>
+            <div class="box">
+                <div class="box-h">Saved UA Connections <span class="msg" id="pUaSourcesSide" style="margin-left:auto"></span></div>
+                <div class="box-b">
+                    <div class="list" id="uaSourcesList" style="max-height:280px"></div>
+                </div>
+            </div>
+            <div class="box">
+                <div class="box-h">Notes</div>
+                <div class="box-b">
+                    <div class="hint">OPC UA <b>source</b> = bridge connects outbound to an external UA server. The Monitor page OPC UA endpoint is the bridge's own server for clients.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="modal-overlay" id="addSourceWizard" onclick="if(event.target===this)closeAddSourceWizard()">
+    <div class="modal wizard" role="dialog" aria-modal="true" aria-labelledby="addSourceWizardTitle">
+        <div class="modal-head">
+            <div class="modal-title" id="addSourceWizardTitle">Add Source</div>
+            <button class="modal-close" type="button" onclick="closeAddSourceWizard()">&times;</button>
+        </div>
+        <div class="wizard-steps">
+            <span class="wizard-step" data-step="1">1. Type</span>
+            <span class="wizard-step" data-step="2">2. Identity</span>
+            <span class="wizard-step" data-step="3">3. Server</span>
+            <span class="wizard-step" data-step="4">4. Auth</span>
+            <span class="wizard-step" data-step="5">5. Defaults</span>
+            <span class="wizard-step" data-step="6">6. Review</span>
+        </div>
+        <div class="wizard-body">
+            <div class="wizard-pane active" data-pane="1">
+                <div class="field"><label class="fl">Source Type</label>
+                    <select id="wzSourceType" onchange="wzOnTypeChange()">
+                        <option value="OpcDa">OPC DA</option>
+                        <option value="OpcUa">OPC UA</option>
+                    </select>
+                </div>
+                <div class="hint">OPC DA uses ProgID/Host (Windows COM). OPC UA uses an opc.tcp endpoint (cross-platform client).</div>
+            </div>
+            <div class="wizard-pane" data-pane="2">
+                <div class="field"><label class="fl">Source ID</label><input type="text" id="wzSourceId" placeholder="server-a"></div>
+                <div class="field"><label class="fl">Display Name</label><input type="text" id="wzDisplayName" placeholder="(optional)"></div>
+                <div class="hint">Unique key with no spaces. Used in UA Node IDs (ns=2;s={sourceId}/...).</div>
+            </div>
+            <div class="wizard-pane" data-pane="3">
+                <div id="wzDaServerFields">
+                    <div class="field"><label class="fl">Host</label><input type="text" id="wzHost" placeholder="localhost"></div>
+                    <div class="field"><label class="fl">ProgID / CLSID</label><input type="text" id="wzProgId" placeholder="Kepware.KEPServerEX.V6"></div>
+                    <button class="btn ghost" type="button" onclick="wzBrowseServers()">Browse Servers</button>
+                    <span class="msg" id="wzMsgServers"></span>
+                    <div class="list" id="wzListServers" style="max-height:180px"></div>
+                </div>
+                <div id="wzUaServerFields" style="display:none">
+                    <div class="field"><label class="fl">Endpoint URL</label><input type="text" id="wzEndpointUrl" placeholder="opc.tcp://host:4840"></div>
+                    <div class="field"><label class="fl">Security Mode</label><select id="wzSecurityMode"><option value="None">None</option><option value="Sign">Sign</option><option value="SignAndEncrypt">SignAndEncrypt</option></select></div>
+                    <div class="field"><label class="fl">Security Policy</label><select id="wzSecurityPolicy"><option value="None">None</option><option value="Basic256Sha256">Basic256Sha256</option></select></div>
+                </div>
+            </div>
+            <div class="wizard-pane" data-pane="4">
+                <div id="wzDaAuthFields">
+                    <div class="field"><label class="fl">Domain</label><input type="text" id="wzDomain" placeholder="(optional)"></div>
+                    <div class="field"><label class="fl">Username</label><input type="text" id="wzUser" placeholder="(optional)"></div>
+                    <div class="field"><label class="fl">Password</label><input type="password" id="wzPass"></div>
+                    <div class="hint">Only required for remote DCOM or servers in another user's profile.</div>
+                </div>
+                <div id="wzUaAuthFields" style="display:none">
+                    <div class="field"><label class="fl">UA Username</label><input type="text" id="wzUaUser" placeholder="(optional, anonymous if empty)"></div>
+                    <div class="field"><label class="fl">UA Password</label><input type="password" id="wzUaPass"></div>
+                    <div class="hint">UserName token credentials for the external OPC UA server.</div>
+                </div>
+            </div>
+            <div class="wizard-pane" data-pane="5">
+                <div class="field"><label class="fl">Update Rate</label><select id="wzUpdateRate"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000" selected>1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
+                <div class="field"><label class="fl">Subscriptions</label><input type="checkbox" id="wzSubs" checked> <span class="msg" id="wzSubsHint">Use IOPCDataCallback (recommended)</span></div>
+                <div class="field" id="wzMaxTagsField" style="display:none"><label class="fl">Max Mapped Tags</label><input type="number" id="wzMaxMappedTags" min="1" value="50000"></div>
+            </div>
+            <div class="wizard-pane" data-pane="6">
+                <div class="wizard-summary" id="wzSummary"></div>
+                <div class="hint">Click Finish to save. You can map tags next.</div>
+            </div>
+        </div>
+        <div class="wizard-foot">
+            <button class="btn ghost" type="button" onclick="closeAddSourceWizard()">Cancel</button>
+            <button class="btn ghost" type="button" id="wzBack" onclick="wzStep(-1)">Back</button>
+            <button class="btn" type="button" id="wzNext" onclick="wzStep(1)">Next</button>
+            <button class="btn" type="button" id="wzFinish" style="display:none" onclick="wzFinish()">Finish &amp; Save</button>
+        </div>
+    </div>
+</div>
+<div class="view" id="view-mx-component">
+    <div class="conn-layout">
+        <div class="conn-main">
+            <div class="box">
+                <div class="box-h">MELSOFT MX Component 4 <button class="btn" type="button" onclick="newMxSource()" style="margin-left:auto">+ Add Connection</button><span class="msg" id="mxMessage" style="font-weight:400;text-transform:none;letter-spacing:0">Select an MX Component connection or click New.</span></div>
+                <div class="box-b">
+                    <div class="conn-section">
+                        <div class="conn-section-h">Connection <span class="info" data-tip="MX Component is a local COM driver that owns the physical link to the PLC. Configure that link (serial, Ethernet, or GX Simulator) once in MX Component's own Communication Settings Utility — it assigns a logical station number that this app references. GX Simulator note: it uses session-bound shared memory, so the bridge must run in the same logged-in interactive Windows session (Interactive task logon — S4U/service mode cannot reach it).">i</span></div>
+                        <div class="field" style="display:block;background:var(--bg);border:1px solid var(--border2);border-radius:5px;padding:9px 11px;color:var(--muted)">The physical link (serial RS-422/RS-232C, Ethernet, or <b>GX Simulator</b>) is configured <b>once in MX Component's own Communication Settings Utility</b> — this app only needs the <b>logical station number</b> (0–1023) that the utility assigned. For an <b>A3NCPU</b>: pick <b>A series → A3N</b> in the utility's wizard (1C frame); if "A series" is missing, an <b>FX-series CPU type</b> usually still talks to it. <b>GX Simulator</b> is session-bound — the bridge must run in the same logged-in desktop session, so the Windows scheduled task needs <b>Interactive</b> logon (register with <span class="mono">-LogonType Interactive</span>).</div>
+                        <div class="field"><label class="fl">Logical Station</label><input id="mxStation" type="number" min="0" max="1023" value="0" style="width:90px"><span class="msg">Assigned in the MX Component Communication Settings Utility.</span></div>
+                    </div>
+                    <div class="conn-section">
+                        <div class="conn-section-h">Identity</div>
+                        <div class="field"><label class="fl">Source ID <span class="info" data-tip="Unique key with no spaces. Used internally and in UA Node IDs (ns=2;s={sourceId}/...).">i</span></label><input id="mxSourceId" type="text" placeholder="plc-mx-1" style="flex:1"></div>
+                        <div class="field"><label class="fl">Name <span class="info" data-tip="Friendly label shown in lists and the Tags tab.">i</span></label><input id="mxName" type="text" placeholder="Line 1 PLC" style="flex:1"></div>
+                    </div>
+                    <div class="conn-section">
+                        <div class="conn-section-h">Defaults</div>
+                        <div class="field"><label class="fl">Timeout ms</label><input id="mxTimeout" type="number" min="100" step="100" value="3000" style="width:100px">
+                        <label class="fl" style="width:auto">Retries</label><input id="mxRetry" type="number" min="0" max="10" value="2" style="width:70px"></div>
+                        <div class="field"><label class="fl">Update Rate</label><select id="mxRate"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000" selected>1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select>
+                        <label class="fl" style="width:auto">Max tags <span class="info" data-tip="Safety limit on mapped tags for this source; adding mappings beyond it is rejected.">i</span></label><input id="mxMaxTags" type="number" min="1" step="1" value="2000" style="width:90px"></div>
+                    </div>
+                    <div class="toolbar" style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
+                        <button class="btn" id="mxSave" type="button">Save</button>
+                        <button class="btn ghost" id="mxReset" type="button">Reset</button>
+                        <button class="btn ghost" id="mxNew" type="button">New</button>
+                        <button class="btn ghost" id="mxRemove" type="button">Remove</button>
+                        <button class="btn ghost" id="mxTest" type="button">Test connection</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="conn-side">
+            <div class="box">
+                <div class="box-h">MX Component Connections <span class="msg" id="mxCount" style="margin-left:auto"></span></div>
+                <div class="box-b">
+                    <div class="list" id="mxList" style="max-height:280px"></div>
+                </div>
+            </div>
+            <div class="box">
+                <div class="box-h">Addressing</div>
+                <div class="box-b">
+                    <div class="hint">Map tags on the Tags page with device addresses, e.g. <span class="mono">D100</span>, <span class="mono">M10</span>, <span class="mono">X20</span>, <span class="mono">D100:8</span>.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="view" id="view-drivers">
+    <div class="conn-layout">
+        <div class="conn-main">
+            <div class="box">
+                <div class="box-h">PLC Driver <button class="btn" type="button" onclick="openDriverWizard()" style="margin-left:auto">+ Add Driver</button><span class="msg" id="drvA3nMessage" style="font-weight:400;text-transform:none;letter-spacing:0">Select a driver source or click New.</span></div>
+                <div class="box-b">
+                    <div class="conn-section">
+                        <div class="conn-section-h">Identity</div>
+                        <div class="field"><label class="fl">Source ID <span class="info" data-tip="Unique key with no spaces. Used internally and in UA Node IDs (ns=2;s={sourceId}/...).">i</span></label><input id="drvA3nSourceId" type="text" placeholder="plc-a3n-1" style="flex:1"></div>
+                        <div class="field"><label class="fl">Name <span class="info" data-tip="Friendly label shown in lists and the Tags tab.">i</span></label><input id="drvA3nName" type="text" placeholder="Line 1 PLC" style="flex:1"></div>
+                    </div>
+                    <div class="conn-section">
+                        <div class="conn-section-h">Serial Port <span class="info" data-tip="RS-422/RS-232C link to the A3N CPU (1C protocol, Format 1). Defaults: 9600 baud, 8 data bits, odd parity, 1 stop bit.">i</span></div>
+                        <div class="field"><label class="fl">Port</label><input id="drvA3nPort" type="text" placeholder="COM3 or /dev/ttyUSB0" style="flex:1"><button class="btn ghost" id="btnDrvScanPorts" type="button">Scan</button></div>
+                        <div class="list" id="listDrvPorts" style="max-height:120px;margin:0 0 8px 0"></div>
+                        <span class="msg" id="msgDrvPorts">Click Scan to list host serial ports.</span>
+                        <div class="field"><label class="fl">Baud</label><select id="drvA3nBaud"><option value="1200">1200</option><option value="2400">2400</option><option value="4800">4800</option><option value="9600" selected>9600</option><option value="19200">19200</option></select>
+                        <label class="fl" style="width:auto">Data bits</label><select id="drvA3nDataBits"><option value="7">7</option><option value="8" selected>8</option></select></div>
+                        <div class="field"><label class="fl">Parity</label><select id="drvA3nParity"><option value="None">None</option><option value="Odd" selected>Odd</option><option value="Even">Even</option></select>
+                        <label class="fl" style="width:auto">Stop bits</label><select id="drvA3nStopBits"><option value="One" selected>1</option><option value="Two">2</option></select></div>
+                    </div>
+                    <div class="conn-section">
+                        <div class="conn-section-h">PLC Addressing <span class="info" data-tip="Station 00 = directly attached CPU. PC number FF = own station (1C protocol).">i</span></div>
+                        <div class="field" id="drvA3nStationRow"><label class="fl">Station</label><input id="drvA3nStation" type="text" placeholder="00" maxlength="2" style="width:70px">
+                        <label class="fl" style="width:auto">PC No</label><input id="drvA3nPc" type="text" placeholder="FF" maxlength="2" style="width:70px"></div>
+                        <div class="field" id="drvS7PpiRow" style="display:none"><label class="fl">Local PPI</label><input id="drvS7LocalPpi" type="number" min="0" max="126" value="0" style="width:70px">
+                        <label class="fl" style="width:auto">Remote PPI</label><input id="drvS7RemotePpi" type="number" min="0" max="126" value="2" style="width:70px"></div>
+                    </div>
+                    <div class="conn-section">
+                        <div class="conn-section-h">Defaults</div>
+                        <div class="field"><label class="fl">Timeout ms</label><input id="drvA3nTimeout" type="number" min="100" step="100" value="3000" style="width:100px">
+                        <label class="fl" style="width:auto">Retries</label><input id="drvA3nRetry" type="number" min="0" max="10" value="2" style="width:70px"></div>
+                        <div class="field"><label class="fl">Update Rate</label><select id="drvA3nRate"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000" selected>1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select>
+                        <label class="fl" style="width:auto">Max tags <span class="info" data-tip="Safety limit on mapped tags for this serial link; adding mappings beyond it is rejected.">i</span></label><input id="drvA3nMaxTags" type="number" min="1" step="1" value="2000" style="width:90px"></div>
+                    </div>
+                    <div class="toolbar" style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
+                        <button class="btn" id="drvA3nSave" type="button">Save</button>
+                        <button class="btn ghost" id="drvA3nReset" type="button">Reset</button>
+                        <button class="btn ghost" id="drvA3nNew" type="button">New</button>
+                        <button class="btn ghost" id="drvA3nRemove" type="button">Remove</button>
+                        <button class="btn ghost" id="drvA3nTest" type="button">Test connection</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="conn-side">
+            <div class="box">
+                <div class="box-h">Driver Sources <span class="msg" id="drvA3nCount" style="margin-left:auto"></span></div>
+                <div class="box-b">
+                    <div class="list" id="drvA3nList" style="max-height:280px"></div>
+                </div>
+            </div>
+            <div class="box">
+                <div class="box-h">Addressing</div>
+                <div class="box-b">
+                    <div class="hint">Map tags on the Tags page with device addresses, e.g. <span class="mono">D100</span>, <span class="mono">M10</span>, <span class="mono">X20</span>, <span class="mono">D100:8</span>.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="modal-overlay" id="wzDrv" onclick="if(event.target===this)closeDriverWizard()">
+    <div class="modal wizard" role="dialog" aria-modal="true" aria-labelledby="wzDrvTitle">
+        <div class="modal-head">
+            <div class="modal-title" id="wzDrvTitle">Add PLC Driver Source</div>
+            <button class="modal-close" type="button" onclick="closeDriverWizard()">&times;</button>
+        </div>
+        <div class="wizard-steps">
+            <span class="wzdrv-step" data-step="1">1. Type</span>
+            <span class="wzdrv-step" data-step="2">2. Identity</span>
+            <span class="wzdrv-step" data-step="3">3. Serial</span>
+            <span class="wzdrv-step" data-step="4">4. Defaults</span>
+            <span class="wzdrv-step" data-step="5">5. Review</span>
+        </div>
+        <div class="wizard-body">
+            <div class="wzdrv-pane active" data-pane="1">
+                <div class="field"><label class="fl">Driver Type</label><select id="wzDrvType" onchange="wzDrvOnTypeChange()"><option value="MelsecA3n">Mitsubishi Melsec A3N (serial 1C)</option><option value="S7200Ppi">Siemens S7-200 (PPI serial)</option></select></div>
+                <div class="hint">Serial link to the PLC CPU (RS-422/RS-232C, 1C protocol). For MELSOFT MX Component 4, use the MX Component tab — its link is configured in MX Component's own Communication Settings Utility.</div>
+            </div>
+            <div class="wzdrv-pane" data-pane="2">
+                <div class="field"><label class="fl">Source ID</label><input type="text" id="wzDrvSourceId" placeholder="plc-a3n-1"></div>
+                <div class="field"><label class="fl">Display Name</label><input type="text" id="wzDrvName" placeholder="(optional)"></div>
+                <div class="hint">Unique key with no spaces. Used in UA Node IDs (ns=2;s={sourceId}/...).</div>
+            </div>
+            <div class="wzdrv-pane" data-pane="3">
+                <div class="field"><label class="fl">Serial Port</label><input type="text" id="wzDrvPort" placeholder="COM3 or /dev/ttyUSB0" style="flex:1"><button class="btn ghost" id="btnWzDrvScanPorts" type="button">Scan</button></div>
+                <div class="list" id="listWzDrvPorts" style="max-height:120px;margin:0 0 8px 0"></div>
+                <span class="msg" id="msgWzDrvPorts">Click Scan to list host serial ports.</span>
+                <div class="field"><label class="fl">Baud</label><select id="wzDrvBaud"><option value="1200">1200</option><option value="2400">2400</option><option value="4800">4800</option><option value="9600" selected>9600</option><option value="19200">19200</option></select>
+                <label class="fl" style="width:auto">Data bits</label><select id="wzDrvDataBits"><option value="7">7</option><option value="8" selected>8</option></select></div>
+                <div class="field"><label class="fl">Parity</label><select id="wzDrvParity"><option value="None">None</option><option value="Odd" selected>Odd</option><option value="Even">Even</option></select>
+                <label class="fl" style="width:auto">Stop bits</label><select id="wzDrvStopBits"><option value="One" selected>1</option><option value="Two">2</option></select></div>
+                <div class="field" id="wzDrvStationRow"><label class="fl">Station</label><input type="text" id="wzDrvStation" placeholder="00" maxlength="2" style="width:70px">
+                <label class="fl" style="width:auto">PC No</label><input type="text" id="wzDrvPc" placeholder="FF" maxlength="2" style="width:70px"></div>
+                <div class="field" id="wzDrvS7PpiRow" style="display:none"><label class="fl">Local PPI</label><input type="number" id="wzDrvLocalPpi" min="0" max="126" value="0" style="width:70px">
+                <label class="fl" style="width:auto">Remote PPI</label><input type="number" id="wzDrvRemotePpi" min="0" max="126" value="2" style="width:70px"></div>
+            </div>
+            <div class="wzdrv-pane" data-pane="4">
+                <div class="field"><label class="fl">Timeout ms</label><input type="number" id="wzDrvTimeout" min="100" step="100" value="3000" style="width:100px">
+                <label class="fl" style="width:auto">Retries</label><input type="number" id="wzDrvRetry" min="0" max="10" value="2" style="width:70px"></div>
+                <div class="field"><label class="fl">Update Rate</label><select id="wzDrvRate"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000" selected>1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select>
+                <label class="fl" style="width:auto">Max tags</label><input type="number" id="wzDrvMaxTags" min="1" step="1" value="2000" style="width:90px"></div>
+            </div>
+            <div class="wzdrv-pane" data-pane="5">
+                <div class="wizard-summary" id="wzDrvSummary"></div>
+                <div class="hint">Click Finish to save. You can map tags next.</div>
+            </div>
+        </div>
+        <div class="wizard-foot">
+            <button class="btn ghost" type="button" onclick="closeDriverWizard()">Cancel</button>
+            <button class="btn ghost" type="button" id="wzDrvBack" onclick="wzDrvStep(-1)">Back</button>
+            <button class="btn" type="button" id="wzDrvNext" onclick="wzDrvStep(1)">Next</button>
+            <button class="btn" type="button" id="wzDrvFinish" style="display:none" onclick="wzDrvFinish()">Finish &amp; Save</button>
+        </div>
+    </div>
+</div>
 <div class="view" id="view-tags">
+    <div class="first-run-banner" id="bannerTagsNoSources" style="display:none"></div>
+    <div class="map-type-tabs" id="mapTypeTabs">
+        <button class="map-type-tab active" type="button" data-map-type="opc-da" onclick="setMapType('opc-da')">OPC DA</button>
+        <button class="map-type-tab" type="button" data-map-type="opc-ua" onclick="setMapType('opc-ua')">OPC UA</button>
+        <button class="map-type-tab" type="button" data-map-type="drivers" onclick="setMapType('drivers')">Drivers</button>
+        <button class="map-type-tab" type="button" data-map-type="mx" onclick="setMapType('mx')">MX</button>
+    </div>
     <div class="box" style="margin-bottom:14px">
         <div class="box-h">Tag Browser</div>
         <div class="box-b">
             <div class="field" style="margin-bottom:10px">
-                <label class="fl">DA Source</label>
+                <label class="fl">Source</label>
                 <select id="mapSourceSelect"></select>
                 <span class="msg" id="tagSourceStatus"></span>
+                <span class="msg" id="mapSourceHint"></span>
             </div>
-            <div class="tag-browser-toolbar">
+            <div class="tag-browser-toolbar" id="mapBrowseToolbar">
                 <button class="btn" id="btnBrowseAllTags" type="button">Browse All Tags</button>
                 <button class="btn ghost" id="btnBrowseTags" type="button">Browse Folders</button>
                 <span class="msg" id="tagStatus">Browse all tags, or open folders one level at a time.</span>
@@ -603,11 +1005,11 @@ internal static class DashboardPage
         </div>
     </div>
     <div class="box">
-        <div class="box-h">DA → OPC UA Mappings <span class="msg" id="mapCount" style="margin-left:auto"></span></div>
+        <div class="box-h">Source → OPC UA Mappings <span class="msg" id="mapCount" style="margin-left:auto"></span></div>
         <div class="box-b">
             <div class="add-mapping-box">
                 <div class="field">
-                    <input id="manualItem" type="text" placeholder="DA Item ID (e.g. Random.Real8)" style="flex:1">
+                    <input id="manualItem" type="text" placeholder="Item ID (e.g. Random.Real8, ns=2;s=Tag, D100)" style="flex:1">
                     <input id="manualUaNodeId" type="text" placeholder="UA NodeId (optional)" style="flex:1">
                 </div>
                 <div class="field" style="margin-bottom:0">
@@ -615,14 +1017,14 @@ internal static class DashboardPage
                     <span class="msg">Or browse tags above and click Add.</span>
                 </div>
             </div>
-            <div class="hint" id="mappingMessage" style="margin-bottom:10px">Click a tag to open its faceplate. Disable a tag to stop publishing it, or set a manual value to override the DA source.</div>
+            <div class="hint" id="mappingMessage" style="margin-bottom:10px">Click a tag to open its faceplate. Disable a tag to stop publishing it, or set a manual value to override the source.</div>
             <div class="mapping-toolbar">
                 <input id="mappingFilter" type="text" placeholder="Filter by name, item ID, UA node, source…" style="flex:1;min-width:120px">
                 <label class="fl" style="width:auto">Sort</label>
                 <select id="mappingSort">
                     <option value="name">Name</option>
                     <option value="source">Server (Source)</option>
-                    <option value="item">DA Item ID</option>
+                    <option value="item">Item ID</option>
                     <option value="node">UA Node</option>
                     <option value="description">Description</option>
                     <option value="access">Access Mode</option>
@@ -682,19 +1084,20 @@ internal static class DashboardPage
                 <button class="fp-subtab" type="button" data-fptab="setup" onclick="showFpTab('setup')">Setup</button>
                 <button class="fp-subtab" type="button" data-fptab="sim" onclick="showFpTab('sim')">Simulation</button>
                 <button class="fp-subtab" type="button" data-fptab="mqtt" onclick="showFpTab('mqtt')">MQTT</button>
+                <button class="fp-subtab" type="button" data-fptab="influx" onclick="showFpTab('influx')">Influx</button>
             </div>
             <div class="fp-tabpane" id="fp-pane-basic">
                 <div class="field"><label class="fl">Tag Name</label><input type="text" id="fpDisplayName" style="flex:1"></div>
-                <div class="field"><label class="fl">DA Address</label><input type="text" id="fpDaItemId" readonly style="flex:1;opacity:.72"></div>
+                <div class="field"><label class="fl">Item ID</label><input type="text" id="fpDaItemId" readonly style="flex:1;opacity:.72"></div>
                 <div class="field"><label class="fl">UA Node</label><input type="text" id="fpUaNodeId" readonly style="flex:1;opacity:.72"></div>
                 <div class="field"><label class="fl">Description</label><input type="text" id="fpDescription" placeholder="Operator notes / tag description (optional)" style="flex:1"></div>
             </div>
             <div class="fp-tabpane" id="fp-pane-setup" style="display:none">
-                <div class="field"><label class="fl">Access Rights</label><select id="fpAccess" data-action="tag-access"><option value="Read">Read (DA → UA)</option><option value="Read-Write">Read-Write (DA ↔ UA)</option><option value="Write">Write (UA → DA)</option></select></div>
+                <div class="field"><label class="fl">Access Rights</label><select id="fpAccess" data-action="tag-access"><option value="Read">Read (Source → UA)</option><option value="Read-Write">Read-Write (Source ↔ UA)</option><option value="Write">Write (UA → Source)</option></select></div>
                 <div class="field"><label class="fl">Enabled</label><input type="checkbox" id="fpEnabled" data-action="toggle-tag-enabled"></div>
                 <div class="field"><label class="fl">Update Rate</label><select id="fpPollRate" data-action="tag-poll-rate"><option value="0">Source Default</option><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
                 <div class="field"><label class="fl">Deadband %</label><input type="number" id="fpDeadband" min="0" max="100" step="0.1" value="0" style="width:80px"></div>
-                <div class="hint" style="margin-top:4px">Update Rate = DA group interval. With subscriptions on, the DA server pushes changes at this rate. With subscriptions off, the bridge polls at this rate.</div>
+                <div class="hint" style="margin-top:4px">Update Rate = source poll/publish interval. With subscriptions on, the source pushes changes at this rate when supported. With subscriptions off, the bridge polls at this rate.</div>
             </div>
             <div class="fp-tabpane" id="fp-pane-sim" style="display:none">
                 <div class="field"><label class="fl">Simulated</label><input type="checkbox" id="fpSimulated" data-action="tag-simulated"></div>
@@ -704,8 +1107,11 @@ internal static class DashboardPage
             <div class="fp-tabpane" id="fp-pane-mqtt" style="display:none">
                 <div class="field"><label class="fl">MQTT</label><input type="checkbox" id="fpMqttEnabled"> <span class="msg">publish/subscribe this tag</span></div>
                 <div class="field"><label class="fl">MQTT Topic</label><input type="text" id="fpMqttTopic" placeholder="override topic (optional)"></div>
-                <div class="hint" style="margin-top:4px">When enabled, the tag's value is published to the broker and inbound broker writes are applied to it. Leave the topic blank to use the default <span class="mono">{TopicPrefix}/{SourceId}/{DaItemId}</span> scheme.</div>
+                <div class="hint" style="margin-top:4px">When enabled, the tag's value is published to the broker and inbound broker writes are applied to it. Leave the topic blank to use the default <span class="mono">{TopicPrefix}/{SourceId}/{ItemId}</span> scheme.</div>
+            </div>
+            <div class="fp-tabpane" id="fp-pane-influx" style="display:none">
                 <div class="field"><label class="fl">Influx log</label><input type="checkbox" id="fpInfluxEnabled"> <span class="msg">write this tag to InfluxDB</span></div>
+                <div class="hint" style="margin-top:4px">When enabled, each value change of this tag is written to the configured InfluxDB bucket.</div>
             </div>
         </div>
         <div class="modal-f">
@@ -777,9 +1183,10 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="view" id="view-mqtt">
+    <div class="first-run-banner" id="hintMqtt" style="display:none"></div>
     <div class="grid2">
         <div class="box">
-            <div class="box-h">MQTT Broker <span class="info" data-tip="This app connects TO an external MQTT broker (like Mosquitto, HiveMQ, or AWS IoT). It does NOT include its own broker. Configure your broker connection here. Settings are saved to mqtt.json.">i</span></div>
+            <div class="box-h">MQTT Broker <span class="info" data-tip="This app connects TO an external MQTT broker (like Mosquitto, HiveMQ, or AWS IoT). It does NOT include its own broker. Configure your broker connection here. Settings are saved to mqtt.json.">i</span><button class="btn" type="button" onclick="openMqttWizard()" style="margin-left:auto">Setup Wizard</button></div>
             <div class="box-b">
                 <div class="conn-section">
                     <div class="conn-section-h">Configuration <span class="info" data-tip="Settings saved to mqtt.json. These define HOW the bridge connects to the broker. Changes here do not take effect until you click 'Save Config', and only apply to future connections — they do not connect or disconnect the broker live.">i</span></div>
@@ -790,7 +1197,7 @@ internal static class DashboardPage
                     <div class="field"><label class="fl" for="mqttPass">Password</label><span class="info" data-tip="Password for broker authentication. Leave empty if your broker doesn't require login. Stored in mqtt.json file.">i</span><input type="password" id="mqttPass"></div>
                     <div class="field"><label class="fl" for="mqttTls">TLS</label><span class="info" data-tip="Enable encrypted connection to broker. Use this when your broker URL starts with mqtts:// (usually port 8883).">i</span><input type="checkbox" id="mqttTls"></div>
                     <div class="field"><label class="fl" for="mqttIgnoreCert">Ignore Cert</label><span class="info" data-tip="Skip broker certificate check. Only use for testing with self-signed certificates. NOT recommended for production.">i</span><input type="checkbox" id="mqttIgnoreCert"></div>
-                    <div class="field"><label class="fl" for="mqttPrefix">Topic Prefix</label><span class="info" data-tip="Prefix for all topics, e.g. bridge/tags. Publish topic = {prefix}/{sourceId}/{daItemId}; subscribe filter = {prefix}/#. A per-tag override topic can be set in the tag faceplate.">i</span><input type="text" id="mqttPrefix" placeholder="bridge/tags"></div>
+                    <div class="field"><label class="fl" for="mqttPrefix">Topic Prefix</label><span class="info" data-tip="Prefix for all topics, e.g. bridge/tags. Publish topic = {prefix}/{sourceId}/{itemId}; subscribe filter = {prefix}/#. A per-tag override topic can be set in the tag faceplate.">i</span><input type="text" id="mqttPrefix" placeholder="bridge/tags"></div>
                     <div class="field"><label class="fl" for="mqttFields">Payload Fields</label><span class="info" data-tip="Which fields are included in each published JSON payload. Default {v,t} = value + timestamp. Quality/SourceId/ItemId/DisplayName/DataType add more context.">i</span>
                         <select id="mqttFields">
                             <option>Value, Timestamp</option>
@@ -821,8 +1228,47 @@ internal static class DashboardPage
             </div>
         </div>
     </div>
-    <div class="box" style="margin-top:14px">
-         <div class="box-h">Traffic Monitor <span class="info" data-tip="Recent publish (PUB) and subscribe (SUB) messages. PUB = value sent to broker; SUB = inbound message applied via the UA write path.">i</span> <span class="msg" style="margin-left:auto"><button class="btn ghost" onclick="loadMqttValues()">Refresh</button></span></div>
+    <div class="modal-overlay" id="mqttWizard" onclick="if(event.target===this)closeMqttWizard()">
+  <div class="modal wizard" role="dialog" aria-modal="true" aria-labelledby="mqttWizardTitle">
+    <div class="modal-head">
+      <div class="modal-title" id="mqttWizardTitle">Connect MQTT Broker</div>
+      <button class="modal-close" type="button" onclick="closeMqttWizard()">&times;</button>
+    </div>
+    <div class="wizard-steps">
+      <span class="wizard-step" data-step="1">1. Broker</span>
+      <span class="wizard-step" data-step="2">2. Auth &amp; Topics</span>
+      <span class="wizard-step" data-step="3">3. Save &amp; Connect</span>
+    </div>
+    <div class="wizard-body">
+      <div class="wizard-pane active" data-pane="1">
+        <div class="field"><label class="fl">Broker URL</label><input type="text" id="wzMqttUrl" placeholder="tcp://localhost:1883"></div>
+        <div class="field"><label class="fl">Client ID</label><input type="text" id="wzMqttClientId" placeholder="OpcDaToUaBridge"></div>
+        <div class="field"><label class="fl">Auto-connect</label><input type="checkbox" id="wzMqttAuto" checked></div>
+      </div>
+      <div class="wizard-pane" data-pane="2">
+        <div class="field"><label class="fl">Username</label><input type="text" id="wzMqttUser" placeholder="(optional)"></div>
+        <div class="field"><label class="fl">Password</label><input type="password" id="wzMqttPass"></div>
+        <div class="field"><label class="fl">TLS</label><input type="checkbox" id="wzMqttTls"></div>
+        <div class="field"><label class="fl">Topic Prefix</label><input type="text" id="wzMqttPrefix" placeholder="bridge/tags"></div>
+        <div class="field"><label class="fl">Payload Fields</label><select id="wzMqttFields"><option>Value, Timestamp</option><option>Value, Timestamp, Quality</option><option>Value, Timestamp, Quality, SourceId, ItemId</option><option>Value, Timestamp, SourceId, ItemId, DisplayName, DataType</option></select></div>
+      </div>
+      <div class="wizard-pane" data-pane="3">
+        <div class="wizard-summary" id="wzMqttSummary"></div>
+        <div class="field"><label class="fl">Connect now</label><input type="checkbox" id="wzMqttConnectNow" checked></div>
+      </div>
+    </div>
+    <div class="wizard-foot">
+      <button class="btn ghost" type="button" onclick="closeMqttWizard()">Cancel</button>
+      <button class="btn ghost" type="button" id="wzMqttBack" onclick="wzMqttStep(-1)">Back</button>
+      <button class="btn" type="button" id="wzMqttNext" onclick="wzMqttStep(1)">Next</button>
+      <button class="btn" type="button" id="wzMqttFinish" style="display:none" onclick="wzMqttFinish()">Finish</button>
+    </div>
+  </div>
+</div>
+</div>
+<div class="view" id="view-iot-traffic">
+    <div class="box">
+        <div class="box-h">Traffic Monitor <span class="info" data-tip="Recent publish (PUB) and subscribe (SUB) messages. PUB = value sent to broker; SUB = inbound message applied via the UA write path.">i</span> <span class="msg" style="margin-left:auto"><button class="btn ghost" onclick="loadMqttValues()">Refresh</button></span></div>
         <div class="box-b">
             <div class="field" style="margin-bottom:10px">
                 <label class="fl" for="mqttValDir">Type</label>
@@ -841,9 +1287,10 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="view" id="view-influx">
+    <div class="first-run-banner" id="hintInflux" style="display:none"></div>
     <div class="grid2">
         <div class="box">
-            <div class="box-h">InfluxDB <span class="info" data-tip="This app writes to an external InfluxDB 2.x/3.x server. It does NOT run InfluxDB itself. Configure URL, Org, Bucket and Token here. Settings are saved to influx.json.">i</span></div>
+            <div class="box-h">Historian <span class="msg" style="font-weight:400;text-transform:none;letter-spacing:0">InfluxDB 2.x/3.x</span> <span class="info" data-tip="This app writes to an external InfluxDB 2.x/3.x server. It does NOT run InfluxDB itself. Configure URL, Org, Bucket and Token here. Settings are saved to influx.json.">i</span><button class="btn" type="button" onclick="openInfluxWizard()" style="margin-left:auto">Setup Wizard</button></div>
             <div class="box-b">
                 <div class="conn-section">
                     <div class="conn-section-h">Configuration <span class="info" data-tip="Settings saved to influx.json. Changes take effect after Save Config and apply to the next Connect.">i</span></div>
@@ -876,6 +1323,41 @@ internal static class DashboardPage
             </div>
         </div>
     </div>
+<div class="modal-overlay" id="influxWizard" onclick="if(event.target===this)closeInfluxWizard()">
+  <div class="modal wizard" role="dialog" aria-modal="true" aria-labelledby="influxWizardTitle">
+    <div class="modal-head">
+      <div class="modal-title" id="influxWizardTitle">Enable Historian (InfluxDB)</div>
+      <button class="modal-close" type="button" onclick="closeInfluxWizard()">&times;</button>
+    </div>
+    <div class="wizard-steps">
+      <span class="wizard-step" data-step="1">1. Server</span>
+      <span class="wizard-step" data-step="2">2. Auth</span>
+      <span class="wizard-step" data-step="3">3. Save &amp; Connect</span>
+    </div>
+    <div class="wizard-body">
+      <div class="wizard-pane active" data-pane="1">
+        <div class="field"><label class="fl">URL</label><input type="text" id="wzInfluxUrl" placeholder="http://localhost:8086"></div>
+        <div class="field"><label class="fl">Org</label><input type="text" id="wzInfluxOrg" placeholder="my-org"></div>
+        <div class="field"><label class="fl">Bucket</label><input type="text" id="wzInfluxBucket" placeholder="opc"></div>
+      </div>
+      <div class="wizard-pane" data-pane="2">
+        <div class="field"><label class="fl">Token</label><input type="password" id="wzInfluxToken"></div>
+        <div class="hint">API token with write access to the bucket. Stored in influx.json.</div>
+      </div>
+      <div class="wizard-pane" data-pane="3">
+        <div class="wizard-summary" id="wzInfluxSummary"></div>
+        <div class="field"><label class="fl">Auto-connect</label><input type="checkbox" id="wzInfluxAuto" checked></div>
+        <div class="field"><label class="fl">Connect now</label><input type="checkbox" id="wzInfluxConnectNow" checked></div>
+      </div>
+    </div>
+    <div class="wizard-foot">
+      <button class="btn ghost" type="button" onclick="closeInfluxWizard()">Cancel</button>
+      <button class="btn ghost" type="button" id="wzInfluxBack" onclick="wzInfluxStep(-1)">Back</button>
+      <button class="btn" type="button" id="wzInfluxNext" onclick="wzInfluxStep(1)">Next</button>
+      <button class="btn" type="button" id="wzInfluxFinish" style="display:none" onclick="wzInfluxFinish()">Finish</button>
+    </div>
+  </div>
+</div>
 </div>
 <div class="view" id="view-diagram">
     <div class="diag-toolbar">
@@ -932,11 +1414,18 @@ document.addEventListener('mouseout', e => { if (e.target.closest('.info') && ti
 const el = id => document.getElementById(id);
 const state = {
     tagPath: '',
+    uaBrowseTrail: [],
     linkBrowsePath: '',
     sources: [],
     selectedSourceId: 'default',
     editingNewSource: false,
+    selectedDriverId: '',
+    editingNewDriver: false,
+    selectedMxId: '',
+    editingNewMx: false,
+    editingNewUaSource: false,
     liveValuesEnabled: true,
+    liveValuesSource: '',
     lastValueCount: 0,
     updateRateMs: 1000,
     useSubscriptions: true,
@@ -948,8 +1437,17 @@ const state = {
     mappingSort: 'name',
     mappingSortDir: 1,
     mappingFilter: '',
+    mapType: 'opc-da',
+    mqttConfigured: false,
+    mqttState: 'Disconnected',
+    mqttConnectionState: 'Disconnected',
+    influxConfigured: false,
+    influxState: 'Disconnected',
     mqttValFilter: { direction: '', topic: '' },
     valuesByKey: new Map(),
+    disconnectedKeys: new Set(),
+    badQualityKeys: new Set(),
+    disconnectedSources: new Set(),
     handleHistory: [],
     handleBaseline: null,
     diagramTab: 'all',
@@ -1140,9 +1638,9 @@ function renderDiagram() {
 
 function linkEndpoints(link) {
     const providerSourceId = link.providerSourceId || link.ProviderSourceId || 'default';
-    const providerItemId = link.providerItemId || link.ProviderItemId || link.providerDaItemId || link.ProviderDaItemId || '';
+    const providerItemId = link.providerItemId || link.ProviderItemId || link.providerItemId || link.ProviderItemId || '';
     const consumerSourceId = link.consumerSourceId || link.ConsumerSourceId || link.sourceId || link.SourceId || 'default';
-    const consumerItemId = link.consumerItemId || link.ConsumerItemId || link.consumerDaItemId || link.ConsumerDaItemId || link.daItemId || link.DaItemId || '';
+    const consumerItemId = link.consumerItemId || link.ConsumerItemId || link.consumerDaItemId || link.ConsumerDaItemId || link.itemId || link.ItemId || '';
     return {
         providerSourceId,
         providerItemId,
@@ -1170,13 +1668,13 @@ function collectDaLinks() {
     // legacy provider fields still present on mappings
     (state.mappings || []).forEach(m => {
         const pSid = m.providerSourceId || m.ProviderSourceId;
-        const pItem = m.providerDaItemId || m.ProviderDaItemId || m.providerItemId || m.ProviderItemId;
+        const pItem = m.providerItemId || m.ProviderItemId || m.providerItemId || m.ProviderItemId;
         if (!pSid || !pItem) return;
         push({
             providerSourceId: pSid,
             providerItemId: pItem,
             consumerSourceId: m.sourceId || m.SourceId || 'default',
-            consumerItemId: m.daItemId || m.DaItemId || '',
+            consumerItemId: m.itemId || m.ItemId || m.daItemId || m.DaItemId || '',
             enabled: (m.enabled ?? m.Enabled) !== false
         }, 'legacy');
     });
@@ -1185,7 +1683,7 @@ function collectDaLinks() {
 
 function tagShortName(tagOrItemId) {
     if (tagOrItemId && typeof tagOrItemId === 'object') {
-        const itemId = tagOrItemId.daItemId || tagOrItemId.DaItemId || '';
+        const itemId = tagOrItemId.itemId || tagOrItemId.ItemId || tagOrItemId.daItemId || tagOrItemId.DaItemId || '';
         const display = tagOrItemId.displayName || tagOrItemId.DisplayName || '';
         if (display) return String(display);
         return String(itemId).split('.').pop() || itemId || '?';
@@ -1435,7 +1933,7 @@ function renderDaUaDiagram() {
     let svg = '';
     const totalTags = mappings.length;
     const sourceCount = bySource.size;
-    svg += `<text x="50" y="28" fill="#6b7689" font-size="11" font-weight="600">DA → UA (aggregated)</text>`;
+    svg += `<text x="50" y="28" fill="#6b7689" font-size="11" font-weight="600">Source → UA (aggregated)</text>`;
     svg += `<text x="50" y="46" fill="#6b7689" font-size="10">${sourceCount} sources · ${totalTags} tags · click a tag-group to expand (page ${pageSize}) · Fit/pan for overview</text>`;
 
     const groupPositions = new Map();
@@ -1498,7 +1996,7 @@ function renderDaUaDiagram() {
         const detailPositions = [];
         if (expanded && slice.length) {
             slice.forEach((tag, i) => {
-                const itemId = tag.daItemId || tag.DaItemId || '';
+                const itemId = tag.itemId || tag.ItemId || tag.daItemId || tag.DaItemId || '';
                 const tKey = tagKey(sourceId, itemId);
                 const tagY = sourceY + 72 + i * tagSpacing;
                 const cy = tagY + 14;
@@ -1856,7 +2354,7 @@ function renderMqttDiagram() {
         const detailPositions = [];
         if (expanded && slice.length) {
             slice.forEach((tag, i) => {
-                const itemId = tag.daItemId || tag.DaItemId || '';
+                const itemId = tag.itemId || tag.ItemId || tag.daItemId || tag.DaItemId || '';
                 const tKey = tagKey(sourceId, itemId);
                 const tagY = sourceY + 72 + i * tagSpacing;
                 const cy = tagY + 14;
@@ -1960,7 +2458,7 @@ function getTagStatus(tag) {
     if (!tag || (tag.enabled ?? tag.Enabled) === false) return 'off';
 
     const sid = tag.sourceId || tag.SourceId || 'default';
-    const itemId = tag.daItemId || tag.DaItemId || '';
+    const itemId = tag.itemId || tag.ItemId || tag.daItemId || tag.DaItemId || '';
     const value = state.valuesByKey.get(valueKey(sid, itemId));
     if (!value) return 'off';
 
@@ -1978,7 +2476,7 @@ function getLinkStatus(link) {
     const ep = linkEndpoints(link);
     if ((link.enabled ?? link.Enabled) === false) return 'off';
     const provider = (state.mappings || []).find(m =>
-        tagKey(m.sourceId || m.SourceId || 'default', m.daItemId || m.DaItemId || '') === ep.providerKey);
+        tagKey(m.sourceId || m.SourceId || 'default', m.itemId || m.ItemId || m.daItemId || m.DaItemId || '') === ep.providerKey);
     if (!provider) return 'off';
     return getTagStatus(provider);
 }
@@ -2019,13 +2517,14 @@ function currentValue(sourceId, itemId) {
     return state.valuesByKey.get(valueKey(sourceId, itemId)) || null;
 }
 
-function renderLiveValue(value) {
+function renderLiveValue(value, fallbackType) {
     if (!value) return '<span class="msg">No live value</span>';
     const text = String(get(value, 'value') ?? '');
     const quality = get(value, 'daQuality');
     const isGood = !!get(value, 'isGood');
     const timestamp = locTime(get(value, 'timestampUtc'));
-    return `<div class="fp-k">Real value</div><div class="fp-v mono" title="${attr(text)}">${esc(text)}</div><div class="fp-meta"><span>${badge(isGood ? 'Good' : 'Bad', isGood ? 'good' : 'bad')} <span class="${isGood ? 'good' : 'bad'}">(${esc(String(quality ?? '—'))})</span></span><span class="timestamp">${esc(timestamp)}</span></div>`;
+    const type = get(value, 'dataType') || fallbackType || '—';
+    return `<div class="fp-v mono" title="${attr(text)}">${esc(text)}</div><div class="fp-meta"><span class="pill" style="padding:1px 6px;font-size:10px" title="Data type">${esc(type)}</span><span>${badge(isGood ? 'Good' : 'Bad', isGood ? 'good' : 'bad')} <span class="${isGood ? 'good' : 'bad'}">(${esc(String(quality ?? '—'))})</span></span><span class="timestamp">${esc(timestamp)}</span></div>`;
 }
 
 function linkTagLabel(sourceId, itemId, nameOverride = null) {
@@ -2038,6 +2537,10 @@ function renderLinkSourceStatus() {
     if (!sourceStatus) return;
     const source = currentSource();
     if (source) {
+        if (!sourceMatchesMapType(source, 'opc-da')) {
+            sourceStatus.innerHTML = `<span class="msg">${esc(source.displayName || source.sourceId)} is not an OPC DA source — DA Links require an OPC DA source.</span>`;
+            return;
+        }
         const cs = get(source, 'connectionState') || '—';
         sourceStatus.innerHTML = `${badge(cs, stateClass(cs))} <span class="msg">${esc(source.displayName || source.sourceId)} · ${esc(source.sourceId)}</span>`;
         return;
@@ -2118,7 +2621,7 @@ function clearLinkDraftSelection() {
 }
 function renderMappingRow(mapping) {
     const sourceId = mapping.sourceId || mapping.SourceId || 'default';
-    const item = mapping.daItemId || mapping.DaItemId;
+    const item = mapping.itemId || mapping.ItemId || mapping.daItemId || mapping.DaItemId;
     const name = mapping.displayName || mapping.DisplayName || item;
     const node = mapping.uaNodeId || mapping.UaNodeId || defaultUaNodeId(sourceId, item);
     const mode = mapping.mode || mapping.Mode || 'Source';
@@ -2137,13 +2640,37 @@ function renderMappingRow(mapping) {
     const mqttBadge = mqttOn ? `<span class="pill" style="padding:1px 6px;font-size:10px">MQTT</span>` : '';
     const influxOn = (mapping.influxEnabled ?? mapping.InfluxEnabled) === true;
     const influxBadge = influxOn ? `<span class="pill" style="padding:1px 6px;font-size:10px">Influx</span>` : '';
+    // Runtime type from the live value when present (matches Live Values); otherwise the configured type.
+    const live = currentValue(sourceId, item);
+    const mappedType = (live && get(live, 'dataType')) || mapping.dataType || mapping.DataType || '—';
+    const typeBadge = `<span class="pill" style="padding:1px 6px;font-size:10px" title="Data type">${esc(mappedType)}</span>`;
+    // Connection state comes from server-side signals, never from absence in the capped
+    // value window: the bridge reports tags whose monitored item failed (auto-retrying),
+    // tags whose last value is bad quality, and the per-source connection state.
+    const sourceDown = enabled && state.disconnectedSources.has(sourceId);
+    const failedItem = enabled && state.disconnectedKeys.has(valueKey(sourceId, item));
+    const badQuality = enabled && state.badQualityKeys.has(valueKey(sourceId, item));
+    let discBadge = '';
+    let discTitle = '';
+    if (sourceDown) { discBadge = badge('Disc', 'bad'); discTitle = 'Disconnected — source is not connected'; }
+    else if (failedItem) { discBadge = badge('Disc', 'bad'); discTitle = 'Disconnected — no value received (auto-retrying)'; }
+    else if (badQuality) { discBadge = badge('Bad', 'bad'); discTitle = 'Bad quality from source'; }
+    // Full status summary — clipped badges stay discoverable via the row tooltip.
+    const statusSummary = [mappedType + ' type', deadband > 0 ? 'db ' + deadband + '%' : null, pollRate > 0 ? pollRate + 'ms' : null, mqttOn ? 'MQTT' : null, influxOn ? 'Influx' : null, sourceDown ? 'Source disconnected' : null, failedItem ? 'Disconnected (auto-retrying)' : null, badQuality ? 'Bad quality' : null, access + (simulated && access !== 'Write' ? ' / Sim' : '')].filter(Boolean).join(' · ');
     const desc = (mapping.description || mapping.Description || '').trim();
     const descIcon = desc ? `<span class="li-desc" title="${attr(desc)}" data-action="open-faceplate" data-source-id="${attr(sourceId)}" data-item-id="${attr(item)}">&#8505;</span>` : '';
-    return `<div class="li clickable" data-action="open-faceplate" data-source-id="${attr(sourceId)}" data-item-id="${attr(item)}">${descIcon}<div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="n">${esc(name)}</span> <span class="p">${esc(sourceId)} · ${esc(item)} · UA: ${esc(node)}</span></div><div class="li-badge">${accessBadge}${deadbandBadge}${rateBadge}${mqttBadge}${influxBadge}</div></div>`;
+    // Config badges clip/fade first; the colored access status is pinned at the far
+    // right and never gets cut off.
+    return `<div class="li clickable" data-action="open-faceplate" data-source-id="${attr(sourceId)}" data-item-id="${attr(item)}">${descIcon}<div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="n">${esc(name)}</span> <span class="p">${esc(sourceId)} · ${esc(item)} · UA: ${esc(node)}</span></div><div class="li-badge" title="${attr(statusSummary)}"><span class="li-badge-clip">${typeBadge}${deadbandBadge}${rateBadge}${mqttBadge}${influxBadge}</span><span class="li-badge-status">${discBadge ? `<span title="${attr(discTitle)}">${discBadge}</span>` : ''}${accessBadge}</span></div></div>`;
 }
 
+const MAPPING_ROWS_CAP = 1000;
 function renderMappingRows(mappings) {
-    return mappings.length ? mappings.map(renderMappingRow).join('') : '<span class="msg">No DA → OPC UA mappings.</span>';
+    const rows = mappings.length > MAPPING_ROWS_CAP ? mappings.slice(0, MAPPING_ROWS_CAP) : mappings;
+    const note = mappings.length > MAPPING_ROWS_CAP
+        ? `<span class="msg">… showing first ${MAPPING_ROWS_CAP} of ${mappings.length} mappings — use the search box to filter</span>`
+        : '';
+    return (rows.length ? rows.map(renderMappingRow).join('') : '<span class="msg">No source → OPC UA mappings.</span>') + note;
 }
 
 let faceplateOpen = false;
@@ -2185,7 +2712,7 @@ function openFaceplate(sourceId, itemId) {
     el('fpRemove').dataset.itemId = itemId;
     el('fpEnabled').dataset.sourceId = sourceId;
     el('fpEnabled').dataset.itemId = itemId;
-    el('fpLivePanel').innerHTML = renderLiveValue(currentValue(sourceId, itemId));
+    el('fpLivePanel').innerHTML = renderLiveValue(currentValue(sourceId, itemId), mapping.dataType || mapping.DataType || null);
     el('faceplateOverlay').classList.add('open');
 }
 function deriveAccess(mapping) {
@@ -2225,23 +2752,81 @@ function updateManualInputState() {
         : 'Simulation OFF: bridge reads from DA (for Read/Read-Write). Toggle to inject a fixed value.';
 }
 
- async function showTab(name) {
-     document.querySelectorAll('.tabbtn').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
-    document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + name));
-    if (location.hash !== '#' + name) history.replaceState(null, '', '#' + name);
-    if (name === 'logs') { state.logsLoaded = false; loadLogs(true).catch(e => el('logMessage').textContent = '✗ ' + e.message); }
-    if (name === 'diagnostics') { diagnosticsActive = true; loadDiagnostics(); }
-    else { diagnosticsActive = false; }
-    if (name === 'about') loadAppInfo().catch(e => el('aboutName').textContent = '✗ ' + e.message);
-    if (name === 'help') loadHelp().catch(e => el('helpContent').innerHTML = '<span class="msg bad">✗ ' + esc(e.message) + '</span>');
-        if (name === 'mqtt') { await loadMqtt(); await loadMqttValues(); }
-    if (name === 'influx') { await loadInflux(); }
-    if (name === 'links') loadDaLinks().catch(e => el('linksMessage').textContent = '✗ ' + e.message);
-    if (name === 'diagram') {
-        state.diagramLoaded = true;
-        await Promise.all([loadSources(), loadMappings(), loadDaLinks(), loadMqtt().catch(() => {})]);
-        renderDiagram();
-    }
+const ROUTE_TO_TAB = {
+  'connectivity/sources': 'connection',
+  'connectivity/opc-da': 'opc-da',
+  'connectivity/opc-ua': 'opc-ua',
+  'connectivity/drivers': 'drivers',
+  'connectivity/mx-component': 'mx-component',
+  'connectivity/diagnostics': 'diagnostics',
+  'tags/maps': 'tags',
+  'tags/maps/opc-da': 'tags',
+  'tags/maps/opc-ua': 'tags',
+  'tags/maps/drivers': 'tags',
+  'tags/maps/mx': 'tags',
+  'tags/links': 'links',
+  'iot/mqtt': 'mqtt',
+  'iot/traffic': 'iot-traffic',
+  'historian/influx': 'influx',
+  'ops/monitor': 'monitor',
+  'ops/values': 'values',
+  'ops/logs': 'logs',
+  'ops/diagram': 'diagram',
+  'help/guide': 'help',
+  'help/about': 'about'
+};
+const DEFAULT_ROUTE = 'ops/monitor';
+
+async function navigate(route) {
+  if (route === 'tags/maps') route = 'tags/maps/' + (state.mapType || 'opc-da');
+  else if (route === 'tags/maps/opc-da' || route === 'tags/maps/opc-ua' || route === 'tags/maps/drivers' || route === 'tags/maps/mx') {
+    state.mapType = route.slice('tags/maps/'.length);
+  }
+  const tab = ROUTE_TO_TAB[route] || ROUTE_TO_TAB[DEFAULT_ROUTE];
+  await showTab(tab, route);
+}
+
+async function showTab(name, route) {
+  route = route || (Object.keys(ROUTE_TO_TAB).find(r => ROUTE_TO_TAB[r] === name) || DEFAULT_ROUTE);
+  const activeTab = name;
+  const mapsActive = activeTab === 'tags' || (route && String(route).startsWith('tags/maps'));
+  document.querySelectorAll('.tabbtn').forEach(b => {
+    const br = b.dataset.route || '';
+    b.classList.toggle('active', br === route || (mapsActive && br === 'tags/maps'));
+  });
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + activeTab));
+  if (location.hash !== '#/' + route) history.replaceState(null, '', '#/' + route);
+  if (activeTab === 'logs') { state.logsLoaded = false; loadLogs(true).catch(e => el('logMessage').textContent = '✗ ' + e.message); }
+  if (activeTab === 'diagnostics') { diagnosticsActive = true; loadDiagnostics(); }
+  else { diagnosticsActive = false; }
+  if (activeTab === 'about') loadAppInfo().catch(e => el('aboutName').textContent = '✗ ' + e.message);
+  if (activeTab === 'help') loadHelp().catch(e => el('helpContent').innerHTML = '<span class="msg bad">✗ ' + esc(e.message) + '</span>');
+  if (activeTab === 'mx-component') { renderMx(); }
+  if (activeTab === 'mqtt') { await loadMqtt(); }
+  if (activeTab === 'iot-traffic') { await loadMqttValues(); }
+  if (name === 'influx') { await loadInflux(); }
+  if (activeTab === 'opc-da' || activeTab === 'opc-ua' || activeTab === 'connection') {
+    await loadSources().catch(e => console.warn(e));
+  }
+  if (activeTab === 'drivers') {
+    await loadSources().catch(e => console.warn(e));
+    renderDrivers();
+  }
+  if (activeTab === 'tags') {
+    await loadSources().catch(e => console.warn(e));
+    await loadMappings().catch(e => console.warn(e));
+    syncMapTypeUi();
+    ensureMapSourceSelection();
+    renderMapSourceSelect();
+    updateMapEmptyBanner();
+    updateMapBrowseUi();
+    rerenderMappings();
+  }
+  if (activeTab === 'diagram') {
+    state.diagramLoaded = true;
+    await Promise.all([loadSources(), loadMappings(), loadDaLinks(), loadMqtt().catch(() => {})]);
+    renderDiagram();
+  }
 }
 function badge(t, c) { return `<span class="badge ${c}">${esc(t)}</span>`; }
 function stateClass(v) {
@@ -2262,34 +2847,269 @@ function relTime(u) {
 }
 function shortTime(u) {
     if (!u) return '—';
-    return new Date(u).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    return new Date(u).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 });
 }
-function locTime(u) { return u ? new Date(u).toLocaleString() : '—'; }
+function locTime(u) {
+    if (!u) return '—';
+    return new Date(u).toLocaleString([], { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 });
+}
 function get(o, k) { return o?.[k] ?? o?.[k[0].toUpperCase() + k.slice(1)]; }
 function currentSource() { return state.editingNewSource ? null : state.sources.find(s => s.sourceId === state.selectedSourceId) || null; }
 function defaultUaNodeId(sourceId, itemId) { return `ns=2;s=${sourceId}/${itemId}`; }
+function isUaSource(source) {
+    const t = String(source?.sourceType || source?.SourceType || 'OpcDa');
+    return t.toLowerCase() === 'opcua';
+}
+function isMelsecSource(source) { return String(get(source, 'sourceType') || 'OpcDa') === 'MelsecA3n'; }
+function isS7Source(source) { return String(get(source, 'sourceType') || 'OpcDa') === 'S7200Ppi'; }
+function isMxSource(source) { return String(get(source, 'sourceType') || 'OpcDa') === 'MxComponent'; }
+// Serial PLC drivers (configured in-app). MX Component sources live on their own tab.
+function isDriverSource(source) { return isMelsecSource(source) || isS7Source(source); }
+function opcDaSources() { return state.sources.filter(s => !isUaSource(s) && !isDriverSource(s) && !isMxSource(s)); }
+function mapTypeSources(type) {
+    type = type || state.mapType || 'opc-da';
+    if (type === 'opc-ua') return uaSources();
+    if (type === 'drivers') return driverSources();
+    if (type === 'mx') return mxSources();
+    return opcDaSources();
+}
+function sourceMatchesMapType(source, type) {
+    type = type || state.mapType || 'opc-da';
+    if (!source) return false;
+    if (type === 'opc-ua') return isUaSource(source);
+    if (type === 'drivers') return isDriverSource(source);
+    if (type === 'mx') return isMxSource(source);
+    return !isUaSource(source) && !isDriverSource(source) && !isMxSource(source);
+}
+function mapTypeRoute(type) { return 'tags/maps/' + (type || state.mapType || 'opc-da'); }
+function mapTypeLabel(type) {
+    type = type || state.mapType || 'opc-da';
+    if (type === 'opc-ua') return 'OPC UA';
+    if (type === 'drivers') return 'Drivers';
+    if (type === 'mx') return 'MX Component';
+    return 'OPC DA';
+}
+function mapTypeConnectivityRoute(type) {
+    type = type || state.mapType || 'opc-da';
+    if (type === 'opc-ua') return 'connectivity/opc-ua';
+    if (type === 'drivers') return 'connectivity/drivers';
+    if (type === 'mx') return 'connectivity/mx-component';
+    return 'connectivity/opc-da';
+}
+function syncMapTypeUi() {
+    document.querySelectorAll('.map-type-tab').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.mapType === state.mapType);
+    });
+}
+function setMapType(type, opts) {
+    type = type || 'opc-da';
+    if (type !== 'opc-da' && type !== 'opc-ua' && type !== 'drivers' && type !== 'mx') type = 'opc-da';
+    const changed = state.mapType !== type;
+    state.mapType = type;
+    syncMapTypeUi();
+    if (changed || (opts && opts.force)) {
+        state.tagPath = '';
+        state.uaBrowseTrail = [];
+        if (el('tagTree')) el('tagTree').innerHTML = '';
+        if (el('tagBreadcrumb')) el('tagBreadcrumb').innerHTML = '';
+        if (el('tagStatus')) el('tagStatus').textContent = (type === 'drivers' || type === 'mx')
+            ? 'Enter a device address below, or map from known items.'
+            : 'Browse all tags, or open folders one level at a time.';
+    }
+    ensureMapSourceSelection();
+    renderMapSourceSelect();
+    updateMapSourceHint();
+    updateMapEmptyBanner();
+    updateMapBrowseUi();
+    rerenderMappings();
+    if (!(opts && opts.skipNavigate) && document.getElementById('view-tags')?.classList.contains('active')) {
+        const route = mapTypeRoute(type);
+        if (location.hash !== '#/' + route) history.replaceState(null, '', '#/' + route);
+        document.querySelectorAll('.tabbtn').forEach(b => b.classList.toggle('active', b.dataset.route === 'tags/maps' || b.dataset.route === route));
+    }
+}
+function ensureMapSourceSelection() {
+    // Maps-tab source selection only applies while the Maps view is active — it must not
+    // clobber a source picked on the Connectivity pages (e.g. a UA source selected on the
+    // OPC UA tab would otherwise revert to the first DA source immediately).
+    if (!document.getElementById('view-tags')?.classList.contains('active')) return;
+    const sources = mapTypeSources();
+    if (!sources.length) return;
+    const current = state.sources.find(s => s.sourceId === state.selectedSourceId);
+    if (!current || !sourceMatchesMapType(current)) {
+        state.selectedSourceId = sources[0].sourceId;
+    }
+}
+function renderMapSourceSelect() {
+    const mapSelect = el('mapSourceSelect');
+    if (!mapSelect) return;
+    const sources = mapTypeSources();
+    mapSelect.innerHTML = sources.map(source =>
+        `<option value="${esc(source.sourceId)}">${esc(source.displayName || source.sourceId)}</option>`
+    ).join('');
+    if (sources.some(s => s.sourceId === state.selectedSourceId)) mapSelect.value = state.selectedSourceId;
+    else if (sources.length) mapSelect.value = sources[0].sourceId;
+}
+function updateMapEmptyBanner() {
+    const banner = el('bannerTagsNoSources');
+    if (!banner) return;
+    const sources = mapTypeSources();
+    const none = sources.length === 0;
+    banner.style.display = none ? '' : 'none';
+    if (none) {
+        const label = mapTypeLabel();
+        const route = mapTypeConnectivityRoute();
+        banner.innerHTML = `No ${esc(label)} sources yet. <button class="btn" type="button" onclick="navigate('${route}')">Add ${esc(label)} Source</button>`;
+    } else {
+        banner.innerHTML = '';
+    }
+}
+function updateMapBrowseUi() {
+    const allBtn = el('btnBrowseAllTags');
+    const folderBtn = el('btnBrowseTags');
+    const addressBased = state.mapType === 'drivers' || state.mapType === 'mx';
+    if (allBtn) allBtn.style.display = addressBased ? 'none' : '';
+    if (folderBtn) folderBtn.style.display = addressBased ? 'none' : '';
+    if (el('manualItem')) {
+        el('manualItem').placeholder = state.mapType === 'opc-ua'
+            ? 'NodeId (e.g. ns=2;s=Tag)'
+            : state.mapType === 'drivers'
+              ? 'Address (e.g. D100, VW100, I0.0)'
+              : state.mapType === 'mx'
+                ? 'Address (e.g. D100, M10, X20, D100:8)'
+                : 'Item ID (e.g. Random.Real8)';
+    }
+}
+function mappingsForMapType(mappings) {
+    const ids = new Set(mapTypeSources().map(s => s.sourceId));
+    return (mappings || []).filter(m => ids.has(m.sourceId || m.SourceId || 'default'));
+}
+function setDriverFormType(type) {
+    state.driverFormType = type || 'MelsecA3n';
+    const s7 = state.driverFormType === 'S7200Ppi';
+    if (el('drvA3nStationRow')) el('drvA3nStationRow').style.display = s7 ? 'none' : '';
+    if (el('drvS7PpiRow')) el('drvS7PpiRow').style.display = s7 ? '' : 'none';
+}
+function wzDrvOnTypeChange() {
+    const s7 = el('wzDrvType') && el('wzDrvType').value === 'S7200Ppi';
+    if (el('wzDrvStationRow')) el('wzDrvStationRow').style.display = s7 ? 'none' : '';
+    if (el('wzDrvS7PpiRow')) el('wzDrvS7PpiRow').style.display = s7 ? '' : 'none';
+    if (el('wzDrvParity')) el('wzDrvParity').value = s7 ? 'Even' : 'Odd';
+}
+
+function sourceTypeLabel(source) {
+    if (isUaSource(source)) return 'UA';
+    if (isMelsecSource(source)) return 'A3N';
+    if (isMxSource(source)) return 'MX';
+    if (isS7Source(source)) return 'S7-200';
+    return 'DA';
+}
+function sourceTypeBadge(source) {
+    if (isUaSource(source)) return badge('UA', 'partial');
+    if (isMelsecSource(source)) return badge('A3N', 'partial');
+    if (isMxSource(source)) return badge('MX', 'partial');
+    if (isS7Source(source)) return badge('S7-200', 'partial');
+    return badge('DA', 'warn');
+}
+function sourceEndpointSummary(source) {
+    if (isUaSource(source)) {
+        return esc(source.endpointUrl || source.EndpointUrl || '—');
+    }
+    if (isMxSource(source)) {
+        return esc('MX station ' + (source.logicalStationNumber ?? 0));
+    }
+    return `${esc(source.host || 'localhost')} · ${esc(source.progId || '')}`;
+}
+function sourceStatusRowHtml(source) {
+    const st = source.connectionState || source.ConnectionState || '';
+    const err = source.lastError || source.LastError || '';
+    const errBit = err ? ` · <span class="bad">${esc(err)}</span>` : '';
+    return `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)} ${sourceTypeBadge(source)} ${st ? badge(st, stateClass(st)) : ''}</div><div class="p">${esc(source.sourceId)} · ${sourceEndpointSummary(source)} · ${formatMs(source.updateRateMs)}${errBit}</div></div><button class="btn ghost" data-action="select-source-status" data-source-id="${attr(source.sourceId)}">Select</button></div>`;
+}
+function renderSourcesStatusList() {
+    const host = el('sourcesStatusList');
+    if (!host) return;
+    host.innerHTML = state.sources.length
+        ? state.sources.map(sourceStatusRowHtml).join('')
+        : '<span class="msg">No sources configured. Click + Add Source.</span>';
+}
+function daSources() { return state.sources.filter(s => !isUaSource(s)); }
+function uaSources() { return state.sources.filter(s => isUaSource(s)); }
 function renderSources() {
     const select = el('selectedSource');
-    const mapSelect = el('mapSourceSelect');
-    const options = state.sources.map(source => `<option value="${esc(source.sourceId)}">${esc(source.displayName || source.sourceId)}</option>`).join('');
-    select.innerHTML = options;
-    mapSelect.innerHTML = options;
-    if (!state.editingNewSource && !state.sources.some(source => source.sourceId === state.selectedSourceId) && state.sources.length) {
+    const uaSelect = el('uaSelectedSource');
+    const daOpts = opcDaSources().map(source => `<option value="${esc(source.sourceId)}">${esc(source.displayName || source.sourceId)}</option>`).join('');
+    const uaOpts = uaSources().map(source => `<option value="${esc(source.sourceId)}">${esc(source.displayName || source.sourceId)}</option>`).join('');
+    if (select) select.innerHTML = daOpts;
+    if (uaSelect) uaSelect.innerHTML = uaOpts;
+    if (!state.editingNewSource && !state.editingNewUaSource && !state.sources.some(source => source.sourceId === state.selectedSourceId) && state.sources.length) {
         state.selectedSourceId = state.sources[0].sourceId;
     }
-    select.value = state.selectedSourceId;
-    mapSelect.value = state.selectedSourceId;
+    ensureMapSourceSelection();
+    if (select) select.value = state.selectedSourceId;
+    if (uaSelect) uaSelect.value = state.selectedSourceId;
+    renderMapSourceSelect();
     el('pSources').textContent = state.sources.length;
-    const sideCount = el('pSourcesSide'); if (sideCount) sideCount.textContent = state.sources.length + ' source' + (state.sources.length !== 1 ? 's' : '');
-    el('sourcesList').innerHTML = state.sources.length ? state.sources.map(source =>
-        `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)}</div><div class="p">${esc(source.sourceId)} · ${esc(source.host || 'localhost')} · ${esc(source.progId || '')} · ${formatMs(source.updateRateMs)}</div></div><button class="btn ghost" data-action="select-source" data-source-id="${attr(source.sourceId)}">Select</button></div>`
-    ).join('') : '<span class="msg">No sources configured.</span>';
+    const noSources = state.sources.length === 0;
+    const bannerNo = el('bannerNoSources');
+    if (bannerNo) bannerNo.style.display = noSources ? '' : 'none';
+    if (bannerNo && noSources) bannerNo.innerHTML = 'No sources configured. <button class="btn" type="button" onclick="navigate(\'connectivity/sources\')">Add Source</button>';
+    updateMapEmptyBanner();
+    updateNoMappingsBanner();
+    const sideCount = el('pSourcesSide');
+    if (sideCount) {
+        const n = daSources().length;
+        sideCount.textContent = n + ' source' + (n !== 1 ? 's' : '');
+    }
+    const uaSide = el('pUaSourcesSide');
+    if (uaSide) {
+        const n = uaSources().length;
+        uaSide.textContent = n + ' source' + (n !== 1 ? 's' : '');
+    }
+    const list = el('sourcesList');
+    if (list) {
+        const das = opcDaSources();
+        list.innerHTML = das.length ? das.map(source =>
+            `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)} ${sourceTypeBadge(source)}</div><div class="p">${esc(source.sourceId)} · ${esc(source.host || 'localhost')} · ${esc(source.progId || '')} · ${formatMs(source.updateRateMs)}</div></div><button class="btn ghost" data-action="select-source" data-source-id="${attr(source.sourceId)}">Select</button></div>`
+        ).join('') : '<span class="msg">No OPC DA sources configured.</span>';
+    }
+    const uaList = el('uaSourcesList');
+    if (uaList) {
+        const uas = uaSources();
+        uaList.innerHTML = uas.length ? uas.map(source =>
+            `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)} ${sourceTypeBadge(source)}</div><div class="p">${esc(source.sourceId)} · ${esc(source.endpointUrl || '')} · ${formatMs(source.updateRateMs)}</div></div><button class="btn ghost" data-action="select-ua-source" data-source-id="${attr(source.sourceId)}">Select</button></div>`
+        ).join('') : '<span class="msg">No OPC UA sources configured.</span>';
+    }
+    renderSourcesStatusList();
+    updateMapSourceHint();
+    updateMapBrowseUi();
     loadSelectedSourceForm();
+    loadSelectedUaSourceForm();
+}
+function updateMapSourceHint() {
+    const hint = el('mapSourceHint');
+    if (!hint) return;
+    const source = state.sources.find(s => s.sourceId === state.selectedSourceId);
+    hint.textContent = source && (isMelsecSource(source) || isMxSource(source)) ? 'Device address e.g. D100, M10, X20, D100:8' : (source && isS7Source(source) ? 'Siemens address e.g. VW100, I0.0, M10.2, QB0' : '');
 }
 function loadSelectedSourceForm() {
+    if (state.editingNewSource) return;
     const source = currentSource();
-    if (!source) return;
-    state.editingNewSource = false;
+    if (!source || isUaSource(source)) {
+        el('cfgSourceId').disabled = false;
+        el('cfgSourceId').value = '';
+        el('cfgDisplayName').value = '';
+        el('cfgProgId').value = '';
+        el('cfgHost').value = 'localhost';
+        el('cfgUser').value = '';
+        el('cfgPass').value = '';
+        el('cfgDomain').value = '';
+        el('cfgMessage').textContent = source
+            ? 'Select a saved OPC DA connection or click New.'
+            : 'No OPC DA sources configured. Click + Add Source or New.';
+        hideSaveReset();
+        return;
+    }
     el('cfgSourceId').value = source.sourceId || '';
     el('cfgSourceId').disabled = true;
     el('cfgDisplayName').value = source.displayName || '';
@@ -2298,22 +3118,83 @@ function loadSelectedSourceForm() {
     el('cfgUser').value = source.remoteUsername || '';
     el('cfgPass').value = '';
     el('cfgDomain').value = source.remoteDomain || '';
-    el('cfgMessage').textContent = 'Editing ' + (source.displayName || source.sourceId) + '.';
+    el('cfgMessage').textContent = (isMelsecSource(source) || isS7Source(source))
+        ? 'Serial driver source — edit it on the Drivers page.'
+        : (isMxSource(source)
+            ? 'MX Component source — edit it on the MX Component page.'
+            : 'Editing ' + (source.displayName || source.sourceId) + '.');
     hideSaveReset();
+}
+function loadSelectedUaSourceForm() {
+    if (state.editingNewUaSource) return;
+    const source = currentSource();
+    if (!source || !isUaSource(source)) {
+        el('uaCfgSourceId').disabled = false;
+        el('uaCfgSourceId').value = '';
+        el('uaCfgDisplayName').value = '';
+        el('uaCfgEndpointUrl').value = '';
+        el('uaCfgSecurityMode').value = 'None';
+        el('uaCfgSecurityPolicy').value = 'None';
+        el('uaCfgUser').value = '';
+        el('uaCfgPass').value = '';
+        el('uaCfgUpdateRate').value = String(state.updateRateMs || 1000);
+        el('uaCfgMaxMappedTags').value = String(50000);
+        el('uaCfgUseSubscriptions').checked = true;
+        el('uaCfgMessage').textContent = source
+            ? 'Select a saved OPC UA connection or click New.'
+            : 'No OPC UA sources configured. Click + Add Source or New.';
+        hideUaSaveReset();
+        return;
+    }
+    el('uaCfgSourceId').value = source.sourceId || '';
+    el('uaCfgSourceId').disabled = true;
+    el('uaCfgDisplayName').value = source.displayName || '';
+    el('uaCfgEndpointUrl').value = source.endpointUrl || '';
+    el('uaCfgSecurityMode').value = source.securityMode || 'None';
+    el('uaCfgSecurityPolicy').value = source.securityPolicy || 'None';
+    el('uaCfgUser').value = source.uaUsername || '';
+    el('uaCfgPass').value = '';
+    el('uaCfgUpdateRate').value = String(source.updateRateMs || state.updateRateMs || 1000);
+    el('uaCfgMaxMappedTags').value = String(source.maxMappedTags || 50000);
+    el('uaCfgUseSubscriptions').checked = source.useSubscriptions !== false;
+    el('uaCfgMessage').textContent = 'Editing ' + (source.displayName || source.sourceId) + '.';
+    hideUaSaveReset();
 }
 async function loadSources() {
     const payload = await (await fetch('/api/da/sources', { cache: 'no-store' })).json();
     state.sources = payload.sources || [];
+    // Merge live connection status (from /api/dashboard bridge.sources) so the
+    // status list and Select-by-type rows show Connected/Faulted + last error.
+    const statusBySource = new Map((state.bridgeSources || []).map(s => [String(get(s, 'sourceId') || '').toLowerCase(), s]));
+    state.sources.forEach(source => {
+        const status = statusBySource.get(String(source.sourceId || '').toLowerCase());
+        if (status) {
+            source.connectionState = get(status, 'connectionState');
+            source.lastError = get(status, 'lastError');
+        }
+    });
     state.updateRateMs = Number(payload.updateRateMs || state.updateRateMs || 1000);
     state.useSubscriptions = payload.useSubscriptions !== false;
-    el('cfgUseSubscriptions').checked = state.useSubscriptions;
-    if (document.activeElement !== el('cfgUpdateRate')) el('cfgUpdateRate').value = String(state.updateRateMs);
+    if (el('cfgUseSubscriptions')) el('cfgUseSubscriptions').checked = state.useSubscriptions;
+    if (el('cfgUpdateRate') && document.activeElement !== el('cfgUpdateRate')) el('cfgUpdateRate').value = String(state.updateRateMs);
     renderSources();
+    populateLiveValuesSource();
     if (document.getElementById('view-links')?.classList.contains('active')) renderLinksView();
 }
 function updateLiveValuesUi() {
     el('toggleLiveValues').textContent = state.liveValuesEnabled ? 'Disable Live Data' : 'Enable Live Data';
-    el('valCount').textContent = state.lastValueCount + ' values' + (state.liveValuesEnabled ? '' : ' · paused');
+    const filtered = state.liveValuesSource ? ' · ' + state.liveValuesSource : '';
+    el('valCount').textContent = state.lastValueCount + ' values' + filtered + (state.liveValuesEnabled ? '' : ' · paused');
+}
+
+function populateLiveValuesSource() {
+    const select = el('liveValuesSource');
+    if (!select) return;
+    const current = state.liveValuesSource || '';
+    select.innerHTML = '<option value="">All sources</option>' + (state.sources || []).map(source =>
+        `<option value="${attr(source.sourceId)}">${esc(source.displayName || source.sourceId)}</option>`
+    ).join('');
+    select.value = current;
 }
 
 function formatMs(value) {
@@ -2392,6 +3273,52 @@ async function loadDiagnostics() {
     }
 }
 
+async function refreshPortsInfo() {
+    try {
+        const r = await (await fetch('/api/status/ports', { cache: 'no-store' })).json();
+        const httpPort = r.httpPort ?? r.HttpPort ?? '—';
+        const uaPort = r.uaPort ?? r.UaPort ?? '—';
+        const httpDefault = r.httpDefault ?? 8080;
+        const uaDefault = r.uaDefault ?? 4840;
+        const httpAuto = !!r.httpAutoAssigned;
+        const uaAuto = !!r.uaAutoAssigned;
+        const host = location.hostname || 'localhost';
+        const httpEl = el('httpPortVal');
+        const uaEl = el('uaPortVal');
+        if (httpEl) {
+            httpEl.textContent = httpPort;
+            httpEl.title = httpAuto ? 'Auto-assigned: the default port ' + httpDefault + ' was in use.' : 'Default port';
+        }
+        if (uaEl) {
+            uaEl.textContent = uaPort;
+            uaEl.title = uaAuto ? 'Auto-assigned: the default port ' + uaDefault + ' was in use.' : 'Default port';
+        }
+        const httpNote = el('httpPortNote');
+        if (httpNote) httpNote.textContent = httpAuto
+            ? 'auto-assigned from ' + httpDefault + ' · http://' + host + ':' + httpPort
+            : 'Dashboard + API · http://' + host + ':' + httpPort;
+        const uaNote = el('uaPortNote');
+        if (uaNote) uaNote.textContent = uaAuto
+            ? 'auto-assigned from ' + uaDefault + ' · ' + (r.uaEndpointClient || '')
+            : 'UA server endpoint · ' + (r.uaEndpointClient || '');
+        const banner = el('portBanner');
+        if (banner) {
+            const autoPorts = [];
+            if (httpAuto) autoPorts.push('HTTP ' + httpPort + ' (default ' + httpDefault + ' was in use)');
+            if (uaAuto) autoPorts.push('OPC UA ' + uaPort + ' (default ' + uaDefault + ' was in use)');
+            if (autoPorts.length) {
+                banner.style.display = '';
+                banner.innerHTML = '&#9888; Bridge is running on auto-assigned port' + (autoPorts.length > 1 ? 's' : '') + ': ' + autoPorts.join('; ') +
+                    '. <button class="btn" type="button" onclick="this.parentElement.style.display=\'none\'">Dismiss</button>';
+            } else {
+                banner.style.display = 'none';
+            }
+        }
+    } catch (e) {
+        // ports info is best-effort; never break the dashboard refresh
+    }
+}
+
 function renderDiagnostics(p) {
     // DA Source Diagnostics — reuse state data from /api/dashboard
     const sources = state.sources || [];
@@ -2402,12 +3329,13 @@ function renderDiagnostics(p) {
         const latency = formatMs(get(src, 'lastDaReadDurationMs'));
         const srcGroups = rateGroups.filter(g => g.sourceId === sid);
         const totalTags = srcGroups.reduce((sum, g) => sum + (g.tagCount || 0), 0);
+        const endpoint = get(src, 'endpointSummary') || '';
         const groupRows = srcGroups.length ? srcGroups.map(g => {
             const budget = Math.round(g.cycleBudgetPct || 0);
             const budgetCls = budget >= 80 ? 'bad' : (budget >= 50 ? 'warn' : 'good');
             return `<div class="li"><div style="flex:1"><div class="n">${formatMs(g.rateMs)} · ${g.tagCount} tags</div><div class="p">budget <span class="${budgetCls}">${budget}%</span> · limit ${g.tagLimit || '—'}</div></div></div>`;
         }).join('') : '<span class="msg">No rate groups.</span>';
-        return `<div class="li"><div style="flex:1"><div class="n">${esc(get(src,'displayName') || sid)} ${badge(conn, stateClass(conn))}</div><div class="p">Latency: ${latency} · ${totalTags} tags in ${srcGroups.length} group(s)</div></div></div>${groupRows}`;
+        return `<div class="li"><div style="flex:1"><div class="n">${esc(get(src,'displayName') || sid)} ${sourceTypeBadge(src)} ${badge(conn, stateClass(conn))}</div><div class="p">${endpoint ? esc(endpoint) + ' · ' : ''}Latency: ${latency} · ${totalTags} tags in ${srcGroups.length} rate group(s)</div></div></div>${groupRows}`;
     }).join('') : '<span class="msg">No sources configured.</span>';
     el('diagDaSources').innerHTML = daHtml;
     el('diagDaSummary').textContent = sources.length + ' source' + (sources.length !== 1 ? 's' : '');
@@ -2565,11 +3493,13 @@ function switchHelpSubTab(tabName) {
 
 async function refresh() {
     try {
-        const p = await (await fetch('/api/dashboard', { cache: 'no-store' })).json();
+        const lvSource = state.liveValuesSource || '';
+        const p = await (await fetch('/api/dashboard?limit=2000' + (lvSource ? '&sourceId=' + encodeURIComponent(lvSource) : ''), { cache: 'no-store' })).json();
         const b = p.bridge || p.Bridge || {};
         const ua = p.ua || p.Ua || {};
         const vs = p.values || p.Values || [];
          const sources = get(b, 'sources') || [];
+         state.bridgeSources = sources;
          const apps = p.apps || p.Apps || {};
          el('dot').className = 'dot';
          el('clock').textContent = new Date().toLocaleTimeString();
@@ -2593,10 +3523,18 @@ async function refresh() {
         const pollSaturation = formatPollSaturation(get(b, 'lastPollDurationMs'), updateRateMs);
         const pollUtilization = formatPollUtilization(get(b, 'lastPollDurationMs'), updateRateMs);
         state.updateRateMs = updateRateMs;
-        state.valuesByKey = new Map(vs.map(v => [valueKey(get(v, 'sourceId') || 'default', get(v, 'daItemId')), v]));
+        state.valuesByKey = new Map(vs.map(v => [valueKey(get(v, 'sourceId') || 'default', get(v, 'itemId') || get(v, 'daItemId')), v]));
+        state.disconnectedKeys = new Set((p.disconnected || []).map(d => valueKey(get(d, 'sourceId') || '', get(d, 'itemId') || '')));
+        state.badQualityKeys = new Set((p.badQuality || []).map(d => valueKey(get(d, 'sourceId') || '', get(d, 'itemId') || '')));
+        state.disconnectedSources = new Set((sources || []).filter(s => String(get(s, 'connectionState') || '').toLowerCase() !== 'connected').map(s => String(get(s, 'sourceId') || '')));
         updateFaceplateLiveValues();
         if (state.diagramLoaded && document.querySelector('.tabbtn.active')?.dataset.tab === 'diagram') {
             renderDiagram();
+        }
+        // Maps rows carry connection badges driven by these sets — re-render while the
+        // Maps tab is visible so Disc/Bad state tracks the live payload.
+        if (document.querySelector('.tabbtn.active')?.dataset.tab === 'tags') {
+            rerenderMappings();
         }
         el('updateRate').textContent = updateRateMs + ' ms';
         el('pollUtilizationFill').style.width = pollUtilization.width;
@@ -2607,6 +3545,7 @@ async function refresh() {
         el('pollSaturation').className = pollSaturation.className;
         if (document.activeElement !== el('cfgUpdateRate')) el('cfgUpdateRate').value = String(updateRateMs);
         el('mappingCount').textContent = (get(b, 'mappingCount') ?? 0) + ' tags';
+        refreshPortsInfo();
         el('uaEndpoint').textContent = get(ua, 'endpointUrl') || '—';
         el('uaDiagnostics').textContent = formatUaDiagnostics(ua);
         const srcCountH = el('sourceCountH'); if (srcCountH) srcCountH.textContent = sources.length + ' source' + (sources.length !== 1 ? 's' : '');
@@ -2621,6 +3560,18 @@ async function refresh() {
             } else {
                 tagSrcStatus.innerHTML = '<span class="msg">—</span>';
             }
+        }
+        // Refresh live connection status on the Connectivity status list too.
+        if (document.getElementById('view-connection')?.classList.contains('active')) {
+            const statusBySource = new Map(sources.map(s => [String(get(s, 'sourceId') || '').toLowerCase(), s]));
+            state.sources.forEach(source => {
+                const status = statusBySource.get(String(source.sourceId || '').toLowerCase());
+                if (status) {
+                    source.connectionState = get(status, 'connectionState');
+                    source.lastError = get(status, 'lastError');
+                }
+            });
+            renderSourcesStatusList();
         }
         el('sourceStatusList').innerHTML = sources.length ? sources.map(source => {
             const connState = get(source,'connectionState') || '—';
@@ -2711,25 +3662,25 @@ async function refresh() {
                 if (resAD) resAD.textContent = 'Resource counters are Windows-only.';
             }
         }
-        state.lastValueCount = vs.length;
+        state.lastValueCount = get(p, 'valuesTotal') ?? vs.length;
         updateLiveValuesUi();
         if (state.liveValuesEnabled) {
             el('values').innerHTML = vs.length ? vs.map(it => {
                 const g = get(it, 'isGood');
                 const q = get(it, 'daQuality');
                 const sourceId = get(it, 'sourceId');
-                const itemId = get(it, 'daItemId');
+                const itemId = get(it, 'itemId') || get(it, 'daItemId');
                 const value = String(get(it, 'value') ?? '');
                 const timestamp = locTime(get(it, 'timestampUtc'));
                 const timestampShort = shortTime(get(it, 'timestampUtc'));
-                return `<tr><td><code title="${attr(sourceId)}">${esc(sourceId)}</code></td><td><code title="${attr(itemId)}">${esc(itemId)}</code></td><td class="mono" title="${attr(value)}">${esc(value)}</td><td title="${attr(String(q ?? ''))}"><span class="quality">${badge(g ? 'Good' : 'Bad', g ? 'good' : 'bad')} <span class="${g ? 'good' : 'bad'}">(${q})</span></span></td><td class="msg timestamp" title="${attr(timestamp)}">${esc(timestampShort)}</td></tr>`;
-            }).join('') : '<tr><td colspan="5" class="msg">No values yet.</td></tr>';
+                return `<tr><td><code title="${attr(sourceId)}">${esc(sourceId)}</code></td><td><code title="${attr(itemId)}">${esc(itemId)}</code></td><td class="mono" title="${attr(value)}">${esc(value)}</td><td class="msg" title="${attr(get(it, 'dataType') || '')}">${esc(get(it, 'dataType') || '—')}</td><td class="msg" title="Update rate">${formatMs(get(it, 'updateRate'))}</td><td title="${attr(String(q ?? ''))}"><span class="quality">${badge(g ? 'Good' : 'Bad', g ? 'good' : 'bad')} <span class="${g ? 'good' : 'bad'}">(${q})</span></span></td><td class="msg timestamp" title="${attr(timestamp)}">${esc(timestampShort)}</td></tr>`;
+            }).join('') : '<tr><td colspan="7" class="msg">No values yet.</td></tr>';
         }
     } catch (e) {
         el('dot').className = 'dot off';
         el('clock').textContent = 'offline';
         if (state.liveValuesEnabled) {
-            el('values').innerHTML = `<tr><td colspan="5" class="bad">${esc(e.message)}</td></tr>`;
+            el('values').innerHTML = `<tr><td colspan="7" class="bad">${esc(e.message)}</td></tr>`;
         }
     }
 }
@@ -2744,15 +3695,17 @@ async function loadMappings() {
     const mappings = p.mappings || [];
     state.mappings = mappings;
     const view = applyMappingView(mappings);
+    const typed = mappingsForMapType(mappings);
     el('mappedList').innerHTML = renderMappingRows(view);
-    if (el('mapCount')) el('mapCount').textContent = view.length + (view.length !== mappings.length ? ' / ' + mappings.length + ' mappings' : ' mappings');
+    if (el('mapCount')) el('mapCount').textContent = view.length + (view.length !== typed.length ? ' / ' + typed.length + ' mappings' : ' mappings');
+    updateNoMappingsBanner();
     refreshTagBrowserMappedBadges();
     if (document.getElementById('view-links')?.classList.contains('active')) renderLinksView();
 }
 function refreshTagBrowserMappedBadges() {
     const tree = el('tagTree');
     if (!tree) return;
-    const mappedKeys = new Set((state.mappings || []).map(m => valueKey(m.sourceId || m.SourceId || 'default', m.daItemId || m.DaItemId)));
+    const mappedKeys = new Set((state.mappings || []).map(m => valueKey(m.sourceId || m.SourceId || 'default', m.itemId || m.ItemId || m.daItemId || m.DaItemId)));
     tree.querySelectorAll('button[data-action="add-tag"]').forEach(button => {
         const sourceId = button.dataset.sourceId || '';
         const itemId = button.dataset.itemId || '';
@@ -2782,12 +3735,14 @@ async function loadMqttConfig() {
         if (el('mqttIgnoreCert')) el('mqttIgnoreCert').checked = !!cfg.ignoreCertErrors;
         if (el('mqttPrefix')) el('mqttPrefix').value = cfg.topicPrefix || 'bridge/tags';
         if (el('mqttFields')) el('mqttFields').value = cfg.payloadFields || 'Value, Timestamp';
+        state.mqttConfigured = !!(cfg.enabled || (cfg.brokerUrl || '').trim());
     } catch (e) { /* ignore */ }
 }
 async function loadMqttStatus() {
     try {
         const st = await (await fetch('/api/mqtt/status', { cache: 'no-store' })).json();
-        state.mqttConnectionState = st.state || 'Disconnected';
+        state.mqttState = st.state || 'Disconnected';
+        state.mqttConnectionState = state.mqttState;
         if (el('mqttState')) {
             el('mqttState').textContent = st.state || 'Disconnected';
             el('mqttState').className = 'v ' + (st.state === 'Connected' ? 'badge good' : 'badge bad');
@@ -2797,6 +3752,13 @@ async function loadMqttStatus() {
         if (el('mqttReceived')) el('mqttReceived').textContent = (st.receivedCount || 0).toLocaleString();
         if (el('mqttPublishedRate')) el('mqttPublishedRate').textContent = (st.publishedRate || 0).toFixed(1) + '/s';
         if (el('mqttReceivedRate')) el('mqttReceivedRate').textContent = (st.receivedRate || 0).toFixed(1) + '/s';
+        const hintMqtt = el('hintMqtt');
+        if (hintMqtt) {
+            const off = !state.mqttConfigured || state.mqttState === 'Disconnected';
+            const hasMqttTags = (state.mappings || []).some(m => (m.mqttEnabled ?? m.MqttEnabled) === true);
+            hintMqtt.style.display = (off && hasMqttTags) ? '' : 'none';
+            if (off && hasMqttTags) hintMqtt.innerHTML = 'MQTT tags exist but broker is disconnected.';
+        }
     } catch (e) { if (el('mqttMessage')) el('mqttMessage').textContent = '✗ ' + e.message; }
 }
 async function loadMqtt() { await Promise.all([loadMqttConfig(), loadMqttStatus()]); }
@@ -2823,6 +3785,73 @@ async function connectMqtt() {
     const p = await r.json();
     el('mqttMessage').textContent = p.status === 'ok' ? 'Connected.' : ('✗ ' + (p.error || 'connect failed'));
     await loadMqtt();
+}
+let wzMqttStepCur = 1;
+const WZ_MQTT_STEPS = 3;
+
+async function openMqttWizard() {
+  wzMqttStepCur = 1;
+  await loadMqtt();
+  el('wzMqttUrl').value = el('mqttBrokerUrl').value || 'tcp://localhost:1883';
+  el('wzMqttClientId').value = el('mqttClientId').value || 'OpcDaToUaBridge';
+  el('wzMqttAuto').checked = el('mqttEnabled').checked;
+  el('wzMqttUser').value = el('mqttUser').value;
+  el('wzMqttPass').value = el('mqttPass').value;
+  el('wzMqttTls').checked = el('mqttTls').checked;
+  el('wzMqttPrefix').value = el('mqttPrefix').value || 'bridge/tags';
+  el('wzMqttFields').value = el('mqttFields').value;
+  el('wzMqttConnectNow').checked = true;
+  el('mqttWizard').classList.add('open');
+  wzMqttRender();
+}
+function closeMqttWizard() { el('mqttWizard').classList.remove('open'); }
+function wzMqttRender() {
+  document.querySelectorAll('#mqttWizard .wizard-pane').forEach(p => p.classList.toggle('active', Number(p.dataset.pane) === wzMqttStepCur));
+  document.querySelectorAll('#mqttWizard .wizard-step').forEach(s => {
+    const n = Number(s.dataset.step);
+    s.classList.toggle('active', n === wzMqttStepCur);
+    s.classList.toggle('done', n < wzMqttStepCur);
+  });
+  el('wzMqttBack').style.display = wzMqttStepCur > 1 ? '' : 'none';
+  el('wzMqttNext').style.display = wzMqttStepCur < WZ_MQTT_STEPS ? '' : 'none';
+  el('wzMqttFinish').style.display = wzMqttStepCur === WZ_MQTT_STEPS ? '' : 'none';
+  if (wzMqttStepCur === 3) {
+    el('wzMqttSummary').innerHTML =
+      `<b>Broker:</b> ${esc(el('wzMqttUrl').value)}<br>` +
+      `<b>Client ID:</b> ${esc(el('wzMqttClientId').value)}<br>` +
+      `<b>Auth:</b> ${el('wzMqttUser').value ? 'yes' : 'none'}<br>` +
+      `<b>TLS:</b> ${el('wzMqttTls').checked ? 'on' : 'off'}<br>` +
+      `<b>Topic Prefix:</b> ${esc(el('wzMqttPrefix').value)}<br>` +
+      `<b>Auto-connect:</b> ${el('wzMqttAuto').checked ? 'on' : 'off'}`;
+  }
+}
+function wzMqttStep(delta) {
+  const next = wzMqttStepCur + delta;
+  if (next < 1 || next > WZ_MQTT_STEPS) return;
+  if (delta > 0 && !wzMqttValidate(wzMqttStepCur)) return;
+  wzMqttStepCur = next;
+  wzMqttRender();
+}
+function wzMqttValidate(step) {
+  if (step === 1 && !el('wzMqttUrl').value.trim()) { alert('Broker URL is required.'); return false; }
+  return true;
+}
+async function wzMqttFinish() {
+  el('mqttBrokerUrl').value = el('wzMqttUrl').value.trim();
+  el('mqttClientId').value = el('wzMqttClientId').value.trim() || 'OpcDaToUaBridge';
+  el('mqttEnabled').checked = el('wzMqttAuto').checked;
+  el('mqttUser').value = el('wzMqttUser').value;
+  el('mqttPass').value = el('wzMqttPass').value;
+  el('mqttTls').checked = el('wzMqttTls').checked;
+  el('mqttPrefix').value = el('wzMqttPrefix').value.trim() || 'bridge/tags';
+  el('mqttFields').value = el('wzMqttFields').value;
+  try {
+    await saveMqtt();
+    if (el('wzMqttConnectNow').checked) await connectMqtt();
+    closeMqttWizard();
+  } catch (e) {
+    el('mqttMessage').textContent = '✗ ' + e.message;
+  }
 }
 async function disconnectMqtt() {
     await fetch('/api/mqtt/disconnect', { method: 'POST' });
@@ -2869,11 +3898,13 @@ async function loadInfluxConfig() {
         if (el('influxMeasurement')) el('influxMeasurement').value = cfg.measurement || 'opc_tags';
         if (el('influxTimeoutMs')) el('influxTimeoutMs').value = String(cfg.timeoutMs ?? 5000);
         if (el('influxVerifySsl')) el('influxVerifySsl').checked = cfg.verifySsl !== false;
+        state.influxConfigured = !!(cfg.enabled || (cfg.url || '').trim() || (cfg.org || '').trim() || (cfg.bucket || '').trim() || (cfg.token || '').trim());
     } catch (e) { /* ignore */ }
 }
 async function loadInfluxStatus() {
     try {
         const st = await (await fetch('/api/influx/status', { cache: 'no-store' })).json();
+        state.influxState = st.state || 'Disconnected';
         if (el('influxState')) {
             el('influxState').textContent = st.state || 'Disconnected';
             el('influxState').className = 'v ' + (st.state === 'Connected' ? 'badge good' : 'badge bad');
@@ -2881,6 +3912,12 @@ async function loadInfluxStatus() {
         if (el('influxLastError')) el('influxLastError').textContent = st.lastError || 'No errors';
         if (el('influxWritten')) el('influxWritten').textContent = (st.writtenCount || 0).toLocaleString();
         if (el('influxWrittenRate')) el('influxWrittenRate').textContent = (st.writtenRate || 0).toFixed(1) + '/s';
+        const hintInflux = el('hintInflux');
+        if (hintInflux) {
+            const off = !state.influxConfigured || state.influxState === 'Disconnected';
+            hintInflux.style.display = off ? '' : 'none';
+            if (off) hintInflux.innerHTML = 'Historian (InfluxDB) not configured. <button class="btn" type="button" onclick="openInfluxWizard()">Configure</button>';
+        }
     } catch (e) { if (el('influxMessage')) el('influxMessage').textContent = '✗ ' + e.message; }
 }
 async function loadInflux() { await Promise.all([loadInfluxConfig(), loadInfluxStatus()]); }
@@ -2907,6 +3944,68 @@ async function connectInflux() {
     el('influxMessage').textContent = p.status === 'ok' ? 'Connected.' : ('✗ ' + (p.error || 'connect failed'));
     await loadInflux();
 }
+let wzInfluxStepCur = 1;
+const WZ_INFLUX_STEPS = 3;
+
+async function openInfluxWizard() {
+  wzInfluxStepCur = 1;
+  await loadInflux();
+  el('wzInfluxUrl').value = el('influxUrl').value || 'http://localhost:8086';
+  el('wzInfluxOrg').value = el('influxOrg').value;
+  el('wzInfluxBucket').value = el('influxBucket').value;
+  el('wzInfluxToken').value = el('influxToken').value;
+  el('wzInfluxAuto').checked = el('influxEnabled').checked;
+  el('wzInfluxConnectNow').checked = true;
+  el('influxWizard').classList.add('open');
+  wzInfluxRender();
+}
+function closeInfluxWizard() { el('influxWizard').classList.remove('open'); }
+function wzInfluxRender() {
+  document.querySelectorAll('#influxWizard .wizard-pane').forEach(p => p.classList.toggle('active', Number(p.dataset.pane) === wzInfluxStepCur));
+  document.querySelectorAll('#influxWizard .wizard-step').forEach(s => {
+    const n = Number(s.dataset.step);
+    s.classList.toggle('active', n === wzInfluxStepCur);
+    s.classList.toggle('done', n < wzInfluxStepCur);
+  });
+  el('wzInfluxBack').style.display = wzInfluxStepCur > 1 ? '' : 'none';
+  el('wzInfluxNext').style.display = wzInfluxStepCur < WZ_INFLUX_STEPS ? '' : 'none';
+  el('wzInfluxFinish').style.display = wzInfluxStepCur === WZ_INFLUX_STEPS ? '' : 'none';
+  if (wzInfluxStepCur === 3) {
+    el('wzInfluxSummary').innerHTML =
+      `<b>URL:</b> ${esc(el('wzInfluxUrl').value)}<br>` +
+      `<b>Org:</b> ${esc(el('wzInfluxOrg').value || '—')}<br>` +
+      `<b>Bucket:</b> ${esc(el('wzInfluxBucket').value || '—')}<br>` +
+      `<b>Token:</b> ${el('wzInfluxToken').value ? 'set' : '—'}<br>` +
+      `<b>Auto-connect:</b> ${el('wzInfluxAuto').checked ? 'on' : 'off'}`;
+  }
+}
+function wzInfluxStep(delta) {
+  const next = wzInfluxStepCur + delta;
+  if (next < 1 || next > WZ_INFLUX_STEPS) return;
+  if (delta > 0 && !wzInfluxValidate(wzInfluxStepCur)) return;
+  wzInfluxStepCur = next;
+  wzInfluxRender();
+}
+function wzInfluxValidate(step) {
+  if (step === 1 && !el('wzInfluxUrl').value.trim()) { alert('URL is required.'); return false; }
+  if (step === 2 && !el('wzInfluxToken').value) { alert('Token is required.'); return false; }
+  return true;
+}
+async function wzInfluxFinish() {
+  el('influxUrl').value = el('wzInfluxUrl').value.trim();
+  el('influxOrg').value = el('wzInfluxOrg').value.trim();
+  el('influxBucket').value = el('wzInfluxBucket').value.trim();
+  el('influxToken').value = el('wzInfluxToken').value;
+  el('influxEnabled').checked = el('wzInfluxAuto').checked;
+  try {
+    await saveInflux();
+    if (el('wzInfluxConnectNow').checked) await connectInflux();
+    closeInfluxWizard();
+  } catch (e) {
+    el('influxMessage').textContent = '✗ ' + e.message;
+  }
+}
+
 async function disconnectInflux() {
     await fetch('/api/influx/disconnect', { method: 'POST' });
     el('influxMessage').textContent = 'Disconnected.';
@@ -2914,11 +4013,11 @@ async function disconnectInflux() {
 }
 function applyMappingView(mappings) {
     const filter = (state.mappingFilter || '').trim().toLowerCase();
-    let view = mappings;
+    let view = mappingsForMapType(mappings);
     if (filter) {
-        view = mappings.filter(m => {
+        view = view.filter(m => {
             const sourceId = m.sourceId || m.SourceId || 'default';
-            const item = m.daItemId || m.DaItemId || '';
+            const item = m.itemId || m.ItemId || m.daItemId || m.DaItemId || '';
             const name = m.displayName || m.DisplayName || item;
             const node = m.uaNodeId || m.UaNodeId || defaultUaNodeId(sourceId, item);
             return [sourceId, item, name, node, m.description || m.Description || ''].some(v => String(v).toLowerCase().includes(filter));
@@ -2937,30 +4036,41 @@ function applyMappingView(mappings) {
         let av, bv;
         switch (key) {
             case 'source': av = (a.sourceId || a.SourceId || 'default'); bv = (b.sourceId || b.SourceId || 'default'); break;
-            case 'item': av = (a.daItemId || a.DaItemId || ''); bv = (b.daItemId || b.DaItemId || ''); break;
+            case 'item': av = (a.itemId || a.ItemId || a.daItemId || a.DaItemId || ''); bv = (b.itemId || b.ItemId || b.daItemId || b.DaItemId || ''); break;
             case 'node': av = (a.uaNodeId || a.UaNodeId || ''); bv = (b.uaNodeId || b.UaNodeId || ''); break;
             case 'access': av = accessRank(a); bv = accessRank(b); break;
             case 'rate': av = (a.pollRateMs ?? a.PollRateMs ?? 0); bv = (b.pollRateMs ?? b.PollRateMs ?? 0); break;
             case 'deadband': av = Number(a.deadbandPct ?? a.DeadbandPct ?? 0); bv = Number(b.deadbandPct ?? b.DeadbandPct ?? 0); break;
             case 'status': av = ((a.enabled ?? a.Enabled) !== false) ? 0 : 1; bv = ((b.enabled ?? b.Enabled) !== false) ? 0 : 1; break;
             case 'description': av = (a.description || a.Description || ''); bv = (b.description || b.Description || ''); break;
-            default: av = (a.displayName || a.DisplayName || a.daItemId || a.DaItemId || ''); bv = (b.displayName || b.DisplayName || b.daItemId || b.DaItemId || '');
+            default: av = (a.displayName || a.DisplayName || a.itemId || a.ItemId || a.daItemId || a.DaItemId || ''); bv = (b.displayName || b.DisplayName || b.itemId || b.ItemId || b.daItemId || b.DaItemId || '');
         }
         if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir;
         return String(av).localeCompare(String(bv), undefined, { numeric: true, sensitivity: 'base' }) * dir;
     };
     return view.slice().sort(cmp);
 }
+function updateNoMappingsBanner() {
+    const bannerNoMap = el('bannerNoMappings');
+    if (bannerNoMap) {
+        const typed = mappingsForMapType(state.mappings || []);
+        const noMappings = typed.length === 0;
+        bannerNoMap.style.display = (noMappings && (state.sources || []).length > 0) ? '' : 'none';
+        if (noMappings && (state.sources || []).length > 0) bannerNoMap.innerHTML = 'No tags mapped yet. <button class="btn" type="button" onclick="navigate(\'tags/maps\')">Map Tags</button>';
+    }
+}
 function rerenderMappings() {
+    const typed = mappingsForMapType(state.mappings || []);
     const view = applyMappingView(state.mappings || []);
-    el('mapCount').textContent = view.length + (view.length !== (state.mappings || []).length ? ' / ' + (state.mappings || []).length + ' mappings' : ' mappings');
-    el('mappedList').innerHTML = renderMappingRows(view);
+    if (el('mapCount')) el('mapCount').textContent = view.length + (view.length !== typed.length ? ' / ' + typed.length + ' mappings' : ' mappings');
+    if (el('mappedList')) el('mappedList').innerHTML = renderMappingRows(view);
+    updateNoMappingsBanner();
 }
 
 function getMapping(sourceId, itemId) {
     return state.mappings.find(mapping => {
         const mappingSourceId = mapping.sourceId || mapping.SourceId || 'default';
-        const mappingItemId = mapping.daItemId || mapping.DaItemId;
+        const mappingItemId = mapping.itemId || mapping.ItemId || mapping.daItemId || mapping.DaItemId;
         return mappingSourceId === sourceId && mappingItemId === itemId;
     }) || null;
 }
@@ -2972,7 +4082,7 @@ async function updateMapping(sourceId, itemId, mutate) {
     if (!mapping) throw new Error('Mapping not found.');
     const payload = {
         sourceId,
-        daItemId: itemId,
+        itemId: itemId,
         displayName: mapping.displayName || mapping.DisplayName || itemId,
         description: mapping.description ?? mapping.Description ?? null,
         dataType: mapping.dataType || mapping.DataType || 'Auto',
@@ -3001,16 +4111,23 @@ async function updateMapping(sourceId, itemId, mutate) {
     el('mappingMessage').textContent = 'Mapping updated.';
 }
 
-function pickSource(sourceId) {
+function pickSource(sourceId, opts) {
     state.selectedSourceId = sourceId;
     state.editingNewSource = false;
+    state.editingNewUaSource = false;
     state.tagPath = '';
+    state.uaBrowseTrail = [];
     el('tagTree').innerHTML = '<span class="msg">Browse the active source to load tags.</span>';
     el('tagStatus').textContent = 'Browse all tags, or open folders one level at a time.';
     renderCrumb();
     resetLinkBrowser();
     renderSources();
     if (document.getElementById('view-links')?.classList.contains('active')) renderLinksView();
+    if (opts && opts.openConfig) {
+        const src = state.sources.find(s => s.sourceId === sourceId);
+        if (src && isUaSource(src)) navigate('connectivity/opc-ua');
+        else navigate('connectivity/opc-da');
+    }
 }
 async function saveSource() {
     const sourceId = el('cfgSourceId').value.trim();
@@ -3018,9 +4135,19 @@ async function saveSource() {
         el('cfgMessage').textContent = '✗ Source ID is required.';
         return;
     }
+    const existing = state.sources.find(s => s.sourceId === sourceId);
+    if (existing && isDriverSource(existing)) {
+        el('cfgMessage').textContent = 'Serial driver source — edit it on the Drivers page.';
+        return;
+    }
+    if (existing && isMxSource(existing)) {
+        el('cfgMessage').textContent = 'MX Component source — edit it on the MX Component page.';
+        return;
+    }
     const body = {
         sourceId,
         displayName: el('cfgDisplayName').value.trim() || null,
+        sourceType: 'OpcDa',
         progId: el('cfgProgId').value.trim(),
         host: el('cfgHost').value.trim() || 'localhost',
         remoteUsername: el('cfgUser').value.trim() || null,
@@ -3058,8 +4185,8 @@ async function saveUpdateRate() {
 }
 async function removeSelectedSource() {
     const source = currentSource();
-    if (!source || state.editingNewSource) return;
-    if (!confirm('Remove source "' + source.sourceId + '" and its DA → OPC UA mappings?')) return;
+    if (!source || state.editingNewSource || isUaSource(source)) return;
+    if (!confirm('Remove source "' + source.sourceId + '" and its source → OPC UA mappings?')) return;
     const r = await fetch('/api/da/sources/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId: source.sourceId }) });
     const p = await r.json();
     if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
@@ -3071,6 +4198,388 @@ async function removeSelectedSource() {
 }
 function showSaveReset() { el('cfgApply').style.display = ''; el('cfgReset').style.display = ''; }
 function hideSaveReset() { el('cfgApply').style.display = 'none'; el('cfgReset').style.display = 'none'; }
+
+// --- PLC driver sources (Melsec A3N) ---
+function mxSources() { return state.sources.filter(s => isMxSource(s)); }
+function currentMx() { return state.editingNewMx ? null : mxSources().find(s => s.sourceId === state.selectedMxId) || null; }
+function renderMx() {
+    const sources = mxSources();
+    if (!state.editingNewMx && !sources.some(s => s.sourceId === state.selectedMxId)) {
+        state.selectedMxId = sources.length ? sources[0].sourceId : '';
+    }
+    el('mxCount').textContent = sources.length + ' connection' + (sources.length !== 1 ? 's' : '');
+    el('mxList').innerHTML = sources.length ? sources.map(source =>
+        `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)} ${sourceTypeBadge(source)}</div><div class="p">${esc(source.sourceId)} · MX station ${esc(String(source.logicalStationNumber ?? 0))} · ${formatMs(source.updateRateMs)}</div></div><button class="btn ghost" data-action="select-mx" data-source-id="${attr(source.sourceId)}">Select</button></div>`
+    ).join('') : '<span class="msg">No MX Component connections configured. Click + Add Connection.</span>';
+    loadMxForm();
+}
+function pickMxSource(sourceId) {
+    state.selectedMxId = sourceId;
+    state.editingNewMx = false;
+    renderMx();
+}
+function loadMxForm() {
+    const source = currentMx();
+    if (!source) return;
+    state.editingNewMx = false;
+    el('mxSourceId').value = source.sourceId || '';
+    el('mxSourceId').disabled = true;
+    el('mxName').value = source.displayName || '';
+    el('mxStation').value = String(source.logicalStationNumber ?? 0);
+    el('mxTimeout').value = String(source.timeoutMs || 3000);
+    el('mxRetry').value = String(source.retryCount ?? 2);
+    el('mxRate').value = String(source.updateRateMs || 1000);
+    el('mxMaxTags').value = String(source.maxMappedTags || 2000);
+    el('mxMessage').textContent = 'Editing ' + (source.displayName || source.sourceId) + '.';
+}
+function newMxSource() {
+    state.selectedMxId = '';
+    state.editingNewMx = true;
+    el('mxSourceId').disabled = false;
+    el('mxSourceId').value = '';
+    el('mxName').value = '';
+    el('mxStation').value = '0';
+    el('mxTimeout').value = '3000';
+    el('mxRetry').value = '2';
+    el('mxRate').value = '1000';
+    el('mxMaxTags').value = '2000';
+    el('mxMessage').textContent = 'Enter a unique Source ID and the logical station number assigned in MX Component.';
+}
+function resetMx() {
+    if (state.editingNewMx) { newMxSource(); return; }
+    loadMxForm();
+    el('mxMessage').textContent = 'Reverted to saved values.';
+}
+function mxFormBody() {
+    return {
+        sourceId: el('mxSourceId').value.trim(),
+        displayName: el('mxName').value.trim() || null,
+        sourceType: 'MxComponent',
+        logicalStationNumber: Number(el('mxStation').value) || 0,
+        timeoutMs: Number(el('mxTimeout').value) || 3000,
+        retryCount: Number(el('mxRetry').value) || 0,
+        maxMappedTags: Number(el('mxMaxTags').value) || 2000,
+        updateRateMs: Number(el('mxRate').value) || 1000
+    };
+}
+async function saveMxSource() {
+    const body = mxFormBody();
+    if (!body.sourceId) {
+        el('mxMessage').textContent = '✗ Source ID is required.';
+        return false;
+    }
+    const r = await fetch('/api/da/sources', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const p = await r.json();
+    if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
+    state.selectedMxId = p.source?.sourceId || body.sourceId;
+    state.editingNewMx = false;
+    await loadSources();
+    await refresh();
+    renderMx();
+    el('mxMessage').textContent = 'MX Component connection saved.';
+    return true;
+}
+async function removeMxSource() {
+    const source = currentMx();
+    if (!source || state.editingNewMx) return;
+    if (!confirm('Remove MX Component connection "' + source.sourceId + '" and its tag mappings?')) return;
+    const r = await fetch('/api/da/sources/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId: source.sourceId }) });
+    const p = await r.json();
+    if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
+    state.selectedMxId = '';
+    await loadSources();
+    await loadMappings();
+    await refresh();
+    renderMx();
+    el('mxMessage').textContent = 'MX Component connection removed.';
+}
+async function testMxConnection() {
+    el('mxMessage').textContent = 'Testing connection…';
+    const r = await fetch('/api/drivers/mx-component/test-connection', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(mxFormBody()) });
+    const p = await r.json();
+    el('mxMessage').textContent = p.ok ? '✓ Connection OK — MX Component opened the station.' : '✗ ' + (p.error || ('HTTP ' + r.status));
+}
+function driverSources() { return state.sources.filter(s => isDriverSource(s)); }
+function currentDriver() { return state.editingNewDriver ? null : driverSources().find(s => s.sourceId === state.selectedDriverId) || null; }
+function renderDrivers() {
+    const drivers = driverSources();
+    if (!state.editingNewDriver && !drivers.some(s => s.sourceId === state.selectedDriverId)) {
+        state.selectedDriverId = drivers.length ? drivers[0].sourceId : '';
+    }
+    el('drvA3nCount').textContent = drivers.length + ' driver' + (drivers.length !== 1 ? 's' : '');
+    el('drvA3nList').innerHTML = drivers.length ? drivers.map(source => {
+        const detail = `${esc(source.sourceId)} · ${esc(source.serialPortName || '?')} @ ${esc(String(source.baudRate || ''))} · ${formatMs(source.updateRateMs)}`;
+        return `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)} ${sourceTypeBadge(source)}</div><div class="p">${detail}</div></div><button class="btn ghost" data-action="select-driver" data-source-id="${attr(source.sourceId)}">Select</button></div>`;
+    }).join('') : '<span class="msg">No driver sources configured. Click + Add Driver.</span>';
+    loadDriverForm();
+}
+function loadDriverForm() {
+    const source = currentDriver();
+    if (!source) return;
+    state.editingNewDriver = false;
+    el('drvA3nSourceId').value = source.sourceId || '';
+    el('drvA3nSourceId').disabled = true;
+    el('drvA3nName').value = source.displayName || '';
+    el('drvA3nPort').value = source.serialPortName || '';
+    el('drvA3nBaud').value = String(source.baudRate || 9600);
+    el('drvA3nDataBits').value = String(source.dataBits || 8);
+    el('drvA3nParity').value = source.parity || 'Odd';
+    el('drvA3nStopBits').value = source.stopBits || 'One';
+    el('drvA3nStation').value = source.stationNo || '00';
+    el('drvA3nPc').value = source.pcNo || 'FF';
+    el('drvA3nTimeout').value = String(source.timeoutMs || 3000);
+    el('drvA3nRetry').value = String(source.retryCount ?? 2);
+    el('drvA3nRate').value = String(source.updateRateMs || 1000);
+    el('drvA3nMaxTags').value = String(source.maxMappedTags || 2000);
+    el('drvA3nMessage').textContent = 'Editing ' + (source.displayName || source.sourceId) + '.';
+    if (isS7Source(source)) {
+        if (el('drvS7LocalPpi')) el('drvS7LocalPpi').value = String(source.localPpiAddress ?? 0);
+        if (el('drvS7RemotePpi')) el('drvS7RemotePpi').value = String(source.remotePpiAddress ?? 2);
+        setDriverFormType('S7200Ppi');
+        el('drvA3nParity').value = source.parity || 'Even';
+    } else {
+        setDriverFormType('MelsecA3n');
+    }
+}
+function pickDriver(sourceId) {
+    state.selectedDriverId = sourceId;
+    state.editingNewDriver = false;
+    renderDrivers();
+}
+function newDriver() {
+    state.selectedDriverId = '';
+    state.editingNewDriver = true;
+    el('drvA3nSourceId').disabled = false;
+    el('drvA3nSourceId').value = '';
+    el('drvA3nName').value = '';
+    el('drvA3nPort').value = '';
+    el('drvA3nBaud').value = '9600';
+    el('drvA3nDataBits').value = '8';
+    el('drvA3nParity').value = 'Odd';
+    el('drvA3nStopBits').value = 'One';
+    el('drvA3nStation').value = '00';
+    el('drvA3nPc').value = 'FF';
+    el('drvA3nTimeout').value = '3000';
+    el('drvA3nRetry').value = '2';
+    el('drvA3nRate').value = '1000';
+    el('drvA3nMaxTags').value = '2000';
+    setDriverFormType('MelsecA3n');
+    el('drvA3nMessage').textContent = 'Enter a unique Source ID and serial port, then save.';
+}
+function resetDriver() {
+    if (state.editingNewDriver) { newDriver(); return; }
+    loadDriverForm();
+    el('drvA3nMessage').textContent = 'Reverted to saved values.';
+}
+function driverFormBody() {
+    const type = state.driverFormType || 'MelsecA3n';
+    const body = {
+        sourceId: el('drvA3nSourceId').value.trim(),
+        displayName: el('drvA3nName').value.trim() || null,
+        sourceType: type,
+        transport: 'Serial',
+        serialPortName: el('drvA3nPort').value.trim(),
+        baudRate: Number(el('drvA3nBaud').value) || 9600,
+        dataBits: Number(el('drvA3nDataBits').value) || 8,
+        parity: el('drvA3nParity').value,
+        stopBits: el('drvA3nStopBits').value,
+        timeoutMs: Number(el('drvA3nTimeout').value) || 3000,
+        retryCount: Number(el('drvA3nRetry').value) || 0,
+        maxMappedTags: Number(el('drvA3nMaxTags').value) || 2000,
+        updateRateMs: Number(el('drvA3nRate').value) || 1000
+    };
+    if (type === 'S7200Ppi') {
+        body.localPpiAddress = Number(el('drvS7LocalPpi')?.value ?? 0);
+        body.remotePpiAddress = Number(el('drvS7RemotePpi')?.value ?? 2);
+        if (Number.isNaN(body.localPpiAddress)) body.localPpiAddress = 0;
+        if (Number.isNaN(body.remotePpiAddress)) body.remotePpiAddress = 2;
+    } else {
+        body.stationNo = el('drvA3nStation').value.trim() || '00';
+        body.pcNo = el('drvA3nPc').value.trim() || 'FF';
+    }
+    return body;
+}
+async function saveDriverSource() {
+    const body = driverFormBody();
+    if (!body.sourceId) {
+        el('drvA3nMessage').textContent = '✗ Source ID is required.';
+        return false;
+    }
+    if (!body.serialPortName) {
+        el('drvA3nMessage').textContent = '✗ Serial port is required.';
+        return false;
+    }
+    const r = await fetch('/api/da/sources', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const p = await r.json();
+    if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
+    state.selectedDriverId = p.source?.sourceId || body.sourceId;
+    state.editingNewDriver = false;
+    await loadSources();
+    await refresh();
+    renderDrivers();
+    el('drvA3nMessage').textContent = 'Driver source saved.';
+    return true;
+}
+async function removeDriver() {
+    const source = currentDriver();
+    if (!source || state.editingNewDriver) return;
+    if (!confirm('Remove driver source "' + source.sourceId + '" and its tag mappings?')) return;
+    const r = await fetch('/api/da/sources/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId: source.sourceId }) });
+    const p = await r.json();
+    if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
+    state.selectedDriverId = '';
+    await loadSources();
+    await loadMappings();
+    await refresh();
+    renderDrivers();
+    el('drvA3nMessage').textContent = 'Driver source removed.';
+}
+async function testDriverConnection() {
+    const body = driverFormBody();
+    if (!body.serialPortName) {
+        el('drvA3nMessage').textContent = '✗ Serial port is required.';
+        return;
+    }
+    el('drvA3nMessage').textContent = 'Testing connection…';
+    const url = body.sourceType === 'S7200Ppi' ? '/api/drivers/s7200-ppi/test-connection' : '/api/drivers/melsec-a3n/test-connection';
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const p = await r.json();
+    el('drvA3nMessage').textContent = p.ok ? '✓ Connection OK — PLC responded.' : '✗ ' + (p.error || ('HTTP ' + r.status));
+}
+async function scanSerialPorts(targetInputId, listId, msgId) {
+    const msg = el(msgId);
+    const list = el(listId);
+    if (msg) msg.textContent = 'Scanning…';
+    if (list) list.innerHTML = '';
+    try {
+        const r = await fetch('/api/serial/ports', { cache: 'no-store' });
+        const p = await r.json().catch(() => ({}));
+        if (!r.ok) {
+            if (msg) msg.textContent = '✗ ' + (p.error || ('HTTP ' + r.status));
+            return;
+        }
+        if (p.error && msg) msg.textContent = '✗ ' + p.error;
+        const ports = p.ports || [];
+        if (list) {
+            list.innerHTML = ports.length
+                ? ports.map(port => `<div class="li"><div style="flex:1"><div class="n mono">${esc(port)}</div></div><button class="btn ghost" data-action="use-serial-port" data-port="${esc(port)}" data-target="${esc(targetInputId)}" type="button">Use</button></div>`).join('')
+                : '<span class="msg">No serial ports found.</span>';
+        }
+        if (msg && !p.error) {
+            msg.textContent = ports.length
+                ? (ports.length + ' port' + (ports.length === 1 ? '' : 's') + ' found. Click Use to fill Port.')
+                : 'No serial ports found on this host.';
+        }
+    } catch (e) {
+        if (msg) msg.textContent = '✗ ' + e.message;
+        if (list) list.innerHTML = '<span class="msg">Scan failed.</span>';
+    }
+}
+function useSerialPort(port, targetInputId) {
+    if (!port || !targetInputId) return;
+    const input = el(targetInputId);
+    if (!input) return;
+    input.value = port;
+    if (targetInputId === 'drvA3nPort') {
+        el('drvA3nMessage').textContent = 'Selected ' + port + ' — save or Test connection.';
+    }
+}
+let wzDrvCurrentStep = 1;
+const WZDRV_STEPS = 5;
+function openDriverWizard() {
+    wzDrvCurrentStep = 1;
+    ['wzDrvSourceId','wzDrvName','wzDrvPort'].forEach(id => el(id).value = '');
+    el('wzDrvType').value = 'MelsecA3n';
+    wzDrvOnTypeChange();
+    el('wzDrvBaud').value = '9600';
+    el('wzDrvDataBits').value = '8';
+    el('wzDrvParity').value = 'Odd';
+    el('wzDrvStopBits').value = 'One';
+    el('wzDrvStation').value = '00';
+    el('wzDrvPc').value = 'FF';
+    el('wzDrvTimeout').value = '3000';
+    el('wzDrvRetry').value = '2';
+    el('wzDrvRate').value = '1000';
+    el('wzDrvMaxTags').value = '2000';
+    if (el('listWzDrvPorts')) el('listWzDrvPorts').innerHTML = '';
+    if (el('msgWzDrvPorts')) el('msgWzDrvPorts').textContent = 'Click Scan to list host serial ports.';
+    el('wzDrv').classList.add('open');
+    wzDrvRender();
+}
+function closeDriverWizard() { el('wzDrv').classList.remove('open'); }
+function wzDrvRender() {
+    document.querySelectorAll('.wzdrv-pane').forEach(p => p.classList.toggle('active', Number(p.dataset.pane) === wzDrvCurrentStep));
+    document.querySelectorAll('.wzdrv-step').forEach(s => {
+        const n = Number(s.dataset.step);
+        s.classList.toggle('active', n === wzDrvCurrentStep);
+        s.classList.toggle('done', n < wzDrvCurrentStep);
+    });
+    el('wzDrvBack').style.display = wzDrvCurrentStep > 1 ? '' : 'none';
+    el('wzDrvNext').style.display = wzDrvCurrentStep < WZDRV_STEPS ? '' : 'none';
+    el('wzDrvFinish').style.display = wzDrvCurrentStep === WZDRV_STEPS ? '' : 'none';
+    if (wzDrvCurrentStep === WZDRV_STEPS) wzDrvBuildSummary();
+}
+function wzDrvStep(delta) {
+    const next = wzDrvCurrentStep + delta;
+    if (next < 1 || next > WZDRV_STEPS) return;
+    if (delta > 0 && !wzDrvValidate(wzDrvCurrentStep)) return;
+    wzDrvCurrentStep = next;
+    wzDrvRender();
+}
+function wzDrvValidate(step) {
+    if (step === 2) {
+        const id = el('wzDrvSourceId').value.trim();
+        if (!id) { alert('Source ID is required.'); return false; }
+        if (/\s/.test(id)) { alert('Source ID must not contain spaces.'); return false; }
+        if (state.sources.some(s => s.sourceId === id)) { alert('Source ID already exists.'); return false; }
+    }
+    if (step === 3 && !el('wzDrvPort').value.trim()) { alert('Serial port is required.'); return false; }
+    return true;
+}
+function wzDrvBuildSummary() {
+    const s7 = el('wzDrvType').value === 'S7200Ppi';
+    const typeLabel = s7 ? 'Siemens S7-200 (PPI serial)' : 'Mitsubishi Melsec A3N (serial 1C)';
+    const serialLine = `<b>Serial:</b> ${esc(el('wzDrvPort').value)} @ ${el('wzDrvBaud').value} baud, ${el('wzDrvDataBits').value}${el('wzDrvParity').value[0]}${el('wzDrvStopBits').value === 'Two' ? '2' : '1'}<br>`;
+    const addrLine = s7
+        ? `<b>Local / Remote PPI:</b> ${esc(el('wzDrvLocalPpi').value || '0')} / ${esc(el('wzDrvRemotePpi').value || '2')}<br>`
+        : `<b>Station / PC:</b> ${esc(el('wzDrvStation').value || '00')} / ${esc(el('wzDrvPc').value || 'FF')}<br>`;
+    el('wzDrvSummary').innerHTML =
+        `<b>Type:</b> ${typeLabel}<br>` +
+        `<b>Source ID:</b> ${esc(el('wzDrvSourceId').value)}<br>` +
+        `<b>Display Name:</b> ${esc(el('wzDrvName').value || '—')}<br>` +
+        serialLine +
+        addrLine +
+        `<b>Timeout:</b> ${el('wzDrvTimeout').value} ms · <b>Retries:</b> ${el('wzDrvRetry').value}<br>` +
+        `<b>Update Rate:</b> ${el('wzDrvRate').value} ms · <b>Max tags:</b> ${el('wzDrvMaxTags').value}`;
+}
+async function wzDrvFinish() {
+    el('drvA3nSourceId').disabled = false;
+    el('drvA3nSourceId').value = el('wzDrvSourceId').value.trim();
+    el('drvA3nName').value = el('wzDrvName').value.trim();
+    el('drvA3nPort').value = el('wzDrvPort').value.trim();
+    el('drvA3nBaud').value = el('wzDrvBaud').value;
+    el('drvA3nDataBits').value = el('wzDrvDataBits').value;
+    el('drvA3nParity').value = el('wzDrvParity').value;
+    el('drvA3nStopBits').value = el('wzDrvStopBits').value;
+    el('drvA3nStation').value = el('wzDrvStation').value;
+    el('drvA3nPc').value = el('wzDrvPc').value;
+    if (el('drvS7LocalPpi') && el('wzDrvLocalPpi')) el('drvS7LocalPpi').value = el('wzDrvLocalPpi').value;
+    if (el('drvS7RemotePpi') && el('wzDrvRemotePpi')) el('drvS7RemotePpi').value = el('wzDrvRemotePpi').value;
+    setDriverFormType(el('wzDrvType').value || 'MelsecA3n');
+    el('drvA3nTimeout').value = el('wzDrvTimeout').value;
+    el('drvA3nRetry').value = el('wzDrvRetry').value;
+    el('drvA3nRate').value = el('wzDrvRate').value;
+    el('drvA3nMaxTags').value = el('wzDrvMaxTags').value;
+    state.editingNewDriver = true;
+    try {
+        const saved = await saveDriverSource();
+        if (!saved) return;
+        closeDriverWizard();
+        if (confirm('Driver source saved. Map tags now?')) navigate('tags/maps');
+    } catch (e) {
+        el('drvA3nMessage').textContent = '✗ ' + e.message;
+    }
+}
 function resetSource() {
     if (state.editingNewSource) { newSource(); return; }
     loadSelectedSourceForm();
@@ -3080,6 +4589,7 @@ function resetSource() {
 function newSource() {
     state.selectedSourceId = '';
     state.editingNewSource = true;
+    state.editingNewUaSource = false;
     el('selectedSource').value = '';
     el('mapSourceSelect').value = '';
     el('cfgSourceId').disabled = false;
@@ -3093,6 +4603,306 @@ function newSource() {
     el('tagTree').innerHTML = '<span class="msg">Save the new source before browsing tags.</span>';
     el('cfgMessage').textContent = 'Enter a unique Source ID, then save.';
     showSaveReset();
+}
+function showUaSaveReset() { el('uaCfgApply').style.display = ''; el('uaCfgReset').style.display = ''; }
+function hideUaSaveReset() { el('uaCfgApply').style.display = 'none'; el('uaCfgReset').style.display = 'none'; }
+function newUaSource() {
+    state.selectedSourceId = '';
+    state.editingNewUaSource = true;
+    state.editingNewSource = false;
+    if (el('uaSelectedSource')) el('uaSelectedSource').value = '';
+    el('uaCfgSourceId').disabled = false;
+    el('uaCfgSourceId').value = '';
+    el('uaCfgDisplayName').value = '';
+    el('uaCfgEndpointUrl').value = '';
+    el('uaCfgSecurityMode').value = 'None';
+    el('uaCfgSecurityPolicy').value = 'None';
+    el('uaCfgUser').value = '';
+    el('uaCfgPass').value = '';
+    el('uaCfgUpdateRate').value = String(state.updateRateMs || 1000);
+    el('uaCfgMaxMappedTags').value = '50000';
+    el('uaCfgUseSubscriptions').checked = true;
+    el('uaCfgMessage').textContent = 'Enter a unique Source ID and endpoint, then save.';
+    showUaSaveReset();
+}
+function resetUaSource() {
+    if (state.editingNewUaSource) { newUaSource(); return; }
+    loadSelectedUaSourceForm();
+    el('uaCfgMessage').textContent = 'Reverted to saved values.';
+}
+async function saveUaSource() {
+    const sourceId = el('uaCfgSourceId').value.trim();
+    if (!sourceId) {
+        el('uaCfgMessage').textContent = '✗ Source ID is required.';
+        return;
+    }
+    const endpointUrl = el('uaCfgEndpointUrl').value.trim();
+    if (!endpointUrl) {
+        el('uaCfgMessage').textContent = '✗ Endpoint URL is required.';
+        return;
+    }
+    const body = {
+        sourceId,
+        displayName: el('uaCfgDisplayName').value.trim() || null,
+        sourceType: 'OpcUa',
+        endpointUrl,
+        securityMode: el('uaCfgSecurityMode').value,
+        securityPolicy: el('uaCfgSecurityPolicy').value,
+        uaUsername: el('uaCfgUser').value.trim() || null,
+        uaPassword: el('uaCfgPass').value || null,
+        updateRateMs: parseInt(el('uaCfgUpdateRate').value, 10) || 1000,
+        maxMappedTags: parseInt(el('uaCfgMaxMappedTags').value, 10) || 50000,
+        useSubscriptions: el('uaCfgUseSubscriptions').checked,
+        progId: '',
+        host: ''
+    };
+    const r = await fetch('/api/da/sources', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const p = await r.json();
+    if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
+    state.selectedSourceId = p.source?.sourceId || body.sourceId;
+    state.editingNewUaSource = false;
+    await loadSources();
+    await refresh();
+    el('uaCfgMessage').textContent = 'Source saved.';
+    hideUaSaveReset();
+}
+async function testUaConnection() {
+    const body = {
+        endpointUrl: el('uaCfgEndpointUrl').value.trim(),
+        securityMode: el('uaCfgSecurityMode').value,
+        securityPolicy: el('uaCfgSecurityPolicy').value,
+        username: el('uaCfgUser').value.trim() || null,
+        password: el('uaCfgPass').value || null,
+        sourceId: el('uaCfgSourceId').value.trim() || null
+    };
+    if (!body.endpointUrl) {
+        el('uaCfgMessage').textContent = '✗ Endpoint URL is required.';
+        return;
+    }
+    el('uaCfgMessage').textContent = 'Testing connection…';
+    const r = await fetch('/api/ua/test-connection', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const p = await r.json().catch(() => ({}));
+    if (!r.ok || p.ok === false) {
+        el('uaCfgMessage').textContent = '✗ ' + (p.error || p.message || ('HTTP ' + r.status));
+        return;
+    }
+    const bits = [];
+    if (p.serverProductName || p.productName) bits.push(p.serverProductName || p.productName);
+    if (p.sessionId) bits.push('session ' + p.sessionId);
+    el('uaCfgMessage').textContent = '✓ Connected' + (bits.length ? ' — ' + bits.join(' · ') : '.');
+}
+async function discoverUaServers() {
+    const discoveryUrl = (el('uaDiscoverUrl').value.trim()
+        || el('uaCfgEndpointUrl').value.trim()
+        || 'opc.tcp://localhost:4840');
+    el('msgUaDiscover').textContent = 'Scanning…';
+    el('listUaDiscover').innerHTML = '';
+    const body = {
+        endpointUrl: discoveryUrl,
+        securityMode: el('uaCfgSecurityMode').value || 'None',
+        securityPolicy: el('uaCfgSecurityPolicy').value || 'None',
+        username: el('uaCfgUser').value.trim() || null,
+        password: el('uaCfgPass').value || null
+    };
+    try {
+        const r = await fetch('/api/ua/discover', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), cache: 'no-store' });
+        const p = await r.json().catch(() => ({}));
+        if (!r.ok || p.ok === false) {
+            el('msgUaDiscover').textContent = '✗ ' + (p.error || p.message || ('HTTP ' + r.status));
+            el('listUaDiscover').innerHTML = '<span class="msg">No servers found.</span>';
+            return;
+        }
+        const servers = p.servers || [];
+        el('listUaDiscover').innerHTML = servers.length ? servers.map(s => {
+            const name = s.serverName || s.serverUri || s.discoveryUrl || '(unnamed)';
+            const url = s.discoveryUrl || '';
+            const caps = (s.serverCapabilities && s.serverCapabilities.length) ? s.serverCapabilities.join(', ') : '';
+            const sub = [url, caps].filter(Boolean).join(' · ');
+            return `<div class="li"><div style="flex:1"><div class="n">${esc(name)}</div><div class="p">${esc(sub)}</div></div><button class="btn ghost" data-action="pick-ua-server" data-url="${attr(url)}" data-name="${attr(name)}">Use</button></div>`;
+        }).join('') : '<span class="msg">No servers found.</span>';
+        el('msgUaDiscover').textContent = servers.length + ' server' + (servers.length === 1 ? '' : 's') + ' at ' + discoveryUrl;
+    } catch (e) {
+        el('msgUaDiscover').textContent = '✗ ' + e.message;
+        el('listUaDiscover').innerHTML = '<span class="msg">Scan failed.</span>';
+    }
+}
+function pickUaServer(url, name) {
+    if (!url) return;
+    el('uaCfgEndpointUrl').value = url;
+    if (name && !el('uaCfgDisplayName').value.trim()) el('uaCfgDisplayName').value = name;
+    el('uaCfgMessage').textContent = 'Selected ' + (name || url) + ' — save source to apply.';
+    showUaSaveReset();
+}
+async function removeSelectedUaSource() {
+    const source = currentSource();
+    if (!source || !isUaSource(source) || state.editingNewUaSource) return;
+    if (!confirm('Remove source "' + source.sourceId + '" and its mappings?')) return;
+    const r = await fetch('/api/da/sources/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId: source.sourceId }) });
+    const p = await r.json();
+    if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
+    state.selectedSourceId = 'default';
+    await loadSources();
+    await loadMappings();
+    await refresh();
+    el('uaCfgMessage').textContent = 'Source removed.';
+}
+let wzCurrentStep = 1;
+const WZ_STEPS = 6;
+function wzIsUa() { return (el('wzSourceType')?.value || 'OpcDa') === 'OpcUa'; }
+function wzOnTypeChange() {
+  const ua = wzIsUa();
+  const daServer = el('wzDaServerFields');
+  const uaServer = el('wzUaServerFields');
+  const daAuth = el('wzDaAuthFields');
+  const uaAuth = el('wzUaAuthFields');
+  const maxTags = el('wzMaxTagsField');
+  if (daServer) daServer.style.display = ua ? 'none' : '';
+  if (uaServer) uaServer.style.display = ua ? '' : 'none';
+  if (daAuth) daAuth.style.display = ua ? 'none' : '';
+  if (uaAuth) uaAuth.style.display = ua ? '' : 'none';
+  if (maxTags) maxTags.style.display = ua ? '' : 'none';
+  const hint = el('wzSubsHint');
+  if (hint) hint.textContent = ua ? 'Use MonitoredItems for mapped tags (recommended)' : 'Use IOPCDataCallback (recommended)';
+}
+function openAddSourceWizard() {
+  wzCurrentStep = 1;
+  ['wzSourceId','wzDisplayName','wzHost','wzProgId','wzDomain','wzUser','wzPass','wzEndpointUrl','wzUaUser','wzUaPass'].forEach(id => { const n = el(id); if (n) n.value = ''; });
+  if (el('wzSourceType')) el('wzSourceType').value = 'OpcDa';
+  el('wzHost').value = 'localhost';
+  el('wzSubs').checked = true;
+  el('wzUpdateRate').value = '1000';
+  if (el('wzSecurityMode')) el('wzSecurityMode').value = 'None';
+  if (el('wzSecurityPolicy')) el('wzSecurityPolicy').value = 'None';
+  if (el('wzMaxMappedTags')) el('wzMaxMappedTags').value = '50000';
+  el('wzListServers').innerHTML = '';
+  el('wzMsgServers').textContent = '';
+  wzOnTypeChange();
+  el('addSourceWizard').classList.add('open');
+  wzRender();
+}
+function closeAddSourceWizard() { el('addSourceWizard').classList.remove('open'); }
+function wzRender() {
+  document.querySelectorAll('.wizard-pane').forEach(p => p.classList.toggle('active', Number(p.dataset.pane) === wzCurrentStep));
+  document.querySelectorAll('.wizard-step').forEach(s => {
+    const n = Number(s.dataset.step);
+    s.classList.toggle('active', n === wzCurrentStep);
+    s.classList.toggle('done', n < wzCurrentStep);
+  });
+  el('wzBack').style.display = wzCurrentStep > 1 ? '' : 'none';
+  el('wzNext').style.display = wzCurrentStep < WZ_STEPS ? '' : 'none';
+  el('wzFinish').style.display = wzCurrentStep === WZ_STEPS ? '' : 'none';
+  if (wzCurrentStep === 3 || wzCurrentStep === 4 || wzCurrentStep === 5) wzOnTypeChange();
+  if (wzCurrentStep === WZ_STEPS) wzBuildSummary();
+}
+function wzStep(delta) {
+  const next = wzCurrentStep + delta;
+  if (next < 1 || next > WZ_STEPS) return;
+  if (delta > 0 && !wzValidate(wzCurrentStep)) return;
+  wzCurrentStep = next;
+  wzRender();
+}
+function wzValidate(step) {
+  if (step === 2) {
+    const id = el('wzSourceId').value.trim();
+    if (!id) { alert('Source ID is required.'); return false; }
+    if (/\s/.test(id)) { alert('Source ID must not contain spaces.'); return false; }
+    if (state.sources.some(s => s.sourceId === id)) { alert('Source ID already exists.'); return false; }
+  }
+  if (step === 3) {
+    if (wzIsUa()) {
+      if (!el('wzEndpointUrl').value.trim()) { alert('Endpoint URL is required.'); return false; }
+    } else if (!el('wzProgId').value.trim()) {
+      alert('ProgID / CLSID is required.'); return false;
+    }
+  }
+  return true;
+}
+async function wzBrowseServers() {
+  const host = el('wzHost').value.trim() || 'localhost';
+  el('wzMsgServers').textContent = 'Scanning…';
+  const body = { host: host === 'localhost' ? null : host };
+  try {
+    const r = await fetch('/api/da/servers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), cache: 'no-store' });
+    const p = await r.json();
+    if (p.error) throw new Error(p.error);
+    const servers = p.servers || [];
+    el('wzListServers').innerHTML = servers.length ? servers.map(s => {
+      const prog = s.progId || s.ProgId;
+      const desc = s.description || s.Description || prog;
+      return `<div class="li"><div style="flex:1"><div class="n">${esc(desc)}</div><div class="p">${esc(prog)}</div></div><button class="btn ghost" data-action="wz-pick-server" data-prog-id="${attr(prog)}" data-host="${attr(host)}">Use</button></div>`;
+    }).join('') : '<span class="msg">No servers found.</span>';
+    el('wzMsgServers').textContent = servers.length + ' servers';
+  } catch (e) { el('wzMsgServers').textContent = '✗ ' + e.message; }
+}
+function wzPickServer(progId, host) {
+  el('wzProgId').value = progId;
+  el('wzHost').value = host;
+  el('wzMsgServers').textContent = 'Selected ' + progId;
+}
+function wzBuildSummary() {
+  if (wzIsUa()) {
+    el('wzSummary').innerHTML =
+      `<b>Type:</b> OPC UA<br>` +
+      `<b>Source ID:</b> ${esc(el('wzSourceId').value)}<br>` +
+      `<b>Display Name:</b> ${esc(el('wzDisplayName').value || '—')}<br>` +
+      `<b>Endpoint:</b> ${esc(el('wzEndpointUrl').value)}<br>` +
+      `<b>Security:</b> ${esc(el('wzSecurityMode').value)} / ${esc(el('wzSecurityPolicy').value)}<br>` +
+      `<b>Credentials:</b> ${el('wzUaUser').value ? esc(el('wzUaUser').value) : 'anonymous'}<br>` +
+      `<b>Update Rate:</b> ${el('wzUpdateRate').value} ms<br>` +
+      `<b>Subscriptions:</b> ${el('wzSubs').checked ? 'on' : 'off'}<br>` +
+      `<b>Max Mapped Tags:</b> ${esc(el('wzMaxMappedTags').value || '50000')}`;
+  } else {
+    el('wzSummary').innerHTML =
+      `<b>Type:</b> OPC DA<br>` +
+      `<b>Source ID:</b> ${esc(el('wzSourceId').value)}<br>` +
+      `<b>Display Name:</b> ${esc(el('wzDisplayName').value || '—')}<br>` +
+      `<b>Host:</b> ${esc(el('wzHost').value || 'localhost')}<br>` +
+      `<b>ProgID:</b> ${esc(el('wzProgId').value)}<br>` +
+      `<b>Credentials:</b> ${el('wzUser').value ? el('wzDomain').value + '\\' + el('wzUser').value : 'none'}<br>` +
+      `<b>Update Rate:</b> ${el('wzUpdateRate').value} ms<br>` +
+      `<b>Subscriptions:</b> ${el('wzSubs').checked ? 'on' : 'off'}`;
+  }
+}
+async function wzFinish() {
+  if (wzIsUa()) {
+    el('uaCfgSourceId').disabled = false;
+    el('uaCfgSourceId').value = el('wzSourceId').value.trim();
+    el('uaCfgDisplayName').value = el('wzDisplayName').value.trim();
+    el('uaCfgEndpointUrl').value = el('wzEndpointUrl').value.trim();
+    el('uaCfgSecurityMode').value = el('wzSecurityMode').value;
+    el('uaCfgSecurityPolicy').value = el('wzSecurityPolicy').value;
+    el('uaCfgUser').value = el('wzUaUser').value.trim();
+    el('uaCfgPass').value = el('wzUaPass').value;
+    el('uaCfgUpdateRate').value = el('wzUpdateRate').value;
+    el('uaCfgMaxMappedTags').value = el('wzMaxMappedTags').value || '50000';
+    el('uaCfgUseSubscriptions').checked = el('wzSubs').checked;
+    state.editingNewUaSource = true;
+    try {
+      await saveUaSource();
+      closeAddSourceWizard();
+      navigate('connectivity/opc-ua');
+      if (confirm('Source saved. Map tags now?')) navigate('tags/maps');
+    } catch (e) {
+      el('uaCfgMessage').textContent = '✗ ' + e.message;
+    }
+    return;
+  }
+  el('cfgSourceId').value = el('wzSourceId').value.trim();
+  el('cfgDisplayName').value = el('wzDisplayName').value.trim();
+  el('cfgProgId').value = el('wzProgId').value.trim();
+  el('cfgHost').value = el('wzHost').value.trim() || 'localhost';
+  el('cfgUser').value = el('wzUser').value.trim();
+  el('cfgPass').value = el('wzPass').value;
+  el('cfgDomain').value = el('wzDomain').value.trim();
+  state.editingNewSource = true;
+  try {
+    await saveSource();
+    closeAddSourceWizard();
+    navigate('connectivity/opc-da');
+    if (confirm('Source saved. Map tags now?')) navigate('tags/maps');
+  } catch (e) {
+    el('cfgMessage').textContent = '✗ ' + e.message;
+  }
 }
 async function browseServers() {
     const host = (el('cfgHost').value.trim() || 'localhost');
@@ -3161,6 +4971,14 @@ async function browseLinkTags(path, recursive = false) {
         el('linkBrowseBreadcrumb').innerHTML = '';
         return;
     }
+    if (!sourceMatchesMapType(source, 'opc-da')) {
+        // DA Links forward DA→DA only, but the active source comes from any tab
+        // (e.g. an OPC UA source selected on the OPC UA maps tab). A non-DA source
+        // must never be posted to the OPC DA browse endpoint.
+        el('linkBrowseTree').innerHTML = '<span class="msg">DA Links browse OPC DA sources only — select an OPC DA source from Connection or Tags first.</span>';
+        el('linkBrowseBreadcrumb').innerHTML = '';
+        return;
+    }
     state.linkBrowsePath = path || '';
     renderLinkCrumb();
     el('linkBrowseTree').innerHTML = '<span class="msg">Browsing…</span>';
@@ -3189,7 +5007,7 @@ async function browseLinkTags(path, recursive = false) {
         rows.push(`<div class="li clickable" data-action="open-link-branch" data-path="${attr(child)}"><span class="icon folder">&#128193;</span><div style="flex:1"><div class="n">${esc(branch)}</div><div class="p">folder</div></div></div>`);
     }
     for (const tag of tags) {
-        const itemId = tag.itemId || tag.ItemId;
+        const itemId = tag.itemId || tag.ItemId || tag.daItemId || tag.DaItemId;
         const name = tag.name || tag.Name || itemId;
         const key = tagKey(source.sourceId, itemId);
         const existing = findDaLinkByConsumer(key);
@@ -3220,6 +5038,72 @@ function renderCrumb() {
     }
     bc.innerHTML = html;
 }
+function renderUaCrumb() {
+    const bc = el('tagBreadcrumb');
+    const trail = state.uaBrowseTrail || [];
+    if (!trail.length) {
+        bc.innerHTML = '<span class="current">root (Objects)</span>';
+        return;
+    }
+    let html = '<a data-crumb="">root</a><span class="sep">/</span>';
+    for (let i = 0; i < trail.length; i++) {
+        const step = trail[i];
+        if (i < trail.length - 1) {
+            html += `<a data-crumb="${attr(step.nodeId)}" data-crumb-depth="${i}">${esc(step.name)}</a><span class="sep">/</span>`;
+        } else {
+            html += `<span class="current">${esc(step.name)}</span>`;
+        }
+    }
+    bc.innerHTML = html;
+}
+async function browseUaSource(nodeId) {
+    const source = currentSource();
+    if (!source) return;
+    const targetNodeId = nodeId || 'i=85';
+    state.tagPath = targetNodeId;
+    renderUaCrumb();
+    el('tagTree').innerHTML = '<span class="msg">Browsing…</span>';
+    el('tagStatus').textContent = 'Loading OPC UA nodes…';
+    const body = {
+        sourceId: source.sourceId,
+        endpointUrl: source.endpointUrl || source.EndpointUrl,
+        securityMode: source.securityMode || source.SecurityMode || 'None',
+        securityPolicy: source.securityPolicy || source.SecurityPolicy || 'None',
+        nodeId: targetNodeId,
+        maxNodes: 200
+    };
+    const res = await fetch('/api/ua/browse', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const p = await res.json();
+    if (p.error) throw new Error(p.error);
+    const nodes = p.nodes || [];
+    const mappedKeys = new Set((state.mappings || []).map(m => valueKey(m.sourceId || m.SourceId || 'default', m.itemId || m.ItemId || m.daItemId || m.DaItemId)));
+    const rows = [];
+    if (state.uaBrowseTrail.length) {
+        // Trail stores the NODE WE DESCENDED INTO. Parent of the currently
+        // displayed node is the previous trail entry (or '' for root).
+        const parentTrail = state.uaBrowseTrail.slice(0, -1);
+        const parentNodeId = parentTrail.length ? parentTrail[parentTrail.length - 1].nodeId : '';
+        rows.push(`<div class="li clickable" data-action="open-branch" data-path="${attr(parentNodeId)}" data-trail-depth="${parentTrail.length}"><span class="icon folder">&#9650;</span><div style="flex:1"><div class="n">..</div><div class="p">Up one level</div></div></div>`);
+    }
+    let folders = 0, vars = 0;
+    for (const node of nodes) {
+        const nid = node.nodeId || '';
+        const name = node.displayName || node.DisplayName || nid;
+        const cls = String(node.nodeClass || node.NodeClass || '').toLowerCase();
+        const hasChildren = node.hasChildren || node.HasChildren;
+        if (cls === 'variable') {
+            vars++;
+            const isMapped = mappedKeys.has(valueKey(source.sourceId, nid));
+            rows.push(`<div class="li"><span class="icon tag">&#9878;</span><div style="flex:1"><div class="n">${esc(name)}</div><div class="p">${esc(nid)} · Variable</div></div><div class="li-actions">${isMapped ? '<span class="mapped-badge">Mapped</span>' : ''}<button class="btn ghost" data-action="add-tag" data-source-id="${attr(source.sourceId)}" data-item-id="${attr(nid)}" data-name="${attr(name)}">Map</button></div></div>`);
+        } else {
+            folders++;
+            const childIcon = hasChildren ? '&#128193;' : '&#128196;';
+            rows.push(`<div class="li clickable" data-action="open-branch" data-path="${attr(nid)}" data-node-name="${attr(name)}"><span class="icon folder">${childIcon}</span><div style="flex:1"><div class="n">${esc(name)}</div><div class="p">${esc(nid)} · ${esc(node.nodeClass || 'folder')}${hasChildren ? '' : ' (leaf)'}</div></div></div>`);
+        }
+    }
+    el('tagTree').innerHTML = rows.length ? rows.join('') : '<span class="msg">No child nodes at this node.</span>';
+    el('tagStatus').textContent = folders + ' folders · ' + vars + ' variables';
+}
 async function browseTags(path, recursive = false) {
     const source = currentSource();
     if (!source || state.editingNewSource) {
@@ -3227,6 +5111,20 @@ async function browseTags(path, recursive = false) {
         el('tagBreadcrumb').innerHTML = '';
         return;
     }
+    if (!sourceMatchesMapType(source)) {
+        // The active map-type tab (OPC DA / OPC UA / Drivers / MX) may only browse
+        // sources of its own type. A stale selection from another type — e.g. an OPC DA
+        // source left selected while the OPC UA tab has no sources — must never fall
+        // through to the DA browse and show DA tags on the wrong tab.
+        el('tagTree').innerHTML = `<span class="msg">This tab browses ${mapTypeLabel()} sources only — select one from the Source dropdown.</span>`;
+        el('tagBreadcrumb').innerHTML = '';
+        return;
+    }
+    if (isUaSource(source)) {
+        await browseUaSource(path || '');
+        return;
+    }
+    state.uaBrowseTrail = [];
     state.tagPath = path || '';
     renderCrumb();
     el('tagTree').innerHTML = '<span class="msg">Browsing…</span>';
@@ -3245,7 +5143,7 @@ async function browseTags(path, recursive = false) {
     if (p.error) throw new Error(p.error);
     const branches = p.branches || [];
     const tags = p.tags || [];
-    const mappedKeys = new Set((state.mappings || []).map(m => valueKey(m.sourceId || m.SourceId || 'default', m.daItemId || m.DaItemId)));
+    const mappedKeys = new Set((state.mappings || []).map(m => valueKey(m.sourceId || m.SourceId || 'default', m.itemId || m.ItemId || m.daItemId || m.DaItemId)));
     const rows = [];
     if (state.tagPath) {
         const parent = state.tagPath.includes('.') ? state.tagPath.substring(0, state.tagPath.lastIndexOf('.')) : '';
@@ -3256,7 +5154,7 @@ async function browseTags(path, recursive = false) {
         rows.push(`<div class="li clickable" data-action="open-branch" data-path="${attr(child)}"><span class="icon folder">&#128193;</span><div style="flex:1"><div class="n">${esc(branch)}</div><div class="p">folder</div></div></div>`);
     }
     for (const tag of tags) {
-        const itemId = tag.itemId || tag.ItemId;
+        const itemId = tag.itemId || tag.ItemId || tag.daItemId || tag.DaItemId;
         const name = tag.name || tag.Name || itemId;
         const isMapped = mappedKeys.has(valueKey(source.sourceId, itemId));
         rows.push(`<div class="li"><span class="icon tag">&#9878;</span><div style="flex:1"><div class="n">${esc(name)}</div><div class="p">${esc(itemId)}</div></div><div class="li-actions">${isMapped ? '<span class="mapped-badge">Mapped</span>' : ''}<button class="btn ghost" data-action="add-tag" data-source-id="${attr(source.sourceId)}" data-item-id="${attr(itemId)}" data-name="${attr(name)}">Add</button></div></div>`);
@@ -3268,7 +5166,7 @@ async function addTag(sourceId, itemId, name) {
     await fetch('/api/mappings/add', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tags: [{ sourceId, daItemId: itemId, displayName: name || itemId, dataType: 'Auto', uaNodeId: defaultUaNodeId(sourceId, itemId) }] })
+        body: JSON.stringify({ tags: [{ sourceId, itemId: itemId, displayName: name || itemId, dataType: 'Auto', uaNodeId: defaultUaNodeId(sourceId, itemId) }] })
     });
     await loadMappings();
     await refresh();
@@ -3282,7 +5180,7 @@ async function addManual() {
     await fetch('/api/mappings/add', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tags: [{ sourceId, daItemId: itemId, displayName: itemId, dataType: 'Auto', uaNodeId }] })
+        body: JSON.stringify({ tags: [{ sourceId, itemId: itemId, displayName: itemId, dataType: 'Auto', uaNodeId }] })
     });
     el('manualItem').value = '';
     el('manualUaNodeId').value = '';
@@ -3293,7 +5191,7 @@ async function removeMapping(sourceId, itemId) {
     await fetch('/api/mappings/remove', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sourceId, daItemId: itemId })
+        body: JSON.stringify({ sourceId, itemId: itemId })
     });
     await loadMappings();
     await refresh();
@@ -3305,7 +5203,7 @@ function toggleLiveValues() {
         refresh().catch(e => {
             el('dot').className = 'dot off';
             el('clock').textContent = 'offline';
-            el('values').innerHTML = `<tr><td colspan="5" class="bad">${esc(e.message)}</td></tr>`;
+            el('values').innerHTML = `<tr><td colspan="7" class="bad">${esc(e.message)}</td></tr>`;
         });
     }
 }
@@ -3316,15 +5214,53 @@ function bindDynamicButtons() {
         if (!button) return;
         pickSource(button.dataset.sourceId || '');
     });
+    const statusList = el('sourcesStatusList');
+    if (statusList) {
+        statusList.addEventListener('click', event => {
+            const button = event.target.closest('button[data-action="select-source-status"]');
+            if (!button) return;
+            pickSource(button.dataset.sourceId || '', { openConfig: true });
+        });
+    }
+    const uaList = el('uaSourcesList');
+    if (uaList) {
+        uaList.addEventListener('click', event => {
+            const button = event.target.closest('button[data-action="select-ua-source"]');
+            if (!button) return;
+            pickSource(button.dataset.sourceId || '');
+        });
+    }
     el('listServers').addEventListener('click', event => {
         const button = event.target.closest('button[data-action="pick-server"]');
         if (!button) return;
         pickServer(button.dataset.progId || '', button.dataset.host || 'localhost');
     });
+    el('listUaDiscover').addEventListener('click', event => {
+        const button = event.target.closest('button[data-action="pick-ua-server"]');
+        if (!button) return;
+        pickUaServer(button.dataset.url || '', button.dataset.name || '');
+    });
+    el('wzListServers').addEventListener('click', event => {
+        const button = event.target.closest('button[data-action="wz-pick-server"]');
+        if (!button) return;
+        wzPickServer(button.dataset.progId || '', button.dataset.host || 'localhost');
+    });
     el('tagTree').addEventListener('click', event => {
         const actionEl = event.target.closest('[data-action]');
         if (!actionEl) return;
         if (actionEl.dataset.action === 'open-branch') {
+            if (isUaSource(currentSource())) {
+                const depth = parseInt(actionEl.dataset.trailDepth || '', 10);
+                if (!isNaN(depth)) {
+                    state.uaBrowseTrail = state.uaBrowseTrail.slice(0, depth);
+                } else {
+                    // Descend: trail entry stores the CHILD nodeId so the crumb link
+                    // navigates to the child and '..' derives the parent as the previous entry.
+                    const childNodeId = actionEl.dataset.path || '';
+                    const childName = actionEl.dataset.nodeName || childNodeId;
+                    state.uaBrowseTrail.push({ nodeId: childNodeId, name: childName });
+                }
+            }
             browseTags(actionEl.dataset.path || '').catch(e => el('tagTree').innerHTML = `<span class="bad">${esc(e.message)}</span>`);
             return;
         }
@@ -3335,6 +5271,10 @@ function bindDynamicButtons() {
     el('tagBreadcrumb').addEventListener('click', event => {
         const link = event.target.closest('a[data-crumb]');
         if (!link) return;
+        if (isUaSource(currentSource())) {
+            const depth = parseInt(link.dataset.crumbDepth || '0', 10) || 0;
+            state.uaBrowseTrail = state.uaBrowseTrail.slice(0, depth);
+        }
         browseTags(link.dataset.crumb || '').catch(e => el('tagTree').innerHTML = `<span class="bad">${esc(e.message)}</span>`);
     });
     el('linkBrowseTree').addEventListener('click', event => {
@@ -3422,12 +5362,56 @@ document.addEventListener('DOMContentLoaded', async () => {
     bindDiagramPanZoom();
     el('selectedSource').addEventListener('change', e => pickSource(e.target.value));
     el('mapSourceSelect').addEventListener('change', e => pickSource(e.target.value));
+    if (el('uaSelectedSource')) el('uaSelectedSource').addEventListener('change', e => pickSource(e.target.value));
     el('cfgApply').addEventListener('click', () => saveSource().catch(e => el('cfgMessage').textContent = '✗ ' + e.message));
     el('cfgReset').addEventListener('click', resetSource);
     el('cfgNew').addEventListener('click', newSource);
     el('cfgRemove').addEventListener('click', () => removeSelectedSource().catch(e => el('cfgMessage').textContent = '✗ ' + e.message));
+    el('drvA3nSave').addEventListener('click', () => saveDriverSource().catch(e => el('drvA3nMessage').textContent = '✗ ' + e.message));
+    el('drvA3nReset').addEventListener('click', resetDriver);
+    el('drvA3nNew').addEventListener('click', newDriver);
+    el('drvA3nRemove').addEventListener('click', () => removeDriver().catch(e => el('drvA3nMessage').textContent = '✗ ' + e.message));
+    el('drvA3nTest').addEventListener('click', () => testDriverConnection().catch(e => el('drvA3nMessage').textContent = '✗ ' + e.message));
+    if (el('mxSave')) el('mxSave').addEventListener('click', () => saveMxSource().catch(e => el('mxMessage').textContent = '✗ ' + e.message));
+    if (el('mxReset')) el('mxReset').addEventListener('click', resetMx);
+    if (el('mxNew')) el('mxNew').addEventListener('click', newMxSource);
+    if (el('mxRemove')) el('mxRemove').addEventListener('click', () => removeMxSource().catch(e => el('mxMessage').textContent = '✗ ' + e.message));
+    if (el('mxTest')) el('mxTest').addEventListener('click', () => testMxConnection().catch(e => el('mxMessage').textContent = '✗ ' + e.message));
+    if (el('mxList')) {
+        el('mxList').addEventListener('click', event => {
+            const button = event.target.closest('button[data-action="select-mx"]');
+            if (!button) return;
+            pickMxSource(button.dataset.sourceId || '');
+        });
+    }
+    if (el('btnDrvScanPorts')) el('btnDrvScanPorts').addEventListener('click', () => scanSerialPorts('drvA3nPort', 'listDrvPorts', 'msgDrvPorts').catch(e => el('msgDrvPorts').textContent = '✗ ' + e.message));
+    if (el('btnWzDrvScanPorts')) el('btnWzDrvScanPorts').addEventListener('click', () => scanSerialPorts('wzDrvPort', 'listWzDrvPorts', 'msgWzDrvPorts').catch(e => el('msgWzDrvPorts').textContent = '✗ ' + e.message));
+    const onUseSerialPort = event => {
+        const button = event.target.closest('button[data-action="use-serial-port"]');
+        if (!button) return;
+        useSerialPort(button.dataset.port || '', button.dataset.target || '');
+    };
+    if (el('listDrvPorts')) el('listDrvPorts').addEventListener('click', onUseSerialPort);
+    if (el('listWzDrvPorts')) el('listWzDrvPorts').addEventListener('click', onUseSerialPort);
+    el('drvA3nList').addEventListener('click', event => {
+        const button = event.target.closest('button[data-action="select-driver"]');
+        if (!button) return;
+        pickDriver(button.dataset.sourceId || '');
+    });
     ['cfgSourceId','cfgDisplayName','cfgProgId','cfgHost','cfgUser','cfgPass','cfgDomain'].forEach(id => {
         el(id).addEventListener('input', () => { if (!state.editingNewSource) showSaveReset(); });
+    });
+    el('uaCfgApply').addEventListener('click', () => saveUaSource().catch(e => el('uaCfgMessage').textContent = '✗ ' + e.message));
+    el('uaCfgReset').addEventListener('click', resetUaSource);
+    el('uaCfgNew').addEventListener('click', newUaSource);
+    el('uaCfgRemove').addEventListener('click', () => removeSelectedUaSource().catch(e => el('uaCfgMessage').textContent = '✗ ' + e.message));
+    el('btnUaTestConnection').addEventListener('click', () => testUaConnection().catch(e => el('uaCfgMessage').textContent = '✗ ' + e.message));
+    el('btnUaDiscover').addEventListener('click', () => discoverUaServers().catch(e => el('msgUaDiscover').textContent = e.message));
+    ['uaCfgSourceId','uaCfgDisplayName','uaCfgEndpointUrl','uaCfgSecurityMode','uaCfgSecurityPolicy','uaCfgUser','uaCfgPass','uaCfgUpdateRate','uaCfgMaxMappedTags','uaCfgUseSubscriptions'].forEach(id => {
+        const node = el(id);
+        if (!node) return;
+        const evt = node.tagName === 'SELECT' || node.type === 'checkbox' ? 'change' : 'input';
+        node.addEventListener(evt, () => { if (!state.editingNewUaSource) showUaSaveReset(); });
     });
     el('cfgApplyRate').addEventListener('click', () => saveUpdateRate().catch(e => el('rateMessage').textContent = '✗ ' + e.message));
     el('btnExportConfig').addEventListener('click', async () => {
@@ -3485,6 +5469,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     el('mappingSort').addEventListener('change', e => { state.mappingSort = e.target.value; rerenderMappings(); });
     el('mappingSortDir').addEventListener('click', () => { state.mappingSortDir *= -1; el('mappingSortDir').textContent = state.mappingSortDir > 0 ? '↑' : '↓'; rerenderMappings(); });
     el('toggleLiveValues').addEventListener('click', toggleLiveValues);
+    const lvSourceSelect = el('liveValuesSource');
+    if (lvSourceSelect) lvSourceSelect.addEventListener('change', e => {
+        state.liveValuesSource = e.target.value || '';
+        updateLiveValuesUi();
+        refresh().catch(err => {
+            el('dot').className = 'dot off';
+            el('clock').textContent = 'offline';
+        });
+    });
     el('btnRefreshLogs').addEventListener('click', () => loadLogs(true).catch(e => el('logMessage').textContent = '✗ ' + e.message));
     el('logLevel').addEventListener('change', () => {
         state.logsLoaded = false;
@@ -3509,25 +5502,52 @@ document.addEventListener('DOMContentLoaded', async () => {
         deleteDaLink(btn.dataset.linkId || '').catch(e => el('linksMessage').textContent = '✗ ' + e.message);
     });
     bindDynamicButtons();
-    const initTab = location.hash.slice(1);
-    if (['monitor','connection','diagnostics','tags','links','logs','mqtt','influx','help','about'].includes(initTab)) showTab(initTab);
+    const LEGACY_TAB_TO_ROUTE = {
+      monitor: 'ops/monitor',
+      connection: 'connectivity/sources',
+      'opc-da': 'connectivity/opc-da',
+      'opc-ua': 'connectivity/opc-ua',
+      diagnostics: 'connectivity/diagnostics',
+      tags: 'tags/maps',
+      links: 'tags/links',
+      logs: 'ops/logs',
+      mqtt: 'iot/mqtt',
+      'iot-traffic': 'iot/traffic',
+      influx: 'historian/influx',
+      diagram: 'ops/diagram',
+      help: 'help/guide',
+      about: 'help/about'
+    };
+    const initHashRaw = location.hash.replace(/^#\/?/, '');
+    let initRoute = Object.prototype.hasOwnProperty.call(ROUTE_TO_TAB, initHashRaw) ? initHashRaw
+      : (LEGACY_TAB_TO_ROUTE[initHashRaw] || DEFAULT_ROUTE);
+    await navigate(initRoute);
     await loadSources();
     await loadMappings();
+    if (document.getElementById('view-tags')?.classList.contains('active')) {
+      syncMapTypeUi();
+      ensureMapSourceSelection();
+      renderMapSourceSelect();
+      updateMapEmptyBanner();
+      updateMapBrowseUi();
+      rerenderMappings();
+    }
     updateLiveValuesUi();
-    await refresh();
     setInterval(refresh, 1000);
     setInterval(() => { if (el('logAutoRefresh')?.checked && document.querySelector('#view-logs.active')) { state.logsLoaded = false; loadLogs(true).catch(() => {}); } }, 3000);
     setInterval(() => { if (diagnosticsActive) loadDiagnostics().catch(() => {}); }, 2000);
     setInterval(() => {
         if (document.querySelector('#view-mqtt.active')) {
             loadMqttStatus().catch(() => {});
+        }
+        if (document.querySelector('#view-iot-traffic.active')) {
             if (el('mqttValAuto')?.checked) loadMqttValues().catch(() => {});
         }
         if (document.querySelector('#view-influx.active')) loadInfluxStatus().catch(() => {});
     }, 2000);
-    if (initTab === 'logs') await loadLogs();
-    if (initTab === 'help') await loadHelp();
-    if (initTab === 'about') await loadAppInfo();
+    if (initRoute === 'logs') await loadLogs();
+    if (initRoute === 'help') await loadHelp();
+    if (initRoute === 'about') await loadAppInfo();
     fetch('/api/version').then(r => r.json()).then(p => { const v = (p.informationalVersion || p.version || '0.0.0').split('+')[0]; el('appVersion').textContent = 'v' + v; }).catch(() => {});
 });
 </script>

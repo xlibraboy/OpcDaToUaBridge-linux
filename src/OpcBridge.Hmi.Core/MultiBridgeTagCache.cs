@@ -63,7 +63,7 @@ public sealed class MultiBridgeTagCache
 
             foreach (HmiTagDto dto in tags)
             {
-                TagBindingKey key = TagBindingKey.Create(id, dto.SourceId, dto.DaItemId);
+                TagBindingKey key = TagBindingKey.Create(id, dto.SourceId, dto.ItemId);
                 tags_[key] = FromDto(key, dto);
             }
         }
@@ -76,7 +76,7 @@ public sealed class MultiBridgeTagCache
         {
             foreach (HmiValueDelta delta in deltas)
             {
-                TagBindingKey key = TagBindingKey.Create(id, delta.SourceId, delta.DaItemId);
+                TagBindingKey key = TagBindingKey.Create(id, delta.SourceId, delta.ItemId);
                 if (!tags_.TryGetValue(key, out MultiBridgeTagEntry? entry))
                 {
                     continue;
@@ -116,7 +116,7 @@ public sealed class MultiBridgeTagCache
     private static MultiBridgeTagEntry FromDto(TagBindingKey key, HmiTagDto dto) => new()
     {
         Key = key,
-        DisplayName = string.IsNullOrWhiteSpace(dto.DisplayName) ? dto.DaItemId : dto.DisplayName,
+        DisplayName = string.IsNullOrWhiteSpace(dto.DisplayName) ? dto.ItemId : dto.DisplayName,
         DataType = dto.DataType,
         Value = dto.Value,
         TimestampUtc = dto.TimestampUtc,

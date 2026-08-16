@@ -34,7 +34,7 @@ internal sealed class BridgeUaServer : StandardServer
         }
 
         HashSet<string> desired = mappings
-            .Select(mapping => GetMappingKey(mapping.SourceId, mapping.DaItemId))
+            .Select(mapping => GetMappingKey(mapping.SourceId, mapping.ItemId))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
         HashSet<string> current = node_manager_.GetMappedKeys().ToHashSet(StringComparer.OrdinalIgnoreCase);
 
@@ -52,25 +52,39 @@ internal sealed class BridgeUaServer : StandardServer
 
         foreach (TagMapping mapping in mappings)
         {
-            if (!current.Contains(GetMappingKey(mapping.SourceId, mapping.DaItemId)))
+            if (!current.Contains(GetMappingKey(mapping.SourceId, mapping.ItemId)))
             {
                 node_manager_.AddMapping(mapping);
+            }
+            else
+            {
+                // Mapping already has a node: refresh mapping-driven attributes
+                // (AccessLevel, DataType, display metadata) in place.
+                node_manager_.UpdateMapping(mapping);
             }
         }
     }
 
     public int GetConnectedSessionCount()
     {
-        ISessionManager? sessionManager = ServerInternal?.SessionManager;
-        if (sessionManager is null)
+        try
         {
+            ISessionManager? sessionManager = ServerInternal?.SessionManager;
+            if (sessionManager is null)
+            {
+                return 0;
+            }
+
+            return sessionManager
+                .GetSessions()
+                .Cast<ISession>()
+                .Count(session => session.Activated && !session.HasExpired);
+        }
+        catch (ServiceResultException)
+        {
+            // Server can be mid-start/halted while certificate/setup is still settling.
             return 0;
         }
-
-        return sessionManager
-            .GetSessions()
-            .Cast<ISession>()
-            .Count(session => session.Activated && !session.HasExpired);
     }
 
     public int GetMappedNodeCount()
@@ -89,6 +103,8 @@ internal sealed class BridgeUaServer : StandardServer
 
     public IReadOnlyList<UaSessionDiagnostic> GetSessionDiagnostics()
     {
+        try
+        {
         ISessionManager? sessionManager = ServerInternal?.SessionManager;
         if (sessionManager is null)
         {
@@ -121,6 +137,11 @@ internal sealed class BridgeUaServer : StandardServer
         }
 
         return result;
+            }
+        catch (ServiceResultException)
+        {
+            return Array.Empty<UaSessionDiagnostic>();
+        }
     }
 
     public IReadOnlyList<UaSubscriptionDiagnostic> GetSubscriptionDiagnostics()
@@ -272,9 +293,9 @@ internal sealed class BridgeUaServer : StandardServer
     }
 #pragma warning restore CS0618, CS0672
 
-    private static string GetMappingKey(string sourceId, string daItemId)
+    private static string GetMappingKey(string sourceId, string itemId)
     {
-        return string.Concat(sourceId.Trim(), "::", daItemId.Trim());
+        return string.Concat(sourceId.Trim(), "::", itemId.Trim());
     }
 }
 

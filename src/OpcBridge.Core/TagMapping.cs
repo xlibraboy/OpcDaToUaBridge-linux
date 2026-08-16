@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 namespace OpcBridge.Core;
 
 public sealed class TagMapping
@@ -9,10 +10,12 @@ public sealed class TagMapping
     /// Optional — a tag with no provider is a normal standalone mapping.
     /// </summary>
     public string? ProviderSourceId { get; set; }
-    public string? ProviderDaItemId { get; set; }
+    [JsonPropertyName("providerItemId")]
+    public string? ProviderItemId { get; set; }
 
     public string SourceId { get; set; } = "default";
-    public string DaItemId { get; set; } = string.Empty;
+    [JsonPropertyName("itemId")]
+    public string ItemId { get; set; } = string.Empty;
     public string UaNodeId { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
     public string? Description { get; set; }

@@ -54,13 +54,13 @@ public sealed class HmiBroadcastService : IHostedService
         HmiValueDelta delta = new()
         {
             SourceId = value.SourceId,
-            DaItemId = value.DaItemId,
+            ItemId = value.ItemId,
             Value = value.Value,
             TimestampUtc = value.TimestampUtc,
             DaQuality = value.DaQuality,
             IsGood = value.IsGood
         };
-        string key = string.Concat(value.SourceId, "::", value.DaItemId);
+        string key = string.Concat(value.SourceId, "::", value.ItemId);
         lock (batch_lock_)
         {
             pending_[key] = delta;

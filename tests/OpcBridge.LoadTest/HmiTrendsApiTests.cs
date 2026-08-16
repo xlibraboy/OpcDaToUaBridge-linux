@@ -25,7 +25,7 @@ public sealed class HmiTrendsApiTests
     public async Task HmiTrends_MissingSourceId_Returns400()
     {
         await using var handle = await TestAppHandle.StartAsync(WriteAppsettings);
-        using HttpResponseMessage response = await handle.Client.GetAsync("/api/hmi/trends?daItemId=Random.Int1");
+        using HttpResponseMessage response = await handle.Client.GetAsync("/api/hmi/trends?itemId=Random.Int1");
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
@@ -42,11 +42,11 @@ public sealed class HmiTrendsApiTests
     {
         await using var handle = await TestAppHandle.StartAsync(WriteAppsettings);
         using HttpResponseMessage response = await handle.Client.GetAsync(
-            "/api/hmi/trends?sourceId=default&daItemId=Random.Int1");
+            "/api/hmi/trends?sourceId=default&itemId=Random.Int1");
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
         Assert.Equal("default", doc.RootElement.GetProperty("sourceId").GetString());
-        Assert.Equal("Random.Int1", doc.RootElement.GetProperty("daItemId").GetString());
+        Assert.Equal("Random.Int1", doc.RootElement.GetProperty("itemId").GetString());
         Assert.Equal(JsonValueKind.Array, doc.RootElement.GetProperty("points").ValueKind);
         Assert.Equal(0, doc.RootElement.GetProperty("points").GetArrayLength());
         Assert.False(string.IsNullOrWhiteSpace(doc.RootElement.GetProperty("error").GetString()));

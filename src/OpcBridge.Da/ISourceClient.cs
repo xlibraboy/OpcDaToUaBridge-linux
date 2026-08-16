@@ -2,7 +2,7 @@ using OpcBridge.Core;
 
 namespace OpcBridge.Da;
 
-public interface IDaClient : IAsyncDisposable
+public interface ISourceClient : IAsyncDisposable
 {
     Task ConnectAsync(CancellationToken cancellationToken);
 
@@ -10,7 +10,7 @@ public interface IDaClient : IAsyncDisposable
         IReadOnlyList<TagMapping> mappings,
         CancellationToken cancellationToken);
 
-    Task<bool> WriteAsync(string daItemId, object? value, CancellationToken cancellationToken);
+    Task<bool> WriteAsync(string itemId, object? value, CancellationToken cancellationToken);
 
-    bool TryGetTagMetadata(string daItemId, out short? canonicalDataType, out int? accessRights);
+    bool TryGetTagMetadata(string itemId, out short? canonicalDataType, out int? accessRights);
 }

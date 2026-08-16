@@ -12,7 +12,7 @@ public sealed class HmiTrendDtoTests
         HmiTrendResponse original = new()
         {
             SourceId = "default",
-            DaItemId = "Random.Int1",
+            ItemId = "Random.Int1",
             FromUtc = new DateTime(2026, 7, 24, 0, 0, 0, DateTimeKind.Utc),
             ToUtc = new DateTime(2026, 7, 24, 1, 0, 0, DateTimeKind.Utc),
             Truncated = true,

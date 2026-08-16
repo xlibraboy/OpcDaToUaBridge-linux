@@ -18,7 +18,7 @@ public sealed class DisplaySurfaceViewModelTests
             new HmiTagDto
             {
                 SourceId = "default",
-                DaItemId = "Tank.Level",
+                ItemId = "Tank.Level",
                 DisplayName = "Tank",
                 Value = 12.5,
                 IsGood = true,

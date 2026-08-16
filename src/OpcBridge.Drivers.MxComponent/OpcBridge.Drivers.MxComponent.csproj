@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;net8.0-windows</TargetFrameworks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>OpcBridge.Drivers.MxComponent</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpcBridge.Core\OpcBridge.Core.csproj" />
+    <ProjectReference Include="..\OpcBridge.Da\OpcBridge.Da.csproj" />
+    <ProjectReference Include="..\OpcBridge.Drivers.Melsec\OpcBridge.Drivers.Melsec.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="OpcBridge.LoadTest" />
+  </ItemGroup>
+
+</Project>

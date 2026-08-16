@@ -31,15 +31,24 @@ Thumbs.db
 
 # Publish output (build artifacts)
 publish/
+publish.tmp/
 publish.bak.*/
 publish*.tar.gz
 
 # Runtime state (generated at runtime)
 mappings.json
+hmi-settings.json
 
 
+# Worktrees (user-requested location for git worktrees)
+worktrees/
 # Subagent-driven development worktrees
 .worktrees/
 #Avalonia build task cache
 .avalonia-build-tasks/
 **/.avalonia-build-tasks/
+
+# Agent skills — bodies are restored from skills-lock.json (see scripts/install-agent-skills.sh)
+# Commit skills-lock.json so every PC gets the same skill set; do not commit skill file trees.
+.agents/
+.pi/

@@ -1,7 +1,8 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
     <ProjectReference Include="..\OpcBridge.Core\OpcBridge.Core.csproj" />
+    <ProjectReference Include="..\OpcBridge.Da\OpcBridge.Da.csproj" />
   </ItemGroup>
 
   <ItemGroup>
@@ -15,5 +16,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
   </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="OpcBridge.LoadTest" />
+  </ItemGroup>
 
 </Project>

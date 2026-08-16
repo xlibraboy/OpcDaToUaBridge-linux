@@ -12,11 +12,11 @@ public sealed class MultiBridgeTagCacheTests
         var cache = new MultiBridgeTagCache();
         cache.ReplaceBridge("line1",
         [
-            new HmiTagDto { SourceId = "default", DaItemId = "A", DisplayName = "A1", Value = 1, Writeable = true }
+            new HmiTagDto { SourceId = "default", ItemId = "A", DisplayName = "A1", Value = 1, Writeable = true }
         ]);
         cache.ReplaceBridge("line2",
         [
-            new HmiTagDto { SourceId = "default", DaItemId = "A", DisplayName = "A2", Value = 2 }
+            new HmiTagDto { SourceId = "default", ItemId = "A", DisplayName = "A2", Value = 2 }
         ]);
 
         Assert.Equal(2, cache.Tags.Count);
@@ -34,17 +34,17 @@ public sealed class MultiBridgeTagCacheTests
         var cache = new MultiBridgeTagCache();
         cache.ReplaceBridge("line1",
         [
-            new HmiTagDto { SourceId = "default", DaItemId = "A", Value = 1 },
-            new HmiTagDto { SourceId = "default", DaItemId = "B", Value = 2 }
+            new HmiTagDto { SourceId = "default", ItemId = "A", Value = 1 },
+            new HmiTagDto { SourceId = "default", ItemId = "B", Value = 2 }
         ]);
         cache.ReplaceBridge("line2",
         [
-            new HmiTagDto { SourceId = "default", DaItemId = "C", Value = 3 }
+            new HmiTagDto { SourceId = "default", ItemId = "C", Value = 3 }
         ]);
 
         cache.ReplaceBridge("line1",
         [
-            new HmiTagDto { SourceId = "default", DaItemId = "A", Value = 10 }
+            new HmiTagDto { SourceId = "default", ItemId = "A", Value = 10 }
         ]);
 
         Assert.Equal(2, cache.Tags.Count);
@@ -59,11 +59,11 @@ public sealed class MultiBridgeTagCacheTests
         var cache = new MultiBridgeTagCache();
         cache.ReplaceBridge("line1",
         [
-            new HmiTagDto { SourceId = "default", DaItemId = "A", Value = 1, IsGood = true }
+            new HmiTagDto { SourceId = "default", ItemId = "A", Value = 1, IsGood = true }
         ]);
         cache.ReplaceBridge("line2",
         [
-            new HmiTagDto { SourceId = "default", DaItemId = "A", Value = 9, IsGood = true }
+            new HmiTagDto { SourceId = "default", ItemId = "A", Value = 9, IsGood = true }
         ]);
 
         cache.ApplyDeltas("line1",
@@ -71,7 +71,7 @@ public sealed class MultiBridgeTagCacheTests
             new HmiValueDelta
             {
                 SourceId = "default",
-                DaItemId = "A",
+                ItemId = "A",
                 Value = 42,
                 IsGood = false,
                 DaQuality = 0,
@@ -93,11 +93,11 @@ public sealed class MultiBridgeTagCacheTests
         var cache = new MultiBridgeTagCache();
         cache.ReplaceBridge("line1",
         [
-            new HmiTagDto { SourceId = "default", DaItemId = "A", Value = 1 }
+            new HmiTagDto { SourceId = "default", ItemId = "A", Value = 1 }
         ]);
         cache.ApplyDeltas("line1",
         [
-            new HmiValueDelta { SourceId = "default", DaItemId = "missing", Value = 99 }
+            new HmiValueDelta { SourceId = "default", ItemId = "missing", Value = 99 }
         ]);
         Assert.Single(cache.Tags);
         Assert.True(cache.TryGet(TagBindingKey.Create("line1", "default", "A"), out MultiBridgeTagEntry? t));
