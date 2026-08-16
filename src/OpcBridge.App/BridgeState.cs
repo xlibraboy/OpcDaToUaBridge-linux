@@ -222,6 +222,24 @@ public sealed class BridgeState
         }
     }
 
+    public void SetSourceServerInfo(string sourceId, string serverInfo)
+    {
+        lock (status_lock_)
+        {
+            DaSourceStatusSnapshot[] updated = status_.Sources
+                .Select(source => string.Equals(source.SourceId, sourceId, StringComparison.OrdinalIgnoreCase)
+                    ? source with { ServerInfo = serverInfo }
+                    : source)
+                .ToArray();
+
+            status_ = status_ with
+            {
+                DaConnectionState = AggregateConnectionState(updated),
+                Sources = updated
+            };
+        }
+    }
+
     public void UpdateDaRead(string sourceId, IReadOnlyList<BridgeValue> values, TimeSpan readDuration)
     {
         DateTime readTime = DateTime.UtcNow;
@@ -589,7 +607,8 @@ public sealed record DaSourceStatusSnapshot(
     double LastDaReadDurationMs,
     double? DaClockOffsetMs,
     string SourceType = "OpcDa",
-    string EndpointSummary = "");
+    string EndpointSummary = "",
+    string ServerInfo = "");
 
 public sealed record BridgeValueSnapshot(
     string SourceId,

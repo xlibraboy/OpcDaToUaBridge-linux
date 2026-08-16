@@ -1008,6 +1008,14 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
 
                 sessions[source.SourceId] = new SourceSession(source, client);
                 bridge_state_.SetSourceConnectionState(source.SourceId, "Connected");
+
+                if (client is OpcDaClient connectedDaClient)
+                {
+                    bridge_state_.SetSourceServerInfo(
+                        source.SourceId,
+                        connectedDaClient.ServerInfo?.Describe() ?? string.Empty);
+                }
+
                 changed.Add(source.SourceId);
                 watchdog_activity_.TryRemove(source.SourceId, out _);
 

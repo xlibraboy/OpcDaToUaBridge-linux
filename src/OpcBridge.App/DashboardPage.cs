@@ -623,6 +623,10 @@ internal static class DashboardPage
                         <div class="field"><label class="fl">Host <span class="info" data-tip="Machine where the OPC DA server runs. Use 'localhost' for this PC, or an IP/hostname for remote.">i</span></label><input id="cfgHost" type="text" placeholder="localhost" style="flex:1"></div>
                     </div>
                     <div class="conn-section">
+                        <div class="conn-section-h">Detected Server <span class="info" data-tip="Identified on connect: OPC DA spec level (1.0/2.0/3.0, probed from the async interfaces the server exposes) plus the server's own version and vendor string (IOPCServer.GetStatus).">i</span></div>
+                        <div class="field"><label class="fl">Server</label><span class="msg" id="cfgServerInfo" style="font-weight:400;text-transform:none;letter-spacing:0">—</span></div>
+                    </div>
+                    <div class="conn-section">
                         <div class="conn-section-h">Credentials <span class="info" data-tip="Only required for remote DCOM with specific user accounts, or to access OPC DA servers registered in another user's profile.">i</span></div>
                         <div class="field"><label class="fl">User</label><input id="cfgUser" type="text" placeholder="username" style="flex:1"><input id="cfgPass" type="password" placeholder="password" style="flex:1"><input id="cfgDomain" type="text" placeholder="domain" style="flex:1"></div>
                     </div>
@@ -3023,8 +3027,10 @@ function sourceEndpointSummary(source) {
 function sourceStatusRowHtml(source) {
     const st = source.connectionState || source.ConnectionState || '';
     const err = source.lastError || source.LastError || '';
+    const info = source.serverInfo || source.ServerInfo || '';
     const errBit = err ? ` · <span class="bad">${esc(err)}</span>` : '';
-    return `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)} ${sourceTypeBadge(source)} ${st ? badge(st, stateClass(st)) : ''}</div><div class="p">${esc(source.sourceId)} · ${sourceEndpointSummary(source)} · ${formatMs(source.updateRateMs)}${errBit}</div></div><button class="btn ghost" data-action="select-source-status" data-source-id="${attr(source.sourceId)}">Select</button></div>`;
+    const infoBit = info ? ` · ${esc(info)}` : '';
+    return `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)} ${sourceTypeBadge(source)} ${st ? badge(st, stateClass(st)) : ''}</div><div class="p">${esc(source.sourceId)} · ${sourceEndpointSummary(source)} · ${formatMs(source.updateRateMs)}${infoBit}${errBit}</div></div><button class="btn ghost" data-action="select-source-status" data-source-id="${attr(source.sourceId)}">Select</button></div>`;
 }
 function renderSourcesStatusList() {
     const host = el('sourcesStatusList');
@@ -3092,6 +3098,17 @@ function updateMapSourceHint() {
     const source = state.sources.find(s => s.sourceId === state.selectedSourceId);
     hint.textContent = source && (isMelsecSource(source) || isMxSource(source)) ? 'Device address e.g. D100, M10, X20, D100:8' : (source && isS7Source(source) ? 'Siemens address e.g. VW100, I0.0, M10.2, QB0' : '');
 }
+function updateCfgServerInfo(source) {
+    const info = el('cfgServerInfo');
+    if (!info) return;
+    if (!source || isUaSource(source)) {
+        info.textContent = '—';
+        return;
+    }
+    info.textContent = source.serverInfo
+        ? source.serverInfo
+        : 'Not detected — info appears after the source connects.';
+}
 function loadSelectedSourceForm() {
     if (state.editingNewSource) return;
     const source = currentSource();
@@ -3107,6 +3124,7 @@ function loadSelectedSourceForm() {
         el('cfgMessage').textContent = source
             ? 'Select a saved OPC DA connection or click New.'
             : 'No OPC DA sources configured. Click + Add Source or New.';
+        updateCfgServerInfo(null);
         hideSaveReset();
         return;
     }
@@ -3123,6 +3141,7 @@ function loadSelectedSourceForm() {
         : (isMxSource(source)
             ? 'MX Component source — edit it on the MX Component page.'
             : 'Editing ' + (source.displayName || source.sourceId) + '.');
+    updateCfgServerInfo(source);
     hideSaveReset();
 }
 function loadSelectedUaSourceForm() {
@@ -3171,6 +3190,7 @@ async function loadSources() {
         if (status) {
             source.connectionState = get(status, 'connectionState');
             source.lastError = get(status, 'lastError');
+            source.serverInfo = get(status, 'serverInfo');
         }
     });
     state.updateRateMs = Number(payload.updateRateMs || state.updateRateMs || 1000);
@@ -3569,9 +3589,22 @@ async function refresh() {
                 if (status) {
                     source.connectionState = get(status, 'connectionState');
                     source.lastError = get(status, 'lastError');
+                    source.serverInfo = get(status, 'serverInfo');
                 }
             });
             renderSourcesStatusList();
+        }
+        // Keep the OPC DA config form's Detected Server line live.
+        if (document.getElementById('view-opc-da')?.classList.contains('active')) {
+            const selId = String(state.selectedSourceId || '').toLowerCase();
+            const current = state.sources.find(s => String(s.sourceId || '').toLowerCase() === selId);
+            const status = sources.find(s => String(get(s, 'sourceId') || '').toLowerCase() === selId);
+            if (current && status) {
+                current.connectionState = get(status, 'connectionState');
+                current.lastError = get(status, 'lastError');
+                current.serverInfo = get(status, 'serverInfo');
+            }
+            updateCfgServerInfo(current);
         }
         el('sourceStatusList').innerHTML = sources.length ? sources.map(source => {
             const connState = get(source,'connectionState') || '—';
@@ -4602,6 +4635,7 @@ function newSource() {
     el('cfgDomain').value = '';
     el('tagTree').innerHTML = '<span class="msg">Save the new source before browsing tags.</span>';
     el('cfgMessage').textContent = 'Enter a unique Source ID, then save.';
+    updateCfgServerInfo(null);
     showSaveReset();
 }
 function showUaSaveReset() { el('uaCfgApply').style.display = ''; el('uaCfgReset').style.display = ''; }

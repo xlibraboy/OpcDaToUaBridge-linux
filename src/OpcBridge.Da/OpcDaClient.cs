@@ -16,6 +16,7 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
     private OpcComThread? com_thread_;
     private object? server_com_object_;
     private IOPCServer? server_;
+    private OpcDaServerInfo? server_info_;
     private readonly Dictionary<int, RateGroup> rate_groups_ = new();
     private bool subscriptions_active_;
 
@@ -30,6 +31,12 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
     /// group silently falls back to polling). Subscribed by BridgeWorker for logging.
     /// </summary>
     public event Action<string>? Warning;
+
+    /// <summary>
+    /// Detected OPC DA server identity (spec level, server version, vendor) after a
+    /// successful connect. Null before connect or when detection is unavailable.
+    /// </summary>
+    public OpcDaServerInfo? ServerInfo => server_info_;
 
     public OpcDaClient(DaClientOptions options)
     {
@@ -149,6 +156,7 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
 
             server_com_object_ = serverObject;
             server_ = server;
+            server_info_ = DetectServerInfo(serverObject);
             return;
         }
 
@@ -226,6 +234,70 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
 
         server_com_object_ = serverObject;
         server_ = server;
+        server_info_ = DetectServerInfo(serverObject);
+    }
+
+    [SupportedOSPlatform("windows")]
+    private OpcDaServerInfo DetectServerInfo(object serverObject)
+    {
+        string specVersion = DetectSpecVersion(serverObject);
+        try
+        {
+            int hr = server_!.GetStatus(out IntPtr statusPtr);
+            if (hr != 0 || statusPtr == IntPtr.Zero)
+            {
+                return new OpcDaServerInfo(specVersion, 0, 0, 0, null, "Unknown");
+            }
+
+            try
+            {
+                OpcServerStatus status = Marshal.PtrToStructure<OpcServerStatus>(statusPtr);
+                string? vendor = status.VendorInfo == IntPtr.Zero
+                    ? null
+                    : Marshal.PtrToStringUni(status.VendorInfo);
+                return new OpcDaServerInfo(
+                    specVersion,
+                    status.MajorVersion,
+                    status.MinorVersion,
+                    status.BuildNumber,
+                    vendor,
+                    OpcDaServerInfo.DescribeState(status.State));
+            }
+            finally
+            {
+                Marshal.FreeCoTaskMem(statusPtr);
+            }
+        }
+        catch
+        {
+            // Best-effort detection: a server that fails GetStatus must never block the
+            // connection, so fall back to spec-level-only info.
+            return new OpcDaServerInfo(specVersion, 0, 0, 0, null, "Unknown");
+        }
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static string DetectSpecVersion(object serverObject)
+    {
+        // The OPC DA spec level is identified by the newest async interface the server
+        // exposes: IOPCAsyncIO3 (DA 3.0), IOPCAsyncIO2 (DA 2.0), IOPCAsyncIO (DA 1.0).
+        // `is` on a COM RCW performs a QueryInterface for the interface GUID.
+        if (serverObject is IOPCAsyncIO3)
+        {
+            return "3.0";
+        }
+
+        if (serverObject is IOPCAsyncIO2)
+        {
+            return "2.0";
+        }
+
+        if (serverObject is IOPCAsyncIO)
+        {
+            return "1.0";
+        }
+
+        return "Unknown";
     }
 
     public Task<IReadOnlyList<BridgeValue>> ReadAsync(
@@ -1265,6 +1337,20 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
         public object? Value;
     }
 
+    // OPC DA OPCSERVERSTATUS: 3×FILETIME, 4×DWORD, then LPWSTR vendor info.
+    [StructLayout(LayoutKind.Sequential)]
+    private struct OpcServerStatus
+    {
+        public FILETIME StartTime;
+        public FILETIME CurrentTime;
+        public FILETIME LastUpdateTime;
+        public uint MajorVersion;
+        public uint MinorVersion;
+        public uint BuildNumber;
+        public uint State;
+        public IntPtr VendorInfo;
+    }
+
     [ComImport]
     [Guid("39C13A4D-011E-11D0-9675-0020AFD8ADB3")]
     [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
@@ -1328,6 +1414,31 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
         int Read(int dataSource, int count, [MarshalAs(UnmanagedType.LPArray, SizeParamIndex = 1)] int[] serverHandles, out IntPtr itemValues, out IntPtr errors);
 
         int Write(int count, IntPtr serverHandles, IntPtr values, out IntPtr errors);
+    }
+
+    // Probe-only declarations: never invoked. `is` on a COM RCW performs a
+    // QueryInterface for the interface GUID, so these detect which OPC DA spec
+    // level a server implements (IOPCAsyncIO3 = DA 3.0, IOPCAsyncIO2 = DA 2.0,
+    // IOPCAsyncIO = DA 1.0).
+    [ComImport]
+    [Guid("39C13A73-011E-11D0-9675-0020AFD8ADB3")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IOPCAsyncIO3
+    {
+    }
+
+    [ComImport]
+    [Guid("39C13A72-011E-11D0-9675-0020AFD8ADB3")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IOPCAsyncIO2
+    {
+    }
+
+    [ComImport]
+    [Guid("39C13A50-011E-11D0-9675-0020AFD8ADB3")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IOPCAsyncIO
+    {
     }
 
     [ComImport]
