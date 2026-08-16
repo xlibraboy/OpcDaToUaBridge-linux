@@ -12,15 +12,18 @@
       <TextBox Grid.Column="0"
                Watermark="Base URL"
                Text="{Binding BaseUrl}"
+               ToolTip.Tip="Bridge HTTP address. Auto-discovered on startup; edit only if the bridge is on another machine."
                Margin="0,0,8,0" />
       <Button Grid.Column="1"
               Content="Connect"
               Command="{Binding ConnectCommand}"
+              ToolTip.Tip="Connect to the bridge and start receiving live values"
               Margin="0,0,8,0"
               MinWidth="96" />
       <Button Grid.Column="2"
               Content="Disconnect"
               Command="{Binding DisconnectCommand}"
+              ToolTip.Tip="Stop receiving live values"
               Margin="0,0,8,0"
               MinWidth="96" />
       <TextBlock Grid.Column="3"
@@ -35,10 +38,12 @@
                 IsVisible="{Binding PortsSummary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
       <TextBlock VerticalAlignment="Center"
                  Text="{Binding PortsSummary}"
+                 ToolTip.Tip="Bridge HTTP and OPC UA endpoint ports"
                  Opacity="0.85" />
       <TextBlock VerticalAlignment="Center"
                  Text="⚠ default port was in use — bridge auto-assigned"
                  Foreground="#E6B04A"
+                 ToolTip.Tip="The default port (8080/4840) was already taken, so the bridge picked free ports. Check the summary above for the actual ports."
                  IsVisible="{Binding PortsWarning}" />
     </StackPanel>
 
@@ -49,7 +54,8 @@
       <TextBlock VerticalAlignment="Center" Text="Filter:" />
       <TextBox Width="320"
                Watermark="Source, name, or value"
-               Text="{Binding Filter}" />
+               Text="{Binding Filter}"
+               ToolTip.Tip="Filter the tag list by source, display name, or current value" />
     </StackPanel>
 
     <Grid ColumnDefinitions="2*,*" >
@@ -63,16 +69,17 @@
           <Grid DockPanel.Dock="Top"
                 ColumnDefinitions="*,2*,*,*"
                 Margin="4,0,4,6">
-            <TextBlock Grid.Column="0" FontWeight="SemiBold" Text="Source" />
-            <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="Name" />
-            <TextBlock Grid.Column="2" FontWeight="SemiBold" Text="Value" />
-            <TextBlock Grid.Column="3" FontWeight="SemiBold" Text="Q" />
+            <TextBlock Grid.Column="0" FontWeight="SemiBold" Text="Source" ToolTip.Tip="Bridge source that provides this tag (e.g. a UA or DA connection)" />
+            <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="Name" ToolTip.Tip="Display name of the tag" />
+            <TextBlock Grid.Column="2" FontWeight="SemiBold" Text="Value" ToolTip.Tip="Latest value received from the source" />
+            <TextBlock Grid.Column="3" FontWeight="SemiBold" Text="Q" ToolTip.Tip="Quality — Good / Bad / Uncertain" />
           </Grid>
           <ListBox ItemsSource="{Binding FilteredTags}"
                    SelectedItem="{Binding SelectedTag}">
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="vm:TagItemViewModel">
-                <Grid ColumnDefinitions="*,2*,*,*">
+                <Grid ColumnDefinitions="*,2*,*,*"
+                      ToolTip.Tip="{Binding ItemId, StringFormat=Item: {0}}">
                   <TextBlock Grid.Column="0" Text="{Binding SourceId}" TextTrimming="CharacterEllipsis" />
                   <TextBlock Grid.Column="1" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
                   <TextBlock Grid.Column="2" Text="{Binding ValueText}" TextTrimming="CharacterEllipsis" />
@@ -93,12 +100,18 @@
           <TextBlock FontSize="16" FontWeight="SemiBold" Text="Faceplate" />
           <TextBlock Text="{Binding SelectedTag.DisplayName, StringFormat=Name: {0}}" />
           <TextBlock Text="{Binding SelectedTag.ItemId, StringFormat=Item: {0}}" />
-          <TextBlock Text="{Binding SelectedTag.DataType, StringFormat=Type: {0}}" />
-          <TextBlock Text="{Binding SelectedTag.ValueText, StringFormat=Value: {0}}" />
-          <TextBlock Text="{Binding SelectedTag.QualityText, StringFormat=Quality: {0}}" />
-          <TextBlock Text="{Binding SelectedTag.RateText, StringFormat=Rate: {0}}" />
-          <TextBlock Text="{Binding SelectedTag.TimestampText, StringFormat=Timestamp: {0}}" />
-          <TextBlock Text="History (1h)" FontWeight="SemiBold" Margin="0,8,0,0" />
+          <TextBlock Text="{Binding SelectedTag.DataType, StringFormat=Type: {0}}"
+                     ToolTip.Tip="Data type of the tag value" />
+          <TextBlock Text="{Binding SelectedTag.ValueText, StringFormat=Value: {0}}"
+                     ToolTip.Tip="Latest value received from the source" />
+          <TextBlock Text="{Binding SelectedTag.QualityText, StringFormat=Quality: {0}}"
+                     ToolTip.Tip="Quality — Good / Bad / Uncertain" />
+          <TextBlock Text="{Binding SelectedTag.RateText, StringFormat=Rate: {0}}"
+                     ToolTip.Tip="Configured update/poll rate from the bridge — the configured value, not a measured cadence" />
+          <TextBlock Text="{Binding SelectedTag.TimestampText, StringFormat=Timestamp: {0}}"
+                     ToolTip.Tip="Time the latest value was received (with milliseconds)" />
+          <TextBlock Text="History (1h)" FontWeight="SemiBold" Margin="0,8,0,0"
+                     ToolTip.Tip="Sparkline of the last hour of values for this tag" />
           <controls:SparklineControl Height="72"
                                      Points="{Binding TrendValues}" />
           <TextBlock Text="{Binding TrendStatus}"
@@ -108,8 +121,10 @@
                       Spacing="8"
                       IsEnabled="{Binding SelectedTag.Writeable, FallbackValue=False, TargetNullValue=False}">
             <TextBlock VerticalAlignment="Center" Text="Write:" />
-            <TextBox Width="160" Text="{Binding WriteValue}" />
-            <Button Content="Write" Command="{Binding WriteCommand}" MinWidth="80" />
+            <TextBox Width="160" Text="{Binding WriteValue}"
+                     ToolTip.Tip="Value to write to the tag (only available for writeable tags)" />
+            <Button Content="Write" Command="{Binding WriteCommand}" MinWidth="80"
+                    ToolTip.Tip="Send the value above to the source" />
           </StackPanel>
           <TextBlock Text="{Binding StatusMessage}"
                      TextWrapping="Wrap"
