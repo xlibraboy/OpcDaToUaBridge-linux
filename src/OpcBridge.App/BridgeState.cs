@@ -45,6 +45,31 @@ public sealed class BridgeState
         rate_groups_.Clear();
         lock (status_lock_)
         {
+            // Detection must survive a status reset. Configure() runs on every
+            // reconfigure tick while a source is in retry (or whenever the source
+            // set changes), so without this the detected server info set right
+            // after connect would be wiped on the very next tick. Preserve the
+            // previously detected info for sources that are still configured.
+            Dictionary<string, string> previousServerInfo = status_.Sources
+                .Where(source => !string.IsNullOrEmpty(source.ServerInfo))
+                .ToDictionary(source => source.SourceId, source => source.ServerInfo, StringComparer.OrdinalIgnoreCase);
+            Dictionary<string, string> previousReadMode = status_.Sources
+                .Where(source => !string.IsNullOrEmpty(source.ReadMode))
+                .ToDictionary(source => source.SourceId, source => source.ReadMode, StringComparer.OrdinalIgnoreCase);
+
+            for (int i = 0; i < sourceStatuses.Length; i++)
+            {
+                if (previousServerInfo.TryGetValue(sourceStatuses[i].SourceId, out string? serverInfo))
+                {
+                    sourceStatuses[i] = sourceStatuses[i] with { ServerInfo = serverInfo };
+                }
+
+                if (previousReadMode.TryGetValue(sourceStatuses[i].SourceId, out string? readMode))
+                {
+                    sourceStatuses[i] = sourceStatuses[i] with { ReadMode = readMode };
+                }
+            }
+
             status_ = status_ with
             {
                 BridgeState = "Starting",
@@ -229,6 +254,24 @@ public sealed class BridgeState
             DaSourceStatusSnapshot[] updated = status_.Sources
                 .Select(source => string.Equals(source.SourceId, sourceId, StringComparison.OrdinalIgnoreCase)
                     ? source with { ServerInfo = serverInfo }
+                    : source)
+                .ToArray();
+
+            status_ = status_ with
+            {
+                DaConnectionState = AggregateConnectionState(updated),
+                Sources = updated
+            };
+        }
+    }
+
+    public void SetSourceReadMode(string sourceId, string readMode)
+    {
+        lock (status_lock_)
+        {
+            DaSourceStatusSnapshot[] updated = status_.Sources
+                .Select(source => string.Equals(source.SourceId, sourceId, StringComparison.OrdinalIgnoreCase)
+                    ? source with { ReadMode = readMode }
                     : source)
                 .ToArray();
 
@@ -608,7 +651,8 @@ public sealed record DaSourceStatusSnapshot(
     double? DaClockOffsetMs,
     string SourceType = "OpcDa",
     string EndpointSummary = "",
-    string ServerInfo = "");
+    string ServerInfo = "",
+    string ReadMode = "");
 
 public sealed record BridgeValueSnapshot(
     string SourceId,

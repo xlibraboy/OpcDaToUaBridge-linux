@@ -6,7 +6,7 @@ using OpcBridge.Core;
 
 namespace OpcBridge.Da;
 
-public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
+public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISubscriptionActiveSource
 {
     private const int OpcDataSourceDevice = 2;
     private static readonly int ItemStateSize = Marshal.SizeOf<OpcItemState>();
@@ -37,6 +37,13 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
     /// successful connect. Null before connect or when detection is unavailable.
     /// </summary>
     public OpcDaServerInfo? ServerInfo => server_info_;
+
+    /// <summary>
+    /// True when DA subscriptions (IOPCDataCallback) are established so values arrive
+    /// via callbacks and <see cref="ReadAsync"/> performs no device reads; false when
+    /// the source is polling via IOPCSyncIO.Read (subscriptions disabled or unsupported).
+    /// </summary>
+    public bool IsSubscriptionActive => subscriptions_active_;
 
     public OpcDaClient(DaClientOptions options)
     {
@@ -249,22 +256,31 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
                 return new OpcDaServerInfo(specVersion, 0, 0, 0, null, "Unknown");
             }
 
+            // The OPCSERVERSTATUS block (and the LPWSTR it embeds) is server/proxy
+            // memory: some servers hand back pointers that are not valid in this
+            // process, and an AccessViolation raised while reading one is not
+            // reliably catchable. Probe readability before touching the pointer so
+            // a misbehaving server can never take the whole bridge down.
+            if (!IsRangeReadable(statusPtr, Marshal.SizeOf<OpcServerStatus>()))
+            {
+                return new OpcDaServerInfo(specVersion, 0, 0, 0, null, "Unknown");
+            }
+
             try
             {
                 OpcServerStatus status = Marshal.PtrToStructure<OpcServerStatus>(statusPtr);
-                string? vendor = status.VendorInfo == IntPtr.Zero
-                    ? null
-                    : Marshal.PtrToStringUni(status.VendorInfo);
                 return new OpcDaServerInfo(
                     specVersion,
                     status.MajorVersion,
                     status.MinorVersion,
                     status.BuildNumber,
-                    vendor,
+                    SafeReadUnicodeString(status.VendorInfo),
                     OpcDaServerInfo.DescribeState(status.State));
             }
             finally
             {
+                // OPC DA requires the client to free the status block with
+                // CoTaskMemFree; only reached when the pointer passed the probe.
                 Marshal.FreeCoTaskMem(statusPtr);
             }
         }
@@ -279,22 +295,28 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
     [SupportedOSPlatform("windows")]
     private static string DetectSpecVersion(object serverObject)
     {
-        // The OPC DA spec level is identified by the newest async interface the server
-        // exposes: IOPCAsyncIO3 (DA 3.0), IOPCAsyncIO2 (DA 2.0), IOPCAsyncIO (DA 1.0).
+        // OPC DA splits its interfaces between the server object and group objects.
+        // The async I/O interfaces (IOPCAsyncIO/IOPCAsyncIO2/IOPCAsyncIO3) live on
+        // GROUP objects, so probing them here (against the server object) always
+        // fails even for compliant servers. The spec-level markers on the SERVER
+        // object are:
+        //   IOPCItemIO                 -> DA 3.0 (the server-based DA 3.0 addition)
+        //   IOPCItemProperties         -> DA 2.0 (introduced with DA 2.0)
+        //   IOPCBrowseServerAddressSpace -> DA 2.0 (DA 2.0 browsing, optional but common)
         // `is` on a COM RCW performs a QueryInterface for the interface GUID.
-        if (serverObject is IOPCAsyncIO3)
+        if (serverObject is IOPCItemIO)
         {
             return "3.0";
         }
 
-        if (serverObject is IOPCAsyncIO2)
+        if (serverObject is IOPCItemProperties)
         {
             return "2.0";
         }
 
-        if (serverObject is IOPCAsyncIO)
+        if (serverObject is IOPCBrowseServerAddressSpace)
         {
-            return "1.0";
+            return "2.0";
         }
 
         return "Unknown";
@@ -1351,6 +1373,106 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
         public IntPtr VendorInfo;
     }
 
+    // ---- Safe reads of GetStatus output -------------------------------------
+    // OPCSERVERSTATUS is allocated by the server/proxy. Before dereferencing it
+    // (or the vendor string it embeds) probe the range with VirtualQuery: a wild
+    // pointer would otherwise raise an AccessViolation that is not reliably
+    // catchable and would crash the whole bridge process.
+
+    [DllImport("kernel32.dll")]
+    private static extern UIntPtr VirtualQuery(IntPtr address, out MemoryBasicInformation buffer, UIntPtr length);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MemoryBasicInformation
+    {
+        public IntPtr BaseAddress;
+        public IntPtr AllocationBase;
+        public uint AllocationProtect;
+        public UIntPtr RegionSize;
+        public uint State;
+        public uint Protect;
+        public uint Type;
+    }
+
+    private const uint MemCommit = 0x1000;
+    private const uint PageNoAccess = 0x01;
+    private const uint PageReadOnly = 0x02;
+    private const uint PageReadWrite = 0x04;
+    private const uint PageWriteCopy = 0x08;
+    private const uint PageExecuteRead = 0x20;
+    private const uint PageExecuteReadWrite = 0x40;
+    private const uint PageExecuteWriteCopy = 0x80;
+    private const uint PageGuard = 0x100;
+
+    [SupportedOSPlatform("windows")]
+    private static bool TryGetReadableRegion(IntPtr address, out long regionEnd)
+    {
+        regionEnd = 0;
+
+        MemoryBasicInformation mbi = default;
+        if (VirtualQuery(address, out mbi, (UIntPtr)Marshal.SizeOf<MemoryBasicInformation>()) == UIntPtr.Zero)
+        {
+            return false;
+        }
+
+        if (mbi.State != MemCommit || (mbi.Protect & PageGuard) != 0)
+        {
+            return false;
+        }
+
+        uint protect = mbi.Protect & 0xFF;
+        bool readable = protect is PageReadOnly or PageReadWrite or PageWriteCopy
+            or PageExecuteRead or PageExecuteReadWrite or PageExecuteWriteCopy;
+        if (!readable)
+        {
+            return false;
+        }
+
+        regionEnd = (long)mbi.BaseAddress + (long)mbi.RegionSize.ToUInt64();
+        return true;
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static bool IsRangeReadable(IntPtr address, int byteCount)
+    {
+        if (address == IntPtr.Zero || byteCount <= 0)
+        {
+            return false;
+        }
+
+        return TryGetReadableRegion(address, out long regionEnd)
+            && (long)address + byteCount <= regionEnd;
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static string? SafeReadUnicodeString(IntPtr address)
+    {
+        if (address == IntPtr.Zero || !TryGetReadableRegion(address, out long regionEnd))
+        {
+            return null;
+        }
+
+        // Walk the wide string within the committed region only, so a string that
+        // runs off into unmapped memory truncates instead of crashing.
+        const int maxChars = 256;
+        char[] chars = new char[maxChars];
+        int count = 0;
+        long cursor = (long)address;
+        while (count < maxChars && cursor + 2 <= regionEnd)
+        {
+            char c = (char)Marshal.ReadInt16((IntPtr)cursor);
+            if (c == '\0')
+            {
+                break;
+            }
+
+            chars[count++] = c;
+            cursor += 2;
+        }
+
+        return count == 0 ? null : new string(chars, 0, count);
+    }
+
     [ComImport]
     [Guid("39C13A4D-011E-11D0-9675-0020AFD8ADB3")]
     [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
@@ -1418,26 +1540,27 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
 
     // Probe-only declarations: never invoked. `is` on a COM RCW performs a
     // QueryInterface for the interface GUID, so these detect which OPC DA spec
-    // level a server implements (IOPCAsyncIO3 = DA 3.0, IOPCAsyncIO2 = DA 2.0,
-    // IOPCAsyncIO = DA 1.0).
+    // level a server implements. These are SERVER-object interfaces (the async
+    // I/O interfaces live on group objects and can't be probed here). GUIDs are
+    // the spec-defined ones (opcda.idl / opcda30.idl).
     [ComImport]
-    [Guid("39C13A73-011E-11D0-9675-0020AFD8ADB3")]
+    [Guid("85C0B427-2893-4CBC-BD78-E5FC5146F08F")]
     [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    private interface IOPCAsyncIO3
+    private interface IOPCItemIO
     {
     }
 
     [ComImport]
     [Guid("39C13A72-011E-11D0-9675-0020AFD8ADB3")]
     [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    private interface IOPCAsyncIO2
+    private interface IOPCItemProperties
     {
     }
 
     [ComImport]
-    [Guid("39C13A50-011E-11D0-9675-0020AFD8ADB3")]
+    [Guid("39C13A4F-011E-11D0-9675-0020AFD8ADB3")]
     [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-    private interface IOPCAsyncIO
+    private interface IOPCBrowseServerAddressSpace
     {
     }
 

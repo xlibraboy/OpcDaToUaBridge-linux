@@ -3028,9 +3028,11 @@ function sourceStatusRowHtml(source) {
     const st = source.connectionState || source.ConnectionState || '';
     const err = source.lastError || source.LastError || '';
     const info = source.serverInfo || source.ServerInfo || '';
+    const mode = source.readMode || source.ReadMode || '';
     const errBit = err ? ` · <span class="bad">${esc(err)}</span>` : '';
     const infoBit = info ? ` · ${esc(info)}` : '';
-    return `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)} ${sourceTypeBadge(source)} ${st ? badge(st, stateClass(st)) : ''}</div><div class="p">${esc(source.sourceId)} · ${sourceEndpointSummary(source)} · ${formatMs(source.updateRateMs)}${infoBit}${errBit}</div></div><button class="btn ghost" data-action="select-source-status" data-source-id="${attr(source.sourceId)}">Select</button></div>`;
+    const modeBit = mode ? ` · <span class="msg" style="font-weight:400">${esc(mode)}</span>` : '';
+    return `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)} ${sourceTypeBadge(source)} ${st ? badge(st, stateClass(st)) : ''}</div><div class="p">${esc(source.sourceId)} · ${sourceEndpointSummary(source)} · ${formatMs(source.updateRateMs)}${infoBit}${modeBit}${errBit}</div></div><button class="btn ghost" data-action="select-source-status" data-source-id="${attr(source.sourceId)}">Select</button></div>`;
 }
 function renderSourcesStatusList() {
     const host = el('sourcesStatusList');
@@ -3105,9 +3107,9 @@ function updateCfgServerInfo(source) {
         info.textContent = '—';
         return;
     }
-    info.textContent = source.serverInfo
-        ? source.serverInfo
-        : 'Not detected — info appears after the source connects.';
+    const mode = source.readMode || source.ReadMode || '';
+    info.textContent = (source.serverInfo ? source.serverInfo : 'Not detected — info appears after the source connects.')
+        + (mode ? ` · ${mode}` : '');
 }
 function loadSelectedSourceForm() {
     if (state.editingNewSource) return;

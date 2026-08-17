@@ -743,6 +743,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
 
             readTimer.Stop();
             bridge_state_.UpdateDaRead(source.SourceId, values, readTimer.Elapsed);
+            bridge_state_.SetSourceReadMode(source.SourceId, ResolveReadMode(session.Client));
             for (int valueIndex = 0; valueIndex < values.Count; valueIndex++)
             {
                 BridgeValue value = values[valueIndex];
@@ -1159,6 +1160,15 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
             }
         }
     }
+
+    /// <summary>
+    /// Effective value-delivery mode for a source: subscription (async callbacks /
+    /// monitored items) when the client reports one active, otherwise sync polling.
+    /// </summary>
+    private static string ResolveReadMode(ISourceClient client)
+        => client is ISubscriptionActiveSource subscribed && subscribed.IsSubscriptionActive
+            ? "async (subscription)"
+            : "sync (polling)";
 
     private void OnSubscriptionValues(IReadOnlyList<BridgeValue> values)
     {
