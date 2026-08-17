@@ -494,7 +494,12 @@ Minimal JSON. Selectable fields (MQTT Broker → Payload Fields): `v` (value), `
 
 ## Subscriptions & Deadband
 
-- Subscriptions can be toggled in **Sources → OPC DA → DA Subscriptions**. When ON (default), the bridge uses `IOPCDataCallback` to receive value changes from the DA server instead of polling with `IOPCSyncIO.Read`. Changing the toggle takes effect on the next source reconnect.
+- **I/O Mode** (**Sources → OPC DA → I/O Mode**, per source) selects how the bridge reads that source, mirroring Matrikon OPC Explorer's per-group I/O selector:
+  - **AutoDetect I/O** (default) — try `IOPCDataCallback` push; fall back to `IOPCSyncIO.Read` polling when the server cannot provide the callback connection point.
+  - **Synchronous I/O** — always poll with `IOPCSyncIO.Read`; never attempt a subscription.
+  - **Async I/O 2.0** — force the push path for this source (even when the global DA Subscriptions switch is off); if the server cannot provide `IOPCDataCallback`, the bridge logs a **"Forced Async I/O 2.0…"** warning and falls back to polling so values keep flowing.
+  - The selection is applied **live** (a source reconnect happens automatically — no app restart). The **Read Mode** field shows what is *actually* happening right now, which may differ from the requested mode when the server cannot satisfy it.
+- Subscriptions can be toggled globally in **Sources → OPC DA → DA Subscriptions** (the **Global** switch). When OFF, AutoDetect sources never attempt push; sources forced to Async I/O 2.0 still attempt it. When ON (default), AutoDetect sources use `IOPCDataCallback` when the server supports it. Changing the toggle takes effect on the next source reconnect.
 - Subscriptions deliver values on change (faster than update rate) and respect the per-group **deadband**.
 - **Deadband %** (Tags tab → faceplate → Setup tab → Deadband %) sets the OPC DA group's `percentDeadband`. The DA server suppresses callbacks for changes within the deadband. Set 0 for no filtering, 1.0 for 1% noise suppression.
 - If the DA server does not support `IOPCDataCallback`, the bridge logs a warning and falls back to device-read polling — deadband has no effect in polling mode.

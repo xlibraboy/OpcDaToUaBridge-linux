@@ -119,4 +119,57 @@ public sealed class DaClientFactoryTests
 
         Assert.IsType<OpcDaClient>(client);
     }
+
+    private static DaClientOptions GetDaOptions(DaSourceRuntimeSettings source, bool globalUseSubscriptions)
+    {
+        var factory = new SourceClientFactory();
+        var snapshot = new DaRuntimeSettingsSnapshot(1000, globalUseSubscriptions, new[] { source }, 1);
+        ISourceClient client = factory.Create(snapshot, source);
+        return ((OpcDaClient)client).Options;
+    }
+
+    private static DaSourceRuntimeSettings DaSource(string ioMode) => new(
+        SourceId: "line1",
+        DisplayName: "Line 1",
+        SourceType: SourceTypes.OpcDa,
+        UpdateRateMs: 500,
+        UseSubscriptions: true,
+        MaxMappedTags: 50000,
+        OpcDa: new OpcDaSourceOptions(
+            "Matrikon.OPC.Simulation.1",
+            "localhost",
+            null,
+            null,
+            null),
+        OpcUa: null,
+        Melsec: null,
+        S7200: null,
+        MxComponent: null,
+        IoMode: ioMode);
+
+    [Fact]
+    public void Create_OpcDa_IoModeSync_DisablesSubscriptions()
+    {
+        Assert.False(GetDaOptions(DaSource("Sync"), globalUseSubscriptions: true).UseSubscriptions);
+    }
+
+    [Fact]
+    public void Create_OpcDa_IoModeAutoDetect_FollowsGlobalSwitch()
+    {
+        Assert.True(GetDaOptions(DaSource("AutoDetect"), globalUseSubscriptions: true).UseSubscriptions);
+        Assert.False(GetDaOptions(DaSource("AutoDetect"), globalUseSubscriptions: false).UseSubscriptions);
+    }
+
+    [Fact]
+    public void Create_OpcDa_IoModeAsync20_ForcesSubscriptions()
+    {
+        Assert.True(GetDaOptions(DaSource("Async20"), globalUseSubscriptions: false).UseSubscriptions);
+    }
+
+    [Fact]
+    public void Create_OpcDa_IoModeAsync20_CarriesModeToClient()
+    {
+        Assert.Equal("Async20", GetDaOptions(DaSource("Async20"), globalUseSubscriptions: true).IoMode);
+        Assert.Equal("Sync", GetDaOptions(DaSource("Sync"), globalUseSubscriptions: true).IoMode);
+    }
 }

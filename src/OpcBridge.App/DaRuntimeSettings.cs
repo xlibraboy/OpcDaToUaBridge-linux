@@ -144,6 +144,38 @@ public sealed class DaRuntimeSettings
         }
     }
 
+    /// <summary>
+    /// Sets the per-source client I/O mode (AutoDetect | Sync | Async20). Invalid or
+    /// unknown values normalize to AutoDetect. Returns the updated snapshot, or the
+    /// unchanged snapshot when the source does not exist.
+    /// </summary>
+    public DaRuntimeSettingsSnapshot SetSourceIoMode(string sourceId, string ioMode)
+    {
+        string normalizedMode = SourceConfigMigration.NormalizeIoMode(ioMode);
+
+        lock (sync_)
+        {
+            List<DaSourceRuntimeSettings> sources = snapshot_.Sources.ToList();
+            int index = sources.FindIndex(source =>
+                string.Equals(source.SourceId, sourceId, StringComparison.OrdinalIgnoreCase));
+
+            if (index < 0)
+            {
+                return snapshot_;
+            }
+
+            sources[index] = sources[index] with { IoMode = normalizedMode };
+            snapshot_ = snapshot_ with
+            {
+                Sources = sources,
+                Version = snapshot_.Version + 1
+            };
+
+            Persist();
+            return snapshot_;
+        }
+    }
+
     public DaRuntimeSettingsSnapshot SetUseSubscriptions(bool enabled)
     {
         lock (sync_)
@@ -424,7 +456,8 @@ public sealed record DaSourceRuntimeSettings(
     OpcUaSourceOptions? OpcUa,
     MelsecA3nSourceOptions? Melsec,
     S7200PpiSourceOptions? S7200,
-    MxComponentSourceOptions? MxComponent)
+    MxComponentSourceOptions? MxComponent,
+    string IoMode = "AutoDetect")
 {
     // Compat getters — flat access for Program/UI during Phase 1.
     public string ProgId => OpcDa?.ProgId ?? string.Empty;
@@ -456,7 +489,7 @@ public sealed record DaSourceRuntimeSettings(
     public int ReconnectDelayMs => OpcUa?.ReconnectDelayMs ?? 5000;
     public int WatchdogTimeoutMs => OpcUa?.WatchdogTimeoutMs ?? 60000;
 
-    public DaClientOptions ToOptions(bool useSubscriptions)
+    public DaClientOptions ToOptions(bool useSubscriptions, string? ioMode = null)
     {
         OpcDaSourceOptions da = OpcDa ?? new OpcDaSourceOptions(string.Empty, "localhost", null, null, null);
         return new DaClientOptions
@@ -467,6 +500,7 @@ public sealed record DaSourceRuntimeSettings(
             Host = da.Host,
             UpdateRateMs = UpdateRateMs,
             UseSubscriptions = useSubscriptions,
+            IoMode = string.IsNullOrWhiteSpace(ioMode) ? IoMode : ioMode,
             RemoteUsername = da.RemoteUsername,
             RemotePassword = da.RemotePassword,
             RemoteDomain = da.RemoteDomain
@@ -509,6 +543,7 @@ public sealed class SourceConfigDto
 
     // Shared header
     public bool UseSubscriptions { get; set; } = true;
+    public string IoMode { get; set; } = "AutoDetect";
     public int UpdateRateMs { get; set; }
     public int MaxMappedTags { get; set; }
 
@@ -607,6 +642,14 @@ public sealed class MxComponentSourceOptionsDto
 
 public static class SourceConfigMigration
 {
+    /// <summary>Canonical per-source client I/O mode; unknown values default to AutoDetect.</summary>
+    public static string NormalizeIoMode(string? ioMode)
+    {
+        if (string.Equals(ioMode, "Sync", StringComparison.OrdinalIgnoreCase)) return "Sync";
+        if (string.Equals(ioMode, "Async20", StringComparison.OrdinalIgnoreCase)) return "Async20";
+        return "AutoDetect";
+    }
+
     public static DaSourceRuntimeSettings FromDto(SourceConfigDto dto, int defaultUpdateRate)
     {
         string sourceType = NormalizeSourceType(dto.SourceType);
@@ -810,7 +853,8 @@ public static class SourceConfigMigration
             opcUa,
             melsec,
             s7200,
-            mx), defaultUpdateRate);
+            mx,
+            NormalizeIoMode(dto.IoMode)), defaultUpdateRate);
     }
 
     public static SourceConfigDto ToDto(DaSourceRuntimeSettings source)
@@ -823,6 +867,7 @@ public static class SourceConfigMigration
             SourceType = source.SourceType,
             UpdateRateMs = source.UpdateRateMs,
             UseSubscriptions = source.UseSubscriptions,
+            IoMode = NormalizeIoMode(source.IoMode),
             MaxMappedTags = source.MaxMappedTags,
             OpcDa = source.OpcDa is null ? null : new OpcDaSourceOptionsDto
             {
@@ -1006,7 +1051,8 @@ public static class SourceConfigMigration
             opcUa,
             melsec,
             s7200,
-            mx);
+            mx,
+            NormalizeIoMode(source.IoMode));
     }
 
     private static bool HasFlatDa(SourceConfigDto dto) =>

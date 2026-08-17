@@ -639,8 +639,12 @@ internal static class DashboardPage
                         <div class="field"><label class="fl">Rate</label><select id="cfgUpdateRate"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select><button class="btn ghost" id="cfgApplyRate" type="button">Apply</button><span class="msg" id="rateMessage">Applies live</span></div>
                     </div>
                     <div class="conn-section">
-                        <div class="conn-section-h">DA Subscriptions <span class="info" data-tip="When ON, the bridge uses IOPCDataCallback to receive value changes from the DA server (faster, supports deadband). When OFF, the bridge polls with IOPCSyncIO.Read. Changing this requires a source reconnect.">i</span></div>
-                        <div class="field"><label class="fl">Subscriptions</label><input type="checkbox" id="cfgUseSubscriptions" checked><span class="msg" id="subMessage">Applies on reconnect</span></div>
+                        <div class="conn-section-h">I/O Mode <span class="info" data-tip="Client-side value-delivery mode for this source, like Matrikon OPC Explorer's per-group I/O selector. AutoDetect I/O: try IOPCDataCallback push, fall back to polling when the server can't. Synchronous I/O: always poll with IOPCSyncIO.Read. Async I/O 2.0: force the push path (even if the global switch is off); falls back to polling with a warning if the server can't provide it. Applied live — no restart.">i</span></div>
+                        <div class="field"><label class="fl">Mode</label><select id="cfgIoMode"><option value="AutoDetect">AutoDetect I/O</option><option value="Sync">Synchronous I/O</option><option value="Async20">Async I/O 2.0</option></select><span class="msg" id="ioModeHint" style="font-weight:400;text-transform:none;letter-spacing:0"></span></div>
+                    </div>
+                    <div class="conn-section">
+                        <div class="conn-section-h">DA Subscriptions <span class="info" data-tip="Global master switch: when OFF, AutoDetect sources never attempt push. When ON, AutoDetect sources use IOPCDataCallback when the server supports it (faster, supports deadband). Sources forced to Async I/O 2.0 always attempt push regardless. Applies on reconnect.">i</span></div>
+                        <div class="field"><label class="fl">Global</label><input type="checkbox" id="cfgUseSubscriptions" checked><span class="msg" id="subMessage">Applies on reconnect</span></div>
                     </div>
                     <div class="toolbar" style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
                         <button class="btn" id="cfgApply" type="button" style="display:none">Save</button>
@@ -3146,6 +3150,8 @@ function loadSelectedSourceForm() {
         el('cfgUser').value = '';
         el('cfgPass').value = '';
         el('cfgDomain').value = '';
+        if (el('cfgIoMode')) el('cfgIoMode').value = 'AutoDetect';
+        const ioModeHint = el('ioModeHint'); if (ioModeHint) ioModeHint.textContent = '';
         el('cfgMessage').textContent = source
             ? 'Select a saved OPC DA connection or click New.'
             : 'No OPC DA sources configured. Click + Add Source or New.';
@@ -3161,6 +3167,11 @@ function loadSelectedSourceForm() {
     el('cfgUser').value = source.remoteUsername || '';
     el('cfgPass').value = '';
     el('cfgDomain').value = source.remoteDomain || '';
+    if (el('cfgIoMode')) {
+        el('cfgIoMode').value = (source.ioMode === 'Sync' || source.ioMode === 'Async20') ? source.ioMode : 'AutoDetect';
+        const ioModeHint = el('ioModeHint');
+        if (ioModeHint) ioModeHint.textContent = 'Requested: ' + el('cfgIoMode').value + ' · effective: see Read Mode above';
+    }
     el('cfgMessage').textContent = (isMelsecSource(source) || isS7Source(source))
         ? 'Serial driver source — edit it on the Drivers page.'
         : (isMxSource(source)
@@ -4240,7 +4251,8 @@ async function saveSource() {
         host: el('cfgHost').value.trim() || 'localhost',
         remoteUsername: el('cfgUser').value.trim() || null,
         remotePassword: el('cfgPass').value || null,
-        remoteDomain: el('cfgDomain').value.trim() || null
+        remoteDomain: el('cfgDomain').value.trim() || null,
+        ioMode: el('cfgIoMode') ? el('cfgIoMode').value : undefined
     };
     const r = await fetch('/api/da/sources', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const p = await r.json();
@@ -4983,6 +4995,7 @@ async function wzFinish() {
   el('cfgUser').value = el('wzUser').value.trim();
   el('cfgPass').value = el('wzPass').value;
   el('cfgDomain').value = el('wzDomain').value.trim();
+  if (el('cfgIoMode')) el('cfgIoMode').value = el('wzSubs').checked ? 'AutoDetect' : 'Sync';
   state.editingNewSource = true;
   try {
     await saveSource();
@@ -5531,6 +5544,31 @@ document.addEventListener('DOMContentLoaded', async () => {
             await refresh();
         } catch (err) { el('configMessage').textContent = '✗ ' + err.message; }
         e.target.value = '';
+    });
+    const ioModeSel = el('cfgIoMode');
+    if (ioModeSel) ioModeSel.addEventListener('change', async () => {
+        const ioModeHint = el('ioModeHint');
+        if (state.editingNewSource) {
+            if (ioModeHint) ioModeHint.textContent = 'Will apply when the source is saved.';
+            showSaveReset();
+            return;
+        }
+        const src = currentSource();
+        if (!src) return;
+        try {
+            const r = await fetch('/api/da/sources/io-mode', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sourceId: src.sourceId, ioMode: ioModeSel.value })
+            });
+            const p = await r.json();
+            if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
+            if (ioModeHint) ioModeHint.textContent = 'Applied live — requested: ' + p.ioMode + ' · effective: see Read Mode above';
+            await loadSources();
+            await refresh();
+        } catch (err) {
+            if (ioModeHint) ioModeHint.textContent = '✗ ' + err.message;
+        }
     });
     el('cfgUseSubscriptions').addEventListener('change', async e => {
         try {

@@ -994,8 +994,10 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
             {
                 bridge_state_.SetSourceConnectionState(source.SourceId, "Connecting");
                 ISourceClient client = da_client_factory_.Create(settings, source);
-                await client.ConnectAsync(cancellationToken).ConfigureAwait(false);
 
+                // Attach handlers BEFORE connect: the DA client raises Warning during
+                // ConnectAsync when the subscription attempt fails (server lacks
+                // IOPCDataCallback), and values can arrive immediately after connect.
                 if (client is ISubscribableSourceClient subscribable)
                 {
                     subscribable.ValuesReceived += values => OnSubscriptionValues(values);
@@ -1006,6 +1008,8 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                     daClient.Warning += message =>
                         logger_.LogWarning("OPC DA source {SourceId}: {Message}", source.SourceId, message);
                 }
+
+                await client.ConnectAsync(cancellationToken).ConfigureAwait(false);
 
                 sessions[source.SourceId] = new SourceSession(source, client);
                 bridge_state_.SetSourceConnectionState(source.SourceId, "Connected");
@@ -1123,7 +1127,8 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
             && string.Equals(a.Host, b.Host, StringComparison.OrdinalIgnoreCase)
             && string.Equals(a.RemoteUsername, b.RemoteUsername, StringComparison.Ordinal)
             && string.Equals(a.RemotePassword, b.RemotePassword, StringComparison.Ordinal)
-            && string.Equals(a.RemoteDomain, b.RemoteDomain, StringComparison.OrdinalIgnoreCase);
+            && string.Equals(a.RemoteDomain, b.RemoteDomain, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(a.IoMode, b.IoMode, StringComparison.Ordinal);
     }
 
     private static bool SourceSettingsEquals(DaSourceRuntimeSettings a, DaSourceRuntimeSettings b)

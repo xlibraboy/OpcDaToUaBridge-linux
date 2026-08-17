@@ -41,7 +41,26 @@ public class SourceClientFactory
             return new MxComponentClient(ToMxComponentOptions(source));
         }
 
-        return new OpcDaClient(source.ToOptions(settings.UseSubscriptions));
+        // Per-source client I/O mode decides whether this DA source attempts the push
+        // path: Sync never does, AutoDetect follows the global master switch, and
+        // Async20 forces the attempt regardless of the global switch.
+        bool attemptSubscriptions = ResolveSubscriptionAttempt(source.IoMode, settings.UseSubscriptions);
+        return new OpcDaClient(source.ToOptions(attemptSubscriptions, source.IoMode));
+    }
+
+    private static bool ResolveSubscriptionAttempt(string ioMode, bool globalUseSubscriptions)
+    {
+        if (string.Equals(ioMode, "Sync", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (string.Equals(ioMode, "Async20", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return globalUseSubscriptions;
     }
 
     private static MelsecA3nClientOptions ToMelsecOptions(DaSourceRuntimeSettings source) => new()

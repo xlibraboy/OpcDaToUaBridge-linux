@@ -13,12 +13,16 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISub
     private static readonly int ItemValueOffset = (int)Marshal.OffsetOf<OpcItemState>(nameof(OpcItemState.Value));
 
     private readonly DaClientOptions options_;
+
+    /// <summary>Client options; exposed for tests and diagnostics.</summary>
+    public DaClientOptions Options => options_;
     private OpcComThread? com_thread_;
     private object? server_com_object_;
     private IOPCServer? server_;
     private OpcDaServerInfo? server_info_;
     private readonly Dictionary<int, RateGroup> rate_groups_ = new();
     private bool subscriptions_active_;
+    private readonly HashSet<int> subscription_fallback_warned_rates_ = new();
 
     /// <summary>
     /// Raised when a DA subscription delivers values via IOPCDataCallback.
@@ -546,13 +550,32 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISub
             return;
         }
 
+        // When the user forced Async I/O 2.0 for this source, the fallback warning
+        // is loud so the mismatch (requested push, server can't) is never silent.
+        string forcedMode = string.Equals(options_.IoMode, "Async20", StringComparison.OrdinalIgnoreCase)
+            ? "Forced Async I/O 2.0: "
+            : string.Empty;
+
+        // Warn once per client per rate group; the attempt repeats every poll cycle
+        // while the subscription stays unavailable, so re-warning would flood logs.
+        bool WarnOnce(string message)
+        {
+            if (!subscription_fallback_warned_rates_.Add(group.Rate))
+            {
+                return false;
+            }
+
+            Warning?.Invoke(message);
+            return true;
+        }
+
         try
         {
             if (group.ComObject is not IConnectionPointContainer cpc)
             {
                 subscriptions_active_ = false;
-                Warning?.Invoke(
-                    $"OPC DA group for rate {group.Rate}ms does not expose IConnectionPointContainer; " +
+                WarnOnce(
+                    $"{forcedMode}OPC DA group for rate {group.Rate}ms does not expose IConnectionPointContainer; " +
                     "subscription unavailable, falling back to polling.");
                 return;
             }
@@ -562,8 +585,8 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISub
             if (hr < 0)
             {
                 subscriptions_active_ = false;
-                Warning?.Invoke(
-                    $"OPC DA callback connection point unavailable for rate {group.Rate}ms " +
+                WarnOnce(
+                    $"{forcedMode}OPC DA callback connection point unavailable for rate {group.Rate}ms " +
                     $"(0x{hr:X8}); falling back to polling.");
                 return;
             }
@@ -581,8 +604,8 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISub
             if (hr < 0)
             {
                 subscriptions_active_ = false;
-                Warning?.Invoke(
-                    $"OPC DA callback Advise failed for rate {group.Rate}ms (0x{hr:X8}); " +
+                WarnOnce(
+                    $"{forcedMode}OPC DA callback Advise failed for rate {group.Rate}ms (0x{hr:X8}); " +
                     "falling back to polling.");
                 return;
             }
@@ -592,9 +615,14 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISub
             group.CallbackCookie = cookie;
             subscriptions_active_ = true;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            // Never fail silently: an unexpected error while establishing the
+            // subscription must surface (the user may have forced Async I/O 2.0).
             subscriptions_active_ = false;
+            WarnOnce(
+                $"{forcedMode}OPC DA subscription setup failed for rate {group.Rate}ms: {ex.Message}; " +
+                "falling back to polling.");
         }
     }
 
@@ -1569,9 +1597,9 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISub
     [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     private interface IConnectionPointContainer
     {
-        int EnumConnectionPoints(out IntPtr ppEnum);
+        [PreserveSig] int EnumConnectionPoints(out IntPtr ppEnum);
 
-        int FindConnectionPoint(ref Guid riid, out IConnectionPoint ppCP);
+        [PreserveSig] int FindConnectionPoint(ref Guid riid, out IConnectionPoint ppCP);
     }
 
     [ComImport]
@@ -1579,15 +1607,15 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISub
     [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     private interface IConnectionPoint
     {
-        int GetConnectionInterface(out Guid pIID);
+        [PreserveSig] int GetConnectionInterface(out Guid pIID);
 
-        int GetConnectionPointContainer(out IConnectionPointContainer ppCPC);
+        [PreserveSig] int GetConnectionPointContainer(out IConnectionPointContainer ppCPC);
 
-        int Advise([MarshalAs(UnmanagedType.IUnknown)] object pUnkSink, out int pdwCookie);
+        [PreserveSig] int Advise([MarshalAs(UnmanagedType.IUnknown)] object pUnkSink, out int pdwCookie);
 
-        int Unadvise(int dwCookie);
+        [PreserveSig] int Unadvise(int dwCookie);
 
-        int EnumConnections(out IntPtr ppEnum);
+        [PreserveSig] int EnumConnections(out IntPtr ppEnum);
     }
 
     [ComImport]

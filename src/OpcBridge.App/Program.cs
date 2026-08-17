@@ -421,6 +421,38 @@ app.MapPost("/api/da/sources/update-rate", (DaSourceUpdateRateRequest request, D
         updateRateMs = source.UpdateRateMs
     });
 });
+app.MapPost("/api/da/sources/io-mode", (DaSourceIoModeRequest request, DaRuntimeSettings settings) =>
+{
+    if (string.IsNullOrWhiteSpace(request.SourceId))
+    {
+        return Results.BadRequest(new { error = "Source ID is required." });
+    }
+
+    if (string.IsNullOrWhiteSpace(request.IoMode))
+    {
+        return Results.BadRequest(new { error = "I/O mode is required." });
+    }
+
+    string normalizedMode = SourceConfigMigration.NormalizeIoMode(request.IoMode);
+    if (!string.Equals(normalizedMode, request.IoMode, StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.BadRequest(new { error = "I/O mode must be AutoDetect, Sync or Async20." });
+    }
+
+    DaRuntimeSettingsSnapshot snapshot = settings.SetSourceIoMode(request.SourceId, normalizedMode);
+    DaSourceRuntimeSettings? source = snapshot.GetSource(request.SourceId);
+    if (source is null)
+    {
+        return Results.BadRequest(new { error = "Source not found." });
+    }
+
+    return Results.Json(new
+    {
+        version = snapshot.Version,
+        sourceId = source.SourceId,
+        ioMode = source.IoMode
+    });
+});
 app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings settings, UaServerHost uaServer) =>
 {
     if (string.IsNullOrWhiteSpace(request.SourceId))
@@ -507,7 +539,8 @@ app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings
         upsertUa,
         upsertMelsec,
         upsertS7200,
-        upsertMx));
+        upsertMx,
+        SourceConfigMigration.NormalizeIoMode(request.IoMode)));
 
     DaSourceRuntimeSettings source = snapshot.GetSource(request.SourceId)!;
     return Results.Json(new
@@ -1588,6 +1621,7 @@ static object ToSourceApiDto(DaSourceRuntimeSettings source)
         reconnectDelayMs = source.ReconnectDelayMs,
         maxMappedTags = source.MaxMappedTags,
         useSubscriptions = source.UseSubscriptions,
+        ioMode = source.IoMode,
         remoteUsername = source.RemoteUsername,
         remoteDomain = source.RemoteDomain,
         uaUsername = source.UaUsername,
