@@ -25,6 +25,44 @@ using OpcBridge.Ua;
 // poll cycle; beyond this many values it freezes browsers. UI shows total separately.
 const int DashboardValuesLimit = 2000;
 
+// ---- Single-instance guard: only one bridge may run per machine/user at a time ----
+// A lock file is opened with FileShare.None and held for the process lifetime; the OS
+// releases it automatically if the process exits or crashes, so there is no stale lock.
+// OPCBRIDGE_INSTANCE_LOCK overrides the path (used by the test host to isolate instances).
+string lockPath = Environment.GetEnvironmentVariable("OPCBRIDGE_INSTANCE_LOCK")
+    ?? Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "OpcBridge",
+        "bridge.lock");
+
+try
+{
+    Directory.CreateDirectory(Path.GetDirectoryName(lockPath)!);
+}
+catch (Exception ex)
+{
+    Console.Error.WriteLine($"OpcBridge: could not create instance-lock directory: {ex.Message}");
+}
+
+FileStream? acquiredLock = null;
+try
+{
+    acquiredLock = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+    acquiredLock.SetLength(0);
+    byte[] pidBytes = System.Text.Encoding.UTF8.GetBytes(Environment.ProcessId.ToString());
+    acquiredLock.Write(pidBytes, 0, pidBytes.Length);
+    acquiredLock.Flush();
+}
+catch (IOException)
+{
+    Console.Error.WriteLine(
+        $"OpcBridge: another instance is already running (lock file: {lockPath}). " +
+        "Refusing to start a second instance.");
+    return;
+}
+
+using FileStream instanceLock = acquiredLock!;
+
 // Port auto-assignment: check defaults, auto-roll if in use, persist to appsettings.json
 string cfgPath = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
 JObject? cfg = null;

@@ -56,6 +56,10 @@ public sealed class TestAppHandle : IAsyncDisposable
         };
         startInfo.ArgumentList.Add(Path.Combine(appDirectory, "OpcBridge.App.dll"));
 
+        // Isolate the single-instance lock per test app so concurrently (or previously)
+        // running bridge instances never block a test host from starting.
+        startInfo.Environment["OPCBRIDGE_INSTANCE_LOCK"] = Path.Combine(appDirectory, "instance.lock");
+
         Process process = new() { StartInfo = startInfo };
         TestAppHandle handle = new(process, appDirectory);
         process.OutputDataReceived += (_, args) => handle.AppendOutput(args.Data);
