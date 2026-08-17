@@ -167,6 +167,11 @@ run in the **same logged-in desktop session**. In practice this means:
   with `-LogonType Interactive` (see `register-published-task.ps1`). The default **S4U** mode runs
   the task headless in session 0, where GX Simulator's shared memory is invisible, and the MX
   source cannot connect (it shows the MX Open error and stays in Reconnecting).
+- The bridge **detects this at startup**: when it is launched into a non-interactive session
+  (session 0) on Windows it logs a warning and shows an amber banner on the dashboard — "this
+  bridge runs in a non-interactive Windows session… session-bound OPC DA servers will not
+  deliver values". Treat that banner as the signal to relaunch from the desktop session (a
+  console login / Startup shortcut or an Interactive-logon scheduled task).
 - Mitsubishi documents the same constraint for its own OPC server: the MX OPC Server manual
   states that to use GX Simulator the server *"should NOT BE INSTALLED AS A SERVICE"*.
 - A **console login is required** — after a log-off or reboot the task waits for that user

@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Diagnostics;
 using Newtonsoft.Json.Linq;
 using System.IO.Ports;
 using System.Text.Json;
@@ -116,6 +117,30 @@ if (httpPort != savedHttp || uaPort != savedUa)
 }
 
 BridgeState.ConfigurePorts(httpPort, uaPort, httpAuto, uaAuto);
+
+// Windows session awareness: session-bound PLC simulators (GX Simulator's shared
+// memory behind MX OPC, etc.) are only reachable from the interactive desktop
+// session. A bridge launched into session 0 (SSH/WMI, services, S4U tasks) looks
+// healthy but gets Bad values from those servers — surface it instead of failing
+// silently. The dashboard shows a banner; the log warns here.
+int sessionId = 0;
+bool interactiveSession = true;
+if (OperatingSystem.IsWindows())
+{
+    sessionId = Process.GetCurrentProcess().SessionId;
+    interactiveSession = sessionId != 0;
+    if (!interactiveSession)
+    {
+        logger.LogWarning(
+            "Bridge is running in non-interactive Windows session {SessionId} (session 0). " +
+            "Session-bound OPC DA servers (GX Simulator via MX OPC, or any simulator using " +
+            "session-scoped shared memory) will not deliver values. Launch the bridge from the " +
+            "interactive desktop session instead.",
+            sessionId);
+    }
+}
+
+BridgeState.ConfigureSession(sessionId, interactiveSession);
 logger.LogInformation("Bridge listening on http://0.0.0.0:{HttpPort}", httpPort);
 logger.LogInformation("OPC UA server endpoint: opc.tcp://0.0.0.0:{UaPort}/OpcBridge", uaPort);
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);

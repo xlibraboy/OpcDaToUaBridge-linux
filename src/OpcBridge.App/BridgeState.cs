@@ -35,6 +35,23 @@ public sealed class BridgeState
         UaAutoAssigned = uaAuto;
     }
 
+    /// <summary>Windows session the bridge runs in. Set once at startup.</summary>
+    public static int SessionId { get; private set; }
+
+    /// <summary>
+    /// True when running in a logged-on interactive session. Session-bound PLC
+    /// simulators (e.g. GX Simulator shared memory behind MX OPC) are only
+    /// reachable from the interactive session, so a session-0 launch must be
+    /// surfaced instead of failing silently.
+    /// </summary>
+    public static bool InteractiveSession { get; private set; } = true;
+
+    public static void ConfigureSession(int sessionId, bool interactive)
+    {
+        SessionId = sessionId;
+        InteractiveSession = interactive;
+    }
+
 
     public void Configure(int updateRateMs, int mappingCount, IReadOnlyList<DaSourceRuntimeSettings> sources)
     {
@@ -91,7 +108,9 @@ public sealed class BridgeState
                 LastPollDurationMs = 0,
                 LastPollValueRate = 0,
                 LastError = null,
-                Sources = sourceStatuses
+                Sources = sourceStatuses,
+                SessionId = SessionId,
+                InteractiveSession = InteractiveSession
             };
         }
     }
@@ -630,7 +649,9 @@ public sealed record BridgeRuntimeStatus(
     string? LastError,
     IReadOnlyList<DaSourceStatusSnapshot> Sources,
     IReadOnlyList<RateGroupStatus> RateGroups,
-    ResourceSnapshot? Resources)
+    ResourceSnapshot? Resources,
+    int SessionId = 0,
+    bool InteractiveSession = true)
 {
     public static BridgeRuntimeStatus Empty { get; } = new(
         "Stopped",

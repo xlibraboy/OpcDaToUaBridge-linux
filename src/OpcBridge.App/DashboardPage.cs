@@ -95,6 +95,7 @@ internal static class DashboardPage
         .alarm-bar.warning { background: rgba(251,191,36,.1); border: 1px solid rgba(251,191,36,.3); color: var(--warn); }
         .alarm-bar.bad { background: rgba(248,113,113,.1); border: 1px solid rgba(248,113,113,.3); color: var(--bad); }
         .first-run-banner { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 7px; margin-bottom: 12px; font-size: 12px; background: rgba(56,189,248,.08); border: 1px solid rgba(56,189,248,.3); color: var(--text); }
+        .session-warn-banner { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 7px; margin-bottom: 12px; font-size: 12px; font-weight: 600; background: rgba(245,158,11,.12); border: 1px solid rgba(245,158,11,.45); color: var(--text); }
         .first-run-banner button { margin-left: auto; }
         .port-banner { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 7px; margin-bottom: 12px; font-size: 12px; font-weight: 600; background: rgba(251,191,36,.1); border: 1px solid rgba(251,191,36,.3); color: var(--warn); }
         .port-banner button { margin-left: auto; }
@@ -489,6 +490,7 @@ internal static class DashboardPage
     <div class="first-run-banner" id="bannerNoSources" style="display:none"></div>
     <div class="first-run-banner" id="bannerNoMappings" style="display:none"></div>
     <div class="alarm-bar" id="rateAlarmBar" style="display:none"></div>
+    <div class="session-warn-banner" id="sessionBanner" style="display:none"></div>
     <div class="mon-stats">
         <div class="mon-stat-group">
             <div class="mon-stat-group-h">Bridge</div>
@@ -3556,6 +3558,15 @@ async function refresh() {
          el('pTags').textContent = get(b, 'mappingCount') ?? 0;
          el('pApps').textContent = get(apps, 'detectedCount') ?? 1;
         el('bridgeState').innerHTML = badge(get(b, 'bridgeState') || '—', stateClass(get(b, 'bridgeState')));
+        const sessionBanner = el('sessionBanner');
+        if (sessionBanner) {
+            if (get(b, 'sessionId') === 0 && get(b, 'interactiveSession') === false) {
+                sessionBanner.style.display = '';
+                sessionBanner.textContent = '⚠ This bridge runs in a non-interactive Windows session (session 0). Session-bound OPC DA servers (GX Simulator via MX OPC, or any simulator using session-scoped shared memory) will not deliver values — launch the bridge from the interactive desktop session.';
+            } else {
+                sessionBanner.style.display = 'none';
+            }
+        }
         const err = get(b, 'lastError');
         el('lastError').textContent = err || 'No errors';
         el('lastError').className = 's' + (err ? ' bad' : '');
