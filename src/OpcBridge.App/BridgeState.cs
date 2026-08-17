@@ -56,6 +56,9 @@ public sealed class BridgeState
             Dictionary<string, string> previousReadMode = status_.Sources
                 .Where(source => !string.IsNullOrEmpty(source.ReadMode))
                 .ToDictionary(source => source.SourceId, source => source.ReadMode, StringComparer.OrdinalIgnoreCase);
+            Dictionary<string, string> previousWriteMode = status_.Sources
+                .Where(source => !string.IsNullOrEmpty(source.WriteMode))
+                .ToDictionary(source => source.SourceId, source => source.WriteMode, StringComparer.OrdinalIgnoreCase);
 
             for (int i = 0; i < sourceStatuses.Length; i++)
             {
@@ -67,6 +70,11 @@ public sealed class BridgeState
                 if (previousReadMode.TryGetValue(sourceStatuses[i].SourceId, out string? readMode))
                 {
                     sourceStatuses[i] = sourceStatuses[i] with { ReadMode = readMode };
+                }
+
+                if (previousWriteMode.TryGetValue(sourceStatuses[i].SourceId, out string? writeMode))
+                {
+                    sourceStatuses[i] = sourceStatuses[i] with { WriteMode = writeMode };
                 }
             }
 
@@ -272,6 +280,24 @@ public sealed class BridgeState
             DaSourceStatusSnapshot[] updated = status_.Sources
                 .Select(source => string.Equals(source.SourceId, sourceId, StringComparison.OrdinalIgnoreCase)
                     ? source with { ReadMode = readMode }
+                    : source)
+                .ToArray();
+
+            status_ = status_ with
+            {
+                DaConnectionState = AggregateConnectionState(updated),
+                Sources = updated
+            };
+        }
+    }
+
+    public void SetSourceWriteMode(string sourceId, string writeMode)
+    {
+        lock (status_lock_)
+        {
+            DaSourceStatusSnapshot[] updated = status_.Sources
+                .Select(source => string.Equals(source.SourceId, sourceId, StringComparison.OrdinalIgnoreCase)
+                    ? source with { WriteMode = writeMode }
                     : source)
                 .ToArray();
 
@@ -652,7 +678,8 @@ public sealed record DaSourceStatusSnapshot(
     string SourceType = "OpcDa",
     string EndpointSummary = "",
     string ServerInfo = "",
-    string ReadMode = "");
+    string ReadMode = "",
+    string WriteMode = "");
 
 public sealed record BridgeValueSnapshot(
     string SourceId,

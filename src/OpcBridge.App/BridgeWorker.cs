@@ -1017,6 +1017,11 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                         connectedDaClient.ServerInfo?.Describe() ?? string.Empty);
                 }
 
+                // Writes are synchronous for every driver: DA uses IOPCSyncIO.Write,
+                // UA uses the request/response Write service, native drivers use their
+                // protocol's synchronous write. Set once per connect (it never varies).
+                bridge_state_.SetSourceWriteMode(source.SourceId, ResolveWriteMode(source.SourceType));
+
                 changed.Add(source.SourceId);
                 watchdog_activity_.TryRemove(source.SourceId, out _);
 
@@ -1169,6 +1174,17 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
         => client is ISubscriptionActiveSource subscribed && subscribed.IsSubscriptionActive
             ? "async (subscription)"
             : "sync (polling)";
+
+    /// <summary>
+    /// Write operation type per driver. There is no async write path: every write is
+    /// a synchronous request/response through the driver's own mechanism.
+    /// </summary>
+    private static string ResolveWriteMode(string sourceType)
+        => string.Equals(sourceType, SourceTypes.OpcDa, StringComparison.OrdinalIgnoreCase)
+            ? "sync (IOPCSyncIO.Write)"
+            : string.Equals(sourceType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase)
+                ? "sync (UA Write)"
+                : "sync (protocol write)";
 
     private void OnSubscriptionValues(IReadOnlyList<BridgeValue> values)
     {

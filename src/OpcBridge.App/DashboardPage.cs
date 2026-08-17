@@ -623,8 +623,10 @@ internal static class DashboardPage
                         <div class="field"><label class="fl">Host <span class="info" data-tip="Machine where the OPC DA server runs. Use 'localhost' for this PC, or an IP/hostname for remote.">i</span></label><input id="cfgHost" type="text" placeholder="localhost" style="flex:1"></div>
                     </div>
                     <div class="conn-section">
-                        <div class="conn-section-h">Detected Server <span class="info" data-tip="Identified on connect: OPC DA spec level (1.0/2.0/3.0, probed from the async interfaces the server exposes) plus the server's own version and vendor string (IOPCServer.GetStatus).">i</span></div>
+                        <div class="conn-section-h">Detected Server <span class="info" data-tip="Identified on connect: OPC DA spec level (1.0/2.0/3.0, probed from the server-object marker interfaces) plus the server's own version and vendor string (IOPCServer.GetStatus).">i</span></div>
                         <div class="field"><label class="fl">Server</label><span class="msg" id="cfgServerInfo" style="font-weight:400;text-transform:none;letter-spacing:0">—</span></div>
+                        <div class="field"><label class="fl">Read Mode <span class="info" data-tip="How values are delivered right now: async (subscription) = IOPCDataCallback push; sync (polling) = IOPCSyncIO.Read polling. Updated live; depends on the server exposing the callback connection point.">i</span></label><span class="msg" id="cfgReadMode" style="font-weight:400;text-transform:none;letter-spacing:0">—</span></div>
+                        <div class="field"><label class="fl">Write Mode <span class="info" data-tip="How writes are sent: always a synchronous request/response. DA uses IOPCSyncIO.Write; UA uses the Write service.">i</span></label><span class="msg" id="cfgWriteMode" style="font-weight:400;text-transform:none;letter-spacing:0">—</span></div>
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">Credentials <span class="info" data-tip="Only required for remote DCOM with specific user accounts, or to access OPC DA servers registered in another user's profile.">i</span></div>
@@ -705,6 +707,8 @@ internal static class DashboardPage
                         <div class="field"><label class="fl">Update Rate</label><select id="uaCfgUpdateRate"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
                         <div class="field"><label class="fl">Max Mapped Tags <span class="info" data-tip="Hard cap on mappings for this UA source. Only mapped NodeIds are subscribed.">i</span></label><input id="uaCfgMaxMappedTags" type="number" min="1" value="50000" style="flex:1"></div>
                         <div class="field"><label class="fl">Subscriptions</label><input type="checkbox" id="uaCfgUseSubscriptions" checked><span class="msg" id="uaSubMessage">MonitoredItems for mapped tags</span></div>
+                        <div class="field"><label class="fl">Read Mode <span class="info" data-tip="How values are delivered right now: async (subscription) = MonitoredItems push; sync (polling) = polling. Follows the Subscriptions checkbox on reconnect.">i</span></label><span class="msg" id="uaCfgReadMode" style="font-weight:400;text-transform:none;letter-spacing:0">—</span></div>
+                        <div class="field"><label class="fl">Write Mode <span class="info" data-tip="How writes are sent: always a synchronous request/response via the UA Write service.">i</span></label><span class="msg" id="uaCfgWriteMode" style="font-weight:400;text-transform:none;letter-spacing:0">—</span></div>
                     </div>
                     <div class="toolbar" style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
                         <button class="btn" id="btnUaTestConnection" type="button">Test Connection</button>
@@ -3029,10 +3033,12 @@ function sourceStatusRowHtml(source) {
     const err = source.lastError || source.LastError || '';
     const info = source.serverInfo || source.ServerInfo || '';
     const mode = source.readMode || source.ReadMode || '';
+    const wmode = source.writeMode || source.WriteMode || '';
     const errBit = err ? ` · <span class="bad">${esc(err)}</span>` : '';
     const infoBit = info ? ` · ${esc(info)}` : '';
     const modeBit = mode ? ` · <span class="msg" style="font-weight:400">${esc(mode)}</span>` : '';
-    return `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)} ${sourceTypeBadge(source)} ${st ? badge(st, stateClass(st)) : ''}</div><div class="p">${esc(source.sourceId)} · ${sourceEndpointSummary(source)} · ${formatMs(source.updateRateMs)}${infoBit}${modeBit}${errBit}</div></div><button class="btn ghost" data-action="select-source-status" data-source-id="${attr(source.sourceId)}">Select</button></div>`;
+    const wmodeBit = wmode ? ` · <span class="msg" style="font-weight:400">${esc(wmode)}</span>` : '';
+    return `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)} ${sourceTypeBadge(source)} ${st ? badge(st, stateClass(st)) : ''}</div><div class="p">${esc(source.sourceId)} · ${sourceEndpointSummary(source)} · ${formatMs(source.updateRateMs)}${infoBit}${modeBit}${wmodeBit}${errBit}</div></div><button class="btn ghost" data-action="select-source-status" data-source-id="${attr(source.sourceId)}">Select</button></div>`;
 }
 function renderSourcesStatusList() {
     const host = el('sourcesStatusList');
@@ -3102,14 +3108,29 @@ function updateMapSourceHint() {
 }
 function updateCfgServerInfo(source) {
     const info = el('cfgServerInfo');
+    const mode = el('cfgReadMode');
+    const wmode = el('cfgWriteMode');
     if (!info) return;
     if (!source || isUaSource(source)) {
         info.textContent = '—';
+        if (mode) mode.textContent = '—';
+        if (wmode) wmode.textContent = '—';
         return;
     }
-    const mode = source.readMode || source.ReadMode || '';
-    info.textContent = (source.serverInfo ? source.serverInfo : 'Not detected — info appears after the source connects.')
-        + (mode ? ` · ${mode}` : '');
+    info.textContent = source.serverInfo
+        ? source.serverInfo
+        : 'Not detected — info appears after the source connects.';
+    if (mode) mode.textContent = source.readMode || source.ReadMode || '—';
+    if (wmode) wmode.textContent = source.writeMode || source.WriteMode || '—';
+}
+function updateUaCfgReadMode(source) {
+    const mode = el('uaCfgReadMode');
+    const wmode = el('uaCfgWriteMode');
+    if (!mode && !wmode) return;
+    const readMode = (source && (source.readMode || source.ReadMode)) ? (source.readMode || source.ReadMode) : '—';
+    const writeMode = (source && (source.writeMode || source.WriteMode)) ? (source.writeMode || source.WriteMode) : '—';
+    if (mode) mode.textContent = readMode;
+    if (wmode) wmode.textContent = writeMode;
 }
 function loadSelectedSourceForm() {
     if (state.editingNewSource) return;
@@ -3164,6 +3185,7 @@ function loadSelectedUaSourceForm() {
         el('uaCfgMessage').textContent = source
             ? 'Select a saved OPC UA connection or click New.'
             : 'No OPC UA sources configured. Click + Add Source or New.';
+        updateUaCfgReadMode(null);
         hideUaSaveReset();
         return;
     }
@@ -3179,6 +3201,7 @@ function loadSelectedUaSourceForm() {
     el('uaCfgMaxMappedTags').value = String(source.maxMappedTags || 50000);
     el('uaCfgUseSubscriptions').checked = source.useSubscriptions !== false;
     el('uaCfgMessage').textContent = 'Editing ' + (source.displayName || source.sourceId) + '.';
+    updateUaCfgReadMode(source);
     hideUaSaveReset();
 }
 async function loadSources() {
@@ -3193,6 +3216,8 @@ async function loadSources() {
             source.connectionState = get(status, 'connectionState');
             source.lastError = get(status, 'lastError');
             source.serverInfo = get(status, 'serverInfo');
+            source.readMode = get(status, 'readMode') || '';
+            source.writeMode = get(status, 'writeMode') || '';
         }
     });
     state.updateRateMs = Number(payload.updateRateMs || state.updateRateMs || 1000);
@@ -3592,12 +3617,15 @@ async function refresh() {
                     source.connectionState = get(status, 'connectionState');
                     source.lastError = get(status, 'lastError');
                     source.serverInfo = get(status, 'serverInfo');
+                    source.readMode = get(status, 'readMode') || '';
+                    source.writeMode = get(status, 'writeMode') || '';
                 }
             });
             renderSourcesStatusList();
         }
-        // Keep the OPC DA config form's Detected Server line live.
-        if (document.getElementById('view-opc-da')?.classList.contains('active')) {
+        // Keep the config forms' Detected Server / Read Mode lines live.
+        const activeView = document.querySelector('.view.active')?.id || '';
+        if (activeView === 'view-opc-da') {
             const selId = String(state.selectedSourceId || '').toLowerCase();
             const current = state.sources.find(s => String(s.sourceId || '').toLowerCase() === selId);
             const status = sources.find(s => String(get(s, 'sourceId') || '').toLowerCase() === selId);
@@ -3605,13 +3633,27 @@ async function refresh() {
                 current.connectionState = get(status, 'connectionState');
                 current.lastError = get(status, 'lastError');
                 current.serverInfo = get(status, 'serverInfo');
+                current.readMode = get(status, 'readMode') || '';
+                current.writeMode = get(status, 'writeMode') || '';
             }
             updateCfgServerInfo(current);
+        } else if (activeView === 'view-opc-ua') {
+            const selId = String(state.selectedSourceId || '').toLowerCase();
+            const current = state.sources.find(s => String(s.sourceId || '').toLowerCase() === selId);
+            const status = sources.find(s => String(get(s, 'sourceId') || '').toLowerCase() === selId);
+            if (current && status) {
+                current.readMode = get(status, 'readMode') || '';
+                current.writeMode = get(status, 'writeMode') || '';
+            }
+            updateUaCfgReadMode(current);
         }
         el('sourceStatusList').innerHTML = sources.length ? sources.map(source => {
             const connState = get(source,'connectionState') || '—';
             const connClass = stateClass(connState);
-            return `<div class="li"><div style="flex:1"><div class="n">${esc(get(source,'displayName') || get(source,'sourceId'))} ${badge(connState, connClass)}</div><div class="p">${esc(get(source,'sourceId'))} · ${esc(get(source,'host') || '')} · ${esc(get(source,'progId') || '')}</div><div class="p">${formatMs(get(source,'updateRateMs'))} · ${(get(source,'lastDaReadCount') ?? 0)} values in ${formatMs(get(source,'lastDaReadDurationMs'))}${get(source,'lastError') ? ' · <span class="bad">' + esc(get(source,'lastError')) + '</span>' : ''}</div></div></div>`;
+            const readMode = get(source,'readMode') || '';
+            const writeMode = get(source,'writeMode') || '';
+            const ioBit = (readMode || writeMode) ? ' · <span style="font-weight:400">' + esc([readMode, writeMode].filter(Boolean).join(' · ')) + '</span>' : '';
+            return `<div class="li"><div style="flex:1"><div class="n">${esc(get(source,'displayName') || get(source,'sourceId'))} ${badge(connState, connClass)}</div><div class="p">${esc(get(source,'sourceId'))} · ${esc(get(source,'host') || '')} · ${esc(get(source,'progId') || '')}${ioBit}</div><div class="p">${formatMs(get(source,'updateRateMs'))} · ${(get(source,'lastDaReadCount') ?? 0)} values in ${formatMs(get(source,'lastDaReadDurationMs'))}${get(source,'lastError') ? ' · <span class="bad">' + esc(get(source,'lastError')) + '</span>' : ''}</div></div></div>`;
         }).join('') : '<span class="msg">No source status yet.</span>';
         const rateGroups = get(b, 'rateGroups') || [];
         const alarmBar = el('rateAlarmBar');
