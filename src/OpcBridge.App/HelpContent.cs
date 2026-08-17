@@ -505,6 +505,15 @@ Minimal JSON. Selectable fields (MQTT Broker → Payload Fields): `v` (value), `
 - If the DA server does not support `IOPCDataCallback`, the bridge logs a warning and falls back to device-read polling — deadband has no effect in polling mode.
 - All COM work for a source (reads, writes, subscription callbacks) is pinned to a dedicated **STA thread** per source to avoid COM apartment marshalling failures.
 
+## OPC DA I/O Trace (Advise Log)
+
+- The bridge logs OPC DA I/O activity the way Matrikon OPC Explorer's **Advise Log** does — group creation, sync reads, subscription setup, and data-change notifications. Open **Logs** and look for the `OPC DA source …` lines:
+  - `OPC DA sync read posted for group 'OpcBridge_1000' Item Count (4)` — a polling read was issued for that rate group.
+  - `OPC DA data change notification for group 'OpcBridge_1000' (4 items): Transaction ID: 00000000 Master Quality: 00000000 Master Error: 00000000` — values arrived via `IOPCDataCallback` (Async I/O 2.0 active).
+  - `OPC DA group 'OpcBridge_1000': IOPCDataCallback connection point found …` / `subscription active (Advise cookie N)` — the push path was established.
+- The trace shares the dashboard **Logs** buffer (500 entries, newest first), so with many sources it rotates quickly; filter on `OPC DA source` to watch one source.
+- Seeing **data change notification** lines for a source is the proof that Async I/O 2.0 is genuinely active; seeing only **sync read posted** lines means the source is polling.
+
 ## Resource Telemetry
 
 - The Monitor tab shows a **Resources** panel with native process counters (Windows only):

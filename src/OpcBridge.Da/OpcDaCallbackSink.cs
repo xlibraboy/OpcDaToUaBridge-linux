@@ -7,7 +7,8 @@ namespace OpcBridge.Da;
 /// <summary>
 /// COM-visible sink that receives <c>IOPCDataCallback</c> notifications from an OPC DA
 /// group subscription. Converts the marshalled arrays into <see cref="BridgeValue"/>s
-/// and forwards them via the constructor-supplied callback.
+/// and forwards them via the constructor-supplied callback. I/O activity is reported
+/// through the optional trace callback (Matrikon OPC Explorer-style "Advise Log" lines).
 /// </summary>
 [SupportedOSPlatform("windows")]
 [ComVisible(true)]
@@ -15,27 +16,35 @@ namespace OpcBridge.Da;
 internal sealed class OpcDaCallbackSink : OpcDaClient.IOPCDataCallback
 {
     private readonly string sourceId_;
+    private readonly string groupLabel_;
     private readonly IReadOnlyDictionary<int, string> clientHandleToItemId_;
     private readonly Action<IReadOnlyList<BridgeValue>> onValues_;
+    private readonly Action<string>? trace_;
 
     /// <param name="sourceId">DA source identifier to stamp onto emitted values.</param>
+    /// <param name="groupLabel">Human-readable group label used in trace lines.</param>
     /// <param name="clientHandleToItemId">Maps OPC DA client handles (1-based index) to item IDs.</param>
     /// <param name="onValues">Receives unpacked values; invoked on the COM apartment thread.</param>
+    /// <param name="trace">Receives I/O activity lines (may be null to disable tracing).</param>
     public OpcDaCallbackSink(
         string sourceId,
+        string groupLabel,
         IReadOnlyDictionary<int, string> clientHandleToItemId,
-        Action<IReadOnlyList<BridgeValue>> onValues)
+        Action<IReadOnlyList<BridgeValue>> onValues,
+        Action<string>? trace = null)
     {
         sourceId_ = sourceId;
+        groupLabel_ = groupLabel;
         clientHandleToItemId_ = clientHandleToItemId;
         onValues_ = onValues;
+        trace_ = trace;
     }
 
     public int OnDataChange(
         int dwTransid,
         int hGroup,
         int hrMasterquality,
-        int hrQuality,
+        int hrMastererror,
         int dwCount,
         IntPtr phClientItems,
         IntPtr pvValues,
@@ -43,6 +52,7 @@ internal sealed class OpcDaCallbackSink : OpcDaClient.IOPCDataCallback
         IntPtr pftTimeStamps,
         IntPtr pErrors)
     {
+        TraceNotification("data change", dwTransid, hrMasterquality, hrMastererror, dwCount);
         return UnpackAndForward(dwCount, phClientItems, pvValues, pwQualities, pftTimeStamps, pErrors);
     }
 
@@ -50,7 +60,7 @@ internal sealed class OpcDaCallbackSink : OpcDaClient.IOPCDataCallback
         int dwTransid,
         int hGroup,
         int hrMasterquality,
-        int hrQuality,
+        int hrMastererror,
         int dwCount,
         IntPtr phClientItems,
         IntPtr pvValues,
@@ -58,27 +68,37 @@ internal sealed class OpcDaCallbackSink : OpcDaClient.IOPCDataCallback
         IntPtr pftTimeStamps,
         IntPtr pErrors)
     {
+        TraceNotification("read complete", dwTransid, hrMasterquality, hrMastererror, dwCount);
         return UnpackAndForward(dwCount, phClientItems, pvValues, pwQualities, pftTimeStamps, pErrors);
     }
 
     public int OnWriteComplete(
         int dwTransid,
         int hGroup,
-        int hrMasterquality,
-        int hrQuality,
+        int hrMastererr,
         int dwCount,
-        IntPtr phClientItems,
-        IntPtr pvValues,
-        IntPtr pwQualities,
-        IntPtr pftTimeStamps,
+        IntPtr pClienthandles,
         IntPtr pErrors)
     {
-        return 0; // S_OK — write acknowledgements are not forwarded.
+        // Write acknowledgements are not forwarded; trace them like Matrikon's Advise Log.
+        trace_?.Invoke(
+            $"OPC DA write complete for group '{groupLabel_}' ({dwCount} items): " +
+            $"Transaction ID: {dwTransid:X8} Master Error: {hrMastererr:X8}");
+        return 0; // S_OK
     }
 
     public int OnCancelComplete(int dwTransid, int hGroup)
     {
+        trace_?.Invoke(
+            $"OPC DA cancel complete for group '{groupLabel_}': Transaction ID: {dwTransid:X8}");
         return 0; // S_OK
+    }
+
+    private void TraceNotification(string kind, int transid, int masterQuality, int masterError, int count)
+    {
+        trace_?.Invoke(
+            $"OPC DA {kind} notification for group '{groupLabel_}' ({count} items): " +
+            $"Transaction ID: {transid:X8} Master Quality: {masterQuality:X8} Master Error: {masterError:X8}");
     }
 
     private int UnpackAndForward(

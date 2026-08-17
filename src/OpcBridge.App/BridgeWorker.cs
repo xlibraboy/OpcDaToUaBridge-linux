@@ -1007,6 +1007,11 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                 {
                     daClient.Warning += message =>
                         logger_.LogWarning("OPC DA source {SourceId}: {Message}", source.SourceId, message);
+
+                    // Matrikon OPC Explorer-style "Advise Log": group creation, sync reads,
+                    // subscription setup, and data-change notifications surface in /api/logs.
+                    daClient.IOTrace += message =>
+                        logger_.LogInformation("OPC DA source {SourceId}: {Message}", source.SourceId, message);
                 }
 
                 await client.ConnectAsync(cancellationToken).ConfigureAwait(false);

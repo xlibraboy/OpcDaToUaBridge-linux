@@ -37,6 +37,12 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISub
     public event Action<string>? Warning;
 
     /// <summary>
+    /// Raised on OPC DA I/O activity — group creation, subscription setup, sync reads,
+    /// and data-change notifications — an "Advise Log" like Matrikon OPC Explorer's.
+    /// </summary>
+    public event Action<string>? IOTrace;
+
+    /// <summary>
     /// Detected OPC DA server identity (spec level, server version, vendor) after a
     /// successful connect. Null before connect or when detection is unavailable.
     /// </summary>
@@ -516,6 +522,9 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISub
             out object groupObject);
         ThrowOnFailed(addGroupHresult, $"Failed to create OPC DA group for rate {rate}ms.");
 
+        IOTrace?.Invoke(
+            $"OPC DA group 'OpcBridge_{rate}' created (rate {rate}ms, deadband {deadbandPct:0.#}%).");
+
         IOPCItemMgt itemManagement = groupObject as IOPCItemMgt
             ?? throw new InvalidOperationException("OPC DA group does not expose IOPCItemMgt.");
         IOPCSyncIO syncIo = groupObject as IOPCSyncIO
@@ -591,6 +600,9 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISub
                 return;
             }
 
+            IOTrace?.Invoke(
+                $"OPC DA group 'OpcBridge_{group.Rate}': IOPCDataCallback connection point found (Async I/O 2.0).");
+
             // Build client-handle → item-id map for the callback to unpack notifications.
             Dictionary<int, string> handleMap = new(group.Bindings.Length);
             for (int i = 0; i < group.Bindings.Length; i++)
@@ -599,7 +611,12 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISub
             }
 
             Action<IReadOnlyList<BridgeValue>> handler = ValuesReceived ?? (_ => { });
-            OpcDaCallbackSink sink = new(options_.SourceId, handleMap, handler);
+            OpcDaCallbackSink sink = new(
+                options_.SourceId,
+                $"OpcBridge_{group.Rate}",
+                handleMap,
+                handler,
+                TraceSink);
             hr = cp.Advise(sink, out int cookie);
             if (hr < 0)
             {
@@ -614,6 +631,9 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISub
             group.ConnectionPoint = cp;
             group.CallbackCookie = cookie;
             subscriptions_active_ = true;
+
+            IOTrace?.Invoke(
+                $"OPC DA group 'OpcBridge_{group.Rate}': subscription active (Advise cookie {cookie}).");
         }
         catch (Exception ex)
         {
@@ -624,6 +644,11 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISub
                 $"{forcedMode}OPC DA subscription setup failed for rate {group.Rate}ms: {ex.Message}; " +
                 "falling back to polling.");
         }
+    }
+
+    private void TraceSink(string message)
+    {
+        IOTrace?.Invoke(message);
     }
 
     private static void UnadviseCallback(RateGroup group)
@@ -877,6 +902,9 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISub
                 out itemStatesPointer,
                 out errorsPointer);
             ThrowOnFailed(readHresult, "OPC DA read failed.");
+
+            IOTrace?.Invoke(
+                $"OPC DA sync read posted for group 'OpcBridge_{group.Rate}' Item Count ({serverHandles.Length}).");
 
             int[] itemErrors = new int[serverHandles.Length];
             Marshal.Copy(errorsPointer, itemErrors, 0, serverHandles.Length);
@@ -1595,6 +1623,7 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISub
     [ComImport]
     [Guid("B196B284-BAB4-101A-B69C-00AA00341D07")]
     [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    // Vtable order MUST match ocidl.h: EnumConnectionPoints is slot 3, FindConnectionPoint slot 4.
     private interface IConnectionPointContainer
     {
         [PreserveSig] int EnumConnectionPoints(out IntPtr ppEnum);
@@ -1605,6 +1634,8 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISub
     [ComImport]
     [Guid("B196B286-BAB4-101A-B69C-00AA00341D07")]
     [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    // Vtable order MUST match ocidl.h: GetConnectionInterface, GetConnectionPointContainer,
+    // Advise, Unadvise, EnumConnections (slots 3-7).
     private interface IConnectionPoint
     {
         [PreserveSig] int GetConnectionInterface(out Guid pIID);
@@ -1619,7 +1650,10 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISub
     }
 
     [ComImport]
-    [Guid("39C13A71-011E-11D0-9675-0020AFD8ADB3")]
+    // IOPCDataCallback (opcda.idl): 39C13A70-011E-11D0-9675-0020AFD8ADB3.
+    // 39C13A71 is IOPCAsyncIO2 — passing that IID to FindConnectionPoint makes even
+    // callback-capable servers answer CONNECT_E_NOCONNECTION (0x80040200).
+    [Guid("39C13A70-011E-11D0-9675-0020AFD8ADB3")]
     [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     public interface IOPCDataCallback
     {
@@ -1627,7 +1661,7 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISub
             int dwTransid,
             int hGroup,
             int hrMasterquality,
-            int hrQuality,
+            int hrMastererror,
             int dwCount,
             IntPtr phClientItems,
             IntPtr pvValues,
@@ -1639,7 +1673,7 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISub
             int dwTransid,
             int hGroup,
             int hrMasterquality,
-            int hrQuality,
+            int hrMastererror,
             int dwCount,
             IntPtr phClientItems,
             IntPtr pvValues,
@@ -1650,13 +1684,9 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISub
         int OnWriteComplete(
             int dwTransid,
             int hGroup,
-            int hrMasterquality,
-            int hrQuality,
+            int hrMastererr,
             int dwCount,
-            IntPtr phClientItems,
-            IntPtr pvValues,
-            IntPtr pwQualities,
-            IntPtr pftTimeStamps,
+            IntPtr pClienthandles,
             IntPtr pErrors);
 
         int OnCancelComplete(int dwTransid, int hGroup);
