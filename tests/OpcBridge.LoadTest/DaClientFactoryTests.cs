@@ -172,4 +172,25 @@ public sealed class DaClientFactoryTests
         Assert.Equal("Async20", GetDaOptions(DaSource("Async20"), globalUseSubscriptions: true).IoMode);
         Assert.Equal("Sync", GetDaOptions(DaSource("Sync"), globalUseSubscriptions: true).IoMode);
     }
+
+    [Fact]
+    public void Create_OpcDa_CarriesGroupIoModesToClient()
+    {
+        var source = DaSource("AutoDetect") with
+        {
+            OpcDa = new OpcDaSourceOptions(
+                "Matrikon.OPC.Simulation.1",
+                "localhost",
+                null,
+                null,
+                null,
+                new DaGroupIoMode[] { new(500, "Sync"), new(1000, "Async20") })
+        };
+
+        DaClientOptions options = GetDaOptions(source, globalUseSubscriptions: true);
+
+        Assert.Equal("Sync", options.GroupIoModes[500]);
+        Assert.Equal("Async20", options.GroupIoModes[1000]);
+        Assert.Equal(2, options.GroupIoModes.Count);
+    }
 }

@@ -544,6 +544,125 @@ app.MapPost("/api/da/sources/io-mode", (DaSourceIoModeRequest request, DaRuntime
         ioMode = source.IoMode
     });
 });
+app.MapGet("/api/da/sources/groups", (string? sourceId, DaRuntimeSettings settings, MappingStore mappingStore) =>
+{
+    if (string.IsNullOrWhiteSpace(sourceId))
+    {
+        return Results.BadRequest(new { error = "Source ID is required." });
+    }
+
+    DaRuntimeSettingsSnapshot snapshot = settings.GetSnapshot();
+    DaSourceRuntimeSettings? source = snapshot.GetSource(sourceId);
+    if (source is null)
+    {
+        return Results.BadRequest(new { error = "Source not found." });
+    }
+
+    if (!string.Equals(source.SourceType, SourceTypes.OpcDa, StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.BadRequest(new { error = "Source is not an OPC DA source." });
+    }
+
+    // Rate buckets = distinct effective poll rates of the source's mapped tags
+    // (per-tag PollRateMs wins, else the source default) — the same derivation the
+    // poller uses to create OPC DA groups.
+    (IReadOnlyList<TagMapping> mappings, _) = mappingStore.GetSnapshot();
+    int defaultRate = Math.Max(100, source.UpdateRateMs);
+    HashSet<int> rates = new();
+    foreach (TagMapping mapping in mappings)
+    {
+        if (mapping.Enabled
+            && string.Equals(mapping.SourceId, sourceId, StringComparison.OrdinalIgnoreCase))
+        {
+            rates.Add(mapping.PollRateMs > 0 ? mapping.PollRateMs : defaultRate);
+        }
+    }
+
+    if (rates.Count == 0)
+    {
+        rates.Add(defaultRate);
+    }
+
+    Dictionary<int, string> overrides = source.GroupIoModes.ToDictionary(g => g.Rate, g => g.IoMode);
+    var groups = rates
+        .OrderBy(rate => rate)
+        .Select(rate => new
+        {
+            rate,
+            groupId = $"OpcBridge_{rate}",
+            ioMode = overrides.TryGetValue(rate, out string? mode) ? mode : null,
+            effective = overrides.TryGetValue(rate, out string? effectiveMode) ? effectiveMode : source.IoMode,
+            isDefault = !overrides.ContainsKey(rate)
+        })
+        .ToArray();
+
+    return Results.Json(new
+    {
+        version = snapshot.Version,
+        sourceId = source.SourceId,
+        sourceIoMode = source.IoMode,
+        groups
+    });
+});
+app.MapPost("/api/da/sources/groups", (DaGroupIoModeRequest request, DaRuntimeSettings settings) =>
+{
+    if (string.IsNullOrWhiteSpace(request.SourceId))
+    {
+        return Results.BadRequest(new { error = "Source ID is required." });
+    }
+
+    if (request.Rate < 100)
+    {
+        return Results.BadRequest(new { error = "Rate must be at least 100 ms." });
+    }
+
+    if (string.IsNullOrWhiteSpace(request.IoMode))
+    {
+        return Results.BadRequest(new { error = "I/O mode is required." });
+    }
+
+    string normalizedMode = SourceConfigMigration.NormalizeIoMode(request.IoMode);
+    if (!string.Equals(normalizedMode, request.IoMode, StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.BadRequest(new { error = "I/O mode must be AutoDetect, Sync or Async20." });
+    }
+
+    DaRuntimeSettingsSnapshot snapshot = settings.SetSourceGroupIoMode(request.SourceId, request.Rate, normalizedMode);
+    DaSourceRuntimeSettings? source = snapshot.GetSource(request.SourceId);
+    if (source is null)
+    {
+        return Results.BadRequest(new { error = "Source not found." });
+    }
+
+    return Results.Json(new
+    {
+        version = snapshot.Version,
+        sourceId = source.SourceId,
+        rate = request.Rate,
+        ioMode = normalizedMode
+    });
+});
+app.MapPost("/api/da/sources/groups/reset", (DaGroupIoModeResetRequest request, DaRuntimeSettings settings) =>
+{
+    if (string.IsNullOrWhiteSpace(request.SourceId))
+    {
+        return Results.BadRequest(new { error = "Source ID is required." });
+    }
+
+    DaRuntimeSettingsSnapshot snapshot = settings.ResetSourceGroupIoMode(request.SourceId, request.Rate);
+    DaSourceRuntimeSettings? source = snapshot.GetSource(request.SourceId);
+    if (source is null)
+    {
+        return Results.BadRequest(new { error = "Source not found." });
+    }
+
+    return Results.Json(new
+    {
+        version = snapshot.Version,
+        sourceId = source.SourceId,
+        rate = request.Rate
+    });
+});
 app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings settings, UaServerHost uaServer) =>
 {
     if (string.IsNullOrWhiteSpace(request.SourceId))
@@ -616,7 +735,8 @@ app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings
             request.Host ?? string.Empty,
             request.RemoteUsername,
             request.RemotePassword,
-            request.RemoteDomain);
+            request.RemoteDomain,
+            ResolveGroupIoModes(request.Groups, settings, request.SourceId));
     }
 
     DaRuntimeSettingsSnapshot snapshot = settings.UpsertSource(new DaSourceRuntimeSettings(
@@ -634,6 +754,23 @@ app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings
         SourceConfigMigration.NormalizeIoMode(request.IoMode)));
 
     DaSourceRuntimeSettings source = snapshot.GetSource(request.SourceId)!;
+
+    // Preserves existing per-group overrides when the request omits them (the
+    // dashboard's source form does not carry group settings).
+    static IReadOnlyList<DaGroupIoMode>? ResolveGroupIoModes(
+        IReadOnlyList<DaGroupIoModeRequest>? groups,
+        DaRuntimeSettings settings,
+        string sourceId)
+    {
+        if (groups is not null)
+        {
+            return SourceConfigMigration.NormalizeGroupIoModes(
+                groups.Select(g => new DaGroupIoMode(g.Rate, g.IoMode)));
+        }
+
+        DaSourceRuntimeSettings? existing = settings.GetSnapshot().GetSource(sourceId);
+        return existing?.OpcDa?.GroupIoModes;
+    }
     return Results.Json(new
     {
         version = snapshot.Version,

@@ -12,6 +12,12 @@ public sealed class DaClientOptions
     /// Matrikon OPC Explorer.
     /// </summary>
     public string IoMode { get; set; } = "AutoDetect";
+
+    /// <summary>
+    /// Per-rate-group I/O mode overrides (rate bucket ms → AutoDetect | Sync |
+    /// Async20). A group without an entry inherits <see cref="IoMode"/>.
+    /// </summary>
+    public IReadOnlyDictionary<int, string> GroupIoModes { get; set; } = new Dictionary<int, string>();
     public string SourceId { get; set; } = "default";
     public string DisplayName { get; set; } = string.Empty;
     public string ProgId { get; set; } = string.Empty;
