@@ -176,6 +176,95 @@ public sealed class DaRuntimeSettings
         }
     }
 
+    /// <summary>
+    /// Sets the per-group I/O mode override (AutoDetect | Sync | Async20) for a rate
+    /// bucket of an OPC DA source, upserting by rate. Invalid modes normalize to
+    /// AutoDetect; rates below the OPC DA minimum (100 ms) are rejected.
+    /// </summary>
+    public DaRuntimeSettingsSnapshot SetSourceGroupIoMode(string sourceId, int rate, string ioMode)
+    {
+        if (rate < 100)
+        {
+            return snapshot_;
+        }
+
+        string normalizedMode = SourceConfigMigration.NormalizeIoMode(ioMode);
+
+        lock (sync_)
+        {
+            List<DaSourceRuntimeSettings> sources = snapshot_.Sources.ToList();
+            int index = sources.FindIndex(source =>
+                string.Equals(source.SourceId, sourceId, StringComparison.OrdinalIgnoreCase));
+
+            if (index < 0 || sources[index].OpcDa is null)
+            {
+                return snapshot_;
+            }
+
+            DaSourceRuntimeSettings current = sources[index];
+            List<DaGroupIoMode> groups = current.OpcDa!.GroupIoModes?.ToList() ?? new();
+            groups.RemoveAll(g => g.Rate == rate);
+            groups.Add(new DaGroupIoMode(rate, normalizedMode));
+            groups.Sort((a, b) => a.Rate.CompareTo(b.Rate));
+
+            sources[index] = current with
+            {
+                OpcDa = current.OpcDa with { GroupIoModes = groups }
+            };
+            snapshot_ = snapshot_ with
+            {
+                Sources = sources,
+                Version = snapshot_.Version + 1
+            };
+
+            Persist();
+            return snapshot_;
+        }
+    }
+
+    /// <summary>
+    /// Removes the per-group I/O mode override for one rate bucket, or for every
+    /// bucket when <paramref name="rate"/> is null (revert to source-level mode).
+    /// </summary>
+    public DaRuntimeSettingsSnapshot ResetSourceGroupIoMode(string sourceId, int? rate)
+    {
+        lock (sync_)
+        {
+            List<DaSourceRuntimeSettings> sources = snapshot_.Sources.ToList();
+            int index = sources.FindIndex(source =>
+                string.Equals(source.SourceId, sourceId, StringComparison.OrdinalIgnoreCase));
+
+            if (index < 0 || sources[index].OpcDa is null)
+            {
+                return snapshot_;
+            }
+
+            DaSourceRuntimeSettings current = sources[index];
+            List<DaGroupIoMode> groups = current.OpcDa!.GroupIoModes?.ToList() ?? new();
+            if (rate is null)
+            {
+                groups.Clear();
+            }
+            else
+            {
+                groups.RemoveAll(g => g.Rate == rate.Value);
+            }
+
+            sources[index] = current with
+            {
+                OpcDa = current.OpcDa with { GroupIoModes = groups.Count == 0 ? null : groups }
+            };
+            snapshot_ = snapshot_ with
+            {
+                Sources = sources,
+                Version = snapshot_.Version + 1
+            };
+
+            Persist();
+            return snapshot_;
+        }
+    }
+
     public DaRuntimeSettingsSnapshot SetUseSubscriptions(bool enabled)
     {
         lock (sync_)
@@ -398,12 +487,20 @@ public sealed record DaRuntimeSettingsSnapshot(
     }
 }
 
+/// <summary>
+/// Per-rate-group I/O mode override for an OPC DA source. <c>Rate</c> is the group
+/// identity (the poll-rate bucket in ms); <c>IoMode</c> is one of AutoDetect,
+/// Sync or Async20 and overrides the source-level I/O mode for that group only.
+/// </summary>
+public sealed record DaGroupIoMode(int Rate, string IoMode);
+
 public sealed record OpcDaSourceOptions(
     string ProgId,
     string Host,
     string? RemoteUsername,
     string? RemotePassword,
-    string? RemoteDomain);
+    string? RemoteDomain,
+    IReadOnlyList<DaGroupIoMode>? GroupIoModes = null);
 
 public sealed record OpcUaSourceOptions(
     string EndpointUrl,
@@ -480,6 +577,8 @@ public sealed record DaSourceRuntimeSettings(
     public int LogicalStationNumber => MxComponent?.LogicalStationNumber ?? 0;
     public int MxComponentTimeoutMs => MxComponent?.TimeoutMs ?? 3000;
     public int MxComponentRetryCount => MxComponent?.RetryCount ?? 2;
+    /// <summary>Per-group I/O mode overrides (rate bucket → mode); empty when none configured.</summary>
+    public IReadOnlyList<DaGroupIoMode> GroupIoModes => OpcDa?.GroupIoModes ?? [];
     public string EndpointUrl => OpcUa?.EndpointUrl ?? string.Empty;
     public string SecurityMode => OpcUa?.SecurityMode ?? "None";
     public string SecurityPolicy => OpcUa?.SecurityPolicy ?? "None";
@@ -503,8 +602,28 @@ public sealed record DaSourceRuntimeSettings(
             IoMode = string.IsNullOrWhiteSpace(ioMode) ? IoMode : ioMode,
             RemoteUsername = da.RemoteUsername,
             RemotePassword = da.RemotePassword,
-            RemoteDomain = da.RemoteDomain
+            RemoteDomain = da.RemoteDomain,
+            GroupIoModes = BuildGroupIoModeMap(da.GroupIoModes)
         };
+    }
+
+    private static IReadOnlyDictionary<int, string> BuildGroupIoModeMap(IReadOnlyList<DaGroupIoMode>? groups)
+    {
+        Dictionary<int, string> map = new();
+        if (groups is null)
+        {
+            return map;
+        }
+
+        foreach (DaGroupIoMode group in groups)
+        {
+            if (group.Rate > 0)
+            {
+                map[group.Rate] = group.IoMode;
+            }
+        }
+
+        return map;
     }
 
     public OpcBridge.Ua.OpcUaSourceClientOptions ToUaOptions(DaRuntimeSettingsSnapshot settings)
@@ -588,6 +707,13 @@ public sealed class OpcDaSourceOptionsDto
     public string? RemoteUsername { get; set; }
     public string? RemotePassword { get; set; }
     public string? RemoteDomain { get; set; }
+    public List<DaGroupIoModeDto>? Groups { get; set; }
+}
+
+public sealed class DaGroupIoModeDto
+{
+    public int Rate { get; set; }
+    public string? IoMode { get; set; }
 }
 
 public sealed class OpcUaSourceOptionsDto
@@ -672,7 +798,8 @@ public static class SourceConfigMigration
                 dto.OpcDa.Host ?? string.Empty,
                 dto.OpcDa.RemoteUsername,
                 dto.OpcDa.RemotePassword,
-                dto.OpcDa.RemoteDomain);
+                dto.OpcDa.RemoteDomain,
+                NormalizeGroupIoModes(dto.OpcDa.Groups?.Select(g => new DaGroupIoMode(g.Rate, g.IoMode ?? string.Empty))));
         }
         else if (HasFlatDa(dto))
         {
@@ -793,7 +920,8 @@ public static class SourceConfigMigration
                 dto.Host ?? string.Empty,
                 dto.RemoteUsername,
                 dto.RemotePassword,
-                dto.RemoteDomain);
+                dto.RemoteDomain,
+                NormalizeGroupIoModes(dto.OpcDa?.Groups?.Select(g => new DaGroupIoMode(g.Rate, g.IoMode ?? string.Empty))));
         }
         else if (string.Equals(sourceType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase) && opcUa is null)
         {
@@ -875,7 +1003,10 @@ public static class SourceConfigMigration
                 Host = source.OpcDa.Host,
                 RemoteUsername = source.OpcDa.RemoteUsername,
                 RemotePassword = source.OpcDa.RemotePassword,
-                RemoteDomain = source.OpcDa.RemoteDomain
+                RemoteDomain = source.OpcDa.RemoteDomain,
+                Groups = source.OpcDa.GroupIoModes is null || source.OpcDa.GroupIoModes.Count == 0
+                    ? null
+                    : source.OpcDa.GroupIoModes.Select(g => new DaGroupIoModeDto { Rate = g.Rate, IoMode = g.IoMode }).ToList()
             },
             OpcUa = source.OpcUa is null ? null : new OpcUaSourceOptionsDto
             {
@@ -1037,7 +1168,8 @@ public static class SourceConfigMigration
                 string.IsNullOrWhiteSpace(raw.Host) ? "localhost" : raw.Host.Trim(),
                 string.IsNullOrWhiteSpace(raw.RemoteUsername) ? null : raw.RemoteUsername.Trim(),
                 string.IsNullOrWhiteSpace(raw.RemotePassword) ? null : raw.RemotePassword,
-                string.IsNullOrWhiteSpace(raw.RemoteDomain) ? null : raw.RemoteDomain.Trim());
+                string.IsNullOrWhiteSpace(raw.RemoteDomain) ? null : raw.RemoteDomain.Trim(),
+                NormalizeGroupIoModes(raw.GroupIoModes));
         }
 
         return new DaSourceRuntimeSettings(
@@ -1053,6 +1185,38 @@ public static class SourceConfigMigration
             s7200,
             mx,
             NormalizeIoMode(source.IoMode));
+    }
+
+    /// <summary>
+    /// Validates and canonicalizes a list of per-group I/O mode overrides: drops
+    /// rates below the OPC DA minimum, dedupes by rate (last wins) and sorts by
+    /// rate. Returns null when nothing remains so configs stay clean on disk.
+    /// </summary>
+    public static IReadOnlyList<DaGroupIoMode>? NormalizeGroupIoModes(IEnumerable<DaGroupIoMode>? groups)
+    {
+        if (groups is null)
+        {
+            return null;
+        }
+
+        Dictionary<int, string> byRate = new();
+        foreach (DaGroupIoMode group in groups)
+        {
+            if (group.Rate >= 100)
+            {
+                byRate[group.Rate] = NormalizeIoMode(group.IoMode);
+            }
+        }
+
+        if (byRate.Count == 0)
+        {
+            return null;
+        }
+
+        return byRate
+            .Select(pair => new DaGroupIoMode(pair.Key, pair.Value))
+            .OrderBy(g => g.Rate)
+            .ToArray();
     }
 
     private static bool HasFlatDa(SourceConfigDto dto) =>

@@ -33,9 +33,14 @@ public sealed record DaServerConfigRequest(
     string? IoMode = null,
     int UpdateRateMs = 0,
     int? WatchdogTimeoutMs = null,
-    int LogicalStationNumber = 0);
+    int LogicalStationNumber = 0,
+    IReadOnlyList<DaGroupIoModeRequest>? Groups = null);
 
 public sealed record DaSourceIoModeRequest(string SourceId, string IoMode);
+
+public sealed record DaGroupIoModeRequest(string SourceId, int Rate, string IoMode);
+
+public sealed record DaGroupIoModeResetRequest(string SourceId, int? Rate = null);
 
 public sealed record MelsecTestConnectionRequest(
     string? SourceId = null,

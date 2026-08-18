@@ -385,14 +385,11 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISub
     {
         get
         {
-            if (string.Equals(options_.IoMode, "Sync", StringComparison.OrdinalIgnoreCase))
-            {
-                return false;
-            }
-
             foreach (RateGroup group in rate_groups_.Values)
             {
-                if (group.AsyncIo2 is not null && group.Sink is not null)
+                if (group.AsyncIo2 is not null
+                    && group.Sink is not null
+                    && !string.Equals(EffectiveIoMode(group.Rate), "Sync", StringComparison.OrdinalIgnoreCase))
                 {
                     return true;
                 }
@@ -502,7 +499,34 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISub
             return false;
         }
 
-        return !string.Equals(options_.IoMode, "Sync", StringComparison.OrdinalIgnoreCase);
+        return !string.Equals(EffectiveIoMode(group.Rate), "Sync", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Effective I/O mode for a rate group: the per-group override when one is
+    /// configured, otherwise the source-level mode.
+    /// </summary>
+    private string EffectiveIoMode(int rate)
+        => options_.GroupIoModes.TryGetValue(rate, out string? mode) ? mode : options_.IoMode;
+
+    /// <summary>
+    /// Whether a group attempts the IOPCDataCallback push path. Sync-mode groups never
+    /// do; Async20 groups always do; AutoDetect groups follow the global switch.
+    /// </summary>
+    private bool GroupShouldAttemptSubscription(RateGroup group)
+    {
+        string mode = EffectiveIoMode(group.Rate);
+        if (string.Equals(mode, "Sync", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (string.Equals(mode, "Async20", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return options_.UseSubscriptions;
     }
 
     private bool WriteSyncOnStaThread(RateGroup group, int serverHandle, object value)
@@ -629,8 +653,10 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISub
             EnsureGroupItemsConfigured(group, rateMappings);
 
             // Establish a subscription so values arrive via IOPCDataCallback instead of polling.
-            // If the server doesn't support it, fall back silently to device reads below.
-            if (options_.UseSubscriptions && group.ConnectionPoint is null && group.Sink is null)
+            // Whether this group attempts the push path depends on its effective I/O mode:
+            // Sync groups never do, Async20 groups always do, AutoDetect follows the global
+            // switch. If the server doesn't support it, fall back silently to device reads.
+            if (GroupShouldAttemptSubscription(group) && group.ConnectionPoint is null && group.Sink is null)
             {
                 TrySetupSubscription(group, rateMappings);
             }
@@ -722,9 +748,10 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISub
             return;
         }
 
-        // When the user forced Async I/O 2.0 for this source, the fallback warning
-        // is loud so the mismatch (requested push, server can't) is never silent.
-        string forcedMode = string.Equals(options_.IoMode, "Async20", StringComparison.OrdinalIgnoreCase)
+        // When the user forced Async I/O 2.0 for this group (per-group override or
+        // source-level mode), the fallback warning is loud so the mismatch (requested
+        // push, server can't) is never silent.
+        string forcedMode = string.Equals(EffectiveIoMode(group.Rate), "Async20", StringComparison.OrdinalIgnoreCase)
             ? "Forced Async I/O 2.0: "
             : string.Empty;
 
