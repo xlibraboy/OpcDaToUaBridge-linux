@@ -96,7 +96,7 @@ internal static class HelpContent
 - Each **source** has one `OpcDaClient` (one COM connection) pinned to a **dedicated STA thread**, with multiple **rate groups** (one OPC DA group per distinct rate).
 - Values arrive either via **subscription callbacks** (`IOPCDataCallback`, default) or **poller tasks** (`IOPCSyncIO.Read`, fallback) — one path per rate group.
 - Subscription values flow: DA Server → `IOPCDataCallback` → OpcDaClient → BridgeWorker → BridgeState + UaServer. Poll values flow: DA Server → `IOPCSyncIO.Read` → poller task → BridgeState + UaServer.
-- **UA writes** (writeable mappings) flow: UA Client → BridgeNodeManager → WriteQueue → per-source consumer → `IOPCSyncIO.Write` → DA Server.
+- **UA writes** (writeable mappings) flow: UA Client → BridgeNodeManager → WriteQueue → per-source consumer → DA write (async `IOPCAsyncIO2.Write` when the source's I/O mode is push, else `IOPCSyncIO.Write`) → DA Server.
 - UA clients subscribe to UA nodes and receive notifications when values change.
 - The web dashboard reads from `/api/dashboard` (1s polling) to display live status and resource telemetry.
 
@@ -337,7 +337,7 @@ Set via the faceplate → **Setup** tab:
 | Access Right | Data Flow | Description |
 |---|---|---|
 | **Read** | DA → UA | Bridge reads from the DA server and publishes to UA. UA clients can only observe. |
-| **Read-Write** | DA ↔ UA | Bridge reads from DA AND UA client writes flow back to DA via `IOPCSyncIO.Write`. |
+| **Read-Write** | DA ↔ UA | Bridge reads from DA AND UA client writes flow back to DA via the source's I/O mode (`IOPCAsyncIO2.Write` when async is live, otherwise `IOPCSyncIO.Write`). |
 | **Write** | UA → DA | UA clients write values that the bridge pushes to DA. No DA polling, no UA publishing. UA node is write-only (`AccessLevel = CurrentWrite`). |
 
 ## Simulation
@@ -400,7 +400,7 @@ DA Links are a **separate subsystem** from DA → UA mappings. A provider change
       ▼                                    ▼
   BridgeWorker poll/subscription      BridgeWorker mapping/runtime state
       │                                    │
-      └── DaLinkRule match ───────────────► WriteQueue(B) ──► IOPCSyncIO.Write
+      └── DaLinkRule match ───────────────► WriteQueue(B) ──► DA write (async IOPCAsyncIO2.Write / sync IOPCSyncIO.Write)
 ```
 
 ---
@@ -417,7 +417,7 @@ DA Links are a **separate subsystem** from DA → UA mappings. A provider change
 When a tag's Access Rights is **Read-Write** or **Write**:
 
 - The UA variable's `AccessLevel` includes `CurrentWrite`, so UA clients can write to it.
-- A write from any UA client drains through a bounded queue (capacity 1024) to `IOPCSyncIO.Write` on the DA server.
+- A write from any UA client drains through a bounded queue (capacity 1024) to the DA server — via `IOPCAsyncIO2.Write` when the source's I/O mode resolved to the push path (completion confirmed through `IOPCDataCallback.OnWriteComplete`), otherwise `IOPCSyncIO.Write`.
 - One consumer per DA source keeps all COM write work on that source's dedicated STA thread.
 - If the write succeeds, the UA value is accepted; on failure the UA write is rejected with `BadNoCommunication` or `BadRequestTimeout` (5s).
 - **Read** access rights remain read-only (`AccessLevel = CurrentRead` only).
@@ -433,7 +433,7 @@ When a tag's Access Rights is **Read-Write** or **Write**:
                                  │
                    OpcDaClient.WriteAsync (STA thread)
                                  │
-                          IOPCSyncIO.Write
+                  async IOPCAsyncIO2.Write / sync IOPCSyncIO.Write
                                  │
                            DA Server
 ```

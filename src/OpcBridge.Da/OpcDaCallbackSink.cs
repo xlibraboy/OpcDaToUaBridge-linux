@@ -20,24 +20,29 @@ internal sealed class OpcDaCallbackSink : OpcDaClient.IOPCDataCallback
     private readonly IReadOnlyDictionary<int, string> clientHandleToItemId_;
     private readonly Action<IReadOnlyList<BridgeValue>> onValues_;
     private readonly Action<string>? trace_;
+    private readonly Action<int, int, int, IntPtr, IntPtr>? onWriteComplete_;
 
     /// <param name="sourceId">DA source identifier to stamp onto emitted values.</param>
     /// <param name="groupLabel">Human-readable group label used in trace lines.</param>
     /// <param name="clientHandleToItemId">Maps OPC DA client handles (1-based index) to item IDs.</param>
     /// <param name="onValues">Receives unpacked values; invoked on the COM apartment thread.</param>
     /// <param name="trace">Receives I/O activity lines (may be null to disable tracing).</param>
+    /// <param name="onWriteComplete">Receives async write acknowledgements
+    /// (transactionId, masterError, itemCount, clientHandles, errors); may be null.</param>
     public OpcDaCallbackSink(
         string sourceId,
         string groupLabel,
         IReadOnlyDictionary<int, string> clientHandleToItemId,
         Action<IReadOnlyList<BridgeValue>> onValues,
-        Action<string>? trace = null)
+        Action<string>? trace = null,
+        Action<int, int, int, IntPtr, IntPtr>? onWriteComplete = null)
     {
         sourceId_ = sourceId;
         groupLabel_ = groupLabel;
         clientHandleToItemId_ = clientHandleToItemId;
         onValues_ = onValues;
         trace_ = trace;
+        onWriteComplete_ = onWriteComplete;
     }
 
     public int OnDataChange(
@@ -80,10 +85,12 @@ internal sealed class OpcDaCallbackSink : OpcDaClient.IOPCDataCallback
         IntPtr pClienthandles,
         IntPtr pErrors)
     {
-        // Write acknowledgements are not forwarded; trace them like Matrikon's Advise Log.
+        // Trace like Matrikon's Advise Log, then resolve any pending async write.
         trace_?.Invoke(
             $"OPC DA write complete for group '{groupLabel_}' ({dwCount} items): " +
             $"Transaction ID: {dwTransid:X8} Master Error: {hrMastererr:X8}");
+
+        onWriteComplete_?.Invoke(dwTransid, hrMastererr, dwCount, pClienthandles, pErrors);
         return 0; // S_OK
     }
 

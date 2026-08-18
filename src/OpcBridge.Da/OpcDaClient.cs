@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Runtime.Versioning;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
@@ -369,13 +370,45 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISub
 
         return Task.FromResult(allValues);
     }
-    public Task<bool> WriteAsync(string itemId, object? value, CancellationToken cancellationToken)
+    private const int AsyncWriteTimeoutMs = 10_000;
+    private readonly ConcurrentDictionary<int, TaskCompletionSource<(bool Ok, string? Error)>> pending_writes_ = new();
+    private int write_transaction_counter_;
+
+    /// <summary>
+    /// True when writes go through IOPCAsyncIO2.Write (async path, completion confirmed
+    /// via IOPCDataCallback.OnWriteComplete); false when they use IOPCSyncIO.Write.
+    /// Follows the resolved I/O mode like Matrikon: Sync always writes sync, Async20
+    /// forces async (when the callback subscription is live), AutoDetect follows
+    /// whatever read path the group ended up on.
+    /// </summary>
+    public bool IsAsyncWriteActive
+    {
+        get
+        {
+            if (string.Equals(options_.IoMode, "Sync", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            foreach (RateGroup group in rate_groups_.Values)
+            {
+                if (group.AsyncIo2 is not null && group.Sink is not null)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
+
+    public async Task<bool> WriteAsync(string itemId, object? value, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
         if (string.IsNullOrWhiteSpace(itemId) || value is null)
         {
-            return Task.FromResult(false);
+            return false;
         }
 
         EnsureConnected();
@@ -385,41 +418,98 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISub
             throw new PlatformNotSupportedException("OPC DA requires Windows.");
         }
 
-        bool success = com_thread_!.EnqueueAndWait(() => WriteOnStaThread(itemId, value));
-        return Task.FromResult(success);
-    }
-
-    private bool WriteOnStaThread(string itemId, object value)
-    {
-        if (!OperatingSystem.IsWindows())
+        (RateGroup? group, int serverHandle) = com_thread_!.EnqueueAndWait(() => ResolveWriteTarget(itemId));
+        if (group is null || serverHandle == 0)
         {
-            throw new PlatformNotSupportedException("OPC DA requires Windows.");
+            return false;
         }
 
-        // Locate the server handle for this item across all rate groups.
-        int serverHandle = 0;
-        IOPCSyncIO? syncIo = null;
+        // Writes follow the resolved I/O mode (Matrikon behavior): sync mode always
+        // writes via IOPCSyncIO.Write; async mode uses IOPCAsyncIO2.Write when the
+        // group has a live callback subscription to confirm completion.
+        if (!ShouldWriteAsync(group))
+        {
+            IOTrace?.Invoke($"OPC DA sync write posted for group 'OpcBridge_{group.Rate}' Item Count (1).");
+            bool ok = com_thread_!.EnqueueAndWait(() => WriteSyncOnStaThread(group, serverHandle, value));
+            return ok;
+        }
+
+        int transactionId = Interlocked.Increment(ref write_transaction_counter_);
+        TaskCompletionSource<(bool Ok, string? Error)> tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        pending_writes_[transactionId] = tcs;
+
+        int postHresult;
+        try
+        {
+            postHresult = com_thread_!.EnqueueAndWait(
+                () => PostAsyncWriteOnStaThread(group, transactionId, serverHandle, value));
+        }
+        catch
+        {
+            pending_writes_.TryRemove(transactionId, out _);
+            throw;
+        }
+
+        if (postHresult < 0)
+        {
+            // The async write could not be posted; fall back to the synchronous
+            // write so the value still lands (the failure is visible in the Advise Log).
+            pending_writes_.TryRemove(transactionId, out _);
+            IOTrace?.Invoke(
+                $"OPC DA async write failed to post for group 'OpcBridge_{group.Rate}' " +
+                $"(0x{postHresult:X8}); falling back to sync write.");
+            return com_thread_!.EnqueueAndWait(() => WriteSyncOnStaThread(group, serverHandle, value));
+        }
+
+        try
+        {
+            (bool ok, _) = await tcs.Task.WaitAsync(TimeSpan.FromMilliseconds(AsyncWriteTimeoutMs), cancellationToken)
+                .ConfigureAwait(false);
+            return ok;
+        }
+        catch (OperationCanceledException)
+        {
+            pending_writes_.TryRemove(transactionId, out _);
+            return false;
+        }
+    }
+
+    private (RateGroup? Group, int ServerHandle) ResolveWriteTarget(string itemId)
+    {
         foreach (RateGroup group in rate_groups_.Values)
         {
             for (int i = 0; i < group.Bindings.Length; i++)
             {
                 if (string.Equals(group.Bindings[i].ItemId, itemId, StringComparison.OrdinalIgnoreCase))
                 {
-                    serverHandle = group.Bindings[i].ServerHandle;
-                    syncIo = group.SyncIo;
-                    break;
+                    return (group, group.Bindings[i].ServerHandle);
                 }
-            }
-
-            if (serverHandle != 0)
-            {
-                break;
             }
         }
 
-        if (serverHandle == 0 || syncIo is null)
+        return (null, 0);
+    }
+
+    /// <summary>
+    /// Decides the write channel for a group: async (IOPCAsyncIO2.Write) only when the
+    /// server exposes the interface AND a live callback subscription can confirm the
+    /// completion; otherwise the synchronous write. Sync mode never writes async.
+    /// </summary>
+    private bool ShouldWriteAsync(RateGroup group)
+    {
+        if (group.AsyncIo2 is null || group.Sink is null)
         {
             return false;
+        }
+
+        return !string.Equals(options_.IoMode, "Sync", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool WriteSyncOnStaThread(RateGroup group, int serverHandle, object value)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            throw new PlatformNotSupportedException("OPC DA requires Windows.");
         }
 
         IntPtr handlesPtr = Marshal.AllocHGlobal(Marshal.SizeOf<int>());
@@ -431,7 +521,7 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISub
             Marshal.WriteInt32(handlesPtr, serverHandle);
             Marshal.GetNativeVariantForObject(value, valuesPtr);
 
-            int hr = syncIo.Write(1, handlesPtr, valuesPtr, out errorsPtr);
+            int hr = group.SyncIo!.Write(1, handlesPtr, valuesPtr, out errorsPtr);
             if (hr < 0)
             {
                 return false;
@@ -448,6 +538,74 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISub
             Marshal.FreeHGlobal(valuesPtr);
             Marshal.FreeHGlobal(handlesPtr);
         }
+    }
+
+    private int PostAsyncWriteOnStaThread(RateGroup group, int transactionId, int serverHandle, object value)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            throw new PlatformNotSupportedException("OPC DA requires Windows.");
+        }
+
+        IntPtr handlesPtr = Marshal.AllocHGlobal(Marshal.SizeOf<int>());
+        IntPtr valuesPtr = Marshal.AllocHGlobal(16); // VARIANT is 16 bytes
+
+        try
+        {
+            Marshal.WriteInt32(handlesPtr, serverHandle);
+            Marshal.GetNativeVariantForObject(value, valuesPtr);
+
+            int hr = group.AsyncIo2!.Write(1, handlesPtr, valuesPtr, transactionId, out int cancelId);
+            if (hr >= 0)
+            {
+                IOTrace?.Invoke(
+                    $"OPC DA async write posted for group 'OpcBridge_{group.Rate}' Item Count (1): " +
+                    $"Transaction ID: {transactionId:X8} Cancel ID: {cancelId:X8}");
+            }
+
+            return hr;
+        }
+        finally
+        {
+            VariantClear(valuesPtr);
+            Marshal.FreeHGlobal(valuesPtr);
+            Marshal.FreeHGlobal(handlesPtr);
+        }
+    }
+
+    /// <summary>
+    /// Resolves an IOPCDataCallback.OnWriteComplete notification against a pending
+    /// async write, reporting per-item errors. Runs on the COM STA thread.
+    /// </summary>
+    private void OnWriteCompleteFromSink(int transactionId, int masterError, int count, IntPtr clientHandles, IntPtr errors)
+    {
+        if (!pending_writes_.TryRemove(transactionId, out TaskCompletionSource<(bool Ok, string? Error)>? tcs))
+        {
+            return;
+        }
+
+        bool ok = masterError >= 0;
+        string? error = null;
+        if (ok && errors != IntPtr.Zero && count > 0)
+        {
+            int[] itemErrors = new int[count];
+            Marshal.Copy(errors, itemErrors, 0, count);
+            for (int i = 0; i < itemErrors.Length; i++)
+            {
+                if (itemErrors[i] < 0)
+                {
+                    ok = false;
+                    error = $"item error 0x{itemErrors[i]:X8}";
+                    break;
+                }
+            }
+        }
+        else if (!ok)
+        {
+            error = $"master error 0x{masterError:X8}";
+        }
+
+        tcs.TrySetResult((ok, error));
     }
 
 
@@ -530,12 +688,17 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISub
         IOPCSyncIO syncIo = groupObject as IOPCSyncIO
             ?? throw new InvalidOperationException("OPC DA group does not expose IOPCSyncIO.");
 
+        // May be null for servers without DA 2.0 async support; async writes only use
+        // it when present AND a live callback subscription can confirm completion.
+        IOPCAsyncIO2? asyncIo2 = groupObject as IOPCAsyncIO2;
+
         return new RateGroup
         {
             Rate = rate,
             ComObject = groupObject,
             ItemManagement = itemManagement,
             SyncIo = syncIo,
+            AsyncIo2 = asyncIo2,
             ServerGroupHandle = serverGroupHandle,
             Bindings = [],
             DeadbandPtr = deadbandPtr
@@ -616,7 +779,8 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISub
                 $"OpcBridge_{group.Rate}",
                 handleMap,
                 handler,
-                TraceSink);
+                TraceSink,
+                OnWriteCompleteFromSink);
             hr = cp.Advise(sink, out int cookie);
             if (hr < 0)
             {
@@ -1364,6 +1528,9 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISub
         public object? ComObject;
         public IOPCItemMgt? ItemManagement;
         public IOPCSyncIO? SyncIo;
+
+        /// <summary>Async I/O 2.0 interface on the group object; null when the server does not expose it.</summary>
+        public IOPCAsyncIO2? AsyncIo2;
         public int ServerGroupHandle;
         public ItemBinding[] Bindings = [];
         public IntPtr DeadbandPtr;
@@ -1592,6 +1759,27 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISub
         int Read(int dataSource, int count, [MarshalAs(UnmanagedType.LPArray, SizeParamIndex = 1)] int[] serverHandles, out IntPtr itemValues, out IntPtr errors);
 
         int Write(int count, IntPtr serverHandles, IntPtr values, out IntPtr errors);
+    }
+
+    [ComImport]
+    // IOPCAsyncIO2 (opcda.idl): 39C13A71-011E-11D0-9675-0020AFD8ADB3.
+    // Vtable order MUST match opcda.idl: Read, Write, Refresh2, Cancel2, SetEnable,
+    // GetEnable (slots 3-8). Only Write is used; the rest keep the slots aligned.
+    [Guid("39C13A71-011E-11D0-9675-0020AFD8ADB3")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IOPCAsyncIO2
+    {
+        int Read(int count, [MarshalAs(UnmanagedType.LPArray, SizeParamIndex = 0)] int[] serverHandles, int transactionId, out int cancelId, out IntPtr itemValues);
+
+        int Write(int count, IntPtr serverHandles, IntPtr values, int transactionId, out int cancelId);
+
+        int Refresh2(int options, int transactionId, out int cancelId);
+
+        int Cancel2(int masterId);
+
+        int SetEnable(int enable);
+
+        int GetEnable(out int enable);
     }
 
     // Probe-only declarations: never invoked. `is` on a COM RCW performs a
