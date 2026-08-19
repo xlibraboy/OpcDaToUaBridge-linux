@@ -99,6 +99,7 @@ internal static class DashboardPage
         .first-run-banner button { margin-left: auto; }
         .port-banner { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 7px; margin-bottom: 12px; font-size: 12px; font-weight: 600; background: rgba(251,191,36,.1); border: 1px solid rgba(251,191,36,.3); color: var(--warn); }
         .port-banner button { margin-left: auto; }
+        .session-warn-banner button { margin-left: auto; }
         .stat .k { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
         .stat .v { margin-top: 6px; font-size: 16px; font-weight: 700; line-height: 1.1; }
         .stat .s { margin-top: 4px; color: var(--muted); font-size: 11px; }
@@ -1457,6 +1458,7 @@ const state = {
     mqttConnectionState: 'Disconnected',
     influxConfigured: false,
     influxState: 'Disconnected',
+    sessionBannerDismissed: false,
     mqttValFilter: { direction: '', topic: '' },
     valuesByKey: new Map(),
     disconnectedKeys: new Set(),
@@ -3572,10 +3574,15 @@ async function refresh() {
         const sessionBanner = el('sessionBanner');
         if (sessionBanner) {
             if (get(b, 'sessionId') === 0 && get(b, 'interactiveSession') === false) {
-                sessionBanner.style.display = '';
-                sessionBanner.textContent = '⚠ This bridge runs in a non-interactive Windows session (session 0). Session-bound OPC DA servers (GX Simulator via MX OPC, or any simulator using session-scoped shared memory) will not deliver values — launch the bridge from the interactive desktop session.';
+                if (state.sessionBannerDismissed) {
+                    sessionBanner.style.display = 'none';
+                } else {
+                    sessionBanner.style.display = '';
+                    sessionBanner.innerHTML = '⚠ This bridge runs in a non-interactive Windows session (session 0). Session-bound OPC DA servers (GX Simulator via MX OPC, or any simulator using session-scoped shared memory) will not deliver values — launch the bridge from the interactive desktop session. <button class="btn" type="button" onclick="state.sessionBannerDismissed=true;el(\'sessionBanner\').style.display=\'none\'">Dismiss</button>';
+                }
             } else {
                 sessionBanner.style.display = 'none';
+                state.sessionBannerDismissed = false;
             }
         }
         const err = get(b, 'lastError');

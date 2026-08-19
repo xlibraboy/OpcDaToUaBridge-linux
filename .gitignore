@@ -21,6 +21,8 @@ appsettings.*.json
 
 # PKI artifacts — keep directory structure, not secrets
 pki/own/private/
+# App-level local PKI (cert + private key generated at first run)
+src/OpcBridge.App/pki/
 
 # OS files
 .DS_Store
@@ -38,6 +40,9 @@ publish*.tar.gz
 # Runtime state (generated at runtime)
 mappings.json
 hmi-settings.json
+
+# Local NuGet package cache
+.nuget/
 
 
 # Worktrees (user-requested location for git worktrees)
