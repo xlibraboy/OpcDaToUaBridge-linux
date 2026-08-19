@@ -3553,6 +3553,28 @@ function switchHelpSubTab(tabName) {
     });
 }
 
+async function resolveSessionBanner() {
+    const banner = el('sessionBanner');
+    if (!banner) return;
+    banner.innerHTML = '⚠ Relaunching bridge into the interactive desktop session… this page will reconnect automatically.';
+    state.sessionBannerDismissed = true;
+    try {
+        const r = await fetch('/api/session/resolve', { method: 'POST' });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) {
+            state.sessionBannerDismissed = false;
+            banner.style.display = '';
+            banner.innerHTML = '⚠ Resolve failed: ' + esc(j.message || j.status || 'unknown error') + ' <button class="btn" type="button" onclick="resolveSessionBanner()">Retry</button> <button class="btn" type="button" onclick="state.sessionBannerDismissed=true;el(\'sessionBanner\').style.display=\'none\'">Dismiss</button>';
+            return;
+        }
+        banner.style.display = 'none';
+    } catch (e) {
+        state.sessionBannerDismissed = false;
+        banner.style.display = '';
+        banner.innerHTML = '⚠ Resolve failed: ' + esc(e.message) + ' <button class="btn" type="button" onclick="resolveSessionBanner()">Retry</button> <button class="btn" type="button" onclick="state.sessionBannerDismissed=true;el(\'sessionBanner\').style.display=\'none\'">Dismiss</button>';
+    }
+}
+
 async function refresh() {
     try {
         const lvSource = state.liveValuesSource || '';
@@ -3578,7 +3600,7 @@ async function refresh() {
                     sessionBanner.style.display = 'none';
                 } else {
                     sessionBanner.style.display = '';
-                    sessionBanner.innerHTML = '⚠ This bridge runs in a non-interactive Windows session (session 0). Session-bound OPC DA servers (GX Simulator via MX OPC, or any simulator using session-scoped shared memory) will not deliver values — launch the bridge from the interactive desktop session. <button class="btn" type="button" onclick="state.sessionBannerDismissed=true;el(\'sessionBanner\').style.display=\'none\'">Dismiss</button>';
+                    sessionBanner.innerHTML = '⚠ This bridge runs in a non-interactive Windows session (session 0). Session-bound OPC DA servers (GX Simulator via MX OPC, or any simulator using session-scoped shared memory) will not deliver values. <button class="btn" type="button" onclick="resolveSessionBanner()">Resolve</button> <button class="btn" type="button" onclick="state.sessionBannerDismissed=true;el(\'sessionBanner\').style.display=\'none\'">Dismiss</button>';
                 }
             } else {
                 sessionBanner.style.display = 'none';
