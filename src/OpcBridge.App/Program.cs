@@ -304,8 +304,8 @@ app.MapPost("/api/session/resolve", (IHostApplicationLifetime lifetime) =>
     try
     {
         string launchCmd = string.IsNullOrEmpty(launchArgs)
-            ? $"Start-Process -FilePath $exe -WorkingDirectory $dir"
-            : $"Start-Process -FilePath $exe -ArgumentList $args -WorkingDirectory $dir";
+            ? $"Start-Process -FilePath $exe -WorkingDirectory $dir -WindowStyle Hidden"
+            : $"Start-Process -FilePath $exe -ArgumentList $args -WorkingDirectory $dir -WindowStyle Hidden";
         string launcher =
             "param([int]$OldPid)\r\n" +
             "$exe = '" + exeToLaunch.Replace("'", "''") + "'\r\n" +
