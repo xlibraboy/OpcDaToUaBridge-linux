@@ -275,24 +275,46 @@ app.MapPost("/api/session/resolve", (IHostApplicationLifetime lifetime) =>
     if (string.IsNullOrWhiteSpace(user))
         return Results.Json(new { status = "error", message = "No interactive desktop user is logged on. Log in at the console and retry." });
 
-    string exePath = Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "OpcBridge.App.exe");
-    if (!File.Exists(exePath))
-        return Results.Json(new { status = "error", message = $"Bridge executable not found: {exePath}" });
-
     string dir = AppContext.BaseDirectory.TrimEnd('\\', '/');
+    string apphost = Path.Combine(dir, "OpcBridge.App.exe");
+    string dll = Path.Combine(dir, "OpcBridge.App.dll");
+    string exePath = Environment.ProcessPath ?? apphost;
+    // Prefer apphost exe (framework-dependent publish produces it); fall back to dotnet + dll
+    string exeToLaunch;
+    string launchArgs = "";
+    if (File.Exists(apphost))
+    {
+        exeToLaunch = apphost;
+    }
+    else if (exePath.EndsWith("dotnet.exe", StringComparison.OrdinalIgnoreCase) && File.Exists(dll))
+    {
+        exeToLaunch = exePath;
+        launchArgs = $"\"{dll}\"";
+    }
+    else
+    {
+        exeToLaunch = exePath;
+    }
+    if (!File.Exists(exeToLaunch))
+        return Results.Json(new { status = "error", message = $"Bridge executable not found: {exeToLaunch}" });
+
     string launcherPath = Path.Combine(dir, "resolve-interactive.ps1");
     string registerPath = Path.Combine(dir, "resolve-register.ps1");
 
     try
     {
+        string launchCmd = string.IsNullOrEmpty(launchArgs)
+            ? $"Start-Process -FilePath $exe -WorkingDirectory $dir"
+            : $"Start-Process -FilePath $exe -ArgumentList $args -WorkingDirectory $dir";
         string launcher =
             "param([int]$OldPid)\r\n" +
-            "$exe = '" + exePath.Replace("'", "''") + "'\r\n" +
+            "$exe = '" + exeToLaunch.Replace("'", "''") + "'\r\n" +
+            "$args = '" + launchArgs.Replace("'", "''") + "'\r\n" +
             "$dir = '" + dir.Replace("'", "''") + "'\r\n" +
             "$deadline = (Get-Date).AddSeconds(90)\r\n" +
             "while ((Get-Process -Id $OldPid -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 1 }\r\n" +
             "if (Get-Process -Id $OldPid -ErrorAction SilentlyContinue) { exit 2 }\r\n" +
-            "Start-Process -FilePath $exe -WorkingDirectory $dir\r\n" +
+            launchCmd + "\r\n" +
             "schtasks /delete /tn OpcBridgeResolve /f *> $null\r\n" +
             "Remove-Item -LiteralPath '" + launcherPath.Replace("'", "''") + "' -Force -ErrorAction SilentlyContinue\r\n";
         File.WriteAllText(launcherPath, launcher);
@@ -302,7 +324,7 @@ app.MapPost("/api/session/resolve", (IHostApplicationLifetime lifetime) =>
         string register =
             "$ErrorActionPreference = 'Stop'\r\n" +
             "$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '" + actionArgs.Replace("'", "''") + "'\r\n" +
-            "$principal = New-ScheduledTaskPrincipal -UserId '" + user + "' -LogonType Interactive -RunLevel Limited\r\n" +
+            "$principal = New-ScheduledTaskPrincipal -UserId '" + user + "' -LogonType Interactive -RunLevel Highest\r\n" +
             "Register-ScheduledTask -TaskName 'OpcBridgeResolve' -Action $action -Principal $principal -Force | Out-Null\r\n" +
             "Start-ScheduledTask -TaskName 'OpcBridgeResolve'\r\n" +
             "Remove-Item -LiteralPath '" + registerPath.Replace("'", "''") + "' -Force -ErrorAction SilentlyContinue\r\n";

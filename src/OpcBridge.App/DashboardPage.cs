@@ -3561,7 +3561,7 @@ async function resolveSessionBanner() {
     try {
         const r = await fetch('/api/session/resolve', { method: 'POST' });
         const j = await r.json().catch(() => ({}));
-        if (!r.ok) {
+        if (!r.ok || j.status !== "ok") {
             state.sessionBannerDismissed = false;
             banner.style.display = '';
             banner.innerHTML = '⚠ Resolve failed: ' + esc(j.message || j.status || 'unknown error') + ' <button class="btn" type="button" onclick="resolveSessionBanner()">Retry</button> <button class="btn" type="button" onclick="state.sessionBannerDismissed=true;el(\'sessionBanner\').style.display=\'none\'">Dismiss</button>';
@@ -3574,7 +3574,6 @@ async function resolveSessionBanner() {
         banner.innerHTML = '⚠ Resolve failed: ' + esc(e.message) + ' <button class="btn" type="button" onclick="resolveSessionBanner()">Retry</button> <button class="btn" type="button" onclick="state.sessionBannerDismissed=true;el(\'sessionBanner\').style.display=\'none\'">Dismiss</button>';
     }
 }
-
 async function refresh() {
     try {
         const lvSource = state.liveValuesSource || '';
