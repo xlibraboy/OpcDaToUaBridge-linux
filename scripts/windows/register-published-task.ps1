@@ -46,10 +46,15 @@ if (-not $HealthUrl) {
      Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
  }
 
-# Prefer direct apphost exe (no visible cmd wrapper) — fixes closing cmd kills bridge
+# Prefer direct apphost exe — for Interactive use hidden PowerShell wrapper so no visible console to close
  $publishExe = Join-Path $publishDir 'OpcBridge.App.exe'
  if (Test-Path $publishExe) {
-     $action = New-ScheduledTaskAction -Execute $publishExe -WorkingDirectory $publishDir
+     if ($LogonType -eq 'Interactive') {
+         # Hidden wrapper: powershell launches apphost with -WindowStyle Hidden, then exits; apphost stays hidden @1
+         $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command `"Start-Process -FilePath '$publishExe' -WorkingDirectory '$publishDir' -WindowStyle Hidden`""
+     } else {
+         $action = New-ScheduledTaskAction -Execute $publishExe -WorkingDirectory $publishDir
+     }
      $cmdScriptExists = $true
  } else {
      if (-not (Test-Path $cmdScript)) { throw "Launcher cmd not found: $cmdScript and apphost exe not found: $publishExe" }
