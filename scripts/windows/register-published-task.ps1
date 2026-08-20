@@ -40,17 +40,22 @@ if (-not $HealthUrl) {
      throw "Publish dll not found: $publishDll"
  }
 
-if (-not (Test-Path $cmdScript)) {
-    throw "Launcher cmd not found: $cmdScript"
-}
-
  Get-CimInstance Win32_Process | Where-Object {
      $_.Name -eq 'OpcBridge.App.exe' -or ($_.Name -eq 'dotnet.exe' -and ($_.CommandLine -like '*OpcBridge.App.dll*' -or $_.CommandLine -like '*OpcBridge.App*'))
  } | ForEach-Object {
      Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
  }
 
-$action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument "/c `"$cmdScript`""
+# Prefer direct apphost exe (no visible cmd wrapper) — fixes closing cmd kills bridge
+ $publishExe = Join-Path $publishDir 'OpcBridge.App.exe'
+ if (Test-Path $publishExe) {
+     $action = New-ScheduledTaskAction -Execute $publishExe -WorkingDirectory $publishDir
+     $cmdScriptExists = $true
+ } else {
+     if (-not (Test-Path $cmdScript)) { throw "Launcher cmd not found: $cmdScript and apphost exe not found: $publishExe" }
+     $action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument "/c `"$cmdScript`""
+     $cmdScriptExists = Test-Path $cmdScript
+ }
 if ($LogonType -eq 'Interactive') {
     $trigger = @(
         (New-ScheduledTaskTrigger -AtStartup)
