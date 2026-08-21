@@ -4504,9 +4504,14 @@ async function addDaGroup(sourceId) {
         const p = await r.json();
         if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
         if (msg) msg.textContent = 'Added ' + name + ' (' + rate + ' ms) → ' + prettyIoMode(ioMode);
-        await loadDaGroupsTab();
-        await refresh();
-        await loadGroupsSection();
+        // targeted reload without full tab flash
+        try {
+            const gr = await fetch('/api/da/sources/groups?sourceId=' + encodeURIComponent(sourceId));
+            const data = await gr.json();
+            renderDaGroupsForSource(sourceId, data.groups || [], data.sourceIoMode);
+        } catch {}
+        refresh().catch(()=>{});
+        loadGroupsSection().catch(()=>{});
     } catch (e) {
         if (msg) msg.textContent = 'Add failed: ' + e.message;
     }
@@ -4519,9 +4524,13 @@ async function deleteDaGroup(sourceId, name) {
         const p = await r.json();
         if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
         if (msg) msg.textContent = 'Deleted ' + name;
-        await loadDaGroupsTab();
-        await refresh();
-        await loadGroupsSection();
+        try {
+            const gr = await fetch('/api/da/sources/groups?sourceId=' + encodeURIComponent(sourceId));
+            const data = await gr.json();
+            renderDaGroupsForSource(sourceId, data.groups || [], data.sourceIoMode);
+        } catch {}
+        refresh().catch(()=>{});
+        loadGroupsSection().catch(()=>{});
     } catch (e) {
         if (msg) msg.textContent = 'Delete failed: ' + e.message;
     }
@@ -4553,9 +4562,13 @@ async function saveDaGroupEdit(sourceId, oldName, btn) {
         const p = await r.json();
         if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
         if (msg) msg.textContent = 'Saved ' + newName + ' (' + newRate + ' ms) → ' + prettyIoMode(newIoMode);
-        await loadDaGroupsTab();
-        await refresh();
-        await loadGroupsSection();
+        try {
+            const gr = await fetch('/api/da/sources/groups?sourceId=' + encodeURIComponent(sourceId));
+            const data = await gr.json();
+            renderDaGroupsForSource(sourceId, data.groups || [], data.sourceIoMode);
+        } catch {}
+        refresh().catch(()=>{});
+        loadGroupsSection().catch(()=>{});
     } catch (e) {
         if (msg) msg.textContent = 'Save failed: ' + e.message;
     }
