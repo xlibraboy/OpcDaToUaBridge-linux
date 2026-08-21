@@ -4473,16 +4473,17 @@ function renderDaGroupsForSource(sourceId, groups, sourceIoMode) {
     let html = '<table class="tbl" style="width:100%;margin-top:4px;font-size:11px"><thead><tr><th style="padding:4px 6px">Name</th><th style="padding:4px 6px">Rate</th><th style="padding:4px 6px">I/O Mode</th><th style="padding:4px 6px">Effective</th><th style="padding:4px 6px">Tags</th><th style="padding:4px 6px"></th></tr></thead><tbody>';
     for (const g of groups) {
         const isDef = !!g.isDefault;
-        html += '<tr style="height:26px"><td style="padding:3px 6px">' + esc(g.name) + (isDef ? ' <span class="badge" style="font-size:10px;padding:1px 4px">default</span>' : '') + '</td>';
-        html += '<td style="padding:3px 6px">' + esc(String(g.rate)) + ' ms</td>';
-        html += '<td style="padding:3px 6px"><select data-name="' + esc(g.name) + '" data-source="' + esc(sourceId) + '" onchange="updateDaGroup(\'' + esc(sourceId).replace(/'/g, "\'") + '\',\'' + esc(g.name).replace(/'/g, "\'") + '\',this.value)" style="height:20px;font-size:11px;padding:0 4px">';
+        const rowId = 'row-' + sourceId + '-' + g.name.replace(/[^a-zA-Z0-9]/g, '_');
+        html += '<tr style="height:26px" id="' + rowId + '"><td style="padding:3px 6px">' + (isDef ? esc(g.name) + ' <span class="badge" style="font-size:10px;padding:1px 4px">default</span>' : '<input type="text" value="' + esc(g.name) + '" data-oldname="' + esc(g.name) + '" data-field="name" style="width:90px;height:20px;font-size:11px;padding:0 4px">') + '</td>';
+        html += '<td style="padding:3px 6px">' + (isDef ? esc(String(g.rate)) + ' ms' : '<select data-field="rate" style="height:20px;font-size:11px;padding:0 4px"><option value="100"' + (g.rate===100?' selected':'') + '>100 ms</option><option value="250"' + (g.rate===250?' selected':'') + '>250 ms</option><option value="500"' + (g.rate===500?' selected':'') + '>500 ms</option><option value="1000"' + (g.rate===1000?' selected':'') + '>1 s</option><option value="2000"' + (g.rate===2000?' selected':'') + '>2 s</option><option value="5000"' + (g.rate===5000?' selected':'') + '>5 s</option><option value="10000"' + (g.rate===10000?' selected':'') + '>10 s</option></select>') + '</td>';
+        html += '<td style="padding:3px 6px"><select data-name="' + esc(g.name) + '" data-source="' + esc(sourceId) + '" data-field="io" onchange="if(this.dataset.isDefault!=='true') updateDaGroup(\'' + esc(sourceId).replace(/'/g, "\'") + '\',\'' + esc(g.name).replace(/'/g, "\'") + '\',this.value)"' + (isDef ? ' disabled' : '') + ' style="height:20px;font-size:11px;padding:0 4px" ' + (isDef ? 'data-isDefault="true"' : '') + '>';
         for (const m of ['AutoDetect','Sync','Async20']) {
             html += '<option value="' + m + '"' + (g.ioMode===m?' selected':'') + '>' + (m==='AutoDetect'?'AutoDetect':m) + '</option>';
         }
         html += '</select></td>';
         html += '<td style="padding:3px 6px;font-size:11px">' + esc(prettyIoMode(g.effective)) + '</td>';
         html += '<td style="padding:3px 6px;text-align:center">' + esc(String(g.tagCount ?? 0)) + '</td>';
-        html += '<td style="padding:3px 6px">' + (isDef ? '<span class="msg" style="font-size:11px">—</span>' : '<button class="btn ghost" type="button" style="height:20px;padding:0 6px;font-size:11px" onclick="deleteDaGroup(\'' + esc(sourceId).replace(/'/g, "\'") + '\',\'' + esc(g.name).replace(/'/g, "\'") + '\')">Del</button>') + '</td></tr>';
+        html += '<td style="padding:3px 6px">' + (isDef ? '<span class="msg" style="font-size:11px">—</span>' : '<button class="btn ghost" type="button" style="height:20px;padding:0 6px;font-size:11px" onclick="saveDaGroupEdit(\'' + esc(sourceId).replace(/'/g, "\'") + '\',\'' + esc(g.name).replace(/'/g, "\'") + '\',this)">Save</button> <button class="btn ghost" type="button" style="height:20px;padding:0 6px;font-size:11px" onclick="deleteDaGroup(\'' + esc(sourceId).replace(/'/g, "\'") + '\',\'' + esc(g.name).replace(/'/g, "\'") + '\')">Del</button>') + '</td></tr>';
     }
     html += '</tbody></table>';
     table.innerHTML = html;
@@ -4523,6 +4524,40 @@ async function deleteDaGroup(sourceId, name) {
         await loadGroupsSection();
     } catch (e) {
         if (msg) msg.textContent = 'Delete failed: ' + e.message;
+    }
+}
+async function saveDaGroupEdit(sourceId, oldName, btn) {
+    const row = btn.closest('tr');
+    const msg = document.getElementById('daGroupsAddMsg-' + sourceId);
+    if (!row) return;
+    const nameInput = row.querySelector('input[data-field="name"]');
+    const rateSel = row.querySelector('select[data-field="rate"]');
+    const ioSel = row.querySelector('select[data-field="io"]') || row.querySelector('select[data-name]');
+    const newName = nameInput ? nameInput.value.trim() : oldName;
+    const newRate = rateSel ? parseInt(rateSel.value, 10) : 1000;
+    const newIoMode = ioSel ? ioSel.value : 'AutoDetect';
+    if (!newName) { if (msg) msg.textContent = 'Name required'; return; }
+    if (msg) msg.textContent = '';
+    try {
+        // if name or rate changed, delete old and add new
+        if (newName !== oldName) {
+            const del = await fetch('/api/da/sources/groups/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId, name: oldName }) });
+            if (!del.ok) { const p = await del.json(); throw new Error(p.error || 'Delete old failed'); }
+        } else if (newRate !== parseInt(row.dataset.rate || '0', 10)) {
+            // rate changed but name same - still need to recreate (since Rate is part of group identity for OPC DA COM group name, but Name is primary)
+            // For now, treat as delete+add
+            const del = await fetch('/api/da/sources/groups/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId, name: oldName }) });
+            if (!del.ok) { const p = await del.json(); throw new Error(p.error || 'Delete old failed'); }
+        }
+        const r = await fetch('/api/da/sources/groups', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId, name: newName, rate: newRate, ioMode: newIoMode }) });
+        const p = await r.json();
+        if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
+        if (msg) msg.textContent = 'Saved ' + newName + ' (' + newRate + ' ms) → ' + prettyIoMode(newIoMode);
+        await loadDaGroupsTab();
+        await refresh();
+        await loadGroupsSection();
+    } catch (e) {
+        if (msg) msg.textContent = 'Save failed: ' + e.message;
     }
 }
 async function updateDaGroup(sourceId, name, ioMode) {
