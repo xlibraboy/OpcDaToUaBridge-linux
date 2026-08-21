@@ -695,7 +695,7 @@ internal static class DashboardPage
 </div>
 <div class="view" id="view-opc-da-groups">
     <div class="box" style="max-width:720px">
-        <div class="box-h" style="padding:8px 12px;font-size:13px">OPC DA Groups <span class="msg" id="daGroupsMsg" style="margin-left:auto;font-size:11px"></span></div>
+        <div class="box-h" style="padding:8px 12px;font-size:13px">OPC DA Groups <span class="msg" id="daGroupsMsg" style="margin-left:12px;font-size:11px"></span><span style="margin-left:auto;display:flex;gap:4px"><button class="btn ghost" type="button" style="height:20px;padding:0 6px;font-size:11px" onclick="expandAllDaGroups()">Expand All</button><button class="btn ghost" type="button" style="height:20px;padding:0 6px;font-size:11px" onclick="collapseAllDaGroups()">Collapse All</button></span></div>
         <div class="box-b" style="padding:10px 12px">
             <div id="daGroupsContainer" style="display:flex;flex-direction:column;gap:8px"></div>
             <div class="hint" style="font-size:11px;margin-top:8px;opacity:.7">Each rate is a COM group OpcBridge_&lt;rate&gt; — add/delete per source, set I/O per group. Live apply.</div>
@@ -4423,11 +4423,24 @@ async function loadDaGroupsTab() {
             card.style.cssText = 'margin-bottom:8px';
             const header = document.createElement('div');
             header.className = 'box-h';
-            header.style.cssText = 'padding:6px 10px;font-size:12px;gap:6px';
-            header.innerHTML = '<span style="font-weight:600">' + esc(src.displayName || src.sourceId) + '</span> <span class="msg" style="margin-left:6px;font-size:11px">' + esc(src.sourceId) + ' · ' + esc(src.progId || '') + '</span><span class="msg" style="margin-left:auto;font-size:11px">' + esc(src.host || 'localhost') + '</span>';
+            header.style.cssText = 'padding:6px 10px;font-size:12px;gap:6px;cursor:pointer;user-select:none';
+            const bodyId = 'daGroupsBody-' + src.sourceId;
+            const isCollapsed = (state.collapsedDaGroups || {})[src.sourceId];
+            header.innerHTML = '<span class="toggle" style="width:14px;text-align:center;font-size:10px;opacity:.6">' + (isCollapsed ? '▶' : '▼') + '</span><span style="font-weight:600">' + esc(src.displayName || src.sourceId) + '</span> <span class="msg" style="margin-left:6px;font-size:11px">' + esc(src.sourceId) + ' · ' + esc(src.progId || '') + '</span><span class="msg" style="margin-left:auto;font-size:11px">' + esc(src.host || 'localhost') + '</span>';
             const body = document.createElement('div');
             body.className = 'box-b';
-            body.style.cssText = 'padding:8px 10px';
+            body.id = bodyId;
+            body.style.cssText = 'padding:8px 10px' + (isCollapsed ? ';display:none' : '');
+            header.onclick = () => {
+                const b = document.getElementById(bodyId);
+                const t = header.querySelector('.toggle');
+                if (!b) return;
+                const collapsed = b.style.display === 'none';
+                b.style.display = collapsed ? '' : 'none';
+                if (t) t.textContent = collapsed ? '▼' : '▶';
+                state.collapsedDaGroups = state.collapsedDaGroups || {};
+                state.collapsedDaGroups[src.sourceId] = !collapsed;
+            };
             body.innerHTML = '<div class="hint" id="daGroupsHint-' + esc(src.sourceId) + '" style="font-size:11px;margin-bottom:4px;opacity:.8">Loading groups…</div><div id="daGroupsTable-' + esc(src.sourceId) + '"></div><div style="display:flex;gap:6px;margin-top:6px;align-items:center;flex-wrap:wrap"><select id="daGroupsRate-' + esc(src.sourceId) + '" style="width:92px;height:22px;font-size:11px;padding:0 4px"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000" selected>1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select><select id="daGroupsIo-' + esc(src.sourceId) + '" style="width:120px;height:22px;font-size:11px;padding:0 4px"><option value="AutoDetect">AutoDetect</option><option value="Sync">Sync</option><option value="Async20">Async20</option></select><button class="btn" type="button" style="height:22px;padding:0 8px;font-size:11px" onclick="addDaGroup(\'' + esc(src.sourceId).replace(/'/g, "\'") + '\')">Add</button><span class="msg" id="daGroupsAddMsg-' + esc(src.sourceId) + '" style="font-size:11px"></span></div>';
             card.appendChild(header);
             card.appendChild(body);
@@ -4519,6 +4532,20 @@ async function updateDaGroup(sourceId, rate, ioMode) {
     } catch (e) {
         if (msg) msg.textContent = 'Update failed: ' + e.message;
     }
+}
+function expandAllDaGroups() {
+    state.collapsedDaGroups = {};
+    document.querySelectorAll('[id^="daGroupsBody-"]').forEach(b => b.style.display = '');
+    document.querySelectorAll('#daGroupsContainer .box-h .toggle').forEach(t => t.textContent = '▼');
+}
+function collapseAllDaGroups() {
+    state.collapsedDaGroups = {};
+    document.querySelectorAll('[id^="daGroupsBody-"]').forEach(b => {
+        const sid = b.id.replace('daGroupsBody-', '');
+        state.collapsedDaGroups[sid] = true;
+        b.style.display = 'none';
+    });
+    document.querySelectorAll('#daGroupsContainer .box-h .toggle').forEach(t => t.textContent = '▶');
 }
 async function saveUpdateRate() {
     const updateRateMs = Number.parseInt(el('cfgUpdateRate').value, 10);
