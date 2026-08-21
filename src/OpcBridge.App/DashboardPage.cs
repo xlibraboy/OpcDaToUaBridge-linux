@@ -694,11 +694,11 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="view" id="view-opc-da-groups">
-    <div class="box">
-        <div class="box-h">OPC DA Groups <span class="msg" id="daGroupsMsg" style="margin-left:auto"></span></div>
-        <div class="box-b">
-            <div id="daGroupsContainer"></div>
-            <div class="hint">Each poll-rate bucket is a separate OPC DA group (OpcBridge_&lt;rate&gt;). Add/delete groups per OPC DA source, set Rate and I/O mode per group. Changes apply live.</div>
+    <div class="box" style="max-width:720px">
+        <div class="box-h" style="padding:8px 12px;font-size:13px">OPC DA Groups <span class="msg" id="daGroupsMsg" style="margin-left:auto;font-size:11px"></span></div>
+        <div class="box-b" style="padding:10px 12px">
+            <div id="daGroupsContainer" style="display:flex;flex-direction:column;gap:8px"></div>
+            <div class="hint" style="font-size:11px;margin-top:8px;opacity:.7">Each rate is a COM group OpcBridge_&lt;rate&gt; — add/delete per source, set I/O per group. Live apply.</div>
         </div>
     </div>
 </div>
@@ -4420,13 +4420,15 @@ async function loadDaGroupsTab() {
         for (const src of opcDaSrcs) {
             const card = document.createElement('div');
             card.className = 'box';
-            card.style.cssText = 'margin-bottom:12px';
+            card.style.cssText = 'margin-bottom:8px';
             const header = document.createElement('div');
             header.className = 'box-h';
-            header.innerHTML = esc(src.displayName || src.sourceId) + ' <span class="msg" style="margin-left:8px">' + esc(src.sourceId) + ' · ' + esc(src.progId || '') + '</span><span class="msg" style="margin-left:auto">' + esc(src.host || 'localhost') + '</span>';
+            header.style.cssText = 'padding:6px 10px;font-size:12px;gap:6px';
+            header.innerHTML = '<span style="font-weight:600">' + esc(src.displayName || src.sourceId) + '</span> <span class="msg" style="margin-left:6px;font-size:11px">' + esc(src.sourceId) + ' · ' + esc(src.progId || '') + '</span><span class="msg" style="margin-left:auto;font-size:11px">' + esc(src.host || 'localhost') + '</span>';
             const body = document.createElement('div');
             body.className = 'box-b';
-            body.innerHTML = '<div class="hint" id="daGroupsHint-' + esc(src.sourceId) + '">Loading groups…</div><div id="daGroupsTable-' + esc(src.sourceId) + '"></div><div style="display:flex;gap:8px;margin-top:10px;align-items:center"><select id="daGroupsRate-' + esc(src.sourceId) + '" style="width:110px"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000" selected>1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select><select id="daGroupsIo-' + esc(src.sourceId) + '" style="width:150px"><option value="AutoDetect">AutoDetect</option><option value="Sync">Sync</option><option value="Async20">Async20</option></select><button class="btn" type="button" onclick="addDaGroup(\'' + esc(src.sourceId).replace(/'/g, "\'") + '\')">Add Group</button><span class="msg" id="daGroupsAddMsg-' + esc(src.sourceId) + '"></span></div>';
+            body.style.cssText = 'padding:8px 10px';
+            body.innerHTML = '<div class="hint" id="daGroupsHint-' + esc(src.sourceId) + '" style="font-size:11px;margin-bottom:4px;opacity:.8">Loading groups…</div><div id="daGroupsTable-' + esc(src.sourceId) + '"></div><div style="display:flex;gap:6px;margin-top:6px;align-items:center;flex-wrap:wrap"><select id="daGroupsRate-' + esc(src.sourceId) + '" style="width:92px;height:22px;font-size:11px;padding:0 4px"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000" selected>1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select><select id="daGroupsIo-' + esc(src.sourceId) + '" style="width:120px;height:22px;font-size:11px;padding:0 4px"><option value="AutoDetect">AutoDetect</option><option value="Sync">Sync</option><option value="Async20">Async20</option></select><button class="btn" type="button" style="height:22px;padding:0 8px;font-size:11px" onclick="addDaGroup(\'' + esc(src.sourceId).replace(/'/g, "\'") + '\')">Add</button><span class="msg" id="daGroupsAddMsg-' + esc(src.sourceId) + '" style="font-size:11px"></span></div>';
             card.appendChild(header);
             card.appendChild(body);
             container.appendChild(card);
@@ -4450,23 +4452,23 @@ function renderDaGroupsForSource(sourceId, groups, sourceIoMode) {
     const table = document.getElementById('daGroupsTable-' + sourceId);
     if (!table) return;
     if (!groups || groups.length === 0) {
-        if (hint) hint.textContent = 'No explicit groups — using source default (' + prettyIoMode(sourceIoMode) + '). Add a group to override per-rate.';
+        if (hint) { hint.textContent = 'No groups — default (' + prettyIoMode(sourceIoMode) + ')'; hint.style.cssText = 'font-size:11px;opacity:.7'; }
         table.innerHTML = '';
         return;
     }
-    if (hint) hint.textContent = groups.length + ' group(s) — ' + prettyIoMode(sourceIoMode) + ' is the source default.';
-    let html = '<table class="tbl" style="width:100%;margin-top:6px"><thead><tr><th>Rate</th><th>I/O Mode</th><th>Effective</th><th>Tags</th><th></th></tr></thead><tbody>';
+    if (hint) { hint.textContent = groups.length + ' group(s) — ' + prettyIoMode(sourceIoMode) + ' default'; hint.style.cssText = 'font-size:11px;opacity:.7;margin-bottom:2px'; }
+    let html = '<table class="tbl" style="width:100%;margin-top:4px;font-size:11px"><thead><tr><th style="padding:4px 6px">Rate</th><th style="padding:4px 6px">I/O Mode</th><th style="padding:4px 6px">Effective</th><th style="padding:4px 6px">Tags</th><th style="padding:4px 6px"></th></tr></thead><tbody>';
     for (const g of groups) {
         const isDef = !!g.isDefault;
-        html += '<tr><td>' + esc(String(g.rate)) + ' ms ' + (isDef ? '<span class="badge">default</span>' : '') + '</td>';
-        html += '<td><select data-rate="' + esc(String(g.rate)) + '" data-source="' + esc(sourceId) + '" onchange="updateDaGroup(\'' + esc(sourceId).replace(/'/g, "\'") + '\',' + g.rate + ',this.value)">';
+        html += '<tr style="height:26px"><td style="padding:3px 6px">' + esc(String(g.rate)) + ' ms ' + (isDef ? '<span class="badge" style="font-size:10px;padding:1px 4px">default</span>' : '') + '</td>';
+        html += '<td style="padding:3px 6px"><select data-rate="' + esc(String(g.rate)) + '" data-source="' + esc(sourceId) + '" onchange="updateDaGroup(\'' + esc(sourceId).replace(/'/g, "\'") + '\',' + g.rate + ',this.value)" style="height:20px;font-size:11px;padding:0 4px">';
         for (const m of ['AutoDetect','Sync','Async20']) {
             html += '<option value="' + m + '"' + (g.ioMode===m?' selected':'') + '>' + (m==='AutoDetect'?'AutoDetect':m) + '</option>';
         }
         html += '</select></td>';
-        html += '<td>' + esc(prettyIoMode(g.effective)) + '</td>';
-        html += '<td>' + esc(String(g.tagCount ?? 0)) + '</td>';
-        html += '<td>' + (isDef ? '<span class="msg">—</span>' : '<button class="btn ghost" type="button" onclick="deleteDaGroup(\'' + esc(sourceId).replace(/'/g, "\'") + '\',' + g.rate + ')">Delete</button>') + '</td></tr>';
+        html += '<td style="padding:3px 6px;font-size:11px">' + esc(prettyIoMode(g.effective)) + '</td>';
+        html += '<td style="padding:3px 6px;text-align:center">' + esc(String(g.tagCount ?? 0)) + '</td>';
+        html += '<td style="padding:3px 6px">' + (isDef ? '<span class="msg" style="font-size:11px">—</span>' : '<button class="btn ghost" type="button" style="height:20px;padding:0 6px;font-size:11px" onclick="deleteDaGroup(\'' + esc(sourceId).replace(/'/g, "\'") + '\',' + g.rate + ')">Del</button>') + '</td></tr>';
     }
     html += '</tbody></table>';
     table.innerHTML = html;
