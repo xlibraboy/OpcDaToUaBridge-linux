@@ -566,6 +566,7 @@ app.MapGet("/api/da/sources/groups", (string? sourceId, DaRuntimeSettings settin
     // Rate buckets = distinct effective poll rates of the source's mapped tags
     // (per-tag PollRateMs wins, else the source default) — the same derivation the
     // poller uses to create OPC DA groups.
+    // Also include any explicit GroupIoModes rates so a newly added group without tags still appears.
     (IReadOnlyList<TagMapping> mappings, _) = mappingStore.GetSnapshot();
     int defaultRate = Math.Max(100, source.UpdateRateMs);
     HashSet<int> rates = new();
@@ -578,12 +579,29 @@ app.MapGet("/api/da/sources/groups", (string? sourceId, DaRuntimeSettings settin
         }
     }
 
+    foreach (DaGroupIoMode g in source.GroupIoModes)
+    {
+        rates.Add(g.Rate);
+    }
+
     if (rates.Count == 0)
     {
         rates.Add(defaultRate);
     }
 
     Dictionary<int, string> overrides = source.GroupIoModes.ToDictionary(g => g.Rate, g => g.IoMode);
+    // tag counts per rate for display
+    Dictionary<int, int> tagCounts = new();
+    foreach (int r in rates) tagCounts[r] = 0;
+    foreach (TagMapping mapping in mappings)
+    {
+        if (mapping.Enabled && string.Equals(mapping.SourceId, sourceId, StringComparison.OrdinalIgnoreCase))
+        {
+            int eff = mapping.PollRateMs > 0 ? mapping.PollRateMs : defaultRate;
+            if (tagCounts.ContainsKey(eff)) tagCounts[eff]++;
+        }
+    }
+
     var groups = rates
         .OrderBy(rate => rate)
         .Select(rate => new
@@ -592,7 +610,8 @@ app.MapGet("/api/da/sources/groups", (string? sourceId, DaRuntimeSettings settin
             groupId = $"OpcBridge_{rate}",
             ioMode = overrides.TryGetValue(rate, out string? mode) ? mode : null,
             effective = overrides.TryGetValue(rate, out string? effectiveMode) ? effectiveMode : source.IoMode,
-            isDefault = !overrides.ContainsKey(rate)
+            isDefault = !overrides.ContainsKey(rate),
+            tagCount = tagCounts.TryGetValue(rate, out int c) ? c : 0
         })
         .ToArray();
 
