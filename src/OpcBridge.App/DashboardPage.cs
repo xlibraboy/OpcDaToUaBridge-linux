@@ -453,6 +453,7 @@ internal static class DashboardPage
     <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><circle cx="7" cy="7" r="1" fill="currentColor" stroke="none"/><circle cx="7" cy="17" r="1" fill="currentColor" stroke="none"/></svg>Sources</div>
     <button class="tabbtn" data-tab="connection" data-route="connectivity/sources" onclick="navigate('connectivity/sources')">Sources</button>
     <button class="tabbtn" data-tab="opc-da" data-route="connectivity/opc-da" onclick="navigate('connectivity/opc-da')">OPC DA</button>
+    <button class="tabbtn" data-tab="opc-da-groups" data-route="connectivity/opc-da-groups" onclick="navigate('connectivity/opc-da-groups')">DA Groups</button>
     <button class="tabbtn" data-tab="opc-ua" data-route="connectivity/opc-ua" onclick="navigate('connectivity/opc-ua')">OPC UA</button>
     <button class="tabbtn" data-tab="drivers" data-route="connectivity/drivers" onclick="navigate('connectivity/drivers')">Drivers</button>
     <button class="tabbtn" data-tab="mx-component" data-route="connectivity/mx-component" onclick="navigate('connectivity/mx-component')">MX Component</button>
@@ -689,6 +690,15 @@ internal static class DashboardPage
                     <div class="hint" id="configMessage">Export saves all sources, settings, and tag mappings to a JSON file. Passwords are not included — re-enter after import.</div>
                 </div>
             </div>
+        </div>
+    </div>
+</div>
+<div class="view" id="view-opc-da-groups">
+    <div class="box">
+        <div class="box-h">OPC DA Groups <span class="msg" id="daGroupsMsg" style="margin-left:auto"></span></div>
+        <div class="box-b">
+            <div id="daGroupsContainer"></div>
+            <div class="hint">Each poll-rate bucket is a separate OPC DA group (OpcBridge_&lt;rate&gt;). Add/delete groups per OPC DA source, set Rate and I/O mode per group. Changes apply live.</div>
         </div>
     </div>
 </div>
@@ -2776,6 +2786,7 @@ function updateManualInputState() {
 const ROUTE_TO_TAB = {
   'connectivity/sources': 'connection',
   'connectivity/opc-da': 'opc-da',
+  'connectivity/opc-da-groups': 'opc-da-groups',
   'connectivity/opc-ua': 'opc-ua',
   'connectivity/drivers': 'drivers',
   'connectivity/mx-component': 'mx-component',
@@ -2833,6 +2844,10 @@ async function showTab(name, route) {
     await loadSources().catch(e => console.warn(e));
     renderDrivers();
   }
+  if (activeTab === 'opc-da-groups') {
+     await loadSources().catch(e => console.warn(e));
+     await loadDaGroupsTab().catch(e => console.warn(e));
+   }
   if (activeTab === 'tags') {
     await loadSources().catch(e => console.warn(e));
     await loadMappings().catch(e => console.warn(e));
@@ -4387,6 +4402,120 @@ async function resetGroupMode(sourceId, rate) {
         await refresh();
     } catch (e) {
         if (msg) msg.textContent = 'Reset failed: ' + e.message;
+    }
+}
+async function loadDaGroupsTab() {
+    const container = el('daGroupsContainer');
+    const msg = el('daGroupsMsg');
+    if (!container) return;
+    container.innerHTML = '<div class="hint">Loading…</div>';
+    if (msg) msg.textContent = '';
+    try {
+        const opcDaSrcs = state.sources.filter(s => !isUaSource(s) && !isDriverSource(s) && !isMxSource(s));
+        if (opcDaSrcs.length === 0) {
+            container.innerHTML = '<div class="hint">No OPC DA sources — add one in <a href="#/connectivity/opc-da" onclick="navigate(\'connectivity/opc-da\');return false;">OPC DA</a>.</div>';
+            return;
+        }
+        container.innerHTML = '';
+        for (const src of opcDaSrcs) {
+            const card = document.createElement('div');
+            card.className = 'box';
+            card.style.cssText = 'margin-bottom:12px';
+            const header = document.createElement('div');
+            header.className = 'box-h';
+            header.innerHTML = esc(src.displayName || src.sourceId) + ' <span class="msg" style="margin-left:8px">' + esc(src.sourceId) + ' · ' + esc(src.progId || '') + '</span><span class="msg" style="margin-left:auto">' + esc(src.host || 'localhost') + '</span>';
+            const body = document.createElement('div');
+            body.className = 'box-b';
+            body.innerHTML = '<div class="hint" id="daGroupsHint-' + esc(src.sourceId) + '">Loading groups…</div><div id="daGroupsTable-' + esc(src.sourceId) + '"></div><div style="display:flex;gap:8px;margin-top:10px;align-items:center"><select id="daGroupsRate-' + esc(src.sourceId) + '" style="width:110px"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000" selected>1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select><select id="daGroupsIo-' + esc(src.sourceId) + '" style="width:150px"><option value="AutoDetect">AutoDetect</option><option value="Sync">Sync</option><option value="Async20">Async20</option></select><button class="btn" type="button" onclick="addDaGroup(\'' + esc(src.sourceId).replace(/'/g, "\'") + '\')">Add Group</button><span class="msg" id="daGroupsAddMsg-' + esc(src.sourceId) + '"></span></div>';
+            card.appendChild(header);
+            card.appendChild(body);
+            container.appendChild(card);
+            // load groups for this source
+            try {
+                const r = await fetch('/api/da/sources/groups?sourceId=' + encodeURIComponent(src.sourceId));
+                if (!r.ok) throw new Error('HTTP ' + r.status);
+                const data = await r.json();
+                renderDaGroupsForSource(src.sourceId, data.groups || [], data.sourceIoMode);
+            } catch (e) {
+                const hint = document.getElementById('daGroupsHint-' + src.sourceId);
+                if (hint) hint.textContent = 'Failed: ' + e.message;
+            }
+        }
+    } catch (e) {
+        if (msg) msg.textContent = 'Failed to load: ' + e.message;
+    }
+}
+function renderDaGroupsForSource(sourceId, groups, sourceIoMode) {
+    const hint = document.getElementById('daGroupsHint-' + sourceId);
+    const table = document.getElementById('daGroupsTable-' + sourceId);
+    if (!table) return;
+    if (!groups || groups.length === 0) {
+        if (hint) hint.textContent = 'No explicit groups — using source default (' + prettyIoMode(sourceIoMode) + '). Add a group to override per-rate.';
+        table.innerHTML = '';
+        return;
+    }
+    if (hint) hint.textContent = groups.length + ' group(s) — ' + prettyIoMode(sourceIoMode) + ' is the source default.';
+    let html = '<table class="tbl" style="width:100%;margin-top:6px"><thead><tr><th>Rate</th><th>I/O Mode</th><th>Effective</th><th>Tags</th><th></th></tr></thead><tbody>';
+    for (const g of groups) {
+        const isDef = !!g.isDefault;
+        html += '<tr><td>' + esc(String(g.rate)) + ' ms ' + (isDef ? '<span class="badge">default</span>' : '') + '</td>';
+        html += '<td><select data-rate="' + esc(String(g.rate)) + '" data-source="' + esc(sourceId) + '" onchange="updateDaGroup(\'' + esc(sourceId).replace(/'/g, "\'") + '\',' + g.rate + ',this.value)">';
+        for (const m of ['AutoDetect','Sync','Async20']) {
+            html += '<option value="' + m + '"' + (g.ioMode===m?' selected':'') + '>' + (m==='AutoDetect'?'AutoDetect':m) + '</option>';
+        }
+        html += '</select></td>';
+        html += '<td>' + esc(prettyIoMode(g.effective)) + '</td>';
+        html += '<td>' + esc(String(g.tagCount ?? 0)) + '</td>';
+        html += '<td>' + (isDef ? '<span class="msg">—</span>' : '<button class="btn ghost" type="button" onclick="deleteDaGroup(\'' + esc(sourceId).replace(/'/g, "\'") + '\',' + g.rate + ')">Delete</button>') + '</td></tr>';
+    }
+    html += '</tbody></table>';
+    table.innerHTML = html;
+}
+async function addDaGroup(sourceId) {
+    const rateSel = document.getElementById('daGroupsRate-' + sourceId);
+    const ioSel = document.getElementById('daGroupsIo-' + sourceId);
+    const msg = document.getElementById('daGroupsAddMsg-' + sourceId);
+    if (!rateSel || !ioSel) return;
+    const rate = parseInt(rateSel.value, 10);
+    const ioMode = ioSel.value;
+    if (msg) msg.textContent = '';
+    try {
+        const r = await fetch('/api/da/sources/groups', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId, rate, ioMode }) });
+        const p = await r.json();
+        if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
+        if (msg) msg.textContent = 'Added ' + rate + ' ms → ' + prettyIoMode(ioMode);
+        await loadDaGroupsTab();
+        await refresh();
+        await loadGroupsSection();
+    } catch (e) {
+        if (msg) msg.textContent = 'Add failed: ' + e.message;
+    }
+}
+async function deleteDaGroup(sourceId, rate) {
+    if (!confirm('Delete group ' + rate + ' ms for ' + sourceId + '?')) return;
+    const msg = document.getElementById('daGroupsAddMsg-' + sourceId);
+    try {
+        const r = await fetch('/api/da/sources/groups/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId, rate }) });
+        const p = await r.json();
+        if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
+        if (msg) msg.textContent = 'Deleted ' + rate + ' ms';
+        await loadDaGroupsTab();
+        await refresh();
+        await loadGroupsSection();
+    } catch (e) {
+        if (msg) msg.textContent = 'Delete failed: ' + e.message;
+    }
+}
+async function updateDaGroup(sourceId, rate, ioMode) {
+    const msg = document.getElementById('daGroupsAddMsg-' + sourceId);
+    try {
+        const r = await fetch('/api/da/sources/groups', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId, rate, ioMode }) });
+        const p = await r.json();
+        if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
+        if (msg) msg.textContent = 'Updated ' + rate + ' ms → ' + prettyIoMode(ioMode);
+        await refresh();
+    } catch (e) {
+        if (msg) msg.textContent = 'Update failed: ' + e.message;
     }
 }
 async function saveUpdateRate() {
