@@ -33,8 +33,8 @@ public sealed class DaGroupIoModeTests
     {
         DaSourceRuntimeSettings source = DaSource("da1", new DaGroupIoMode[]
         {
-            new(500, "Sync"),
-            new(1000, "Async20")
+            new("OpcBridge_500", 500, "Sync"),
+            new("OpcBridge_1000", 1000, "Async20")
         });
 
         SourceConfigDto dto = SourceConfigMigration.ToDto(source);
@@ -53,11 +53,11 @@ public sealed class DaGroupIoModeTests
     {
         DaSourceRuntimeSettings source = DaSource("da1", new DaGroupIoMode[]
         {
-            new(500, "sync"), // lowercase → Sync
-            new(1000, "Bogus"), // unknown → AutoDetect
-            new(50, "Async20"), // below the 100ms minimum → dropped
-            new(1000, "Async20"), // duplicate rate → last wins
-            new(2000, "Async20")
+            new("OpcBridge_500", 500, "sync"), // lowercase → Sync
+            new("OpcBridge_1000", 1000, "Bogus"), // unknown → AutoDetect
+            new("OpcBridge_50", 50, "Async20"), // below the 100ms minimum → dropped
+            new("OpcBridge_1000", 1000, "Async20"), // duplicate rate → last wins
+            new("OpcBridge_2000", 2000, "Async20")
         });
 
         DaSourceRuntimeSettings normalized = SourceConfigMigration.Normalize(source, 1000);
@@ -73,8 +73,8 @@ public sealed class DaGroupIoModeTests
     {
         DaSourceRuntimeSettings source = DaSource("da1", new DaGroupIoMode[]
         {
-            new(500, "Sync"),
-            new(1000, "Async20")
+            new("OpcBridge_500", 500, "Sync"),
+            new("OpcBridge_1000", 1000, "Async20")
         });
 
         DaClientOptions options = source.ToOptions(useSubscriptions: true, ioMode: "AutoDetect");
@@ -98,13 +98,13 @@ public sealed class DaGroupIoModeTests
                 ]
             }));
 
-            DaRuntimeSettingsSnapshot after = settings.SetSourceGroupIoMode("da1", 1000, "Async20");
+            DaRuntimeSettingsSnapshot after = settings.SetSourceGroupIoMode("da1", "OpcBridge_1000", 1000, "Async20");
             DaSourceRuntimeSettings source = after.GetSource("da1")!;
             Assert.Single(source.GroupIoModes);
             Assert.Equal("Async20", source.GroupIoModes[0].IoMode);
 
             // Upsert replaces rather than duplicating.
-            after = settings.SetSourceGroupIoMode("da1", 1000, "Sync");
+            after = settings.SetSourceGroupIoMode("da1", "OpcBridge_1000", 1000, "Sync");
             source = after.GetSource("da1")!;
             Assert.Single(source.GroupIoModes);
             Assert.Equal("Sync", source.GroupIoModes[0].IoMode);
@@ -131,15 +131,15 @@ public sealed class DaGroupIoModeTests
                     new DaSourceOptions { SourceId = "da1", DisplayName = "DA1", ProgId = "Server.1", Host = "localhost" }
                 ]
             }));
-            settings.SetSourceGroupIoMode("da1", 500, "Sync");
-            settings.SetSourceGroupIoMode("da1", 1000, "Async20");
+            settings.SetSourceGroupIoMode("da1", "OpcBridge_500", 500, "Sync");
+            settings.SetSourceGroupIoMode("da1", "OpcBridge_1000", 1000, "Async20");
 
-            DaRuntimeSettingsSnapshot after = settings.ResetSourceGroupIoMode("da1", 500);
+            DaRuntimeSettingsSnapshot after = settings.ResetSourceGroupIoMode("da1", "OpcBridge_500", 500);
             DaSourceRuntimeSettings source = after.GetSource("da1")!;
             Assert.Single(source.GroupIoModes);
             Assert.Equal(1000, source.GroupIoModes[0].Rate);
 
-            after = settings.ResetSourceGroupIoMode("da1", null);
+            after = settings.ResetSourceGroupIoMode("da1", null, null);
             source = after.GetSource("da1")!;
             Assert.Empty(source.GroupIoModes);
             Assert.Null(source.OpcDa!.GroupIoModes);

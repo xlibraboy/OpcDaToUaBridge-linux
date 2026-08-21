@@ -589,8 +589,8 @@ app.MapGet("/api/da/sources/groups", (string? sourceId, DaRuntimeSettings settin
         rates.Add(defaultRate);
     }
 
-    Dictionary<int, string> overrides = source.GroupIoModes.ToDictionary(g => g.Rate, g => g.IoMode);
-    // tag counts per rate for display
+    Dictionary<string, DaGroupIoMode> byName = source.GroupIoModes.ToDictionary(g => g.Name, g => g, StringComparer.OrdinalIgnoreCase);
+    // tag counts per rate for display (legacy PollRateMs routing)
     Dictionary<int, int> tagCounts = new();
     foreach (int r in rates) tagCounts[r] = 0;
     foreach (TagMapping mapping in mappings)
@@ -601,26 +601,82 @@ app.MapGet("/api/da/sources/groups", (string? sourceId, DaRuntimeSettings settin
             if (tagCounts.ContainsKey(eff)) tagCounts[eff]++;
         }
     }
-
-    var groups = rates
-        .OrderBy(rate => rate)
-        .Select(rate => new
+    // tag counts per group name for named groups (DaGroup)
+    Dictionary<string, int> tagCountsByGroup = new(StringComparer.OrdinalIgnoreCase);
+    foreach (var g in source.GroupIoModes) tagCountsByGroup[g.Name] = 0;
+    foreach (TagMapping mapping in mappings)
+    {
+        if (mapping.Enabled && string.Equals(mapping.SourceId, sourceId, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(mapping.DaGroup))
         {
+            if (tagCountsByGroup.ContainsKey(mapping.DaGroup!)) tagCountsByGroup[mapping.DaGroup!]++;
+        }
+    }
+
+    // For named groups, return one entry per DaGroupIoMode (per Name), plus any distinct PollRateMs without explicit group
+    var groupsByName = source.GroupIoModes.ToDictionary(g => g.Name, g => g, StringComparer.OrdinalIgnoreCase);
+    var groups = new List<object>();
+    // First, explicit named groups
+    foreach (var g in source.GroupIoModes.OrderBy(x => x.Name))
+    {
+        int tc = tagCountsByGroup.TryGetValue(g.Name, out int c) ? c : 0;
+        // For named groups, also count PollRateMs tags that match Rate but have no DaGroup (back-compat)
+        if (tc == 0) tagCounts.TryGetValue(g.Rate, out tc);
+        groups.Add(new
+        {
+            name = g.Name,
+            rate = g.Rate,
+            groupId = g.Name,
+            ioMode = (string?)g.IoMode,
+            effective = g.IoMode,
+            isDefault = false,
+            tagCount = tc
+        });
+    }
+    // Then, distinct PollRateMs rates that have no explicit named group
+    var existingNames = new HashSet<string>(source.GroupIoModes.Select(g => g.Name), StringComparer.OrdinalIgnoreCase);
+    var distinctRates = new HashSet<int>(rates);
+    foreach (int rate in distinctRates.OrderBy(r => r))
+    {
+        // if there's already a named group with this rate, skip (to avoid duplicate Rate entries when Name is the key)
+        // Instead, check if any named group has this rate - if yes, don't create default
+        bool hasNamedWithRate = source.GroupIoModes.Any(g => g.Rate == rate);
+        if (hasNamedWithRate) continue;
+        int tc = tagCounts.TryGetValue(rate, out int c) ? c : 0;
+        groups.Add(new
+        {
+            name = $"OpcBridge_{rate}",
             rate,
             groupId = $"OpcBridge_{rate}",
-            ioMode = overrides.TryGetValue(rate, out string? mode) ? mode : null,
-            effective = overrides.TryGetValue(rate, out string? effectiveMode) ? effectiveMode : source.IoMode,
-            isDefault = !overrides.ContainsKey(rate),
-            tagCount = tagCounts.TryGetValue(rate, out int c) ? c : 0
-        })
-        .ToArray();
+            ioMode = (string?)null,
+            effective = source.IoMode,
+            isDefault = true,
+            tagCount = tc
+        });
+    }
+    // Ensure at least default if no groups at all
+    if (groups.Count == 0)
+    {
+        int defRate = rates.FirstOrDefault();
+        if (defRate == 0) defRate = defaultRate;
+        groups.Add(new
+        {
+            name = $"OpcBridge_{defRate}",
+            rate = defRate,
+            groupId = $"OpcBridge_{defRate}",
+            ioMode = (string?)null,
+            effective = source.IoMode,
+            isDefault = true,
+            tagCount = tagCounts.TryGetValue(defRate, out int c) ? c : 0
+        });
+    }
+    var groupsArray = groups.OrderBy(g => ((dynamic)g).name).ToArray();
 
     return Results.Json(new
     {
         version = snapshot.Version,
         sourceId = source.SourceId,
         sourceIoMode = source.IoMode,
-        groups
+        groups = groupsArray
     });
 });
 app.MapPost("/api/da/sources/groups", (DaGroupIoModeRequest request, DaRuntimeSettings settings) =>
@@ -646,7 +702,8 @@ app.MapPost("/api/da/sources/groups", (DaGroupIoModeRequest request, DaRuntimeSe
         return Results.BadRequest(new { error = "I/O mode must be AutoDetect, Sync or Async20." });
     }
 
-    DaRuntimeSettingsSnapshot snapshot = settings.SetSourceGroupIoMode(request.SourceId, request.Rate, normalizedMode);
+    if (string.IsNullOrWhiteSpace(request.Name)) return Results.BadRequest(new { error = "Group name is required." });
+    DaRuntimeSettingsSnapshot snapshot = settings.SetSourceGroupIoMode(request.SourceId, request.Name!, request.Rate, normalizedMode);
     DaSourceRuntimeSettings? source = snapshot.GetSource(request.SourceId);
     if (source is null)
     {
@@ -668,7 +725,7 @@ app.MapPost("/api/da/sources/groups/reset", (DaGroupIoModeResetRequest request, 
         return Results.BadRequest(new { error = "Source ID is required." });
     }
 
-    DaRuntimeSettingsSnapshot snapshot = settings.ResetSourceGroupIoMode(request.SourceId, request.Rate);
+    DaRuntimeSettingsSnapshot snapshot = settings.ResetSourceGroupIoMode(request.SourceId, request.Name, request.Rate);
     DaSourceRuntimeSettings? source = snapshot.GetSource(request.SourceId);
     if (source is null)
     {
@@ -784,7 +841,7 @@ app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings
         if (groups is not null)
         {
             return SourceConfigMigration.NormalizeGroupIoModes(
-                groups.Select(g => new DaGroupIoMode(g.Rate, g.IoMode)));
+                groups.Select(g => new DaGroupIoMode(g.Name, g.Rate, g.IoMode)));
         }
 
         DaSourceRuntimeSettings? existing = settings.GetSnapshot().GetSource(sourceId);

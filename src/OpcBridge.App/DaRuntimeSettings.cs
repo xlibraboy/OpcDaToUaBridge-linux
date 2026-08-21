@@ -181,14 +181,15 @@ public sealed class DaRuntimeSettings
     /// bucket of an OPC DA source, upserting by rate. Invalid modes normalize to
     /// AutoDetect; rates below the OPC DA minimum (100 ms) are rejected.
     /// </summary>
-    public DaRuntimeSettingsSnapshot SetSourceGroupIoMode(string sourceId, int rate, string ioMode)
+    public DaRuntimeSettingsSnapshot SetSourceGroupIoMode(string sourceId, string name, int rate, string ioMode)
     {
-        if (rate < 100)
+        if (rate < 100 || string.IsNullOrWhiteSpace(name))
         {
             return snapshot_;
         }
 
         string normalizedMode = SourceConfigMigration.NormalizeIoMode(ioMode);
+        string trimmedName = name.Trim();
 
         lock (sync_)
         {
@@ -203,9 +204,9 @@ public sealed class DaRuntimeSettings
 
             DaSourceRuntimeSettings current = sources[index];
             List<DaGroupIoMode> groups = current.OpcDa!.GroupIoModes?.ToList() ?? new();
-            groups.RemoveAll(g => g.Rate == rate);
-            groups.Add(new DaGroupIoMode(rate, normalizedMode));
-            groups.Sort((a, b) => a.Rate.CompareTo(b.Rate));
+            groups.RemoveAll(g => string.Equals(g.Name, trimmedName, StringComparison.OrdinalIgnoreCase));
+            groups.Add(new DaGroupIoMode(trimmedName, rate, normalizedMode));
+            groups.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
 
             sources[index] = current with
             {
@@ -223,10 +224,10 @@ public sealed class DaRuntimeSettings
     }
 
     /// <summary>
-    /// Removes the per-group I/O mode override for one rate bucket, or for every
-    /// bucket when <paramref name="rate"/> is null (revert to source-level mode).
+    /// Removes the per-group I/O mode override for one group by name, or by rate for back-compat,
+    /// or for every bucket when both are null (revert to source-level mode).
     /// </summary>
-    public DaRuntimeSettingsSnapshot ResetSourceGroupIoMode(string sourceId, int? rate)
+    public DaRuntimeSettingsSnapshot ResetSourceGroupIoMode(string sourceId, string? name, int? rate)
     {
         lock (sync_)
         {
@@ -241,13 +242,17 @@ public sealed class DaRuntimeSettings
 
             DaSourceRuntimeSettings current = sources[index];
             List<DaGroupIoMode> groups = current.OpcDa!.GroupIoModes?.ToList() ?? new();
-            if (rate is null)
+            if (string.IsNullOrWhiteSpace(name) && rate is null)
             {
                 groups.Clear();
             }
+            else if (!string.IsNullOrWhiteSpace(name))
+            {
+                groups.RemoveAll(g => string.Equals(g.Name, name!.Trim(), StringComparison.OrdinalIgnoreCase));
+            }
             else
             {
-                groups.RemoveAll(g => g.Rate == rate.Value);
+                groups.RemoveAll(g => g.Rate == rate!.Value);
             }
 
             sources[index] = current with
@@ -492,7 +497,7 @@ public sealed record DaRuntimeSettingsSnapshot(
 /// identity (the poll-rate bucket in ms); <c>IoMode</c> is one of AutoDetect,
 /// Sync or Async20 and overrides the source-level I/O mode for that group only.
 /// </summary>
-public sealed record DaGroupIoMode(int Rate, string IoMode);
+public sealed record DaGroupIoMode(string Name, int Rate, string IoMode);
 
 public sealed record OpcDaSourceOptions(
     string ProgId,
@@ -712,6 +717,7 @@ public sealed class OpcDaSourceOptionsDto
 
 public sealed class DaGroupIoModeDto
 {
+    public string? Name { get; set; }
     public int Rate { get; set; }
     public string? IoMode { get; set; }
 }
@@ -799,7 +805,7 @@ public static class SourceConfigMigration
                 dto.OpcDa.RemoteUsername,
                 dto.OpcDa.RemotePassword,
                 dto.OpcDa.RemoteDomain,
-                NormalizeGroupIoModes(dto.OpcDa.Groups?.Select(g => new DaGroupIoMode(g.Rate, g.IoMode ?? string.Empty))));
+                NormalizeGroupIoModes(dto.OpcDa.Groups?.Select(g => new DaGroupIoMode(g.Name ?? $"OpcBridge_{g.Rate}", g.Rate, g.IoMode ?? string.Empty))));
         }
         else if (HasFlatDa(dto))
         {
@@ -921,7 +927,7 @@ public static class SourceConfigMigration
                 dto.RemoteUsername,
                 dto.RemotePassword,
                 dto.RemoteDomain,
-                NormalizeGroupIoModes(dto.OpcDa?.Groups?.Select(g => new DaGroupIoMode(g.Rate, g.IoMode ?? string.Empty))));
+                NormalizeGroupIoModes(dto.OpcDa?.Groups?.Select(g => new DaGroupIoMode(g.Name ?? $"OpcBridge_{g.Rate}", g.Rate, g.IoMode ?? string.Empty))));
         }
         else if (string.Equals(sourceType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase) && opcUa is null)
         {
@@ -1006,7 +1012,7 @@ public static class SourceConfigMigration
                 RemoteDomain = source.OpcDa.RemoteDomain,
                 Groups = source.OpcDa.GroupIoModes is null || source.OpcDa.GroupIoModes.Count == 0
                     ? null
-                    : source.OpcDa.GroupIoModes.Select(g => new DaGroupIoModeDto { Rate = g.Rate, IoMode = g.IoMode }).ToList()
+                    : source.OpcDa.GroupIoModes.Select(g => new DaGroupIoModeDto { Name = g.Name, Rate = g.Rate, IoMode = g.IoMode }).ToList()
             },
             OpcUa = source.OpcUa is null ? null : new OpcUaSourceOptionsDto
             {
@@ -1189,8 +1195,8 @@ public static class SourceConfigMigration
 
     /// <summary>
     /// Validates and canonicalizes a list of per-group I/O mode overrides: drops
-    /// rates below the OPC DA minimum, dedupes by rate (last wins) and sorts by
-    /// rate. Returns null when nothing remains so configs stay clean on disk.
+    /// rates below the OPC DA minimum, dedupes by name (last wins, case-insensitive) and sorts by
+    /// name. Returns null when nothing remains so configs stay clean on disk.
     /// </summary>
     public static IReadOnlyList<DaGroupIoMode>? NormalizeGroupIoModes(IEnumerable<DaGroupIoMode>? groups)
     {
@@ -1199,23 +1205,29 @@ public static class SourceConfigMigration
             return null;
         }
 
-        Dictionary<int, string> byRate = new();
+        Dictionary<string, DaGroupIoMode> byName = new(StringComparer.OrdinalIgnoreCase);
         foreach (DaGroupIoMode group in groups)
         {
-            if (group.Rate >= 100)
+            if (group.Rate >= 100 && !string.IsNullOrWhiteSpace(group.Name))
             {
-                byRate[group.Rate] = NormalizeIoMode(group.IoMode);
+                string name = group.Name.Trim();
+                byName[name] = new DaGroupIoMode(name, group.Rate, NormalizeIoMode(group.IoMode));
+            }
+            else if (group.Rate >= 100)
+            {
+                // Back-compat: groups without name get auto-name OpcBridge_<Rate>
+                string autoName = $"OpcBridge_{group.Rate}";
+                byName[autoName] = new DaGroupIoMode(autoName, group.Rate, NormalizeIoMode(group.IoMode));
             }
         }
 
-        if (byRate.Count == 0)
+        if (byName.Count == 0)
         {
             return null;
         }
 
-        return byRate
-            .Select(pair => new DaGroupIoMode(pair.Key, pair.Value))
-            .OrderBy(g => g.Rate)
+        return byName.Values
+            .OrderBy(g => g.Name)
             .ToArray();
     }
 

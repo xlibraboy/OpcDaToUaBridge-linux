@@ -4441,7 +4441,7 @@ async function loadDaGroupsTab() {
                 state.collapsedDaGroups = state.collapsedDaGroups || {};
                 state.collapsedDaGroups[src.sourceId] = !collapsed;
             };
-            body.innerHTML = '<div class="hint" id="daGroupsHint-' + esc(src.sourceId) + '" style="font-size:11px;margin-bottom:4px;opacity:.8">Loading groups…</div><div id="daGroupsTable-' + esc(src.sourceId) + '"></div><div style="display:flex;gap:6px;margin-top:6px;align-items:center;flex-wrap:wrap"><select id="daGroupsRate-' + esc(src.sourceId) + '" style="width:92px;height:22px;font-size:11px;padding:0 4px"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000" selected>1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select><select id="daGroupsIo-' + esc(src.sourceId) + '" style="width:120px;height:22px;font-size:11px;padding:0 4px"><option value="AutoDetect">AutoDetect</option><option value="Sync">Sync</option><option value="Async20">Async20</option></select><button class="btn" type="button" style="height:22px;padding:0 8px;font-size:11px" onclick="addDaGroup(\'' + esc(src.sourceId).replace(/'/g, "\'") + '\')">Add</button><span class="msg" id="daGroupsAddMsg-' + esc(src.sourceId) + '" style="font-size:11px"></span></div>';
+            body.innerHTML = '<div class="hint" id="daGroupsHint-' + esc(src.sourceId) + '" style="font-size:11px;margin-bottom:4px;opacity:.8">Loading groups…</div><div id="daGroupsTable-' + esc(src.sourceId) + '"></div><div style="display:flex;gap:6px;margin-top:6px;align-items:center;flex-wrap:wrap"><input id="daGroupsName-' + esc(src.sourceId) + '" type="text" placeholder="Group name" style="width:110px;height:22px;font-size:11px;padding:0 4px" value="OpcBridge_' + (Date.now()%10000) + '"><select id="daGroupsRate-' + esc(src.sourceId) + '" style="width:82px;height:22px;font-size:11px;padding:0 4px"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000" selected>1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select><select id="daGroupsIo-' + esc(src.sourceId) + '" style="width:110px;height:22px;font-size:11px;padding:0 4px"><option value="AutoDetect">AutoDetect</option><option value="Sync">Sync</option><option value="Async20">Async20</option></select><button class="btn" type="button" style="height:22px;padding:0 8px;font-size:11px" onclick="addDaGroup(\'' + esc(src.sourceId).replace(/'/g, "\'") + '\')">Add</button><span class="msg" id="daGroupsAddMsg-' + esc(src.sourceId) + '" style="font-size:11px"></span></div>';
             card.appendChild(header);
             card.appendChild(body);
             container.appendChild(card);
@@ -4470,35 +4470,39 @@ function renderDaGroupsForSource(sourceId, groups, sourceIoMode) {
         return;
     }
     if (hint) { hint.textContent = groups.length + ' group(s) — ' + prettyIoMode(sourceIoMode) + ' default'; hint.style.cssText = 'font-size:11px;opacity:.7;margin-bottom:2px'; }
-    let html = '<table class="tbl" style="width:100%;margin-top:4px;font-size:11px"><thead><tr><th style="padding:4px 6px">Rate</th><th style="padding:4px 6px">I/O Mode</th><th style="padding:4px 6px">Effective</th><th style="padding:4px 6px">Tags</th><th style="padding:4px 6px"></th></tr></thead><tbody>';
+    let html = '<table class="tbl" style="width:100%;margin-top:4px;font-size:11px"><thead><tr><th style="padding:4px 6px">Name</th><th style="padding:4px 6px">Rate</th><th style="padding:4px 6px">I/O Mode</th><th style="padding:4px 6px">Effective</th><th style="padding:4px 6px">Tags</th><th style="padding:4px 6px"></th></tr></thead><tbody>';
     for (const g of groups) {
         const isDef = !!g.isDefault;
-        html += '<tr style="height:26px"><td style="padding:3px 6px">' + esc(String(g.rate)) + ' ms ' + (isDef ? '<span class="badge" style="font-size:10px;padding:1px 4px">default</span>' : '') + '</td>';
-        html += '<td style="padding:3px 6px"><select data-rate="' + esc(String(g.rate)) + '" data-source="' + esc(sourceId) + '" onchange="updateDaGroup(\'' + esc(sourceId).replace(/'/g, "\'") + '\',' + g.rate + ',this.value)" style="height:20px;font-size:11px;padding:0 4px">';
+        html += '<tr style="height:26px"><td style="padding:3px 6px">' + esc(g.name) + (isDef ? ' <span class="badge" style="font-size:10px;padding:1px 4px">default</span>' : '') + '</td>';
+        html += '<td style="padding:3px 6px">' + esc(String(g.rate)) + ' ms</td>';
+        html += '<td style="padding:3px 6px"><select data-name="' + esc(g.name) + '" data-source="' + esc(sourceId) + '" onchange="updateDaGroup(\'' + esc(sourceId).replace(/'/g, "\'") + '\',\'' + esc(g.name).replace(/'/g, "\'") + '\',this.value)" style="height:20px;font-size:11px;padding:0 4px">';
         for (const m of ['AutoDetect','Sync','Async20']) {
             html += '<option value="' + m + '"' + (g.ioMode===m?' selected':'') + '>' + (m==='AutoDetect'?'AutoDetect':m) + '</option>';
         }
         html += '</select></td>';
         html += '<td style="padding:3px 6px;font-size:11px">' + esc(prettyIoMode(g.effective)) + '</td>';
         html += '<td style="padding:3px 6px;text-align:center">' + esc(String(g.tagCount ?? 0)) + '</td>';
-        html += '<td style="padding:3px 6px">' + (isDef ? '<span class="msg" style="font-size:11px">—</span>' : '<button class="btn ghost" type="button" style="height:20px;padding:0 6px;font-size:11px" onclick="deleteDaGroup(\'' + esc(sourceId).replace(/'/g, "\'") + '\',' + g.rate + ')">Del</button>') + '</td></tr>';
+        html += '<td style="padding:3px 6px">' + (isDef ? '<span class="msg" style="font-size:11px">—</span>' : '<button class="btn ghost" type="button" style="height:20px;padding:0 6px;font-size:11px" onclick="deleteDaGroup(\'' + esc(sourceId).replace(/'/g, "\'") + '\',\'' + esc(g.name).replace(/'/g, "\'") + '\')">Del</button>') + '</td></tr>';
     }
     html += '</tbody></table>';
     table.innerHTML = html;
 }
 async function addDaGroup(sourceId) {
+    const nameInput = document.getElementById('daGroupsName-' + sourceId);
     const rateSel = document.getElementById('daGroupsRate-' + sourceId);
     const ioSel = document.getElementById('daGroupsIo-' + sourceId);
     const msg = document.getElementById('daGroupsAddMsg-' + sourceId);
     if (!rateSel || !ioSel) return;
+    const name = nameInput ? nameInput.value.trim() : '';
+    if (!name) { if (msg) msg.textContent = 'Name required'; return; }
     const rate = parseInt(rateSel.value, 10);
     const ioMode = ioSel.value;
     if (msg) msg.textContent = '';
     try {
-        const r = await fetch('/api/da/sources/groups', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId, rate, ioMode }) });
+        const r = await fetch('/api/da/sources/groups', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId, name, rate, ioMode }) });
         const p = await r.json();
         if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
-        if (msg) msg.textContent = 'Added ' + rate + ' ms → ' + prettyIoMode(ioMode);
+        if (msg) msg.textContent = 'Added ' + name + ' (' + rate + ' ms) → ' + prettyIoMode(ioMode);
         await loadDaGroupsTab();
         await refresh();
         await loadGroupsSection();
@@ -4506,14 +4510,14 @@ async function addDaGroup(sourceId) {
         if (msg) msg.textContent = 'Add failed: ' + e.message;
     }
 }
-async function deleteDaGroup(sourceId, rate) {
-    if (!confirm('Delete group ' + rate + ' ms for ' + sourceId + '?')) return;
+async function deleteDaGroup(sourceId, name) {
+    if (!confirm('Delete group ' + name + ' for ' + sourceId + '?')) return;
     const msg = document.getElementById('daGroupsAddMsg-' + sourceId);
     try {
-        const r = await fetch('/api/da/sources/groups/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId, rate }) });
+        const r = await fetch('/api/da/sources/groups/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId, name }) });
         const p = await r.json();
         if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
-        if (msg) msg.textContent = 'Deleted ' + rate + ' ms';
+        if (msg) msg.textContent = 'Deleted ' + name;
         await loadDaGroupsTab();
         await refresh();
         await loadGroupsSection();
@@ -4521,10 +4525,23 @@ async function deleteDaGroup(sourceId, rate) {
         if (msg) msg.textContent = 'Delete failed: ' + e.message;
     }
 }
-async function updateDaGroup(sourceId, rate, ioMode) {
+async function updateDaGroup(sourceId, name, ioMode) {
     const msg = document.getElementById('daGroupsAddMsg-' + sourceId);
+    // find current rate for this name to keep it
+    let rate = 1000;
     try {
-        const r = await fetch('/api/da/sources/groups', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId, rate, ioMode }) });
+        const table = document.getElementById('daGroupsTable-' + sourceId);
+        const row = table ? table.querySelector('select[data-name="' + name.replace(/"/g, '&quot;') + '"]') : null;
+        if (row) rate = parseInt(row.getAttribute('data-rate') || row.dataset.rate || '1000', 10);
+        else {
+            // fallback: find group in current rendered data
+            const groups = (state.sources.find(s => s.sourceId === sourceId)?.groupIoModes) || [];
+            const g = groups.find(x => x.name === name);
+            if (g) rate = g.rate;
+        }
+    } catch {}
+    try {
+        const r = await fetch('/api/da/sources/groups', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId, name, rate, ioMode }) });
         const p = await r.json();
         if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
         if (msg) msg.textContent = 'Updated ' + rate + ' ms → ' + prettyIoMode(ioMode);

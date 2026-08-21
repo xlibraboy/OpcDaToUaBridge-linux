@@ -38,9 +38,9 @@ public sealed record DaServerConfigRequest(
 
 public sealed record DaSourceIoModeRequest(string SourceId, string IoMode);
 
-public sealed record DaGroupIoModeRequest(string SourceId, int Rate, string IoMode);
+public sealed record DaGroupIoModeRequest(string SourceId, string Name, int Rate, string IoMode);
 
-public sealed record DaGroupIoModeResetRequest(string SourceId, int? Rate = null);
+public sealed record DaGroupIoModeResetRequest(string SourceId, string? Name = null, int? Rate = null);
 
 public sealed record MelsecTestConnectionRequest(
     string? SourceId = null,

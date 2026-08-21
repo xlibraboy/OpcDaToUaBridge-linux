@@ -184,7 +184,7 @@ public sealed class DaClientFactoryTests
                 null,
                 null,
                 null,
-                new DaGroupIoMode[] { new(500, "Sync"), new(1000, "Async20") })
+                new DaGroupIoMode[] { new("OpcBridge_500", 500, "Sync"), new("OpcBridge_1000", 1000, "Async20") })
         };
 
         DaClientOptions options = GetDaOptions(source, globalUseSubscriptions: true);

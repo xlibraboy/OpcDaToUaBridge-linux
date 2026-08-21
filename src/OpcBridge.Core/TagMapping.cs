@@ -24,6 +24,7 @@ public sealed class TagMapping
     public string Mode { get; set; } = TagMode.Source;
     public string? ManualValue { get; set; }
     public int PollRateMs { get; set; }
+    public string? DaGroup { get; set; }
     public float DeadbandPct { get; set; }
     public bool Writeable { get; set; }
     public string AccessRights { get; set; } = TagAccessRights.Read;
