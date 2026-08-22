@@ -2772,7 +2772,15 @@ function openFaceplate(sourceId, itemId) {
     el('fpSimulated').checked = simulated;
     el('fpManualInput').value = String(manualValue ?? '');
     const pollRate = mapping.pollRateMs ?? mapping.PollRateMs ?? 0;
-    el('fpPollRate').value = String(pollRate);
+    const mapDaGroup = String(mapping.daGroup ?? mapping.DaGroup ?? '');
+    {
+        const sel = el('fpPollRate');
+        if (sel) sel.innerHTML = fpRateOptions(sourceId, mapDaGroup, pollRate);
+    }
+    ensureDaGroupsCache(sourceId).then(() => {
+        const sel = el('fpPollRate');
+        if (sel && document.activeElement !== sel) sel.innerHTML = fpRateOptions(sourceId, mapDaGroup, pollRate);
+    }).catch(() => {});
     const deadband = Number(mapping.deadbandPct ?? mapping.DeadbandPct ?? 0);
     el('fpDeadband').value = String(deadband);
     el('fpMqttEnabled').checked = (mapping.mqttEnabled ?? mapping.MqttEnabled) === true;
@@ -4281,6 +4289,7 @@ async function updateMapping(sourceId, itemId, mutate) {
         mode: mapping.mode || mapping.Mode || 'Source',
         manualValue: mapping.manualValue ?? mapping.ManualValue ?? null,
         pollRateMs: mapping.pollRateMs ?? mapping.PollRateMs ?? 0,
+        daGroup: mapping.daGroup ?? mapping.DaGroup ?? null,
         deadbandPct: Number(mapping.deadbandPct ?? mapping.DeadbandPct ?? 0),
         writeable: (mapping.writeable ?? mapping.Writeable) === true,
         accessRights: mapping.accessRights || mapping.AccessRights || 'Read',
@@ -4522,6 +4531,46 @@ function daPrettyRate(ms) {
     const n = Number(ms) || 0;
     return n >= 1000 ? (n / 1000) + ' s' : n + ' ms';
 }
+function ensureDaGroupsCache(sourceId) {
+    // Named DA groups per source, for the faceplate UPDATE RATE selector.
+    state.daGroupsCache = state.daGroupsCache || {};
+    if (state.daGroupsCache[sourceId]) return Promise.resolve(state.daGroupsCache[sourceId]);
+    return fetch('/api/da/sources/groups?sourceId=' + encodeURIComponent(sourceId))
+        .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+        .then(data => { state.daGroupsCache[sourceId] = data.groups || []; return state.daGroupsCache[sourceId]; });
+}
+function invalidateDaGroupsCache(sourceId) {
+    if (state.daGroupsCache) delete state.daGroupsCache[sourceId];
+}
+function daGroupRateFor(sourceId, name) {
+    const gs = (state.daGroupsCache || {})[sourceId] || [];
+    const g = gs.find(x => String(x.name ?? '').toLowerCase() === String(name ?? '').toLowerCase());
+    return g ? (Number(g.rate) || 0) : 0;
+}
+// UPDATE RATE selector: Source Default + one option per named group.
+// Legacy numeric rates survive as synthetic "@<ms>" entries until touched.
+function fpRateOptions(sourceId, selectedDaGroup, pollRateMs) {
+    const gs = (state.daGroupsCache || {})[sourceId] || [];
+    const want = String(selectedDaGroup || '').toLowerCase();
+    let matched = false;
+    let html = '';
+    for (const g of gs) {
+        const name = String(g.name ?? '');
+        const sel = want !== '' && want === name.toLowerCase();
+        if (sel) matched = true;
+        html += '<option value="' + attr(name) + '"' + (sel ? ' selected' : '') + '>' + esc(name) + ' · ' + esc(daPrettyRate(g.rate)) + '</option>';
+    }
+    let defaultSelected = false;
+    const rateN = Number(pollRateMs) || 0;
+    if (!matched) {
+        if (rateN > 0 && !gs.some(g => Number(g.rate) === rateN)) {
+            html += '<option value="@' + rateN + '" selected>' + esc(daPrettyRate(rateN)) + ' (legacy rate)</option>';
+        } else {
+            defaultSelected = true;
+        }
+    }
+    return '<option value=""' + (defaultSelected ? ' selected' : '') + '>Source Default</option>' + html;
+}
 function renderDaGroupsForSource(sourceId, groups, sourceIoMode) {
     const hint = document.getElementById('daGroupsHint-' + sourceId);
     const wrap = document.getElementById('daGroupsTable-' + sourceId);
@@ -4561,6 +4610,7 @@ async function deleteDaGroup(sourceId, name) {
         const p = await r.json();
         if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
         setDaGroupsStatus('Deleted ' + name);
+        invalidateDaGroupsCache(sourceId);
         await reloadDaGroups(sourceId);
         refresh().catch(()=>{});
         loadGroupsSection().catch(()=>{});
@@ -4615,10 +4665,11 @@ async function dagModalSave() {
             const del = await fetch('/api/da/sources/groups/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId: sourceId, name: oldName }) });
             if (!del.ok) { const p = await del.json().catch(() => ({})); throw new Error(p.error || ('HTTP ' + del.status)); }
         }
-        const r = await fetch('/api/da/sources/groups', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId: sourceId, name: name, rate: rate, ioMode: ioMode }) });
+        const r = await fetch('/api/da/sources/groups', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId: sourceId, name: name, rate: rate, ioMode: ioMode, renameFrom: (oldName && oldName !== name) ? oldName : null }) });
         const p = await r.json();
         if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
         closeDagModal();
+        invalidateDaGroupsCache(sourceId);
         await reloadDaGroups(sourceId);
         setDaGroupsStatus('Saved ' + name + ' (' + daPrettyRate(rate) + ') → ' + prettyIoMode(ioMode));
         refresh().catch(() => {});
@@ -5796,7 +5847,22 @@ function bindDynamicButtons() {
                 const simulated = el('fpSimulated').checked;
                 payload.displayName = el('fpDisplayName').value.trim() || itemId;
                 payload.accessRights = el('fpAccess').value;
-                payload.pollRateMs = Number.parseInt(el('fpPollRate').value, 10) || 0;
+                const rateValue = el('fpPollRate').value;
+                if (rateValue.startsWith('@')) {
+                    // legacy fixed rate kept until the user picks something else
+                    payload.daGroup = null;
+                    payload.pollRateMs = Number.parseInt(rateValue.slice(1), 10) || 0;
+                } else if (!rateValue) {
+                    payload.daGroup = null;          // Source Default
+                    payload.pollRateMs = 0;
+                } else if (/^\d+$/.test(rateValue)) {
+                    payload.daGroup = null;          // plain numeric legacy choice
+                    payload.pollRateMs = Number.parseInt(rateValue, 10);
+                } else {
+                    payload.daGroup = rateValue;     // named DA group
+                    const srcId = el('fpApply').dataset.sourceId || sourceId;
+                    payload.pollRateMs = daGroupRateFor(srcId, rateValue) || 1000;
+                }
                 payload.deadbandPct = Math.max(0, Math.min(100, Number.parseFloat(el('fpDeadband').value) || 0));
                 payload.description = el('fpDescription').value.trim() || null;
                 if (simulated) {

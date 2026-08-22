@@ -38,7 +38,7 @@ public sealed record DaServerConfigRequest(
 
 public sealed record DaSourceIoModeRequest(string SourceId, string IoMode);
 
-public sealed record DaGroupIoModeRequest(string SourceId, string Name, int Rate, string IoMode);
+public sealed record DaGroupIoModeRequest(string SourceId, string Name, int Rate, string IoMode, string? RenameFrom = null);
 
 public sealed record DaGroupIoModeResetRequest(string SourceId, string? Name = null, int? Rate = null);
 

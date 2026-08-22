@@ -204,6 +204,83 @@ public sealed class MappingStore
         return raisedVersion;
     }
 
+    /// <summary>
+    /// Rewrites DaGroup references after a group rename. Returns the number of
+    /// mappings updated (name comparison is OrdinalIgnoreCase, matching the
+    /// group upsert path).
+    /// </summary>
+    public int RenameDaGroup(string sourceId, string oldName, string newName)
+    {
+        if (string.IsNullOrWhiteSpace(oldName) || string.IsNullOrWhiteSpace(newName)) return 0;
+        int updated;
+        lock (sync_)
+        {
+            updated = 0;
+            for (int i = 0; i < mappings_.Count; i++)
+            {
+                TagMapping m = mappings_[i];
+                if (!string.Equals(m.SourceId, sourceId, StringComparison.OrdinalIgnoreCase)) continue;
+                if (!string.Equals(m.DaGroup, oldName.Trim(), StringComparison.OrdinalIgnoreCase)) continue;
+                TagMapping copy = Normalize(m); copy.DaGroup = newName.Trim(); mappings_[i] = copy;
+                updated++;
+            }
+            if (updated > 0) { version_++; Persist(); }
+        }
+        if (updated > 0) Changed?.Invoke(version_);
+        return updated;
+    }
+
+    /// <summary>
+    /// Detaches every mapping from a deleted group: DaGroup cleared and the poll
+    /// rate reset to 0 (= Source Default fallback). Returns the count detached.
+    /// </summary>
+    public int ClearDaGroup(string sourceId, string groupName)
+    {
+        if (string.IsNullOrWhiteSpace(groupName)) return 0;
+        int updated;
+        lock (sync_)
+        {
+            updated = 0;
+            for (int i = 0; i < mappings_.Count; i++)
+            {
+                TagMapping m = mappings_[i];
+                if (!string.Equals(m.SourceId, sourceId, StringComparison.OrdinalIgnoreCase)) continue;
+                if (!string.Equals(m.DaGroup, groupName.Trim(), StringComparison.OrdinalIgnoreCase)) continue;
+                TagMapping copy = Normalize(m); copy.DaGroup = null; copy.PollRateMs = 0; mappings_[i] = copy;
+                updated++;
+            }
+            if (updated > 0) { version_++; Persist(); }
+        }
+        if (updated > 0) Changed?.Invoke(version_);
+        return updated;
+    }
+
+    /// <summary>
+    /// Keeps member tags' numeric rate aligned with their named group's current
+    /// rate (the COM bucket is still rate-keyed). Returns the count aligned.
+    /// </summary>
+    public int SyncDaGroupRate(string sourceId, string groupName, int rateMs)
+    {
+        if (string.IsNullOrWhiteSpace(groupName) || rateMs < 100) return 0;
+        int updated;
+        lock (sync_)
+        {
+            updated = 0;
+            for (int i = 0; i < mappings_.Count; i++)
+            {
+                TagMapping m = mappings_[i];
+                if (!string.Equals(m.SourceId, sourceId, StringComparison.OrdinalIgnoreCase)) continue;
+                if (!string.Equals(m.DaGroup, groupName.Trim(), StringComparison.OrdinalIgnoreCase)) continue;
+                if (m.PollRateMs == rateMs) continue;
+                TagMapping copy = Normalize(m); copy.PollRateMs = rateMs; mappings_[i] = copy;
+                updated++;
+            }
+            if (updated > 0) { version_++; Persist(); }
+        }
+        if (updated > 0) Changed?.Invoke(version_);
+        return updated;
+    }
+
     public IReadOnlyList<TagMapping> GetBySource(string sourceId)
     {
         string normalizedSourceId = NormalizeSourceId(sourceId);
@@ -257,6 +334,7 @@ public sealed class MappingStore
             Mode = mode,
             ManualValue = string.IsNullOrWhiteSpace(tag.ManualValue) ? null : tag.ManualValue.Trim(),
             PollRateMs = Math.Max(0, tag.PollRateMs),
+            DaGroup = string.IsNullOrWhiteSpace(tag.DaGroup) ? null : tag.DaGroup.Trim(),
             DeadbandPct = Math.Clamp(tag.DeadbandPct, 0f, 100f),
             Writeable = writeable,
             AccessRights = accessRights,

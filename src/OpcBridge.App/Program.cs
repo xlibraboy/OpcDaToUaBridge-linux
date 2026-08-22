@@ -679,7 +679,7 @@ app.MapGet("/api/da/sources/groups", (string? sourceId, DaRuntimeSettings settin
         groups = groupsArray
     });
 });
-app.MapPost("/api/da/sources/groups", (DaGroupIoModeRequest request, DaRuntimeSettings settings) =>
+app.MapPost("/api/da/sources/groups", (DaGroupIoModeRequest request, DaRuntimeSettings settings, MappingStore mappingStore) =>
 {
     if (string.IsNullOrWhiteSpace(request.SourceId))
     {
@@ -703,22 +703,31 @@ app.MapPost("/api/da/sources/groups", (DaGroupIoModeRequest request, DaRuntimeSe
     }
 
     if (string.IsNullOrWhiteSpace(request.Name)) return Results.BadRequest(new { error = "Group name is required." });
+    if (!string.IsNullOrWhiteSpace(request.RenameFrom) &&
+        !string.Equals(request.RenameFrom, request.Name, StringComparison.OrdinalIgnoreCase))
+    {
+        // Rename: rewrite mapping references so faceplates follow the new name.
+        mappingStore.RenameDaGroup(request.SourceId, request.RenameFrom!, request.Name);
+    }
     DaRuntimeSettingsSnapshot snapshot = settings.SetSourceGroupIoMode(request.SourceId, request.Name!, request.Rate, normalizedMode);
     DaSourceRuntimeSettings? source = snapshot.GetSource(request.SourceId);
     if (source is null)
     {
         return Results.BadRequest(new { error = "Source not found." });
     }
+    // Keep member tags' numeric rate aligned with the named group (COM buckets are rate-keyed).
+    int tagsSynced = mappingStore.SyncDaGroupRate(request.SourceId, request.Name!, request.Rate);
 
     return Results.Json(new
     {
         version = snapshot.Version,
         sourceId = source.SourceId,
         rate = request.Rate,
-        ioMode = normalizedMode
+        ioMode = normalizedMode,
+        tagsSynced
     });
 });
-app.MapPost("/api/da/sources/groups/reset", (DaGroupIoModeResetRequest request, DaRuntimeSettings settings) =>
+app.MapPost("/api/da/sources/groups/reset", (DaGroupIoModeResetRequest request, DaRuntimeSettings settings, MappingStore mappingStore) =>
 {
     if (string.IsNullOrWhiteSpace(request.SourceId))
     {
@@ -731,12 +740,17 @@ app.MapPost("/api/da/sources/groups/reset", (DaGroupIoModeResetRequest request, 
     {
         return Results.BadRequest(new { error = "Source not found." });
     }
+    // Group deleted: member tags fall back to Source Default (per design).
+    int tagsDetached = string.IsNullOrWhiteSpace(request.Name)
+        ? 0
+        : mappingStore.ClearDaGroup(request.SourceId, request.Name!);
 
     return Results.Json(new
     {
         version = snapshot.Version,
         sourceId = source.SourceId,
-        rate = request.Rate
+        rate = request.Rate,
+        tagsDetached
     });
 });
 app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings settings, UaServerHost uaServer) =>

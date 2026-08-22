@@ -399,4 +399,23 @@ public sealed class DashboardPageTests
         Assert.Contains(".disabled = true", DashboardPage.Script);
         Assert.Contains(".disabled = false", DashboardPage.Script);
     }
+
+    [Fact]
+    public void Faceplate_UpdateRateSelectsDaGroup()
+    {
+        // UPDATE RATE on the faceplate Setup tab selects a named DA group:
+        // options come from the per-source group cache, saving stores daGroup
+        // (and aligned pollRateMs), legacy numeric rates stay selectable.
+        Assert.Contains("function ensureDaGroupsCache(", DashboardPage.Script);
+        Assert.Contains("function fpRateOptions(", DashboardPage.Script);
+        Assert.Contains("payload.daGroup", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void GroupRenamePropagatesToMappings()
+    {
+        // Renaming a group in the DA Groups modal tells the server the old name
+        // so mapping references (TagMapping.DaGroup) are rewritten, not orphaned.
+        Assert.Contains("renameFrom", DashboardPage.Script);
+    }
 }
