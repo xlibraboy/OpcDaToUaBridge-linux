@@ -363,4 +363,19 @@ public sealed class DashboardPageTests
             Assert.Contains(fragment, DashboardPage.Script);
         }
     }
+
+    [Fact]
+    public void DaGroups_AddControlsSurviveTableRerender()
+    {
+        // Regression: the add-row controls are mounted into the table's tfoot, so a
+        // naive table.innerHTML replacement destroys them — after the first add/save
+        // the add-row vanished and no further groups could be added. The controls
+        // must be stowed back into the hidden stash before innerHTML is replaced,
+        // then remounted into the fresh tfoot.
+        Assert.Contains("function stowDaGroupAddControls(", DashboardPage.Script);
+        Assert.Contains("stowDaGroupAddControls(sourceId)", DashboardPage.Script);
+        // Explicit node references survive subtree destruction; queries against the
+        // stash root do not, because the nodes were reparented into the old table.
+        Assert.Contains("_dagNodes", DashboardPage.Script);
+    }
 }

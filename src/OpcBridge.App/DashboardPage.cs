@@ -4495,26 +4495,42 @@ function ensureDaGroupAddControls(sourceId) {
         '<select id="daGroupsIo-' + sid + '"><option value="AutoDetect">AutoDetect</option><option value="Sync">Sync</option><option value="Async20">Async20</option></select>' +
         '<button class="btn" type="button">Add</button>' +
         '<span class="msg" id="daGroupsAddMsg-' + sid + '" style="margin-left:6px"></span>';
-    root.querySelector('button').addEventListener('click', () => addDaGroup(sourceId));
+    const btn = root.querySelector('button');
+    btn.addEventListener('click', () => addDaGroup(sourceId));
+    // Explicit refs: once these nodes are reparented into a rendered table they can no
+    // longer be found by querying root — and table.innerHTML replacement destroys them,
+    // so stow must detach them back into root before every re-render.
+    root._dagNodes = { input: root.querySelector('input'), rate: root.querySelectorAll('select')[0], io: root.querySelectorAll('select')[1], btn: btn, msg: root.querySelector('.msg') };
     stash.appendChild(root);
     state.daGroupAddControls[sourceId] = root;
+}
+function stowDaGroupAddControls(sourceId) {
+    // Detach the add-row controls from wherever they are currently mounted
+    // (a previous render's tfoot, which is about to be destroyed by innerHTML)
+    // back into the hidden stash root.
+    const root = (state.daGroupAddControls || {})[sourceId];
+    if (!root || !root._dagNodes) return;
+    Object.values(root._dagNodes).forEach(n => { if (n && n.parentNode) n.parentNode.removeChild(n); });
 }
 function mountDaGroupAddRow(sourceId) {
     // Move the stashed controls into this render's tfoot cells (appendChild reparents).
     const root = (state.daGroupAddControls || {})[sourceId];
-    if (!root) return;
+    if (!root || !root._dagNodes) return;
+    const n = root._dagNodes;
     const put = (cellId, node) => { const c = node && document.getElementById(cellId); if (c) c.appendChild(node); };
-    put('daGroupsAddNameCell-' + sourceId, root.querySelector('input'));
-    const selects = root.querySelectorAll('select');
-    put('daGroupsAddRateCell-' + sourceId, selects[0]);
-    put('daGroupsAddIoCell-' + sourceId, selects[1]);
-    put('daGroupsAddActionsCell-' + sourceId, root.querySelector('button'));
-    put('daGroupsAddActionsCell-' + sourceId, root.querySelector('.msg'));
+    put('daGroupsAddNameCell-' + sourceId, n.input);
+    put('daGroupsAddRateCell-' + sourceId, n.rate);
+    put('daGroupsAddIoCell-' + sourceId, n.io);
+    put('daGroupsAddActionsCell-' + sourceId, n.btn);
+    put('daGroupsAddActionsCell-' + sourceId, n.msg);
 }
 function renderDaGroupsForSource(sourceId, groups, sourceIoMode) {
     const hint = document.getElementById('daGroupsHint-' + sourceId);
     const table = document.getElementById('daGroupsTable-' + sourceId);
     if (!table) return;
+    // The add-row controls may currently be mounted in the table's tfoot; detach
+    // them before innerHTML replacement destroys their subtree.
+    stowDaGroupAddControls(sourceId);
     if (!groups || groups.length === 0) {
         if (hint) { hint.textContent = 'No groups — default (' + prettyIoMode(sourceIoMode) + ')'; hint.style.cssText = 'font-size:11px'; }
         // Keep the add-row available even with zero groups.
