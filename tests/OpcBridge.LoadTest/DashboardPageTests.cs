@@ -340,13 +340,18 @@ public sealed class DashboardPageTests
     [Fact]
     public void DaGroups_AddRowRendersInsideTableFooterForColumnAlignment()
     {
-        // The add-group controls must be mounted into a tfoot of the same table so
+        // The add-group controls must be part of the table's tfoot so
         // Name/Rate/I-O/Add line up under their columns instead of floating mid-row.
+        // v2 renders them declaratively on every pass — no DOM reparenting machinery.
         Assert.Contains("<tfoot>", DashboardPage.Script);
-        Assert.Contains("function mountDaGroupAddRow(", DashboardPage.Script);
-        Assert.Contains("mountDaGroupAddRow(sourceId)", DashboardPage.Script);
-        // Old floating flex add-row div is gone.
-        Assert.DoesNotContain("margin-top:6px;align-items:center;flex-wrap:wrap", DashboardPage.Script);
+        foreach (string fragment in new[]
+        {
+            "ensureDaGroupAddControls", "mountDaGroupAddRow", "stowDaGroupAddControls",
+            "daGroupAddStash", "_dagNodes"
+        })
+        {
+            Assert.DoesNotContain(fragment, DashboardPage.Script);
+        }
     }
 
     [Fact]
@@ -365,17 +370,21 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
-    public void DaGroups_AddControlsSurviveTableRerender()
+    public void DaGroups_RerenderIsSequencedAndDraftIsPreserved()
     {
-        // Regression: the add-row controls are mounted into the table's tfoot, so a
-        // naive table.innerHTML replacement destroys them — after the first add/save
-        // the add-row vanished and no further groups could be added. The controls
-        // must be stowed back into the hidden stash before innerHTML is replaced,
-        // then remounted into the fresh tfoot.
-        Assert.Contains("function stowDaGroupAddControls(", DashboardPage.Script);
-        Assert.Contains("stowDaGroupAddControls(sourceId)", DashboardPage.Script);
-        // Explicit node references survive subtree destruction; queries against the
-        // stash root do not, because the nodes were reparented into the old table.
-        Assert.Contains("_dagNodes", DashboardPage.Script);
+        // Regression: racing follow-up GETs could repaint older data over newer
+        // ("sometimes added, sometimes not"), and every rebuild lost the typed
+        // group name. Renders are now sequenced per source and the pending
+        // add-row values ride through a draft that is written into fresh markup.
+        Assert.Contains("state.daGroupRenderSeq", DashboardPage.Script);
+        Assert.Contains("state.daGroupRenderSeq[sourceId] = seq", DashboardPage.Script);
+        Assert.Contains("state.daGroupAddDrafts", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void DaGroups_AddButtonDisablesWhileInFlight()
+    {
+        Assert.Contains(".disabled = true", DashboardPage.Script);
+        Assert.Contains(".disabled = false", DashboardPage.Script);
     }
 }

@@ -4462,86 +4462,69 @@ async function loadDaGroupsTab() {
             card.appendChild(header);
             card.appendChild(body);
             container.appendChild(card);
-            ensureDaGroupAddControls(src.sourceId);
-            // load groups for this source
-            try {
-                const r = await fetch('/api/da/sources/groups?sourceId=' + encodeURIComponent(src.sourceId));
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                const data = await r.json();
-                renderDaGroupsForSource(src.sourceId, data.groups || [], data.sourceIoMode);
-            } catch (e) {
-                const hint = document.getElementById('daGroupsHint-' + src.sourceId);
-                if (hint) hint.textContent = 'Failed: ' + e.message;
-            }
+            await reloadDaGroups(src.sourceId);
         }
     } catch (e) {
         if (msg) msg.textContent = 'Failed to load: ' + e.message;
     }
 }
-function ensureDaGroupAddControls(sourceId) {
-    // Build the add-group controls once per source and stash them outside the
-    // table; renderDaGroupsForSource moves them into the table's tfoot so they
-    // align under their columns. Rebuilding cards on tab reload must not recreate
-    // them — in-progress input values would be lost.
-    state.daGroupAddControls = state.daGroupAddControls || {};
-    if (state.daGroupAddControls[sourceId]) return;
-    const sid = esc(sourceId);
-    let stash = document.getElementById('daGroupAddStash');
-    if (!stash) { stash = document.createElement('div'); stash.id = 'daGroupAddStash'; stash.style.display = 'none'; document.body.appendChild(stash); }
-    const root = document.createElement('div');
-    root.innerHTML =
-        '<input id="daGroupsName-' + sid + '" type="text" placeholder="Group name" value="OpcBridge_' + (Date.now() % 10000) + '">' +
-        '<select id="daGroupsRate-' + sid + '"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000" selected>1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select>' +
-        '<select id="daGroupsIo-' + sid + '"><option value="AutoDetect">AutoDetect</option><option value="Sync">Sync</option><option value="Async20">Async20</option></select>' +
-        '<button class="btn" type="button">Add</button>' +
-        '<span class="msg" id="daGroupsAddMsg-' + sid + '" style="margin-left:6px"></span>';
-    const btn = root.querySelector('button');
-    btn.addEventListener('click', () => addDaGroup(sourceId));
-    // Explicit refs: once these nodes are reparented into a rendered table they can no
-    // longer be found by querying root — and table.innerHTML replacement destroys them,
-    // so stow must detach them back into root before every re-render.
-    root._dagNodes = { input: root.querySelector('input'), rate: root.querySelectorAll('select')[0], io: root.querySelectorAll('select')[1], btn: btn, msg: root.querySelector('.msg') };
-    stash.appendChild(root);
-    state.daGroupAddControls[sourceId] = root;
+function readDaGroupDraft(sourceId) {
+    // Capture the pending add-row values so the next declarative re-render
+    // restores them into freshly built markup. The status message is NOT read
+    // back from the DOM — actions set it explicitly via their drafts.
+    state.daGroupAddDrafts = state.daGroupAddDrafts || {};
+    const d = state.daGroupAddDrafts[sourceId] || {};
+    const nameEl = document.getElementById('daGroupsName-' + sourceId);
+    const rateEl = document.getElementById('daGroupsRate-' + sourceId);
+    const ioEl = document.getElementById('daGroupsIo-' + sourceId);
+    const attached = el => el && document.body.contains(el);
+    if (attached(nameEl)) d.name = nameEl.value;
+    if (attached(rateEl)) d.rate = rateEl.value;
+    if (attached(ioEl)) d.io = ioEl.value;
+    if (d.name === undefined || d.name === null) d.name = 'OpcBridge_' + (Date.now() % 10000);
+    state.daGroupAddDrafts[sourceId] = d;
+    return d;
 }
-function stowDaGroupAddControls(sourceId) {
-    // Detach the add-row controls from wherever they are currently mounted
-    // (a previous render's tfoot, which is about to be destroyed by innerHTML)
-    // back into the hidden stash root.
-    const root = (state.daGroupAddControls || {})[sourceId];
-    if (!root || !root._dagNodes) return;
-    Object.values(root._dagNodes).forEach(n => { if (n && n.parentNode) n.parentNode.removeChild(n); });
+function daGroupSetMsg(sourceId, t) {
+    // Status line lives in the add-row; stored in the draft so a concurrent
+    // re-render replays it, and painted into the live DOM immediately.
+    state.daGroupAddDrafts = state.daGroupAddDrafts || {};
+    state.daGroupAddDrafts[sourceId] = Object.assign({}, state.daGroupAddDrafts[sourceId] || {}, { msg: t });
+    const el = document.getElementById('daGroupsAddMsg-' + sourceId);
+    if (el) el.textContent = t;
 }
-function mountDaGroupAddRow(sourceId) {
-    // Move the stashed controls into this render's tfoot cells (appendChild reparents).
-    const root = (state.daGroupAddControls || {})[sourceId];
-    if (!root || !root._dagNodes) return;
-    const n = root._dagNodes;
-    const put = (cellId, node) => { const c = node && document.getElementById(cellId); if (c) c.appendChild(node); };
-    put('daGroupsAddNameCell-' + sourceId, n.input);
-    put('daGroupsAddRateCell-' + sourceId, n.rate);
-    put('daGroupsAddIoCell-' + sourceId, n.io);
-    put('daGroupsAddActionsCell-' + sourceId, n.btn);
-    put('daGroupsAddActionsCell-' + sourceId, n.msg);
+async function reloadDaGroups(sourceId) {
+    // Sequenced per source: whichever request started latest wins; superseded
+    // responses are dropped instead of painting stale data over newer.
+    state.daGroupRenderSeq = state.daGroupRenderSeq || {};
+    const seq = (state.daGroupRenderSeq[sourceId] || 0) + 1;
+    state.daGroupRenderSeq[sourceId] = seq;
+    try {
+        const r = await fetch('/api/da/sources/groups?sourceId=' + encodeURIComponent(sourceId));
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const data = await r.json();
+        if (state.daGroupRenderSeq[sourceId] !== seq) return false;
+        renderDaGroupsForSource(sourceId, data.groups || [], data.sourceIoMode);
+        return true;
+    } catch (e) {
+        if (state.daGroupRenderSeq[sourceId] === seq) {
+            const hint = document.getElementById('daGroupsHint-' + sourceId);
+            if (hint) hint.textContent = 'Failed to load groups: ' + e.message;
+        }
+        return false;
+    }
 }
 function renderDaGroupsForSource(sourceId, groups, sourceIoMode) {
     const hint = document.getElementById('daGroupsHint-' + sourceId);
     const table = document.getElementById('daGroupsTable-' + sourceId);
     if (!table) return;
-    // The add-row controls may currently be mounted in the table's tfoot; detach
-    // them before innerHTML replacement destroys their subtree.
-    stowDaGroupAddControls(sourceId);
+    // Pending add-row values survive the rebuild via the draft; every render
+    // repaints the whole table declaratively — no node is ever moved.
+    const d = readDaGroupDraft(sourceId);
     if (!groups || groups.length === 0) {
         if (hint) { hint.textContent = 'No groups — default (' + prettyIoMode(sourceIoMode) + ')'; hint.style.cssText = 'font-size:11px'; }
-        // Keep the add-row available even with zero groups.
-        table.innerHTML = '<table class="tbl"><tbody></tbody><tfoot><tr>' +
-            '<td id="daGroupsAddNameCell-' + esc(sourceId) + '"></td>' +
-            '<td id="daGroupsAddRateCell-' + esc(sourceId) + '"></td>' +
-            '<td id="daGroupsAddIoCell-' + esc(sourceId) + '"></td>' +
-            '<td></td><td></td>' +
-            '<td id="daGroupsAddActionsCell-' + esc(sourceId) + '" class="num" style="white-space:nowrap"></td>' +
-            '</tr></tfoot></table>';
-        mountDaGroupAddRow(sourceId);
+        table.innerHTML = '<table class="tbl" style="width:100%;margin-top:4px"><thead><tr><th>Name</th><th>Rate</th><th>I/O Mode</th><th>Effective</th><th class="num">Tags</th><th class="num"></th></tr></thead><tbody></tbody>' + daGroupsTfootHtml(sourceId, d) + '</table>';
+        consumeDaGroupMsg(sourceId);
         return;
     }
     if (hint) { hint.textContent = groups.length + ' group(s) — ' + prettyIoMode(sourceIoMode) + ' default'; hint.style.cssText = 'font-size:11px;margin-bottom:4px'; }
@@ -4560,75 +4543,97 @@ function renderDaGroupsForSource(sourceId, groups, sourceIoMode) {
         html += '<td class="num" style="padding:3px 6px">' + esc(String(g.tagCount ?? 0)) + '</td>';
         html += '<td class="num" style="padding:3px 6px;white-space:nowrap">' + (isDef ? '<span class="msg">—</span>' : '<button class="btn ghost" type="button" style="height:20px;padding:0 6px;font-size:11px" onclick="saveDaGroupEdit(\'' + esc(sourceId).replace(/'/g, "\'") + '\',\'' + esc(g.name).replace(/'/g, "\'") + '\',this)">Save</button> <button class="btn ghost" type="button" style="height:20px;padding:0 6px;font-size:11px" onclick="deleteDaGroup(\'' + esc(sourceId).replace(/'/g, "\'") + '\',\'' + esc(g.name).replace(/'/g, "\'") + '\')">Del</button>') + '</td></tr>';
     }
-    html += '</tbody><tfoot><tr>' +
-        '<td id="daGroupsAddNameCell-' + esc(sourceId) + '"></td>' +
-        '<td id="daGroupsAddRateCell-' + esc(sourceId) + '"></td>' +
-        '<td id="daGroupsAddIoCell-' + esc(sourceId) + '"></td>' +
-        '<td></td><td></td>' +
-        '<td id="daGroupsAddActionsCell-' + esc(sourceId) + '" class="num" style="white-space:nowrap"></td>' +
-        '</tr></tfoot>';
+    html += daGroupsTfootHtml(sourceId, d);
     table.innerHTML = html;
-    mountDaGroupAddRow(sourceId);
+    consumeDaGroupMsg(sourceId);
 }
-async function addDaGroup(sourceId) {
+function daGroupsTfootHtml(sourceId, d) {
+    // Declarative add-row: rebuilt from the draft on every render so pending
+    // input values survive; nothing is reparented between renders.
+    const sidA = esc(sourceId).replace(/'/g, "\\'");
+    const sid = esc(sourceId);
+    let rateOpts = '';
+    for (const o of [['100','100 ms'],['250','250 ms'],['500','500 ms'],['1000','1 s'],['2000','2 s'],['5000','5 s'],['10000','10 s']]) {
+        rateOpts += '<option value="' + o[0] + '"' + (String(d.rate || '1000') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>';
+    }
+    let ioOpts = '';
+    for (const m of ['AutoDetect', 'Sync', 'Async20']) {
+        ioOpts += '<option value="' + m + '"' + ((d.io || 'AutoDetect') === m ? ' selected' : '') + '>' + (m === 'AutoDetect' ? 'AutoDetect' : m) + '</option>';
+    }
+    const dis = d.busy ? ' disabled' : '';
+    return '<tfoot><tr>' +
+        '<td><input id="daGroupsName-' + sid + '" type="text" placeholder="Group name" value="' + esc(d.name || '') + '"' + dis + '></td>' +
+        '<td><select id="daGroupsRate-' + sid + '"' + dis + '>' + rateOpts + '</select></td>' +
+        '<td><select id="daGroupsIo-' + sid + '"' + dis + '>' + ioOpts + '</select></td>' +
+        '<td></td><td></td>' +
+        '<td class="num" style="white-space:nowrap"><button class="btn" id="daGroupsAddBtn-' + sid + '" type="button" onclick="addDaGroup(\'' + sidA + '\', this)"' + dis + '>Add</button><span class="msg" id="daGroupsAddMsg-' + sid + '" style="margin-left:6px">' + esc(d.msg || '') + '</span></td>' +
+        '</tr></tfoot>';
+}
+function consumeDaGroupMsg(sourceId) {
+    // The status message is transient: baked into this render, then consumed so
+    // it does not replay on unrelated later re-renders.
+    state.daGroupAddDrafts = state.daGroupAddDrafts || {};
+    const d = state.daGroupAddDrafts[sourceId];
+    if (d && d.msg) state.daGroupAddDrafts[sourceId] = Object.assign({}, d, { msg: '' });
+}
+async function addDaGroup(sourceId, btn) {
     const nameInput = document.getElementById('daGroupsName-' + sourceId);
     const rateSel = document.getElementById('daGroupsRate-' + sourceId);
     const ioSel = document.getElementById('daGroupsIo-' + sourceId);
-    const msg = document.getElementById('daGroupsAddMsg-' + sourceId);
-    if (!rateSel || !ioSel) return;
-    const name = nameInput ? nameInput.value.trim() : '';
-    if (!name) { if (msg) msg.textContent = 'Name required'; return; }
+    if (!nameInput || !rateSel || !ioSel) return;
+    if (btn && btn.disabled) return;
+    const name = nameInput.value.trim();
     const rate = parseInt(rateSel.value, 10);
     const ioMode = ioSel.value;
-    if (msg) msg.textContent = '';
+    if (!name) { daGroupSetMsg(sourceId, 'Name required'); return; }
+    // in-flight: disable controls via the next render's draft and freeze the live ones now
+    state.daGroupAddDrafts = state.daGroupAddDrafts || {};
+    state.daGroupAddDrafts[sourceId] = Object.assign({}, readDaGroupDraft(sourceId), { busy: true });
+    if (btn) btn.disabled = true;
+    daGroupSetMsg(sourceId, '');
     try {
         const r = await fetch('/api/da/sources/groups', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId, name, rate, ioMode }) });
         const p = await r.json();
         if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
-        if (msg) msg.textContent = 'Added ' + name + ' (' + rate + ' ms) → ' + prettyIoMode(ioMode);
-        // targeted reload without full tab flash
-        try {
-            const gr = await fetch('/api/da/sources/groups?sourceId=' + encodeURIComponent(sourceId));
-            const data = await gr.json();
-            renderDaGroupsForSource(sourceId, data.groups || [], data.sourceIoMode);
-        } catch {}
-        refresh().catch(()=>{});
-        loadGroupsSection().catch(()=>{});
+        // success: fresh suggested name; keep the chosen rate/io
+        state.daGroupAddDrafts[sourceId] = Object.assign({}, state.daGroupAddDrafts[sourceId], { name: 'OpcBridge_' + (Date.now() % 10000), busy: false });
+        await reloadDaGroups(sourceId);
+        daGroupSetMsg(sourceId, 'Added ' + name + ' (' + rate + ' ms) → ' + prettyIoMode(ioMode));
+        refresh().catch(() => {});
+        loadGroupsSection().catch(() => {});
     } catch (e) {
-        if (msg) msg.textContent = 'Add failed: ' + e.message;
+        daGroupSetMsg(sourceId, 'Add failed: ' + e.message);
+        state.daGroupAddDrafts[sourceId] = Object.assign({}, state.daGroupAddDrafts[sourceId] || {}, { busy: false });
+        const b = document.getElementById('daGroupsAddBtn-' + sourceId);
+        if (b) b.disabled = false;
     }
 }
 async function deleteDaGroup(sourceId, name) {
     if (!confirm('Delete group ' + name + ' for ' + sourceId + '?')) return;
-    const msg = document.getElementById('daGroupsAddMsg-' + sourceId);
     try {
         const r = await fetch('/api/da/sources/groups/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId, name }) });
         const p = await r.json();
         if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
-        if (msg) msg.textContent = 'Deleted ' + name;
-        try {
-            const gr = await fetch('/api/da/sources/groups?sourceId=' + encodeURIComponent(sourceId));
-            const data = await gr.json();
-            renderDaGroupsForSource(sourceId, data.groups || [], data.sourceIoMode);
-        } catch {}
+        daGroupSetMsg(sourceId, 'Deleted ' + name);
+        await reloadDaGroups(sourceId);
         refresh().catch(()=>{});
         loadGroupsSection().catch(()=>{});
     } catch (e) {
-        if (msg) msg.textContent = 'Delete failed: ' + e.message;
+        daGroupSetMsg(sourceId, 'Delete failed: ' + e.message);
     }
 }
 async function saveDaGroupEdit(sourceId, oldName, btn) {
-    const row = btn.closest('tr');
-    const msg = document.getElementById('daGroupsAddMsg-' + sourceId);
+    const row = btn ? btn.closest('tr') : null;
     if (!row) return;
+    if (btn && btn.disabled) return;
+    if (btn) btn.disabled = true;
     const nameInput = row.querySelector('input[data-field="name"]');
     const rateSel = row.querySelector('select[data-field="rate"]');
     const ioSel = row.querySelector('select[data-field="io"]') || row.querySelector('select[data-name]');
     const newName = nameInput ? nameInput.value.trim() : oldName;
     const newRate = rateSel ? parseInt(rateSel.value, 10) : 1000;
     const newIoMode = ioSel ? ioSel.value : 'AutoDetect';
-    if (!newName) { if (msg) msg.textContent = 'Name required'; return; }
-    if (msg) msg.textContent = '';
+    if (!newName) { daGroupSetMsg(sourceId, 'Name required'); if (btn) btn.disabled = false; return; }
     try {
         // if name or rate changed, delete old and add new
         if (newName !== oldName) {
@@ -4643,20 +4648,17 @@ async function saveDaGroupEdit(sourceId, oldName, btn) {
         const r = await fetch('/api/da/sources/groups', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId, name: newName, rate: newRate, ioMode: newIoMode }) });
         const p = await r.json();
         if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
-        if (msg) msg.textContent = 'Saved ' + newName + ' (' + newRate + ' ms) → ' + prettyIoMode(newIoMode);
-        try {
-            const gr = await fetch('/api/da/sources/groups?sourceId=' + encodeURIComponent(sourceId));
-            const data = await gr.json();
-            renderDaGroupsForSource(sourceId, data.groups || [], data.sourceIoMode);
-        } catch {}
+        daGroupSetMsg(sourceId, 'Saved ' + newName + ' (' + newRate + ' ms) → ' + prettyIoMode(newIoMode));
+        await reloadDaGroups(sourceId);
         refresh().catch(()=>{});
         loadGroupsSection().catch(()=>{});
     } catch (e) {
-        if (msg) msg.textContent = 'Save failed: ' + e.message;
+        daGroupSetMsg(sourceId, 'Save failed: ' + e.message);
+    } finally {
+        if (btn && document.body.contains(btn)) btn.disabled = false;
     }
 }
 async function updateDaGroup(sourceId, name, ioMode) {
-    const msg = document.getElementById('daGroupsAddMsg-' + sourceId);
     // find current rate for this name to keep it
     let rate = 1000;
     try {
@@ -4672,12 +4674,12 @@ async function updateDaGroup(sourceId, name, ioMode) {
     } catch {}
     try {
         const r = await fetch('/api/da/sources/groups', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId, name, rate, ioMode }) });
-        const p = await r.json();
-        if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
-        if (msg) msg.textContent = 'Updated ' + rate + ' ms → ' + prettyIoMode(ioMode);
-        await refresh();
+        if (!r.ok) { const p = await r.json().catch(() => ({})); throw new Error(p.error || ('HTTP ' + r.status)); }
+        daGroupSetMsg(sourceId, 'Updated ' + rate + ' ms → ' + prettyIoMode(ioMode));
+        await reloadDaGroups(sourceId);
+        refresh().catch(() => {});
     } catch (e) {
-        if (msg) msg.textContent = 'Update failed: ' + e.message;
+        daGroupSetMsg(sourceId, 'Update failed: ' + e.message);
     }
 }
 function expandAllDaGroups() {
