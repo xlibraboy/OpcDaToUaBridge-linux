@@ -232,6 +232,18 @@ internal static class DashboardPage
         .dag-src-meta { font-family: 'Consolas', monospace; text-transform: none; letter-spacing: 0; margin-left: 2px; }
         .dag-src-host { margin-left: auto; font-family: 'Consolas', monospace; text-transform: none; letter-spacing: 0; }
 
+        /* DA Groups v3 — card grid */
+        .dag-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; }
+        .dag-card { background: var(--bg); border: 1px solid var(--border2); border-radius: 6px; padding: 9px 11px; display: flex; flex-direction: column; gap: 6px; transition: opacity .15s ease; }
+        .dag-card.default { border-color: rgba(56,189,248,.45); }
+        .dag-card .n { font-size: 12.5px; font-weight: 600; word-break: break-all; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+        .dag-badges { display: flex; gap: 5px; flex-wrap: wrap; }
+        .dag-badge { font-size: 10px; padding: 1px 7px; border-radius: 9px; background: var(--panel2); border: 1px solid var(--border2); color: var(--muted); white-space: nowrap; }
+        .dag-badge.accent { color: var(--accent); border-color: rgba(56,189,248,.35); }
+        .dag-meta { font-size: 11px; color: var(--muted); }
+        .dag-actions { display: flex; gap: 6px; margin-top: auto; align-items: center; }
+        .dag-actions .btn { height: 22px; padding: 0 9px; font-size: 11px; }
+
         .log-entry .message { white-space: pre-wrap; word-break: break-word; }
         .log-entry .exception { white-space: pre-wrap; word-break: break-word; margin-top: 6px; color: var(--bad); }
         .log-entry .meta .lvl { font-weight: 600; }
@@ -784,6 +796,19 @@ internal static class DashboardPage
                 </div>
             </div>
         </div>
+    </div>
+</div>
+<div class="modal-overlay" id="dagModal" onclick="if(event.target===this)closeDagModal()">
+    <div class="modal" style="width:min(420px,94vw)">
+        <div class="modal-h"><div class="n" id="dagModalTitle">Add Group</div><button class="modal-close" type="button" onclick="closeDagModal()">×</button></div>
+        <div class="modal-b">
+            <div class="field"><label class="fl">Source</label><span class="msg" id="dagModalSource" style="font-family:'Consolas',monospace"></span></div>
+            <div class="field"><label class="fl">Name</label><input id="dagModalName" type="text" placeholder="OpcBridge_1000" style="flex:1"></div>
+            <div class="field"><label class="fl">Rate</label><select id="dagModalRate" style="flex:1"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
+            <div class="field"><label class="fl">I/O Mode</label><select id="dagModalIo" style="flex:1"><option value="AutoDetect">AutoDetect</option><option value="Sync">Sync</option><option value="Async20">Async20</option></select></div>
+            <div class="msg" id="dagModalMsg"></div>
+        </div>
+        <div class="modal-f"><button class="btn ghost" type="button" onclick="closeDagModal()">Cancel</button><button class="btn" type="button" id="dagModalSaveBtn" onclick="dagModalSave()">Save</button></div>
     </div>
 </div>
 <div class="modal-overlay" id="addSourceWizard" onclick="if(event.target===this)closeAddSourceWizard()">
@@ -4443,7 +4468,7 @@ async function loadDaGroupsTab() {
             header.style.cssText = 'padding:6px 10px;font-size:12px;gap:6px;cursor:pointer;user-select:none';
             const bodyId = 'daGroupsBody-' + src.sourceId;
             const isCollapsed = (state.collapsedDaGroups || {})[src.sourceId];
-            header.innerHTML = '<span class="toggle" style="width:14px;text-align:center;font-size:10px;opacity:.6">' + (isCollapsed ? '▶' : '▼') + '</span><span class="dag-src-name">' + esc(src.displayName || src.sourceId) + '</span> <span class="msg dag-src-meta">' + esc(src.sourceId) + ' · ' + esc(src.progId || '') + '</span><span class="msg dag-src-host">' + esc(src.host || 'localhost') + '</span>';
+            header.innerHTML = '<span class="toggle" style="width:14px;text-align:center;font-size:10px;opacity:.6">' + (isCollapsed ? '▶' : '▼') + '</span><span class="dag-src-name">' + esc(src.displayName || src.sourceId) + '</span> <span class="msg dag-src-meta">' + esc(src.sourceId) + ' · ' + esc(src.progId || '') + '</span><span class="msg dag-src-host">' + esc(src.host || 'localhost') + '</span><button class="btn ghost" type="button" style="height:20px;padding:0 8px;font-size:11px" onclick="event.stopPropagation();openDagAdd(\'' + esc(src.sourceId).replace(/'/g, "\'") + '\')">+ Add Group</button>';
             const body = document.createElement('div');
             body.className = 'box-b';
             body.id = bodyId;
@@ -4468,30 +4493,9 @@ async function loadDaGroupsTab() {
         if (msg) msg.textContent = 'Failed to load: ' + e.message;
     }
 }
-function readDaGroupDraft(sourceId) {
-    // Capture the pending add-row values so the next declarative re-render
-    // restores them into freshly built markup. The status message is NOT read
-    // back from the DOM — actions set it explicitly via their drafts.
-    state.daGroupAddDrafts = state.daGroupAddDrafts || {};
-    const d = state.daGroupAddDrafts[sourceId] || {};
-    const nameEl = document.getElementById('daGroupsName-' + sourceId);
-    const rateEl = document.getElementById('daGroupsRate-' + sourceId);
-    const ioEl = document.getElementById('daGroupsIo-' + sourceId);
-    const attached = el => el && document.body.contains(el);
-    if (attached(nameEl)) d.name = nameEl.value;
-    if (attached(rateEl)) d.rate = rateEl.value;
-    if (attached(ioEl)) d.io = ioEl.value;
-    if (d.name === undefined || d.name === null) d.name = 'OpcBridge_' + (Date.now() % 10000);
-    state.daGroupAddDrafts[sourceId] = d;
-    return d;
-}
-function daGroupSetMsg(sourceId, t) {
-    // Status line lives in the add-row; stored in the draft so a concurrent
-    // re-render replays it, and painted into the live DOM immediately.
-    state.daGroupAddDrafts = state.daGroupAddDrafts || {};
-    state.daGroupAddDrafts[sourceId] = Object.assign({}, state.daGroupAddDrafts[sourceId] || {}, { msg: t });
-    const el = document.getElementById('daGroupsAddMsg-' + sourceId);
-    if (el) el.textContent = t;
+function setDaGroupsStatus(t) {
+    const m = document.getElementById('daGroupsMsg');
+    if (m) m.textContent = t;
 }
 async function reloadDaGroups(sourceId) {
     // Sequenced per source: whichever request started latest wins; superseded
@@ -4514,99 +4518,41 @@ async function reloadDaGroups(sourceId) {
         return false;
     }
 }
+function daPrettyRate(ms) {
+    const n = Number(ms) || 0;
+    return n >= 1000 ? (n / 1000) + ' s' : n + ' ms';
+}
 function renderDaGroupsForSource(sourceId, groups, sourceIoMode) {
     const hint = document.getElementById('daGroupsHint-' + sourceId);
-    const table = document.getElementById('daGroupsTable-' + sourceId);
-    if (!table) return;
-    // Pending add-row values survive the rebuild via the draft; every render
-    // repaints the whole table declaratively — no node is ever moved.
-    const d = readDaGroupDraft(sourceId);
+    const wrap = document.getElementById('daGroupsTable-' + sourceId);
+    if (!wrap) return;
     if (!groups || groups.length === 0) {
         if (hint) { hint.textContent = 'No groups — default (' + prettyIoMode(sourceIoMode) + ')'; hint.style.cssText = 'font-size:11px'; }
-        table.innerHTML = '<table class="tbl" style="width:100%;margin-top:4px"><thead><tr><th>Name</th><th>Rate</th><th>I/O Mode</th><th>Effective</th><th class="num">Tags</th><th class="num"></th></tr></thead><tbody></tbody>' + daGroupsTfootHtml(sourceId, d) + '</table>';
-        consumeDaGroupMsg(sourceId);
+        wrap.innerHTML = '';
         return;
     }
-    if (hint) { hint.textContent = groups.length + ' group(s) — ' + prettyIoMode(sourceIoMode) + ' default'; hint.style.cssText = 'font-size:11px;margin-bottom:4px'; }
-    let html = '<table class="tbl" style="width:100%;margin-top:4px"><thead><tr><th>Name</th><th>Rate</th><th>I/O Mode</th><th>Effective</th><th class="num">Tags</th><th class="num"></th></tr></thead><tbody>';
+    if (hint) { hint.textContent = groups.length + ' group(s) — ' + prettyIoMode(sourceIoMode) + ' default'; hint.style.cssText = 'font-size:11px;margin-bottom:6px'; }
+    const sidA = esc(sourceId).replace(/'/g, "\\'");
+    let html = '<div class="dag-grid">';
     for (const g of groups) {
         const isDef = !!g.isDefault;
-        const rowId = 'row-' + sourceId + '-' + g.name.replace(/[^a-zA-Z0-9]/g, '_');
-        html += '<tr style="height:26px" id="' + rowId + '"><td style="padding:3px 6px">' + (isDef ? esc(g.name) + ' <span class="badge" style="font-size:10px;padding:1px 4px">default</span>' : '<input type="text" value="' + esc(g.name) + '" data-oldname="' + esc(g.name) + '" data-field="name" style="width:90px;height:20px;font-size:11px;padding:0 4px">') + '</td>';
-        html += '<td style="padding:3px 6px">' + (isDef ? esc(String(g.rate)) + ' ms' : '<select data-field="rate" style="height:20px;font-size:11px;padding:0 4px"><option value="100"' + (g.rate===100?' selected':'') + '>100 ms</option><option value="250"' + (g.rate===250?' selected':'') + '>250 ms</option><option value="500"' + (g.rate===500?' selected':'') + '>500 ms</option><option value="1000"' + (g.rate===1000?' selected':'') + '>1 s</option><option value="2000"' + (g.rate===2000?' selected':'') + '>2 s</option><option value="5000"' + (g.rate===5000?' selected':'') + '>5 s</option><option value="10000"' + (g.rate===10000?' selected':'') + '>10 s</option></select>') + '</td>';
-        html += '<td style="padding:3px 6px"><select data-name="' + esc(g.name) + '" data-source="' + esc(sourceId) + '" data-field="io" onchange="if(this.dataset.isDefault!==&#39;true&#39;) updateDaGroup(\'' + esc(sourceId).replace(/'/g, "\'") + '\',\'' + esc(g.name).replace(/'/g, "\'") + '\',this.value)"' + (isDef ? ' disabled' : '') + ' style="height:20px;font-size:11px;padding:0 4px" ' + (isDef ? 'data-isDefault="true"' : '') + '>';
-        for (const m of ['AutoDetect','Sync','Async20']) {
-            html += '<option value="' + m + '"' + (g.ioMode===m?' selected':'') + '>' + (m==='AutoDetect'?'AutoDetect':m) + '</option>';
-        }
-        html += '</select></td>';
-        html += '<td style="padding:3px 6px;font-size:11px">' + esc(prettyIoMode(g.effective)) + '</td>';
-        html += '<td class="num" style="padding:3px 6px">' + esc(String(g.tagCount ?? 0)) + '</td>';
-        html += '<td class="num" style="padding:3px 6px;white-space:nowrap">' + (isDef ? '<span class="msg">—</span>' : '<button class="btn ghost" type="button" style="height:20px;padding:0 6px;font-size:11px" onclick="saveDaGroupEdit(\'' + esc(sourceId).replace(/'/g, "\'") + '\',\'' + esc(g.name).replace(/'/g, "\'") + '\',this)">Save</button> <button class="btn ghost" type="button" style="height:20px;padding:0 6px;font-size:11px" onclick="deleteDaGroup(\'' + esc(sourceId).replace(/'/g, "\'") + '\',\'' + esc(g.name).replace(/'/g, "\'") + '\')">Del</button>') + '</td></tr>';
+        const tags = g.tagCount ?? 0;
+        html += '<div class="dag-card' + (isDef ? ' default' : '') + '" data-name="' + esc(g.name) + '" data-rate="' + esc(String(g.rate)) + '" data-io="' + esc(g.ioMode || 'AutoDetect') + '">' +
+            '<div class="n">' + esc(g.name) + (isDef ? ' <span class="badge partial" style="font-size:10px;padding:0 7px">default</span>' : '') + '</div>' +
+            '<div class="dag-badges">' +
+                '<span class="dag-badge accent">' + esc(daPrettyRate(g.rate)) + '</span>' +
+                '<span class="dag-badge">' + esc(prettyIoMode(g.ioMode || 'AutoDetect')) + '</span>' +
+            '</div>' +
+            '<div class="dag-meta">effective: ' + esc(prettyIoMode(g.effective)) + ' · ' + tags + ' tag' + (tags === 1 ? '' : 's') + '</div>' +
+            '<div class="dag-actions">' + (isDef
+                ? '<span class="msg">read-only</span>'
+                : '<button class="btn ghost" type="button" onclick="openDagEdit(\'' + sidA + '\', this.closest(\'.dag-card\'))">Edit</button>' +
+                  '<button class="btn ghost" type="button" onclick="deleteDaGroup(\'' + sidA + '\', \'' + esc(g.name).replace(/'/g, "\\'") + '\')">Delete</button>') +
+            '</div>' +
+        '</div>';
     }
-    html += daGroupsTfootHtml(sourceId, d);
-    table.innerHTML = html;
-    consumeDaGroupMsg(sourceId);
-}
-function daGroupsTfootHtml(sourceId, d) {
-    // Declarative add-row: rebuilt from the draft on every render so pending
-    // input values survive; nothing is reparented between renders.
-    const sidA = esc(sourceId).replace(/'/g, "\\'");
-    const sid = esc(sourceId);
-    let rateOpts = '';
-    for (const o of [['100','100 ms'],['250','250 ms'],['500','500 ms'],['1000','1 s'],['2000','2 s'],['5000','5 s'],['10000','10 s']]) {
-        rateOpts += '<option value="' + o[0] + '"' + (String(d.rate || '1000') === o[0] ? ' selected' : '') + '>' + o[1] + '</option>';
-    }
-    let ioOpts = '';
-    for (const m of ['AutoDetect', 'Sync', 'Async20']) {
-        ioOpts += '<option value="' + m + '"' + ((d.io || 'AutoDetect') === m ? ' selected' : '') + '>' + (m === 'AutoDetect' ? 'AutoDetect' : m) + '</option>';
-    }
-    const dis = d.busy ? ' disabled' : '';
-    return '<tfoot><tr>' +
-        '<td><input id="daGroupsName-' + sid + '" type="text" placeholder="Group name" value="' + esc(d.name || '') + '"' + dis + '></td>' +
-        '<td><select id="daGroupsRate-' + sid + '"' + dis + '>' + rateOpts + '</select></td>' +
-        '<td><select id="daGroupsIo-' + sid + '"' + dis + '>' + ioOpts + '</select></td>' +
-        '<td></td><td></td>' +
-        '<td class="num" style="white-space:nowrap"><button class="btn" id="daGroupsAddBtn-' + sid + '" type="button" onclick="addDaGroup(\'' + sidA + '\', this)"' + dis + '>Add</button><span class="msg" id="daGroupsAddMsg-' + sid + '" style="margin-left:6px">' + esc(d.msg || '') + '</span></td>' +
-        '</tr></tfoot>';
-}
-function consumeDaGroupMsg(sourceId) {
-    // The status message is transient: baked into this render, then consumed so
-    // it does not replay on unrelated later re-renders.
-    state.daGroupAddDrafts = state.daGroupAddDrafts || {};
-    const d = state.daGroupAddDrafts[sourceId];
-    if (d && d.msg) state.daGroupAddDrafts[sourceId] = Object.assign({}, d, { msg: '' });
-}
-async function addDaGroup(sourceId, btn) {
-    const nameInput = document.getElementById('daGroupsName-' + sourceId);
-    const rateSel = document.getElementById('daGroupsRate-' + sourceId);
-    const ioSel = document.getElementById('daGroupsIo-' + sourceId);
-    if (!nameInput || !rateSel || !ioSel) return;
-    if (btn && btn.disabled) return;
-    const name = nameInput.value.trim();
-    const rate = parseInt(rateSel.value, 10);
-    const ioMode = ioSel.value;
-    if (!name) { daGroupSetMsg(sourceId, 'Name required'); return; }
-    // in-flight: disable controls via the next render's draft and freeze the live ones now
-    state.daGroupAddDrafts = state.daGroupAddDrafts || {};
-    state.daGroupAddDrafts[sourceId] = Object.assign({}, readDaGroupDraft(sourceId), { busy: true });
-    if (btn) btn.disabled = true;
-    daGroupSetMsg(sourceId, '');
-    try {
-        const r = await fetch('/api/da/sources/groups', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId, name, rate, ioMode }) });
-        const p = await r.json();
-        if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
-        // success: fresh suggested name; keep the chosen rate/io
-        state.daGroupAddDrafts[sourceId] = Object.assign({}, state.daGroupAddDrafts[sourceId], { name: 'OpcBridge_' + (Date.now() % 10000), busy: false });
-        await reloadDaGroups(sourceId);
-        daGroupSetMsg(sourceId, 'Added ' + name + ' (' + rate + ' ms) → ' + prettyIoMode(ioMode));
-        refresh().catch(() => {});
-        loadGroupsSection().catch(() => {});
-    } catch (e) {
-        daGroupSetMsg(sourceId, 'Add failed: ' + e.message);
-        state.daGroupAddDrafts[sourceId] = Object.assign({}, state.daGroupAddDrafts[sourceId] || {}, { busy: false });
-        const b = document.getElementById('daGroupsAddBtn-' + sourceId);
-        if (b) b.disabled = false;
-    }
+    html += '</div>';
+    wrap.innerHTML = html;
 }
 async function deleteDaGroup(sourceId, name) {
     if (!confirm('Delete group ' + name + ' for ' + sourceId + '?')) return;
@@ -4614,72 +4560,72 @@ async function deleteDaGroup(sourceId, name) {
         const r = await fetch('/api/da/sources/groups/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId, name }) });
         const p = await r.json();
         if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
-        daGroupSetMsg(sourceId, 'Deleted ' + name);
+        setDaGroupsStatus('Deleted ' + name);
         await reloadDaGroups(sourceId);
         refresh().catch(()=>{});
         loadGroupsSection().catch(()=>{});
     } catch (e) {
-        daGroupSetMsg(sourceId, 'Delete failed: ' + e.message);
+        setDaGroupsStatus('Delete failed: ' + e.message);
     }
 }
-async function saveDaGroupEdit(sourceId, oldName, btn) {
-    const row = btn ? btn.closest('tr') : null;
-    if (!row) return;
-    if (btn && btn.disabled) return;
-    if (btn) btn.disabled = true;
-    const nameInput = row.querySelector('input[data-field="name"]');
-    const rateSel = row.querySelector('select[data-field="rate"]');
-    const ioSel = row.querySelector('select[data-field="io"]') || row.querySelector('select[data-name]');
-    const newName = nameInput ? nameInput.value.trim() : oldName;
-    const newRate = rateSel ? parseInt(rateSel.value, 10) : 1000;
-    const newIoMode = ioSel ? ioSel.value : 'AutoDetect';
-    if (!newName) { daGroupSetMsg(sourceId, 'Name required'); if (btn) btn.disabled = false; return; }
+let dagModalCtx = null;
+function openDagAdd(sourceId) {
+    dagModalCtx = { sourceId: sourceId, oldName: null };
+    el('dagModalTitle').textContent = 'Add Group';
+    el('dagModalSource').textContent = sourceId;
+    el('dagModalName').value = 'OpcBridge_' + (Date.now() % 10000);
+    el('dagModalName').disabled = false;
+    el('dagModalRate').value = '1000';
+    el('dagModalIo').value = 'AutoDetect';
+    el('dagModalMsg').textContent = '';
+    const b = el('dagModalSaveBtn'); if (b) b.disabled = false;
+    const m = el('dagModal'); if (m) m.classList.add('open');
+    setTimeout(() => { const n = el('dagModalName'); if (n) n.focus(); }, 50);
+}
+function openDagEdit(sourceId, card) {
+    if (!card) return;
+    dagModalCtx = { sourceId: sourceId, oldName: card.dataset.name };
+    el('dagModalTitle').textContent = 'Edit Group';
+    el('dagModalSource').textContent = sourceId;
+    el('dagModalName').value = card.dataset.name || '';
+    el('dagModalName').disabled = false;
+    el('dagModalRate').value = String(card.dataset.rate || '1000');
+    el('dagModalIo').value = card.dataset.io || 'AutoDetect';
+    el('dagModalMsg').textContent = '';
+    const b = el('dagModalSaveBtn'); if (b) b.disabled = false;
+    const m = el('dagModal'); if (m) m.classList.add('open');
+}
+function closeDagModal() {
+    const m = el('dagModal'); if (m) m.classList.remove('open');
+    dagModalCtx = null;
+}
+async function dagModalSave() {
+    if (!dagModalCtx) return;
+    const sourceId = dagModalCtx.sourceId;
+    const oldName = dagModalCtx.oldName;
+    const name = el('dagModalName').value.trim();
+    const rate = parseInt(el('dagModalRate').value, 10);
+    const ioMode = el('dagModalIo').value;
+    if (!name) { el('dagModalMsg').textContent = 'Name required'; return; }
+    const saveBtn = el('dagModalSaveBtn');
+    if (saveBtn) saveBtn.disabled = true;
     try {
-        // if name or rate changed, delete old and add new
-        if (newName !== oldName) {
-            const del = await fetch('/api/da/sources/groups/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId, name: oldName }) });
-            if (!del.ok) { const p = await del.json(); throw new Error(p.error || 'Delete old failed'); }
-        } else if (newRate !== parseInt(row.dataset.rate || '0', 10)) {
-            // rate changed but name same - still need to recreate (since Rate is part of group identity for OPC DA COM group name, but Name is primary)
-            // For now, treat as delete+add
-            const del = await fetch('/api/da/sources/groups/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId, name: oldName }) });
-            if (!del.ok) { const p = await del.json(); throw new Error(p.error || 'Delete old failed'); }
+        // rename => delete old entry first (name is the group key)
+        if (oldName && oldName !== name) {
+            const del = await fetch('/api/da/sources/groups/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId: sourceId, name: oldName }) });
+            if (!del.ok) { const p = await del.json().catch(() => ({})); throw new Error(p.error || ('HTTP ' + del.status)); }
         }
-        const r = await fetch('/api/da/sources/groups', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId, name: newName, rate: newRate, ioMode: newIoMode }) });
+        const r = await fetch('/api/da/sources/groups', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId: sourceId, name: name, rate: rate, ioMode: ioMode }) });
         const p = await r.json();
         if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
-        daGroupSetMsg(sourceId, 'Saved ' + newName + ' (' + newRate + ' ms) → ' + prettyIoMode(newIoMode));
+        closeDagModal();
         await reloadDaGroups(sourceId);
-        refresh().catch(()=>{});
-        loadGroupsSection().catch(()=>{});
-    } catch (e) {
-        daGroupSetMsg(sourceId, 'Save failed: ' + e.message);
-    } finally {
-        if (btn && document.body.contains(btn)) btn.disabled = false;
-    }
-}
-async function updateDaGroup(sourceId, name, ioMode) {
-    // find current rate for this name to keep it
-    let rate = 1000;
-    try {
-        const table = document.getElementById('daGroupsTable-' + sourceId);
-        const row = table ? table.querySelector('select[data-name="' + name.replace(/"/g, '&quot;') + '"]') : null;
-        if (row) rate = parseInt(row.getAttribute('data-rate') || row.dataset.rate || '1000', 10);
-        else {
-            // fallback: find group in current rendered data
-            const groups = (state.sources.find(s => s.sourceId === sourceId)?.groupIoModes) || [];
-            const g = groups.find(x => x.name === name);
-            if (g) rate = g.rate;
-        }
-    } catch {}
-    try {
-        const r = await fetch('/api/da/sources/groups', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId, name, rate, ioMode }) });
-        if (!r.ok) { const p = await r.json().catch(() => ({})); throw new Error(p.error || ('HTTP ' + r.status)); }
-        daGroupSetMsg(sourceId, 'Updated ' + rate + ' ms → ' + prettyIoMode(ioMode));
-        await reloadDaGroups(sourceId);
+        setDaGroupsStatus('Saved ' + name + ' (' + daPrettyRate(rate) + ') → ' + prettyIoMode(ioMode));
         refresh().catch(() => {});
+        loadGroupsSection().catch(() => {});
     } catch (e) {
-        daGroupSetMsg(sourceId, 'Update failed: ' + e.message);
+        el('dagModalMsg').textContent = 'Save failed: ' + e.message;
+        if (saveBtn) saveBtn.disabled = false;
     }
 }
 function expandAllDaGroups() {

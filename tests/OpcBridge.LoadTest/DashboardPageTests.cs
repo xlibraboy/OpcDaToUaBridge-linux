@@ -338,16 +338,46 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
-    public void DaGroups_AddRowRendersInsideTableFooterForColumnAlignment()
+    public void DaGroups_V3UsesCardGridWithModalEditor()
     {
-        // The add-group controls must be part of the table's tfoot so
-        // Name/Rate/I-O/Add line up under their columns instead of floating mid-row.
-        // v2 renders them declaratively on every pass — no DOM reparenting machinery.
-        Assert.Contains("<tfoot>", DashboardPage.Script);
+        // v3 redesign: groups render as cards in a responsive grid; add/edit happen
+        // in a modal dialog. No table, no tfoot, no inline-row editing anywhere in
+        // the DA Groups panel — nothing can repaint under the cursor mid-typing.
+        Assert.Contains("dag-card", DashboardPage.Html);
+        Assert.Contains("dag-grid", DashboardPage.Html);
+        Assert.DoesNotContain("<tfoot>", DashboardPage.Script);
+        Assert.DoesNotContain("daGroupsTfootHtml", DashboardPage.Script);
+
+        // Modal editor: markup + open/save/close functions.
+        Assert.Contains("id=\"dagModal\"", DashboardPage.Html);
+        Assert.Contains("id=\"dagModalName\"", DashboardPage.Html);
+        Assert.Contains("id=\"dagModalRate\"", DashboardPage.Html);
+        Assert.Contains("id=\"dagModalIo\"", DashboardPage.Html);
+        Assert.Contains("function openDagAdd(", DashboardPage.Script);
+        Assert.Contains("function openDagEdit(", DashboardPage.Script);
+        Assert.Contains("function dagModalSave(", DashboardPage.Script);
+        Assert.Contains("function closeDagModal(", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void DaGroups_PreservesElementIdsAndHandlers()
+    {
+        // The panel container ids and the expand/collapse + delete flows stay.
         foreach (string fragment in new[]
         {
-            "ensureDaGroupAddControls", "mountDaGroupAddRow", "stowDaGroupAddControls",
-            "daGroupAddStash", "_dagNodes"
+            "daGroupsHint-", "daGroupsTable-", "daGroupsMsg",
+            "function deleteDaGroup(",
+            "function expandAllDaGroups(", "function collapseAllDaGroups(",
+            "function loadDaGroupsTab("
+        })
+        {
+            Assert.Contains(fragment, DashboardPage.Script);
+        }
+        // v2/v1 machinery is gone for good.
+        foreach (string fragment in new[]
+        {
+            "saveDaGroupEdit", "ensureDaGroupAddControls", "mountDaGroupAddRow",
+            "stowDaGroupAddControls", "_dagNodes"
         })
         {
             Assert.DoesNotContain(fragment, DashboardPage.Script);
@@ -355,30 +385,12 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
-    public void DaGroups_PreservesElementIdsAndHandlers()
-    {
-        // Styling pass only: every id the add/save/delete/update flows rely on stays.
-        foreach (string fragment in new[]
-        {
-            "daGroupsHint-", "daGroupsTable-", "daGroupsName-", "daGroupsRate-", "daGroupsIo-", "daGroupsAddMsg-",
-            "function addDaGroup(", "function saveDaGroupEdit(", "function deleteDaGroup(",
-            "function updateDaGroup(", "function expandAllDaGroups(", "function collapseAllDaGroups("
-        })
-        {
-            Assert.Contains(fragment, DashboardPage.Script);
-        }
-    }
-
-    [Fact]
-    public void DaGroups_RerenderIsSequencedAndDraftIsPreserved()
+    public void DaGroups_ReloadsAreSequencedPerSource()
     {
         // Regression: racing follow-up GETs could repaint older data over newer
-        // ("sometimes added, sometimes not"), and every rebuild lost the typed
-        // group name. Renders are now sequenced per source and the pending
-        // add-row values ride through a draft that is written into fresh markup.
+        // ("sometimes added, sometimes not"). Whichever reload started latest wins.
         Assert.Contains("state.daGroupRenderSeq", DashboardPage.Script);
         Assert.Contains("state.daGroupRenderSeq[sourceId] = seq", DashboardPage.Script);
-        Assert.Contains("state.daGroupAddDrafts", DashboardPage.Script);
     }
 
     [Fact]
