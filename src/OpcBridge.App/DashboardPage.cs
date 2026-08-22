@@ -215,6 +215,23 @@ internal static class DashboardPage
         .rate-limit-table td:first-child { font-weight: 600; white-space: nowrap; }
         .rate-limit-table td:nth-child(2) { text-align: center; white-space: nowrap; }
 
+        /* Shared data table (DA Groups etc.) */
+        .tbl { width: 100%; border-collapse: collapse; }
+        .tbl th { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border2); color: var(--muted); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; white-space: nowrap; }
+        .tbl td { padding: 6px 8px; border-bottom: 1px solid var(--border); font-size: 12px; vertical-align: middle; }
+        .tbl tbody tr:hover { background: rgba(56,189,248,.04); }
+        .tbl th.num, .tbl td.num { text-align: right; }
+        .tbl tfoot td { border-bottom: none; border-top: 1px solid var(--border2); padding-top: 9px; }
+        .tbl input[type=text], .tbl select { min-width: 0; height: 24px; padding: 2px 6px; font-size: 12px; }
+        .tbl input[type=text] { width: 130px; }
+        .tbl select { width: auto; }
+        .tbl .btn { height: 24px; padding: 0 10px; font-size: 11px; }
+
+        /* DA Groups source-card header */
+        .dag-src-name { font-weight: 600; font-size: 12.5px; color: var(--text); text-transform: none; letter-spacing: 0; }
+        .dag-src-meta { font-family: 'Consolas', monospace; text-transform: none; letter-spacing: 0; margin-left: 2px; }
+        .dag-src-host { margin-left: auto; font-family: 'Consolas', monospace; text-transform: none; letter-spacing: 0; }
+
         .log-entry .message { white-space: pre-wrap; word-break: break-word; }
         .log-entry .exception { white-space: pre-wrap; word-break: break-word; margin-top: 6px; color: var(--bad); }
         .log-entry .meta .lvl { font-weight: 600; }
@@ -698,7 +715,7 @@ internal static class DashboardPage
         <div class="box-h" style="padding:8px 12px;font-size:13px">OPC DA Groups <span class="msg" id="daGroupsMsg" style="margin-left:12px;font-size:11px"></span><span style="margin-left:auto;display:flex;gap:4px"><button class="btn ghost" type="button" style="height:20px;padding:0 6px;font-size:11px" onclick="expandAllDaGroups()">Expand All</button><button class="btn ghost" type="button" style="height:20px;padding:0 6px;font-size:11px" onclick="collapseAllDaGroups()">Collapse All</button></span></div>
         <div class="box-b" style="padding:10px 12px">
             <div id="daGroupsContainer" style="display:flex;flex-direction:column;gap:8px"></div>
-            <div class="hint" style="font-size:11px;margin-top:8px;opacity:.7">Each rate is a COM group OpcBridge_&lt;rate&gt; — add/delete per source, set I/O per group. Live apply.</div>
+            <div class="hint" style="font-size:11px;margin-top:8px">Each rate is a COM group OpcBridge_&lt;rate&gt; — add/delete per source, set I/O per group. Live apply.</div>
         </div>
     </div>
 </div>
@@ -4426,7 +4443,7 @@ async function loadDaGroupsTab() {
             header.style.cssText = 'padding:6px 10px;font-size:12px;gap:6px;cursor:pointer;user-select:none';
             const bodyId = 'daGroupsBody-' + src.sourceId;
             const isCollapsed = (state.collapsedDaGroups || {})[src.sourceId];
-            header.innerHTML = '<span class="toggle" style="width:14px;text-align:center;font-size:10px;opacity:.6">' + (isCollapsed ? '▶' : '▼') + '</span><span style="font-weight:600">' + esc(src.displayName || src.sourceId) + '</span> <span class="msg" style="margin-left:6px;font-size:11px">' + esc(src.sourceId) + ' · ' + esc(src.progId || '') + '</span><span class="msg" style="margin-left:auto;font-size:11px">' + esc(src.host || 'localhost') + '</span>';
+            header.innerHTML = '<span class="toggle" style="width:14px;text-align:center;font-size:10px;opacity:.6">' + (isCollapsed ? '▶' : '▼') + '</span><span class="dag-src-name">' + esc(src.displayName || src.sourceId) + '</span> <span class="msg dag-src-meta">' + esc(src.sourceId) + ' · ' + esc(src.progId || '') + '</span><span class="msg dag-src-host">' + esc(src.host || 'localhost') + '</span>';
             const body = document.createElement('div');
             body.className = 'box-b';
             body.id = bodyId;
@@ -4441,10 +4458,11 @@ async function loadDaGroupsTab() {
                 state.collapsedDaGroups = state.collapsedDaGroups || {};
                 state.collapsedDaGroups[src.sourceId] = !collapsed;
             };
-            body.innerHTML = '<div class="hint" id="daGroupsHint-' + esc(src.sourceId) + '" style="font-size:11px;margin-bottom:4px;opacity:.8">Loading groups…</div><div id="daGroupsTable-' + esc(src.sourceId) + '"></div><div style="display:flex;gap:6px;margin-top:6px;align-items:center;flex-wrap:wrap"><input id="daGroupsName-' + esc(src.sourceId) + '" type="text" placeholder="Group name" style="width:110px;height:22px;font-size:11px;padding:0 4px" value="OpcBridge_' + (Date.now()%10000) + '"><select id="daGroupsRate-' + esc(src.sourceId) + '" style="width:82px;height:22px;font-size:11px;padding:0 4px"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000" selected>1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select><select id="daGroupsIo-' + esc(src.sourceId) + '" style="width:110px;height:22px;font-size:11px;padding:0 4px"><option value="AutoDetect">AutoDetect</option><option value="Sync">Sync</option><option value="Async20">Async20</option></select><button class="btn" type="button" style="height:22px;padding:0 8px;font-size:11px" onclick="addDaGroup(\'' + esc(src.sourceId).replace(/'/g, "\'") + '\')">Add</button><span class="msg" id="daGroupsAddMsg-' + esc(src.sourceId) + '" style="font-size:11px"></span></div>';
+            body.innerHTML = '<div class="hint" id="daGroupsHint-' + esc(src.sourceId) + '" style="font-size:11px;margin-bottom:4px">Loading groups…</div><div id="daGroupsTable-' + esc(src.sourceId) + '"></div>';
             card.appendChild(header);
             card.appendChild(body);
             container.appendChild(card);
+            ensureDaGroupAddControls(src.sourceId);
             // load groups for this source
             try {
                 const r = await fetch('/api/da/sources/groups?sourceId=' + encodeURIComponent(src.sourceId));
@@ -4460,17 +4478,58 @@ async function loadDaGroupsTab() {
         if (msg) msg.textContent = 'Failed to load: ' + e.message;
     }
 }
+function ensureDaGroupAddControls(sourceId) {
+    // Build the add-group controls once per source and stash them outside the
+    // table; renderDaGroupsForSource moves them into the table's tfoot so they
+    // align under their columns. Rebuilding cards on tab reload must not recreate
+    // them — in-progress input values would be lost.
+    state.daGroupAddControls = state.daGroupAddControls || {};
+    if (state.daGroupAddControls[sourceId]) return;
+    const sid = esc(sourceId);
+    let stash = document.getElementById('daGroupAddStash');
+    if (!stash) { stash = document.createElement('div'); stash.id = 'daGroupAddStash'; stash.style.display = 'none'; document.body.appendChild(stash); }
+    const root = document.createElement('div');
+    root.innerHTML =
+        '<input id="daGroupsName-' + sid + '" type="text" placeholder="Group name" value="OpcBridge_' + (Date.now() % 10000) + '">' +
+        '<select id="daGroupsRate-' + sid + '"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000" selected>1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select>' +
+        '<select id="daGroupsIo-' + sid + '"><option value="AutoDetect">AutoDetect</option><option value="Sync">Sync</option><option value="Async20">Async20</option></select>' +
+        '<button class="btn" type="button">Add</button>' +
+        '<span class="msg" id="daGroupsAddMsg-' + sid + '" style="margin-left:6px"></span>';
+    root.querySelector('button').addEventListener('click', () => addDaGroup(sourceId));
+    stash.appendChild(root);
+    state.daGroupAddControls[sourceId] = root;
+}
+function mountDaGroupAddRow(sourceId) {
+    // Move the stashed controls into this render's tfoot cells (appendChild reparents).
+    const root = (state.daGroupAddControls || {})[sourceId];
+    if (!root) return;
+    const put = (cellId, node) => { const c = node && document.getElementById(cellId); if (c) c.appendChild(node); };
+    put('daGroupsAddNameCell-' + sourceId, root.querySelector('input'));
+    const selects = root.querySelectorAll('select');
+    put('daGroupsAddRateCell-' + sourceId, selects[0]);
+    put('daGroupsAddIoCell-' + sourceId, selects[1]);
+    put('daGroupsAddActionsCell-' + sourceId, root.querySelector('button'));
+    put('daGroupsAddActionsCell-' + sourceId, root.querySelector('.msg'));
+}
 function renderDaGroupsForSource(sourceId, groups, sourceIoMode) {
     const hint = document.getElementById('daGroupsHint-' + sourceId);
     const table = document.getElementById('daGroupsTable-' + sourceId);
     if (!table) return;
     if (!groups || groups.length === 0) {
-        if (hint) { hint.textContent = 'No groups — default (' + prettyIoMode(sourceIoMode) + ')'; hint.style.cssText = 'font-size:11px;opacity:.7'; }
-        table.innerHTML = '';
+        if (hint) { hint.textContent = 'No groups — default (' + prettyIoMode(sourceIoMode) + ')'; hint.style.cssText = 'font-size:11px'; }
+        // Keep the add-row available even with zero groups.
+        table.innerHTML = '<table class="tbl"><tbody></tbody><tfoot><tr>' +
+            '<td id="daGroupsAddNameCell-' + esc(sourceId) + '"></td>' +
+            '<td id="daGroupsAddRateCell-' + esc(sourceId) + '"></td>' +
+            '<td id="daGroupsAddIoCell-' + esc(sourceId) + '"></td>' +
+            '<td></td><td></td>' +
+            '<td id="daGroupsAddActionsCell-' + esc(sourceId) + '" class="num" style="white-space:nowrap"></td>' +
+            '</tr></tfoot></table>';
+        mountDaGroupAddRow(sourceId);
         return;
     }
-    if (hint) { hint.textContent = groups.length + ' group(s) — ' + prettyIoMode(sourceIoMode) + ' default'; hint.style.cssText = 'font-size:11px;opacity:.7;margin-bottom:2px'; }
-    let html = '<table class="tbl" style="width:100%;margin-top:4px;font-size:11px"><thead><tr><th style="padding:4px 6px">Name</th><th style="padding:4px 6px">Rate</th><th style="padding:4px 6px">I/O Mode</th><th style="padding:4px 6px">Effective</th><th style="padding:4px 6px">Tags</th><th style="padding:4px 6px"></th></tr></thead><tbody>';
+    if (hint) { hint.textContent = groups.length + ' group(s) — ' + prettyIoMode(sourceIoMode) + ' default'; hint.style.cssText = 'font-size:11px;margin-bottom:4px'; }
+    let html = '<table class="tbl" style="width:100%;margin-top:4px"><thead><tr><th>Name</th><th>Rate</th><th>I/O Mode</th><th>Effective</th><th class="num">Tags</th><th class="num"></th></tr></thead><tbody>';
     for (const g of groups) {
         const isDef = !!g.isDefault;
         const rowId = 'row-' + sourceId + '-' + g.name.replace(/[^a-zA-Z0-9]/g, '_');
@@ -4482,11 +4541,18 @@ function renderDaGroupsForSource(sourceId, groups, sourceIoMode) {
         }
         html += '</select></td>';
         html += '<td style="padding:3px 6px;font-size:11px">' + esc(prettyIoMode(g.effective)) + '</td>';
-        html += '<td style="padding:3px 6px;text-align:center">' + esc(String(g.tagCount ?? 0)) + '</td>';
-        html += '<td style="padding:3px 6px">' + (isDef ? '<span class="msg" style="font-size:11px">—</span>' : '<button class="btn ghost" type="button" style="height:20px;padding:0 6px;font-size:11px" onclick="saveDaGroupEdit(\'' + esc(sourceId).replace(/'/g, "\'") + '\',\'' + esc(g.name).replace(/'/g, "\'") + '\',this)">Save</button> <button class="btn ghost" type="button" style="height:20px;padding:0 6px;font-size:11px" onclick="deleteDaGroup(\'' + esc(sourceId).replace(/'/g, "\'") + '\',\'' + esc(g.name).replace(/'/g, "\'") + '\')">Del</button>') + '</td></tr>';
+        html += '<td class="num" style="padding:3px 6px">' + esc(String(g.tagCount ?? 0)) + '</td>';
+        html += '<td class="num" style="padding:3px 6px;white-space:nowrap">' + (isDef ? '<span class="msg">—</span>' : '<button class="btn ghost" type="button" style="height:20px;padding:0 6px;font-size:11px" onclick="saveDaGroupEdit(\'' + esc(sourceId).replace(/'/g, "\'") + '\',\'' + esc(g.name).replace(/'/g, "\'") + '\',this)">Save</button> <button class="btn ghost" type="button" style="height:20px;padding:0 6px;font-size:11px" onclick="deleteDaGroup(\'' + esc(sourceId).replace(/'/g, "\'") + '\',\'' + esc(g.name).replace(/'/g, "\'") + '\')">Del</button>') + '</td></tr>';
     }
-    html += '</tbody></table>';
+    html += '</tbody><tfoot><tr>' +
+        '<td id="daGroupsAddNameCell-' + esc(sourceId) + '"></td>' +
+        '<td id="daGroupsAddRateCell-' + esc(sourceId) + '"></td>' +
+        '<td id="daGroupsAddIoCell-' + esc(sourceId) + '"></td>' +
+        '<td></td><td></td>' +
+        '<td id="daGroupsAddActionsCell-' + esc(sourceId) + '" class="num" style="white-space:nowrap"></td>' +
+        '</tr></tfoot>';
     table.innerHTML = html;
+    mountDaGroupAddRow(sourceId);
 }
 async function addDaGroup(sourceId) {
     const nameInput = document.getElementById('daGroupsName-' + sourceId);

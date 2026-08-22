@@ -326,4 +326,41 @@ public sealed class DashboardPageTests
         // The panel header label is redundant — the big value + meta row carry the context.
         Assert.DoesNotContain("Real value", DashboardPage.Script);
     }
+
+    [Fact]
+    public void Css_DefinesDaGroupsTableStyles()
+    {
+        // .tbl was referenced by the DA Groups renderer but never defined, so the
+        // table rendered as an unstyled browser table (cramped, no header row).
+        Assert.Contains(".tbl th {", DashboardPage.Html);
+        Assert.Contains(".tbl td {", DashboardPage.Html);
+        Assert.Contains(".tbl tbody tr:hover", DashboardPage.Html);
+    }
+
+    [Fact]
+    public void DaGroups_AddRowRendersInsideTableFooterForColumnAlignment()
+    {
+        // The add-group controls must be mounted into a tfoot of the same table so
+        // Name/Rate/I-O/Add line up under their columns instead of floating mid-row.
+        Assert.Contains("<tfoot>", DashboardPage.Script);
+        Assert.Contains("function mountDaGroupAddRow(", DashboardPage.Script);
+        Assert.Contains("mountDaGroupAddRow(sourceId)", DashboardPage.Script);
+        // Old floating flex add-row div is gone.
+        Assert.DoesNotContain("margin-top:6px;align-items:center;flex-wrap:wrap", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void DaGroups_PreservesElementIdsAndHandlers()
+    {
+        // Styling pass only: every id the add/save/delete/update flows rely on stays.
+        foreach (string fragment in new[]
+        {
+            "daGroupsHint-", "daGroupsTable-", "daGroupsName-", "daGroupsRate-", "daGroupsIo-", "daGroupsAddMsg-",
+            "function addDaGroup(", "function saveDaGroupEdit(", "function deleteDaGroup(",
+            "function updateDaGroup(", "function expandAllDaGroups(", "function collapseAllDaGroups("
+        })
+        {
+            Assert.Contains(fragment, DashboardPage.Script);
+        }
+    }
 }
