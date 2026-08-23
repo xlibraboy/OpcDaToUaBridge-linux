@@ -428,4 +428,79 @@ public sealed class DashboardPageTests
         // so mapping references (TagMapping.DaGroup) are rewritten, not orphaned.
         Assert.Contains("renameFrom", DashboardPage.Script);
     }
+
+    [Fact]
+    public void Html_DiagnosticsViewContainsHealthSummaryRuntimeIntegrationsAndProblems()
+    {
+        // Diagnostics tab = bridge health overview: summary strip, runtime counters,
+        // MQTT/InfluxDB integration health, and problem lists.
+        foreach (string id in new[]
+        {
+            "diagBridgeState", "diagDaConn", "diagUptime", "diagValueRate", "diagUaClients",
+            "diagLastError",
+            "diagMappingCount", "diagPollDuration", "diagLastDaRead", "diagLastDaReadMeta",
+            "diagLastUaWrite", "diagLastUaWriteMeta", "diagSessionId",
+            "diagMqttState", "diagMqttRate", "diagMqttTotals", "diagMqttError",
+            "diagInfluxState", "diagInfluxRate", "diagInfluxTotal", "diagInfluxError",
+            "diagDiscCount", "diagDisconnected", "diagBadCount", "diagBadQuality"
+        })
+        {
+            Assert.Contains($"id=\"{id}\"", DashboardPage.Html);
+        }
+        // Write Queue and STA Thread Health stay on the Diagnostics tab.
+        Assert.Contains("id=\"diagWqDepth\"", DashboardPage.Html);
+        Assert.Contains("id=\"diagStaThreads\"", DashboardPage.Html);
+    }
+
+    [Fact]
+    public void Html_SessionsTabHoldsCommsDetailSections()
+    {
+        // New Ops > Sessions tab carries the per-connection detail sections so the
+        // Diagnostics overview stays scannable.
+        Assert.Contains("data-tab=\"sessions\"", DashboardPage.Html);
+        Assert.Contains("data-route=\"ops/sessions\"", DashboardPage.Html);
+        Assert.Contains("id=\"view-sessions\"", DashboardPage.Html);
+        foreach (string id in new[] { "diagDaSources", "diagTimeSync", "diagUaSessions", "diagUaSubscriptions", "diagNotifPerSec" })
+        {
+            Assert.Contains($"id=\"{id}\"", DashboardPage.Html);
+        }
+
+        // Section placement: DA sources / time sync / UA sessions live inside the
+        // sessions view; write queue + STA stay inside the diagnostics view.
+        int diagView = DashboardPage.Html.IndexOf("id=\"view-diagnostics\"", StringComparison.Ordinal);
+        int sessView = DashboardPage.Html.IndexOf("id=\"view-sessions\"", StringComparison.Ordinal);
+        Assert.True(diagView >= 0 && sessView > diagView, "sessions view must follow diagnostics view");
+        foreach (string id in new[] { "diagDaSources", "diagTimeSync", "diagUaSessions", "diagNotifPerSec" })
+        {
+            int at = DashboardPage.Html.IndexOf($"id=\"{id}\"", StringComparison.Ordinal);
+            Assert.True(at > sessView, $"{id} should be inside view-sessions");
+        }
+        foreach (string id in new[] { "diagWqDepth", "diagStaThreads" })
+        {
+            int at = DashboardPage.Html.IndexOf($"id=\"{id}\"", StringComparison.Ordinal);
+            int closeAt = DashboardPage.Html.IndexOf("id=\"view-sessions\"", StringComparison.Ordinal);
+            Assert.True(at > diagView && at < closeAt, $"{id} should stay inside view-diagnostics");
+        }
+    }
+
+    [Fact]
+    public void Script_RoutesSessionsTabAndPollsDiagnosticsForBothViews()
+    {
+        Assert.Contains("'ops/sessions': 'sessions'", DashboardPage.Script);
+        Assert.Contains("sessions: 'ops/sessions'", DashboardPage.Script);
+        // Both tabs drive the same 2s diagnostics poll.
+        Assert.Contains("activeTab === 'diagnostics' || activeTab === 'sessions'", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Script_RendersExtendedDiagnosticsPayload()
+    {
+        // renderDiagnostics consumes every new section of /api/diagnostics.
+        Assert.Contains("p.runtime", DashboardPage.Script);
+        Assert.Contains("p.uaServer", DashboardPage.Script);
+        Assert.Contains("p.uptimeSeconds", DashboardPage.Script);
+        Assert.Contains("p.mqtt", DashboardPage.Script);
+        Assert.Contains("p.influx", DashboardPage.Script);
+        Assert.Contains("p.problems", DashboardPage.Script);
+    }
 }

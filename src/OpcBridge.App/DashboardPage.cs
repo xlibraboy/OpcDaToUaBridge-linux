@@ -506,6 +506,7 @@ internal static class DashboardPage
     <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>Ops</div>
     <button class="tabbtn active" data-tab="monitor" data-route="ops/monitor" onclick="navigate('ops/monitor')">Monitor</button>
     <button class="tabbtn" data-tab="values" data-route="ops/values" onclick="navigate('ops/values')">Live Values</button>
+    <button class="tabbtn" data-tab="sessions" data-route="ops/sessions" onclick="navigate('ops/sessions')">Sessions</button>
     <button class="tabbtn" data-tab="logs" data-route="ops/logs" onclick="navigate('ops/logs')">Logs</button>
     <button class="tabbtn" data-tab="diagram" data-route="ops/diagram" onclick="navigate('ops/diagram')">Diagram</button>
   </div>
@@ -587,6 +588,79 @@ internal static class DashboardPage
 </div>
 <div class="view" id="view-diagnostics">
     <div class="box" style="margin-bottom:14px">
+        <div class="box-h">Bridge Health <span class="msg" id="diagHealthUpdated" style="margin-left:auto"></span></div>
+        <div class="box-b">
+            <div class="stats">
+                <div class="stat"><div class="k">State</div><div class="v" id="diagBridgeState">&#8212;</div><div class="s" id="diagDaConn"></div></div>
+                <div class="stat"><div class="k">Uptime</div><div class="v" id="diagUptime">&#8212;</div><div class="s" id="diagSessionInfo"></div></div>
+                <div class="stat"><div class="k">Values/sec</div><div class="v" id="diagValueRate">&#8212;</div><div class="s" id="diagUpdateRate"></div></div>
+                <div class="stat"><div class="k">UA Clients</div><div class="v" id="diagUaClients">&#8212;</div><div class="s" id="diagMappedNodes"></div></div>
+            </div>
+            <div class="hint" id="diagLastError" style="display:none;margin-top:8px"></div>
+        </div>
+    </div>
+    <div class="box" style="margin-bottom:14px">
+        <div class="box-h">Runtime Counters <span class="info" data-tip="Live counters from the bridge worker: mapped tag count, duration of the most recent DA poll cycle, and the most recent DA read / UA write activity. 'DCOM Session' identifies the Windows session the DA servers were opened in (interactive vs service).">i</span></div>
+        <div class="box-b">
+            <div class="stats">
+                <div class="stat"><div class="k">Mappings</div><div class="v" id="diagMappingCount">&#8212;</div></div>
+                <div class="stat"><div class="k">Last Poll</div><div class="v" id="diagPollDuration">&#8212;</div></div>
+                <div class="stat"><div class="k">Last DA Read</div><div class="v" id="diagLastDaRead">&#8212;</div><div class="s" id="diagLastDaReadMeta"></div></div>
+                <div class="stat"><div class="k">Last UA Write</div><div class="v" id="diagLastUaWrite">&#8212;</div><div class="s" id="diagLastUaWriteMeta"></div></div>
+                <div class="stat"><div class="k">DCOM Session</div><div class="v" id="diagSessionId">&#8212;</div><div class="s" id="diagInteractive"></div></div>
+            </div>
+        </div>
+    </div>
+    <div class="grid2" style="margin-bottom:14px">
+        <div class="box">
+            <div class="box-h">MQTT <span class="msg" id="diagMqttBadge" style="margin-left:auto"></span></div>
+            <div class="box-b">
+                <div class="stats">
+                    <div class="stat"><div class="k">Throughput</div><div class="v" id="diagMqttState">&#8212;</div><div class="s" id="diagMqttTotals"></div></div>
+                    <div class="stat"><div class="k">Rates</div><div class="v" id="diagMqttRate">&#8212;</div></div>
+                </div>
+                <div class="hint" id="diagMqttError" style="display:none;margin-top:8px"></div>
+            </div>
+        </div>
+        <div class="box">
+            <div class="box-h">InfluxDB <span class="msg" id="diagInfluxBadge" style="margin-left:auto"></span></div>
+            <div class="box-b">
+                <div class="stats">
+                    <div class="stat"><div class="k">Throughput</div><div class="v" id="diagInfluxState">&#8212;</div><div class="s" id="diagInfluxTotal"></div></div>
+                    <div class="stat"><div class="k">Write Rate</div><div class="v" id="diagInfluxRate">&#8212;</div></div>
+                </div>
+                <div class="hint" id="diagInfluxError" style="display:none;margin-top:8px"></div>
+            </div>
+        </div>
+    </div>
+    <div class="grid2" style="margin-bottom:14px">
+        <div class="box">
+            <div class="box-h">Disconnected Tags <span class="info" data-tip="UA monitored items whose creation failed and are being retried automatically. Common causes: the item disappeared from the source, or the source connection dropped.">i</span><span class="msg" id="diagDiscCount" style="margin-left:auto"></span></div>
+            <div class="box-b"><div class="list" id="diagDisconnected" style="max-height:220px"><span class="msg">Loading…</span></div></div>
+        </div>
+        <div class="box">
+            <div class="box-h">Bad Quality Tags <span class="info" data-tip="Mapped tags currently delivering a non-good quality from their source. The count reflects all affected tags; the list shows up to 50.">i</span><span class="msg" id="diagBadCount" style="margin-left:auto"></span></div>
+            <div class="box-b"><div class="list" id="diagBadQuality" style="max-height:220px"><span class="msg">Loading…</span></div></div>
+        </div>
+    </div>
+    <div class="grid2">
+        <div class="box">
+            <div class="box-h">Write Queue <span class="info" data-tip="UA client writes are queued in a bounded channel (capacity 1024) and drained by per-source consumer tasks. Success rate shows confirmed DA writes.">i</span></div>
+            <div class="box-b">
+                <div class="stats">
+                    <div class="stat"><div class="k">Current Depth</div><div class="v" id="diagWqDepth">&#8212;</div></div>
+                    <div class="stat"><div class="k">Success Rate</div><div class="v" id="diagWqRate">&#8212;</div><div class="s" id="diagWqTotals">0 enqueued</div></div>
+                </div>
+            </div>
+        </div>
+        <div class="box">
+            <div class="box-h">STA Thread Health <span class="info" data-tip="Each OPC DA source has a dedicated Single-Threaded Apartment (STA) thread. All COM calls for that source serialize through it. 'Queued' shows pending COM operations; 'Last action' shows the most recent COM call time.">i</span></div>
+            <div class="box-b"><div class="list" id="diagStaThreads" style="max-height:280px"><span class="msg">Loading…</span></div></div>
+        </div>
+    </div>
+</div>
+<div class="view" id="view-sessions">
+    <div class="box" style="margin-bottom:14px">
         <div class="box-h">DA Source Diagnostics <span class="msg" id="diagDaSummary" style="margin-left:auto"></span></div>
         <div class="box-b" id="diagDaSources"><span class="msg">Loading…</span></div>
     </div>
@@ -604,29 +678,14 @@ internal static class DashboardPage
             <div class="box-b"><div class="list" id="diagUaSubscriptions" style="max-height:300px"><span class="msg">Loading…</span></div></div>
         </div>
     </div>
-    <div class="grid2" style="margin-bottom:14px">
-        <div class="box">
-            <div class="box-h">UA Bandwidth <span class="info" data-tip="Notifications/sec counts how many value changes were pushed to UA nodes. Estimated bandwidth = notifications/sec x ~80 bytes (typical UA notification encoding). The SDK does not expose actual wire bytes.">i</span></div>
-            <div class="box-b">
-                <div class="stats">
-                    <div class="stat"><div class="k">Notifications/sec</div><div class="v" id="diagNotifPerSec">&#8212;</div></div>
-                    <div class="stat"><div class="k">Est. Bandwidth</div><div class="v" id="diagBandwidth">&#8212;</div><div class="s" id="diagTotalNotif">0 total</div></div>
-                </div>
-            </div>
-        </div>
-        <div class="box">
-            <div class="box-h">Write Queue <span class="info" data-tip="UA client writes are queued in a bounded channel (capacity 1024) and drained by per-source consumer tasks. Success rate shows confirmed DA writes.">i</span></div>
-            <div class="box-b">
-                <div class="stats">
-                    <div class="stat"><div class="k">Current Depth</div><div class="v" id="diagWqDepth">&#8212;</div></div>
-                    <div class="stat"><div class="k">Success Rate</div><div class="v" id="diagWqRate">&#8212;</div><div class="s" id="diagWqTotals">0 enqueued</div></div>
-                </div>
-            </div>
-        </div>
-    </div>
     <div class="box">
-        <div class="box-h">STA Thread Health <span class="info" data-tip="Each OPC DA source has a dedicated Single-Threaded Apartment (STA) thread. All COM calls for that source serialize through it. 'Queued' shows pending COM operations; 'Last action' shows the most recent COM call time.">i</span></div>
-        <div class="box-b"><div class="list" id="diagStaThreads" style="max-height:280px"><span class="msg">Loading…</span></div></div>
+        <div class="box-h">UA Bandwidth <span class="info" data-tip="Notifications/sec counts how many value changes were pushed to UA nodes. Estimated bandwidth = notifications/sec x ~80 bytes (typical UA notification encoding). The SDK does not expose actual wire bytes.">i</span></div>
+        <div class="box-b">
+            <div class="stats">
+                <div class="stat"><div class="k">Notifications/sec</div><div class="v" id="diagNotifPerSec">&#8212;</div></div>
+                <div class="stat"><div class="k">Est. Bandwidth</div><div class="v" id="diagBandwidth">&#8212;</div><div class="s" id="diagTotalNotif">0 total</div></div>
+            </div>
+        </div>
     </div>
 </div>
 <div class="view" id="view-connection">
@@ -2841,6 +2900,7 @@ const ROUTE_TO_TAB = {
   'connectivity/drivers': 'drivers',
   'connectivity/mx-component': 'mx-component',
   'connectivity/diagnostics': 'diagnostics',
+  'ops/sessions': 'sessions',
   'tags/maps': 'tags',
   'tags/maps/opc-da': 'tags',
   'tags/maps/opc-ua': 'tags',
@@ -2879,7 +2939,7 @@ async function showTab(name, route) {
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + activeTab));
   if (location.hash !== '#/' + route) history.replaceState(null, '', '#/' + route);
   if (activeTab === 'logs') { state.logsLoaded = false; loadLogs(true).catch(e => el('logMessage').textContent = '✗ ' + e.message); }
-  if (activeTab === 'diagnostics') { diagnosticsActive = true; loadDiagnostics(); }
+  if (activeTab === 'diagnostics' || activeTab === 'sessions') { diagnosticsActive = true; loadDiagnostics(); }
   else { diagnosticsActive = false; }
   if (activeTab === 'about') loadAppInfo().catch(e => el('aboutName').textContent = '✗ ' + e.message);
   if (activeTab === 'help') loadHelp().catch(e => el('helpContent').innerHTML = '<span class="msg bad">✗ ' + esc(e.message) + '</span>');
@@ -3396,6 +3456,38 @@ async function loadLogs(force = false) {
 }
 
 let diagnosticsActive = false;
+
+// Formats seconds as compact human uptime: 2d 3h · 4h 12m · 5m 20s · 42s.
+function fmtUptime(sec) {
+    sec = Math.max(0, Math.floor(Number(sec) || 0));
+    const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+    if (d > 0) return d + 'd ' + h + 'h';
+    if (h > 0) return h + 'h ' + m + 'm';
+    if (m > 0) return m + 'm ' + s + 's';
+    return s + 's';
+}
+
+// Shared renderer for the MQTT / InfluxDB integration cards on the Diagnostics tab.
+// d: { enabled, state, lastError, ...counters }. Colors: connected/running=good,
+// error/fault=bad, everything else live=warn, disabled=muted.
+function setIntegrationHealth(ids, d, countersText, rateText) {
+    if (!ids || !d) return;
+    const enabled = d.enabled === true;
+    const stateText = enabled ? (d.state || '—') : 'Disabled';
+    let cls = 'msg';
+    if (enabled) {
+        const s = String(d.state || '').toLowerCase();
+        cls = s.includes('error') || s.includes('fault') ? 'bad' : (s === 'connected' || s === 'running' ? 'good' : 'warn');
+    }
+    ids.badge.innerHTML = '<span class="' + cls + '">' + esc(stateText) + '</span>';
+    ids.state.textContent = stateText;
+    ids.totals.textContent = countersText;
+    ids.rate.textContent = rateText;
+    const err = d.lastError;
+    if (err) { ids.error.style.display = ''; ids.error.innerHTML = '<span class="bad">⚠ Last error:</span> ' + esc(err); }
+    else { ids.error.style.display = 'none'; }
+}
+
 async function loadDiagnostics() {
     if (!diagnosticsActive) return;
     try {
@@ -3453,6 +3545,63 @@ async function refreshPortsInfo() {
 }
 
 function renderDiagnostics(p) {
+    // Bridge Health summary
+    const rt = p.runtime || {};
+    const uaSrv = p.uaServer || {};
+    const bridgeCls = { 'Running': 'good', 'Degraded': 'warn', 'Starting': 'warn', 'Stopped': 'bad' }[rt.bridgeState] || 'warn';
+    el('diagBridgeState').innerHTML = '<span class="' + bridgeCls + '">' + esc(rt.bridgeState || '—') + '</span>';
+    el('diagDaConn').textContent = 'DA: ' + (rt.daConnectionState || '—');
+    el('diagUptime').textContent = fmtUptime(p.uptimeSeconds);
+    el('diagSessionInfo').textContent = rt.sessionId ? ('session ' + rt.sessionId + (rt.interactiveSession ? ' · interactive' : '')) : '';
+    const vrate = Number(rt.lastPollValueRate || 0);
+    el('diagValueRate').textContent = vrate > 0 ? vrate.toFixed(1) : '0';
+    el('diagUpdateRate').textContent = rt.updateRateMs ? 'update ' + formatMs(rt.updateRateMs) : '';
+    el('diagUaClients').textContent = String(uaSrv.connectedClientCount ?? 0);
+    el('diagMappedNodes').textContent = (uaSrv.mappedNodeCount ?? 0) + ' nodes mapped';
+    const lastErrEl = el('diagLastError');
+    if (rt.lastError) { lastErrEl.style.display = ''; lastErrEl.innerHTML = '<span class="bad">&#9888; Last error:</span> <span class="bad">' + esc(rt.lastError) + '</span>'; }
+    else { lastErrEl.style.display = 'none'; }
+    el('diagHealthUpdated').textContent = 'updated ' + new Date().toLocaleTimeString();
+
+    // Runtime counters
+    el('diagMappingCount').textContent = (rt.mappingCount ?? 0).toLocaleString();
+    el('diagPollDuration').textContent = formatMs(rt.lastPollDurationMs);
+    el('diagLastDaRead').textContent = rt.lastDaReadUtc ? relTime(rt.lastDaReadUtc) : 'never';
+    el('diagLastDaReadMeta').textContent = rt.lastDaReadUtc ? ((rt.lastDaReadCount ?? 0) + ' values') : '';
+    el('diagLastUaWrite').textContent = rt.lastUaWriteUtc ? relTime(rt.lastUaWriteUtc) : 'never';
+    el('diagLastUaWriteMeta').textContent = rt.lastUaWriteUtc ? ((rt.lastUaWriteCount ?? 0) + ' writes') : '';
+    el('diagSessionId').textContent = rt.sessionId != null && rt.sessionId > 0 ? String(rt.sessionId) : '—';
+    el('diagInteractive').textContent = rt.interactiveSession ? 'interactive' : '';
+
+    // Integration health (MQTT / InfluxDB)
+    setIntegrationHealth(
+        { state: el('diagMqttState'), badge: el('diagMqttBadge'), rate: el('diagMqttRate'), totals: el('diagMqttTotals'), error: el('diagMqttError') },
+        p.mqtt,
+        (p.mqtt?.publishedCount ?? 0).toLocaleString() + ' published · ' + (p.mqtt?.receivedCount ?? 0).toLocaleString() + ' received',
+        '&#8593; ' + Number(p.mqtt?.publishedRate || 0).toFixed(1) + '/s · &#8595; ' + Number(p.mqtt?.receivedRate || 0).toFixed(1) + '/s');
+    setIntegrationHealth(
+        { state: el('diagInfluxState'), badge: el('diagInfluxBadge'), rate: el('diagInfluxRate'), totals: el('diagInfluxTotal'), error: el('diagInfluxError') },
+        p.influx,
+        (p.influx?.writtenCount ?? 0).toLocaleString() + ' written',
+        Number(p.influx?.writtenRate || 0).toFixed(1) + '/s');
+
+    // Problems — disconnected UA tags being retried
+    const problems = p.problems || {};
+    const disc = problems.disconnected || [];
+    el('diagDiscCount').textContent = disc.length === 1 ? '1 retrying' : disc.length + ' retrying';
+    el('diagDisconnected').innerHTML = disc.length ? disc.map(d =>
+        `<div class="li"><div style="flex:1"><div class="n">${esc(get(d, 'sourceId') || '')}</div><div class="p">${esc(get(d, 'itemId') || '')}</div></div><span class="warn">auto-retry</span></div>`).join('')
+        : '<span class="good">&#10003; All monitored items connected</span>';
+
+    // Problems — bad-quality tags
+    const badTotal = problems.badQualityTotal || 0;
+    const badItems = problems.badQuality || [];
+    el('diagBadCount').textContent = badTotal === 1 ? '1 affected' : badTotal + ' affected';
+    el('diagBadQuality').innerHTML = badTotal === 0
+        ? '<span class="good">&#10003; No bad-quality tags</span>'
+        : badItems.map(b => `<div class="li"><div style="flex:1"><div class="n">${esc(get(b, 'sourceId') || '')}</div><div class="p">${esc(get(b, 'itemId') || '')}</div></div><span class="bad">bad</span></div>`).join('')
+            + (badTotal > badItems.length ? `<div class="li"><span class="msg">+ ${badTotal - badItems.length} more…</span></div>` : '');
+
     // DA Source Diagnostics — reuse state data from /api/dashboard
     const sources = state.sources || [];
     const rateGroups = (state.rateGroups || []);
@@ -6034,6 +6183,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       'opc-da': 'connectivity/opc-da',
       'opc-ua': 'connectivity/opc-ua',
       diagnostics: 'connectivity/diagnostics',
+      sessions: 'ops/sessions',
       tags: 'tags/maps',
       links: 'tags/links',
       logs: 'ops/logs',
