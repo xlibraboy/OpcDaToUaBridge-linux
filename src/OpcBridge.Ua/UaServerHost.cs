@@ -174,7 +174,7 @@ public sealed class UaServerHost : IAsyncDisposable
         {
             ApplicationName = options_.ApplicationName,
             ApplicationUri = applicationUri,
-            ProductUri = "urn:ohmypi:opc-da-to-ua-bridge",
+            ProductUri = "urn:ohmypi:opc-bridge",
             ApplicationType = ApplicationType.Server,
             SecurityConfiguration = new SecurityConfiguration
             {

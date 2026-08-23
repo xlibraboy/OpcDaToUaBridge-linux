@@ -1,5 +1,5 @@
 param(
-    [string]$RepoRoot = 'C:\Users\Tested1\Documents\OpcDaToUaBridge'
+    [string]$RepoRoot = 'C:\Users\Tested1\Documents\OpcBridge'
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'

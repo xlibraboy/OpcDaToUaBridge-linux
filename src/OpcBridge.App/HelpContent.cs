@@ -650,7 +650,7 @@ The bridge runs as a **background scheduled task** — no Windows Service, no ad
 
 ```
  Copy the publish folder to the target PC, e.g.:
-   C:\OpcDaToUaBridge\publish\
+   C:\OpcBridge\publish\
 
  The folder must contain:
    OpcBridge.App.dll          ← main app
@@ -663,7 +663,7 @@ The bridge runs as a **background scheduled task** — no Windows Service, no ad
    *.dll (Opc.Ua.*, Microsoft.Extensions.*, etc.)
 
  Also copy the scripts folder:
-   C:\OpcDaToUaBridge\scripts\windows\
+   C:\OpcBridge\scripts\windows\
      start-published-bridge.cmd       ← launcher (uses x86 dotnet)
      register-published-task.ps1      ← registers the scheduled task
      show-published-logs.ps1          ← reads task logs
@@ -680,8 +680,8 @@ The bridge runs as a **background scheduled task** — no Windows Service, no ad
     "UseSubscriptions": true                   ← use IOPCDataCallback if supported
   },
   "Ua": {
-    "ApplicationName": "OpcDaToUaBridge",
-    "EndpointUrl": "opc.tcp://0.0.0.0:4840/OpcDaToUaBridge",
+    "ApplicationName": "OpcBridge",
+    "EndpointUrl": "opc.tcp://0.0.0.0:4840/OpcBridge",
     "AutoAcceptUntrustedCertificates": true    ← set false for production
   },
   "Bridge": {
@@ -701,11 +701,11 @@ The bridge runs as a **background scheduled task** — no Windows Service, no ad
 Open PowerShell (no admin needed) and run:
 
 ```powershell
-cd C:\OpcDaToUaBridge
+cd C:\OpcBridge
 powershell -ExecutionPolicy Bypass -File scripts\windows\register-published-task.ps1
 ```
 
-This creates a Windows Scheduled Task named **OpcDaToUaBridge** that:
+This creates a Windows Scheduled Task named **OpcBridge** that:
 - Starts automatically at **system startup** with the default S4U logon (with `-LogonType Interactive` it instead starts at the user's next logon)
 - Runs as the current user with highest privileges
 - Launches via `start-published-bridge.cmd` → `C:\Program Files (x86)\dotnet\dotnet.exe OpcBridge.App.dll`
@@ -724,7 +724,7 @@ S4U default: `powershell -ExecutionPolicy Bypass -File scripts\windows\register-
 | Bridge state | Monitor → Bridge | Running |
 | DA connection | Monitor → DA | Connected |
 | UA server | Monitor → UA | Running |
-| Scheduled task | `schtasks /query /tn OpcDaToUaBridge` | State: Running |
+| Scheduled task | `schtasks /query /tn OpcBridge` | State: Running |
 | Version | Topbar badge or `http://localhost:8080/api/version` | e.g. v1.0.0 |
 
 A source that is merely unreachable (server down, RPC dead) shows **Reconnecting** and is retried automatically with backoff — give it a few seconds before assuming a config problem.
@@ -738,7 +738,7 @@ If DA shows Faulted, check:
 ### Step 5 — Access from other machines
 
 - Dashboard: `http://<windows-host-ip>:8080/`
-- OPC UA: `opc.tcp://<windows-host-ip>:4840/OpcDaToUaBridge`
+- OPC UA: `opc.tcp://<windows-host-ip>:4840/OpcBridge`
 - Ensure Windows Firewall allows ports 8080 and 4840 (see Prerequisites)
 
 ## Files created at runtime
@@ -755,19 +755,19 @@ If DA shows Faulted, check:
 
 ```powershell
 # Stop the bridge
-schtasks /end /tn OpcDaToUaBridge
+schtasks /end /tn OpcBridge
 
 # Start the bridge
-schtasks /run /tn OpcDaToUaBridge
+schtasks /run /tn OpcBridge
 
 # Check task state
-schtasks /query /tn OpcDaToUaBridge /fo list
+schtasks /query /tn OpcBridge /fo list
 
 # View recent logs
 powershell -File scripts\windows\show-published-logs.ps1
 
 # Remove the task (uninstall)
-schtasks /delete /tn OpcDaToUaBridge /f
+schtasks /delete /tn OpcBridge /f
 ```
 
 ## Backup and restore
@@ -815,7 +815,7 @@ The new `publish` folder contains updated DLLs and possibly updated scripts:
 
 ```powershell
 # Stop the scheduled task
-schtasks /end /tn OpcDaToUaBridge
+schtasks /end /tn OpcBridge
 
 # Wait 2 seconds, then kill any lingering dotnet process
 Start-Sleep -Seconds 2
@@ -832,7 +832,7 @@ Get-Process dotnet -ErrorAction SilentlyContinue
 
 ```powershell
 # Copy ALL files from the new publish folder, EXCEPT user data
-cd C:\OpcDaToUaBridge
+cd C:\OpcBridge
 
 # Copy everything from the new publish folder
 xcopy /Y /S <new-publish-folder>\* publish\
@@ -858,7 +858,7 @@ xcopy /Y /S <new-version>\scripts\windows\ scripts\windows\
 
 ```powershell
 # Start the bridge
-schtasks /run /tn OpcDaToUaBridge
+schtasks /run /tn OpcBridge
 
 # Wait for startup
 Start-Sleep -Seconds 10
@@ -887,7 +887,7 @@ If DA shows Faulted after update, check `/api/logs` for errors. If `appsettings.
 If you have the new publish folder on the same machine:
 
 ```powershell
-schtasks /end /tn OpcDaToUaBridge; Get-Process dotnet -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Sleep 2; xcopy /Y /S C:\new-publish\* C:\OpcDaToUaBridge\publish\; schtasks /run /tn OpcDaToUaBridge; Start-Sleep 10; (Invoke-RestMethod http://localhost:8080/health).status
+schtasks /end /tn OpcBridge; Get-Process dotnet -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Sleep 2; xcopy /Y /S C:\new-publish\* C:\OpcBridge\publish\; schtasks /run /tn OpcBridge; Start-Sleep 10; (Invoke-RestMethod http://localhost:8080/health).status
 ```
 
 ## If something goes wrong
@@ -925,7 +925,7 @@ publish\pki\
 ## How it works
 
 1. **First start** — the bridge generates a self-signed X.509 certificate and saves it to `pki/own/`. No manual setup needed.
-2. **Client connects** — a UA client (e.g. UAExpert) connects to `opc.tcp://host:4840/OpcDaToUaBridge`. The bridge sends its own certificate.
+2. **Client connects** — a UA client (e.g. UAExpert) connects to `opc.tcp://host:4840/OpcBridge`. The bridge sends its own certificate.
 3. **Client trusts the bridge** — the UA client may show a "trust server certificate?" dialog. Accept it.
 4. **Bridge trusts the client** — the client's certificate is saved to `pki/trusted/` (if `AutoAcceptUntrustedCertificates` is `true`) or `pki/rejected/` (if `false`).
 5. **Encrypted session** — all subsequent UA traffic is encrypted using the negotiated keys.
@@ -962,7 +962,7 @@ Always preserve `pki/` across updates. It's listed in the update guide as "never
 - **Da:Host** — DA server host (localhost or remote IP)
 - **Da:UpdateRateMs** — default update rate for new sources (min 100ms); can be changed live in Sources → OPC DA → Default Update Rate
 - **Da:UseSubscriptions** — use `IOPCDataCallback` subscriptions (default `true`); can be toggled live in Sources → OPC DA → DA Subscriptions
-- **Ua:EndpointUrl** — OPC UA server endpoint (default `opc.tcp://0.0.0.0:4840/OpcDaToUaBridge`)
+- **Ua:EndpointUrl** — OPC UA server endpoint (default `opc.tcp://0.0.0.0:4840/OpcBridge`)
 - **Ua:AutoAcceptUntrustedCertificates** — accept untrusted UA client certs (dev/test)
 - **Bridge:RateLimits** — max tags per rate group (rate ms → max tags)
 - **Bridge:ExpectedTagCount** — pre-allocation hint for the value cache (default 1000; grows past it)

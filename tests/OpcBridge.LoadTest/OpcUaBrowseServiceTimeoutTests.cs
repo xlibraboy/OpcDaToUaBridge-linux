@@ -16,7 +16,7 @@ public sealed class OpcUaBrowseServiceTimeoutTests
         AutoAcceptUntrustedCertificates = true,
         // Isolate PKI from other parallel UA tests that also use pki/ua-client under the test bin.
         PkiRoot = Path.Combine("pki", "ua-browse-timeout-tests", Guid.NewGuid().ToString("N")),
-        ApplicationName = "OpcDaToUaBridge.UaBrowseTimeoutTest"
+        ApplicationName = "OpcBridge.UaBrowseTimeoutTest"
     };
 
     /// <summary>

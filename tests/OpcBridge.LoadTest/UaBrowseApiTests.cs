@@ -15,7 +15,7 @@ public sealed class UaBrowseApiTests
             Da = new { ProgId = "Matrikon.OPC.Simulation.1", Host = "localhost", UpdateRateMs = 1000, UseSubscriptions = true },
             Ua = new
             {
-                ApplicationName = "OpcDaToUaBridge",
+                ApplicationName = "OpcBridge",
                 EndpointUrl = uaEndpoint,
                 AutoAcceptUntrustedCertificates = true,
                 RequireAuthentication = false,
@@ -28,7 +28,7 @@ public sealed class UaBrowseApiTests
             {
                 Enabled = false,
                 BrokerUrl = "tcp://localhost:1883",
-                ClientId = "OpcDaToUaBridge",
+                ClientId = "OpcBridge",
                 UserName = (string?)null,
                 Password = (string?)null,
                 Tls = false,

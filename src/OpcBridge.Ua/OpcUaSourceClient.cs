@@ -1238,7 +1238,7 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
     {
         string pkiRoot = Path.Combine(AppContext.BaseDirectory, options_.PkiRoot);
         string applicationName = string.IsNullOrWhiteSpace(options_.ApplicationName)
-            ? "OpcDaToUaBridge.UaClient"
+            ? "OpcBridge.UaClient"
             : options_.ApplicationName.Trim();
         // ApplicationUri must stay stable across sources so the shared
         // pki/ua-client application certificate remains valid.
@@ -1248,7 +1248,7 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
         {
             ApplicationName = applicationName,
             ApplicationUri = applicationUri,
-            ProductUri = "urn:ohmypi:opc-da-to-ua-bridge-client",
+            ProductUri = "urn:ohmypi:opc-bridge-client",
             ApplicationType = ApplicationType.Client,
             SecurityConfiguration = new SecurityConfiguration
             {
