@@ -144,6 +144,114 @@ public sealed class DaRuntimeSettings
         }
     }
 
+    /// <summary>Add/update a named UA subscription on an OpcUa-type source. Throws ArgumentException on invalid input.</summary>
+    public DaRuntimeSettingsSnapshot UpsertUaSubscription(string sourceId, string name, int updateRateMs)
+    {
+        string trimmed = (name ?? string.Empty).Trim();
+        if (trimmed.Length == 0 || trimmed.Length > 64)
+        {
+            throw new ArgumentException("Subscription name must be 1-64 characters.", nameof(name));
+        }
+
+        int clampedRate = Math.Max(100, updateRateMs);
+
+        lock (sync_)
+        {
+            List<DaSourceRuntimeSettings> sources = snapshot_.Sources.ToList();
+            int index = sources.FindIndex(source =>
+                string.Equals(source.SourceId, sourceId, StringComparison.OrdinalIgnoreCase));
+
+            if (index < 0)
+            {
+                throw new ArgumentException($"Source '{sourceId}' does not exist.", nameof(sourceId));
+            }
+
+            if (!string.Equals(sources[index].SourceType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException(
+                    $"Source '{sourceId}' is not an OPC UA source; subscriptions apply to OPC UA sources only.",
+                    nameof(sourceId));
+            }
+
+            DaSourceRuntimeSettings current = sources[index];
+            List<UaSubscriptionSettings> subs = SourceConfigMigration
+                .NormalizeUaSubscriptions(current.UaSubscriptions)
+                .ToList();
+            UaSubscriptionSettings updated = new(trimmed, clampedRate);
+            int subIndex = subs.FindIndex(s => string.Equals(s.Name, trimmed, StringComparison.OrdinalIgnoreCase));
+            if (subIndex >= 0)
+            {
+                subs[subIndex] = updated;
+            }
+            else
+            {
+                if (subs.Count >= SourceConfigMigration.MaxUaSubscriptionsPerSource)
+                {
+                    throw new ArgumentException(
+                        $"Source '{sourceId}' already has the maximum of {SourceConfigMigration.MaxUaSubscriptionsPerSource} named subscriptions.");
+                }
+                subs.Add(updated);
+            }
+
+            sources[index] = current with
+            {
+                OpcUa = (current.OpcUa ?? new OpcUaSourceOptions(string.Empty, "None", "None", null, null, 60000, 5000))
+                    with { Subscriptions = subs }
+            };
+            snapshot_ = snapshot_ with
+            {
+                Sources = sources,
+                Version = snapshot_.Version + 1
+            };
+
+            Persist();
+            return snapshot_;
+        }
+    }
+
+    /// <summary>Remove a named UA subscription. Throws ArgumentException when the source/sub doesn't exist.</summary>
+    public DaRuntimeSettingsSnapshot RemoveUaSubscription(string sourceId, string name)
+    {
+        string trimmed = (name ?? string.Empty).Trim();
+
+        lock (sync_)
+        {
+            List<DaSourceRuntimeSettings> sources = snapshot_.Sources.ToList();
+            int index = sources.FindIndex(source =>
+                string.Equals(source.SourceId, sourceId, StringComparison.OrdinalIgnoreCase));
+
+            if (index < 0)
+            {
+                throw new ArgumentException($"Source '{sourceId}' does not exist.", nameof(sourceId));
+            }
+
+            DaSourceRuntimeSettings current = sources[index];
+            List<UaSubscriptionSettings> subs = SourceConfigMigration
+                .NormalizeUaSubscriptions(current.UaSubscriptions)
+                .ToList();
+            int subIndex = subs.FindIndex(s => string.Equals(s.Name, trimmed, StringComparison.OrdinalIgnoreCase));
+            if (subIndex < 0)
+            {
+                throw new ArgumentException($"Subscription '{trimmed}' does not exist on source '{sourceId}'.");
+            }
+
+            subs.RemoveAt(subIndex);
+            sources[index] = current with
+            {
+                OpcUa = (current.OpcUa ?? new OpcUaSourceOptions(string.Empty, "None", "None", null, null, 60000, 5000))
+                    with { Subscriptions = subs }
+            };
+            snapshot_ = snapshot_ with
+            {
+                Sources = sources,
+                Version = snapshot_.Version + 1
+            };
+
+            Persist();
+            return snapshot_;
+        }
+    }
+
     /// <summary>
     /// Sets the per-source client I/O mode (AutoDetect | Sync | Async20). Invalid or
     /// unknown values normalize to AutoDetect. Returns the updated snapshot, or the
@@ -515,7 +623,8 @@ public sealed record OpcUaSourceOptions(
     string? Password,
     int SessionTimeoutMs,
     int ReconnectDelayMs,
-    int WatchdogTimeoutMs = 60000);
+    int WatchdogTimeoutMs = 60000,
+    IReadOnlyList<UaSubscriptionSettings>? Subscriptions = null);
 
 public sealed record MelsecA3nSourceOptions(
     string Transport,
@@ -593,6 +702,39 @@ public sealed record DaSourceRuntimeSettings(
     public int ReconnectDelayMs => OpcUa?.ReconnectDelayMs ?? 5000;
     public int WatchdogTimeoutMs => OpcUa?.WatchdogTimeoutMs ?? 60000;
 
+    /// <summary>Named UA subscription definitions; empty for non-UA sources or legacy configs.</summary>
+    public IReadOnlyList<UaSubscriptionSettings> UaSubscriptions
+        => OpcUa?.Subscriptions ?? Array.Empty<UaSubscriptionSettings>();
+
+    /// <summary>Order-insensitive comparison of named-subscription definitions (case-insensitive names).</summary>
+    public bool UaSubscriptionsEqual(DaSourceRuntimeSettings other)
+    {
+        IReadOnlyList<UaSubscriptionSettings> left = UaSubscriptions;
+        IReadOnlyList<UaSubscriptionSettings> right = other.UaSubscriptions;
+        if (left.Count != right.Count)
+        {
+            return false;
+        }
+
+        Dictionary<string, int> byName = new(StringComparer.OrdinalIgnoreCase);
+        foreach (UaSubscriptionSettings s in left)
+        {
+            byName[s.Name.Trim()] = s.UpdateRateMs;
+        }
+
+        foreach (UaSubscriptionSettings s in right)
+        {
+            string key = s.Name.Trim();
+            if (!byName.TryGetValue(key, out int rate) || rate != s.UpdateRateMs)
+            {
+                return false;
+            }
+            byName.Remove(key);
+        }
+
+        return byName.Count == 0;
+    }
+
     public DaClientOptions ToOptions(bool useSubscriptions, string? ioMode = null)
     {
         OpcDaSourceOptions da = OpcDa ?? new OpcDaSourceOptions(string.Empty, "localhost", null, null, null);
@@ -647,7 +789,8 @@ public sealed record DaSourceRuntimeSettings(
             UpdateRateMs = UpdateRateMs,
             SessionTimeoutMs = ua.SessionTimeoutMs,
             ReconnectDelayMs = ua.ReconnectDelayMs,
-            UseSubscriptions = effectiveUseSubscriptions
+            UseSubscriptions = effectiveUseSubscriptions,
+            Subscriptions = UaSubscriptions
         };
     }
 }
@@ -735,6 +878,13 @@ public sealed class OpcUaSourceOptionsDto
     public int ReconnectDelayMs { get; set; }
     public int MaxMappedTags { get; set; }
     public int? WatchdogTimeoutMs { get; set; }
+    public List<UaSubscriptionDto>? Subscriptions { get; set; }
+}
+
+public sealed class UaSubscriptionDto
+{
+    public string? Name { get; set; }
+    public int UpdateRateMs { get; set; }
 }
 
 public sealed class MelsecA3nSourceOptionsDto
@@ -827,7 +977,10 @@ public static class SourceConfigMigration
                 FirstNonEmpty(dto.OpcUa.Password, dto.OpcUa.UaPassword),
                 dto.OpcUa.SessionTimeoutMs,
                 dto.OpcUa.ReconnectDelayMs,
-                dto.OpcUa.WatchdogTimeoutMs ?? 60000);
+                dto.OpcUa.WatchdogTimeoutMs ?? 60000,
+                dto.OpcUa.Subscriptions is { Count: > 0 }
+                    ? dto.OpcUa.Subscriptions.Select(d => new UaSubscriptionSettings(d.Name ?? string.Empty, d.UpdateRateMs)).ToList()
+                    : null);
         }
         else if (HasFlatUa(dto))
         {
@@ -1023,7 +1176,10 @@ public static class SourceConfigMigration
                 Password = source.OpcUa.Password,
                 SessionTimeoutMs = source.OpcUa.SessionTimeoutMs,
                 ReconnectDelayMs = source.OpcUa.ReconnectDelayMs,
-                WatchdogTimeoutMs = source.OpcUa.WatchdogTimeoutMs
+                WatchdogTimeoutMs = source.OpcUa.WatchdogTimeoutMs,
+                Subscriptions = source.UaSubscriptions.Count == 0
+                    ? null
+                    : source.UaSubscriptions.Select(s => new UaSubscriptionDto { Name = s.Name, UpdateRateMs = s.UpdateRateMs }).ToList()
             },
             Melsec = source.Melsec is null ? null : new MelsecA3nSourceOptionsDto
             {
@@ -1093,7 +1249,8 @@ public static class SourceConfigMigration
                 string.IsNullOrWhiteSpace(raw.Password) ? null : raw.Password,
                 raw.SessionTimeoutMs <= 0 ? 60000 : raw.SessionTimeoutMs,
                 raw.ReconnectDelayMs <= 0 ? 5000 : raw.ReconnectDelayMs,
-                raw.WatchdogTimeoutMs < 0 ? 0 : raw.WatchdogTimeoutMs);
+                raw.WatchdogTimeoutMs < 0 ? 0 : raw.WatchdogTimeoutMs,
+                NormalizeUaSubscriptions(raw.Subscriptions));
         }
         else if (string.Equals(sourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase))
         {
@@ -1229,6 +1386,36 @@ public static class SourceConfigMigration
         return byName.Values
             .OrderBy(g => g.Name)
             .ToArray();
+    }
+
+    public const int MaxUaSubscriptionsPerSource = 16;
+
+    /// <summary>Trim names, dedupe case-insensitively (first wins), clamp rates to >= 100 ms, drop blanks.</summary>
+    public static IReadOnlyList<UaSubscriptionSettings> NormalizeUaSubscriptions(
+        IEnumerable<UaSubscriptionSettings>? subscriptions)
+    {
+        if (subscriptions is null)
+        {
+            return Array.Empty<UaSubscriptionSettings>();
+        }
+
+        Dictionary<string, UaSubscriptionSettings> result = new(StringComparer.OrdinalIgnoreCase);
+        foreach (UaSubscriptionSettings sub in subscriptions)
+        {
+            string name = sub.Name?.Trim() ?? string.Empty;
+            if (name.Length == 0)
+            {
+                continue;
+            }
+
+            int rate = Math.Max(100, sub.UpdateRateMs);
+            if (!result.ContainsKey(name))
+            {
+                result[name] = new UaSubscriptionSettings(name, rate);
+            }
+        }
+
+        return result.Values.ToList();
     }
 
     private static bool HasFlatDa(SourceConfigDto dto) =>
