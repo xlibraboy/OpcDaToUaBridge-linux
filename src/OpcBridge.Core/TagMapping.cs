@@ -31,6 +31,15 @@ public sealed class TagMapping
     public bool MqttEnabled { get; set; }
     public string? MqttTopic { get; set; }
     public bool InfluxEnabled { get; set; }
+
+    /// <summary>
+    /// OPC UA sources only: name of the source-defined named subscription this tag rides on.
+    /// Empty string = the source's default bucket (source UpdateRateMs semantics, unchanged).
+    /// Matched case-insensitively against the source's definitions; unknown names group into
+    /// the default bucket at runtime (spec §4).
+    /// </summary>
+    [JsonPropertyName("subscription")]
+    public string Subscription { get; set; } = string.Empty;
 }
 public static class TagMode
 {
