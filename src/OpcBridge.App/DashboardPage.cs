@@ -674,7 +674,7 @@ internal static class DashboardPage
                         <div class="field"><label class="fl">Mode</label><select id="cfgIoMode"><option value="AutoDetect">AutoDetect I/O</option><option value="Sync">Synchronous I/O</option><option value="Async20">Async I/O 2.0</option></select><span class="msg" id="ioModeHint" style="font-weight:400;text-transform:none;letter-spacing:0"></span></div>
                     </div>
                     <div class="conn-section">
-                        <div class="conn-section-h">Rate Groups <span class="info" data-tip="Each poll-rate bucket is a separate OPC DA group (OpcBridge_&lt;rate&gt;), like Matrikon's groups. Set an I/O mode per group; AutoDetect inherits the source-level I/O Mode above. Changes apply live — no restart.">i</span></div>
+                        <div class="conn-section-h">Groups <span class="info" data-tip="Read-only summary of this source's OPC DA groups. Add, edit, rename or delete groups in the DA Groups panel (Manage groups) — changes apply live, no restart.">i</span></div>
                         <div id="cfgGroups" style="display:flex;flex-direction:column;gap:6px"></div>
                         <div class="msg" id="cfgGroupsMsg" style="margin-top:4px"></div>
                     </div>
@@ -4385,75 +4385,30 @@ async function loadGroupsSection() {
     }
 }
 function renderGroups(groups, sourceId, sourceIoMode) {
+    // Read-only summary — editing lives in the DA Groups panel.
     const container = el('cfgGroups');
     if (!container) return;
-    container.innerHTML = '';
-    for (const g of groups) {
-        const row = document.createElement('div');
-        row.style.cssText = 'display:flex;align-items:center;gap:8px;flex-wrap:wrap';
-        const label = document.createElement('span');
-        label.style.cssText = 'min-width:150px;font-weight:400;letter-spacing:0;text-transform:none';
-        label.textContent = g.groupId + ' (' + g.rate + ' ms)';
-        const sel = document.createElement('select');
-        sel.style.cssText = 'flex:1;min-width:130px';
-        for (const mode of ['AutoDetect', 'Sync', 'Async20']) {
-            const opt = document.createElement('option');
-            opt.value = mode;
-            opt.textContent = mode === 'AutoDetect' ? 'AutoDetect I/O' : mode === 'Sync' ? 'Synchronous I/O' : 'Async I/O 2.0';
-            sel.appendChild(opt);
+    let html = '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">' +
+        '<span style="font-weight:600;font-size:12px">' + groups.length + ' group(s)</span>' +
+        '<button class="btn ghost" type="button" style="height:20px;padding:0 8px;font-size:11px" onclick="navigate(\'connectivity/opc-da-groups\')">Manage groups</button>' +
+        '</div>';
+    if (!groups.length) {
+        html += '<span class="msg">No groups yet.</span>';
+    } else {
+        html += '<div style="display:flex;gap:5px;flex-wrap:wrap">';
+        for (const g of groups) {
+            html += '<span class="dag-badge' + (g.isDefault ? ' accent' : '') + '">' +
+                esc(g.name) + ' · ' + esc(daPrettyRate(g.rate)) + ' · ' + esc(prettyIoMode(g.ioMode || 'AutoDetect')) +
+                (g.isDefault ? ' · default' : '') + '</span>';
         }
-        sel.value = g.ioMode || 'AutoDetect';
-        const eff = document.createElement('span');
-        eff.style.cssText = 'font-weight:400;letter-spacing:0;text-transform:none;font-size:12px;opacity:.75';
-        eff.textContent = (g.isDefault ? 'uses source: ' : 'effective: ') + prettyIoMode(g.effective);
-        const applyBtn = document.createElement('button');
-        applyBtn.className = 'btn ghost';
-        applyBtn.type = 'button';
-        applyBtn.textContent = 'Apply';
-        applyBtn.onclick = () => applyGroupMode(sourceId, g.rate, sel.value, sel, eff);
-        const resetBtn = document.createElement('button');
-        resetBtn.className = 'btn ghost';
-        resetBtn.type = 'button';
-        resetBtn.textContent = 'Reset';
-        resetBtn.onclick = () => resetGroupMode(sourceId, g.rate, sel, eff);
-        row.appendChild(label);
-        row.appendChild(sel);
-        row.appendChild(eff);
-        row.appendChild(applyBtn);
-        if (!g.isDefault) row.appendChild(resetBtn);
-        container.appendChild(row);
+        html += '</div>';
     }
+    container.innerHTML = html;
 }
 function prettyIoMode(mode) {
     if (mode === 'Sync') return 'Synchronous I/O';
     if (mode === 'Async20') return 'Async I/O 2.0';
     return 'AutoDetect I/O';
-}
-async function applyGroupMode(sourceId, rate, ioMode) {
-    const msg = el('cfgGroupsMsg');
-    try {
-        const r = await fetch('/api/da/sources/groups', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId, rate, ioMode }) });
-        const p = await r.json();
-        if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
-        if (msg) msg.textContent = 'Group ' + rate + ' ms set to ' + prettyIoMode(ioMode) + ' — reconnecting…';
-        await loadGroupsSection();
-        await refresh();
-    } catch (e) {
-        if (msg) msg.textContent = 'Apply failed: ' + e.message;
-    }
-}
-async function resetGroupMode(sourceId, rate) {
-    const msg = el('cfgGroupsMsg');
-    try {
-        const r = await fetch('/api/da/sources/groups/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId, rate }) });
-        const p = await r.json();
-        if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
-        if (msg) msg.textContent = 'Group ' + rate + ' ms reset to the source-level I/O mode.';
-        await loadGroupsSection();
-        await refresh();
-    } catch (e) {
-        if (msg) msg.textContent = 'Reset failed: ' + e.message;
-    }
 }
 async function loadDaGroupsTab() {
     const container = el('daGroupsContainer');

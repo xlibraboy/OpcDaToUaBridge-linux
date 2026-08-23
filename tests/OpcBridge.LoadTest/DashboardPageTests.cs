@@ -401,6 +401,16 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
+    public void OpcDaView_GroupsSectionIsReadOnlySummary()
+    {
+        // OPC DA view shows groups read-only (total + name·rate·io badges) with
+        // a Manage button jumping to the DA Groups panel — editing lives there.
+        Assert.Contains(">Manage groups<", DashboardPage.Script);
+        Assert.DoesNotContain("function applyGroupMode(", DashboardPage.Script);
+        Assert.DoesNotContain("function resetGroupMode(", DashboardPage.Script);
+    }
+
+    [Fact]
     public void Faceplate_UpdateRateSelectsDaGroup()
     {
         // UPDATE RATE on the faceplate Setup tab selects a named DA group:
