@@ -210,14 +210,14 @@ docker run --rm -v "$PWD/<worktree>":/src -w /src -v "$HOME/.nuget-cache":/home/
 
 **Target host (verified):** `DESKTOP-MENOJUS` / SSH alias `xlibr-win` (`192.168.20.13`), user `xlibr`, path `C:\Users\xlibr\Documents\OpcBridge\publish\`.
 
-**Linux publish (framework-dependent, 32-bit COM):**
+**Linux publish (self-contained, 32-bit COM):**
 ```bash
 docker run --rm -v "$PWD":/src -w /src mcr.microsoft.com/dotnet/sdk:8.0 \
-  bash -lc 'dotnet publish src/OpcBridge.App/OpcBridge.App.csproj -c Release -r win-x86 --self-contained false -o /src/publish.tmp'
+  bash -lc 'dotnet publish src/OpcBridge.App/OpcBridge.App.csproj -c Release -r win-x86 --self-contained true -o /src/publish.tmp'
 ```
 Package `publish.tmp` → tar.gz, SCP to host as `publish-new.tar.gz`, then run host deploy script (backs up `appsettings.json` / `mappings.json` / `pki`, clears publish, extracts, restores runtime state, re-registers task).
 
-**Host launcher:** scheduled task `OpcBridge` → `scripts/windows/start-published-bridge.cmd` which `pushd`s into `publish\` and runs `C:\Program Files (x86)\dotnet\dotnet.exe OpcBridge.App.dll` (CWD must be the publish folder so `appsettings.json` resolves).
+**Host launcher:** scheduled task `OpcBridge` → `scripts/windows/start-published-bridge.cmd` which `cd`s into `publish\` and runs `OpcBridge.App.exe` (self-contained apphost — carries its own runtime; falls back to `dotnet OpcBridge.App.dll`. CWD must be the publish folder so `appsettings.json` resolves).
 
 **register-published-task.ps1** kills old process, re-registers AtStartup S4U task, starts it, probes `http://127.0.0.1:8080/health`.
 
@@ -228,7 +228,7 @@ Package `publish.tmp` → tar.gz, SCP to host as `publish-new.tar.gz`, then run 
 - Delete stale apphost / pollution before copy if the directory was previously dirtied.
 - Optional: delete `publish/pki/own/cert.der` when UA hostname/SAN must regenerate.
 
-**Git remotes:** `origin` = `OpcBridge-linux` (SSH). Push merges to both origin and `win` (`OpcBridge-windows`) when the change affects the Windows deploy.
+**Git remotes:** single remote — `origin` = `OpcBridge-linux` (GitHub). The old `win` (`OpcBridge-windows`) remote is retired; push everything to `origin` only.
 
 ## Conventions
 
