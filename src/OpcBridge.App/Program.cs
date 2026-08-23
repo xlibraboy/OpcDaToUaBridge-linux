@@ -362,7 +362,7 @@ app.MapGet("/api/status/ports", () =>
         uaBind,
         uaClient));
 });
- app.MapGet("/api/dashboard", (BridgeState state, UaServerHost uaServer, BridgeAppDiscovery discovery, MappingStore mappingStore, BridgeWorker worker, int? limit, string? sourceId) =>
+ app.MapGet("/api/dashboard", (BridgeState state, UaServerHost uaServer, BridgeAppDiscovery discovery, MappingStore mappingStore, BridgeWorker worker, DaRuntimeSettings daSettings, int? limit, string? sourceId) =>
  {
      IReadOnlyList<BridgeValueSnapshot> values = state.GetValues(limit ?? DashboardValuesLimit, sourceId);
 
@@ -372,11 +372,16 @@ app.MapGet("/api/status/ports", () =>
      (IReadOnlyList<TagMapping> mappings, _) = mappingStore.GetSnapshot();
      Dictionary<string, string> dataTypeByKey = DashboardValues.BuildDataTypeLookup(mappings);
 
-     // Effective update rate per tag: per-tag PollRateMs wins, else the source default.
+     // Effective update rate per tag: assigned named subscription (clamped ≥ 100 ms)
+     // wins, else per-tag PollRateMs, else the source default.
      Dictionary<string, int> sourceRates = state.GetStatus().Sources
          .GroupBy(source => source.SourceId, StringComparer.OrdinalIgnoreCase)
          .ToDictionary(group => group.Key, group => group.First().UpdateRateMs, StringComparer.OrdinalIgnoreCase);
-     Dictionary<string, int> updateRateByKey = DashboardValues.BuildUpdateRateLookup(mappings, sourceRates);
+     DaRuntimeSettingsSnapshot daSnapshot = daSettings.GetSnapshot();
+     Dictionary<string, IReadOnlyList<UaSubscriptionSettings>> uaSubscriptionsBySource = daSnapshot.Sources
+         .Where(source => source.UaSubscriptions.Count > 0)
+         .ToDictionary(source => source.SourceId, source => source.UaSubscriptions, StringComparer.OrdinalIgnoreCase);
+     Dictionary<string, int> updateRateByKey = DashboardValues.BuildUpdateRateLookup(mappings, sourceRates, uaSubscriptionsBySource);
 
      return Results.Json(new
      {

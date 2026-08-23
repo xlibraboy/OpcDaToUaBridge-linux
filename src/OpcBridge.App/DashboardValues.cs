@@ -30,24 +30,56 @@ internal static class DashboardValues
     }
 
     /// <summary>
-    /// Effective update rate per mapped tag: the per-tag <c>PollRateMs</c> override wins;
-    /// otherwise the source's default rate applies. Unknown sources fall back to 0.
+    /// Effective update rate per mapped tag: an assigned named subscription wins
+    /// (clamped to ≥ 100 ms); otherwise the per-tag <c>PollRateMs</c> override;
+    /// otherwise the source's default rate. Unknown sources fall back to 0.
     /// </summary>
     public static Dictionary<string, int> BuildUpdateRateLookup(
         IReadOnlyList<TagMapping> mappings,
         IReadOnlyDictionary<string, int> sourceDefaultRates)
+        => BuildUpdateRateLookup(mappings, sourceDefaultRates, EmptySubscriptions);
+
+    private static readonly IReadOnlyDictionary<string, IReadOnlyList<UaSubscriptionSettings>> EmptySubscriptions =
+        new Dictionary<string, IReadOnlyList<UaSubscriptionSettings>>(StringComparer.OrdinalIgnoreCase);
+
+    public static Dictionary<string, int> BuildUpdateRateLookup(
+        IReadOnlyList<TagMapping> mappings,
+        IReadOnlyDictionary<string, int> sourceDefaultRates,
+        IReadOnlyDictionary<string, IReadOnlyList<UaSubscriptionSettings>> uaSubscriptionsBySource)
     {
         Dictionary<string, int> lookup = new(StringComparer.OrdinalIgnoreCase);
         for (int i = 0; i < mappings.Count; i++)
         {
             TagMapping mapping = mappings[i];
-            int rate = mapping.PollRateMs > 0
-                ? mapping.PollRateMs
-                : (sourceDefaultRates.TryGetValue(mapping.SourceId, out int sourceRate) ? sourceRate : 0);
+            uaSubscriptionsBySource.TryGetValue(mapping.SourceId,
+                out IReadOnlyList<UaSubscriptionSettings>? subs);
+            int rate = ResolveEffectiveRate(mapping, sourceDefaultRates, subs);
             lookup[BridgeState.NormalizeKey(mapping.SourceId, mapping.ItemId)] = rate;
         }
 
         return lookup;
+    }
+
+    private static int ResolveEffectiveRate(
+        TagMapping mapping,
+        IReadOnlyDictionary<string, int> sourceDefaultRates,
+        IReadOnlyList<UaSubscriptionSettings>? subscriptions)
+    {
+        string requested = (mapping.Subscription ?? string.Empty).Trim();
+        if (requested.Length > 0 && subscriptions is not null)
+        {
+            for (int i = 0; i < subscriptions.Count; i++)
+            {
+                if (string.Equals(subscriptions[i].Name.Trim(), requested, StringComparison.OrdinalIgnoreCase))
+                {
+                    return Math.Max(100, subscriptions[i].UpdateRateMs);
+                }
+            }
+        }
+
+        return mapping.PollRateMs > 0
+            ? mapping.PollRateMs
+            : (sourceDefaultRates.TryGetValue(mapping.SourceId, out int sourceRate) ? sourceRate : 0);
     }
 
     public static int LookupUpdateRate(Dictionary<string, int> lookup, string sourceId, string itemId)
