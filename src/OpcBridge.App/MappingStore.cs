@@ -189,6 +189,68 @@ public sealed class MappingStore
         return raisedVersion;
     }
 
+    /// <summary>
+    /// Move every mapping of one source off a named subscription back onto the source default
+    /// (empty Subscription). Used when a named subscription is deleted (spec §6). Returns count moved.
+    /// </summary>
+    public int ReassignSubscription(string sourceId, string subscriptionName)
+    {
+        if (string.IsNullOrWhiteSpace(sourceId) || string.IsNullOrWhiteSpace(subscriptionName))
+        {
+            return 0;
+        }
+
+        string target = subscriptionName.Trim();
+        (IReadOnlyList<TagMapping> mappings, _) = GetSnapshot();
+        int moved = 0;
+        for (int i = 0; i < mappings.Count; i++)
+        {
+            TagMapping mapping = mappings[i];
+            if (!string.Equals(mapping.SourceId, sourceId, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (!string.Equals((mapping.Subscription ?? string.Empty).Trim(), target, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            TagMapping updated = CloneMapping(mapping);
+            updated.Subscription = string.Empty;
+            if (TryUpdate(updated, out _))
+            {
+                moved++;
+            }
+        }
+
+        return moved;
+    }
+
+    private static TagMapping CloneMapping(TagMapping m) => new()
+    {
+        ProviderSourceId = m.ProviderSourceId,
+        ProviderItemId = m.ProviderItemId,
+        SourceId = m.SourceId,
+        ItemId = m.ItemId,
+        UaNodeId = m.UaNodeId,
+        DisplayName = m.DisplayName,
+        Description = m.Description,
+        DataType = m.DataType,
+        Enabled = m.Enabled,
+        Mode = m.Mode,
+        ManualValue = m.ManualValue,
+        PollRateMs = m.PollRateMs,
+        DaGroup = m.DaGroup,
+        DeadbandPct = m.DeadbandPct,
+        Writeable = m.Writeable,
+        AccessRights = m.AccessRights,
+        MqttEnabled = m.MqttEnabled,
+        MqttTopic = m.MqttTopic,
+        InfluxEnabled = m.InfluxEnabled,
+        Subscription = m.Subscription
+    };
+
     public long SetAll(IEnumerable<TagMapping> tags)
     {
         long raisedVersion;
@@ -340,7 +402,8 @@ public sealed class MappingStore
             AccessRights = accessRights,
             MqttEnabled = tag.MqttEnabled,
             MqttTopic = string.IsNullOrWhiteSpace(tag.MqttTopic) ? null : tag.MqttTopic.Trim(),
-            InfluxEnabled = tag.InfluxEnabled
+            InfluxEnabled = tag.InfluxEnabled,
+            Subscription = (tag.Subscription ?? string.Empty).Trim()
         };
     }
 
