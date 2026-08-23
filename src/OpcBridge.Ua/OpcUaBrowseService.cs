@@ -414,7 +414,7 @@ public sealed class OpcUaBrowseService
     {
         string pkiRoot = Path.Combine(AppContext.BaseDirectory, options.PkiRoot);
         string applicationName = string.IsNullOrWhiteSpace(options.ApplicationName)
-            ? "OpcDaToUaBridge.UaClient"
+            ? "OpcBridge.UaClient"
             : options.ApplicationName.Trim();
         // ApplicationUri must stay stable across sources/browse calls so the shared
         // pki/ua-client application certificate remains valid.
@@ -427,7 +427,7 @@ public sealed class OpcUaBrowseService
         {
             ApplicationName = applicationName,
             ApplicationUri = applicationUri,
-            ProductUri = "urn:ohmypi:opc-da-to-ua-bridge-client",
+            ProductUri = "urn:ohmypi:opc-bridge-client",
             ApplicationType = ApplicationType.Client,
             SecurityConfiguration = new SecurityConfiguration
             {

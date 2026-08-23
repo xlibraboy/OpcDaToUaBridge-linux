@@ -1,5 +1,5 @@
 @echo off
-cd /d C:\Users\xlibr\Documents\OpcDaToUaBridge\publish
+cd /d C:\Users\xlibr\Documents\OpcBridge\publish
 REM Read the runtime HTTP port from appsettings.json (the bridge auto-assigns
 REM a non-default port when 8080 is already in use on the host).
 set HTTP_PORT=8080

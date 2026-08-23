@@ -1,4 +1,4 @@
-# context.md — OpcDaToUaBridge
+# context.md — OpcBridge
 
 Instruction file for AI agents working in this repo. All facts below are verified against committed code on `main` as of 2026-08-07 (`a55e3da`).
 
@@ -112,7 +112,7 @@ When `TagMapping.Mode == "Manual"`, `BridgeWorker.ApplyManualMappings` synthesiz
 ## UA server
 
 - SDK: `OPCFoundation.NetStandard.Opc.Ua` 1.5.378.145.
-- Namespace URI `urn:ohmypi:opc-da-to-ua-bridge:tags` (index 2 at runtime). Root folder `OpcDaTags` under Objects. Mirror node id: string `{sourceId}/{itemId}` in that namespace (e.g. `ns=2;s=ua-a/ns=2;s=Tag00001`).
+- Namespace URI `urn:ohmypi:opc-bridge:tags` (index 2 at runtime). Root folder `OpcDaTags` under Objects. Mirror node id: string `{sourceId}/{itemId}` in that namespace (e.g. `ns=2;s=ua-a/ns=2;s=Tag00001`).
 - Endpoint `opc.tcp://0.0.0.0:4840/OpcBridge` (runtime port from `Bridge:OpcUaPort`), security policy `None` only, `AutoAcceptUntrustedCertificates = true` (dev default — tighten for production).
 - PKI directory stores: `pki/own`, `pki/trusted`, `pki/issuers`, `pki/rejected`.
 - `BridgeNodeManager.SyncMappings` (via `BridgeUaServer`) adds/removes nodes AND **refreshes mapping-driven attributes in place** when a mapping changes: `AccessLevel`/`UserAccessLevel` (from `AccessRights` via `ToAccessLevel`), `DataType` (via `ToDataTypeId`; a type change resets the value to a type-consistent initial), `DisplayName`/`Description`, and the `OnWriteValue` handler. Guarded by a change check so steady-state SyncMappings over 100k nodes is a near no-op. `ToAccessLevel`/`ToDataTypeId` are `internal` and unit-tested.
@@ -197,7 +197,7 @@ docker run --rm -v "$PWD/<worktree>":/src -w /src -v "$HOME/.nuget-cache":/home/
 
 **Worktree workflow (session convention):** fixes live in `git worktree add .worktrees/<branch-slug> -b <branch> main`; one worktree per branch; full suite per branch before merge; merge to main with `--no-ff`; push to origin. **Tool path quirk:** `edit`/`write` with relative `.worktrees/...` paths sometimes land in the main checkout — always use absolute paths and verify with grep after. `.dockerignore` excludes `.worktrees/` (7+ GB) so images can be built from the main checkout.
 
-**Windows host build:** `"%USERPROFILE%\AppData\Local\Microsoft\dotnet\dotnet.exe" build OpcDaToUaBridge.sln` — the `C:\Program Files\dotnet` install lacks the ASP.NET shared framework. Stop the running app before building (it locks `OpcBridge.Ua.dll`).
+**Windows host build:** `"%USERPROFILE%\AppData\Local\Microsoft\dotnet\dotnet.exe" build OpcBridge.sln` — the `C:\Program Files\dotnet` install lacks the ASP.NET shared framework. Stop the running app before building (it locks `OpcBridge.Ua.dll`).
 
 ## Load-test rig & harness
 
@@ -208,7 +208,7 @@ docker run --rm -v "$PWD/<worktree>":/src -w /src -v "$HOME/.nuget-cache":/home/
 
 ## Deploy to Windows
 
-**Target host (verified):** `DESKTOP-MENOJUS` / SSH alias `xlibr-win` (`192.168.20.13`), user `xlibr`, path `C:\Users\xlibr\Documents\OpcDaToUaBridge\publish\`.
+**Target host (verified):** `DESKTOP-MENOJUS` / SSH alias `xlibr-win` (`192.168.20.13`), user `xlibr`, path `C:\Users\xlibr\Documents\OpcBridge\publish\`.
 
 **Linux publish (framework-dependent, 32-bit COM):**
 ```bash
@@ -217,7 +217,7 @@ docker run --rm -v "$PWD":/src -w /src mcr.microsoft.com/dotnet/sdk:8.0 \
 ```
 Package `publish.tmp` → tar.gz, SCP to host as `publish-new.tar.gz`, then run host deploy script (backs up `appsettings.json` / `mappings.json` / `pki`, clears publish, extracts, restores runtime state, re-registers task).
 
-**Host launcher:** scheduled task `OpcDaToUaBridge` → `scripts/windows/start-published-bridge.cmd` which `pushd`s into `publish\` and runs `C:\Program Files (x86)\dotnet\dotnet.exe OpcBridge.App.dll` (CWD must be the publish folder so `appsettings.json` resolves).
+**Host launcher:** scheduled task `OpcBridge` → `scripts/windows/start-published-bridge.cmd` which `pushd`s into `publish\` and runs `C:\Program Files (x86)\dotnet\dotnet.exe OpcBridge.App.dll` (CWD must be the publish folder so `appsettings.json` resolves).
 
 **register-published-task.ps1** kills old process, re-registers AtStartup S4U task, starts it, probes `http://127.0.0.1:8080/health`.
 
@@ -228,7 +228,7 @@ Package `publish.tmp` → tar.gz, SCP to host as `publish-new.tar.gz`, then run 
 - Delete stale apphost / pollution before copy if the directory was previously dirtied.
 - Optional: delete `publish/pki/own/cert.der` when UA hostname/SAN must regenerate.
 
-**Git remotes:** `origin` = `OpcDaToUaBridge-linux` (SSH). Push merges to both origin and `win` (`OpcDaToUaBridge-windows`) when the change affects the Windows deploy.
+**Git remotes:** `origin` = `OpcBridge-linux` (SSH). Push merges to both origin and `win` (`OpcBridge-windows`) when the change affects the Windows deploy.
 
 ## Conventions
 

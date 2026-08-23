@@ -1,4 +1,4 @@
-# Plant vs Lab Deploy — OpcDaToUaBridge
+# Plant vs Lab Deploy — OpcBridge
 
 This document defines the two supported Windows deploy modes. The same publish artifact (`publish.tar.gz` `win-x86` framework-dependent) is used; only the scheduled-task logon type and auto-logon differ.
 
@@ -17,7 +17,7 @@ Set-ItemProperty HKLM:\...\Winlogon DefaultDomainName DESKTOP-BC2AU7H
 
 .\scripts\windows\register-published-task.ps1 -LogonType Interactive
 # → Hidden True, Triggers AtStartup+AtLogOn, Principal Interactive Highest
-# Verify: Get-ScheduledTask OpcDaToUaBridge | fl; Get-ScheduledTaskInfo; curl http://127.0.0.1:8080/api/status → sessionId 1 interactive true
+# Verify: Get-ScheduledTask OpcBridge | fl; Get-ScheduledTaskInfo; curl http://127.0.0.1:8080/api/status → sessionId 1 interactive true
 ```
 
 * `Resolve` button (`DashboardPage.cs` + `Program.cs /api/session/resolve` `791742d`+) is a **lab safety net**: if someone redeploys as `S4U` (`sessionId 0` banner appears), one click relaunches via temporary `OpcBridgeResolve` task (`OpcBridge.App.exe` `apphost` preferred, else `dotnet + dll`, `WindowStyle Hidden` `Highest`) into `1`. After permanent `Interactive` the banner stays `display:none`.

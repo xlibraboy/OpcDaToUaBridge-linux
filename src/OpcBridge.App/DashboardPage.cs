@@ -436,7 +436,7 @@ internal static class DashboardPage
 </head>
 <body>
 <div class="topbar">
-    <div class="brand"><span class="dot" id="dot"></span>OPC DA&#8594;UA Bridge <span class="ver" id="appVersion"></span></div>
+    <div class="brand"><span class="dot" id="dot"></span>OPC Bridge <span class="ver" id="appVersion"></span></div>
     <div class="pills">
         <div class="pill"><span class="k">Bridge</span><span id="pBridge">&#8212;</span></div>
         <div class="pill"><span class="k">DA</span><span id="pDa">&#8212;</span></div>
@@ -1257,7 +1257,7 @@ internal static class DashboardPage
     <div class="wizard-body">
       <div class="wizard-pane active" data-pane="1">
         <div class="field"><label class="fl">Broker URL</label><input type="text" id="wzMqttUrl" placeholder="tcp://localhost:1883"></div>
-        <div class="field"><label class="fl">Client ID</label><input type="text" id="wzMqttClientId" placeholder="OpcDaToUaBridge"></div>
+        <div class="field"><label class="fl">Client ID</label><input type="text" id="wzMqttClientId" placeholder="OpcBridge"></div>
         <div class="field"><label class="fl">Auto-connect</label><input type="checkbox" id="wzMqttAuto" checked></div>
       </div>
       <div class="wizard-pane" data-pane="2">
@@ -3920,7 +3920,7 @@ async function openMqttWizard() {
   wzMqttStepCur = 1;
   await loadMqtt();
   el('wzMqttUrl').value = el('mqttBrokerUrl').value || 'tcp://localhost:1883';
-  el('wzMqttClientId').value = el('mqttClientId').value || 'OpcDaToUaBridge';
+  el('wzMqttClientId').value = el('mqttClientId').value || 'OpcBridge';
   el('wzMqttAuto').checked = el('mqttEnabled').checked;
   el('wzMqttUser').value = el('mqttUser').value;
   el('wzMqttPass').value = el('mqttPass').value;
@@ -3965,7 +3965,7 @@ function wzMqttValidate(step) {
 }
 async function wzMqttFinish() {
   el('mqttBrokerUrl').value = el('wzMqttUrl').value.trim();
-  el('mqttClientId').value = el('wzMqttClientId').value.trim() || 'OpcDaToUaBridge';
+  el('mqttClientId').value = el('wzMqttClientId').value.trim() || 'OpcBridge';
   el('mqttEnabled').checked = el('wzMqttAuto').checked;
   el('mqttUser').value = el('wzMqttUser').value;
   el('mqttPass').value = el('wzMqttPass').value;

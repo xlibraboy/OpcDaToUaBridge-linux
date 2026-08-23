@@ -1,5 +1,5 @@
 param(
-    [string]$TaskName = 'OpcDaToUaBridge',
+    [string]$TaskName = 'OpcBridge',
     [string]$HealthUrl = '',
     [int]$ProbeSeconds = 20,
     # S4U runs the bridge in session 0 (no interactive desktop). Use 'Interactive'
