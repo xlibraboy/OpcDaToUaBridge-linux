@@ -9,6 +9,10 @@
 
 namespace OpcBridge.LoadTest;
 
+// Joins DaLinkApiAppCollection because UpsertSource persists to (and the ctor deletes)
+// AppContext.BaseDirectory/sources.json — the same shared file UaSourceSubscriptionsTests
+// round-trips; running as a parallel implicit collection raced its disk assertions.
+[Collection(nameof(DaLinkApiAppCollection))]
 public sealed class BridgeAppDiscoveryTests : IDisposable
 {
     private readonly string _sourcesJsonPath;

@@ -7,6 +7,10 @@ using Xunit;
 
 namespace OpcBridge.LoadTest;
 
+// Joins DaLinkApiAppCollection because every test round-trips AppContext.BaseDirectory/sources.json
+// (ctor/Dispose delete it; UpsertUaSubscription persists to it) — parallel collections writing or
+// deleting that same file would race the disk round-trip in SourcesJson_RoundTripsSubscriptions.
+[Collection(nameof(DaLinkApiAppCollection))]
 public sealed class UaSourceSubscriptionsTests : IDisposable
 {
     private readonly string _binDir = AppContext.BaseDirectory;
