@@ -147,6 +147,11 @@ public sealed class DaRuntimeSettings
     /// <summary>Add/update a named UA subscription on an OpcUa-type source. Throws ArgumentException on invalid input.</summary>
     public DaRuntimeSettingsSnapshot UpsertUaSubscription(string sourceId, string name, int updateRateMs)
     {
+        if (updateRateMs <= 0)
+        {
+            throw new ArgumentException("Update rate must be a positive number of milliseconds.", nameof(updateRateMs));
+        }
+
         string trimmed = (name ?? string.Empty).Trim();
         if (trimmed.Length == 0 || trimmed.Length > 64)
         {

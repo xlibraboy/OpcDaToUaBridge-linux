@@ -200,11 +200,10 @@ public sealed class UaSubscriptionsApiTests
     }
 
     [Fact]
-    public async Task Upsert_RateBelowMinimum_IsClampedNotRejected()
+    public async Task Upsert_NonPositiveRate_Returns400()
     {
-        // Note: the settings layer clamps rates below 100 ms instead of rejecting
-        // them (DaRuntimeSettings.UpsertUaSubscription), so a negative rate yields
-        // ok:true with the effective minimum persisted.
+        // Spec §3: rates <= 0 are rejected at the API layer as an operator error,
+        // mirroring /api/da/update-rate; only positive rates below the floor are clamped.
         await using TestAppHandle handle = await TestAppHandle.StartAsync(dir => WriteMinimalAppsettings(dir));
         await SeedUaSourceAsync(handle, "ua-t");
 
@@ -212,12 +211,11 @@ public sealed class UaSubscriptionsApiTests
             "/api/ua/subscriptions",
             JsonBody(new { sourceId = "ua-t", name = "TooFast", updateRateMs = -5 }));
 
-        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
 
-        using JsonDocument list = await handle.GetJsonAsync("/api/ua/subscriptions?sourceId=ua-t");
-        JsonElement subs = GetSource(list, "ua-t").GetProperty("subscriptions");
-        Assert.Equal(1, subs.GetArrayLength());
-        Assert.Equal(100, subs[0].GetProperty("updateRateMs").GetInt32());
+        using JsonDocument body = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
+        Assert.True(body.RootElement.TryGetProperty("error", out JsonElement error));
+        Assert.Contains("positive", error.GetString(), StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

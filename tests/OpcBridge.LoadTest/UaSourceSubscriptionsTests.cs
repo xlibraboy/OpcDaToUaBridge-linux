@@ -75,6 +75,16 @@ public sealed class UaSourceSubscriptionsTests : IDisposable
     }
 
     [Fact]
+    public void Upsert_RejectsNonPositiveRate()
+    {
+        DaRuntimeSettings settings = CreateSettings();
+        settings.RestoreFromSnapshot(new DaRuntimeSettingsSnapshot(1000, true, new List<DaSourceRuntimeSettings> { UaSource() }, 0));
+
+        Assert.Throws<ArgumentException>(() => settings.UpsertUaSubscription("ua-a", "Zero", 0));
+        Assert.Throws<ArgumentException>(() => settings.UpsertUaSubscription("ua-a", "Negative", -5));
+    }
+
+    [Fact]
     public void Upsert_RejectsNonUaSource()
     {
         DaRuntimeSettings settings = CreateSettings();
