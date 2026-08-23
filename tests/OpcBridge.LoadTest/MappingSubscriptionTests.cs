@@ -102,6 +102,7 @@ public sealed class MappingSubscriptionTests
         Assert.Equal(0, store.ReassignSubscription("ua-a", "   "));
         Assert.Equal(0, store.ReassignSubscription("ua-a", "Missing"));
         Assert.Equal(0, store.ReassignSubscription("", "Fast"));
+        Assert.Equal(0, store.ReassignSubscription("ua-zz", "Fast")); // unknown source
 
         (IReadOnlyList<TagMapping> snap, _) = store.GetSnapshot();
         Assert.Equal("Fast", Single(snap, "a1").Subscription);
