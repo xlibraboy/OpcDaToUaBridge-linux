@@ -210,6 +210,8 @@ docker run --rm -v "$PWD/<worktree>":/src -w /src -v "$HOME/.nuget-cache":/home/
 
 **Target host (verified):** `DESKTOP-BC2AU7H` (`192.168.48.129`, VMnet subnet) — also runs `Matrikon.OPC.Simulation.1` as DA source `opc-vm`; path `C:\Users\xlibr\Documents\OpcBridge\publish\`. Old target `DESKTOP-MENOJUS` / SSH alias `xlibr-win` (`192.168.20.13`) is retired (unreachable).
 
+**Known pending:** one other machine (different location) is still configured against retired MENOJUS — leave as-is for now; reconfigure later.
+
 **Linux publish (self-contained, 32-bit COM):**
 ```bash
 docker run --rm -v "$PWD":/src -w /src mcr.microsoft.com/dotnet/sdk:8.0 \
