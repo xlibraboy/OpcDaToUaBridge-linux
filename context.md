@@ -208,7 +208,7 @@ docker run --rm -v "$PWD/<worktree>":/src -w /src -v "$HOME/.nuget-cache":/home/
 
 ## Deploy to Windows
 
-**Target host (verified):** `DESKTOP-MENOJUS` / SSH alias `xlibr-win` (`192.168.20.13`), user `xlibr`, path `C:\Users\xlibr\Documents\OpcBridge\publish\`.
+**Target host (verified):** `DESKTOP-BC2AU7H` (`192.168.48.129`, VMnet subnet) — also runs `Matrikon.OPC.Simulation.1` as DA source `opc-vm`; path `C:\Users\xlibr\Documents\OpcBridge\publish\`. Old target `DESKTOP-MENOJUS` / SSH alias `xlibr-win` (`192.168.20.13`) is retired (unreachable).
 
 **Linux publish (self-contained, 32-bit COM):**
 ```bash
