@@ -934,6 +934,14 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                             await uaDefClient.ReconcileMonitoredItemsAsync(
                                 defCache.GetSourceReadMappings(source.SourceId),
                                 cancellationToken).ConfigureAwait(false);
+
+                            // Advance the stored baseline ONLY after a successful reconcile so the
+                            // definitions-changed check does not re-fire on every pass. On failure
+                            // the stale baseline is kept deliberately: the next pass retries.
+                            sessions[source.SourceId] = new SourceSession(source, existing.Client)
+                            {
+                                PollerCts = existing.PollerCts
+                            };
                         }
                         catch (Exception ex)
                         {
