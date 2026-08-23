@@ -44,6 +44,7 @@ internal static class DashboardPage
             --border2: #2e3848;
             --text: #d8e0ea;
             --muted: #6b7689;
+            --muted-strong: #93a0b4;
             --good: #34d399;
             --bad: #f87171;
             --warn: #fbbf24;
@@ -64,19 +65,24 @@ internal static class DashboardPage
         .pill .k { color: var(--muted); text-transform: uppercase; font-size: 10px; letter-spacing: .05em; }
         .topbar .clock { margin-left: auto; color: var(--muted); font-size: 11px; white-space: nowrap; }
 .app-shell { display: flex; flex: 1; min-height: 0; overflow: hidden; }
-.tabbar { display: flex; flex-direction: column; background: var(--panel); border-right: 1px solid var(--border2); padding: 8px 0; width: 200px; flex-shrink: 0; overflow-y: auto; }
+.tabbar { display: flex; flex-direction: column; background: var(--panel); border-right: 1px solid var(--border2); padding: 10px 0; width: 200px; flex-shrink: 0; overflow-y: auto; }
 .tabbtn { background: none; border: none; color: var(--muted); padding: 11px 16px; font-size: 13px; font-weight: 500; cursor: pointer; border-left: 3px solid transparent; display: flex; align-items: center; gap: 8px; text-align: left; }
 .tabbtn:hover { color: var(--text); background: var(--panel2); }
 .tabbtn.active { color: var(--accent); border-left-color: var(--accent); background: var(--panel2); }
-.nav-group { padding: 6px 0; border-bottom: 1px solid var(--border); }
+.nav-group { padding: 10px 0 8px; border-bottom: 1px solid var(--border); }
 .nav-group:last-child { border-bottom: none; }
-.nav-group-h { display: flex; align-items: center; gap: 7px; padding: 8px 16px 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
-.nav-group-h .nav-ico { width: 13px; height: 13px; flex-shrink: 0; opacity: .85; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-.nav-group .tabbtn { padding-left: 22px; }
+.nav-group-h { display: flex; align-items: center; gap: 7px; padding: 2px 16px 8px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .09em; color: var(--muted-strong); transition: color .15s ease; }
+.nav-group-h .nav-ico { width: 13px; height: 13px; flex-shrink: 0; opacity: .95; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.nav-group:has(.tabbtn.active) .nav-group-h { color: var(--accent); }
+.nav-group .tabbtn { position: relative; padding-top: 8px; padding-bottom: 8px; padding-left: 44px; }
+.nav-group .tabbtn::before { content: ''; position: absolute; left: 24px; top: 0; bottom: 0; width: 2px; background: var(--border); }
+.nav-group .tabbtn:hover::before { background: var(--border2); }
+.nav-group .tabbtn.active::before { background: var(--accent); opacity: .5; }
+.nav-group .tabbtn:last-child:not(.active)::before { bottom: auto; height: 55%; }
 .content { flex: 1; min-width: 0; overflow: auto; }
 .view { display: none; padding: 16px 18px; }
 .view.active { display: block; }
-@media (max-width: 600px) { .app-shell { flex-direction: column; } .tabbar { flex-direction: row; width: 100%; border-right: none; border-bottom: 1px solid var(--border2); padding: 0 8px; overflow-x: auto; } .tabbtn { border-left: none; border-bottom: 3px solid transparent; padding: 10px 14px; } .tabbtn.active { border-left: none; border-bottom-color: var(--accent); } .nav-group { border-bottom: none; } .nav-group-h { display: none; } }
+@media (max-width: 600px) { .app-shell { flex-direction: column; } .tabbar { flex-direction: row; width: 100%; border-right: none; border-bottom: 1px solid var(--border2); padding: 0 8px; overflow-x: auto; } .tabbtn { border-left: none; border-bottom: 3px solid transparent; padding: 10px 14px; } .tabbtn.active { border-left: none; border-bottom-color: var(--accent); } .nav-group { border-bottom: none; } .nav-group-h { display: none; } .nav-group .tabbtn { padding: 10px 14px; } .nav-group .tabbtn::before { display: none; } }
         .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
         @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
         .box { background: var(--panel); border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }

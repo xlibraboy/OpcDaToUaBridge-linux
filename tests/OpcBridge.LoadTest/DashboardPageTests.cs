@@ -428,4 +428,19 @@ public sealed class DashboardPageTests
         // so mapping references (TagMapping.DaGroup) are rewritten, not orphaned.
         Assert.Contains("renameFrom", DashboardPage.Script);
     }
+
+    [Fact]
+    public void Html_SidebarShowsClearParentChildHierarchy()
+    {
+        // Sidebar must read as a tree: group headers are the parents, tab buttons
+        // the children. Parents highlight (accent) while any child page is active,
+        // children hang off a vertical rail under the parent icon with deeper
+        // indent, and the rail disappears in the horizontal mobile layout.
+        Assert.Contains(".nav-group:has(.tabbtn.active) .nav-group-h { color: var(--accent); }", DashboardPage.Html);
+        Assert.Contains(".nav-group .tabbtn { position: relative; padding-top: 8px; padding-bottom: 8px; padding-left: 44px; }", DashboardPage.Html);
+        Assert.Contains(".nav-group .tabbtn::before { content: ''; position: absolute; left: 24px; top: 0; bottom: 0; width: 2px; background: var(--border); }", DashboardPage.Html);
+        Assert.Contains(".nav-group .tabbtn.active::before { background: var(--accent); opacity: .5; }", DashboardPage.Html);
+        Assert.Contains(".nav-group .tabbtn:last-child:not(.active)::before { bottom: auto; height: 55%; }", DashboardPage.Html);
+        Assert.Contains(".nav-group .tabbtn::before { display: none; }", DashboardPage.Html);
+    }
 }
