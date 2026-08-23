@@ -935,6 +935,30 @@ app.MapPost("/api/drivers/mx-component/test-connection", async (MxComponentTestC
     }
 });
 
+// Accepted PLC device addresses for MELSEC sources. MX Component shares the serial
+// driver's addressing; the table is generated from the same catalog the parser
+// enforces, so what this endpoint reports is exactly what tag upserts accept.
+app.MapGet("/api/drivers/mx-component/address-ranges", () =>
+{
+    return Results.Json(new
+    {
+        sourceType = SourceTypes.MxComponent,
+        devices = MelsecDeviceCatalog.Devices.Select(range => new
+        {
+            device = range.Device,
+            displayName = range.DisplayName,
+            signalType = range.SignalType,
+            numberBase = range.NumberBase.ToString(),
+            min = range.MinNumber,
+            max = range.MaxNumber,
+            bitSuffixAllowed = range.BitSuffixAllowed,
+            maxBitIndex = range.MaxBitIndex,
+            aliases = range.Aliases,
+            example = range.Example
+        })
+    });
+});
+
 app.MapPost("/api/drivers/s7200-ppi/parse-address", (S7200ParseAddressRequest request) =>
 {
     if (!S7AddressParser.TryParse(request.Address, out S7Address address, out string error))

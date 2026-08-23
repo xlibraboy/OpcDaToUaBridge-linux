@@ -77,6 +77,34 @@ public sealed class MxComponentApiTests
     }
 
     [Fact]
+    public async Task GetAddressRanges_ReturnsSharedMelsecCatalog()
+    {
+        await using TestAppHandle app = await TestAppHandle.StartAsync(_ => { });
+
+        using JsonDocument doc = await app.GetJsonAsync("/api/drivers/mx-component/address-ranges");
+        JsonElement root = doc.RootElement;
+
+        Assert.Equal("MxComponent", root.GetProperty("sourceType").GetString());
+
+        JsonElement devices = root.GetProperty("devices");
+        Assert.True(devices.GetArrayLength() >= 10, "expected the full MELSEC device catalog");
+
+        JsonElement d = First(devices, "device", "D");
+        Assert.Equal(0, d.GetProperty("min").GetInt32());
+        Assert.Equal(1023, d.GetProperty("max").GetInt32());
+        Assert.Equal("Word", d.GetProperty("signalType").GetString());
+        Assert.Equal("Decimal", d.GetProperty("numberBase").GetString());
+        Assert.True(d.GetProperty("bitSuffixAllowed").GetBoolean());
+        Assert.Equal(15, d.GetProperty("maxBitIndex").GetInt32());
+        Assert.False(string.IsNullOrWhiteSpace(d.GetProperty("example").GetString()));
+
+        JsonElement x = First(devices, "device", "X");
+        Assert.Equal("Bit", x.GetProperty("signalType").GetString());
+        Assert.Equal("OctalOrHex", x.GetProperty("numberBase").GetString());
+        Assert.False(x.GetProperty("bitSuffixAllowed").GetBoolean());
+    }
+
+    [Fact]
     public async Task TestConnection_NoStation_ReturnsError()
     {
         await using TestAppHandle app = await TestAppHandle.StartAsync(_ => { });
@@ -245,5 +273,19 @@ public sealed class MxComponentApiTests
         }
 
         throw new Xunit.Sdk.XunitException($"Source '{sourceId}' not found.");
+    }
+
+    private static JsonElement First(JsonElement array, string property, string value)
+    {
+        foreach (JsonElement el in array.EnumerateArray())
+        {
+            if (el.TryGetProperty(property, out JsonElement p) &&
+                string.Equals(p.GetString(), value, StringComparison.Ordinal))
+            {
+                return el;
+            }
+        }
+
+        throw new Xunit.Sdk.XunitException($"Element with {property}='{value}' not found.");
     }
 }
