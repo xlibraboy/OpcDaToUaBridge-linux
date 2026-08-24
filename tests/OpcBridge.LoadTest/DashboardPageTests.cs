@@ -622,6 +622,62 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
+    public void Script_SessionsDaRowsShowLastErrorAndReadAge()
+    {
+        // Sessions DA rows must surface the per-source fault reason and data
+        // freshness — previously only Monitor showed the lastError text.
+        Assert.Contains("relTime(get(src,'lastDaReadUtc'))", DashboardPage.Script);
+        Assert.Contains("get(src,'lastError')", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Script_UaSessionsShowEndpointAndSessionId()
+    {
+        // UaSessionDiagnostic carries EndpointUrl + SessionId; render both so
+        // operators can tell WHICH client from WHERE is connected.
+        Assert.Contains("s.endpointUrl", DashboardPage.Script);
+        Assert.Contains("s.sessionId", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Script_StaThreadQueuedDepthIsThresholdColored()
+    {
+        // Pending COM ops are the earliest STA saturation signal — color them:
+        // warn >= 10, bad >= 50.
+        Assert.Contains("t.queuedItems >= 50", DashboardPage.Script);
+        Assert.Contains("t.queuedItems >= 10", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Script_ProblemListsGroupBySourceWhenLong()
+    {
+        // Long problem lists collapse to per-source counts for scannability.
+        Assert.Contains("function groupProblemsBySource(", DashboardPage.Script);
+        Assert.Contains("groupProblemsBySource(disc", DashboardPage.Script);
+        Assert.Contains("groupProblemsBySource(badItems", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Script_MonitorTracksGdiUserHistoryForLeakTrend()
+    {
+        // Handle leak-trend already exists; GDI/USER must get the same
+        // history-based growth assessment instead of limit-percentage checks only.
+        Assert.Contains("state.gdiHistory", DashboardPage.Script);
+        Assert.Contains("state.userHistory", DashboardPage.Script);
+        Assert.Contains("gdiTrend", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Html_MonitorHasFleetStripAndScriptRendersIt()
+    {
+        // Detected bridge apps currently surface only as a sidebar count pill;
+        // Monitor gets a fleet list (machine, version, local/remote).
+        Assert.Contains("id=\"fleetList\"", DashboardPage.Html);
+        Assert.Contains("function renderFleet(", DashboardPage.Script);
+        Assert.Contains("renderFleet(apps)", DashboardPage.Script);
+    }
+
+    [Fact]
     public void Script_RendersExtendedDiagnosticsPayload()
     {
         // renderDiagnostics consumes the diagnostics sections it renders.

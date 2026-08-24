@@ -585,6 +585,10 @@ internal static class DashboardPage
             </div>
         </div>
     </div>
+    <div class="box" style="margin-top:14px">
+        <div class="box-h">Bridge Fleet <span class="info" data-tip="Other OpcBridge instances discovered on the network (UDP/HTTP probe). 'Local' is the instance serving this dashboard.">i</span><span class="msg" id="fleetCount" style="margin-left:auto"></span></div>
+        <div class="box-b"><div class="list" id="fleetList" style="max-height:220px"><span class="msg">No fleet data yet.</span></div></div>
+    </div>
 </div>
 <div class="view" id="view-values">
     <div class="box">
@@ -1612,6 +1616,8 @@ const state = {
     disconnectedSources: new Set(),
     handleHistory: [],
     handleBaseline: null,
+    gdiHistory: [],
+    userHistory: [],
     diagramTab: 'all',
     diagramLoaded: false,
     diagramZoom: 1,
@@ -3608,6 +3614,27 @@ function setIntegrationHealth(ids, d, countersText, rateText) {
     else { ids.error.style.display = 'none'; }
 }
 
+// Average-to-recent growth percentage over a capped history window.
+// Returns null when there is not enough data yet (needs >= 12 samples).
+function windowTrendPct(history) {
+    if (!history || history.length < 12) return null;
+    const q = Math.floor(history.length / 4);
+    const earlyAvg = history.slice(0, q).reduce((a, b) => a + b, 0) / q;
+    const recentAvg = history.slice(-q).reduce((a, b) => a + b, 0) / q;
+    return earlyAvg > 0 ? ((recentAvg - earlyAvg) / earlyAvg) * 100 : 0;
+}
+
+// Collapse a long problem list to per-source counts, sorted by count desc:
+// [['source-a', 12], ['source-b', 3]]
+function groupProblemsBySource(items) {
+    const bySource = {};
+    (items || []).forEach(it => {
+        const sid = get(it, 'sourceId') || '—';
+        bySource[sid] = (bySource[sid] || 0) + 1;
+    });
+    return Object.entries(bySource).sort((a, b) => b[1] - a[1]);
+}
+
 async function loadDiagnostics() {
     if (!diagnosticsActive) return;
     try {
@@ -3664,6 +3691,23 @@ async function refreshPortsInfo() {
     }
 }
 
+// Fleet strip on ops/monitor: every OpcBridge instance the discovery probe
+// found (this instance included, badged Local).
+function renderFleet(apps) {
+    const listEl = el('fleetList');
+    if (!listEl) return;
+    const list = (apps && get(apps, 'detectedApps')) || [];
+    const countEl = el('fleetCount');
+    if (countEl) countEl.textContent = list.length + ' detected';
+    listEl.innerHTML = list.length ? list.map(a => {
+        const machine = get(a, 'machineName') || '—';
+        const version = get(a, 'version') || '—';
+        const isLocal = !!get(a, 'isLocal');
+        const probeHost = get(a, 'probeHost') || '';
+        return `<div class="li"><div style="flex:1"><div class="n">${esc(machine)} ${badge(isLocal ? 'Local' : 'Remote', isLocal ? 'good' : 'msg')}</div><div class="p">${esc(probeHost)} · v${esc(version)}</div></div></div>`;
+    }).join('') : '<span class="msg">No other bridge instances detected.</span>';
+}
+
 function renderDiagnostics(p) {
     // Bridge Vitals — only metrics NOT shown on ops/monitor (bridge state, DA
     // connection, UA clients/nodes, mapping count, last DA read / UA write and
@@ -3694,9 +3738,13 @@ function renderDiagnostics(p) {
     const problems = p.problems || {};
     const disc = problems.disconnected || [];
     el('diagDiscCount').textContent = disc.length === 1 ? '1 retrying' : disc.length + ' retrying';
-    el('diagDisconnected').innerHTML = disc.length ? disc.map(d =>
-        `<div class="li"><div style="flex:1"><div class="n">${esc(get(d, 'sourceId') || '')}</div><div class="p">${esc(get(d, 'itemId') || '')}</div></div><span class="warn">auto-retry</span></div>`).join('')
-        : '<span class="good">&#10003; All monitored items connected</span>';
+    el('diagDisconnected').innerHTML = disc.length === 0
+        ? '<span class="good">&#10003; All monitored items connected</span>'
+        : disc.length > 8
+            ? groupProblemsBySource(disc).map(([sid, count]) =>
+                `<div class="li"><div style="flex:1"><div class="n">${esc(sid)}</div><div class="p">${count} tag${count === 1 ? '' : 's'} auto-retrying</div></div><span class="warn">grouped</span></div>`).join('')
+            : disc.map(d =>
+                `<div class="li"><div style="flex:1"><div class="n">${esc(get(d, 'sourceId') || '')}</div><div class="p">${esc(get(d, 'itemId') || '')}</div></div><span class="warn">auto-retry</span></div>`).join('');
 
     // Problems — bad-quality tags
     const badTotal = problems.badQualityTotal || 0;
@@ -3704,8 +3752,12 @@ function renderDiagnostics(p) {
     el('diagBadCount').textContent = badTotal === 1 ? '1 affected' : badTotal + ' affected';
     el('diagBadQuality').innerHTML = badTotal === 0
         ? '<span class="good">&#10003; No bad-quality tags</span>'
-        : badItems.map(b => `<div class="li"><div style="flex:1"><div class="n">${esc(get(b, 'sourceId') || '')}</div><div class="p">${esc(get(b, 'itemId') || '')}</div></div><span class="bad">bad</span></div>`).join('')
-            + (badTotal > badItems.length ? `<div class="li"><span class="msg">+ ${badTotal - badItems.length} more…</span></div>` : '');
+        : badItems.length > 8
+            ? groupProblemsBySource(badItems).map(([sid, count]) =>
+                `<div class="li"><div style="flex:1"><div class="n">${esc(sid)}</div><div class="p">${count} tag${count === 1 ? '' : 's'} bad quality</div></div><span class="bad">grouped</span></div>`).join('')
+                + (badTotal > badItems.length ? `<div class="li"><span class="msg">+ ${badTotal - badItems.length} more…</span></div>` : '')
+            : badItems.map(b => `<div class="li"><div style="flex:1"><div class="n">${esc(get(b, 'sourceId') || '')}</div><div class="p">${esc(get(b, 'itemId') || '')}</div></div><span class="bad">bad</span></div>`).join('')
+                + (badTotal > badItems.length ? `<div class="li"><span class="msg">+ ${badTotal - badItems.length} more…</span></div>` : '');
 
     // DA Source Diagnostics — reuse state data from /api/dashboard
     const sources = state.sources || [];
@@ -3722,7 +3774,9 @@ function renderDiagnostics(p) {
             const budgetCls = budget >= 80 ? 'bad' : (budget >= 50 ? 'warn' : 'good');
             return `<div class="li"><div style="flex:1"><div class="n">${formatMs(g.rateMs)} · ${g.tagCount} tags</div><div class="p">budget <span class="${budgetCls}">${budget}%</span> · limit ${g.tagLimit || '—'}</div></div></div>`;
         }).join('') : '<span class="msg">No rate groups.</span>';
-        return `<div class="li"><div style="flex:1"><div class="n">${esc(get(src,'displayName') || sid)} ${sourceTypeBadge(src)} ${badge(conn, stateClass(conn))}</div><div class="p">${endpoint ? esc(endpoint) + ' · ' : ''}Latency: ${latency} · ${totalTags} tags in ${srcGroups.length} rate group(s)</div></div></div>${groupRows}`;
+        const lastRead = get(src,'lastDaReadUtc') ? 'last read ' + relTime(get(src,'lastDaReadUtc')) : 'no reads yet';
+        const srcErr = get(src,'lastError');
+        return `<div class="li"><div style="flex:1"><div class="n">${esc(get(src,'displayName') || sid)} ${sourceTypeBadge(src)} ${badge(conn, stateClass(conn))}</div><div class="p">${endpoint ? esc(endpoint) + ' · ' : ''}Latency: ${latency} · ${totalTags} tags in ${srcGroups.length} rate group(s)</div><div class="p">${lastRead}${srcErr ? ' · <span class="bad" title="Last source error">' + esc(srcErr) + '</span>' : ''}</div></div></div>${groupRows}`;
     }).join('') : '<span class="msg">No sources configured.</span>';
     el('diagDaSources').innerHTML = daHtml;
     el('diagDaSummary').textContent = sources.length + ' source' + (sources.length !== 1 ? 's' : '');
@@ -3751,7 +3805,7 @@ function renderDiagnostics(p) {
     el('diagUaSessionCount').textContent = sessions.length + ' active';
     el('diagUaSessions').innerHTML = sessions.length ? sessions.map(s => {
         const last = relTime(s.lastContactUtc);
-        return `<div class="li"><div style="flex:1"><div class="n">${esc(s.clientName || 'anonymous')}</div><div class="p">${s.subscriptions} subs · ${s.monitoredItems} monitored · ${s.publishRequestsInQueue} publish queued · ${s.totalPublishCount} total publishes</div><div class="p">last contact ${last}</div></div></div>`;
+        return `<div class="li"><div style="flex:1"><div class="n">${esc(s.clientName || 'anonymous')}</div><div class="p">${s.endpointUrl ? esc(s.endpointUrl) + ' · ' : ''}session #${s.sessionId ?? '—'}</div><div class="p">${s.subscriptions} subs · ${s.monitoredItems} monitored · ${s.publishRequestsInQueue} publish queued · ${s.totalPublishCount} total publishes</div><div class="p">last contact ${last}</div></div></div>`;
     }).join('') : '<span class="msg">No active UA sessions.</span>';
 
     // UA Subscriptions
@@ -3786,7 +3840,8 @@ function renderDiagnostics(p) {
         const aliveCls = t.alive ? 'good' : 'bad';
         const aliveBadge = t.alive ? badge('Alive', 'good') : badge('Dead', 'bad');
         const last = t.lastActionUtc ? relTime(t.lastActionUtc) : 'never';
-        return `<div class="li"><div style="flex:1"><div class="n">${esc(t.sourceId)} ${aliveBadge}</div><div class="p">queued: ${t.queuedItems} · last action ${last}</div></div></div>`;
+        const qCls = t.queuedItems >= 50 ? 'bad' : (t.queuedItems >= 10 ? 'warn' : 'good');
+        return `<div class="li"><div style="flex:1"><div class="n">${esc(t.sourceId)} ${aliveBadge}</div><div class="p">queued: <span class="${qCls}">${t.queuedItems}</span> · last action ${last}</div></div></div>`;
     }).join('') : '<span class="msg">No STA threads (non-Windows or no sources connected).</span>';
 }
 
@@ -3916,6 +3971,7 @@ async function refresh() {
          el('pUa').innerHTML = badge(get(ua, 'state') || '—', stateClass(get(ua, 'state')));
          el('pTags').textContent = get(b, 'mappingCount') ?? 0;
          el('pApps').textContent = get(apps, 'detectedCount') ?? 1;
+         renderFleet(apps);
         el('bridgeState').innerHTML = badge(get(b, 'bridgeState') || '—', stateClass(get(b, 'bridgeState')));
         const sessionBanner = el('sessionBanner');
         if (sessionBanner) {
@@ -4066,26 +4122,30 @@ async function refresh() {
                     state.handleHistory.push(hc);
                     if (state.handleHistory.length > 60) state.handleHistory.shift();
                 }
+                const gdiN = Number(res.gdiObjects ?? 0);
+                const userN = Number(res.userObjects ?? 0);
+                if (gdiN > 0) {
+                    state.gdiHistory.push(gdiN);
+                    if (state.gdiHistory.length > 60) state.gdiHistory.shift();
+                }
+                if (userN > 0) {
+                    state.userHistory.push(userN);
+                    if (state.userHistory.length > 60) state.userHistory.shift();
+                }
 
                 if (resA && resAD) {
-                    const gdi = Number(res.gdiObjects ?? 0);
-                    const user = Number(res.userObjects ?? 0);
+                    const gdi = gdiN;
+                    const user = userN;
                     const baseline = state.handleBaseline ?? hc;
                     const drift = hc - baseline;
                     const gdiPct = (gdi / 10000) * 100;
                     const userPct = (user / 10000) * 100;
 
-                    // Determine growth trend from history (compare first quarter to last quarter avg)
-                    let trend = 'stable';
-                    let trendPct = 0;
-                    if (state.handleHistory.length >= 12) {
-                        const q = Math.floor(state.handleHistory.length / 4);
-                        const earlyAvg = state.handleHistory.slice(0, q).reduce((a, b) => a + b, 0) / q;
-                        const recentAvg = state.handleHistory.slice(-q).reduce((a, b) => a + b, 0) / q;
-                        trendPct = earlyAvg > 0 ? ((recentAvg - earlyAvg) / earlyAvg) * 100 : 0;
-                        if (trendPct > 15) trend = 'rising';
-                        else if (trendPct < -5) trend = 'falling';
-                    }
+                    // Growth trends from history (handles + GDI + USER)
+                    const trendPct = windowTrendPct(state.handleHistory) ?? 0;
+                    const trend = trendPct > 15 ? 'rising' : (trendPct < -5 ? 'falling' : 'stable');
+                    const gdiTrend = windowTrendPct(state.gdiHistory) ?? 0;
+                    const userTrend = windowTrendPct(state.userHistory) ?? 0;
 
                     let verdict, cls, detail;
                     if (gdiPct >= 80 || userPct >= 80) {
@@ -4094,9 +4154,13 @@ async function refresh() {
                     } else if (gdiPct >= 50 || userPct >= 50) {
                         verdict = 'Warning'; cls = 'warn';
                         detail = 'GDI/USER above 50% of the 10,000 per-process limit.';
-                    } else if (drift > 200 && trend === 'rising') {
+                    } else if ((drift > 200 && trend === 'rising') || gdiTrend > 15 || userTrend > 15) {
                         verdict = 'Watch'; cls = 'warn';
-                        detail = 'Handle count rising (+' + Math.round(trendPct) + '% trend, +' + drift + ' since start). Possible leak.';
+                        const parts = [];
+                        if (drift > 200 && trend === 'rising') parts.push('handles +' + Math.round(trendPct) + '% trend, +' + drift + ' since start');
+                        if (gdiTrend > 15) parts.push('GDI +' + Math.round(gdiTrend) + '% trend');
+                        if (userTrend > 15) parts.push('USER +' + Math.round(userTrend) + '% trend');
+                        detail = parts.join('; ') + ' — possible leak.';
                     } else if (drift > 500) {
                         verdict = 'Watch'; cls = 'warn';
                         detail = 'Handle count +' + drift + ' above baseline. Monitor for continued growth.';
