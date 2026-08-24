@@ -11,6 +11,28 @@ internal static class HelpContent
 - Use **Tags** to browse DA items, create DA → OPC UA mappings, and set per-tag Access Rights, Update Rate, Deadband, Description, and Simulation.
 - Use **OPC DA to DA** to connect tags — a consumer tag receives values from a provider tag in addition to its own DA source.
 - Use **Logs** to review warnings and errors from the bridge and UA server.
+
+---
+
+# Dashboard Navigation
+
+The sidebar groups pages by job:
+
+- **Sources** — Sources (status, + Add Source wizard), OPC DA (connection config, credentials, default rate, subscriptions, discover, backup), DA Groups (per-rate COM groups, per-group I/O mode), OPC UA (client sources) — external UA servers the bridge connects out to, UA Subs (named UA subscriptions and their publish rates), Drivers (PLC serial: Mitsubishi A3N RS-232, Siemens S7-200 PPI), MX Component (Mitsubishi A3N via MELSOFT MX Component 4 COM)
+- **Tags** — Maps (OPC DA / OPC UA / Drivers sub-tabs: browse, map to UA, faceplate), DA Links (DA→DA forwarding)
+- **IoT** — MQTT (broker config), Traffic (publish/subscribe monitor)
+- **Historian** — InfluxDB (config, write status, per-tag enable via faceplate)
+- **Ops** — Monitor (status, resources), Diagnostics (bridge vitals: uptime, values/sec, poll duration), Live Values (live tag values), Sessions (DA source diagnostics, time sync, UA sessions/subscriptions, bandwidth), Logs, Diagram
+- **Help** — Guide, About
+
+Use **Sources → OPC DA → + Add Source** for the guided setup wizard.
+Use **Sources → OPC DA** to edit ProgID/host, credentials, default rate, subscriptions, discover servers, and backup/restore.
+Use **Sources → OPC UA** to add and configure OPC UA client sources — the bridge connects **out** to external UA servers.
+Use **Sources → DA Groups** to tune COM groups per rate (add/delete groups, set I/O mode per group — applied live).
+Use **Sources → UA Subs** to assign tags to named UA subscriptions with their own publish rates.
+Use **Sources → Drivers** for PLC serial drivers (Mitsubishi A3N, Siemens S7-200) and **Sources → MX Component** for MELSOFT MX Component connections.
+Use **IoT → MQTT → Setup Wizard** and **Historian → InfluxDB → Setup Wizard** for first-time broker/historian setup.
+
 ---
 
 # Topology & Data Flow
@@ -71,23 +93,25 @@ internal static class HelpContent
 
 
   ┌─────────────────────────────────────────────────────────────────────┐
-  │            Web Dashboard (HTTP port, default 8080)                     │
+  │            Web Dashboard (HTTP port, default 8080)                   │
   │                                                                      │
   │  Sidebar groups pages by job:                                        │
-  │  Connectivity ──► OPC DA, Drivers, Diagnostics                       │
+  │  Sources ──► Sources, OPC DA, DA Groups, OPC UA,                     │
+  │             UA Subs, Drivers, MX Component                           │
   │  Tags ──► Maps, DA Links                                             │
   │  IoT ──► MQTT, Traffic                                               │
   │  Historian ──► InfluxDB                                              │
-  │  Ops ──► Monitor, Live Values, Logs, Diagram                         │
+  │  Ops ──► Monitor, Diagnostics, Live Values,                          │
+  │           Sessions, Logs, Diagram                                    │
   │  Help ──► Guide, About                                               │
   │                                                                      │
   │  HTTP API: /api/dashboard, /api/mappings, /api/da/sources, etc.      │
   │                                                                      │
   │  PLC driver sources (SourceType=MelsecA3n) are edited on the         │
-  │  Connectivity → Drivers page, not the OPC DA page.                   │
+  │  Sources → Drivers page, not the OPC DA page.                        │
   │                                                                      │
-  │  **Apps Pill**: Shows count of detected bridge instances across all    │
-  │  configured DA source hosts. Updates every 10 seconds.                 │
+  │  **Apps Pill**: Shows count of detected bridge instances across all  │
+  │  configured DA source hosts. Updates every 10 seconds.               │
   └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -100,231 +124,7 @@ internal static class HelpContent
 - UA clients subscribe to UA nodes and receive notifications when values change.
 - The web dashboard reads from `/api/dashboard` (1s polling) to display live status and resource telemetry.
 
-## Dashboard Navigation
-
-The sidebar groups pages by job:
-
-- **Sources** — Sources (status, + Add Source), OPC DA (connection config, rate, subscriptions, discover, backup), **OPC UA (client sources)** (external UA servers the bridge connects to), Drivers (PLC serial drivers: Mitsubishi A3N, Siemens S7-200 PPI), Diagnostics (DA health, time sync)
-- **Tags** — Maps (OPC DA / OPC UA / Drivers sub-tabs: browse, map to UA, faceplate), DA Links (DA→DA forwarding)
-- **IoT** — MQTT (broker config), Traffic (publish/subscribe monitor)
-- **Historian** — InfluxDB (config, write status, per-tag enable via faceplate)
-- **Ops** — Monitor (status), Live Values (live tag values), Logs, Diagram
-- **Help** — Guide, About
-
-Use **Sources → OPC DA → + Add Source** for the guided setup wizard.
-Use **Sources → OPC DA** to edit ProgID/host, credentials, default rate, subscriptions, discover servers, and backup/restore.
-Use **Sources → OPC UA** to add and configure OPC UA client sources — the bridge connects **out** to external UA servers.
-Use **Connectivity → Drivers** for PLC serial drivers (Mitsubishi A3N, Siemens S7-200).
-Use **IoT → MQTT → Setup Wizard** and **Historian → InfluxDB → Setup Wizard** for first-time broker/historian setup.
-
-## PLC Drivers (Mitsubishi A3N)
-
-The bridge can poll a Mitsubishi **A3NCPU** over **RS-232** using MELSEC **A-compatible 1C Frame**
-(Dedicated Protocol / Format 1).
-
-1. Open **Connectivity → Drivers** and add a Mitsubishi A3N driver.
-2. Set the serial port (e.g. `/dev/ttyUSB0`), baud **9600**, **8 data bits**, **odd parity**, **1 stop bit** (match the PLC).
-3. Map tags with device addresses: `D100`, `M10`, `X20`, `Y0F`, bit-in-word `D100:8`.
-4. Writes on writeable tags go back to the PLC. Bit-in-word uses read-modify-write.
-
-This is separate from **OPC DA** sources and from this process’s **OPC UA server** endpoint.
-
-
-## PLC Drivers (Mitsubishi A3N — MX Component 4)
-
-The bridge can poll a Mitsubishi **A3NCPU** through **MELSOFT MX Component 4** (Windows COM,
-`ActUtlType`). MX Component is a local COM driver that owns the physical link to the PLC —
-this option is for hosts that already run MX Component.
-
-1. **On the Windows host**, install MELSOFT MX Component 4 and configure the PLC connection
-   once in its **Communication Settings Utility**, which assigns a **logical station number**
-   (0–1023).
-2. In the bridge, open **Connectivity → MX Component** (its own section, separate from the
-   serial Drivers page) and add a connection.
-3. Enter the **logical station number** configured in step 1.
-4. Map tags with the same A3N device addresses as the serial driver: `D100`, `M10`, `X20`, `Y0F`, bit-in-word `D100:8`.
-5. Writes on writeable tags go back to the PLC. Bit-in-word uses read-modify-write.
-
-**Setting up the logical station (A3N):** in the Communication Settings Utility, create a new
-logical station, then: **PC side I/F** = RS-232C/RS-422 serial (or Ethernet); **PLC side I/F** =
-built-in CPU port (or an A-series module); **PLC series** = **A series**; **CPU type** = **A3N**
-(AnN/AnU family); **frame** = **1C frame** (A-compatible); then serial port, baud 9600, 8 data
-bits, odd parity, 1 stop bit and the PLC station number. If a given MX Component build does not
-offer "A series" in the wizard, **select an FX-series CPU type instead** — the serial MC framing
-is shared, and it usually still talks to the A3N (verify a couple of addresses first).
-
-**GX Simulator (no hardware):** pick **GX Simulator** as the connection target for a logical
-station in the Communication Settings Utility (set the CPU type you are simulating). The bridge
-connects to it unchanged — ideal for end-to-end testing of the MX Component path before
-connecting a real PLC.
-
-**GX Simulator requires the interactive Windows session.** GX Simulator communication runs over a
-**session-bound shared memory** server (`PROTOCOL_SHAREDMEMORY` — MX Component 4 Programming
-Manual, §4.11 “GX Simulator2 Communication”). The bridge can only reach the simulator when both
-run in the **same logged-in desktop session**. In practice this means:
-
-- The Windows scheduled task that runs the bridge must use **Interactive** logon — register it
-  with `-LogonType Interactive` (see `register-published-task.ps1`). The default **S4U** mode runs
-  the task headless in session 0, where GX Simulator's shared memory is invisible, and the MX
-  source cannot connect (it shows the MX Open error and stays in Reconnecting).
-- The bridge **detects this at startup**: when it is launched into a non-interactive session
-  (session 0) on Windows it logs a warning and shows an amber banner on the dashboard — "this
-  bridge runs in a non-interactive Windows session… session-bound OPC DA servers will not
-  deliver values". Treat that banner as the signal to relaunch from the desktop session (a
-  console login / Startup shortcut or an Interactive-logon scheduled task).
-- Mitsubishi documents the same constraint for its own OPC server: the MX OPC Server manual
-  states that to use GX Simulator the server *"should NOT BE INSTALLED AS A SERVICE"*.
-- A **console login is required** — after a log-off or reboot the task waits for that user
-  (the account registered in the task, e.g. `DESKTOP-NAME\user`) to log in, then starts
-  automatically.
-- A **locked screen is fine** — the session stays active and the bridge keeps polling.
-- **Connection drops auto-recover** — the bridge re-creates the ActUtlType session and reconnects
-  with backoff; transient MX/COM errors need no login and no manual restart.
-- For **fully headless** operation, use a **real PLC** over serial or Ethernet instead of
-  GX Simulator — Windows sessions are irrelevant for physical links.
-
-**Platform note:** MX Component is a Windows-only COM component — this connection works only on
-Windows hosts. On Linux it shows a clear "requires Windows" error, matching the OPC DA sources.
-The serial A3N driver on the Drivers page works on any platform.
-
-
-## PLC Drivers (Siemens S7-200 PPI)
-
-The bridge can poll a Siemens **S7-200** over a host **PPI** serial cable (pure managed client).
-
-1. Open **Connectivity → Drivers** and add a Siemens S7-200 driver.
-2. Set serial port (e.g. `/dev/ttyUSB0`), defaults **9600 8E1**, Local PPI **0**, Remote PPI **2**.
-3. Map tags with Siemens addresses: `I0.0`, `Q0.1`, `M10.2`, `VB10`, `VW100`, `VD200`.
-4. Poll-only ingest; write-through when a mapping is Writeable.
-
-
-## OPC UA Endpoint — Bind vs Connect
-
-The **Endpoint URL** in Connection settings has two faces:
-
-| Field | Value | Purpose |
-|---|---|---|
-| **Endpoint (config)** | `opc.tcp://0.0.0.0:4840/OpcBridge` | The server's **bind address**. `0.0.0.0` means "listen on all network interfaces" (localhost + LAN + VPN). This is the correct value for a server. |
-| **Connect from client** | `opc.tcp://<hostname>:4840/OpcBridge` | The URL you enter in an **OPC UA client** to connect. The dashboard shows this with the host's real name filled in. |
-
-**Do not** put `0.0.0.0` in your client's connect string — `0.0.0.0` means "this machine" to a client, which is the *client's* own machine, not the bridge. Always use the bridge host's IP address or hostname:
-
-- Same machine: `opc.tcp://localhost:4840/OpcBridge`
-- Another machine on the LAN: `opc.tcp://192.168.x.x:4840/OpcBridge` or `opc.tcp://HOSTNAME:4840/OpcBridge`
-
-The **Monitor** tab shows both values: the configured bind address and the derived client connect URL.
-
-## OPC UA Source vs OPC UA Server Endpoint
-
-The bridge can sit on **both sides** of an OPC UA connection — do not confuse them:
-
-- **OPC UA source (inbound)** — configured under **Sources → OPC UA**. The bridge acts as a UA **client** and connects **out** to an external UA server (PLC gateway, historian, another bridge). Its tags are pulled into the bridge like DA source tags.
-- **OPC UA server endpoint (outbound)** — the bridge's own built-in UA server (`opc.tcp://0.0.0.0:4840/OpcBridge`). HMI/SCADA clients connect **to** the bridge here to read the mirrored tags. This endpoint exists regardless of whether any UA sources are configured.
-
-### Mapping UA source tags
-
-- The **item id** for a UA source mapping is the external server's **NodeId string** (e.g. `ns=2;s=Channel1.Device1.Tag1` or `i=2258`).
-- Browse the external address space from the source and map Variable nodes to bridge tags — the same browse-and-map flow used for DA items.
-
-### Security
-
-Supported security modes: **None**, **Sign**, **SignAndEncrypt** — with security policy **None** or **Basic256Sha256** (Sign/SignAndEncrypt require Basic256Sha256). Credentials are an optional UserName token; leave blank for anonymous access.
-
-### Scale
-
-Only **mapped** tags are subscribed on the external server — the unmapped address space is never polled. Large mapped sets are supported (per-source mapped-tag cap, default 50000). Live values arrive via UA **subscriptions**; polling is only a fallback for the mapped set. Writes from UA clients, HMI, or MQTT write **through** to the external server for mappings marked writable.
-
-## Unified UA Address Space
-
-The bridge exposes **all tags from all DA sources** in a single OPC UA server address space. A connecting HMI/SCADA client sees one endpoint with all tags mixed together — it has no knowledge of how many DA servers exist behind the bridge.
-
-### Counting example
-
-```
- DA Side (multiple sources, multiple rate groups)
-
- Source A (localhost, Matrikon)
- ├── Rate 500ms:  2 tags  (Tag1, Tag2)
- ├── Rate 1000ms: 3 tags  (Tag3, Tag4, Tag5)
- └── Rate 5000ms: 1 tag   (Tag6)
-                    ──────
-                    6 tags total
-
- Source B (192.168.1.50, Kepware)
- ├── Rate 250ms:  10 tags (Tag7..Tag16)
- ├── Rate 1000ms: 5 tags  (Tag17..Tag21)
- └── Rate 5000ms: 4 tags  (Tag22..Tag25)
-                    ──────
-                    19 tags total
-
- Source C (192.168.1.60, RSLinx)
- └── Rate 1000ms: 15 tags (Tag26..Tag40)
-                    ──────
-                    15 tags total
-
- Total DA tags:  6 + 19 + 15 = 40 tags across 3 sources, 7 rate groups
-
-
- UA Side (one server, one address space)
-
-opc.tcp://bridge-host:4840/OpcBridge
- Folder: OpcDaTags (ns=2)
- ├── ns=2;s=sourceA/Tag1    ← updated every 500ms by Source A poller
- ├── ns=2;s=sourceA/Tag2    ← updated every 500ms
- ├── ns=2;s=sourceA/Tag3    ← updated every 1000ms
- ├── ns=2;s=sourceA/Tag4    ← updated every 1000ms
- ├── ns=2;s=sourceA/Tag5    ← updated every 1000ms
- ├── ns=2;s=sourceA/Tag6    ← updated every 5000ms
- ├── ns=2;s=sourceB/Tag7    ← updated every 250ms
- ├──   ...                   ← (Tag8..Tag16 at 250ms)
- ├── ns=2;s=sourceB/Tag17   ← updated every 1000ms
- ├──   ...                   ← (Tag18..Tag21 at 1000ms)
- ├── ns=2;s=sourceB/Tag22   ← updated every 5000ms
- ├──   ...                   ← (Tag23..Tag25 at 5000ms)
- ├── ns=2;s=sourceC/Tag26   ← updated every 1000ms
- ├──   ...                   ← (Tag27..Tag40 at 1000ms)
- └── ns=2;s=sourceC/Tag40   ← updated every 1000ms
-
- Total UA nodes: 40 (one per DA tag mapping)
-```
-
-**The UA client subscribes to any subset of these 40 nodes.** It does not know (or need to know) that:
-- The tags come from 3 different DA servers
-- The tags are split across 7 OPC DA groups with different rates
-- Tag1 updates 20× more often than Tag6
-
-Each UA node simply reflects whatever value the DA-side poller last read. The client experiences them all as a single UA server with 40 variables.
----
-
 ===
-
-# Update Rate & Tag Limits
-
-- Each tag can be assigned its own update rate via the faceplate (Tags tab → click a tag → Setup tab). Tags with the same rate share one OPC DA group.
-- Tags set to "Source Default" (update rate = 0) inherit the global **Default Update Rate** (Sources → OPC DA).
-- The global Default Update Rate is the single fallback for all tags without an explicit rate.
-- Watch the alarm bar on the Monitor tab: <span class="good">green</span> = within limits, <span class="warn">yellow</span> = cycle budget warning, <span class="bad">red</span> = limit exceeded or saturated.
-
-*(appsettings.json → `Bridge:RateLimits`)*
-| Rate | Max Tags | Basis |
-|------|----------|-------|
-| 100 ms | 200 | COM device read ~0.4ms/item; 80ms budget at 80% cycle |
-| 250 ms | 500 | Cached reads ~0.4ms; 200ms budget |
-| 500 ms | 1,000 | Mixed cache/device ~0.4ms; 400ms budget |
-| 1 s | 5,000 | Cached reads; 800ms budget; UA lock ~50ms |
-| 2 s | 10,000 | ~1.6s budget; UA updates ~10K/sec |
-| 5 s | 20,000 | ~4s budget; network ~2MB/s per UA client |
-| 10 s | 50,000 | ~8s budget; network ~5MB/s; lock contention monitor |
-
-## How limits are derived
-
-- **DA COM read time** — `IOPCSyncIO.Read` with N items takes ~0.4–1ms/item (cache) or 2–5ms/item (device). Limit = 80% of rate interval ÷ per-item read time.
-- **UA server lock** — each `UpdateValue` holds a lock for ~5–10μs. At 5000 tags × 500ms = 10K updates/sec, lock contention becomes measurable.
-- **Network bandwidth** — each UA client notification is ~50–100 bytes. At 5000 tags × 500ms ≈ 500KB/s per client; 50K tags × 100ms ≈ 5MB/s saturates 100Mbps LAN.
-- Limits are **conservative estimates**, not hard ceilings. Adjust in `appsettings.json` for your hardware and network. The alarm bar warns before degradation.
-
----
-
 
 # Access Rights & Simulation
 
@@ -360,6 +160,35 @@ Set via the faceplate → **Simulation** tab. Independent of Access Rights:
 
 - A tag can be **Disabled** (Setup tab → Enabled checkbox). Disabled tags are not read from DA and not published to UA.
 - Open a tag's faceplate (Tags tab → click a tag) to change access rights, simulation, update rate, or description.
+
+---
+
+# Update Rate & Tag Limits
+
+- Each tag can be assigned its own update rate via the faceplate (Tags tab → click a tag → Setup tab). Tags with the same rate share one OPC DA group.
+- Tags set to "Source Default" (update rate = 0) inherit the global **Default Update Rate** (Sources → OPC DA).
+- The global Default Update Rate is the single fallback for all tags without an explicit rate.
+- Watch the alarm bar on the Monitor tab: <span class="good">green</span> = within limits, <span class="warn">yellow</span> = cycle budget warning, <span class="bad">red</span> = limit exceeded or saturated.
+
+*(appsettings.json → `Bridge:RateLimits`)*
+| Rate | Max Tags | Basis |
+|------|----------|-------|
+| 100 ms | 200 | COM device read ~0.4ms/item; 80ms budget at 80% cycle |
+| 250 ms | 500 | Cached reads ~0.4ms; 200ms budget |
+| 500 ms | 1,000 | Mixed cache/device ~0.4ms; 400ms budget |
+| 1 s | 5,000 | Cached reads; 800ms budget; UA lock ~50ms |
+| 2 s | 10,000 | ~1.6s budget; UA updates ~10K/sec |
+| 5 s | 20,000 | ~4s budget; network ~2MB/s per UA client |
+| 10 s | 50,000 | ~8s budget; network ~5MB/s; lock contention monitor |
+
+## How limits are derived
+
+- **DA COM read time** — `IOPCSyncIO.Read` with N items takes ~0.4–1ms/item (cache) or 2–5ms/item (device). Limit = 80% of rate interval ÷ per-item read time.
+- **UA server lock** — each `UpdateValue` holds a lock for ~5–10μs. At 5000 tags × 500ms = 10K updates/sec, lock contention becomes measurable.
+- **Network bandwidth** — each UA client notification is ~50–100 bytes. At 5000 tags × 500ms ≈ 500KB/s per client; 50K tags × 100ms ≈ 5MB/s saturates 100Mbps LAN.
+- Limits are **conservative estimates**, not hard ceilings. Adjust in `appsettings.json` for your hardware and network. The alarm bar warns before degradation.
+
+---
 
 ---
 
@@ -600,6 +429,192 @@ The bridge can discover OPC DA servers installed on the **local machine** or on 
 - The bridge scans only **one user's HKCU** per scan (the user whose credentials you provide)
 - It does **not** scan all user profiles on the machine (that would require loading each user's NTUSER.DAT registry hive)
 - Remote enumeration requires the `OpcEnum` service running on the target host and TCP port 135 (DCOM) accessible
+
+---
+
+# PLC Drivers (Mitsubishi A3N)
+
+The bridge can poll a Mitsubishi **A3NCPU** over **RS-232** using MELSEC **A-compatible 1C Frame**
+(Dedicated Protocol / Format 1).
+
+1. Open **Sources → Drivers** and add a Mitsubishi A3N driver.
+2. Set the serial port (e.g. `/dev/ttyUSB0`), baud **9600**, **8 data bits**, **odd parity**, **1 stop bit** (match the PLC).
+3. Map tags with device addresses: `D100`, `M10`, `X20`, `Y0F`, bit-in-word `D100:8`.
+4. Writes on writeable tags go back to the PLC. Bit-in-word uses read-modify-write.
+
+This is separate from **OPC DA** sources and from this process’s **OPC UA server** endpoint.
+
+---
+
+# PLC Drivers (Mitsubishi A3N — MX Component 4)
+
+The bridge can poll a Mitsubishi **A3NCPU** through **MELSOFT MX Component 4** (Windows COM,
+`ActUtlType`). MX Component is a local COM driver that owns the physical link to the PLC —
+this option is for hosts that already run MX Component.
+
+1. **On the Windows host**, install MELSOFT MX Component 4 and configure the PLC connection
+   once in its **Communication Settings Utility**, which assigns a **logical station number**
+   (0–1023).
+2. In the bridge, open **Sources → MX Component** (its own section, separate from the
+   serial Drivers page) and add a connection.
+3. Enter the **logical station number** configured in step 1.
+4. Map tags with the same A3N device addresses as the serial driver: `D100`, `M10`, `X20`, `Y0F`, bit-in-word `D100:8`.
+5. Writes on writeable tags go back to the PLC. Bit-in-word uses read-modify-write.
+
+**Setting up the logical station (A3N):** in the Communication Settings Utility, create a new
+logical station, then: **PC side I/F** = RS-232C/RS-422 serial (or Ethernet); **PLC side I/F** =
+built-in CPU port (or an A-series module); **PLC series** = **A series**; **CPU type** = **A3N**
+(AnN/AnU family); **frame** = **1C frame** (A-compatible); then serial port, baud 9600, 8 data
+bits, odd parity, 1 stop bit and the PLC station number. If a given MX Component build does not
+offer "A series" in the wizard, **select an FX-series CPU type instead** — the serial MC framing
+is shared, and it usually still talks to the A3N (verify a couple of addresses first).
+
+**GX Simulator (no hardware):** pick **GX Simulator** as the connection target for a logical
+station in the Communication Settings Utility (set the CPU type you are simulating). The bridge
+connects to it unchanged — ideal for end-to-end testing of the MX Component path before
+connecting a real PLC.
+
+**GX Simulator requires the interactive Windows session.** GX Simulator communication runs over a
+**session-bound shared memory** server (`PROTOCOL_SHAREDMEMORY` — MX Component 4 Programming
+Manual, §4.11 “GX Simulator2 Communication”). The bridge can only reach the simulator when both
+run in the **same logged-in desktop session**. In practice this means:
+
+- The Windows scheduled task that runs the bridge must use **Interactive** logon — register it
+  with `-LogonType Interactive` (see `register-published-task.ps1`). The default **S4U** mode runs
+  the task headless in session 0, where GX Simulator's shared memory is invisible, and the MX
+  source cannot connect (it shows the MX Open error and stays in Reconnecting).
+- The bridge **detects this at startup**: when it is launched into a non-interactive session
+  (session 0) on Windows it logs a warning and shows an amber banner on the dashboard — "this
+  bridge runs in a non-interactive Windows session… session-bound OPC DA servers will not
+  deliver values". Treat that banner as the signal to relaunch from the desktop session (a
+  console login / Startup shortcut or an Interactive-logon scheduled task).
+- Mitsubishi documents the same constraint for its own OPC server: the MX OPC Server manual
+  states that to use GX Simulator the server *"should NOT BE INSTALLED AS A SERVICE"*.
+- A **console login is required** — after a log-off or reboot the task waits for that user
+  (the account registered in the task, e.g. `DESKTOP-NAME\user`) to log in, then starts
+  automatically.
+- A **locked screen is fine** — the session stays active and the bridge keeps polling.
+- **Connection drops auto-recover** — the bridge re-creates the ActUtlType session and reconnects
+  with backoff; transient MX/COM errors need no login and no manual restart.
+- For **fully headless** operation, use a **real PLC** over serial or Ethernet instead of
+  GX Simulator — Windows sessions are irrelevant for physical links.
+
+**Platform note:** MX Component is a Windows-only COM component — this connection works only on
+Windows hosts. On Linux it shows a clear "requires Windows" error, matching the OPC DA sources.
+The serial A3N driver on the Drivers page works on any platform.
+
+---
+
+# PLC Drivers (Siemens S7-200 PPI)
+
+The bridge can poll a Siemens **S7-200** over a host **PPI** serial cable (pure managed client).
+
+1. Open **Sources → Drivers** and add a Siemens S7-200 driver.
+2. Set serial port (e.g. `/dev/ttyUSB0`), defaults **9600 8E1**, Local PPI **0**, Remote PPI **2**.
+3. Map tags with Siemens addresses: `I0.0`, `Q0.1`, `M10.2`, `VB10`, `VW100`, `VD200`.
+4. Poll-only ingest; write-through when a mapping is Writeable.
+===
+
+# OPC UA Endpoint — Bind vs Connect
+
+The **Endpoint URL** in Connection settings has two faces:
+
+| Field | Value | Purpose |
+|---|---|---|
+| **Endpoint (config)** | `opc.tcp://0.0.0.0:4840/OpcBridge` | The server's **bind address**. `0.0.0.0` means "listen on all network interfaces" (localhost + LAN + VPN). This is the correct value for a server. |
+| **Connect from client** | `opc.tcp://<hostname>:4840/OpcBridge` | The URL you enter in an **OPC UA client** to connect. The dashboard shows this with the host's real name filled in. |
+
+**Do not** put `0.0.0.0` in your client's connect string — `0.0.0.0` means "this machine" to a client, which is the *client's* own machine, not the bridge. Always use the bridge host's IP address or hostname:
+
+- Same machine: `opc.tcp://localhost:4840/OpcBridge`
+- Another machine on the LAN: `opc.tcp://192.168.x.x:4840/OpcBridge` or `opc.tcp://HOSTNAME:4840/OpcBridge`
+
+The **Monitor** tab shows both values: the configured bind address and the derived client connect URL.
+
+---
+
+# OPC UA Source vs OPC UA Server Endpoint
+
+The bridge can sit on **both sides** of an OPC UA connection — do not confuse them:
+
+- **OPC UA source (inbound)** — configured under **Sources → OPC UA**. The bridge acts as a UA **client** and connects **out** to an external UA server (PLC gateway, historian, another bridge). Its tags are pulled into the bridge like DA source tags.
+- **OPC UA server endpoint (outbound)** — the bridge's own built-in UA server (`opc.tcp://0.0.0.0:4840/OpcBridge`). HMI/SCADA clients connect **to** the bridge here to read the mirrored tags. This endpoint exists regardless of whether any UA sources are configured.
+
+### Mapping UA source tags
+
+- The **item id** for a UA source mapping is the external server's **NodeId string** (e.g. `ns=2;s=Channel1.Device1.Tag1` or `i=2258`).
+- Browse the external address space from the source and map Variable nodes to bridge tags — the same browse-and-map flow used for DA items.
+
+### Security
+
+Supported security modes: **None**, **Sign**, **SignAndEncrypt** — with security policy **None** or **Basic256Sha256** (Sign/SignAndEncrypt require Basic256Sha256). Credentials are an optional UserName token; leave blank for anonymous access.
+
+### Scale
+
+Only **mapped** tags are subscribed on the external server — the unmapped address space is never polled. Large mapped sets are supported (per-source mapped-tag cap, default 50000). Live values arrive via UA **subscriptions**; polling is only a fallback for the mapped set. Writes from UA clients, HMI, or MQTT write **through** to the external server for mappings marked writable.
+
+---
+
+# Unified UA Address Space
+
+The bridge exposes **all tags from all DA sources** in a single OPC UA server address space. A connecting HMI/SCADA client sees one endpoint with all tags mixed together — it has no knowledge of how many DA servers exist behind the bridge.
+
+### Counting example
+
+```
+ DA Side (multiple sources, multiple rate groups)
+
+ Source A (localhost, Matrikon)
+ ├── Rate 500ms:  2 tags  (Tag1, Tag2)
+ ├── Rate 1000ms: 3 tags  (Tag3, Tag4, Tag5)
+ └── Rate 5000ms: 1 tag   (Tag6)
+                    ──────
+                    6 tags total
+
+ Source B (192.168.1.50, Kepware)
+ ├── Rate 250ms:  10 tags (Tag7..Tag16)
+ ├── Rate 1000ms: 5 tags  (Tag17..Tag21)
+ └── Rate 5000ms: 4 tags  (Tag22..Tag25)
+                    ──────
+                    19 tags total
+
+ Source C (192.168.1.60, RSLinx)
+ └── Rate 1000ms: 15 tags (Tag26..Tag40)
+                    ──────
+                    15 tags total
+
+ Total DA tags:  6 + 19 + 15 = 40 tags across 3 sources, 7 rate groups
+
+
+ UA Side (one server, one address space)
+
+opc.tcp://bridge-host:4840/OpcBridge
+ Folder: OpcDaTags (ns=2)
+ ├── ns=2;s=sourceA/Tag1    ← updated every 500ms by Source A poller
+ ├── ns=2;s=sourceA/Tag2    ← updated every 500ms
+ ├── ns=2;s=sourceA/Tag3    ← updated every 1000ms
+ ├── ns=2;s=sourceA/Tag4    ← updated every 1000ms
+ ├── ns=2;s=sourceA/Tag5    ← updated every 1000ms
+ ├── ns=2;s=sourceA/Tag6    ← updated every 5000ms
+ ├── ns=2;s=sourceB/Tag7    ← updated every 250ms
+ ├──   ...                   ← (Tag8..Tag16 at 250ms)
+ ├── ns=2;s=sourceB/Tag17   ← updated every 1000ms
+ ├──   ...                   ← (Tag18..Tag21 at 1000ms)
+ ├── ns=2;s=sourceB/Tag22   ← updated every 5000ms
+ ├──   ...                   ← (Tag23..Tag25 at 5000ms)
+ ├── ns=2;s=sourceC/Tag26   ← updated every 1000ms
+ ├──   ...                   ← (Tag27..Tag40 at 1000ms)
+ └── ns=2;s=sourceC/Tag40   ← updated every 1000ms
+
+ Total UA nodes: 40 (one per DA tag mapping)
+```
+
+**The UA client subscribes to any subset of these 40 nodes.** It does not know (or need to know) that:
+- The tags come from 3 different DA servers
+- The tags are split across 7 OPC DA groups with different rates
+- Tag1 updates 20× more often than Tag6
+
+Each UA node simply reflects whatever value the DA-side poller last read. The client experiences them all as a single UA server with 40 variables.
 
 ---
 
@@ -952,7 +967,7 @@ The `pki/` folder is **user data** — it contains the bridge's identity and tru
 
 Always preserve `pki/` across updates. It's listed in the update guide as "never overwrite".
 
-===
+---
 
 # Configuration Reference
 

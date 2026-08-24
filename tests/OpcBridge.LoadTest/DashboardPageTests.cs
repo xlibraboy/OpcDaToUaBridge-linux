@@ -633,4 +633,36 @@ public sealed class DashboardPageTests
         Assert.Contains("p.influx", DashboardPage.Script);
         Assert.Contains("p.problems", DashboardPage.Script);
     }
+
+    [Fact]
+    public void Guide_FeaturesSubTab_RenamedAndSingleAccordionOpenByDefault()
+    {
+        // The middle sub-tab is "Features" (was "Dashboard Tabs") and its DOM ids match.
+        Assert.Contains("switchHelpSubTab('features')", DashboardPage.Html);
+        Assert.Contains(">Features</button>", DashboardPage.Html);
+        Assert.Contains("id=\"help-features\"", DashboardPage.Html);
+        Assert.DoesNotContain("dashboard-tabs", DashboardPage.Html);
+
+        // One accordion opens per sub-tab (was two), so no wall-of-text on first visit.
+        Assert.Contains("openCount = 1", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Guide_MarkdownRenderer_OrderedListsAndCodeSafeInlineFormatting()
+    {
+        // Numbered setup steps render as real ordered lists.
+        Assert.Contains(@"^\d+\.\s+", DashboardPage.Script);
+        Assert.Contains("<ol>", DashboardPage.Script);
+        Assert.Contains("</ol>", DashboardPage.Script);
+
+        // Bold/inline-code formatting is applied per text node via a helper and
+        // never as a global pass over the assembled HTML (which would reach into
+        // <pre><code> blocks).
+        Assert.Contains("const inlineFmt =", DashboardPage.Script);
+        Assert.DoesNotContain(@"return html.replace(/\*\*(.+?)\*\*/g", DashboardPage.Script);
+
+        // Table CSS: no hardcoded second-column centering; ol shares list styling with ul.
+        Assert.DoesNotContain(".help-body td:nth-child(2)", DashboardPage.Html);
+        Assert.Contains(".help-body ul, .help-body ol", DashboardPage.Html);
+    }
 }

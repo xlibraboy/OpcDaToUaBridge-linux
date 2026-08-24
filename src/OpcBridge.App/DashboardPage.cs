@@ -280,7 +280,7 @@ internal static class DashboardPage
         .help-section > summary:hover { background: var(--panel2); }
         .help-section[open] > summary { border-bottom: 1px solid var(--border); background: var(--panel2); }
         .help-body { padding: 12px 14px; }
-        .help-body ul { padding-left: 18px; color: var(--muted); }
+        .help-body ul, .help-body ol { padding-left: 18px; color: var(--muted); }
         .help-body li + li { margin-top: 6px; }
         .help-body h4 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 12px 0 6px; }
         .help-body h4:first-child { margin-top: 0; }
@@ -296,7 +296,6 @@ internal static class DashboardPage
         .help-body th { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border2); color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
         .help-body td { padding: 5px 8px; border-bottom: 1px solid var(--border); }
         .help-body td:first-child { font-weight: 600; white-space: nowrap; }
-        .help-body td:nth-child(2) { text-align: center; white-space: nowrap; }
         .kv { display: grid; grid-template-columns: 140px 1fr; gap: 8px 12px; align-items: start; }
         .kv .k { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
         .kv .v { word-break: break-word; }
@@ -1311,13 +1310,13 @@ internal static class DashboardPage
 <div class="view" id="view-help">
     <div class="help-subtabs">
         <button class="help-subtab active" onclick="switchHelpSubTab('getting-started')">Getting Started</button>
-        <button class="help-subtab" onclick="switchHelpSubTab('dashboard-tabs')">Dashboard Tabs</button>
+        <button class="help-subtab" onclick="switchHelpSubTab('features')">Features</button>
         <button class="help-subtab" onclick="switchHelpSubTab('reference')">Reference</button>
     </div>
     <div class="help-subtab-content active" id="help-getting-started">
         <div class="help-accordion" id="helpContent1"><span class="msg">Loading help…</span></div>
     </div>
-    <div class="help-subtab-content" id="help-dashboard-tabs">
+    <div class="help-subtab-content" id="help-features">
         <div class="help-accordion" id="helpContent2"></div>
     </div>
     <div class="help-subtab-content" id="help-reference">
@@ -3807,10 +3806,12 @@ async function loadAppInfo(force = false) {
 }
 
 let helpLoaded = false;
+const inlineFmt = (s) => s.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>');
 function renderMarkdown(md) {
     const lines = md.replace(/\r\n/g, '\n').split('\n');
-    let html = '', inList = false, inTable = false, inCode = false, tableHeader = false;
-    const closeList = () => { if (inList) { html += '</ul>'; inList = false; } };
+    let html = '', listType = null, inTable = false, inCode = false, tableHeader = false;
+    const closeList = () => { if (listType) { html += listType === 'ol' ? '</ol>' : '</ul>'; listType = null; } };
+    const openList = (t) => { if (listType !== t) { closeList(); html += t === 'ol' ? '<ol>' : '<ul>'; listType = t; } };
     const closeTable = () => { if (inTable) { html += '</tbody></table>'; inTable = false; } };
     for (let i = 0; i < lines.length; i++) {
         let line = lines[i];
@@ -3821,35 +3822,37 @@ function renderMarkdown(md) {
         }
         if (inCode) { html += line + '\n'; continue; }
         if (/^---\s*$/.test(line)) { closeList(); closeTable(); html += '<hr>'; continue; }
-        if (/^#\s+/.test(line)) { closeList(); closeTable(); html += `<h1>${line.replace(/^#\s+/, '')}</h1>`; continue; }
-        if (/^##\s+/.test(line)) { closeList(); closeTable(); html += `<h2>${line.replace(/^##\s+/, '')}</h2>`; continue; }
-        if (/^###\s+/.test(line)) { closeList(); closeTable(); html += `<h3>${line.replace(/^###\s+/, '')}</h3>`; continue; }
-        if (/^####\s+/.test(line)) { closeList(); closeTable(); html += `<h4>${line.replace(/^####\s+/, '')}</h4>`; continue; }
-        if (/^\*\s+|^-\s+/.test(line)) { closeTable(); if (!inList) { html += '<ul>'; inList = true; } html += `<li>${line.replace(/^\*\s+|^-\s+/, '')}</li>`; continue; }
+        if (/^#\s+/.test(line)) { closeList(); closeTable(); html += `<h1>${inlineFmt(line.replace(/^#\s+/, ''))}</h1>`; continue; }
+        if (/^##\s+/.test(line)) { closeList(); closeTable(); html += `<h2>${inlineFmt(line.replace(/^##\s+/, ''))}</h2>`; continue; }
+        if (/^###\s+/.test(line)) { closeList(); closeTable(); html += `<h3>${inlineFmt(line.replace(/^###\s+/, ''))}</h3>`; continue; }
+        if (/^####\s+/.test(line)) { closeList(); closeTable(); html += `<h4>${inlineFmt(line.replace(/^####\s+/, ''))}</h4>`; continue; }
+        const olItem = line.match(/^\d+\.\s+(.*)$/);
+        if (olItem) { closeTable(); openList('ol'); html += `<li>${inlineFmt(olItem[1])}</li>`; continue; }
+        if (/^\*\s+|^-\s+/.test(line)) { closeTable(); openList('ul'); html += `<li>${inlineFmt(line.replace(/^\*\s+|^-\s+/, ''))}</li>`; continue; }
         closeList();
         if (/^\|/.test(line)) {
             if (line.replace(/\s/g, '').match(/^\|[-:|]+\|$/)) { tableHeader = true; continue; }
             const cells = line.split('|').filter((_, j, a) => j > 0 && j < a.length - 1).map(c => c.trim());
-            if (!inTable) { html += '<table><thead><tr>'; html += cells.map(c => `<th>${c}</th>`).join(''); html += '</tr></thead><tbody>'; inTable = true; tableHeader = false; }
+            if (!inTable) { html += '<table><thead><tr>'; html += cells.map(c => `<th>${inlineFmt(c)}</th>`).join(''); html += '</tr></thead><tbody>'; inTable = true; tableHeader = false; }
             else if (tableHeader) { tableHeader = false; continue; }
-            else { html += '<tr>' + cells.map(c => `<td>${c}</td>`).join('') + '</tr>'; }
+            else { html += '<tr>' + cells.map(c => `<td>${inlineFmt(c)}</td>`).join('') + '</tr>'; }
             continue;
         }
         closeTable();
         if (line.trim() === '') continue;
-        if (/^\*/.test(line) && /\*$/.test(line)) { html += `<p><em>${line.replace(/^\*|\*$/g, '')}</em></p>`; }
-        else { html += `<p>${line}</p>`; }
+        if (/^\*.+\*$/.test(line)) { html += `<p><em>${inlineFmt(line.replace(/^\*|\*$/g, ''))}</em></p>`; }
+        else { html += `<p>${inlineFmt(line)}</p>`; }
     }
     closeList(); closeTable();
     if (inCode) html += '</code></pre>';
-    return html.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`(.+?)`/g, '<code>$1</code>');
+    return html;
 }
 async function loadHelp() {
     if (helpLoaded) return;
     const p = await (await fetch('/api/help', { cache: 'no-store' })).json();
     const groups = (p.markdown || '').split(/\r?\n===\r?\n/).filter(s => s.trim());
     
-    const renderGroup = (groupMarkdown, containerId, openCount = 2) => {
+    const renderGroup = (groupMarkdown, containerId, openCount = 1) => {
         const sections = groupMarkdown.split(/\r?\n---\r?\n/).filter(s => s.trim());
         const container = el(containerId);
         if (!container) return;
@@ -3862,9 +3865,9 @@ async function loadHelp() {
         }).join('');
     };
     
-    renderGroup(groups[0] || '', 'helpContent1', 2);
-    renderGroup(groups[1] || '', 'helpContent2', 2);
-    renderGroup(groups[2] || '', 'helpContent3', 1);
+    renderGroup(groups[0] || '', 'helpContent1');
+    renderGroup(groups[1] || '', 'helpContent2');
+    renderGroup(groups[2] || '', 'helpContent3');
     
     helpLoaded = true;
 }
