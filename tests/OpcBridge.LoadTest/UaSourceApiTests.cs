@@ -5,7 +5,7 @@ using Xunit;
 
 namespace OpcBridge.LoadTest;
 
-[Collection(nameof(DaLinkApiAppCollection))]
+[Collection(nameof(InterlinkApiAppCollection))]
 public sealed class UaSourceApiTests
 {
     private static void WriteMinimalAppsettings(string dir, string uaEndpoint = "opc.tcp://0.0.0.0:4840/OpcBridge")

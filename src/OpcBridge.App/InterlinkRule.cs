@@ -1,6 +1,6 @@
 namespace OpcBridge.App;
 
-public sealed record DaLinkRule(
+public sealed record InterlinkRule(
     Guid Id,
     string ProviderSourceId,
     string ProviderItemId,

@@ -6,10 +6,10 @@ namespace OpcBridge.App;
 //   function loadInfluxConfig/loadInfluxStatus/saveInflux/connectInflux/disconnectInflux
 //   /api/influx/config, influxEnabled: el('fpInfluxEnabled').checked, if (name === 'influx')
 //   id="pApps", text "Apps", "pApps" in script, "detectedCount" in script
-//   text "DA Links", id="linkSourceStatus", id="linkBrowseTree", id="btnClearLinkSelection"
-//   text "Clear Selection", text "Delete Saved Link", function clearLinkDraftSelection
-//   state.linkDraft.consumer = null, state.linkDraft.provider = null
-//   function browseLinkTags(, state.linkDraft, data-action="pick-link-consumer", data-action="pick-link-provider"
+//   text "Interlinks", id="btnClearLinkSelection"
+//   text "Clear Selection", text "Delete Saved Link", function clearInterlinkDraftSelection
+//   state.interlinkDraft.consumer = null, state.interlinkDraft.provider = null
+//   function renderInterlinkPickers(, state.interlinkDraft, data-action="pick-interlink-consumer", data-action="pick-interlink-provider"
 //   data-tab="opc-da", id="view-opc-da", data-route="connectivity/opc-da", text "OPC DA"
 //   Sources is a sidebar group label only (not a page); legacy connectivity/sources → opc-da
 //   data-tab="drivers", id="view-drivers", data-route="connectivity/drivers", id="wzDrv" (driver wizard)
@@ -565,7 +565,7 @@ internal static class DashboardPage
   <div class="nav-group">
     <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><circle cx="7" cy="7" r="1.5" fill="currentColor" stroke="none"/></svg>Tags</div>
     <button class="tabbtn" data-tab="tags" data-route="tags/maps" onclick="navigate('tags/maps')">Maps</button>
-    <button class="tabbtn" data-tab="links" data-route="tags/links" onclick="navigate('tags/links')">DA Links</button>
+    <button class="tabbtn" data-tab="interlinks" data-route="tags/interlinks" onclick="navigate('tags/interlinks')">Interlinks</button>
   </div>
   <div class="nav-group">
     <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1.2" fill="currentColor" stroke="none"/></svg>IoT</div>
@@ -646,6 +646,10 @@ internal static class DashboardPage
             </div>
         </div>
     </div>
+    <div class="box" style="margin-top:14px">
+        <div class="box-h">Bridge Fleet <span class="info" data-tip="Other OpcBridge instances discovered on the network (UDP/HTTP probe). 'Local' is the instance serving this dashboard.">i</span><span class="msg" id="fleetCount" style="margin-left:auto"></span></div>
+        <div class="box-b"><div class="list" id="fleetList" style="max-height:220px"><span class="msg">No fleet data yet.</span></div></div>
+    </div>
 </div>
 <div class="view" id="view-values">
     <div class="box">
@@ -723,11 +727,11 @@ internal static class DashboardPage
 </div>
 <div class="view" id="view-sessions">
     <div class="box" style="margin-bottom:14px">
-        <div class="box-h">DA Source Diagnostics <span class="msg" id="diagDaSummary" style="margin-left:auto"></span></div>
+        <div class="box-h">Source Diagnostics <span class="info" data-tip="Health of every configured source — OPC DA, OPC UA, and driver sources (Melsec, S7, MX Component). Shows connection state, read latency, rate-group budget for polled sources, the last fault reason, and data freshness.">i</span><span class="msg" id="diagDaSummary" style="margin-left:auto"></span></div>
         <div class="box-b" id="diagDaSources"><span class="msg">Loading…</span></div>
     </div>
     <div class="box" style="margin-bottom:14px">
-        <div class="box-h">Time Sync <span class="info" data-tip="Compares the DA server's clock to the bridge machine's clock. A large offset (>500ms) indicates the DA server or bridge needs NTP time sync. UA clients receive both SourceTimestamp (DA server time) and ServerTimestamp (bridge time) for each value.">i</span></div>
+        <div class="box-h">Time Sync <span class="info" data-tip="OPC DA sources only: compares the DA server's clock to the bridge machine's clock. A large offset (>500ms) indicates the DA server or bridge needs NTP time sync. UA clients receive both SourceTimestamp (DA server time) and ServerTimestamp (bridge time) for each value. UA and driver sources have no DA clock and show —.">i</span></div>
         <div class="box-b"><div class="list" id="diagTimeSync"><span class="msg">Loading…</span></div></div>
     </div>
     <div class="grid2" style="margin-bottom:14px">
@@ -1258,35 +1262,29 @@ internal static class DashboardPage
         </div>
     </div>
 </div>
-<div class="view" id="view-links">
+<div class="view" id="view-interlinks">
     <div class="box">
-        <div class="box-h">DA Links <span class="msg" id="linksCount" style="margin-left:auto"></span></div>
+        <div class="box-h">Interlinks <span class="msg" id="linksCount" style="margin-left:auto"></span></div>
         <div class="box-b">
-            <div class="hint" id="linksMessage" style="margin-bottom:10px">Create provider-consumer DA rules here. DA Links are separate from OPC UA tag mappings.</div>
-            <div class="field" style="margin-bottom:10px">
-                <label class="fl">Active Source</label>
-                <span class="msg" id="linkSourceStatus">Select a saved source, then browse tags below.</span>
-            </div>
+            <div class="hint" id="linksMessage" style="margin-bottom:10px">Create tag-to-tag rules between sources here. Interlinks are a separate subsystem from OPC UA tag mappings.</div>
             <div class="fp-body" style="margin-bottom:10px">
                 <div class="fp-panel">
                     <div class="fp-k">Consumer</div>
-                    <div class="fp-meta" id="linkConsumerTarget"><span class="msg">Browse the active source and choose a consumer tag.</span></div>
+                    <select id="interlinkConsumerSource" style="width:100%;margin-bottom:8px" onchange="onInterlinkSourceChange('consumer')"></select>
+                    <div class="list" id="interlinkConsumerList" style="max-height:220px"><span class="msg">Select a source to list its Maps tags.</span></div>
                 </div>
                 <div class="fp-panel">
                     <div class="fp-k">Provider</div>
-                    <div class="fp-meta" id="linkProviderTarget"><span class="msg">Browse the active source and choose a provider tag.</span></div>
+                    <select id="interlinkProviderSource" style="width:100%;margin-bottom:8px" onchange="onInterlinkSourceChange('provider')"></select>
+                    <div class="list" id="interlinkProviderList" style="max-height:220px"><span class="msg">Select a source to list its Maps tags.</span></div>
                 </div>
             </div>
             <div class="tag-browser-toolbar">
-                <button class="btn" id="btnBrowseAllLinkTags" type="button">Browse All Tags</button>
-                <button class="btn ghost" id="btnBrowseLinkTags" type="button">Browse Folders</button>
                 <button class="btn" type="button" id="btnSetLink">Save Link</button>
                 <button class="btn ghost" type="button" id="btnClearLink">Delete Saved Link</button>
                 <button class="btn ghost" type="button" id="btnClearLinkSelection">Clear Selection</button>
-                <span class="msg" id="linkBrowseStatus">Use the active source selection from Connection or Tags, then pick consumer/provider tags.</span>
+                <span class="msg" id="interlinkStatus">Pick both endpoints from Maps tags — OPC DA, OPC UA or MX Component — so every saved interlink can carry values.</span>
             </div>
-            <div class="breadcrumb" id="linkBrowseBreadcrumb"><span class="current">root</span></div>
-            <div class="list" id="linkBrowseTree"><span class="msg">Use the active source to browse tags for DA links.</span></div>
             <div class="list" id="linksList" style="margin-top:10px"></div>
         </div>
     </div>
@@ -1586,7 +1584,7 @@ internal static class DashboardPage
             <span class="seg-pill" id="segPill"></span>
             <button class="diag-tab active" data-diag="all" onclick="showDiagTab('all')">All</button>
             <button class="diag-tab" data-diag="da-ua" onclick="showDiagTab('da-ua')">DA→UA</button>
-            <button class="diag-tab" data-diag="da-da" onclick="showDiagTab('da-da')">DA to DA</button>
+            <button class="diag-tab" data-diag="interlinks" onclick="showDiagTab('interlinks')">Interlinks</button>
             <button class="diag-tab" data-diag="mqtt" onclick="showDiagTab('mqtt')">MQTT</button>
         </div>
         <div class="diag-zoom" title="Ctrl+wheel zoom toward cursor · drag canvas to pan">
@@ -1639,7 +1637,7 @@ const el = id => document.getElementById(id);
 const state = {
     tagPath: '',
     uaBrowseTrail: [],
-    linkBrowsePath: '',
+    interlinkSideSource: { consumer: '', provider: '' },
     sources: [],
     selectedSourceId: 'default',
     editingNewSource: false,
@@ -1657,8 +1655,8 @@ const state = {
     logsLoaded: false,
     appInfoLoaded: false,
     mappings: [],
-    daLinks: [],
-    linkDraft: { consumer: null, provider: null },
+    interlinks: [],
+    interlinkDraft: { consumer: null, provider: null },
     mappingSort: 'name',
     mappingSortDir: 1,
     mappingFilter: '',
@@ -1676,6 +1674,8 @@ const state = {
     disconnectedSources: new Set(),
     handleHistory: [],
     handleBaseline: null,
+    gdiHistory: [],
+    userHistory: [],
     diagramTab: 'all',
     diagramLoaded: false,
     diagramZoom: 1,
@@ -1869,8 +1869,8 @@ function renderDiagram() {
         html = result.svg;
         maxHeight = result.maxHeight;
         maxWidth = result.maxWidth || maxWidth;
-    } else if (tab === 'da-da') {
-        const result = renderDaDaDiagram();
+    } else if (tab === 'interlinks') {
+        const result = renderInterlinksDiagram();
         html = result.svg;
         maxHeight = result.maxHeight;
         maxWidth = result.maxWidth || maxWidth;
@@ -1908,7 +1908,7 @@ function linkEndpoints(link) {
     };
 }
 
-function collectDaLinks() {
+function collectInterlinks() {
     const links = [];
     const seen = new Set();
     const push = (link, kind) => {
@@ -1920,7 +1920,7 @@ function collectDaLinks() {
         seen.add(key);
         links.push({ ...link, ...ep, _kind: kind });
     };
-    (state.daLinks || []).forEach(l => push(l, 'rule'));
+    (state.interlinks || []).forEach(l => push(l, 'rule'));
     // legacy provider fields still present on mappings
     (state.mappings || []).forEach(m => {
         const pSid = m.providerSourceId || m.ProviderSourceId;
@@ -1993,7 +1993,7 @@ function summarizeTags(tags) {
 function renderAllDiagram() {
     const mappings = state.mappings || [];
     const sources = state.sources || [];
-    const links = collectDaLinks();
+    const links = collectInterlinks();
 
     if (mappings.length === 0 && sources.length === 0) {
         return { svg: diagEmptyState('No sources or tags configured', 'Add a DA source or mapping to see the plant overview', 1400), maxHeight: 600, maxWidth: 1400 };
@@ -2022,7 +2022,7 @@ function renderAllDiagram() {
 
     let svg = '';
     svg += `<text x="40" y="30" fill="#6b7689" font-size="11" font-weight="600">PLANT OVERVIEW (aggregated)</text>`;
-    svg += `<text x="40" y="48" fill="#6b7689" font-size="10">Sources → tag groups → UA / MQTT · trunks colored by live status · detail on DA→UA / DA-to-DA / MQTT tabs</text>`;
+    svg += `<text x="40" y="48" fill="#6b7689" font-size="10">Sources → tag groups → UA / MQTT · trunks colored by live status · detail on DA→UA / Interlinks / MQTT tabs</text>`;
 
     const sourcePositions = new Map();
     const groupPositions = new Map();
@@ -2075,7 +2075,7 @@ function renderAllDiagram() {
         currentY += rowH + sourceGap;
     });
 
-    // Aggregate DA-to-DA by source pair
+    // Aggregate interlinks by source pair
     const pairMap = new Map();
     links.forEach(link => {
         const ep = linkEndpoints(link);
@@ -2328,13 +2328,14 @@ function renderDaUaDiagram() {
     return { svg, maxHeight: maxY + 60, maxWidth: 1120 };
 }
 
-function renderDaDaDiagram() {
+function renderInterlinksDiagram() {
     const mappings = state.mappings || [];
     const sources = state.sources || [];
-    const links = collectDaLinks();
+    const links = collectInterlinks();
 
     if (mappings.length === 0 && links.length === 0) {
-        return { svg: diagEmptyState('No tags or DA-to-DA links configured', 'Create a DA-to-DA link to see providers feed consumers', 1100), maxHeight: 600, maxWidth: 1100 };
+        return { svg: diagEmptyState('No tags or interlinks configured', 'Create an interlink to see providers feed consumers', 1100), maxHeight: 600, maxWidth: 1100 };
+    }
     }
 
     // Aggregated by source pair (scales with links/sources, not every tag).
@@ -2788,39 +2789,67 @@ function linkTagLabel(sourceId, itemId, nameOverride = null) {
     const name = nameOverride || (mapping ? (mapping.displayName || mapping.DisplayName || itemId) : itemId);
     return `${name} (${sourceId || 'default'} · ${itemId})`;
 }
-function renderLinkSourceStatus() {
-    const sourceStatus = el('linkSourceStatus');
-    if (!sourceStatus) return;
-    const source = currentSource();
-    if (source) {
-        if (!sourceMatchesMapType(source, 'opc-da')) {
-            sourceStatus.innerHTML = `<span class="msg">${esc(source.displayName || source.sourceId)} is not an OPC DA source — DA Links require an OPC DA source.</span>`;
-            return;
-        }
-        const cs = get(source, 'connectionState') || '—';
-        sourceStatus.innerHTML = `${badge(cs, stateClass(cs))} <span class="msg">${esc(source.displayName || source.sourceId)} · ${esc(source.sourceId)}</span>`;
+function isLinkableInterlinkSource(source) {
+    const t = String(get(source, 'sourceType') || 'OpcDa');
+    return t === 'OpcDa' || t === 'OpcUa' || t === 'MxComponent';
+}
+function interlinkSideIds() { return ['consumer', 'provider']; }
+function interlinkSourceSelectId(side) { return side === 'consumer' ? 'interlinkConsumerSource' : 'interlinkProviderSource'; }
+function interlinkListId(side) { return side === 'consumer' ? 'interlinkConsumerList' : 'interlinkProviderList'; }
+function renderInterlinkPickers() {
+    const sources = (state.sources || []).filter(isLinkableInterlinkSource);
+    interlinkSideIds().forEach(side => {
+        const sel = el(interlinkSourceSelectId(side));
+        if (!sel) return;
+        const current = state.interlinkSideSource[side] || '';
+        sel.innerHTML = '<option value="">— select source —</option>' + sources.map(s =>
+            `<option value="${attr(s.sourceId)}"${s.sourceId === current ? ' selected' : ''}>${esc(s.displayName || s.sourceId)} (${esc(sourceTypeLabel(s))})</option>`).join('');
+        renderInterlinkTagList(side);
+    });
+}
+function onInterlinkSourceChange(side) {
+    const sel = el(interlinkSourceSelectId(side));
+    if (!sel) return;
+    state.interlinkSideSource[side] = sel.value || '';
+    renderInterlinkTagList(side);
+}
+function renderInterlinkTagList(side) {
+    const listEl = el(interlinkListId(side));
+    if (!listEl) return;
+    const sid = state.interlinkSideSource[side];
+    if (!sid) {
+        listEl.innerHTML = '<span class="msg">Select a source to list its Maps tags.</span>';
         return;
     }
-    if (state.editingNewSource) {
-        sourceStatus.innerHTML = '<span class="msg">Save the new source before browsing DA links.</span>';
-        return;
-    }
-    sourceStatus.innerHTML = '<span class="msg">Select a saved source, then browse tags below.</span>';
+    const rows = (state.mappings || [])
+        .filter(m => String(m.sourceId || m.SourceId || 'default') === sid && (m.enabled ?? m.Enabled) !== false)
+        .map(m => {
+            const item = m.itemId || m.ItemId || m.daItemId || m.DaItemId || '';
+            const name = m.displayName || m.DisplayName || item;
+            const key = tagKey(sid, item);
+            const picked = state.interlinkDraft[side] && state.interlinkDraft[side].key === key;
+            return `<div class="li"><div style="flex:1;min-width:0"><div class="n">${esc(name)}</div><div class="p">${esc(item)}</div></div><button class="btn ghost" data-action="pick-interlink-${side}" data-source-id="${attr(sid)}" data-item-id="${attr(item)}" data-name="${attr(name)}">${picked ? '✓ Picked' : 'Pick'}</button></div>`;
+        });
+    listEl.innerHTML = rows.length ? rows.join('') : '<span class="msg">No Maps tags for this source yet — add tags on the Maps tab first.</span>';
 }
-function renderLinkDraftTarget(targetId, selection, emptyMessage) {
-    el(targetId).innerHTML = selection
-        ? `<span>${esc(linkTagLabel(selection.sourceId, selection.itemId, selection.name || null))}</span>`
-        : `<span class="msg">${esc(emptyMessage)}</span>`;
+function setInterlinkSelection(role, sourceId, itemId, name) {
+    state.interlinkDraft[role] = {
+        key: tagKey(sourceId, itemId),
+        sourceId: sourceId || 'default',
+        itemId,
+        name: name || itemId
+    };
+    const roleName = role === 'consumer' ? 'Consumer' : 'Provider';
+    el('linksMessage').textContent = roleName + ' selected from source ' + (sourceId || 'default') + '.';
+    renderInterlinksView();
 }
-function renderLinksView() {
-    const links = state.daLinks || [];
-    const consumer = state.linkDraft.consumer;
-    const provider = state.linkDraft.provider;
-    renderLinkSourceStatus();
-    renderLinkDraftTarget('linkConsumerTarget', consumer, 'Browse the active source and choose a consumer tag.');
-    renderLinkDraftTarget('linkProviderTarget', provider, 'Browse the active source and choose a provider tag.');
+function renderInterlinksView() {
+    const links = state.interlinks || [];
+    const consumer = state.interlinkDraft.consumer;
+    const provider = state.interlinkDraft.provider;
+    renderInterlinkPickers();
     el('btnSetLink').disabled = !(consumer && provider);
-    el('btnClearLink').disabled = !(consumer && findDaLinkByConsumer(consumer.key));
+    el('btnClearLink').disabled = !(consumer && findInterlinkByConsumer(consumer.key));
     el('btnClearLinkSelection').disabled = !(consumer || provider);
     el('linksCount').textContent = links.length ? links.length + (links.length === 1 ? ' rule' : ' rules') : 'No rules';
     el('linksList').innerHTML = links.length ? links.map(link => {
@@ -2830,17 +2859,17 @@ function renderLinksView() {
         const providerItemId = link.providerItemId || link.ProviderItemId || '';
         const linkId = link.id || link.Id || '';
         return `<div class="li"><div style="flex:1;min-width:0"><span class="n">${esc(linkTagLabel(consumerSourceId, consumerItemId))}</span></div><span class="pill" style="padding:1px 6px;font-size:10px;background:#e8f0fe;color:#1a73e8">⇠ fed by</span><div style="flex:1;min-width:0"><span class="n">${esc(linkTagLabel(providerSourceId, providerItemId))}</span></div><button class="btn ghost" type="button" data-action="unlink" data-link-id="${attr(linkId)}">Delete</button></div>`;
-    }).join('') : '<span class="msg">No DA links yet. Browse the active source and pick a consumer/provider pair.</span>';
+    }).join('') : '<span class="msg">No interlinks yet. Pick a consumer and a provider above, then Save Link.</span>';
 }
-function findDaLinkByConsumer(consumerKey) {
-    return (state.daLinks || []).find(link => tagKey(link.consumerSourceId || link.ConsumerSourceId || 'default', link.consumerItemId || link.ConsumerItemId || '') === consumerKey) || null;
+function findInterlinkByConsumer(consumerKey) {
+    return (state.interlinks || []).find(link => tagKey(link.consumerSourceId || link.ConsumerSourceId || 'default', link.consumerItemId || link.ConsumerItemId || '') === consumerKey) || null;
 }
-async function saveDaLink(consumerKey, providerKey) {
+async function saveInterlink(consumerKey, providerKey) {
     if (!consumerKey || !providerKey) { el('linksMessage').textContent = 'Pick both a consumer and a provider.'; return; }
     if (consumerKey === providerKey) { el('linksMessage').textContent = '✗ A tag cannot link to itself.'; return; }
     const [consumerSourceId, consumerItemId] = parseTagKey(consumerKey);
     const [providerSourceId, providerItemId] = parseTagKey(providerKey);
-    const existing = findDaLinkByConsumer(consumerKey);
+    const existing = findInterlinkByConsumer(consumerKey);
     const link = {
         id: existing ? (existing.id || existing.Id) : '00000000-0000-0000-0000-000000000000',
         providerSourceId: providerSourceId || 'default',
@@ -2849,7 +2878,7 @@ async function saveDaLink(consumerKey, providerKey) {
         consumerItemId,
         enabled: existing ? ((existing.enabled ?? existing.Enabled) !== false) : true
     };
-    const url = existing ? '/api/da-links/' + encodeURIComponent(link.id) : '/api/da-links';
+    const url = existing ? '/api/interlinks/' + encodeURIComponent(link.id) : '/api/interlinks';
     const method = existing ? 'PUT' : 'POST';
     const r = await fetch(url, {
         method,
@@ -2858,22 +2887,22 @@ async function saveDaLink(consumerKey, providerKey) {
     });
     const p = await r.json();
     if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
-    el('linksMessage').textContent = existing ? '✓ DA link updated.' : '✓ DA link created.';
-    await loadDaLinks();
+    el('linksMessage').textContent = existing ? '✓ Interlink updated.' : '✓ Interlink created.';
+    await loadInterlinks();
 }
-async function deleteDaLink(linkId) {
-    if (!linkId) { el('linksMessage').textContent = 'Pick a saved DA link to delete.'; return; }
-    const r = await fetch('/api/da-links/' + encodeURIComponent(linkId), { method: 'DELETE' });
+async function deleteInterlink(linkId) {
+    if (!linkId) { el('linksMessage').textContent = 'Pick a saved interlink to delete.'; return; }
+    const r = await fetch('/api/interlinks/' + encodeURIComponent(linkId), { method: 'DELETE' });
     const p = await r.json();
     if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
-    el('linksMessage').textContent = '✓ DA link removed.';
-    await loadDaLinks();
+    el('linksMessage').textContent = '✓ Interlink removed.';
+    await loadInterlinks();
 }
-function clearLinkDraftSelection() {
-    state.linkDraft.consumer = null;
-    state.linkDraft.provider = null;
+function clearInterlinkDraftSelection() {
+    state.interlinkDraft.consumer = null;
+    state.interlinkDraft.provider = null;
     el('linksMessage').textContent = 'Selection cleared.';
-    renderLinksView();
+    renderInterlinksView();
 }
 function renderMappingRow(mapping) {
     const sourceId = mapping.sourceId || mapping.SourceId || 'default';
@@ -3053,7 +3082,8 @@ const ROUTE_TO_TAB = {
   'tags/maps/opc-ua': 'tags',
   'tags/maps/drivers': 'tags',
   'tags/maps/mx': 'tags',
-  'tags/links': 'links',
+  'tags/interlinks': 'interlinks',
+  'tags/links': 'interlinks', // bookmark alias
   'iot/mqtt': 'mqtt',
   'iot/traffic': 'iot-traffic',
   'historian/influx': 'influx',
@@ -3120,7 +3150,7 @@ async function showTab(name, route) {
   }
   if (activeTab === 'diagram') {
     state.diagramLoaded = true;
-    await Promise.all([loadSources(), loadMappings(), loadDaLinks(), loadMqtt().catch(() => {})]);
+    await Promise.all([loadSources(), loadMappings(), loadInterlinks(), loadMqtt().catch(() => {})]);
     renderDiagram();
   }
 }
@@ -3586,7 +3616,7 @@ async function loadSources() {
     if (el('cfgUpdateRate') && document.activeElement !== el('cfgUpdateRate')) el('cfgUpdateRate').value = String(state.updateRateMs);
     renderSources();
     populateLiveValuesSource();
-    if (document.getElementById('view-links')?.classList.contains('active')) renderLinksView();
+    if (document.getElementById('view-interlinks')?.classList.contains('active')) renderInterlinksView();
 }
 function updateLiveValuesUi() {
     el('toggleLiveValues').textContent = state.liveValuesEnabled ? 'Disable Live Data' : 'Enable Live Data';
@@ -3702,6 +3732,27 @@ function setIntegrationHealth(ids, d, countersText, rateText) {
     else { ids.error.style.display = 'none'; }
 }
 
+// Average-to-recent growth percentage over a capped history window.
+// Returns null when there is not enough data yet (needs >= 12 samples).
+function windowTrendPct(history) {
+    if (!history || history.length < 12) return null;
+    const q = Math.floor(history.length / 4);
+    const earlyAvg = history.slice(0, q).reduce((a, b) => a + b, 0) / q;
+    const recentAvg = history.slice(-q).reduce((a, b) => a + b, 0) / q;
+    return earlyAvg > 0 ? ((recentAvg - earlyAvg) / earlyAvg) * 100 : 0;
+}
+
+// Collapse a long problem list to per-source counts, sorted by count desc:
+// [['source-a', 12], ['source-b', 3]]
+function groupProblemsBySource(items) {
+    const bySource = {};
+    (items || []).forEach(it => {
+        const sid = get(it, 'sourceId') || '—';
+        bySource[sid] = (bySource[sid] || 0) + 1;
+    });
+    return Object.entries(bySource).sort((a, b) => b[1] - a[1]);
+}
+
 async function loadDiagnostics() {
     if (!diagnosticsActive) return;
     try {
@@ -3758,6 +3809,23 @@ async function refreshPortsInfo() {
     }
 }
 
+// Fleet strip on ops/monitor: every OpcBridge instance the discovery probe
+// found (this instance included, badged Local).
+function renderFleet(apps) {
+    const listEl = el('fleetList');
+    if (!listEl) return;
+    const list = (apps && get(apps, 'detectedApps')) || [];
+    const countEl = el('fleetCount');
+    if (countEl) countEl.textContent = list.length + ' detected';
+    listEl.innerHTML = list.length ? list.map(a => {
+        const machine = get(a, 'machineName') || '—';
+        const version = get(a, 'version') || '—';
+        const isLocal = !!get(a, 'isLocal');
+        const probeHost = get(a, 'probeHost') || '';
+        return `<div class="li"><div style="flex:1"><div class="n">${esc(machine)} ${badge(isLocal ? 'Local' : 'Remote', isLocal ? 'good' : 'msg')}</div><div class="p">${esc(probeHost)} · v${esc(version)}</div></div></div>`;
+    }).join('') : '<span class="msg">No other bridge instances detected.</span>';
+}
+
 function renderDiagnostics(p) {
     // Bridge Vitals — only metrics NOT shown on ops/monitor (bridge state, DA
     // connection, UA clients/nodes, mapping count, last DA read / UA write and
@@ -3788,9 +3856,13 @@ function renderDiagnostics(p) {
     const problems = p.problems || {};
     const disc = problems.disconnected || [];
     el('diagDiscCount').textContent = disc.length === 1 ? '1 retrying' : disc.length + ' retrying';
-    el('diagDisconnected').innerHTML = disc.length ? disc.map(d =>
-        `<div class="li"><div style="flex:1"><div class="n">${esc(get(d, 'sourceId') || '')}</div><div class="p">${esc(get(d, 'itemId') || '')}</div></div><span class="warn">auto-retry</span></div>`).join('')
-        : '<span class="good">&#10003; All monitored items connected</span>';
+    el('diagDisconnected').innerHTML = disc.length === 0
+        ? '<span class="good">&#10003; All monitored items connected</span>'
+        : disc.length > 8
+            ? groupProblemsBySource(disc).map(([sid, count]) =>
+                `<div class="li"><div style="flex:1"><div class="n">${esc(sid)}</div><div class="p">${count} tag${count === 1 ? '' : 's'} auto-retrying</div></div><span class="warn">grouped</span></div>`).join('')
+            : disc.map(d =>
+                `<div class="li"><div style="flex:1"><div class="n">${esc(get(d, 'sourceId') || '')}</div><div class="p">${esc(get(d, 'itemId') || '')}</div></div><span class="warn">auto-retry</span></div>`).join('');
 
     // Problems — bad-quality tags
     const badTotal = problems.badQualityTotal || 0;
@@ -3798,10 +3870,14 @@ function renderDiagnostics(p) {
     el('diagBadCount').textContent = badTotal === 1 ? '1 affected' : badTotal + ' affected';
     el('diagBadQuality').innerHTML = badTotal === 0
         ? '<span class="good">&#10003; No bad-quality tags</span>'
-        : badItems.map(b => `<div class="li"><div style="flex:1"><div class="n">${esc(get(b, 'sourceId') || '')}</div><div class="p">${esc(get(b, 'itemId') || '')}</div></div><span class="bad">bad</span></div>`).join('')
-            + (badTotal > badItems.length ? `<div class="li"><span class="msg">+ ${badTotal - badItems.length} more…</span></div>` : '');
+        : badItems.length > 8
+            ? groupProblemsBySource(badItems).map(([sid, count]) =>
+                `<div class="li"><div style="flex:1"><div class="n">${esc(sid)}</div><div class="p">${count} tag${count === 1 ? '' : 's'} bad quality</div></div><span class="bad">grouped</span></div>`).join('')
+                + (badTotal > badItems.length ? `<div class="li"><span class="msg">+ ${badTotal - badItems.length} more…</span></div>` : '')
+            : badItems.map(b => `<div class="li"><div style="flex:1"><div class="n">${esc(get(b, 'sourceId') || '')}</div><div class="p">${esc(get(b, 'itemId') || '')}</div></div><span class="bad">bad</span></div>`).join('')
+                + (badTotal > badItems.length ? `<div class="li"><span class="msg">+ ${badTotal - badItems.length} more…</span></div>` : '');
 
-    // DA Source Diagnostics — reuse state data from /api/dashboard
+    // Source Diagnostics — reuse state data from /api/dashboard (all source types)
     const sources = state.sources || [];
     const rateGroups = (state.rateGroups || []);
     const daHtml = sources.length ? sources.map(src => {
@@ -3816,7 +3892,9 @@ function renderDiagnostics(p) {
             const budgetCls = budget >= 80 ? 'bad' : (budget >= 50 ? 'warn' : 'good');
             return `<div class="li"><div style="flex:1"><div class="n">${formatMs(g.rateMs)} · ${g.tagCount} tags</div><div class="p">budget <span class="${budgetCls}">${budget}%</span> · limit ${g.tagLimit || '—'}</div></div></div>`;
         }).join('') : '<span class="msg">No rate groups.</span>';
-        return `<div class="li"><div style="flex:1"><div class="n">${esc(get(src,'displayName') || sid)} ${sourceTypeBadge(src)} ${badge(conn, stateClass(conn))}</div><div class="p">${endpoint ? esc(endpoint) + ' · ' : ''}Latency: ${latency} · ${totalTags} tags in ${srcGroups.length} rate group(s)</div></div></div>${groupRows}`;
+        const lastRead = get(src,'lastDaReadUtc') ? 'last read ' + relTime(get(src,'lastDaReadUtc')) : 'no reads yet';
+        const srcErr = get(src,'lastError');
+        return `<div class="li"><div style="flex:1"><div class="n">${esc(get(src,'displayName') || sid)} ${sourceTypeBadge(src)} ${badge(conn, stateClass(conn))}</div><div class="p">${endpoint ? esc(endpoint) + ' · ' : ''}Latency: ${latency} · ${totalTags} tags in ${srcGroups.length} rate group(s)</div><div class="p">${lastRead}${srcErr ? ' · <span class="bad" title="Last source error">' + esc(srcErr) + '</span>' : ''}</div></div></div>${groupRows}`;
     }).join('') : '<span class="msg">No sources configured.</span>';
     el('diagDaSources').innerHTML = daHtml;
     el('diagDaSummary').textContent = sources.length + ' source' + (sources.length !== 1 ? 's' : '');
@@ -3845,7 +3923,7 @@ function renderDiagnostics(p) {
     el('diagUaSessionCount').textContent = sessions.length + ' active';
     el('diagUaSessions').innerHTML = sessions.length ? sessions.map(s => {
         const last = relTime(s.lastContactUtc);
-        return `<div class="li"><div style="flex:1"><div class="n">${esc(s.clientName || 'anonymous')}</div><div class="p">${s.subscriptions} subs · ${s.monitoredItems} monitored · ${s.publishRequestsInQueue} publish queued · ${s.totalPublishCount} total publishes</div><div class="p">last contact ${last}</div></div></div>`;
+        return `<div class="li"><div style="flex:1"><div class="n">${esc(s.clientName || 'anonymous')}</div><div class="p">${s.endpointUrl ? esc(s.endpointUrl) + ' · ' : ''}session #${s.sessionId ?? '—'}</div><div class="p">${s.subscriptions} subs · ${s.monitoredItems} monitored · ${s.publishRequestsInQueue} publish queued · ${s.totalPublishCount} total publishes</div><div class="p">last contact ${last}</div></div></div>`;
     }).join('') : '<span class="msg">No active UA sessions.</span>';
 
     // UA Subscriptions
@@ -3880,7 +3958,8 @@ function renderDiagnostics(p) {
         const aliveCls = t.alive ? 'good' : 'bad';
         const aliveBadge = t.alive ? badge('Alive', 'good') : badge('Dead', 'bad');
         const last = t.lastActionUtc ? relTime(t.lastActionUtc) : 'never';
-        return `<div class="li"><div style="flex:1"><div class="n">${esc(t.sourceId)} ${aliveBadge}</div><div class="p">queued: ${t.queuedItems} · last action ${last}</div></div></div>`;
+        const qCls = t.queuedItems >= 50 ? 'bad' : (t.queuedItems >= 10 ? 'warn' : 'good');
+        return `<div class="li"><div style="flex:1"><div class="n">${esc(t.sourceId)} ${aliveBadge}</div><div class="p">queued: <span class="${qCls}">${t.queuedItems}</span> · last action ${last}</div></div></div>`;
     }).join('') : '<span class="msg">No STA threads (non-Windows or no sources connected).</span>';
 }
 
@@ -4010,6 +4089,7 @@ async function refresh() {
          el('pUa').innerHTML = badge(get(ua, 'state') || '—', stateClass(get(ua, 'state')));
          el('pTags').textContent = get(b, 'mappingCount') ?? 0;
          el('pApps').textContent = get(apps, 'detectedCount') ?? 1;
+         renderFleet(apps);
         el('bridgeState').innerHTML = badge(get(b, 'bridgeState') || '—', stateClass(get(b, 'bridgeState')));
         const sessionBanner = el('sessionBanner');
         if (sessionBanner) {
@@ -4160,26 +4240,30 @@ async function refresh() {
                     state.handleHistory.push(hc);
                     if (state.handleHistory.length > 60) state.handleHistory.shift();
                 }
+                const gdiN = Number(res.gdiObjects ?? 0);
+                const userN = Number(res.userObjects ?? 0);
+                if (gdiN > 0) {
+                    state.gdiHistory.push(gdiN);
+                    if (state.gdiHistory.length > 60) state.gdiHistory.shift();
+                }
+                if (userN > 0) {
+                    state.userHistory.push(userN);
+                    if (state.userHistory.length > 60) state.userHistory.shift();
+                }
 
                 if (resA && resAD) {
-                    const gdi = Number(res.gdiObjects ?? 0);
-                    const user = Number(res.userObjects ?? 0);
+                    const gdi = gdiN;
+                    const user = userN;
                     const baseline = state.handleBaseline ?? hc;
                     const drift = hc - baseline;
                     const gdiPct = (gdi / 10000) * 100;
                     const userPct = (user / 10000) * 100;
 
-                    // Determine growth trend from history (compare first quarter to last quarter avg)
-                    let trend = 'stable';
-                    let trendPct = 0;
-                    if (state.handleHistory.length >= 12) {
-                        const q = Math.floor(state.handleHistory.length / 4);
-                        const earlyAvg = state.handleHistory.slice(0, q).reduce((a, b) => a + b, 0) / q;
-                        const recentAvg = state.handleHistory.slice(-q).reduce((a, b) => a + b, 0) / q;
-                        trendPct = earlyAvg > 0 ? ((recentAvg - earlyAvg) / earlyAvg) * 100 : 0;
-                        if (trendPct > 15) trend = 'rising';
-                        else if (trendPct < -5) trend = 'falling';
-                    }
+                    // Growth trends from history (handles + GDI + USER)
+                    const trendPct = windowTrendPct(state.handleHistory) ?? 0;
+                    const trend = trendPct > 15 ? 'rising' : (trendPct < -5 ? 'falling' : 'stable');
+                    const gdiTrend = windowTrendPct(state.gdiHistory) ?? 0;
+                    const userTrend = windowTrendPct(state.userHistory) ?? 0;
 
                     let verdict, cls, detail;
                     if (gdiPct >= 80 || userPct >= 80) {
@@ -4188,9 +4272,13 @@ async function refresh() {
                     } else if (gdiPct >= 50 || userPct >= 50) {
                         verdict = 'Warning'; cls = 'warn';
                         detail = 'GDI/USER above 50% of the 10,000 per-process limit.';
-                    } else if (drift > 200 && trend === 'rising') {
+                    } else if ((drift > 200 && trend === 'rising') || gdiTrend > 15 || userTrend > 15) {
                         verdict = 'Watch'; cls = 'warn';
-                        detail = 'Handle count rising (+' + Math.round(trendPct) + '% trend, +' + drift + ' since start). Possible leak.';
+                        const parts = [];
+                        if (drift > 200 && trend === 'rising') parts.push('handles +' + Math.round(trendPct) + '% trend, +' + drift + ' since start');
+                        if (gdiTrend > 15) parts.push('GDI +' + Math.round(gdiTrend) + '% trend');
+                        if (userTrend > 15) parts.push('USER +' + Math.round(userTrend) + '% trend');
+                        detail = parts.join('; ') + ' — possible leak.';
                     } else if (drift > 500) {
                         verdict = 'Watch'; cls = 'warn';
                         detail = 'Handle count +' + drift + ' above baseline. Monitor for continued growth.';
@@ -4230,10 +4318,10 @@ async function refresh() {
         }
     }
 }
-async function loadDaLinks() {
-    const p = await (await fetch('/api/da-links', { cache: 'no-store' })).json();
-    state.daLinks = p.links || [];
-    if (document.getElementById('view-links')?.classList.contains('active')) renderLinksView();
+async function loadInterlinks() {
+    const p = await (await fetch('/api/interlinks', { cache: 'no-store' })).json();
+    state.interlinks = p.links || [];
+    if (document.getElementById('view-interlinks')?.classList.contains('active')) renderInterlinksView();
 }
 
 async function loadMappings() {
@@ -4246,7 +4334,7 @@ async function loadMappings() {
     if (el('mapCount')) el('mapCount').textContent = view.length + (view.length !== typed.length ? ' / ' + typed.length + ' mappings' : ' mappings');
     updateNoMappingsBanner();
     refreshTagBrowserMappedBadges();
-    if (document.getElementById('view-links')?.classList.contains('active')) renderLinksView();
+    if (document.getElementById('view-interlinks')?.classList.contains('active')) renderInterlinksView();
 }
 function refreshTagBrowserMappedBadges() {
     const tree = el('tagTree');
@@ -4668,9 +4756,8 @@ function pickSource(sourceId, opts) {
     el('tagTree').innerHTML = '<span class="msg">Browse the active source to load tags.</span>';
     el('tagStatus').textContent = 'Browse all tags, or open folders one level at a time.';
     renderCrumb();
-    resetLinkBrowser();
     renderSources();
-    if (document.getElementById('view-links')?.classList.contains('active')) renderLinksView();
+    if (document.getElementById('view-interlinks')?.classList.contains('active')) renderInterlinksView();
     if (opts && opts.openConfig) {
         const src = state.sources.find(s => s.sourceId === sourceId);
         if (src && isUaSource(src)) navigate('connectivity/opc-ua');
@@ -5987,97 +6074,6 @@ function pickServer(progId, host) {
     el('cfgHost').value = host;
     el('cfgMessage').textContent = 'Selected server; save source to apply.';
 }
-function renderLinkCrumb() {
-    const bc = el('linkBrowseBreadcrumb');
-    if (!state.linkBrowsePath) {
-        bc.innerHTML = '<span class="current">root</span>';
-        return;
-    }
-    const parts = state.linkBrowsePath.split('.');
-    let html = '<a data-link-crumb="">root</a><span class="sep">/</span>';
-    let acc = '';
-    for (let i = 0; i < parts.length; i++) {
-        acc = acc ? acc + '.' + parts[i] : parts[i];
-        if (i < parts.length - 1) {
-            html += `<a data-link-crumb="${attr(acc)}">${esc(parts[i])}</a><span class="sep">/</span>`;
-        } else {
-            html += `<span class="current">${esc(parts[i])}</span>`;
-        }
-    }
-    bc.innerHTML = html;
-}
-function resetLinkBrowser() {
-    state.linkBrowsePath = '';
-    renderLinkCrumb();
-    el('linkBrowseTree').innerHTML = '<span class="msg">Use the active source to browse tags for DA links.</span>';
-    el('linkBrowseStatus').textContent = 'Use the active source selection from Connection or Tags, then pick consumer/provider tags.';
-}
-function setLinkDraftSelection(role, sourceId, itemId, name) {
-    state.linkDraft[role] = {
-        key: tagKey(sourceId, itemId),
-        sourceId: sourceId || 'default',
-        itemId,
-        name: name || itemId
-    };
-    const roleName = role === 'consumer' ? 'Consumer' : 'Provider';
-    el('linksMessage').textContent = roleName + ' selected from source ' + (sourceId || 'default') + '.';
-    renderLinksView();
-}
-async function browseLinkTags(path, recursive = false) {
-    const source = currentSource();
-    if (!source || state.editingNewSource) {
-        el('linkBrowseTree').innerHTML = '<span class="msg">Select or save a source before browsing DA links.</span>';
-        el('linkBrowseBreadcrumb').innerHTML = '';
-        return;
-    }
-    if (!sourceMatchesMapType(source, 'opc-da')) {
-        // DA Links forward DA→DA only, but the active source comes from any tab
-        // (e.g. an OPC UA source selected on the OPC UA maps tab). A non-DA source
-        // must never be posted to the OPC DA browse endpoint.
-        el('linkBrowseTree').innerHTML = '<span class="msg">DA Links browse OPC DA sources only — select an OPC DA source from Connection or Tags first.</span>';
-        el('linkBrowseBreadcrumb').innerHTML = '';
-        return;
-    }
-    state.linkBrowsePath = path || '';
-    renderLinkCrumb();
-    el('linkBrowseTree').innerHTML = '<span class="msg">Browsing…</span>';
-    el('linkBrowseStatus').textContent = recursive ? 'Loading all tags…' : 'Loading folder…';
-    const body = {
-        sourceId: source.sourceId,
-        progId: source.progId,
-        host: source.host || 'localhost',
-        path: state.linkBrowsePath,
-        recursive,
-        remoteUsername: source.remoteUsername || null,
-        remotePassword: null,
-        remoteDomain: source.remoteDomain || null
-    };
-    const p = await (await fetch('/api/da/tags', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json();
-    if (p.error) throw new Error(p.error);
-    const branches = p.branches || [];
-    const tags = p.tags || [];
-    const rows = [];
-    if (state.linkBrowsePath) {
-        const parent = state.linkBrowsePath.includes('.') ? state.linkBrowsePath.substring(0, state.linkBrowsePath.lastIndexOf('.')) : '';
-        rows.push(`<div class="li clickable" data-action="open-link-branch" data-path="${attr(parent)}"><span class="icon folder">&#9650;</span><div style="flex:1"><div class="n">..</div><div class="p">Up one level</div></div></div>`);
-    }
-    for (const branch of branches) {
-        const child = state.linkBrowsePath ? state.linkBrowsePath + '.' + branch : branch;
-        rows.push(`<div class="li clickable" data-action="open-link-branch" data-path="${attr(child)}"><span class="icon folder">&#128193;</span><div style="flex:1"><div class="n">${esc(branch)}</div><div class="p">folder</div></div></div>`);
-    }
-    for (const tag of tags) {
-        const itemId = tag.itemId || tag.ItemId || tag.daItemId || tag.DaItemId;
-        const name = tag.name || tag.Name || itemId;
-        const key = tagKey(source.sourceId, itemId);
-        const existing = findDaLinkByConsumer(key);
-        const isConsumer = state.linkDraft.consumer && state.linkDraft.consumer.key === key;
-        const isProvider = state.linkDraft.provider && state.linkDraft.provider.key === key;
-        rows.push(`<div class="li"><span class="icon tag">&#9878;</span><div style="flex:1"><div class="n">${esc(name)}</div><div class="p">${esc(itemId)}</div></div><div class="li-actions">${existing ? '<span class="mapped-badge">Linked consumer</span>' : ''}${isConsumer ? '<span class="pill" style="padding:1px 6px;font-size:10px">Consumer</span>' : ''}${isProvider ? '<span class="pill" style="padding:1px 6px;font-size:10px">Provider</span>' : ''}<button class="btn ghost" data-action="pick-link-consumer" data-source-id="${attr(source.sourceId)}" data-item-id="${attr(itemId)}" data-name="${attr(name)}">Consumer</button><button class="btn ghost" data-action="pick-link-provider" data-source-id="${attr(source.sourceId)}" data-item-id="${attr(itemId)}" data-name="${attr(name)}">Provider</button></div></div>`);
-    }
-    el('linkBrowseTree').innerHTML = rows.length ? rows.join('') : '<span class="msg">No tags or folders here.</span>';
-    el('linkBrowseStatus').textContent = branches.length + ' folders · ' + tags.length + ' tags';
-    renderLinksView();
-}
 function renderCrumb() {
     const bc = el('tagBreadcrumb');
     if (!state.tagPath) {
@@ -6336,25 +6332,15 @@ function bindDynamicButtons() {
         }
         browseTags(link.dataset.crumb || '').catch(e => el('tagTree').innerHTML = `<span class="bad">${esc(e.message)}</span>`);
     });
-    el('linkBrowseTree').addEventListener('click', event => {
-        const actionEl = event.target.closest('[data-action]');
-        if (!actionEl) return;
-        if (actionEl.dataset.action === 'open-link-branch') {
-            browseLinkTags(actionEl.dataset.path || '').catch(e => el('linkBrowseTree').innerHTML = `<span class="bad">${esc(e.message)}</span>`);
-            return;
-        }
-        if (actionEl.tagName === 'BUTTON' && actionEl.dataset.action === 'pick-link-consumer') {
-            setLinkDraftSelection('consumer', actionEl.dataset.sourceId || '', actionEl.dataset.itemId || '', actionEl.dataset.name || '');
-            return;
-        }
-        if (actionEl.tagName === 'BUTTON' && actionEl.dataset.action === 'pick-link-provider') {
-            setLinkDraftSelection('provider', actionEl.dataset.sourceId || '', actionEl.dataset.itemId || '', actionEl.dataset.name || '');
-        }
+    el('interlinkConsumerList').addEventListener('click', event => {
+        const btn = event.target.closest('button[data-action="pick-interlink-consumer"]');
+        if (!btn) return;
+        setInterlinkSelection('consumer', btn.dataset.sourceId || '', btn.dataset.itemId || '', btn.dataset.name || '');
     });
-    el('linkBrowseBreadcrumb').addEventListener('click', event => {
-        const link = event.target.closest('a[data-link-crumb]');
-        if (!link) return;
-        browseLinkTags(link.dataset.linkCrumb || '').catch(e => el('linkBrowseTree').innerHTML = `<span class="bad">${esc(e.message)}</span>`);
+    el('interlinkProviderList').addEventListener('click', event => {
+        const btn = event.target.closest('button[data-action="pick-interlink-provider"]');
+        if (!btn) return;
+        setInterlinkSelection('provider', btn.dataset.sourceId || '', btn.dataset.itemId || '', btn.dataset.name || '');
     });
     el('mappedList').addEventListener('click', event => {
         const row = event.target.closest('[data-action="open-faceplate"]');
@@ -6592,19 +6578,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         state.logsLoaded = false;
         loadLogs(true).catch(e => el('logMessage').textContent = '✗ ' + e.message);
     });
-    el('btnBrowseLinkTags').addEventListener('click', () => browseLinkTags('').catch(e => el('linkBrowseTree').innerHTML = `<span class="bad">${esc(e.message)}</span>`));
-    el('btnBrowseAllLinkTags').addEventListener('click', () => browseLinkTags('', true).catch(e => el('linkBrowseTree').innerHTML = `<span class="bad">${esc(e.message)}</span>`));
-    el('btnSetLink').addEventListener('click', () => saveDaLink(state.linkDraft.consumer ? state.linkDraft.consumer.key : '', state.linkDraft.provider ? state.linkDraft.provider.key : '').catch(e => el('linksMessage').textContent = '✗ ' + e.message));
+    el('btnSetLink').addEventListener('click', () => saveInterlink(state.interlinkDraft.consumer ? state.interlinkDraft.consumer.key : '', state.interlinkDraft.provider ? state.interlinkDraft.provider.key : '').catch(e => el('linksMessage').textContent = '✗ ' + e.message));
     el('btnClearLink').addEventListener('click', () => {
-        const consumerKey = state.linkDraft.consumer ? state.linkDraft.consumer.key : '';
-        const existing = findDaLinkByConsumer(consumerKey);
-        deleteDaLink(existing ? (existing.id || existing.Id || '') : '').catch(e => el('linksMessage').textContent = '✗ ' + e.message);
+        const consumerKey = state.interlinkDraft.consumer ? state.interlinkDraft.consumer.key : '';
+        const existing = findInterlinkByConsumer(consumerKey);
+        deleteInterlink(existing ? (existing.id || existing.Id || '') : '').catch(e => el('linksMessage').textContent = '✗ ' + e.message);
     });
-    el('btnClearLinkSelection').addEventListener('click', () => clearLinkDraftSelection());
+    el('btnClearLinkSelection').addEventListener('click', () => clearInterlinkDraftSelection());
     el('linksList').addEventListener('click', event => {
         const btn = event.target.closest('button[data-action="unlink"]');
         if (!btn) return;
-        deleteDaLink(btn.dataset.linkId || '').catch(e => el('linksMessage').textContent = '✗ ' + e.message);
+        deleteInterlink(btn.dataset.linkId || '').catch(e => el('linksMessage').textContent = '✗ ' + e.message);
     });
     bindDynamicButtons();
     const LEGACY_TAB_TO_ROUTE = {
@@ -6615,7 +6599,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       diagnostics: 'ops/diagnostics',
       sessions: 'ops/sessions',
       tags: 'tags/maps',
-      links: 'tags/links',
+      links: 'tags/interlinks',
       logs: 'ops/logs',
       mqtt: 'iot/mqtt',
       'iot-traffic': 'iot/traffic',

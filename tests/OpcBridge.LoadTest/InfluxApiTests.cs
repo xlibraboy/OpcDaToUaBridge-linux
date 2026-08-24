@@ -5,7 +5,7 @@ using Xunit;
 
 namespace OpcBridge.LoadTest;
 
-[Collection(nameof(DaLinkApiAppCollection))]
+[Collection(nameof(InterlinkApiAppCollection))]
 public sealed class InfluxApiTests
 {
     private static void WriteAppsettings(string dir)

@@ -10,7 +10,7 @@ namespace OpcBridge.LoadTest;
 /// normalization path and survives persistence; ReassignSubscription moves a
 /// deleted named subscription's tags back onto the source default (spec §6).
 /// </summary>
-[Collection(nameof(DaLinkApiAppCollection))]
+[Collection(nameof(InterlinkApiAppCollection))]
 public sealed class MappingSubscriptionTests
 {
     // MappingStore persists to AppContext.BaseDirectory/mappings.json (the test

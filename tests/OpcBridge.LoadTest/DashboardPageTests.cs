@@ -6,39 +6,55 @@ namespace OpcBridge.LoadTest;
 public sealed class DashboardPageTests
 {
     [Fact]
-    public void Html_UsesDedicatedDaLinksBrowseWorkflow()
+    public void Html_InterlinksViewUsesMappedTagPickers()
     {
         Assert.DoesNotContain("id=\"fpProvider\"", DashboardPage.Html);
         Assert.DoesNotContain("Set up links from a tag's faceplate", DashboardPage.Html);
-        Assert.DoesNotContain("id=\"linkConsumerSelect\"", DashboardPage.Html);
-        Assert.DoesNotContain("id=\"linkProviderSelect\"", DashboardPage.Html);
-        Assert.Contains("DA Links", DashboardPage.Html);
-        Assert.Contains("id=\"linkSourceStatus\"", DashboardPage.Html);
-        Assert.Contains("id=\"linkBrowseTree\"", DashboardPage.Html);
+        // Renamed surface: sidebar entry under Tags, route, and view id.
+        Assert.Contains(">Interlinks</button>", DashboardPage.Html);
+        Assert.Contains("data-route=\"tags/interlinks\"", DashboardPage.Html);
+        Assert.Contains("id=\"view-interlinks\"", DashboardPage.Html);
+        Assert.Contains("Interlinks", DashboardPage.Html);
+        // Mapped-tag pickers: each side selects a source, then a tag from Maps.
+        Assert.Contains("id=\"interlinkConsumerSource\"", DashboardPage.Html);
+        Assert.Contains("id=\"interlinkProviderSource\"", DashboardPage.Html);
+        Assert.Contains("id=\"interlinkConsumerList\"", DashboardPage.Html);
+        Assert.Contains("id=\"interlinkProviderList\"", DashboardPage.Html);
+        // The DA-only browse workflow is fully retired.
+        Assert.DoesNotContain("DA Links", DashboardPage.Html);
+        Assert.DoesNotContain("id=\"linkBrowseTree\"", DashboardPage.Html);
+        Assert.DoesNotContain("id=\"linkSourceStatus\"", DashboardPage.Html);
     }
 
     [Fact]
-    public void Script_BrowsesDaTagsForLinksInsteadOfReusingMappings()
+    public void Script_PicksInterlinkTagsFromMappedTags()
     {
-        Assert.Contains("/api/da-links", DashboardPage.Script);
-        Assert.Contains("function browseLinkTags(", DashboardPage.Script);
-        Assert.Contains("state.linkDraft", DashboardPage.Script);
-        Assert.Contains("data-action=\"pick-link-consumer\"", DashboardPage.Script);
-        Assert.Contains("data-action=\"pick-link-provider\"", DashboardPage.Script);
-        Assert.DoesNotContain("el('linkConsumerSelect').innerHTML = opts;", DashboardPage.Script);
-        Assert.DoesNotContain("el('linkProviderSelect').innerHTML = opts;", DashboardPage.Script);
-        Assert.DoesNotContain("const opts = '<option value=\"\">— select —</option>' + mappings.map", DashboardPage.Script);
+        // Both endpoints are picked from tags already defined in Maps, so every
+        // saved interlink can actually carry values; sources of any linkable
+        // type (OPC DA / OPC UA / MX Component) are offered per side.
+        Assert.Contains("/api/interlinks", DashboardPage.Script);
+        Assert.Contains("function isLinkableInterlinkSource(", DashboardPage.Script);
+        Assert.Contains("function renderInterlinkPickers(", DashboardPage.Script);
+        Assert.Contains("function renderInterlinkTagList(", DashboardPage.Script);
+        Assert.Contains("function setInterlinkSelection(", DashboardPage.Script);
+        Assert.Contains("state.interlinkDraft", DashboardPage.Script);
+        Assert.Contains("data-action=\"pick-interlink-consumer\"", DashboardPage.Script);
+        Assert.Contains("data-action=\"pick-interlink-provider\"", DashboardPage.Script);
+        // The old DA-only browse flow and API are gone.
+        Assert.DoesNotContain("/api/da-links", DashboardPage.Script);
+        Assert.DoesNotContain("function browseLinkTags(", DashboardPage.Script);
+        Assert.DoesNotContain("state.linkDraft", DashboardPage.Script);
     }
 
     [Fact]
-    public void LinkDraft_CanBeClearedWithoutDeletingSavedRule()
+    public void InterlinkDraft_CanBeClearedWithoutDeletingSavedRule()
     {
         Assert.Contains("id=\"btnClearLinkSelection\"", DashboardPage.Html);
         Assert.Contains(">Clear Selection<", DashboardPage.Html);
         Assert.Contains(">Delete Saved Link<", DashboardPage.Html);
-        Assert.Contains("function clearLinkDraftSelection()", DashboardPage.Script);
-        Assert.Contains("state.linkDraft.consumer = null", DashboardPage.Script);
-        Assert.Contains("state.linkDraft.provider = null", DashboardPage.Script);
+        Assert.Contains("function clearInterlinkDraftSelection()", DashboardPage.Script);
+        Assert.Contains("state.interlinkDraft.consumer = null", DashboardPage.Script);
+        Assert.Contains("state.interlinkDraft.provider = null", DashboardPage.Script);
     }
 
     [Fact]
@@ -212,14 +228,23 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
-    public void Script_LinkBrowseRefusesNonDaSource()
+    public void Script_InterlinksNoLongerRestrictedToDaSources()
     {
-        // DA Links forward DA→DA only. The active source can be a UA/driver/MX source
-        // selected on another tab, so the link browser must refuse to post it to the
-        // OPC DA browse endpoint instead of failing with a confusing error.
-        Assert.Contains("if (!sourceMatchesMapType(source, 'opc-da')) {", DashboardPage.Script);
-        Assert.Contains("DA Links browse OPC DA sources only", DashboardPage.Script);
-        Assert.Contains("DA Links require an OPC DA source", DashboardPage.Script);
+        // Interlinks span OPC DA, OPC UA and MX Component sources, so the old
+        // OPC-DA-only browse guards must be gone entirely.
+        Assert.DoesNotContain("browse OPC DA sources only", DashboardPage.Script);
+        Assert.DoesNotContain("require an OPC DA source", DashboardPage.Script);
+        Assert.DoesNotContain("not an OPC DA source", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Script_DiagramLabelsUseInterlinkNaming()
+    {
+        // The Diagram tab's link view is renamed along with the subsystem.
+        Assert.Contains(">Interlinks</button>", DashboardPage.Html);
+        Assert.Contains("function renderInterlinksDiagram(", DashboardPage.Script);
+        Assert.DoesNotContain("DA-to-DA", DashboardPage.Script);
+        Assert.DoesNotContain("DA to DA", DashboardPage.Html);
     }
 
     [Fact]
@@ -619,6 +644,71 @@ public sealed class DashboardPageTests
         Assert.DoesNotContain("&#8595;", DashboardPage.Script);
         Assert.Contains("\u2191", DashboardPage.Script); // ↑ published arrow
         Assert.Contains("\u2193", DashboardPage.Script); // ↓ received arrow
+    }
+
+    [Fact]
+    public void Html_SessionsSourceSectionIsTypeNeutral()
+    {
+        // The section lists ALL source types (OPC DA, UA, Melsec/S7/MX drivers)
+        // — the header must not claim DA-only.
+        Assert.Contains(">Source Diagnostics <", DashboardPage.Html);
+        Assert.DoesNotContain("DA Source Diagnostics", DashboardPage.Html);
+    }
+
+    [Fact]
+    public void Script_SessionsDaRowsShowLastErrorAndReadAge()
+    {
+        // Sessions DA rows must surface the per-source fault reason and data
+        // freshness — previously only Monitor showed the lastError text.
+        Assert.Contains("relTime(get(src,'lastDaReadUtc'))", DashboardPage.Script);
+        Assert.Contains("get(src,'lastError')", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Script_UaSessionsShowEndpointAndSessionId()
+    {
+        // UaSessionDiagnostic carries EndpointUrl + SessionId; render both so
+        // operators can tell WHICH client from WHERE is connected.
+        Assert.Contains("s.endpointUrl", DashboardPage.Script);
+        Assert.Contains("s.sessionId", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Script_StaThreadQueuedDepthIsThresholdColored()
+    {
+        // Pending COM ops are the earliest STA saturation signal — color them:
+        // warn >= 10, bad >= 50.
+        Assert.Contains("t.queuedItems >= 50", DashboardPage.Script);
+        Assert.Contains("t.queuedItems >= 10", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Script_ProblemListsGroupBySourceWhenLong()
+    {
+        // Long problem lists collapse to per-source counts for scannability.
+        Assert.Contains("function groupProblemsBySource(", DashboardPage.Script);
+        Assert.Contains("groupProblemsBySource(disc", DashboardPage.Script);
+        Assert.Contains("groupProblemsBySource(badItems", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Script_MonitorTracksGdiUserHistoryForLeakTrend()
+    {
+        // Handle leak-trend already exists; GDI/USER must get the same
+        // history-based growth assessment instead of limit-percentage checks only.
+        Assert.Contains("state.gdiHistory", DashboardPage.Script);
+        Assert.Contains("state.userHistory", DashboardPage.Script);
+        Assert.Contains("gdiTrend", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Html_MonitorHasFleetStripAndScriptRendersIt()
+    {
+        // Detected bridge apps currently surface only as a sidebar count pill;
+        // Monitor gets a fleet list (machine, version, local/remote).
+        Assert.Contains("id=\"fleetList\"", DashboardPage.Html);
+        Assert.Contains("function renderFleet(", DashboardPage.Script);
+        Assert.Contains("renderFleet(apps)", DashboardPage.Script);
     }
 
     [Fact]

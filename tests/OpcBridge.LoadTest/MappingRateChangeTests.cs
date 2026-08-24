@@ -18,7 +18,7 @@ namespace OpcBridge.LoadTest;
 /// because only <see cref="OpcDaClient"/> sources had their pollers rebuilt when mappings
 /// changed — the new rate group had no running poller.
 /// </summary>
-[Collection(nameof(DaLinkApiAppCollection))]
+[Collection(nameof(InterlinkApiAppCollection))]
 public sealed class MappingRateChangeTests
 {
     [Fact]
@@ -53,7 +53,7 @@ public sealed class MappingRateChangeTests
             new TagMapping { SourceId = "mx1", ItemId = "D0", DisplayName = "D0", PollRateMs = 1000 },
             new TagMapping { SourceId = "mx1", ItemId = "D1", DisplayName = "D1", PollRateMs = 1000 }
         ]);
-        DaLinkStore linkStore = new(Options.Create(new BridgeOptions()));
+        InterlinkStore linkStore = new(Options.Create(new BridgeOptions()));
         UaServerHost uaServer = new(
             Options.Create(new UaServerOptions { EndpointUrl = "opc.tcp://127.0.0.1:4101/OpcBridge" }),
             loggerFactory.CreateLogger<UaServerHost>(),

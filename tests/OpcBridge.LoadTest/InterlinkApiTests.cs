@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Logging;
-using System.Diagnostics;
 using System.Net;
 using System.Text;
 using System.Text.Json;
@@ -7,15 +6,15 @@ using OpcBridge.App;
 using OpcBridge.Core;
 using Xunit;
 namespace OpcBridge.LoadTest;
-[Collection(nameof(DaLinkApiAppCollection))]
-public sealed class DaLinkApiTests
+[Collection(nameof(InterlinkApiAppCollection))]
+public sealed class InterlinkApiTests
 {
     [Fact]
-    public void TryMigrateLegacyDaLinks_LogsWarningAndLeavesStoreUsableOnConflict()
+    public void TryMigrateLegacyInterlinks_LogsWarningAndLeavesStoreUsableOnConflict()
     {
         DeleteIfExists(Path.Combine(AppContext.BaseDirectory, "links.json"));
 
-        DaLinkStore store = new(ToOptions(new BridgeOptions()));
+        InterlinkStore store = new(ToOptions(new BridgeOptions()));
         DashboardLogStore logStore = new();
         using ILoggerFactory loggerFactory = LoggerFactory.Create(_ => { });
 
@@ -37,22 +36,22 @@ public sealed class DaLinkApiTests
             }
         };
 
-        bool migrated = DaLinkApiHelpers.TryMigrateLegacyDaLinks(
+        bool migrated = InterlinkApiHelpers.TryMigrateLegacyInterlinks(
             store,
             legacyMappings,
             logStore,
-            loggerFactory.CreateLogger("DaLinkApiTests"),
+            loggerFactory.CreateLogger("InterlinkApiTests"),
             out string? warning);
 
         Assert.False(migrated);
-        Assert.Equal("Skipping legacy DA link migration from mappings.json because Consumer already has a provider.", warning);
+        Assert.Equal("Skipping legacy interlink migration from mappings.json because Consumer already has a provider.", warning);
 
         IReadOnlyList<DashboardLogEntry> entries = logStore.GetEntries(10, LogLevel.Warning);
         DashboardLogEntry entry = Assert.Single(entries);
         Assert.Contains("Consumer already has a provider.", entry.Message, StringComparison.Ordinal);
         Assert.Contains("Consumer already has a provider.", entry.ExceptionText, StringComparison.Ordinal);
 
-        (IReadOnlyList<DaLinkRule> rules, long version) = store.GetSnapshot();
+        (IReadOnlyList<InterlinkRule> rules, long version) = store.GetSnapshot();
         Assert.Empty(rules);
         Assert.Equal(0, version);
     }
@@ -68,8 +67,8 @@ public sealed class DaLinkApiTests
 
         Guid id = Guid.NewGuid();
         using HttpResponseMessage response = await app.Client.PutAsync(
-            $"/api/da-links/{id}",
-            CreateJsonContent(new UpdateDaLinkRequest(new DaLinkDto(
+            $"/api/interlinks/{id}",
+            CreateJsonContent(new UpdateInterlinkRequest(new InterlinkDto(
                 Id: id,
                 ProviderSourceId: "providerA",
                 ProviderItemId: "itemP",
@@ -86,8 +85,11 @@ public sealed class DaLinkApiTests
     }
 
     [Fact]
-    public async Task PostForgedMetadata_ReturnsProviderNotFound()
+    public async Task PostUnmappedTags_AreRejectedBeforeServerContact()
     {
+        // The mapped-tags contract: both endpoints must already exist as enabled
+        // mappings. The guard runs before live server metadata resolution so a
+        // dead link can never be created even when no source is connected.
         await using TestAppHandle app = await TestAppHandle.StartAsync(static appDirectory =>
         {
             File.WriteAllText(Path.Combine(appDirectory, "mappings.json"), "[]");
@@ -95,8 +97,73 @@ public sealed class DaLinkApiTests
         });
 
         using HttpResponseMessage response = await app.Client.PostAsync(
-            "/api/da-links",
-            CreateJsonContent(new CreateDaLinkRequest(new DaLinkDto(
+            "/api/interlinks",
+            CreateJsonContent(new CreateInterlinkRequest(new InterlinkDto(
+                Id: Guid.NewGuid(),
+                ProviderSourceId: "providerA",
+                ProviderItemId: "itemP",
+                ConsumerSourceId: "consumerA",
+                ConsumerItemId: "itemC",
+                Enabled: true,
+                ProviderCanonicalType: 5,
+                ConsumerCanonicalType: 5,
+                ProviderAccessRights: 1,
+                ConsumerAccessRights: 3))));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        using JsonDocument body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("Provider tag must be added to Maps before linking.", body.RootElement.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task PostWithUnmappedConsumer_AreRejectedBeforeServerContact()
+    {
+        await using TestAppHandle app = await TestAppHandle.StartAsync(static appDirectory =>
+        {
+            File.WriteAllText(Path.Combine(appDirectory, "mappings.json"), JsonSerializer.Serialize(new[]
+            {
+                new TagMapping { SourceId = "providerA", ItemId = "itemP", AccessRights = TagAccessRights.Read, Enabled = true }
+            }));
+            DeleteIfExists(Path.Combine(appDirectory, "links.json"));
+        });
+
+        using HttpResponseMessage response = await app.Client.PostAsync(
+            "/api/interlinks",
+            CreateJsonContent(new CreateInterlinkRequest(new InterlinkDto(
+                Id: Guid.NewGuid(),
+                ProviderSourceId: "providerA",
+                ProviderItemId: "itemP",
+                ConsumerSourceId: "consumerA",
+                ConsumerItemId: "itemC",
+                Enabled: true,
+                ProviderCanonicalType: 5,
+                ConsumerCanonicalType: 5,
+                ProviderAccessRights: 1,
+                ConsumerAccessRights: 3))));
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        using JsonDocument body = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        Assert.Equal("Consumer tag must be added to Maps before linking.", body.RootElement.GetProperty("error").GetString());
+    }
+
+    [Fact]
+    public async Task PostForgedMetadata_ReturnsProviderNotFound()
+    {
+        await using TestAppHandle app = await TestAppHandle.StartAsync(static appDirectory =>
+        {
+            File.WriteAllText(Path.Combine(appDirectory, "mappings.json"), JsonSerializer.Serialize(new[]
+            {
+                new TagMapping { SourceId = "providerA", ItemId = "itemP", AccessRights = TagAccessRights.Read, Enabled = true },
+                new TagMapping { SourceId = "consumerA", ItemId = "itemC", AccessRights = TagAccessRights.Write, Enabled = true }
+            }));
+            DeleteIfExists(Path.Combine(appDirectory, "links.json"));
+        });
+
+        using HttpResponseMessage response = await app.Client.PostAsync(
+            "/api/interlinks",
+            CreateJsonContent(new CreateInterlinkRequest(new InterlinkDto(
                 Id: Guid.NewGuid(),
                 ProviderSourceId: "providerA",
                 ProviderItemId: "itemP",
@@ -115,7 +182,7 @@ public sealed class DaLinkApiTests
     }
 
     [Fact]
-    public async Task RemoveSource_RemovesDaLinkRulesReferencingThatSource()
+    public async Task RemoveSource_RemovesInterlinkRulesReferencingThatSource()
     {
         Guid providerRuleId = Guid.NewGuid();
         Guid consumerRuleId = Guid.NewGuid();
@@ -163,9 +230,9 @@ public sealed class DaLinkApiTests
 
             File.WriteAllText(Path.Combine(appDirectory, "links.json"), JsonSerializer.Serialize(new[]
             {
-                new DaLinkRule(providerRuleId, "providerA", "itemP", "consumerA", "itemC", true, 5, 5),
-                new DaLinkRule(consumerRuleId, "otherA", "itemO", "providerA", "itemP", true, 5, 5),
-                new DaLinkRule(retainedRuleId, "otherA", "itemO", "consumerA", "itemC", true, 5, 5)
+                new InterlinkRule(providerRuleId, "providerA", "itemP", "consumerA", "itemC", true, 5, 5),
+                new InterlinkRule(consumerRuleId, "otherA", "itemO", "providerA", "itemP", true, 5, 5),
+                new InterlinkRule(retainedRuleId, "otherA", "itemO", "consumerA", "itemC", true, 5, 5)
             }));
         });
 
@@ -175,7 +242,7 @@ public sealed class DaLinkApiTests
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
-        using JsonDocument linksBody = await app.GetJsonAsync("/api/da-links");
+        using JsonDocument linksBody = await app.GetJsonAsync("/api/interlinks");
         JsonElement.ArrayEnumerator links = linksBody.RootElement.GetProperty("links").EnumerateArray();
         List<Guid> remainingIds = new();
         foreach (JsonElement link in links)
@@ -236,7 +303,7 @@ public sealed class DaLinkApiTests
     [Fact]
     public void ValidateLink_RejectsTypeMismatch()
     {
-        DaLinkDto request = new(
+        InterlinkDto request = new(
             Id: Guid.NewGuid(),
             ProviderSourceId: "providerA",
             ProviderItemId: "itemP",
@@ -246,8 +313,8 @@ public sealed class DaLinkApiTests
             ProviderCanonicalType: 5,
             ConsumerCanonicalType: 3);
 
-        string? error = DaLinkValidators.Validate(request, consumerHasProvider: false, providerReadable: true, consumerWritable: true);
-        Assert.Equal("Provider and consumer must use the same native OPC DA type.", error);
+        string? error = InterlinkValidators.Validate(request, consumerHasProvider: false, providerReadable: true, consumerWritable: true);
+        Assert.Equal("Provider and consumer must use the same data type.", error);
     }
 
 
@@ -271,5 +338,5 @@ public sealed class DaLinkApiTests
 
 }
 
-[CollectionDefinition(nameof(DaLinkApiAppCollection), DisableParallelization = true)]
-public sealed class DaLinkApiAppCollection;
+[CollectionDefinition(nameof(InterlinkApiAppCollection), DisableParallelization = true)]
+public sealed class InterlinkApiAppCollection;
