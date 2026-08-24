@@ -23,6 +23,10 @@ namespace OpcBridge.App;
 //   data-tab="opc-ua", id="view-opc-ua", data-route="connectivity/opc-ua", text "OPC UA"
 //   data-tab="connection", id="view-connection", id="sourcesStatusList", data-route="connectivity/sources", text "Sources"
 //   id="uaCfgEndpointUrl", id="uaCfgSourceId", function saveUaSource/testUaConnection
+//   data-tab="ua-subs", id="view-ua-subs", data-route="connectivity/ua-subs", text "UA Subs"
+//   id="subSrcSel"/"subNameInp"/"subRateInp", id="subsTable", id="subsMsg"
+//   function loadUaSubs(/renderUaSubs(/saveUaSub(/removeUaSub(, /api/ua/subscriptions[/remove]
+//   faceplate: id="fpSubscription"/"fpSubscriptionField", function fpSubscriptionOptions(/updateFpRateEnabled(
 //   id="mapTypeTabs", data-map-type="opc-da|opc-ua|drivers", function setMapType(/opcDaSources(/mapTypeSources(
 //   tags/maps/opc-da, tags/maps/opc-ua, tags/maps/drivers
 internal static class DashboardPage
@@ -484,6 +488,7 @@ internal static class DashboardPage
     <button class="tabbtn" data-tab="opc-da" data-route="connectivity/opc-da" onclick="navigate('connectivity/opc-da')">OPC DA</button>
     <button class="tabbtn" data-tab="opc-da-groups" data-route="connectivity/opc-da-groups" onclick="navigate('connectivity/opc-da-groups')">DA Groups</button>
     <button class="tabbtn" data-tab="opc-ua" data-route="connectivity/opc-ua" onclick="navigate('connectivity/opc-ua')">OPC UA</button>
+    <button class="tabbtn" data-tab="ua-subs" data-route="connectivity/ua-subs" onclick="navigate('connectivity/ua-subs')">UA Subs</button>
     <button class="tabbtn" data-tab="drivers" data-route="connectivity/drivers" onclick="navigate('connectivity/drivers')">Drivers</button>
     <button class="tabbtn" data-tab="mx-component" data-route="connectivity/mx-component" onclick="navigate('connectivity/mx-component')">MX Component</button>
     <button class="tabbtn" data-tab="diagnostics" data-route="connectivity/diagnostics" onclick="navigate('connectivity/diagnostics')">Diagnostics</button>
@@ -795,6 +800,25 @@ internal static class DashboardPage
                     <div class="hint">OPC UA <b>source</b> = bridge connects outbound to an external UA server. The Monitor page OPC UA endpoint is the bridge's own server for clients.</div>
                 </div>
             </div>
+        </div>
+    </div>
+</div>
+<div class="view" id="view-ua-subs">
+    <div class="box">
+        <div class="box-h">UA Subscriptions <span class="msg" id="subsMsg" style="font-weight:400;text-transform:none;letter-spacing:0;margin-left:auto">Named subscriptions group UA tags onto shared monitored items.</span></div>
+        <div class="box-b">
+            <div class="toolbar" style="margin-bottom:12px">
+                <select id="subSrcSel" style="min-width:180px"></select>
+                <input id="subNameInp" type="text" placeholder="Subscription name (e.g. fast)" style="width:180px">
+                <input id="subRateInp" type="number" min="100" step="100" value="1000" title="Update rate in milliseconds" style="width:110px">
+                <button class="btn" type="button" onclick="saveUaSub()">Save</button>
+                <button class="btn ghost" type="button" onclick="removeUaSub()">Remove</button>
+            </div>
+            <table id="subsTable" class="tbl">
+                <thead><tr><th>Source</th><th>Name</th><th>Rate</th><th>Tags</th><th>Actual</th><th>Status</th></tr></thead>
+                <tbody></tbody>
+            </table>
+            <div class="hint" style="margin-top:10px">Tags assigned to a named subscription publish at that subscription's rate; tags left on Source Default follow the source's Update Rate. Removing a subscription moves its tags back to default.</div>
         </div>
     </div>
 </div>
@@ -1167,6 +1191,7 @@ internal static class DashboardPage
             <div class="fp-tabpane" id="fp-pane-setup" style="display:none">
                 <div class="field"><label class="fl">Access Rights</label><select id="fpAccess" data-action="tag-access"><option value="Read">Read (Source → UA)</option><option value="Read-Write">Read-Write (Source ↔ UA)</option><option value="Write">Write (UA → Source)</option></select></div>
                 <div class="field"><label class="fl">Enabled</label><input type="checkbox" id="fpEnabled" data-action="toggle-tag-enabled"></div>
+                <div class="field" id="fpSubscriptionField" style="display:none"><label class="fl">Subscription</label><select id="fpSubscription"></select><span class="msg" id="fpSubscriptionHint"></span></div>
                 <div class="field"><label class="fl">Update Rate</label><select id="fpPollRate" data-action="tag-poll-rate"><option value="0">Source Default</option><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
                 <div class="field"><label class="fl">Deadband %</label><input type="number" id="fpDeadband" min="0" max="100" step="0.1" value="0" style="width:80px"></div>
                 <div class="hint" style="margin-top:4px">Update Rate = source poll/publish interval. With subscriptions on, the source pushes changes at this rate when supported. With subscriptions off, the bridge polls at this rate.</div>
@@ -2708,6 +2733,8 @@ function renderMappingRow(mapping) {
     if (!enabled) { accessBadge = badge('Disabled', 'bad'); }
     else { accessBadge = badge(access + (simulated && access !== 'Write' ? ' / Sim' : ''), access === 'Read' ? 'good' : access === 'Read-Write' ? 'partial' : 'warn'); }
     const rateBadge = pollRate > 0 ? `<span class="pill" style="padding:1px 6px;font-size:10px">${pollRate}ms</span>` : '';
+    const subName = String(mapping.subscription ?? mapping.Subscription ?? '').trim();
+    const subBadge = subName ? `<span class="pill" style="padding:1px 6px;font-size:10px" title="UA subscription">${esc(subName)}</span>` : '';
     const deadbandBadge = deadband > 0 ? `<span class="pill" style="padding:1px 6px;font-size:10px">db ${deadband}%</span>` : '';
     const mqttOn = (mapping.mqttEnabled ?? mapping.MqttEnabled) === true;
     const mqttBadge = mqttOn ? `<span class="pill" style="padding:1px 6px;font-size:10px">MQTT</span>` : '';
@@ -2729,12 +2756,12 @@ function renderMappingRow(mapping) {
     else if (failedItem) { discBadge = badge('Disc', 'bad'); discTitle = 'Disconnected — no value received (auto-retrying)'; }
     else if (badQuality) { discBadge = badge('Bad', 'bad'); discTitle = 'Bad quality from source'; }
     // Full status summary — clipped badges stay discoverable via the row tooltip.
-    const statusSummary = [mappedType + ' type', deadband > 0 ? 'db ' + deadband + '%' : null, pollRate > 0 ? pollRate + 'ms' : null, mqttOn ? 'MQTT' : null, influxOn ? 'Influx' : null, sourceDown ? 'Source disconnected' : null, failedItem ? 'Disconnected (auto-retrying)' : null, badQuality ? 'Bad quality' : null, access + (simulated && access !== 'Write' ? ' / Sim' : '')].filter(Boolean).join(' · ');
+    const statusSummary = [mappedType + ' type', deadband > 0 ? 'db ' + deadband + '%' : null, pollRate > 0 ? pollRate + 'ms' : null, subName ? 'sub ' + subName : null, mqttOn ? 'MQTT' : null, influxOn ? 'Influx' : null, sourceDown ? 'Source disconnected' : null, failedItem ? 'Disconnected (auto-retrying)' : null, badQuality ? 'Bad quality' : null, access + (simulated && access !== 'Write' ? ' / Sim' : '')].filter(Boolean).join(' · ');
     const desc = (mapping.description || mapping.Description || '').trim();
     const descIcon = desc ? `<span class="li-desc" title="${attr(desc)}" data-action="open-faceplate" data-source-id="${attr(sourceId)}" data-item-id="${attr(item)}">&#8505;</span>` : '';
     // Config badges clip/fade first; the colored access status is pinned at the far
     // right and never gets cut off.
-    return `<div class="li clickable" data-action="open-faceplate" data-source-id="${attr(sourceId)}" data-item-id="${attr(item)}">${descIcon}<div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="n">${esc(name)}</span> <span class="p">${esc(sourceId)} · ${esc(item)} · UA: ${esc(node)}</span></div><div class="li-badge" title="${attr(statusSummary)}"><span class="li-badge-clip">${typeBadge}${deadbandBadge}${rateBadge}${mqttBadge}${influxBadge}</span><span class="li-badge-status">${discBadge ? `<span title="${attr(discTitle)}">${discBadge}</span>` : ''}${accessBadge}</span></div></div>`;
+    return `<div class="li clickable" data-action="open-faceplate" data-source-id="${attr(sourceId)}" data-item-id="${attr(item)}">${descIcon}<div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="n">${esc(name)}</span> <span class="p">${esc(sourceId)} · ${esc(item)} · UA: ${esc(node)}</span></div><div class="li-badge" title="${attr(statusSummary)}"><span class="li-badge-clip">${typeBadge}${deadbandBadge}${rateBadge}${subBadge}${mqttBadge}${influxBadge}</span><span class="li-badge-status">${discBadge ? `<span title="${attr(discTitle)}">${discBadge}</span>` : ''}${accessBadge}</span></div></div>`;
 }
 
 const MAPPING_ROWS_CAP = 1000;
@@ -2781,6 +2808,25 @@ function openFaceplate(sourceId, itemId) {
         const sel = el('fpPollRate');
         if (sel && document.activeElement !== sel) sel.innerHTML = fpRateOptions(sourceId, mapDaGroup, pollRate);
     }).catch(() => {});
+    // SUBSCRIPTION selector (OPC UA sources only): named subs from uaSubsCache.
+    // A non-empty choice locks the per-tag rate input — rate comes from the subscription.
+    const subApplies = isUaSource(state.sources.find(s => s.sourceId === sourceId) || null);
+    const fpSubField = el('fpSubscriptionField');
+    const fpSubSel = el('fpSubscription');
+    if (fpSubField && fpSubSel) {
+        fpSubField.style.display = subApplies ? '' : 'none';
+        const fpSubVal = String(mapping.subscription ?? mapping.Subscription ?? '');
+        fpSubSel.innerHTML = fpSubscriptionOptions(sourceId, fpSubVal);
+        updateFpRateEnabled();
+        if (subApplies) {
+            loadUaSubs().then(() => {
+                if (!faceplateOpen || faceplateKey !== valueKey(sourceId, itemId)) return;
+                const sel2 = el('fpSubscription');
+                if (sel2 && document.activeElement !== sel2) sel2.innerHTML = fpSubscriptionOptions(sourceId, sel2.value || fpSubVal);
+                updateFpRateEnabled();
+            }).catch(() => {});
+        }
+    }
     const deadband = Number(mapping.deadbandPct ?? mapping.DeadbandPct ?? 0);
     el('fpDeadband').value = String(deadband);
     el('fpMqttEnabled').checked = (mapping.mqttEnabled ?? mapping.MqttEnabled) === true;
@@ -2838,6 +2884,7 @@ const ROUTE_TO_TAB = {
   'connectivity/opc-da': 'opc-da',
   'connectivity/opc-da-groups': 'opc-da-groups',
   'connectivity/opc-ua': 'opc-ua',
+  'connectivity/ua-subs': 'ua-subs',
   'connectivity/drivers': 'drivers',
   'connectivity/mx-component': 'mx-component',
   'connectivity/diagnostics': 'diagnostics',
@@ -2889,6 +2936,9 @@ async function showTab(name, route) {
   if (name === 'influx') { await loadInflux(); }
   if (activeTab === 'opc-da' || activeTab === 'opc-ua' || activeTab === 'connection') {
     await loadSources().catch(e => console.warn(e));
+  }
+  if (activeTab === 'ua-subs') {
+    await loadUaSubs().catch(e => el('subsMsg').textContent = '✗ ' + e.message);
   }
   if (activeTab === 'drivers') {
     await loadSources().catch(e => console.warn(e));
@@ -4290,6 +4340,7 @@ async function updateMapping(sourceId, itemId, mutate) {
         manualValue: mapping.manualValue ?? mapping.ManualValue ?? null,
         pollRateMs: mapping.pollRateMs ?? mapping.PollRateMs ?? 0,
         daGroup: mapping.daGroup ?? mapping.DaGroup ?? null,
+        subscription: mapping.subscription ?? mapping.Subscription ?? '',
         deadbandPct: Number(mapping.deadbandPct ?? mapping.DeadbandPct ?? 0),
         writeable: (mapping.writeable ?? mapping.Writeable) === true,
         accessRights: mapping.accessRights || mapping.AccessRights || 'Read',
@@ -4526,6 +4577,35 @@ function fpRateOptions(sourceId, selectedDaGroup, pollRateMs) {
     }
     return '<option value=""' + (defaultSelected ? ' selected' : '') + '>Source Default</option>' + html;
 }
+// SUBSCRIPTION selector (OPC UA sources): Source Default (with the source's default
+// rate label) plus one option per named subscription with its rate. Matching is
+// case-insensitive, mirroring the server-side subscription-name comparisons.
+function fpSubscriptionOptions(sourceId, selected) {
+    const src = uaSubsFor(sourceId);
+    const want = String(selected || '').trim().toLowerCase();
+    let matched = false;
+    let html = '';
+    for (const sub of (src ? src.subscriptions : [])) {
+        const sel = want !== '' && want === String(sub.name).toLowerCase();
+        if (sel) matched = true;
+        html += `<option value="${attr(sub.name)}"${sel ? ' selected' : ''}>${esc(sub.name)} (${formatMs(sub.updateRateMs)})</option>`;
+    }
+    if (want !== '' && !matched) {
+        html += `<option value="${attr(selected)}" selected>${esc(selected)}</option>`;
+    }
+    const defRate = src ? src.defaultUpdateRateMs : ((state.sources.find(s => s.sourceId === sourceId) || {}).updateRateMs ?? 0);
+    return `<option value=""${matched ? '' : ' selected'}>Source Default (${formatMs(defRate)})</option>` + html;
+}
+// A named subscription owns the tag's rate: lock the per-tag Update Rate input
+// while a subscription is chosen, unlock when back on Source Default.
+function updateFpRateEnabled() {
+    const subSel = el('fpSubscription');
+    const rate = el('fpPollRate');
+    const hint = el('fpSubscriptionHint');
+    if (!subSel || !rate) return;
+    rate.disabled = !!subSel.value;
+    if (hint) hint.textContent = subSel.value ? 'Rate comes from the named subscription.' : '';
+}
 function renderDaGroupsForSource(sourceId, groups, sourceIoMode) {
     const hint = document.getElementById('daGroupsHint-' + sourceId);
     const wrap = document.getElementById('daGroupsTable-' + sourceId);
@@ -4682,6 +4762,72 @@ async function removeSelectedSource() {
 }
 function showSaveReset() { el('cfgApply').style.display = ''; el('cfgReset').style.display = ''; }
 function hideSaveReset() { el('cfgApply').style.display = 'none'; el('cfgReset').style.display = 'none'; }
+
+// --- Named UA subscriptions (UA Subs tab) ---
+// Group UA tags onto shared monitored items: GET lists per-source definitions plus
+// live status; POST upserts; /remove deletes and moves its mappings back to default.
+let uaSubsCache = [];
+async function loadUaSubs() {
+    const p = await (await fetch('/api/ua/subscriptions', { cache: 'no-store' })).json();
+    uaSubsCache = p.sources || [];
+    renderUaSubs();
+    const sel = el('subSrcSel');
+    if (sel) {
+        const current = sel.value;
+        sel.innerHTML = uaSubsCache.map(s => `<option value="${attr(s.sourceId)}">${esc(s.displayName || s.sourceId)}</option>`).join('');
+        if (current && uaSubsCache.some(s => s.sourceId === current)) sel.value = current;
+    }
+}
+function uaSubsFor(sourceId) {
+    return (uaSubsCache || []).find(s => String(s.sourceId).toLowerCase() === String(sourceId || '').toLowerCase()) || null;
+}
+function renderUaSubs() {
+    const tbody = document.querySelector('#subsTable tbody');
+    if (!tbody) return;
+    const rows = [];
+    for (const s of uaSubsCache) {
+        for (const sub of s.subscriptions) {
+            rows.push(`<tr><td><code title="${attr(s.sourceId)}">${esc(s.displayName || s.sourceId)}</code></td><td>${esc(sub.name)}</td><td>${formatMs(sub.updateRateMs)}</td><td>${sub.itemCount}</td><td title="requested ${formatMs(sub.updateRateMs)}">${formatMs(Math.round(sub.actualPublishingIntervalMs))}</td><td>${badge(sub.created ? 'live' : 'idle', sub.created ? 'good' : 'warn')}</td></tr>`);
+        }
+        if (!s.subscriptions.length) {
+            rows.push(`<tr><td><code title="${attr(s.sourceId)}">${esc(s.displayName || s.sourceId)}</code></td><td colspan="5" style="color:var(--muted);font-size:11px">(no named subscriptions — all tags on default)</td></tr>`);
+        }
+    }
+    tbody.innerHTML = rows.join('');
+}
+async function saveUaSub() {
+    const sourceId = el('subSrcSel') ? el('subSrcSel').value : '';
+    const name = el('subNameInp').value.trim();
+    const updateRateMs = Number.parseInt(el('subRateInp').value, 10);
+    if (!sourceId) { el('subsMsg').textContent = '✗ No OPC UA sources configured.'; return; }
+    if (!name) { el('subsMsg').textContent = '✗ Name is required.'; return; }
+    if (!Number.isFinite(updateRateMs) || updateRateMs <= 0) { el('subsMsg').textContent = '✗ Rate must be a positive number of milliseconds.'; return; }
+    try {
+        const r = await fetch('/api/ua/subscriptions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId, name, updateRateMs }) });
+        const p = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
+        el('subsMsg').textContent = '✓ Saved ' + name + ' (' + formatMs(updateRateMs) + ').';
+        await loadUaSubs();
+    } catch (e) {
+        el('subsMsg').textContent = '✗ ' + e.message;
+    }
+}
+async function removeUaSub() {
+    const sourceId = el('subSrcSel') ? el('subSrcSel').value : '';
+    const name = el('subNameInp').value.trim();
+    if (!sourceId || !name) { el('subsMsg').textContent = '✗ Pick the source and enter the subscription name to remove.'; return; }
+    try {
+        const r = await fetch('/api/ua/subscriptions/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId, name }) });
+        const p = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
+        el('subsMsg').textContent = '✓ Removed. ' + (p.movedMappings ?? 0) + ' tag(s) moved to default.';
+        await loadUaSubs();
+        // The removed subscription's tags were reassigned server-side — refresh Maps pills/rates.
+        await loadMappings().catch(() => {});
+    } catch (e) {
+        el('subsMsg').textContent = '✗ ' + e.message;
+    }
+}
 
 // --- PLC driver sources (Melsec A3N) ---
 function mxSources() { return state.sources.filter(s => isMxSource(s)); }
@@ -5818,6 +5964,9 @@ function bindDynamicButtons() {
                     const srcId = el('fpApply').dataset.sourceId || sourceId;
                     payload.pollRateMs = daGroupRateFor(srcId, rateValue) || 1000;
                 }
+                if (el('fpSubscriptionField') && el('fpSubscriptionField').style.display !== 'none' && el('fpSubscription')) {
+                    payload.subscription = el('fpSubscription').value.trim(); // '' = source default
+                }
                 payload.deadbandPct = Math.max(0, Math.min(100, Number.parseFloat(el('fpDeadband').value) || 0));
                 payload.description = el('fpDescription').value.trim() || null;
                 if (simulated) {
@@ -5853,6 +6002,9 @@ function bindDynamicButtons() {
         }
         if (target.id === 'fpAccess') {
             updateManualInputState();
+        }
+        if (target.id === 'fpSubscription') {
+            updateFpRateEnabled();
         }
     });
 }

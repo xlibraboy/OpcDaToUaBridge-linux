@@ -287,7 +287,7 @@ public sealed class DashboardPageTests
         // it can never be cut off.
         Assert.Contains(".li .li-badge-clip { display: flex;", DashboardPage.Html);
         Assert.Contains(".li .li-badge-status { flex-shrink: 0; margin-left: 2px;", DashboardPage.Html);
-        Assert.Contains("<span class=\"li-badge-clip\">${typeBadge}${deadbandBadge}${rateBadge}${mqttBadge}${influxBadge}</span><span class=\"li-badge-status\">${discBadge ? `<span title=\"${attr(discTitle)}\">${discBadge}</span>` : ''}${accessBadge}</span>", DashboardPage.Script);
+        Assert.Contains("<span class=\"li-badge-clip\">${typeBadge}${deadbandBadge}${rateBadge}${subBadge}${mqttBadge}${influxBadge}</span><span class=\"li-badge-status\">${discBadge ? `<span title=\"${attr(discTitle)}\">${discBadge}</span>` : ''}${accessBadge}</span>", DashboardPage.Script);
     }
 
     [Fact]
@@ -427,5 +427,62 @@ public sealed class DashboardPageTests
         // Renaming a group in the DA Groups modal tells the server the old name
         // so mapping references (TagMapping.DaGroup) are rewritten, not orphaned.
         Assert.Contains("renameFrom", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Html_HasUaSubscriptionsNavViewAndToolbar()
+    {
+        // UA Subs sits in the Connectivity nav group next to OPC UA, with its own
+        // hidden-by-default view: toolbar (source select / name / rate / Save+Remove),
+        // the subscriptions table and a status line.
+        Assert.Contains("data-tab=\"ua-subs\"", DashboardPage.Html);
+        Assert.Contains("id=\"view-ua-subs\"", DashboardPage.Html);
+        Assert.Contains(">UA Subs</button>", DashboardPage.Html);
+        Assert.Contains("id=\"subSrcSel\"", DashboardPage.Html);
+        Assert.Contains("id=\"subNameInp\"", DashboardPage.Html);
+        Assert.Contains("id=\"subRateInp\"", DashboardPage.Html);
+        Assert.Contains("onclick=\"saveUaSub()\"", DashboardPage.Html);
+        Assert.Contains("onclick=\"removeUaSub()\"", DashboardPage.Html);
+        Assert.Contains("id=\"subsTable\"", DashboardPage.Html);
+        Assert.Contains("<th>Source</th><th>Name</th><th>Rate</th><th>Tags</th><th>Actual</th><th>Status</th>", DashboardPage.Html);
+        Assert.Contains("id=\"subsMsg\"", DashboardPage.Html);
+    }
+
+    [Fact]
+    public void Script_RoutesUaSubsTabAndManagesSubscriptionsViaWireApi()
+    {
+        // Navigation registers 'ua-subs' alongside its connectivity siblings; load/save/
+        // remove go through the Task 8 wire API. The table renders requested vs actual
+        // publishing interval plus a live/idle status badge per subscription.
+        Assert.Contains("'connectivity/ua-subs': 'ua-subs'", DashboardPage.Script);
+        Assert.Contains("if (activeTab === 'ua-subs')", DashboardPage.Script);
+        Assert.Contains("function loadUaSubs(", DashboardPage.Script);
+        Assert.Contains("function renderUaSubs(", DashboardPage.Script);
+        Assert.Contains("function saveUaSub(", DashboardPage.Script);
+        Assert.Contains("function removeUaSub(", DashboardPage.Script);
+        Assert.Contains("/api/ua/subscriptions", DashboardPage.Script);
+        Assert.Contains("/api/ua/subscriptions/remove", DashboardPage.Script);
+        Assert.Contains("actualPublishingIntervalMs", DashboardPage.Script);
+        Assert.Contains("movedMappings", DashboardPage.Script);
+        Assert.Contains("let uaSubsCache = [];", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Script_MapsFaceplateAssignsNamedSubscription()
+    {
+        // The faceplate Setup pane carries a Subscription select for OPC UA sources:
+        // Source Default (with rate label) + one option per named sub, saved through
+        // the same updateMapping collect path as pollRateMs. A non-empty choice
+        // disables the per-tag Update Rate input; rows show a pill with the name.
+        Assert.Contains("id=\"fpSubscription\"", DashboardPage.Html);
+        Assert.Contains("id=\"fpSubscriptionField\"", DashboardPage.Html);
+        Assert.Contains("function fpSubscriptionOptions(", DashboardPage.Script);
+        Assert.Contains("Source Default (${formatMs(defRate)})", DashboardPage.Script);
+        Assert.Contains("payload.subscription", DashboardPage.Script);
+        // updateMapping preserves the stored assignment for callers that don't touch it.
+        Assert.Contains("subscription: mapping.subscription ?? mapping.Subscription ?? '',", DashboardPage.Script);
+        Assert.Contains("rate.disabled = !!subSel.value;", DashboardPage.Script);
+        Assert.Contains("const subBadge = subName ?", DashboardPage.Script);
+        Assert.Contains("title=\"UA subscription\"", DashboardPage.Script);
     }
 }
