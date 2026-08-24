@@ -3683,7 +3683,7 @@ function renderDiagnostics(p) {
         { state: el('diagMqttState'), badge: el('diagMqttBadge'), rate: el('diagMqttRate'), totals: el('diagMqttTotals'), error: el('diagMqttError') },
         p.mqtt,
         (p.mqtt?.publishedCount ?? 0).toLocaleString() + ' published · ' + (p.mqtt?.receivedCount ?? 0).toLocaleString() + ' received',
-        '&#8593; ' + Number(p.mqtt?.publishedRate || 0).toFixed(1) + '/s · &#8595; ' + Number(p.mqtt?.receivedRate || 0).toFixed(1) + '/s');
+        '↑ ' + Number(p.mqtt?.publishedRate || 0).toFixed(1) + '/s · ↓ ' + Number(p.mqtt?.receivedRate || 0).toFixed(1) + '/s');
     setIntegrationHealth(
         { state: el('diagInfluxState'), badge: el('diagInfluxBadge'), rate: el('diagInfluxRate'), totals: el('diagInfluxTotal'), error: el('diagInfluxError') },
         p.influx,

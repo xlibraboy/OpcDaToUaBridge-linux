@@ -610,6 +610,18 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
+    public void Script_RendersIntegrationRatesWithRealArrowGlyphs()
+    {
+        // Integration rate text is set via textContent, which does NOT decode
+        // HTML entities — numeric entities like &#8593; would render as literal
+        // "&#8593;" text (seen in the RATES tile). Use real Unicode glyphs.
+        Assert.DoesNotContain("&#8593;", DashboardPage.Script);
+        Assert.DoesNotContain("&#8595;", DashboardPage.Script);
+        Assert.Contains("\u2191", DashboardPage.Script); // ↑ published arrow
+        Assert.Contains("\u2193", DashboardPage.Script); // ↓ received arrow
+    }
+
+    [Fact]
     public void Script_RendersExtendedDiagnosticsPayload()
     {
         // renderDiagnostics consumes the diagnostics sections it renders.
