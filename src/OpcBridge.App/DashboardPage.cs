@@ -184,8 +184,12 @@ internal static class DashboardPage
         .fp-tabpane { display: flex; flex-direction: column; gap: 10px; }
         .fp-tabpane .field { margin-bottom: 0; }
         .fp-body { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .fp-body.with-flow { grid-template-columns: 1fr auto 1fr; align-items: stretch; }
+        .il-flow { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; cursor: help; user-select: none; padding: 0 2px; }
+        .il-flow .il-arrow { font-size: 22px; line-height: 1; color: var(--accent); }
+        .il-flow .il-flow-hint { font-size: 8px; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
         .mapping-toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; align-items: center; }
-        @media (max-width: 520px) { .fp-body { grid-template-columns: 1fr; } }
+        @media (max-width: 520px) { .fp-body { grid-template-columns: 1fr; } .fp-body.with-flow { grid-template-columns: 1fr; } .il-flow .il-arrow { transform: rotate(90deg); } }
         .fp-panel { background: var(--bg); border: 1px solid var(--border2); border-radius: 6px; padding: 12px 13px; }
         .fp-k { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 7px; }
         .fp-v { font-size: 22px; font-weight: 700; line-height: 1.1; word-break: break-word; }
@@ -1262,14 +1266,15 @@ internal static class DashboardPage
         <div class="box-h">Interlinks <span class="msg" id="linksCount" style="margin-left:auto"></span></div>
         <div class="box-b">
             <div class="hint" id="linksMessage" style="margin-bottom:10px">Create tag-to-tag rules between sources here. Interlinks are a separate subsystem from OPC UA tag mappings.</div>
-            <div class="fp-body" style="margin-bottom:10px">
+            <div class="fp-body with-flow" style="margin-bottom:10px">
                 <div class="fp-panel">
-                    <div class="fp-k">Consumer</div>
+                    <div class="fp-k">Consumer <span class="info" data-tip="Receives the value. When the provider tag changes, the bridge writes that value into this tag. Each consumer has exactly one provider - delete the saved link first to attach a different provider.">i</span></div>
                     <select id="interlinkConsumerSource" style="width:100%;margin-bottom:8px" onchange="onInterlinkSourceChange('consumer')"></select>
                     <div class="list" id="interlinkConsumerList" style="max-height:220px"><span class="msg">Select a source to list its Maps tags.</span></div>
                 </div>
+                <div class="il-flow" data-tip="Values flow from the Provider into the Consumer: each provider change is written into every consumer linked to it."><span class="il-arrow">⇐</span><span class="il-flow-hint">value flow</span></div>
                 <div class="fp-panel">
-                    <div class="fp-k">Provider</div>
+                    <div class="fp-k">Provider <span class="info" data-tip="Sends the value. Its changes are copied into every consumer linked to it - one provider can feed many consumers across any OPC DA / OPC UA / MX Component source.">i</span></div>
                     <select id="interlinkProviderSource" style="width:100%;margin-bottom:8px" onchange="onInterlinkSourceChange('provider')"></select>
                     <div class="list" id="interlinkProviderList" style="max-height:220px"><span class="msg">Select a source to list its Maps tags.</span></div>
                 </div>
@@ -1613,7 +1618,7 @@ const esc = s => String(s ?? '').replace(/[&<>'"]/g, c => ESC[c]);
 const attr = esc;
 let tipEl;
 document.addEventListener('mouseover', e => {
-    const info = e.target.closest('.info');
+    const info = e.target.closest('.info, [data-tip]');
     if (!info || !info.dataset.tip) return;
     if (!tipEl) { tipEl = document.createElement('div'); tipEl.className = 'tip'; document.body.appendChild(tipEl); }
     tipEl.textContent = info.dataset.tip;
@@ -1627,7 +1632,7 @@ document.addEventListener('mouseover', e => {
     tipEl.style.left = x + 'px';
     tipEl.style.top = y + 'px';
 });
-document.addEventListener('mouseout', e => { if (e.target.closest('.info') && tipEl) tipEl.classList.remove('show'); });
+document.addEventListener('mouseout', e => { if (e.target.closest('.info, [data-tip]') && tipEl) tipEl.classList.remove('show'); });
 const el = id => document.getElementById(id);
 const state = {
     tagPath: '',

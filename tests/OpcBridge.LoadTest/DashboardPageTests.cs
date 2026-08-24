@@ -58,6 +58,27 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
+    public void Html_InterlinksExplainsConsumerProviderRoles()
+    {
+        // ⓘ tooltips on both panel headers spell out the receive/send roles
+        // and the fan-in/fan-out rules so operators never guess them.
+        Assert.Contains("Receives the value.", DashboardPage.Html);
+        Assert.Contains("exactly one provider", DashboardPage.Html);
+        Assert.Contains("Sends the value.", DashboardPage.Html);
+        Assert.Contains("one provider can feed many consumers", DashboardPage.Html);
+    }
+
+    [Fact]
+    public void Html_InterlinksShowsProviderToConsumerFlowArrow()
+    {
+        // A visible arrow between the panels makes the copy direction obvious:
+        // values always travel from the Provider side into the Consumer side.
+        Assert.Contains("class=\"il-flow\"", DashboardPage.Html);
+        Assert.Contains("\u21d0", DashboardPage.Html); // ⇐ points from Provider to Consumer
+        Assert.Contains("Values flow from the Provider", DashboardPage.Html);
+    }
+
+    [Fact]
     public void Html_ContainsDriversRouteAndA3nControls()
     {
         Assert.Contains("connectivity/drivers", DashboardPage.Html);
