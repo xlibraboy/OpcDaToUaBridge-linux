@@ -500,7 +500,6 @@ internal static class DashboardPage
     <button class="tabbtn" data-tab="ua-subs" data-route="connectivity/ua-subs" onclick="navigate('connectivity/ua-subs')">UA Subs</button>
     <button class="tabbtn" data-tab="drivers" data-route="connectivity/drivers" onclick="navigate('connectivity/drivers')">Drivers</button>
     <button class="tabbtn" data-tab="mx-component" data-route="connectivity/mx-component" onclick="navigate('connectivity/mx-component')">MX Component</button>
-    <button class="tabbtn" data-tab="diagnostics" data-route="connectivity/diagnostics" onclick="navigate('connectivity/diagnostics')">Diagnostics</button>
   </div>
   <div class="nav-group">
     <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><circle cx="7" cy="7" r="1.5" fill="currentColor" stroke="none"/></svg>Tags</div>
@@ -519,6 +518,7 @@ internal static class DashboardPage
   <div class="nav-group">
     <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>Ops</div>
     <button class="tabbtn active" data-tab="monitor" data-route="ops/monitor" onclick="navigate('ops/monitor')">Monitor</button>
+    <button class="tabbtn" data-tab="diagnostics" data-route="ops/diagnostics" onclick="navigate('ops/diagnostics')">Diagnostics</button>
     <button class="tabbtn" data-tab="values" data-route="ops/values" onclick="navigate('ops/values')">Live Values</button>
     <button class="tabbtn" data-tab="sessions" data-route="ops/sessions" onclick="navigate('ops/sessions')">Sessions</button>
     <button class="tabbtn" data-tab="logs" data-route="ops/logs" onclick="navigate('ops/logs')">Logs</button>
@@ -2964,6 +2964,7 @@ const ROUTE_TO_TAB = {
   'connectivity/ua-subs': 'ua-subs',
   'connectivity/drivers': 'drivers',
   'connectivity/mx-component': 'mx-component',
+  'ops/diagnostics': 'diagnostics',
   'connectivity/diagnostics': 'diagnostics',
   'ops/sessions': 'sessions',
   'tags/maps': 'tags',
@@ -6545,7 +6546,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       connection: 'connectivity/sources',
       'opc-da': 'connectivity/opc-da',
       'opc-ua': 'connectivity/opc-ua',
-      diagnostics: 'connectivity/diagnostics',
+      diagnostics: 'ops/diagnostics',
       sessions: 'ops/sessions',
       tags: 'tags/maps',
       links: 'tags/links',

@@ -573,6 +573,31 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
+    public void Html_DiagnosticsTabLivesInOpsGroup()
+    {
+        // Diagnostics is operational tooling: its button sits inside the Ops nav
+        // group (after Monitor, before Logs) and routes under ops/.
+        Assert.Contains("data-tab=\"diagnostics\" data-route=\"ops/diagnostics\"", DashboardPage.Html);
+        Assert.DoesNotContain("data-tab=\"diagnostics\" data-route=\"connectivity/diagnostics\"", DashboardPage.Html);
+
+        int monitorBtn = DashboardPage.Html.IndexOf("data-route=\"ops/monitor\"", StringComparison.Ordinal);
+        int diagBtn = DashboardPage.Html.IndexOf("data-route=\"ops/diagnostics\"", StringComparison.Ordinal);
+        int logsBtn = DashboardPage.Html.IndexOf("data-route=\"ops/logs\"", StringComparison.Ordinal);
+        Assert.True(monitorBtn >= 0 && diagBtn > monitorBtn && logsBtn > diagBtn,
+            "Diagnostics must sit between Monitor and Logs in the Ops group");
+    }
+
+    [Fact]
+    public void Script_RoutesDiagnosticsUnderOpsWithLegacyAlias()
+    {
+        // Forward + reverse maps use the new ops route; the old connectivity
+        // route stays resolvable so existing bookmarks keep working.
+        Assert.Contains("'ops/diagnostics': 'diagnostics'", DashboardPage.Script);
+        Assert.Contains("'connectivity/diagnostics': 'diagnostics'", DashboardPage.Script); // bookmark alias
+        Assert.Contains("diagnostics: 'ops/diagnostics'", DashboardPage.Script);
+    }
+
+    [Fact]
     public void Script_RendersExtendedDiagnosticsPayload()
     {
         // renderDiagnostics consumes every new section of /api/diagnostics.
