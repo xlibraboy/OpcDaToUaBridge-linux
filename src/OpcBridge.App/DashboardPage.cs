@@ -4164,7 +4164,11 @@ async function refresh() {
         const srcCountH = el('sourceCountH'); if (srcCountH) srcCountH.textContent = sources.length + ' source' + (sources.length !== 1 ? 's' : '');
         const tagSrcStatus = el('tagSourceStatus');
         if (tagSrcStatus) {
-            const selSrc = sources.find(s => (s.sourceId || s.SourceId) === state.selectedSourceId);
+            // Only report a source that matches the active map type — the dropdown is
+            // map-type-filtered, so a source of another type left in selectedSourceId
+            // (e.g. a connected DA source while the OPC UA tab has no sources) must
+            // not surface as "Connected" next to an empty dropdown.
+            const selSrc = sources.find(s => (s.sourceId || s.SourceId) === state.selectedSourceId && sourceMatchesMapType(s));
             if (selSrc) {
                 const cs = get(selSrc, 'connectionState') || '—';
                 tagSrcStatus.innerHTML = badge(cs, stateClass(cs));

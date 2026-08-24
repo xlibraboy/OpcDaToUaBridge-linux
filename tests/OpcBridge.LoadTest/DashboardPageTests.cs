@@ -279,6 +279,16 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
+    public void Script_TagSourceStatusRespectsActiveMapType()
+    {
+        // The Tag Browser's connection badge must only report a source that matches the
+        // active map type. Otherwise — with e.g. the OPC UA tab empty and a connected
+        // DA source left in selectedSourceId — the empty dropdown would still show
+        // "Connected" next to the "No OPC UA sources yet" banner.
+        Assert.Contains("=== state.selectedSourceId && sourceMatchesMapType(s))", DashboardPage.Script);
+    }
+
+    [Fact]
     public void Html_MapsHasSourceTypeSubTabs()
     {
         Assert.Contains("id=\"mapTypeTabs\"", DashboardPage.Html);
