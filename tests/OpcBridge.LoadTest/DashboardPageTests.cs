@@ -732,9 +732,32 @@ public sealed class DashboardPageTests
         Assert.Contains(">Features</button>", DashboardPage.Html);
         Assert.Contains("id=\"help-features\"", DashboardPage.Html);
         Assert.DoesNotContain("dashboard-tabs", DashboardPage.Html);
+    }
 
-        // One accordion opens per sub-tab (was two), so no wall-of-text on first visit.
-        Assert.Contains("openCount = 1", DashboardPage.Script);
+    [Fact]
+    public void Guide_HelpUsesTocLeftContentRightLayout()
+    {
+        // Each sub-tab renders a master-detail layout: topic titles on the left,
+        // selected topic's content ("materi") on the right. Accordions are gone.
+        Assert.Contains("id=\"helpLayout1\"", DashboardPage.Html);
+        Assert.Contains("id=\"helpLayout2\"", DashboardPage.Html);
+        Assert.Contains("id=\"helpLayout3\"", DashboardPage.Html);
+        Assert.Contains("class=\"help-toc\"", DashboardPage.Script);
+        Assert.Contains("help-toc-item", DashboardPage.Script);
+        Assert.Contains("help-article", DashboardPage.Script);
+        Assert.Contains("function switchHelpTopic(", DashboardPage.Script);
+        Assert.Contains("data-help-topic=", DashboardPage.Script);
+
+        // Active topic is visually highlighted.
+        Assert.Contains("help-toc-item.active", DashboardPage.Html);
+
+        // Narrow screens stack the layout.
+        Assert.Contains("@media (max-width: 800px)", DashboardPage.Html);
+
+        // The old accordion markup must be gone everywhere.
+        Assert.DoesNotContain("help-accordion", DashboardPage.Html);
+        Assert.DoesNotContain("help-accordion", DashboardPage.Script);
+        Assert.DoesNotContain("<details class=\"help-section\"", DashboardPage.Script);
     }
 
     [Fact]

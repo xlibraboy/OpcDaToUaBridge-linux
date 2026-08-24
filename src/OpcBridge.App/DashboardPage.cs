@@ -271,14 +271,22 @@ internal static class DashboardPage
         .help-subtab.active, .map-type-tab.active { color: var(--text); background: var(--panel2); box-shadow: 0 1px 3px rgba(0,0,0,.2); }
         .help-subtab-content { display: none; }
         .help-subtab-content.active { display: block; }
-        .help-accordion { display: flex; flex-direction: column; gap: 8px; }
-        .help-section { background: var(--panel); border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
-        .help-section > summary { padding: 10px 14px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none; list-style: none; }
-        .help-section > summary::-webkit-details-marker { display: none; }
-        .help-section > summary::before { content: '\25B6'; font-size: 10px; color: var(--muted); transition: transform .15s ease; }
-        .help-section[open] > summary::before { transform: rotate(90deg); }
-        .help-section > summary:hover { background: var(--panel2); }
-        .help-section[open] > summary { border-bottom: 1px solid var(--border); background: var(--panel2); }
+        .help-layout { display: flex; align-items: flex-start; gap: 14px; }
+        .help-toc { flex: 0 0 230px; display: flex; flex-direction: column; gap: 4px; position: sticky; top: 12px; }
+        .help-toc-item { text-align: left; background: var(--panel); border: 1px solid var(--border); color: var(--muted); padding: 9px 12px; font-size: 12px; font-weight: 600; cursor: pointer; border-radius: 6px; transition: all .15s ease; line-height: 1.35; }
+        .help-toc-item:hover { color: var(--text); background: var(--panel2); }
+        .help-toc-item.active { color: var(--bg); background: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 75%, #000)); border-color: transparent; box-shadow: 0 2px 10px rgba(0,0,0,.35); }
+        .help-pane { flex: 1; min-width: 0; background: var(--panel); border: 1px solid var(--border); border-radius: 7px; }
+        .help-article { display: none; }
+        .help-article.active { display: block; }
+        .help-article-title { font-size: 16px; font-weight: 700; padding: 14px 16px 0; margin: 0; }
+        .help-article .help-body { padding-top: 6px; }
+        @media (max-width: 800px) {
+            .help-layout { flex-direction: column; }
+            .help-toc { flex-direction: row; overflow-x: auto; position: static; flex: none; width: 100%; padding-bottom: 4px; }
+            .help-toc-item { white-space: nowrap; flex: none; }
+            .help-toc-item.active { flex: none; }
+        }
         .help-body { padding: 12px 14px; }
         .help-body ul, .help-body ol { padding-left: 18px; color: var(--muted); }
         .help-body li + li { margin-top: 6px; }
@@ -1373,13 +1381,13 @@ internal static class DashboardPage
         <button class="help-subtab" onclick="switchHelpSubTab('reference')">Reference</button>
     </div>
     <div class="help-subtab-content active" id="help-getting-started">
-        <div class="help-accordion" id="helpContent1"><span class="msg">Loading help…</span></div>
+        <div class="help-layout" id="helpLayout1"><span class="msg">Loading help…</span></div>
     </div>
     <div class="help-subtab-content" id="help-features">
-        <div class="help-accordion" id="helpContent2"></div>
+        <div class="help-layout" id="helpLayout2"></div>
     </div>
     <div class="help-subtab-content" id="help-reference">
-        <div class="help-accordion" id="helpContent3"></div>
+        <div class="help-layout" id="helpLayout3"></div>
     </div>
 </div>
 <div class="view" id="view-about">
@@ -3117,7 +3125,7 @@ async function showTab(name, route) {
   if (activeTab === 'diagnostics' || activeTab === 'sessions') { diagnosticsActive = true; loadDiagnostics(); }
   else { diagnosticsActive = false; }
   if (activeTab === 'about') loadAppInfo().catch(e => el('aboutName').textContent = '✗ ' + e.message);
-  if (activeTab === 'help') loadHelp().catch(e => el('helpContent').innerHTML = '<span class="msg bad">✗ ' + esc(e.message) + '</span>');
+  if (activeTab === 'help') loadHelp().catch(e => { const c = el('helpLayout1'); if (c) c.innerHTML = '<span class="msg bad">✗ ' + esc(e.message) + '</span>'; });
   if (activeTab === 'mx-component') { renderMx(); }
   if (activeTab === 'mqtt') { await loadMqtt(); }
   if (activeTab === 'iot-traffic') { await loadMqttValues(); }
@@ -4023,25 +4031,42 @@ async function loadHelp() {
     if (helpLoaded) return;
     const p = await (await fetch('/api/help', { cache: 'no-store' })).json();
     const groups = (p.markdown || '').split(/\r?\n===\r?\n/).filter(s => s.trim());
-    
-    const renderGroup = (groupMarkdown, containerId, openCount = 1) => {
+
+    const renderGroup = (groupMarkdown, containerId) => {
         const sections = groupMarkdown.split(/\r?\n---\r?\n/).filter(s => s.trim());
         const container = el(containerId);
         if (!container) return;
-        container.innerHTML = sections.map((section, i) => {
+        const items = sections.map((section, i) => {
             const titleMatch = section.match(/^#\s+(.+)/m);
-            const title = titleMatch ? titleMatch[1] : 'Section';
+            const title = titleMatch ? titleMatch[1] : 'Section ' + (i + 1);
             const body = renderMarkdown(section.replace(/^#\s+.+/m, ''));
-            const openAttr = i < openCount ? ' open' : '';
-            return `<details class="help-section"${openAttr}><summary>${esc(title)}</summary><div class="help-body">${body}</div></details>`;
-        }).join('');
+            return { title, body };
+        });
+        container.innerHTML =
+            '<nav class="help-toc">' +
+            items.map((it, i) => `<button class="help-toc-item${i === 0 ? ' active' : ''}" data-help-topic="${i}" onclick="switchHelpTopic(this)">${esc(it.title)}</button>`).join('') +
+            '</nav>' +
+            '<div class="help-pane">' +
+            items.map((it, i) => `<article class="help-article${i === 0 ? ' active' : ''}" data-help-article="${i}"><h3 class="help-article-title">${esc(it.title)}</h3><div class="help-body">${it.body}</div></article>`).join('') +
+            '</div>';
     };
-    
-    renderGroup(groups[0] || '', 'helpContent1');
-    renderGroup(groups[1] || '', 'helpContent2');
-    renderGroup(groups[2] || '', 'helpContent3');
-    
+
+    renderGroup(groups[0] || '', 'helpLayout1');
+    renderGroup(groups[1] || '', 'helpLayout2');
+    renderGroup(groups[2] || '', 'helpLayout3');
+
     helpLoaded = true;
+}
+
+function switchHelpTopic(btn) {
+    const layout = btn.closest('.help-layout');
+    if (!layout) return;
+    const idx = btn.getAttribute('data-help-topic');
+    layout.querySelectorAll('.help-toc-item').forEach(b => b.classList.toggle('active', b === btn));
+    layout.querySelectorAll('.help-article').forEach(a => a.classList.toggle('active', a.getAttribute('data-help-article') === idx));
+    const pane = layout.querySelector('.help-pane');
+    if (pane) pane.scrollTop = 0;
+    window.scrollTo({ top: layout.getBoundingClientRect().top + window.scrollY - 12, behavior: 'smooth' });
 }
 
 function switchHelpSubTab(tabName) {
