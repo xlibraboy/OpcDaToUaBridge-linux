@@ -12,10 +12,10 @@ using Xunit;
 
 namespace OpcBridge.LoadTest;
 
-[Collection(nameof(DaLinkApiAppCollection))]
+[Collection(nameof(InterlinkApiAppCollection))]
 public sealed class ConnectedTagsTests
 {
-    private static DaLinkStore CreateLinkStore()
+    private static InterlinkStore CreateLinkStore()
     {
         string path = Path.Combine(AppContext.BaseDirectory, "links.json");
         if (File.Exists(path))
@@ -23,9 +23,9 @@ public sealed class ConnectedTagsTests
             File.Delete(path);
         }
 
-        return new DaLinkStore(Options.Create(new BridgeOptions()));
+        return new InterlinkStore(Options.Create(new BridgeOptions()));
     }
-    private static BridgeWorker CreateWorker(MappingStore mappingStore, DaLinkStore linkStore)
+    private static BridgeWorker CreateWorker(MappingStore mappingStore, InterlinkStore linkStore)
     {
         ILoggerFactory loggerFactory = LoggerFactory.Create(_ => { });
         BridgeState state = new(Options.Create(new BridgeOptions()));
@@ -77,7 +77,7 @@ public sealed class ConnectedTagsTests
     public async Task OnBridgeValueUpdated_Enqueues_Only_InfluxEnabled()
     {
         MappingStore mappingStore = new(Options.Create(new BridgeOptions()));
-        DaLinkStore linkStore = CreateLinkStore();
+        InterlinkStore linkStore = CreateLinkStore();
         BridgeWorker worker = CreateWorker(mappingStore, linkStore);
 
         FakeInfluxWriter fake = new() { State = InfluxConnectionState.Connected };
@@ -140,7 +140,7 @@ public sealed class ConnectedTagsTests
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
     [Fact]
-    public async Task SubscriptionCallbackValues_ForwardToDaLinkConsumers()
+    public async Task SubscriptionCallbackValues_ForwardToInterlinkConsumers()
     {
         MappingStore mappingStore = new(Options.Create(new BridgeOptions()));
         mappingStore.SetAll(
@@ -161,9 +161,9 @@ public sealed class ConnectedTagsTests
             }
         ]);
 
-        DaLinkStore linkStore = CreateLinkStore();
+        InterlinkStore linkStore = CreateLinkStore();
         Assert.True(linkStore.TryAdd(
-            new DaLinkRule(Guid.NewGuid(), "providerA", "itemP", "consumerA", "itemC", true, 5, 5),
+            new InterlinkRule(Guid.NewGuid(), "providerA", "itemP", "consumerA", "itemC", true, 5, 5),
             out _,
             out _));
 
@@ -215,9 +215,9 @@ public sealed class ConnectedTagsTests
     }
 
     [Fact]
-    public void LegacyProviderFields_MigrateIntoDaLinkRules()
+    public void LegacyProviderFields_MigrateIntoInterlinkRules()
     {
-        DaLinkStore store = CreateLinkStore();
+        InterlinkStore store = CreateLinkStore();
 
         int migrated = store.MigrateFromMappings(
             new[]
@@ -232,10 +232,10 @@ public sealed class ConnectedTagsTests
                 }
             });
 
-        (IReadOnlyList<DaLinkRule> rules, _) = store.GetSnapshot();
+        (IReadOnlyList<InterlinkRule> rules, _) = store.GetSnapshot();
 
         Assert.Equal(1, migrated);
-        DaLinkRule rule = Assert.Single(rules);
+        InterlinkRule rule = Assert.Single(rules);
         Assert.Equal("providerA", rule.ProviderSourceId);
         Assert.Equal("itemP", rule.ProviderItemId);
         Assert.Equal("consumerA", rule.ConsumerSourceId);
@@ -244,11 +244,11 @@ public sealed class ConnectedTagsTests
 
 
     [Fact]
-    public void RuntimeIndex_UsesDaLinkRules_NotMappingProviderFields()
+    public void RuntimeIndex_UsesInterlinkRules_NotMappingProviderFields()
     {
         var rules = new[]
         {
-            new DaLinkRule(Guid.NewGuid(), "providerA", "itemP", "consumerA", "itemC", true, 5, 5)
+            new InterlinkRule(Guid.NewGuid(), "providerA", "itemP", "consumerA", "itemC", true, 5, 5)
         };
 
         BridgeWorker.SourceMappingCache cache = BridgeWorker.SourceMappingCache.Build(

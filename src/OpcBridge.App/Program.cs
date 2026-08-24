@@ -161,8 +161,8 @@ builder.Services.AddSingleton<DaRuntimeSettings>();
 builder.Services.AddSingleton<SourceClientFactory>();
 builder.Services.AddSingleton<BridgeState>();
 builder.Services.AddSingleton<MappingStore>();
-builder.Services.AddSingleton<DaLinkStore>();
-builder.Services.AddSingleton<IDaLinkMetadataResolver>(sp => sp.GetRequiredService<BridgeWorker>());
+builder.Services.AddSingleton<InterlinkStore>();
+builder.Services.AddSingleton<IInterlinkMetadataResolver>(sp => sp.GetRequiredService<BridgeWorker>());
 builder.Services.AddSingleton<UaServerHost>();
 builder.Services.AddSingleton<OpcUaBrowseService>();
 builder.Services.AddSingleton<IMqttBridge, MqttBridge>();
@@ -191,7 +191,7 @@ builder.Services.AddSingleton<IInfluxTrendQuery>(sp =>
 
 
 WebApplication app = builder.Build();
-TryMigrateLegacyDaLinks(app);
+TryMigrateLegacyInterlinks(app);
 
 // Wall-clock-independent tick captured at startup; powers uptimeSeconds on /api/diagnostics.
 long processStartTickMs = Environment.TickCount64;
@@ -933,7 +933,7 @@ app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings
         source = ToSourceApiDto(source)
     });
 });
-app.MapPost("/api/da/sources/remove", (DaSourceRemoveRequest request, DaRuntimeSettings settings, MappingStore store, DaLinkStore daLinkStore) =>
+app.MapPost("/api/da/sources/remove", (DaSourceRemoveRequest request, DaRuntimeSettings settings, MappingStore store, InterlinkStore interlinkStore) =>
 {
     if (!settings.TryRemoveSource(request.SourceId, out DaRuntimeSettingsSnapshot snapshot))
     {
@@ -941,8 +941,8 @@ app.MapPost("/api/da/sources/remove", (DaSourceRemoveRequest request, DaRuntimeS
     }
 
     long mappingVersion = store.RemoveSource(request.SourceId);
-    long daLinkVersion = daLinkStore.RemoveBySource(request.SourceId);
-    return Results.Json(new { version = snapshot.Version, mappingVersion, daLinkVersion });
+    long interlinkVersion = interlinkStore.RemoveBySource(request.SourceId);
+    return Results.Json(new { version = snapshot.Version, mappingVersion, interlinkVersion });
 });
 app.MapPost("/api/drivers/melsec-a3n/parse-address", (MelsecParseAddressRequest request) =>
 {
@@ -1129,23 +1129,23 @@ app.MapPost("/api/da/tags", async (DaTagBrowseRequest request) =>
         return Results.Json(new { error = exception.Message, branches = Array.Empty<object>(), tags = Array.Empty<object>() });
     }
 });
-app.MapGet("/api/da-links", (DaLinkStore store) =>
+app.MapGet("/api/interlinks", (InterlinkStore store) =>
 {
-    (IReadOnlyList<DaLinkRule> rules, long version) = store.GetSnapshot();
+    (IReadOnlyList<InterlinkRule> rules, long version) = store.GetSnapshot();
     return Results.Json(new
     {
-        links = rules.Select(ToDaLinkDto),
+        links = rules.Select(ToInterlinkDto),
         version
     });
 });
-app.MapPost("/api/da-links", (CreateDaLinkRequest request, DaLinkStore store, IDaLinkMetadataResolver metadataResolver) =>
+app.MapPost("/api/interlinks", (CreateInterlinkRequest request, InterlinkStore store, MappingStore mappingStore, IInterlinkMetadataResolver metadataResolver) =>
 {
     if (request.Link is null)
     {
         return Results.BadRequest(new { error = "Link is required." });
     }
 
-    if (!TryBuildValidatedDaLinkRule(request.Link, null, store, metadataResolver, out DaLinkRule rule, out string? error))
+    if (!TryBuildValidatedInterlinkRule(request.Link, null, mappingStore, store, metadataResolver, out InterlinkRule rule, out string? error))
     {
         return Results.BadRequest(new { error });
     }
@@ -1157,21 +1157,21 @@ app.MapPost("/api/da-links", (CreateDaLinkRequest request, DaLinkStore store, ID
             : Results.BadRequest(new { error = storeError });
     }
 
-    return Results.Json(new { link = ToDaLinkDto(rule), version });
+    return Results.Json(new { link = ToInterlinkDto(rule), version });
 });
 
-app.MapPut("/api/da-links/{id:guid}", (Guid id, UpdateDaLinkRequest request, DaLinkStore store, IDaLinkMetadataResolver metadataResolver) =>
+app.MapPut("/api/interlinks/{id:guid}", (Guid id, UpdateInterlinkRequest request, InterlinkStore store, MappingStore mappingStore, IInterlinkMetadataResolver metadataResolver) =>
 {
     if (request.Link is null)
     {
         return Results.BadRequest(new { error = "Link is required." });
     }
-    if (!DaLinkApiHelpers.TryGetStoredDaLinkRule(store, id, out _))
+    if (!InterlinkApiHelpers.TryGetStoredInterlinkRule(store, id, out _))
     {
         return Results.NotFound(new { error = "Rule not found." });
     }
 
-    if (!TryBuildValidatedDaLinkRule(request.Link, id, store, metadataResolver, out DaLinkRule rule, out string? error))
+    if (!TryBuildValidatedInterlinkRule(request.Link, id, mappingStore, store, metadataResolver, out InterlinkRule rule, out string? error))
     {
         return Results.BadRequest(new { error });
     }
@@ -1183,9 +1183,9 @@ app.MapPut("/api/da-links/{id:guid}", (Guid id, UpdateDaLinkRequest request, DaL
             : Results.BadRequest(new { error = storeError });
     }
 
-    return Results.Json(new { link = ToDaLinkDto(rule), version });
+    return Results.Json(new { link = ToInterlinkDto(rule), version });
 });
-app.MapDelete("/api/da-links/{id:guid}", (Guid id, DaLinkStore store) =>
+app.MapDelete("/api/interlinks/{id:guid}", (Guid id, InterlinkStore store) =>
 {
     if (!store.TryRemove(id, out long version))
     {
@@ -1991,21 +1991,21 @@ static OpcTagBrowseResult BrowseDaTags(DaTagBrowseRequest request)
 }
 
 
-static void TryMigrateLegacyDaLinks(WebApplication app)
+static void TryMigrateLegacyInterlinks(WebApplication app)
 {
-    string daLinksPath = Path.Combine(AppContext.BaseDirectory, "links.json");
-    if (File.Exists(daLinksPath))
+    string interlinksPath = Path.Combine(AppContext.BaseDirectory, "links.json");
+    if (File.Exists(interlinksPath))
     {
         return;
     }
 
     MappingStore mappingStore = app.Services.GetRequiredService<MappingStore>();
-    DaLinkStore daLinkStore = app.Services.GetRequiredService<DaLinkStore>();
+    InterlinkStore interlinkStore = app.Services.GetRequiredService<InterlinkStore>();
     (IReadOnlyList<TagMapping> legacyMappings, _) = mappingStore.GetSnapshot();
 
     DashboardLogStore logStore = app.Services.GetRequiredService<DashboardLogStore>();
-    _ = DaLinkApiHelpers.TryMigrateLegacyDaLinks(
-        daLinkStore,
+    _ = InterlinkApiHelpers.TryMigrateLegacyInterlinks(
+        interlinkStore,
         legacyMappings,
         logStore,
         app.Logger,
@@ -2013,9 +2013,9 @@ static void TryMigrateLegacyDaLinks(WebApplication app)
 }
 
 
-static DaLinkDto ToDaLinkDto(DaLinkRule rule)
+static InterlinkDto ToInterlinkDto(InterlinkRule rule)
 {
-    return new DaLinkDto(
+    return new InterlinkDto(
         rule.Id,
         rule.ProviderSourceId,
         rule.ProviderItemId,
@@ -2026,44 +2026,61 @@ static DaLinkDto ToDaLinkDto(DaLinkRule rule)
         rule.ConsumerCanonicalType);
 }
 
-static bool TryBuildValidatedDaLinkRule(
-    DaLinkDto link,
+static bool TryBuildValidatedInterlinkRule(
+    InterlinkDto link,
     Guid? routeId,
-    DaLinkStore linkStore,
-    IDaLinkMetadataResolver metadataResolver,
-    out DaLinkRule rule,
+    MappingStore mappingStore,
+    InterlinkStore linkStore,
+    IInterlinkMetadataResolver metadataResolver,
+    out InterlinkRule rule,
     out string? error)
 {
-    DaLinkDto normalizedLink = link with
+    InterlinkDto normalizedLink = link with
     {
         Id = routeId ?? (link.Id == Guid.Empty ? Guid.NewGuid() : link.Id),
-        ProviderSourceId = NormalizeDaLinkSourceId(link.ProviderSourceId),
+        ProviderSourceId = NormalizeInterlinkSourceId(link.ProviderSourceId),
         ProviderItemId = link.ProviderItemId?.Trim() ?? string.Empty,
-        ConsumerSourceId = NormalizeDaLinkSourceId(link.ConsumerSourceId),
+        ConsumerSourceId = NormalizeInterlinkSourceId(link.ConsumerSourceId),
         ConsumerItemId = link.ConsumerItemId?.Trim() ?? string.Empty
     };
 
-    (IReadOnlyList<DaLinkRule> rules, _) = linkStore.GetSnapshot();
+    // Mapped-tags contract: both endpoints must already exist as enabled tags in
+    // Maps, otherwise values could never flow. Checked before live server contact.
+    (IReadOnlyList<TagMapping> storedMappings, _) = mappingStore.GetSnapshot();
+    if (!InterlinkApiHelpers.TryEnsureSidesAreMapped(
+            storedMappings,
+            normalizedLink.ProviderSourceId,
+            normalizedLink.ProviderItemId,
+            normalizedLink.ConsumerSourceId,
+            normalizedLink.ConsumerItemId,
+            out string? mappedError))
+    {
+        error = mappedError;
+        rule = null!;
+        return false;
+    }
+
+    (IReadOnlyList<InterlinkRule> rules, _) = linkStore.GetSnapshot();
     bool consumerHasProvider = rules.Any(existing =>
         existing.Id != normalizedLink.Id &&
         string.Equals(existing.ConsumerSourceId, normalizedLink.ConsumerSourceId, StringComparison.OrdinalIgnoreCase) &&
         string.Equals(existing.ConsumerItemId, normalizedLink.ConsumerItemId, StringComparison.OrdinalIgnoreCase));
 
-    if (!metadataResolver.TryResolve(normalizedLink.ProviderSourceId, normalizedLink.ProviderItemId, out DaTagMetadata providerMetadata))
+    if (!metadataResolver.TryResolve(normalizedLink.ProviderSourceId, normalizedLink.ProviderItemId, out InterlinkTagMetadata providerMetadata))
     {
         error = "Provider tag not found.";
         rule = null!;
         return false;
     }
 
-    if (!metadataResolver.TryResolve(normalizedLink.ConsumerSourceId, normalizedLink.ConsumerItemId, out DaTagMetadata consumerMetadata))
+    if (!metadataResolver.TryResolve(normalizedLink.ConsumerSourceId, normalizedLink.ConsumerItemId, out InterlinkTagMetadata consumerMetadata))
     {
         error = "Consumer tag not found.";
         rule = null!;
         return false;
     }
 
-    DaLinkDto validatedLink = normalizedLink with
+    InterlinkDto validatedLink = normalizedLink with
     {
         ProviderCanonicalType = providerMetadata.CanonicalType,
         ConsumerCanonicalType = consumerMetadata.CanonicalType,
@@ -2071,8 +2088,8 @@ static bool TryBuildValidatedDaLinkRule(
         ConsumerAccessRights = consumerMetadata.AccessRights
     };
 
-    error = DaLinkValidators.Validate(validatedLink, consumerHasProvider);
-    rule = new DaLinkRule(
+    error = InterlinkValidators.Validate(validatedLink, consumerHasProvider);
+    rule = new InterlinkRule(
         validatedLink.Id,
         validatedLink.ProviderSourceId,
         validatedLink.ProviderItemId,
@@ -2084,7 +2101,7 @@ static bool TryBuildValidatedDaLinkRule(
     return error is null;
 }
 
-static string NormalizeDaLinkSourceId(string? sourceId)
+static string NormalizeInterlinkSourceId(string? sourceId)
 {
     string value = sourceId?.Trim() ?? string.Empty;
     return value.Length == 0 ? DaRuntimeSettings.DefaultSourceId : value;

@@ -4,7 +4,7 @@ using OpcBridge.Da;
 
 namespace OpcBridge.App;
 
-public sealed record DaLinkDto(
+public sealed record InterlinkDto(
     Guid Id,
     string ProviderSourceId,
     string ProviderItemId,
@@ -16,22 +16,22 @@ public sealed record DaLinkDto(
     int? ProviderAccessRights = null,
     int? ConsumerAccessRights = null);
 
-public sealed record CreateDaLinkRequest(DaLinkDto? Link);
+public sealed record CreateInterlinkRequest(InterlinkDto? Link);
 
-public sealed record UpdateDaLinkRequest(DaLinkDto? Link);
+public sealed record UpdateInterlinkRequest(InterlinkDto? Link);
 
-public sealed record DaTagMetadata(short? CanonicalType, int? AccessRights);
+public sealed record InterlinkTagMetadata(short? CanonicalType, int? AccessRights);
 
-public interface IDaLinkMetadataResolver
+public interface IInterlinkMetadataResolver
 {
-    bool TryResolve(string sourceId, string itemId, out DaTagMetadata metadata);
+    bool TryResolve(string sourceId, string itemId, out InterlinkTagMetadata metadata);
 }
 
 
-internal static class DaLinkValidators
+internal static class InterlinkValidators
 {
     public static string? Validate(
-        DaLinkDto link,
+        InterlinkDto link,
         bool consumerHasProvider)
     {
         if (link.ProviderAccessRights is null)
@@ -52,7 +52,7 @@ internal static class DaLinkValidators
     }
 
     public static string? Validate(
-        DaLinkDto link,
+        InterlinkDto link,
         bool consumerHasProvider,
         bool providerReadable,
         bool consumerWritable)
@@ -90,7 +90,7 @@ internal static class DaLinkValidators
 
         if (link.ProviderCanonicalType != link.ConsumerCanonicalType)
         {
-            return "Provider and consumer must use the same native OPC DA type.";
+            return "Provider and consumer must use the same data type.";
         }
 
         return null;
@@ -113,40 +113,82 @@ internal static class DaLinkValidators
     }
 }
 
-internal static class DaLinkApiHelpers
+internal static class InterlinkApiHelpers
 {
-    public static bool TryMigrateLegacyDaLinks(
-        DaLinkStore daLinkStore,
+    /// <summary>
+    /// Enforces the mapped-tags contract: an interlink only forwards values when
+    /// both endpoints exist as enabled tags in Maps (the poller reads mapped tags
+    /// and consumers are looked up in the mapping registry). Checked up front so
+    /// dead links can never be created, even when no source server is connected.
+    /// </summary>
+    public static bool TryEnsureSidesAreMapped(
+        IReadOnlyList<TagMapping> mappings,
+        string providerSourceId,
+        string providerItemId,
+        string consumerSourceId,
+        string consumerItemId,
+        out string? error)
+    {
+        ArgumentNullException.ThrowIfNull(mappings);
+
+        if (!IsMapped(mappings, providerSourceId, providerItemId))
+        {
+            error = "Provider tag must be added to Maps before linking.";
+            return false;
+        }
+
+        if (!IsMapped(mappings, consumerSourceId, consumerItemId))
+        {
+            error = "Consumer tag must be added to Maps before linking.";
+            return false;
+        }
+
+        error = null;
+        return true;
+    }
+
+    private static bool IsMapped(IReadOnlyList<TagMapping> mappings, string sourceId, string itemId)
+    {
+        string normalizedSourceId = sourceId?.Trim() ?? string.Empty;
+        string normalizedItemId = itemId.Trim();
+        return mappings.Any(mapping =>
+            mapping.Enabled &&
+            string.Equals(mapping.SourceId, normalizedSourceId, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(mapping.ItemId?.Trim(), normalizedItemId, StringComparison.OrdinalIgnoreCase));
+    }
+
+    public static bool TryMigrateLegacyInterlinks(
+        InterlinkStore interlinkStore,
         IReadOnlyList<TagMapping> legacyMappings,
         DashboardLogStore logStore,
         ILogger logger,
         out string? warning)
     {
-        ArgumentNullException.ThrowIfNull(daLinkStore);
+        ArgumentNullException.ThrowIfNull(interlinkStore);
         ArgumentNullException.ThrowIfNull(legacyMappings);
         ArgumentNullException.ThrowIfNull(logStore);
         ArgumentNullException.ThrowIfNull(logger);
 
         try
         {
-            daLinkStore.MigrateFromMappings(legacyMappings);
+            interlinkStore.MigrateFromMappings(legacyMappings);
             warning = null;
             return true;
         }
         catch (InvalidOperationException ex)
         {
-            warning = $"Skipping legacy DA link migration from mappings.json because {ex.Message}";
-            logStore.Add(LogLevel.Warning, "OpcBridge.App.DaLinkMigration", warning, ex);
-            logger.LogWarning(ex, "Skipping legacy DA link migration from mappings.json because {Reason}", ex.Message);
+            warning = $"Skipping legacy interlink migration from mappings.json because {ex.Message}";
+            logStore.Add(LogLevel.Warning, "OpcBridge.App.InterlinkMigration", warning, ex);
+            logger.LogWarning(ex, "Skipping legacy interlink migration from mappings.json because {Reason}", ex.Message);
             return false;
         }
     }
 
-    public static bool TryGetStoredDaLinkRule(DaLinkStore linkStore, Guid id, out DaLinkRule? rule)
+    public static bool TryGetStoredInterlinkRule(InterlinkStore linkStore, Guid id, out InterlinkRule? rule)
     {
         ArgumentNullException.ThrowIfNull(linkStore);
 
-        (IReadOnlyList<DaLinkRule> rules, _) = linkStore.GetSnapshot();
+        (IReadOnlyList<InterlinkRule> rules, _) = linkStore.GetSnapshot();
         rule = rules.FirstOrDefault(existing => existing.Id == id);
         return rule is not null;
     }

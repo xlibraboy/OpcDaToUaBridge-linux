@@ -15,14 +15,14 @@ using System.Text.Json;
 
 namespace OpcBridge.App;
 
-public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
+public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
 {
     private const int CoordinatorTickMs = 200;
 
     private readonly UaServerHost ua_server_;
     private readonly BridgeState bridge_state_;
     private readonly MappingStore mapping_store_;
-    private readonly DaLinkStore da_link_store_;
+    private readonly InterlinkStore interlink_store_;
     private readonly DaRuntimeSettings da_settings_;
     private readonly SourceClientFactory da_client_factory_;
     private readonly ILogger<BridgeWorker> logger_;
@@ -58,7 +58,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
         UaServerHost uaServer,
         BridgeState bridgeState,
         MappingStore mappingStore,
-        DaLinkStore daLinkStore,
+        InterlinkStore interlinkStore,
         DaRuntimeSettings daSettings,
         SourceClientFactory daClientFactory,
         IOptions<BridgeOptions> bridgeOptions,
@@ -72,7 +72,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
         ua_server_ = uaServer;
         bridge_state_ = bridgeState;
         mapping_store_ = mappingStore;
-        da_link_store_ = daLinkStore;
+        interlink_store_ = interlinkStore;
         da_settings_ = daSettings;
         da_client_factory_ = daClientFactory;
         logger_ = logger;
@@ -88,7 +88,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
     {
         DaRuntimeSettingsSnapshot settings = da_settings_.GetSnapshot();
         (IReadOnlyList<TagMapping> mappings, long mappingVersion) = mapping_store_.GetSnapshot();
-        (IReadOnlyList<DaLinkRule> rules, long daLinkVersion) = da_link_store_.GetSnapshot();
+        (IReadOnlyList<InterlinkRule> rules, long interlinkVersion) = interlink_store_.GetSnapshot();
         SourceMappingCache sourceMappingCache = SourceMappingCache.Build(mappings, rules);
         source_mapping_cache_ = sourceMappingCache;
         IReadOnlyList<TagMapping> activeMappings = sourceMappingCache.GetActiveMappings();
@@ -119,7 +119,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
             });
 
             long uaMappingVersion = mappingVersion;
-            long appliedDaLinkVersion = daLinkVersion;
+            long appliedInterlinkVersion = interlinkVersion;
             long connectedVersion = -1;
             Dictionary<string, SourceSession> sessions = new(StringComparer.OrdinalIgnoreCase);
             Dictionary<string, Task> pollers = new(StringComparer.OrdinalIgnoreCase);
@@ -163,7 +163,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                 {
                     settings = da_settings_.GetSnapshot();
                     (mappings, mappingVersion) = mapping_store_.GetSnapshot();
-                    (rules, daLinkVersion) = da_link_store_.GetSnapshot();
+                    (rules, interlinkVersion) = interlink_store_.GetSnapshot();
 
                     try
                     {
@@ -204,7 +204,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                         }
 
                         bool mappingsChanged = mappingVersion != uaMappingVersion;
-                        bool rulesChanged = daLinkVersion != appliedDaLinkVersion;
+                        bool rulesChanged = interlinkVersion != appliedInterlinkVersion;
                         if (mappingsChanged || rulesChanged)
                         {
                             // Snapshot each source's current distinct rate set before the cache is
@@ -321,7 +321,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
 
                             if (rulesChanged)
                             {
-                                appliedDaLinkVersion = daLinkVersion;
+                                appliedInterlinkVersion = interlinkVersion;
                             }
                         }
 
@@ -1643,9 +1643,9 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
         };
     }
 
-    public bool TryResolve(string sourceId, string itemId, out DaTagMetadata metadata)
+    public bool TryResolve(string sourceId, string itemId, out InterlinkTagMetadata metadata)
     {
-        metadata = new DaTagMetadata(null, null);
+        metadata = new InterlinkTagMetadata(null, null);
 
         Dictionary<string, SourceSession>? sessions = active_sessions_;
         if (sessions is null || string.IsNullOrWhiteSpace(itemId))
@@ -1664,7 +1664,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
             return false;
         }
 
-        metadata = new DaTagMetadata(canonicalDataType, accessRights);
+        metadata = new InterlinkTagMetadata(canonicalDataType, accessRights);
         return true;
     }
 
@@ -1880,10 +1880,10 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
 
         public static SourceMappingCache Build(IReadOnlyList<TagMapping> mappings)
         {
-            return Build(mappings, Array.Empty<DaLinkRule>());
+            return Build(mappings, Array.Empty<InterlinkRule>());
         }
 
-        public static SourceMappingCache Build(IReadOnlyList<TagMapping> mappings, IReadOnlyList<DaLinkRule> rules)
+        public static SourceMappingCache Build(IReadOnlyList<TagMapping> mappings, IReadOnlyList<InterlinkRule> rules)
         {
             Dictionary<string, List<TagMapping>> groupedMappings = new(StringComparer.OrdinalIgnoreCase);
             List<TagMapping> activeMappings = new(mappings.Count);
@@ -1910,7 +1910,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
             Dictionary<string, List<TagMapping>> consumersByProvider = new(StringComparer.OrdinalIgnoreCase);
             for (int i = 0; i < rules.Count; i++)
             {
-                DaLinkRule rule = rules[i];
+                InterlinkRule rule = rules[i];
                 if (!rule.Enabled)
                 {
                     continue;

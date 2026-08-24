@@ -4,23 +4,23 @@ using OpcBridge.Core;
 
 namespace OpcBridge.App;
 
-public sealed class DaLinkStore
+public sealed class InterlinkStore
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     private readonly object sync_ = new();
     private readonly string persist_path_;
-    private List<DaLinkRule> rules_;
+    private List<InterlinkRule> rules_;
     private long version_;
 
-    public DaLinkStore(IOptions<BridgeOptions> options)
+    public InterlinkStore(IOptions<BridgeOptions> options)
     {
         _ = options;
         persist_path_ = Path.Combine(AppContext.BaseDirectory, "links.json");
-        rules_ = LoadFromDisk() ?? new List<DaLinkRule>();
+        rules_ = LoadFromDisk() ?? new List<InterlinkRule>();
     }
 
-    public (IReadOnlyList<DaLinkRule> Rules, long Version) GetSnapshot()
+    public (IReadOnlyList<InterlinkRule> Rules, long Version) GetSnapshot()
     {
         lock (sync_)
         {
@@ -28,19 +28,19 @@ public sealed class DaLinkStore
         }
     }
 
-    public long SetAll(IEnumerable<DaLinkRule> rules)
+    public long SetAll(IEnumerable<InterlinkRule> rules)
     {
         ArgumentNullException.ThrowIfNull(rules);
 
         lock (sync_)
         {
-            List<DaLinkRule> normalized = new();
+            List<InterlinkRule> normalized = new();
             HashSet<Guid> ids = new();
             HashSet<(string SourceId, string ItemId)> consumers = new(ConsumerKeyComparer.Instance);
 
-            foreach (DaLinkRule rule in rules)
+            foreach (InterlinkRule rule in rules)
             {
-                if (!TryNormalize(rule, out DaLinkRule normalizedRule, out string? error))
+                if (!TryNormalize(rule, out InterlinkRule normalizedRule, out string? error))
                 {
                     throw new InvalidOperationException(error);
                 }
@@ -65,11 +65,11 @@ public sealed class DaLinkStore
         }
     }
 
-    public bool TryAdd(DaLinkRule rule, out long version, out string? error)
+    public bool TryAdd(InterlinkRule rule, out long version, out string? error)
     {
         lock (sync_)
         {
-            if (!TryNormalize(rule, out DaLinkRule normalized, out error))
+            if (!TryNormalize(rule, out InterlinkRule normalized, out error))
             {
                 version = version_;
                 return false;
@@ -98,11 +98,11 @@ public sealed class DaLinkStore
         }
     }
 
-    public bool TryUpdate(DaLinkRule rule, out long version, out string? error)
+    public bool TryUpdate(InterlinkRule rule, out long version, out string? error)
     {
         lock (sync_)
         {
-            if (!TryNormalize(rule, out DaLinkRule normalized, out error))
+            if (!TryNormalize(rule, out InterlinkRule normalized, out error))
             {
                 version = version_;
                 return false;
@@ -175,10 +175,10 @@ public sealed class DaLinkStore
 
         lock (sync_)
         {
-            List<DaLinkRule> migratedRules = new();
+            List<InterlinkRule> migratedRules = new();
             foreach (TagMapping mapping in mappings)
             {
-                if (TryCreateMigratedRule(mapping, out DaLinkRule rule))
+                if (TryCreateMigratedRule(mapping, out InterlinkRule rule))
                 {
                     migratedRules.Add(rule);
                 }
@@ -189,11 +189,11 @@ public sealed class DaLinkStore
                 return 0;
             }
 
-            List<DaLinkRule> combined = new(rules_.Count + migratedRules.Count);
+            List<InterlinkRule> combined = new(rules_.Count + migratedRules.Count);
             combined.AddRange(rules_);
             combined.AddRange(migratedRules);
 
-            List<DaLinkRule> normalized = NormalizeAllOrThrow(combined);
+            List<InterlinkRule> normalized = NormalizeAllOrThrow(combined);
             rules_ = normalized;
             version_++;
             Persist();
@@ -201,7 +201,7 @@ public sealed class DaLinkStore
         }
     }
 
-    private static bool TryCreateMigratedRule(TagMapping mapping, out DaLinkRule rule)
+    private static bool TryCreateMigratedRule(TagMapping mapping, out InterlinkRule rule)
     {
         string providerSourceId = NormalizeSourceId(mapping.ProviderSourceId);
         string providerItemId = mapping.ProviderItemId?.Trim() ?? string.Empty;
@@ -221,7 +221,7 @@ public sealed class DaLinkStore
             return false;
         }
 
-        rule = new DaLinkRule(
+        rule = new InterlinkRule(
             Guid.NewGuid(),
             providerSourceId,
             providerItemId,
@@ -241,15 +241,15 @@ public sealed class DaLinkStore
             string.Equals(existing.ConsumerItemId, consumerItemId, StringComparison.OrdinalIgnoreCase));
     }
 
-    private static List<DaLinkRule> NormalizeAllOrThrow(IEnumerable<DaLinkRule> rules)
+    private static List<InterlinkRule> NormalizeAllOrThrow(IEnumerable<InterlinkRule> rules)
     {
-        List<DaLinkRule> normalized = new();
+        List<InterlinkRule> normalized = new();
         HashSet<Guid> ids = new();
         HashSet<(string SourceId, string ItemId)> consumers = new(ConsumerKeyComparer.Instance);
 
-        foreach (DaLinkRule rule in rules)
+        foreach (InterlinkRule rule in rules)
         {
-            if (!TryNormalize(rule, out DaLinkRule normalizedRule, out string? error))
+            if (!TryNormalize(rule, out InterlinkRule normalizedRule, out string? error))
             {
                 throw new InvalidOperationException(error);
             }
@@ -270,7 +270,7 @@ public sealed class DaLinkStore
         return normalized;
     }
 
-    private static bool TryNormalize(DaLinkRule rule, out DaLinkRule normalized, out string? error)
+    private static bool TryNormalize(InterlinkRule rule, out InterlinkRule normalized, out string? error)
     {
         string providerSourceId = NormalizeSourceId(rule.ProviderSourceId);
         string providerItemId = rule.ProviderItemId?.Trim() ?? string.Empty;
@@ -302,7 +302,7 @@ public sealed class DaLinkStore
         if (rule.ProviderCanonicalType != rule.ConsumerCanonicalType)
         {
             normalized = default!;
-            error = "Provider and consumer must use the same native OPC DA type.";
+            error = "Provider and consumer must use the same data type.";
             return false;
         }
 
@@ -337,7 +337,7 @@ public sealed class DaLinkStore
         }
     }
 
-    private List<DaLinkRule>? LoadFromDisk()
+    private List<InterlinkRule>? LoadFromDisk()
     {
         try
         {
@@ -347,7 +347,7 @@ public sealed class DaLinkStore
             }
 
             string json = File.ReadAllText(persist_path_);
-            return JsonSerializer.Deserialize<List<DaLinkRule>>(json);
+            return JsonSerializer.Deserialize<List<InterlinkRule>>(json);
         }
         catch
         {

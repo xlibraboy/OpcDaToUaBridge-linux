@@ -4,7 +4,7 @@ using Xunit;
 
 namespace OpcBridge.LoadTest;
 
-[Collection(nameof(DaLinkApiAppCollection))]
+[Collection(nameof(InterlinkApiAppCollection))]
 public sealed class HmiTrendsApiTests
 {
     private static void WriteAppsettings(string dir)
