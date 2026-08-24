@@ -220,6 +220,9 @@ internal static class DashboardPage
         .log-entry:last-child { border-bottom: none; }
         .log-entry .meta { color: var(--muted); font-size: 11px; margin-bottom: 4px; }
         .rate-limit-table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 12px; }
+        .address-ranges-table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 12px; }
+        .address-ranges-table th { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+        .address-ranges-table td { padding: 4px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
         .rate-limit-table th { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border2); color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
         .rate-limit-table td { padding: 5px 8px; border-bottom: 1px solid var(--border); }
         .rate-limit-table td:first-child { font-weight: 600; white-space: nowrap; }
@@ -961,6 +964,8 @@ internal static class DashboardPage
                 <div class="box-h">Addressing</div>
                 <div class="box-b">
                     <div class="hint">Map tags on the Tags page with device addresses, e.g. <span class="mono">D100</span>, <span class="mono">M10</span>, <span class="mono">X20</span>, <span class="mono">D100:8</span>.</div>
+                    <button class="btn ghost" type="button" id="mxRangesToggle" style="margin-top:8px" onclick="toggleAddressRanges('mxAddressRanges', this)">Show accepted addresses ▾</button>
+                    <div id="mxAddressRanges" style="display:none"></div>
                 </div>
             </div>
         </div>
@@ -1098,6 +1103,10 @@ internal static class DashboardPage
                 <select id="mapSourceSelect"></select>
                 <span class="msg" id="tagSourceStatus"></span>
                 <span class="msg" id="mapSourceHint"></span>
+            </div>
+            <div style="margin:-6px 0 8px 0">
+                <button class="btn ghost" type="button" id="mapAddressRangesToggle" style="display:none;padding:3px 9px;font-size:11px" onclick="toggleAddressRanges('mapAddressRanges', this)">Show accepted addresses ▾</button>
+                <div id="mapAddressRanges" style="display:none"></div>
             </div>
             <div class="tag-browser-toolbar" id="mapBrowseToolbar">
                 <button class="btn" id="btnBrowseAllTags" type="button">Browse All Tags</button>
@@ -1528,6 +1537,7 @@ const state = {
     editingNewDriver: false,
     selectedMxId: '',
     editingNewMx: false,
+    addressRangesCache: null,
     editingNewUaSource: false,
     liveValuesEnabled: true,
     liveValuesSource: '',
@@ -3240,7 +3250,71 @@ function updateMapSourceHint() {
     const hint = el('mapSourceHint');
     if (!hint) return;
     const source = state.sources.find(s => s.sourceId === state.selectedSourceId);
-    hint.textContent = source && (isMelsecSource(source) || isMxSource(source)) ? 'Device address e.g. D100, M10, X20, D100:8' : (source && isS7Source(source) ? 'Siemens address e.g. VW100, I0.0, M10.2, QB0' : '');
+    const melsecLike = source && (isMelsecSource(source) || isMxSource(source));
+    hint.textContent = melsecLike ? 'Device address e.g. D100, M10, X20, D100:8' : (source && isS7Source(source) ? 'Siemens address e.g. VW100, I0.0, M10.2, QB0' : '');
+    const tgl = el('mapAddressRangesToggle');
+    const wrap = el('mapAddressRanges');
+    if (tgl) tgl.style.display = melsecLike ? '' : 'none';
+    if (!melsecLike && wrap && wrap.style.display !== 'none') {
+        // Source switched away from MELSEC — collapse the ranges table.
+        wrap.style.display = 'none';
+        const btn = el('mapAddressRangesToggle');
+        if (btn) btn.textContent = 'Show accepted addresses ▾';
+    }
+}
+// Accepted PLC address ranges (MELSEC devices shared by serial + MX Component drivers).
+// Served by GET /api/drivers/mx-component/address-ranges from the same catalog the
+// parser enforces, so the table always matches what tag upserts accept.
+async function ensureAddressRanges() {
+    if (!state.addressRangesCache) {
+        const r = await fetch('/api/drivers/mx-component/address-ranges');
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const p = await r.json();
+        state.addressRangesCache = p.devices || [];
+    }
+    return state.addressRangesCache;
+}
+function addressRangeText(d) {
+    if (d.numberBase === 'OctalOrHex') {
+        return d.min + '\u2013' + Number(d.max).toString(8).toUpperCase() + '\u2088';
+    }
+    return String(d.min) + '\u2013' + String(d.max);
+}
+function addressRangesTableHtml(devices) {
+    const rows = devices.map(d => {
+        const alias = (d.aliases && d.aliases.length)
+            ? ' <span class="msg">(' + d.aliases.map(a => '<span class="mono">' + esc(a) + '</span>').join(', ') + ' alias)</span>'
+            : '';
+        const suffix = d.bitSuffixAllowed ? ':' + d.maxBitIndex : '';
+        return '<tr>'
+            + '<td class="mono">' + esc(d.device) + '</td>'
+            + '<td>' + esc(d.displayName) + alias + '</td>'
+            + '<td>' + esc(d.signalType) + '</td>'
+            + '<td>' + esc(d.numberBase === 'OctalOrHex' ? 'Octal/hex' : 'Decimal') + '</td>'
+            + '<td class="mono">' + esc(addressRangeText(d)) + suffix + '</td>'
+            + '<td class="mono">' + esc(d.example) + '</td>'
+            + '</tr>';
+    }).join('');
+    return '<table class="address-ranges-table"><thead><tr><th>Device</th><th>Meaning</th><th>Type</th><th>Numbering</th><th>Accepted range</th><th>Example</th></tr></thead><tbody>' + rows + '</tbody></table>'
+        + '<div class="hint" style="margin-top:6px">Bit-in-word suffix (<span class="mono">D100:8</span>) is only valid on D registers, bits 0\u201315. X/Y use octal digits; hex forms like <span class="mono">Y0F</span> also parse.</div>';
+}
+async function toggleAddressRanges(containerId, btn) {
+    const wrap = el(containerId);
+    if (!wrap) return;
+    if (wrap.style.display !== 'none') {
+        wrap.style.display = 'none';
+        if (btn) btn.textContent = 'Show accepted addresses \u25be';
+        return;
+    }
+    try {
+        const devices = await ensureAddressRanges();
+        wrap.innerHTML = addressRangesTableHtml(devices);
+        wrap.style.display = '';
+        if (btn) btn.textContent = 'Hide accepted addresses \u25b4';
+    } catch (err) {
+        wrap.innerHTML = '<span class="msg">\u2717 Could not load accepted addresses: ' + esc(String((err && err.message) || err)) + '</span>';
+        wrap.style.display = '';
+    }
 }
 function updateCfgServerInfo(source) {
     const info = el('cfgServerInfo');

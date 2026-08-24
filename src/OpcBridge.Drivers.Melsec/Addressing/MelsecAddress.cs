@@ -10,12 +10,6 @@ public sealed record MelsecAddress(
 
 public static class MelsecAddressParser
 {
-    private const int MaxD = 1023;
-    private const int MaxM = 2047;
-    private const int MaxXy = 0x7FF;
-    private const int MaxT = 2047;
-    private const int MaxC = 2047;
-    private const int MaxBit = 15;
 
     public static bool TryParse(string? input, out MelsecAddress address, out string error)
     {
@@ -57,7 +51,7 @@ public static class MelsecAddressParser
             if (bitText.Length == 0
                 || !int.TryParse(bitText, NumberStyles.None, CultureInfo.InvariantCulture, out var bit)
                 || bit < 0
-                || bit > MaxBit)
+                || bit > MelsecDeviceCatalog.MaxBitIndexForWordDevices)
             {
                 error = "Bit index must be an integer from 0 to 15.";
                 return false;
@@ -288,29 +282,33 @@ public static class MelsecAddressParser
     private static bool IsInRange(MelsecDeviceKind device, int number, out string error)
     {
         error = "";
+        int max = MelsecDeviceCatalog.MaxNumberFor(device);
+        string maxText = device is MelsecDeviceKind.X or MelsecDeviceKind.Y
+            ? $"0x{max:X}"
+            : max.ToString(CultureInfo.InvariantCulture);
         switch (device)
         {
             case MelsecDeviceKind.D:
-                if (number is < 0 or > MaxD)
+                if (number < 0 || number > max)
                 {
-                    error = $"D device number must be 0–{MaxD}.";
+                    error = $"D device number must be 0–{max}.";
                     return false;
                 }
 
                 return true;
             case MelsecDeviceKind.M:
-                if (number is < 0 or > MaxM)
+                if (number < 0 || number > max)
                 {
-                    error = $"M device number must be 0–{MaxM}.";
+                    error = $"M device number must be 0–{max}.";
                     return false;
                 }
 
                 return true;
             case MelsecDeviceKind.X:
             case MelsecDeviceKind.Y:
-                if (number is < 0 or > MaxXy)
+                if (number < 0 || number > max)
                 {
-                    error = $"{device} device number must be 0–0x{MaxXy:X}.";
+                    error = $"{device} device number must be 0–{maxText}.";
                     return false;
                 }
 
@@ -318,9 +316,9 @@ public static class MelsecAddressParser
             case MelsecDeviceKind.TS:
             case MelsecDeviceKind.TC:
             case MelsecDeviceKind.TN:
-                if (number is < 0 or > MaxT)
+                if (number < 0 || number > max)
                 {
-                    error = $"Timer {device} device number must be 0–{MaxT}.";
+                    error = $"Timer {device} device number must be 0–{max}.";
                     return false;
                 }
 
@@ -328,9 +326,9 @@ public static class MelsecAddressParser
             case MelsecDeviceKind.CS:
             case MelsecDeviceKind.CC:
             case MelsecDeviceKind.CN:
-                if (number is < 0 or > MaxC)
+                if (number < 0 || number > max)
                 {
-                    error = $"Counter {device} device number must be 0–{MaxC}.";
+                    error = $"Counter {device} device number must be 0–{max}.";
                     return false;
                 }
 
