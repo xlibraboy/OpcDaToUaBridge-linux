@@ -6,10 +6,11 @@ namespace OpcBridge.LoadTest;
 public sealed class HelpContentTests
 {
     [Fact]
-    public void HelpText_DescribesDaLinksAsIndependentSubsystem()
+    public void HelpText_DescribesInterlinksAsAnySourceTagLinking()
     {
-        Assert.Contains("DA Links", HelpContent.Markdown);
+        Assert.Contains("# Interlinks", HelpContent.Markdown);
         Assert.Contains("separate subsystem", HelpContent.Markdown);
+        Assert.DoesNotContain("# DA Links", HelpContent.Markdown);
         Assert.DoesNotContain("faceplate → Setup → Provider", HelpContent.Markdown);
     }
 
