@@ -5,12 +5,12 @@ using Xunit;
 
 namespace OpcBridge.LoadTest;
 
-[Collection(nameof(DaLinkApiAppCollection))]
-public sealed class DaLinkStoreTests
+[Collection(nameof(InterlinkApiAppCollection))]
+public sealed class InterlinkStoreTests
 {
-    // DaLinkStore persists to a fixed file under AppContext.BaseDirectory. Clear it before each
+    // InterlinkStore persists to a fixed file under AppContext.BaseDirectory. Clear it before each
     // test so a prior run cannot leak rules into the snapshot under test.
-    private static DaLinkStore CreateStore()
+    private static InterlinkStore CreateStore()
     {
         string path = Path.Combine(AppContext.BaseDirectory, "links.json");
         if (File.Exists(path))
@@ -18,7 +18,7 @@ public sealed class DaLinkStoreTests
             File.Delete(path);
         }
 
-        return new DaLinkStore(Options.Create(new BridgeOptions()));
+        return new InterlinkStore(Options.Create(new BridgeOptions()));
     }
 
     private static string GetPersistPath()
@@ -26,7 +26,7 @@ public sealed class DaLinkStoreTests
         return Path.Combine(AppContext.BaseDirectory, "links.json");
     }
 
-    private static DaLinkRule CreateRule(
+    private static InterlinkRule CreateRule(
         Guid? id = null,
         string providerSourceId = "providerA",
         string providerItemId = "itemP",
@@ -36,7 +36,7 @@ public sealed class DaLinkStoreTests
         short? providerCanonicalType = 5,
         short? consumerCanonicalType = 5)
     {
-        return new DaLinkRule(
+        return new InterlinkRule(
             id ?? Guid.NewGuid(),
             providerSourceId,
             providerItemId,
@@ -50,7 +50,7 @@ public sealed class DaLinkStoreTests
     [Fact]
     public void TryAdd_RejectsCanonicalTypeMismatchWithExplicitError()
     {
-        DaLinkStore store = CreateStore();
+        InterlinkStore store = CreateStore();
 
         bool ok = store.TryAdd(
             CreateRule(providerCanonicalType: 5, consumerCanonicalType: 3),
@@ -58,13 +58,13 @@ public sealed class DaLinkStoreTests
             out string? error);
 
         Assert.False(ok);
-        Assert.Equal("Provider and consumer must use the same native OPC DA type.", error);
+        Assert.Equal("Provider and consumer must use the same data type.", error);
     }
 
     [Fact]
     public void TryUpdate_RejectsCanonicalTypeMismatchWithExplicitError()
     {
-        DaLinkStore store = CreateStore();
+        InterlinkStore store = CreateStore();
         Guid id = Guid.NewGuid();
 
         Assert.True(store.TryAdd(
@@ -78,13 +78,13 @@ public sealed class DaLinkStoreTests
             out string? error);
 
         Assert.False(ok);
-        Assert.Equal("Provider and consumer must use the same native OPC DA type.", error);
+        Assert.Equal("Provider and consumer must use the same data type.", error);
     }
 
     [Fact]
     public void SetAll_RejectsCanonicalTypeMismatchWithExplicitError()
     {
-        DaLinkStore store = CreateStore();
+        InterlinkStore store = CreateStore();
 
         InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
             store.SetAll(new[]
@@ -92,7 +92,7 @@ public sealed class DaLinkStoreTests
                 CreateRule(providerCanonicalType: 5, consumerCanonicalType: 3)
             }));
 
-        Assert.Equal("Provider and consumer must use the same native OPC DA type.", ex.Message);
+        Assert.Equal("Provider and consumer must use the same data type.", ex.Message);
     }
 
     [Fact]
@@ -116,7 +116,7 @@ public sealed class DaLinkStoreTests
             }
         };
 
-        DaLinkStore store = CreateStore();
+        InterlinkStore store = CreateStore();
 
         InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
             store.MigrateFromMappings(mappings));
@@ -127,8 +127,8 @@ public sealed class DaLinkStoreTests
     [Fact]
     public void MigrateFromMappings_FailureLeavesStoreAndPersistedFileUnchanged()
     {
-        DaLinkStore store = CreateStore();
-        DaLinkRule existing = CreateRule(
+        InterlinkStore store = CreateStore();
+        InterlinkRule existing = CreateRule(
             providerSourceId: "providerSeed",
             providerItemId: "itemSeedP",
             consumerSourceId: "consumerSeed",
@@ -160,8 +160,8 @@ public sealed class DaLinkStoreTests
 
         Assert.Equal("Consumer already has a provider.", ex.Message);
 
-        (IReadOnlyList<DaLinkRule> rules, long version) = store.GetSnapshot();
-        DaLinkRule remaining = Assert.Single(rules);
+        (IReadOnlyList<InterlinkRule> rules, long version) = store.GetSnapshot();
+        InterlinkRule remaining = Assert.Single(rules);
         Assert.Equal(existing, remaining);
         Assert.Equal(1, version);
         Assert.Equal(before, File.ReadAllText(GetPersistPath()));
@@ -170,7 +170,7 @@ public sealed class DaLinkStoreTests
     [Fact]
     public void SetAll_RejectsDuplicateRuleIds()
     {
-        DaLinkStore store = CreateStore();
+        InterlinkStore store = CreateStore();
         Guid id = Guid.NewGuid();
 
         InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
@@ -197,13 +197,13 @@ public sealed class DaLinkStoreTests
             }
         };
 
-        DaLinkStore store = CreateStore();
+        InterlinkStore store = CreateStore();
 
         int migrated = store.MigrateFromMappings(mappings);
-        (IReadOnlyList<DaLinkRule> rules, _) = store.GetSnapshot();
+        (IReadOnlyList<InterlinkRule> rules, _) = store.GetSnapshot();
 
         Assert.Equal(1, migrated);
-        DaLinkRule rule = Assert.Single(rules);
+        InterlinkRule rule = Assert.Single(rules);
         Assert.Equal("providerA", rule.ProviderSourceId);
         Assert.Equal("itemP", rule.ProviderItemId);
         Assert.Equal("consumerA", rule.ConsumerSourceId);
@@ -213,7 +213,7 @@ public sealed class DaLinkStoreTests
     [Fact]
     public void TryAdd_RejectsSecondProviderForSameConsumer()
     {
-        DaLinkStore store = CreateStore();
+        InterlinkStore store = CreateStore();
 
         Assert.True(store.TryAdd(
             CreateRule(providerSourceId: "providerA", providerItemId: "itemP1", consumerSourceId: "consumerA", consumerItemId: "itemA"),

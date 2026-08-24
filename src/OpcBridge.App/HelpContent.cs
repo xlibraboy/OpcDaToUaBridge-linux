@@ -9,7 +9,7 @@ internal static class HelpContent
 
 - Use **Connection** to configure server connections (OPC DA address, credentials, default update rate, and DA subscriptions toggle).
 - Use **Tags** to browse DA items, create DA → OPC UA mappings, and set per-tag Access Rights, Update Rate, Deadband, Description, and Simulation.
-- Use **OPC DA to DA** to connect tags — a consumer tag receives values from a provider tag in addition to its own DA source.
+- Use **Tags → Interlinks** to connect tags — a consumer tag receives values from a provider tag in addition to its own source (works across OPC DA, OPC UA and MX Component sources).
 - Use **Logs** to review warnings and errors from the bridge and UA server.
 
 ---
@@ -19,7 +19,7 @@ internal static class HelpContent
 The sidebar groups pages by job:
 
 - **Sources** — Sources (status, + Add Source wizard), OPC DA (connection config, credentials, default rate, subscriptions, discover, backup), DA Groups (per-rate COM groups, per-group I/O mode), OPC UA (client sources) — external UA servers the bridge connects out to, UA Subs (named UA subscriptions and their publish rates), Drivers (PLC serial: Mitsubishi A3N RS-232, Siemens S7-200 PPI), MX Component (Mitsubishi A3N via MELSOFT MX Component 4 COM)
-- **Tags** — Maps (OPC DA / OPC UA / Drivers sub-tabs: browse, map to UA, faceplate), DA Links (DA→DA forwarding)
+- **Tags** — Maps (OPC DA / OPC UA / Drivers sub-tabs: browse, map to UA, faceplate), Interlinks (tag-to-tag forwarding across sources)
 - **IoT** — MQTT (broker config), Traffic (publish/subscribe monitor)
 - **Historian** — InfluxDB (config, write status, per-tag enable via faceplate)
 - **Ops** — Monitor (status, resources), Diagnostics (bridge vitals: uptime, values/sec, poll duration), Live Values (live tag values), Sessions (DA source diagnostics, time sync, UA sessions/subscriptions, bandwidth), Logs, Diagram
@@ -98,7 +98,7 @@ Use **IoT → MQTT → Setup Wizard** and **Historian → InfluxDB → Setup Wiz
   │  Sidebar groups pages by job:                                        │
   │  Sources ──► Sources, OPC DA, DA Groups, OPC UA,                     │
   │             UA Subs, Drivers, MX Component                           │
-  │  Tags ──► Maps, DA Links                                             │
+  │  Tags ──► Maps, Interlinks                                           │
   │  IoT ──► MQTT, Traffic                                               │
   │  Historian ──► InfluxDB                                              │
   │  Ops ──► Monitor, Diagnostics, Live Values,                          │
@@ -190,46 +190,45 @@ Set via the faceplate → **Simulation** tab. Independent of Access Rights:
 
 ---
 
----
+# Interlinks
 
-# DA Links
-
-DA Links are a **separate subsystem** from DA → UA mappings. A provider change on one OPC DA source can write directly to a consumer on another OPC DA source through the bridge's shared DA runtime without changing the mapping payload for that consumer.
+Interlinks are a **separate subsystem** from DA → UA mappings. A provider change on one source (OPC DA, OPC UA or MX Component) can write directly to a consumer tag on another source through the bridge's shared runtime — sources communicate with each other without changing the mapping payload for that consumer.
 
 ## How it works
 
-- The **provider** tag is read from its DA source normally and must have Access Rights that include **Read**.
-- The **consumer** tag keeps its own mapping and must have Access Rights that include **Write** or **Read-Write** so the bridge can forward provider changes into its DA server.
-- DA Links share the bridge runtime with mappings, so cross-source forwarding works even when the provider and consumer live on different OPC DA servers.
-- Runtime forwarding is driven by stored `DaLinkRule` entries. Legacy `providerSourceId` / `providerItemId` fields exist only for migration from older mapping files.
+- The **provider** tag is read from its source normally and must have Access Rights that include **Read**.
+- The **consumer** tag keeps its own mapping and must have Access Rights that include **Write** or **Read-Write** so the bridge can forward provider changes into its server.
+- Interlinks share the bridge runtime with mappings, so cross-source forwarding works even when the provider and consumer live on different servers or use different protocols (OPC DA ↔ OPC UA ↔ MX Component).
+- Both endpoints must already exist as enabled tags in **Maps** — the poller reads mapped tags and consumers are looked up in the mapping registry, so a link between unmapped tags could never carry values. The dashboard picks tags straight from Maps, and the API rejects links to unmapped tags.
+- Runtime forwarding is driven by stored `InterlinkRule` entries. Legacy `providerSourceId` / `providerItemId` fields exist only for migration from older mapping files.
 
 ## Setting up links
 
-1. Open the **OPC DA to DA** tab.
-2. Pick a **Consumer** tag.
-3. Pick a **Provider** tag.
+1. Open the **Interlinks** tab (Tags → Interlinks).
+2. Pick a source under **Consumer** and choose one of its Maps tags.
+3. Pick a source under **Provider** and choose one of its Maps tags.
 4. Click **Save Link**.
-5. The link appears in the Links list and can be removed with **Delete Link**.
+5. The link appears in the list and can be removed with **Delete Saved Link**.
 
 ## Rules
 
 - A tag cannot link to itself.
-- Cross-source links are supported.
-- Provider and consumer must use the same canonical OPC DA type.
+- Cross-source, cross-protocol links are supported (OPC DA / OPC UA / MX Component in any combination).
+- Provider and consumer must use the same data type.
 - v1 allows only **one provider per consumer**.
-- Clearing a DA Link stops forwarding immediately and leaves the DA → UA mapping unchanged.
+- Clearing an interlink stops forwarding immediately and leaves the DA → UA mapping unchanged.
 
 ## Runtime flow
 
 ```
-  DA Server A                          DA Server B
+  Source A                             Source B
       │                                    │
   Provider Tag                         Consumer Tag
       │                                    │
       ▼                                    ▼
   BridgeWorker poll/subscription      BridgeWorker mapping/runtime state
       │                                    │
-      └── DaLinkRule match ───────────────► WriteQueue(B) ──► DA write (async IOPCAsyncIO2.Write / sync IOPCSyncIO.Write)
+      └── InterlinkRule match ────────────► WriteQueue(B) ──► protocol write (DA async/sync, UA Write, MX protocol write)
 ```
 
 ---

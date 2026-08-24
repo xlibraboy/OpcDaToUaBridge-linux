@@ -7,7 +7,7 @@ using Xunit;
 
 namespace OpcBridge.LoadTest;
 
-[Collection(nameof(DaLinkApiAppCollection))]
+[Collection(nameof(InterlinkApiAppCollection))]
 public sealed class MxComponentApiTests
 {
     [Fact]

@@ -11,7 +11,7 @@ namespace OpcBridge.LoadTest;
 /// normalized on load, flow into <see cref="DaClientOptions.GroupIoModes"/>, and are
 /// upserted/reset through <see cref="DaRuntimeSettings"/>.
 /// </summary>
-[Collection(nameof(DaLinkApiAppCollection))]
+[Collection(nameof(InterlinkApiAppCollection))]
 public sealed class DaGroupIoModeTests
 {
     private static DaSourceRuntimeSettings DaSource(string sourceId, IReadOnlyList<DaGroupIoMode>? groups = null)

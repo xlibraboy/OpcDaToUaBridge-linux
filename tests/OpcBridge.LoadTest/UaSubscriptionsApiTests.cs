@@ -10,7 +10,7 @@ namespace OpcBridge.LoadTest;
 /// /api/ua/subscriptions and the mapping-level subscription field round-trip
 /// through /api/mappings (spec §§4–6).
 /// </summary>
-[Collection(nameof(DaLinkApiAppCollection))]
+[Collection(nameof(InterlinkApiAppCollection))]
 public sealed class UaSubscriptionsApiTests
 {
     private static void WriteMinimalAppsettings(string dir)

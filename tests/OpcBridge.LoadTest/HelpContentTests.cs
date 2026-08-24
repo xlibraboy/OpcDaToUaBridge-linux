@@ -17,10 +17,11 @@ public sealed class HelpContentTests
         return match.Success ? match.Groups[1].Value.Trim() : string.Empty;
     }
     [Fact]
-    public void HelpText_DescribesDaLinksAsIndependentSubsystem()
+    public void HelpText_DescribesInterlinksAsAnySourceTagLinking()
     {
-        Assert.Contains("DA Links", HelpContent.Markdown);
+        Assert.Contains("# Interlinks", HelpContent.Markdown);
         Assert.Contains("separate subsystem", HelpContent.Markdown);
+        Assert.DoesNotContain("# DA Links", HelpContent.Markdown);
         Assert.DoesNotContain("faceplate → Setup → Provider", HelpContent.Markdown);
     }
 
@@ -69,7 +70,7 @@ public sealed class HelpContentTests
         var features = Sections(groups[1]).Select(SectionTitle).ToArray();
         Assert.Contains("Access Rights & Simulation", features);
         Assert.Contains("Update Rate & Tag Limits", features);
-        Assert.Contains("DA Links", features);
+        Assert.Contains("Interlinks", features);
         Assert.Contains("OPC UA Server", features);
         Assert.Contains("MQTT (OPC UA ↔ External Broker)", features);
         Assert.Contains("InfluxDB (Historical Logging)", features);

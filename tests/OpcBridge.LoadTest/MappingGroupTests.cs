@@ -5,7 +5,7 @@ using Xunit;
 
 namespace OpcBridge.LoadTest;
 
-[Collection(nameof(DaLinkApiAppCollection))]
+[Collection(nameof(InterlinkApiAppCollection))]
 public sealed class MappingGroupTests
 {
     // MappingStore persists to AppContext.BaseDirectory/mappings.json (the test

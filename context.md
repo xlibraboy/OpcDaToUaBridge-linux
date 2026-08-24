@@ -143,7 +143,7 @@ Endpoints (all in `Program.cs`):
 - `POST /api/da/servers` — enumerate OPC DA servers (Windows-only, 10s timeout); `POST /api/da/tags` — browse tags (Windows-only, 15s timeout)
 - `POST /api/ua/test-connection` — probe an external UA endpoint from the bridge
 - `GET /api/mappings`; `POST /api/mappings/add` | `/bulk-add` | `/update` | `/remove` (see API gotchas above)
-- `GET /api/da-links` (and related write endpoints) — provider/consumer links
+- `GET /api/interlinks` (and related write endpoints) — provider/consumer interlinks
 - MQTT config/status/values endpoints under `/api/mqtt/*`
 - Influx config/connect/status endpoints under `/api/influx/*` (opt-in per-tag `InfluxEnabled` logging)
 - `GET /health` — `{ "status": "ok" }`
@@ -154,7 +154,7 @@ HMI note: the operator UI is not embedded in the dashboard; run `dotnet run --pr
 
 ### Dashboard UI (DashboardPage.cs)
 
-- Sidebar: Sources (OPC DA / OPC UA / Diagnostics tabs), Drivers, Maps, DA Links, MQTT, Traffic, InfluxDB, Monitor (Live Values / Logs / Diagram / Guide / About).
+- Sidebar: Sources (OPC DA / OPC UA / Diagnostics tabs), Drivers, Maps, Interlinks, MQTT, Traffic, InfluxDB, Monitor (Live Values / Logs / Diagram / Guide / About).
 - Live Values: 7-column table (Source | Item ID | Value | Type | Rate | Quality | Timestamp) fed by `/api/dashboard`; `colgroup` 11/23/20/9/9/10/18%. The **Rate** column shows each tag's effective update rate (`updateRate` per value — per-tag `PollRateMs` override, else the source default; `formatMs` renders `—` for unknown).
 - Maps tab defaults to the **opc-da** subtab — on UA-only rigs click `[data-map-type="opc-ua"]` to see rows.
 - Mapping rows: value + badge cluster (type, deadband, rate, MQTT, Influx) clipped with a right-edge mask fade; the **status cluster (connection-state + access rights) is pinned right outside the fade** (`flex-shrink:0`) and never clipped; row height fixed 34px. Connection badges (since `fix/ui-disconnect-badges`, main `cc97b52`) are driven by **server-side signals in the `/api/dashboard` payload — never by absence from the capped 2000-value window** (that bug showed Disc on ~98% of rows after reload): `disconnected` = failed monitored items (auto-retrying) → pinned **Disc** badge; `badQuality` = full-store scan of `IsGood=false` values → pinned **Bad** badge; source `connectionState != Connected` → **Disc** on all its rows. `refresh()` re-renders Maps rows while the Maps tab is visible so badges track live state. Disabled mappings excluded.
