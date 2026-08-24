@@ -766,6 +766,24 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
+    public void Guide_HelpSearch_FullTextAcrossTopics()
+    {
+        // Global search box between the sub-tab strip and the layouts.
+        Assert.Contains("id=\"helpSearch\"", DashboardPage.Html);
+        Assert.Contains("Search all topics", DashboardPage.Html);
+
+        // Dedicated results layout (hidden until a query is typed).
+        Assert.Contains("id=\"helpSearchLayout\"", DashboardPage.Html);
+
+        // Index + search pipeline + snippet + empty state.
+        Assert.Contains("helpSearchIndex", DashboardPage.Script);
+        Assert.Contains("function helpSearch(", DashboardPage.Script);
+        Assert.Contains("function helpSearchPick(", DashboardPage.Script);
+        Assert.Contains("help-search-snippet", DashboardPage.Script);
+        Assert.Contains("No topics match", DashboardPage.Script);
+    }
+
+    [Fact]
     public void Guide_HelpUsesTocLeftContentRightLayout()
     {
         // Each sub-tab renders a master-detail layout: topic titles on the left,

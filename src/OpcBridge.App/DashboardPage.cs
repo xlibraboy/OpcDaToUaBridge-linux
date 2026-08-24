@@ -276,6 +276,14 @@ internal static class DashboardPage
         .help-subtab-content { display: none; }
         .help-subtab-content.active { display: block; }
         .help-layout { display: flex; align-items: flex-start; gap: 14px; }
+        .help-searchbar { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; }
+        .help-search { flex: 1; background: var(--panel); border: 1px solid var(--border); color: var(--text); padding: 8px 12px; border-radius: 6px; font-size: 13px; outline: none; }
+        .help-search:focus { border-color: var(--accent); }
+        .help-search-clear { background: var(--panel2); border: 1px solid var(--border); color: var(--muted); width: 32px; height: 32px; border-radius: 6px; cursor: pointer; font-size: 15px; line-height: 1; flex: none; }
+        .help-search-clear:hover { color: var(--text); background: var(--border); }
+        .help-search-loc { display: block; font-size: 9px; text-transform: uppercase; letter-spacing: .06em; opacity: .75; margin-bottom: 2px; }
+        .help-search-snippet { display: block; font-size: 10px; font-weight: 400; opacity: .8; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .help-noresults { padding: 14px; color: var(--muted); font-size: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; }
         .help-toc { flex: 0 0 230px; display: flex; flex-direction: column; gap: 4px; position: sticky; top: 12px; }
         .help-toc-item { text-align: left; background: var(--panel); border: 1px solid var(--border); color: var(--muted); padding: 9px 12px; font-size: 12px; font-weight: 600; cursor: pointer; border-radius: 6px; transition: all .15s ease; line-height: 1.35; }
         .help-toc-item:hover { color: var(--text); background: var(--panel2); }
@@ -1372,6 +1380,14 @@ internal static class DashboardPage
         <button class="help-subtab active" onclick="switchHelpSubTab('getting-started')">Getting Started</button>
         <button class="help-subtab" onclick="switchHelpSubTab('features')">Features</button>
         <button class="help-subtab" onclick="switchHelpSubTab('reference')">Reference</button>
+    </div>
+    <div class="help-searchbar">
+        <input type="search" id="helpSearch" class="help-search" placeholder="Search all topics…" autocomplete="off" oninput="helpSearch(this.value)">
+        <button type="button" class="help-search-clear" id="helpSearchClear" style="display:none" onclick="helpSearchClear()" title="Clear search">&times;</button>
+    </div>
+    <div class="help-layout" id="helpSearchLayout" style="display:none">
+        <nav class="help-toc" id="helpSearchToc"></nav>
+        <div class="help-pane" id="helpSearchPane"></div>
     </div>
     <div class="help-subtab-content active" id="help-getting-started">
         <div class="help-layout" id="helpLayout1"><span class="msg">Loading help…</span></div>
@@ -4021,8 +4037,9 @@ async function loadHelp() {
     if (helpLoaded) return;
     const p = await (await fetch('/api/help', { cache: 'no-store' })).json();
     const groups = (p.markdown || '').split(/\r?\n===\r?\n/).filter(s => s.trim());
+    window.helpSearchIndex = [];
 
-    const renderGroup = (groupMarkdown, containerId) => {
+    const renderGroup = (groupMarkdown, containerId, groupIdx) => {
         const sections = groupMarkdown.split(/\r?\n---\r?\n/).filter(s => s.trim());
         const container = el(containerId);
         if (!container) return;
@@ -4031,6 +4048,12 @@ async function loadHelp() {
             const title = titleMatch ? titleMatch[1] : 'Section ' + (i + 1);
             const body = renderMarkdown(section.replace(/^#\s+.+/m, ''));
             return { title, body };
+        });
+        items.forEach((it, i) => {
+            window.helpSearchIndex.push({
+                group: groupIdx, index: i, title: it.title, raw: it.body,
+                text: (it.title + ' ' + it.body).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').toLowerCase()
+            });
         });
         container.innerHTML =
             '<nav class="help-toc">' +
@@ -4041,9 +4064,9 @@ async function loadHelp() {
             '</div>';
     };
 
-    renderGroup(groups[0] || '', 'helpLayout1');
-    renderGroup(groups[1] || '', 'helpLayout2');
-    renderGroup(groups[2] || '', 'helpLayout3');
+    renderGroup(groups[0] || '', 'helpLayout1', 0);
+    renderGroup(groups[1] || '', 'helpLayout2', 1);
+    renderGroup(groups[2] || '', 'helpLayout3', 2);
 
     helpLoaded = true;
 }
@@ -4059,7 +4082,68 @@ function switchHelpTopic(btn) {
     window.scrollTo({ top: layout.getBoundingClientRect().top + window.scrollY - 12, behavior: 'smooth' });
 }
 
+function setHelpSearchMode(on) {
+    ['help-getting-started', 'help-features', 'help-reference'].forEach(id => {
+        const n = el(id);
+        if (n) n.style.display = on ? 'none' : '';
+    });
+    const sl = el('helpSearchLayout');
+    if (sl) sl.style.display = on ? 'flex' : 'none';
+    const cl = el('helpSearchClear');
+    if (cl) cl.style.display = on ? '' : 'none';
+}
+
+let helpSearchTimer = null;
+function helpSearch(v) {
+    clearTimeout(helpSearchTimer);
+    helpSearchTimer = setTimeout(() => helpSearchRun(v), 120);
+}
+
+function helpSearchRun(raw) {
+    const q = (raw || '').trim().toLowerCase();
+    setHelpSearchMode(q !== '');
+    if (!q) return;
+    const hits = (window.helpSearchIndex || []).filter(it => it.text.includes(q));
+    const toc = el('helpSearchToc'), pane = el('helpSearchPane');
+    if (!toc || !pane) return;
+    if (!hits.length) {
+        toc.innerHTML = '<div class="help-noresults">No topics match &quot;' + esc(raw.trim()) + '&quot;</div>';
+        pane.innerHTML = '';
+        return;
+    }
+    const GROUPS = ['Getting Started', 'Features', 'Reference'];
+    const rx = new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'i');
+    window.helpSearchHits = hits;
+    toc.innerHTML = hits.map((h, i) => {
+        const pos = h.text.indexOf(q);
+        const start = Math.max(0, pos - 60);
+        const snip = h.text.slice(start, Math.min(h.text.length, pos + q.length + 60)).trim();
+        const snipHtml = esc(snip).replace(rx, '<b>$1</b>');
+        return `<button class="help-toc-item help-search-item${i === 0 ? ' active' : ''}" data-hit="${i}" onclick="helpSearchPick(this)"><span class="help-search-loc">${GROUPS[h.group]}</span>${esc(h.title)}<span class="help-search-snippet">…${snipHtml}…</span></button>`;
+    }).join('');
+    helpSearchPick(toc.querySelector('[data-hit="0"]'));
+}
+
+function helpSearchPick(btn) {
+    if (!btn) return;
+    const i = +btn.getAttribute('data-hit');
+    const h = (window.helpSearchHits || [])[i];
+    if (!h) return;
+    const toc = el('helpSearchToc');
+    toc.querySelectorAll('.help-toc-item').forEach(b => b.classList.toggle('active', b === btn));
+    const pane = el('helpSearchPane');
+    if (pane) pane.innerHTML = `<article class="help-article active"><h3 class="help-article-title">${esc(h.title)}</h3><div class="help-body">${h.raw}</div></article>`;
+}
+
+function helpSearchClear() {
+    const s = el('helpSearch');
+    if (s) s.value = '';
+    helpSearchRun('');
+}
+
 function switchHelpSubTab(tabName) {
+    const searchBox = el('helpSearch');
+    if (searchBox && searchBox.value) { searchBox.value = ''; helpSearchRun(''); }
     document.querySelectorAll('.help-subtab').forEach(btn => {
         btn.classList.toggle('active', btn.textContent.toLowerCase().replace(/\s+/g, '-') === tabName);
     });
