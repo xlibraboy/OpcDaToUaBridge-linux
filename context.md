@@ -143,7 +143,7 @@ Endpoints (all in `Program.cs`):
 - `POST /api/da/servers` — enumerate OPC DA servers (Windows-only, 10s timeout); `POST /api/da/tags` — browse tags (Windows-only, 15s timeout)
 - `POST /api/ua/test-connection` — probe an external UA endpoint from the bridge
 - `GET /api/mappings`; `POST /api/mappings/add` | `/bulk-add` | `/update` | `/remove` (see API gotchas above)
-- `GET /api/da-links` (and related write endpoints) — provider/consumer links
+- `GET /api/interlinks` (and related write endpoints) — provider/consumer interlinks
 - MQTT config/status/values endpoints under `/api/mqtt/*`
 - Influx config/connect/status endpoints under `/api/influx/*` (opt-in per-tag `InfluxEnabled` logging)
 - `GET /health` — `{ "status": "ok" }`
