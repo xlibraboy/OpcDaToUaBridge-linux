@@ -988,6 +988,7 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
         {
             bucket.Subscription = subscription;
             bucket.PublishingIntervalMs = publishing;
+            buckets_[bucket.Key] = bucket; // re-register: RemoveBucketAsync unlinked us during recreate
         }
 
         return subscription;
