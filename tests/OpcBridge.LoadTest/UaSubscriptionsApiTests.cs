@@ -123,16 +123,23 @@ public sealed class UaSubscriptionsApiTests
             Assert.True(body.RootElement.TryGetProperty("version", out _));
         }
 
-        // 2. List shows the definition (live status absent -> zeroed placeholders).
+        // 2. List shows the definition (live status absent -> zeroed placeholders)
+        //    plus a read-only default entry mirroring DA Groups' default tile.
         using (JsonDocument list = await handle.GetJsonAsync("/api/ua/subscriptions?sourceId=ua-t"))
         {
-            JsonElement subs = GetSource(list, "ua-t").GetProperty("subscriptions");
+            JsonElement src = GetSource(list, "ua-t");
+            JsonElement subs = src.GetProperty("subscriptions");
             Assert.Equal(1, subs.GetArrayLength());
             JsonElement fast = subs[0];
             Assert.Equal("Fast", fast.GetProperty("name").GetString());
             Assert.Equal(250, fast.GetProperty("updateRateMs").GetInt32());
             Assert.Equal(0, fast.GetProperty("itemCount").GetInt32());
             Assert.False(fast.GetProperty("created").GetBoolean());
+
+            JsonElement def = src.GetProperty("defaultStats");
+            Assert.Equal(1000, def.GetProperty("updateRateMs").GetInt32());
+            Assert.Equal(0, def.GetProperty("itemCount").GetInt32());
+            Assert.False(def.GetProperty("created").GetBoolean());
         }
 
         // 3. Bind a mapping to "Fast", then remove the subscription.

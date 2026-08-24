@@ -1649,28 +1649,46 @@ app.MapGet("/api/ua/subscriptions", (DaRuntimeSettings settings, BridgeWorker wo
     {
         sources = sources
             .Where(s => string.Equals(s.SourceType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
-            .Select(s => new
+            .Select(s =>
             {
-                sourceId = s.SourceId,
-                displayName = s.DisplayName,
-                defaultUpdateRateMs = s.UpdateRateMs,
-                subscriptions = s.UaSubscriptions
-                    .OrderBy(def => def.Name, StringComparer.OrdinalIgnoreCase)
-                    .Select(def =>
+                IReadOnlyList<UaSubscriptionStatus>? liveForSource = live.TryGetValue(s.SourceId, out IReadOnlyList<UaSubscriptionStatus>? list)
+                    ? list
+                    : null;
+
+                // Live stats of the implicit default bucket (client reports it under the "" key
+                // whenever unassigned tags are being monitored). Zeroed when not connected.
+                UaSubscriptionStatus? defaultStatus = liveForSource?
+                    .FirstOrDefault(st => st.BucketKey.Length == 0);
+
+                return new
+                {
+                    sourceId = s.SourceId,
+                    displayName = s.DisplayName,
+                    defaultUpdateRateMs = s.UpdateRateMs,
+                    defaultStats = new
                     {
-                        UaSubscriptionStatus? status = live.TryGetValue(s.SourceId, out IReadOnlyList<UaSubscriptionStatus>? list)
-                            ? list.FirstOrDefault(st => string.Equals(st.BucketKey, def.Name, StringComparison.OrdinalIgnoreCase))
-                            : null;
-                        return new
+                        updateRateMs = s.UpdateRateMs,
+                        itemCount = defaultStatus?.ItemCount ?? 0,
+                        actualPublishingIntervalMs = defaultStatus?.ActualPublishingIntervalMs ?? 0,
+                        created = defaultStatus?.Created ?? false
+                    },
+                    subscriptions = s.UaSubscriptions
+                        .OrderBy(def => def.Name, StringComparer.OrdinalIgnoreCase)
+                        .Select(def =>
                         {
-                            name = def.Name,
-                            updateRateMs = def.UpdateRateMs,
-                            itemCount = status?.ItemCount ?? 0,
-                            actualPublishingIntervalMs = status?.ActualPublishingIntervalMs ?? 0,
-                            created = status?.Created ?? false
-                        };
-                    })
-                    .ToList()
+                            UaSubscriptionStatus? status = liveForSource?
+                                .FirstOrDefault(st => string.Equals(st.BucketKey, def.Name, StringComparison.OrdinalIgnoreCase));
+                            return new
+                            {
+                                name = def.Name,
+                                updateRateMs = def.UpdateRateMs,
+                                itemCount = status?.ItemCount ?? 0,
+                                actualPublishingIntervalMs = status?.ActualPublishingIntervalMs ?? 0,
+                                created = status?.Created ?? false
+                            };
+                        })
+                        .ToList()
+                };
             })
             .ToList()
     };

@@ -430,40 +430,48 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
-    public void Html_HasUaSubscriptionsNavViewAndToolbar()
+    public void Html_HasUaSubscriptionsNavViewAndCardShell()
     {
-        // UA Subs sits in the Connectivity nav group next to OPC UA, with its own
-        // hidden-by-default view: toolbar (source select / name / rate / Save+Remove),
-        // the subscriptions table and a status line.
+        // UA Subs sits in the Connectivity nav group next to OPC UA. The view mirrors
+        // the DA Groups card workflow: per-source collapsible cards in uaSubsContainer,
+        // Expand/Collapse All in the header, an add/edit modal, and a status line.
         Assert.Contains("data-tab=\"ua-subs\"", DashboardPage.Html);
         Assert.Contains("id=\"view-ua-subs\"", DashboardPage.Html);
         Assert.Contains(">UA Subs</button>", DashboardPage.Html);
-        Assert.Contains("id=\"subSrcSel\"", DashboardPage.Html);
-        Assert.Contains("id=\"subNameInp\"", DashboardPage.Html);
-        Assert.Contains("id=\"subRateInp\"", DashboardPage.Html);
-        Assert.Contains("onclick=\"saveUaSub()\"", DashboardPage.Html);
-        Assert.Contains("onclick=\"removeUaSub()\"", DashboardPage.Html);
-        Assert.Contains("id=\"subsTable\"", DashboardPage.Html);
-        Assert.Contains("<th>Source</th><th>Name</th><th>Rate</th><th>Tags</th><th>Actual</th><th>Status</th>", DashboardPage.Html);
+        Assert.Contains("id=\"uaSubsContainer\"", DashboardPage.Html);
+        Assert.Contains("onclick=\"expandAllUaSubs()\"", DashboardPage.Html);
+        Assert.Contains("onclick=\"collapseAllUaSubs()\"", DashboardPage.Html);
+        Assert.Contains("id=\"uaSubModal\"", DashboardPage.Html);
+        Assert.Contains("id=\"uaSubModalName\"", DashboardPage.Html);
+        Assert.Contains("id=\"uaSubModalRate\"", DashboardPage.Html);
+        Assert.Contains("onclick=\"uaSubModalSave()\"", DashboardPage.Html);
         Assert.Contains("id=\"subsMsg\"", DashboardPage.Html);
     }
 
     [Fact]
     public void Script_RoutesUaSubsTabAndManagesSubscriptionsViaWireApi()
     {
-        // Navigation registers 'ua-subs' alongside its connectivity siblings; load/save/
-        // remove go through the Task 8 wire API. The table renders requested vs actual
-        // publishing interval plus a live/idle status badge per subscription.
+        // Navigation registers 'ua-subs' alongside its connectivity siblings; the
+        // card workflow loads every source's subscriptions from the wire API, renders
+        // DA-Groups-style tiles (read-only default tile + Edit/Delete per named sub),
+        // and adds/edits through the modal. Remove reports movedMappings.
         Assert.Contains("'connectivity/ua-subs': 'ua-subs'", DashboardPage.Script);
         Assert.Contains("if (activeTab === 'ua-subs')", DashboardPage.Script);
         Assert.Contains("function loadUaSubs(", DashboardPage.Script);
-        Assert.Contains("function renderUaSubs(", DashboardPage.Script);
-        Assert.Contains("function saveUaSub(", DashboardPage.Script);
-        Assert.Contains("function removeUaSub(", DashboardPage.Script);
+        Assert.Contains("function renderUaSubsForSource(", DashboardPage.Script);
+        Assert.Contains("function toggleUaSubsCard(", DashboardPage.Script);
+        Assert.Contains("function expandAllUaSubs(", DashboardPage.Script);
+        Assert.Contains("function collapseAllUaSubs(", DashboardPage.Script);
+        Assert.Contains("function openUaSubAdd(", DashboardPage.Script);
+        Assert.Contains("function openUaSubEdit(", DashboardPage.Script);
+        Assert.Contains("function closeUaSubModal(", DashboardPage.Script);
+        Assert.Contains("function uaSubModalSave(", DashboardPage.Script);
+        Assert.Contains("function deleteUaSub(", DashboardPage.Script);
         Assert.Contains("/api/ua/subscriptions", DashboardPage.Script);
         Assert.Contains("/api/ua/subscriptions/remove", DashboardPage.Script);
         Assert.Contains("actualPublishingIntervalMs", DashboardPage.Script);
         Assert.Contains("movedMappings", DashboardPage.Script);
+        Assert.Contains("defaultStats", DashboardPage.Script);
         Assert.Contains("let uaSubsCache = [];", DashboardPage.Script);
     }
 
