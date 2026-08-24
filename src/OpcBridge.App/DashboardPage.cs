@@ -666,11 +666,11 @@ internal static class DashboardPage
 </div>
 <div class="view" id="view-sessions">
     <div class="box" style="margin-bottom:14px">
-        <div class="box-h">DA Source Diagnostics <span class="msg" id="diagDaSummary" style="margin-left:auto"></span></div>
+        <div class="box-h">Source Diagnostics <span class="info" data-tip="Health of every configured source — OPC DA, OPC UA, and driver sources (Melsec, S7, MX Component). Shows connection state, read latency, rate-group budget for polled sources, the last fault reason, and data freshness.">i</span><span class="msg" id="diagDaSummary" style="margin-left:auto"></span></div>
         <div class="box-b" id="diagDaSources"><span class="msg">Loading…</span></div>
     </div>
     <div class="box" style="margin-bottom:14px">
-        <div class="box-h">Time Sync <span class="info" data-tip="Compares the DA server's clock to the bridge machine's clock. A large offset (>500ms) indicates the DA server or bridge needs NTP time sync. UA clients receive both SourceTimestamp (DA server time) and ServerTimestamp (bridge time) for each value.">i</span></div>
+        <div class="box-h">Time Sync <span class="info" data-tip="OPC DA sources only: compares the DA server's clock to the bridge machine's clock. A large offset (>500ms) indicates the DA server or bridge needs NTP time sync. UA clients receive both SourceTimestamp (DA server time) and ServerTimestamp (bridge time) for each value. UA and driver sources have no DA clock and show —.">i</span></div>
         <div class="box-b"><div class="list" id="diagTimeSync"><span class="msg">Loading…</span></div></div>
     </div>
     <div class="grid2" style="margin-bottom:14px">
@@ -3759,7 +3759,7 @@ function renderDiagnostics(p) {
             : badItems.map(b => `<div class="li"><div style="flex:1"><div class="n">${esc(get(b, 'sourceId') || '')}</div><div class="p">${esc(get(b, 'itemId') || '')}</div></div><span class="bad">bad</span></div>`).join('')
                 + (badTotal > badItems.length ? `<div class="li"><span class="msg">+ ${badTotal - badItems.length} more…</span></div>` : '');
 
-    // DA Source Diagnostics — reuse state data from /api/dashboard
+    // Source Diagnostics — reuse state data from /api/dashboard (all source types)
     const sources = state.sources || [];
     const rateGroups = (state.rateGroups || []);
     const daHtml = sources.length ? sources.map(src => {

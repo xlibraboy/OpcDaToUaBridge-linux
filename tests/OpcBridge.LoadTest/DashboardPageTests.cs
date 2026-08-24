@@ -622,6 +622,15 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
+    public void Html_SessionsSourceSectionIsTypeNeutral()
+    {
+        // The section lists ALL source types (OPC DA, UA, Melsec/S7/MX drivers)
+        // — the header must not claim DA-only.
+        Assert.Contains(">Source Diagnostics <", DashboardPage.Html);
+        Assert.DoesNotContain("DA Source Diagnostics", DashboardPage.Html);
+    }
+
+    [Fact]
     public void Script_SessionsDaRowsShowLastErrorAndReadAge()
     {
         // Sessions DA rows must surface the per-source fault reason and data
