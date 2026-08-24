@@ -633,4 +633,56 @@ public sealed class DashboardPageTests
         Assert.Contains("p.influx", DashboardPage.Script);
         Assert.Contains("p.problems", DashboardPage.Script);
     }
+
+    [Fact]
+    public void Html_DiagramToolbarUsesSegmentedControlAndLegendChips()
+    {
+        // Sub-tabs live in a segmented control; legend uses compact chips.
+        Assert.Contains("class=\"diag-seg\"", DashboardPage.Html);
+        Assert.Contains("class=\"seg-pill\"", DashboardPage.Html);
+        Assert.Contains("legend-chip", DashboardPage.Html);
+    }
+
+    [Fact]
+    public void Html_DiagramDefinesNodeEntranceEdgeDrawAndPulseAnimations()
+    {
+        // Entrance cascade, edge draw-on and fault pulse keyframes exist,
+        // staggered via a per-node --i index.
+        Assert.Contains("@keyframes diagNodeIn", DashboardPage.Html);
+        Assert.Contains("@keyframes diagEdgeDraw", DashboardPage.Html);
+        Assert.Contains("@keyframes diagPulse", DashboardPage.Html);
+        Assert.Contains("var(--i", DashboardPage.Html);
+        Assert.Contains("animation: diagNodeIn", DashboardPage.Html);
+        Assert.Contains("animation: diagEdgeDraw", DashboardPage.Html);
+    }
+
+    [Fact]
+    public void Html_DiagramRespectsPrefersReducedMotion()
+    {
+        // All diagram motion is disabled for reduced-motion users.
+        var idx = DashboardPage.Html.IndexOf(".diag-canvas", StringComparison.Ordinal);
+        Assert.True(idx >= 0, "diagram styles missing");
+        Assert.Contains("@media (prefers-reduced-motion: reduce)",
+            DashboardPage.Html[idx..]);
+    }
+
+    [Fact]
+    public void Script_DiagramStaggersNodesAndDrawsEdgesOnEntrance()
+    {
+        // Node groups carry their cascade index; edges use normalized
+        // pathLength so draw-on animation works at any zoom/length.
+        // Card gradient + drop shadow defs are injected once per render.
+        Assert.Contains("setProperty('--i'", DashboardPage.Script);
+        Assert.Contains("pathLength=\"1\"", DashboardPage.Script);
+        Assert.Contains("id=\"diagCardGrad\"", DashboardPage.Script);
+        Assert.Contains("id=\"diagDrop\"", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Script_DiagramShowsRichEmptyState()
+    {
+        // Empty configurations render a centered card, not bare text.
+        Assert.Contains("function diagEmptyState(", DashboardPage.Script);
+        Assert.Contains("class=\"diag-empty\"", DashboardPage.Script);
+    }
 }

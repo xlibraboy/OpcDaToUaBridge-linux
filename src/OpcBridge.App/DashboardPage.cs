@@ -321,23 +321,46 @@ internal static class DashboardPage
             border-bottom: 1px solid var(--border);
             background: var(--panel);
         }
-        .diag-tab {
+        .diag-seg {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            gap: 2px;
+            padding: 3px;
             background: var(--panel2);
             border: 1px solid var(--border);
-            color: var(--text);
+            border-radius: 8px;
+        }
+        .seg-pill {
+            position: absolute;
+            top: 3px;
+            bottom: 3px;
+            left: 0;
+            width: 0;
+            border-radius: 6px;
+            background: var(--accent);
+            background: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 75%, #000));
+            box-shadow: 0 2px 10px rgba(0,0,0,.35);
+            transition: transform .28s cubic-bezier(.22,.9,.34,1), width .28s cubic-bezier(.22,.9,.34,1);
+            pointer-events: none;
+        }
+        .diag-tab {
+            position: relative;
+            z-index: 1;
+            background: transparent;
+            border: none;
+            color: var(--muted);
             padding: 6px 14px;
-            border-radius: 4px;
+            border-radius: 6px;
             cursor: pointer;
             font-size: 12px;
-            font-weight: 500;
-            transition: all 0.15s;
+            font-weight: 600;
+            transition: color 0.18s;
         }
         .diag-tab:hover {
-            background: var(--border);
+            color: var(--text);
         }
         .diag-tab.active {
-            background: var(--accent);
-            border-color: var(--accent);
             color: var(--bg);
         }
         .diag-zoom {
@@ -375,11 +398,18 @@ internal static class DashboardPage
             font-size: 11px;
             color: var(--muted);
         }
-        .legend-item {
-            display: flex;
+        .legend-chip {
+            display: inline-flex;
             align-items: center;
             gap: 6px;
+            padding: 3px 10px;
+            border-radius: 999px;
+            background: var(--panel2);
+            border: 1px solid var(--border);
         }
+        .legend-chip .legend-dot.good { box-shadow: 0 0 6px var(--good); }
+        .legend-chip .legend-dot.warn { box-shadow: 0 0 6px var(--warn); }
+        .legend-chip .legend-dot.bad { box-shadow: 0 0 6px var(--bad); }
         .legend-dot {
             width: 8px;
             height: 8px;
@@ -408,6 +438,16 @@ internal static class DashboardPage
         }
         .diag-node {
             cursor: pointer;
+            animation: diagNodeIn 0.45s cubic-bezier(.22,.9,.34,1) both;
+            animation-delay: calc(var(--i, 0) * 30ms);
+        }
+        @keyframes diagNodeIn {
+            from { opacity: 0; transform: translateY(14px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .diag-node > rect {
+            fill: url(#diagCardGrad);
+            filter: url(#diagDrop);
         }
         .diag-node rect {
             transition: all 0.15s;
@@ -424,7 +464,22 @@ internal static class DashboardPage
         .diag-edge {
             fill: none;
             stroke-width: 2;
+            stroke-dasharray: 1;
             transition: stroke 0.3s;
+            animation: diagEdgeDraw 0.55s ease-out both;
+            animation-delay: calc(var(--i, 0) * 22ms + 180ms);
+        }
+        .diag-edge.bad {
+            animation: diagEdgeDraw 0.55s ease-out both,
+                       diagPulse 1.8s ease-in-out calc(var(--i, 0) * 22ms + 900ms) infinite;
+        }
+        @keyframes diagEdgeDraw {
+            from { stroke-dashoffset: 1; }
+            to { stroke-dashoffset: 0; }
+        }
+        @keyframes diagPulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.35; }
         }
         .diag-edge.good { stroke: var(--good); }
         .diag-edge.warn { stroke: var(--warn); }
@@ -473,6 +528,12 @@ internal static class DashboardPage
         .diag-tooltip-value {
             font-family: var(--font-mono);
             font-weight: 500;
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .diag-node, .diag-edge, .diag-flow, .seg-pill, .diag-tooltip {
+                animation: none !important;
+                transition: none !important;
+            }
         }
     </style>
 </head>
@@ -1521,10 +1582,13 @@ internal static class DashboardPage
 </div>
 <div class="view" id="view-diagram">
     <div class="diag-toolbar">
-        <button class="diag-tab active" data-diag="all" onclick="showDiagTab('all')">All</button>
-        <button class="diag-tab" data-diag="da-ua" onclick="showDiagTab('da-ua')">DA→UA</button>
-        <button class="diag-tab" data-diag="da-da" onclick="showDiagTab('da-da')">DA to DA</button>
-        <button class="diag-tab" data-diag="mqtt" onclick="showDiagTab('mqtt')">MQTT</button>
+        <div class="diag-seg" id="diagSeg">
+            <span class="seg-pill" id="segPill"></span>
+            <button class="diag-tab active" data-diag="all" onclick="showDiagTab('all')">All</button>
+            <button class="diag-tab" data-diag="da-ua" onclick="showDiagTab('da-ua')">DA→UA</button>
+            <button class="diag-tab" data-diag="da-da" onclick="showDiagTab('da-da')">DA to DA</button>
+            <button class="diag-tab" data-diag="mqtt" onclick="showDiagTab('mqtt')">MQTT</button>
+        </div>
         <div class="diag-zoom" title="Ctrl+wheel zoom toward cursor · drag canvas to pan">
             <button type="button" class="diag-zoom-btn" id="diagZoomOut" title="Zoom out">&minus;</button>
             <span class="diag-zoom-label" id="diagZoomLabel">100%</span>
@@ -1534,10 +1598,10 @@ internal static class DashboardPage
             <button type="button" class="diag-zoom-btn" id="diagZoomReset" title="Reset zoom">Reset</button>
         </div>
         <div class="diag-legend">
-            <span class="legend-item"><span class="legend-dot good"></span>Good</span>
-            <span class="legend-item"><span class="legend-dot warn"></span>Stale</span>
-            <span class="legend-item"><span class="legend-dot bad"></span>Error</span>
-            <span class="legend-item"><span class="legend-dot off"></span>Disabled</span>
+            <span class="legend-chip"><span class="legend-dot good"></span>Good</span>
+            <span class="legend-chip"><span class="legend-dot warn"></span>Stale</span>
+            <span class="legend-chip"><span class="legend-dot bad"></span>Error</span>
+            <span class="legend-chip"><span class="legend-dot off"></span>Disabled</span>
         </div>
     </div>
     <div class="diag-canvas" id="diagCanvas">
@@ -1754,6 +1818,32 @@ function bindDiagramPanZoom() {
     applyDiagramZoom();
 }
 
+function syncSegPill() {
+    const seg = el('diagSeg');
+    const pill = el('segPill');
+    const btn = seg ? seg.querySelector('.diag-tab.active') : null;
+    if (!seg || !pill || !btn) return;
+    pill.style.width = btn.offsetWidth + 'px';
+    pill.style.transform = 'translateX(' + btn.offsetLeft + 'px)';
+}
+window.addEventListener('resize', syncSegPill);
+
+function diagEmptyState(title, hint, w = 1100, h = 600) {
+    const cx = Math.round(w / 2), cy = Math.round(h / 2);
+    return `<g class="diag-empty" transform="translate(${cx} ${cy})">` +
+        `<rect x="-240" y="-62" width="480" height="124" rx="10" fill="url(#diagCardGrad)" stroke="#2a3547" stroke-dasharray="5 5"/>` +
+        `<text y="-8" text-anchor="middle" fill="#d8e0ea" font-size="14" font-weight="600">${escapeHtml(title)}</text>` +
+        `<text y="16" text-anchor="middle" fill="#6b7689" font-size="11">${escapeHtml(hint)}</text></g>`;
+}
+
+const DIAG_DEFS = '<defs>' +
+    '<linearGradient id="diagCardGrad" x1="0" y1="0" x2="0" y2="1">' +
+    '<stop offset="0" stop-color="#18202e"/><stop offset="1" stop-color="#10151f"/>' +
+    '</linearGradient>' +
+    '<filter id="diagDrop" x="-20%" y="-20%" width="140%" height="140%">' +
+    '<feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000000" flood-opacity="0.35"/>' +
+    '</filter></defs>';
+
 function showDiagTab(tab) {
     state.diagramTab = tab;
     document.querySelectorAll('.diag-tab').forEach(b => b.classList.toggle('active', b.dataset.diag === tab));
@@ -1794,8 +1884,12 @@ function renderDiagram() {
     state.diagramBaseWidth = maxWidth;
     state.diagramBaseHeight = maxHeight;
     svg.setAttribute('viewBox', `0 0 ${maxWidth} ${maxHeight}`);
-    svg.innerHTML = html;
+    svg.innerHTML = DIAG_DEFS + html;
+    // Stagger indices drive the entrance cascade (see diagNodeIn/diagEdgeDraw).
+    svg.querySelectorAll('.diag-node').forEach((n, i) => n.style.setProperty('--i', i));
+    svg.querySelectorAll('.diag-edge').forEach((p, i) => p.style.setProperty('--i', i));
     applyDiagramZoom();
+    syncSegPill();
 }
 
 function linkEndpoints(link) {
@@ -1854,14 +1948,14 @@ function tagShortName(tagOrItemId) {
 }
 
 function drawEdge(x1, y1, x2, y2, status, color) {
-    return `<path class="diag-edge ${status}" d="M ${x1} ${y1} L ${x2} ${y2}" stroke="${color}"/>` +
+    return `<path class="diag-edge ${status}" pathLength="1" d="M ${x1} ${y1} L ${x2} ${y2}" stroke="${color}"/>` +
            `<path class="diag-flow ${status}" d="M ${x1} ${y1} L ${x2} ${y2}" stroke="${color}"/>`;
 }
 
 function drawCurve(x1, y1, x2, y2, status, color, lift = 40) {
     const midX = (x1 + x2) / 2;
     const midY = Math.min(y1, y2) - lift;
-    return `<path class="diag-edge ${status}" d="M ${x1} ${y1} Q ${midX} ${midY} ${x2} ${y2}" stroke="${color}"/>` +
+    return `<path class="diag-edge ${status}" pathLength="1" d="M ${x1} ${y1} Q ${midX} ${midY} ${x2} ${y2}" stroke="${color}"/>` +
            `<path class="diag-flow ${status}" d="M ${x1} ${y1} Q ${midX} ${midY} ${x2} ${y2}" stroke="${color}"/>`;
 }
 
@@ -1902,7 +1996,7 @@ function renderAllDiagram() {
     const links = collectDaLinks();
 
     if (mappings.length === 0 && sources.length === 0) {
-        return { svg: '<text x="50%" y="50%" text-anchor="middle" fill="#6b7689" font-size="14">No sources or tags configured</text>', maxHeight: 600, maxWidth: 1400 };
+        return { svg: diagEmptyState('No sources or tags configured', 'Add a DA source or mapping to see the plant overview', 1400), maxHeight: 600, maxWidth: 1400 };
     }
 
     // Aggregated overview: source → tag-group → UA/MQTT (O(sources), not O(tags))
@@ -2065,7 +2159,7 @@ function renderDaUaDiagram() {
     const sources = state.sources || [];
 
     if (mappings.length === 0) {
-        return { svg: '<text x="50%" y="50%" text-anchor="middle" fill="#6b7689" font-size="14">No tags configured</text>', maxHeight: 600, maxWidth: 1100 };
+        return { svg: diagEmptyState('No tags configured', 'Map a tag to watch it flow from its source to UA', 1100), maxHeight: 600, maxWidth: 1100 };
     }
 
     // Default: aggregated source trunks (scales to tens of thousands).
@@ -2240,7 +2334,7 @@ function renderDaDaDiagram() {
     const links = collectDaLinks();
 
     if (mappings.length === 0 && links.length === 0) {
-        return { svg: '<text x="50%" y="50%" text-anchor="middle" fill="#6b7689" font-size="14">No tags or DA-to-DA links configured</text>', maxHeight: 600, maxWidth: 1100 };
+        return { svg: diagEmptyState('No tags or DA-to-DA links configured', 'Create a DA-to-DA link to see providers feed consumers', 1100), maxHeight: 600, maxWidth: 1100 };
     }
 
     // Aggregated by source pair (scales with links/sources, not every tag).
@@ -2419,7 +2513,7 @@ function renderMqttDiagram() {
     const sources = state.sources || [];
 
     if (mappings.length === 0) {
-        return { svg: '<text x="50%" y="50%" text-anchor="middle" fill="#6b7689" font-size="14">No mapped tags</text>', maxHeight: 600, maxWidth: 1100 };
+        return { svg: diagEmptyState('No mapped tags', 'Enable MQTT on a mapped tag to see it published to the broker', 1100), maxHeight: 600, maxWidth: 1100 };
     }
 
     // Aggregated by DA source → MQTT broker. Expand source for paged tag detail.
