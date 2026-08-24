@@ -766,6 +766,87 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
+    public void Script_HasBalancedBraces()
+    {
+        // Regression guard: a bad merge once left a duplicate '}' inside
+        // renderInterlinksDiagram, making the whole <script> block unparseable
+        // (browsers discard the entire block => nothing on the page is clickable).
+        var script = ExtractScript();
+        Assert.True(script.Length > 10000, "script block missing");
+
+        var depth = new Stack<int>();
+        var state = 'c'; // c=code, s=single, d=double, t=template, r=regex, cls=regex-class, l=line-comment, b=block-comment
+        var prevSignificant = ';';
+        for (var i = 0; i < script.Length; i++)
+        {
+            var c = script[i];
+            var next = i + 1 < script.Length ? script[i + 1] : '\0';
+            switch (state)
+            {
+                case 'l':
+                    if (c == '\n') state = 'c';
+                    continue;
+                case 'b':
+                    if (c == '*' && next == '/') { state = 'c'; prevSignificant = 'x'; i++; }
+                    continue;
+                case 's':
+                    if (c == '\\') i++;
+                    else if (c == '\'') { state = 'c'; prevSignificant = 'x'; }
+                    continue;
+                case 'd':
+                    if (c == '\\') i++;
+                    else if (c == '"') { state = 'c'; prevSignificant = 'x'; }
+                    continue;
+                case 't':
+                    if (c == '\\') i++;
+                    else if (c == '`') { state = 'c'; prevSignificant = 'x'; }
+                    else if (c == '\n') state = 'c';
+                    continue;
+                case 'r':
+                    if (c == '\\') i++;
+                    else if (c == '[') state = 'k';
+                    else if (c == '/') state = 'c'; // regex ends; flags are identifier chars
+                    else if (c == '\n') state = 'c';
+                    continue;
+                case 'k':
+                    if (c == '\\') i++;
+                    else if (c == ']') state = 'r';
+                    else if (c == '\n') state = 'c';
+                    continue;
+            }
+            switch (c)
+            {
+                case '/':
+                    if (next == '/') state = 'l';
+                    else if (next == '*') state = 'b';
+                    else if ("(=:[!&|?{};+-*%~^<>,;".Contains(prevSignificant))
+                        state = 'r'; // division never follows these; regex does
+                    else prevSignificant = '/';
+                    break;
+                case '\'': state = 's'; break;
+                case '"': state = 'd'; break;
+                case '`': state = 't'; break;
+                case '{': depth.Push(1); prevSignificant = c; break;
+                case '(':
+                case '[': depth.Push(0); prevSignificant = c; break;
+                case '}':
+                    Assert.True(depth.Count > 0, $"unmatched }} near index {i}");
+                    depth.Pop(); prevSignificant = c; break;
+                case ')':
+                case ']':
+                    Assert.True(depth.Count > 0, $"unmatched {c} near index {i}");
+                    depth.Pop(); prevSignificant = c; break;
+                default:
+                    if (!char.IsWhiteSpace(c)) prevSignificant = c;
+                    break;
+            }
+        }
+        Assert.Equal(0, depth.Count);
+    }
+
+    private static string ExtractScript() => DashboardPage.Script;
+
+    [Fact]
     public void Html_DiagramDefinesNodeEntranceEdgeDrawAndPulseAnimations()
     {
         // Entrance cascade, edge draw-on and fault pulse keyframes exist,

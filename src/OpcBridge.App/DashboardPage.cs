@@ -2335,7 +2335,6 @@ function renderInterlinksDiagram() {
     if (mappings.length === 0 && links.length === 0) {
         return { svg: diagEmptyState('No tags or interlinks configured', 'Create an interlink to see providers feed consumers', 1100), maxHeight: 600, maxWidth: 1100 };
     }
-    }
 
     // Aggregated by source pair (scales with links/sources, not every tag).
     // Expand a pair to inspect paged provider→consumer endpoints.
