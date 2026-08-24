@@ -870,16 +870,17 @@ public sealed class DashboardPageTests
     private static string ExtractScript() => DashboardPage.Script;
 
     [Fact]
-    public void Html_DiagramDefinesNodeEntranceEdgeDrawAndPulseAnimations()
+    public void Html_DiagramIsStaticExceptFlowDashes()
     {
-        // Entrance cascade, edge draw-on and fault pulse keyframes exist,
-        // staggered via a per-node --i index.
-        Assert.Contains("@keyframes diagNodeIn", DashboardPage.Html);
-        Assert.Contains("@keyframes diagEdgeDraw", DashboardPage.Html);
-        Assert.Contains("@keyframes diagPulse", DashboardPage.Html);
-        Assert.Contains("var(--i", DashboardPage.Html);
-        Assert.Contains("animation: diagNodeIn", DashboardPage.Html);
-        Assert.Contains("animation: diagEdgeDraw", DashboardPage.Html);
+        // Entrance/draw/pulse motion removed: renders are instant and still.
+        Assert.DoesNotContain("@keyframes diagNodeIn", DashboardPage.Html);
+        Assert.DoesNotContain("@keyframes diagEdgeDraw", DashboardPage.Html);
+        Assert.DoesNotContain("@keyframes diagPulse", DashboardPage.Html);
+        Assert.DoesNotContain("animation: diagNodeIn", DashboardPage.Html);
+        Assert.DoesNotContain("animation: diagEdgeDraw", DashboardPage.Html);
+        // Flow dashes stay as the live-data indicator.
+        Assert.Contains("@keyframes flow", DashboardPage.Html);
+        Assert.Contains("animation: flow 1s linear infinite", DashboardPage.Html);
     }
 
     [Fact]
@@ -893,15 +894,22 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
-    public void Script_DiagramStaggersNodesAndDrawsEdgesOnEntrance()
+    public void Html_DiagramPolishRefinesHoverAndEdgeHierarchy()
     {
-        // Node groups carry their cascade index; edges use normalized
-        // pathLength so draw-on animation works at any zoom/length.
-        // Card gradient + drop shadow defs are injected once per render.
-        Assert.Contains("setProperty('--i'", DashboardPage.Script);
-        Assert.Contains("pathLength=\"1\"", DashboardPage.Script);
-        Assert.Contains("id=\"diagCardGrad\"", DashboardPage.Script);
-        Assert.Contains("id=\"diagDrop\"", DashboardPage.Script);
+        // Hover affordance brightens labels; base lines sit under the flow layer.
+        Assert.Contains(".diag-node:hover text", DashboardPage.Html);
+        Assert.Contains("stroke-opacity", DashboardPage.Html);
+    }
+
+    [Fact]
+    public void Script_DiagramRendersStaticWithCardDefs()
+    {
+        // No per-render stagger loops or draw-on helpers remain.
+        Assert.DoesNotContain("setProperty('--i'", DashboardPage.Script);
+        Assert.DoesNotContain("pathLength=\"1\"", DashboardPage.Script);
+        // Card gradient + drop shadow defs still injected once per render.
+        Assert.Contains("id=\"diagCardGrad\"", ExtractScript());
+        Assert.Contains("id=\"diagDrop\"", ExtractScript());
     }
 
     [Fact]

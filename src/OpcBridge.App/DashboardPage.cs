@@ -373,23 +373,28 @@ internal static class DashboardPage
         .diag-zoom {
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 2px;
             margin-left: 8px;
-        }
-        .diag-zoom-btn {
+            padding: 3px;
             background: var(--panel2);
             border: 1px solid var(--border);
-            color: var(--text);
+            border-radius: 8px;
+        }
+        .diag-zoom-btn {
+            background: transparent;
+            border: none;
+            color: var(--muted);
             min-width: 28px;
-            height: 28px;
+            height: 26px;
             padding: 0 8px;
-            border-radius: 4px;
+            border-radius: 6px;
             cursor: pointer;
             font-size: 13px;
             font-weight: 600;
             line-height: 1;
+            transition: color 0.15s, background 0.15s;
         }
-        .diag-zoom-btn:hover { background: var(--border); }
+        .diag-zoom-btn:hover { color: var(--text); background: var(--border); }
         .diag-zoom-btn:disabled { opacity: 0.4; cursor: default; }
         .diag-zoom-label {
             min-width: 44px;
@@ -445,12 +450,6 @@ internal static class DashboardPage
         }
         .diag-node {
             cursor: pointer;
-            animation: diagNodeIn 0.45s cubic-bezier(.22,.9,.34,1) both;
-            animation-delay: calc(var(--i, 0) * 30ms);
-        }
-        @keyframes diagNodeIn {
-            from { opacity: 0; transform: translateY(14px); }
-            to { opacity: 1; transform: translateY(0); }
         }
         .diag-node > rect {
             fill: url(#diagCardGrad);
@@ -460,7 +459,10 @@ internal static class DashboardPage
             transition: all 0.15s;
         }
         .diag-node:hover rect {
-            stroke-width: 2;
+            stroke-width: 2.5;
+        }
+        .diag-node:hover text {
+            fill: #ffffff;
         }
         .diag-node text {
             fill: var(--text);
@@ -471,22 +473,8 @@ internal static class DashboardPage
         .diag-edge {
             fill: none;
             stroke-width: 2;
-            stroke-dasharray: 1;
+            stroke-opacity: 0.9;
             transition: stroke 0.3s;
-            animation: diagEdgeDraw 0.55s ease-out both;
-            animation-delay: calc(var(--i, 0) * 22ms + 180ms);
-        }
-        .diag-edge.bad {
-            animation: diagEdgeDraw 0.55s ease-out both,
-                       diagPulse 1.8s ease-in-out calc(var(--i, 0) * 22ms + 900ms) infinite;
-        }
-        @keyframes diagEdgeDraw {
-            from { stroke-dashoffset: 1; }
-            to { stroke-dashoffset: 0; }
-        }
-        @keyframes diagPulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.35; }
         }
         .diag-edge.good { stroke: var(--good); }
         .diag-edge.warn { stroke: var(--warn); }
@@ -1892,9 +1880,6 @@ function renderDiagram() {
     state.diagramBaseHeight = maxHeight;
     svg.setAttribute('viewBox', `0 0 ${maxWidth} ${maxHeight}`);
     svg.innerHTML = DIAG_DEFS + html;
-    // Stagger indices drive the entrance cascade (see diagNodeIn/diagEdgeDraw).
-    svg.querySelectorAll('.diag-node').forEach((n, i) => n.style.setProperty('--i', i));
-    svg.querySelectorAll('.diag-edge').forEach((p, i) => p.style.setProperty('--i', i));
     applyDiagramZoom();
     syncSegPill();
 }
@@ -1955,14 +1940,14 @@ function tagShortName(tagOrItemId) {
 }
 
 function drawEdge(x1, y1, x2, y2, status, color) {
-    return `<path class="diag-edge ${status}" pathLength="1" d="M ${x1} ${y1} L ${x2} ${y2}" stroke="${color}"/>` +
+    return `<path class="diag-edge ${status}" d="M ${x1} ${y1} L ${x2} ${y2}" stroke="${color}"/>` +
            `<path class="diag-flow ${status}" d="M ${x1} ${y1} L ${x2} ${y2}" stroke="${color}"/>`;
 }
 
 function drawCurve(x1, y1, x2, y2, status, color, lift = 40) {
     const midX = (x1 + x2) / 2;
     const midY = Math.min(y1, y2) - lift;
-    return `<path class="diag-edge ${status}" pathLength="1" d="M ${x1} ${y1} Q ${midX} ${midY} ${x2} ${y2}" stroke="${color}"/>` +
+    return `<path class="diag-edge ${status}" d="M ${x1} ${y1} Q ${midX} ${midY} ${x2} ${y2}" stroke="${color}"/>` +
            `<path class="diag-flow ${status}" d="M ${x1} ${y1} Q ${midX} ${midY} ${x2} ${y2}" stroke="${color}"/>`;
 }
 
