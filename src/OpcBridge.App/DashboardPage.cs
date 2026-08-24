@@ -602,25 +602,12 @@ internal static class DashboardPage
 </div>
 <div class="view" id="view-diagnostics">
     <div class="box" style="margin-bottom:14px">
-        <div class="box-h">Bridge Health <span class="msg" id="diagHealthUpdated" style="margin-left:auto"></span></div>
+        <div class="box-h">Bridge Vitals <span class="info" data-tip="Process-level metrics shown nowhere else: uptime, aggregate values/sec through the bridge, duration of the most recent DA poll cycle, and the Windows session hosting the DA servers. Connection states, counters and last-error live on ops/monitor.">i</span><span class="msg" id="diagHealthUpdated" style="margin-left:auto"></span></div>
         <div class="box-b">
             <div class="stats">
-                <div class="stat"><div class="k">State</div><div class="v" id="diagBridgeState">&#8212;</div><div class="s" id="diagDaConn"></div></div>
-                <div class="stat"><div class="k">Uptime</div><div class="v" id="diagUptime">&#8212;</div><div class="s" id="diagSessionInfo"></div></div>
+                <div class="stat"><div class="k">Uptime</div><div class="v" id="diagUptime">&#8212;</div></div>
                 <div class="stat"><div class="k">Values/sec</div><div class="v" id="diagValueRate">&#8212;</div><div class="s" id="diagUpdateRate"></div></div>
-                <div class="stat"><div class="k">UA Clients</div><div class="v" id="diagUaClients">&#8212;</div><div class="s" id="diagMappedNodes"></div></div>
-            </div>
-            <div class="hint" id="diagLastError" style="display:none;margin-top:8px"></div>
-        </div>
-    </div>
-    <div class="box" style="margin-bottom:14px">
-        <div class="box-h">Runtime Counters <span class="info" data-tip="Live counters from the bridge worker: mapped tag count, duration of the most recent DA poll cycle, and the most recent DA read / UA write activity. 'DCOM Session' identifies the Windows session the DA servers were opened in (interactive vs service).">i</span></div>
-        <div class="box-b">
-            <div class="stats">
-                <div class="stat"><div class="k">Mappings</div><div class="v" id="diagMappingCount">&#8212;</div></div>
                 <div class="stat"><div class="k">Last Poll</div><div class="v" id="diagPollDuration">&#8212;</div></div>
-                <div class="stat"><div class="k">Last DA Read</div><div class="v" id="diagLastDaRead">&#8212;</div><div class="s" id="diagLastDaReadMeta"></div></div>
-                <div class="stat"><div class="k">Last UA Write</div><div class="v" id="diagLastUaWrite">&#8212;</div><div class="s" id="diagLastUaWriteMeta"></div></div>
                 <div class="stat"><div class="k">DCOM Session</div><div class="v" id="diagSessionId">&#8212;</div><div class="s" id="diagInteractive"></div></div>
             </div>
         </div>
@@ -3678,33 +3665,18 @@ async function refreshPortsInfo() {
 }
 
 function renderDiagnostics(p) {
-    // Bridge Health summary
+    // Bridge Vitals — only metrics NOT shown on ops/monitor (bridge state, DA
+    // connection, UA clients/nodes, mapping count, last DA read / UA write and
+    // last error live there; repeating them here would double-display data).
     const rt = p.runtime || {};
-    const uaSrv = p.uaServer || {};
-    const bridgeCls = { 'Running': 'good', 'Degraded': 'warn', 'Starting': 'warn', 'Stopped': 'bad' }[rt.bridgeState] || 'warn';
-    el('diagBridgeState').innerHTML = '<span class="' + bridgeCls + '">' + esc(rt.bridgeState || '—') + '</span>';
-    el('diagDaConn').textContent = 'DA: ' + (rt.daConnectionState || '—');
     el('diagUptime').textContent = fmtUptime(p.uptimeSeconds);
-    el('diagSessionInfo').textContent = rt.sessionId ? ('session ' + rt.sessionId + (rt.interactiveSession ? ' · interactive' : '')) : '';
     const vrate = Number(rt.lastPollValueRate || 0);
     el('diagValueRate').textContent = vrate > 0 ? vrate.toFixed(1) : '0';
     el('diagUpdateRate').textContent = rt.updateRateMs ? 'update ' + formatMs(rt.updateRateMs) : '';
-    el('diagUaClients').textContent = String(uaSrv.connectedClientCount ?? 0);
-    el('diagMappedNodes').textContent = (uaSrv.mappedNodeCount ?? 0) + ' nodes mapped';
-    const lastErrEl = el('diagLastError');
-    if (rt.lastError) { lastErrEl.style.display = ''; lastErrEl.innerHTML = '<span class="bad">&#9888; Last error:</span> <span class="bad">' + esc(rt.lastError) + '</span>'; }
-    else { lastErrEl.style.display = 'none'; }
-    el('diagHealthUpdated').textContent = 'updated ' + new Date().toLocaleTimeString();
-
-    // Runtime counters
-    el('diagMappingCount').textContent = (rt.mappingCount ?? 0).toLocaleString();
     el('diagPollDuration').textContent = formatMs(rt.lastPollDurationMs);
-    el('diagLastDaRead').textContent = rt.lastDaReadUtc ? relTime(rt.lastDaReadUtc) : 'never';
-    el('diagLastDaReadMeta').textContent = rt.lastDaReadUtc ? ((rt.lastDaReadCount ?? 0) + ' values') : '';
-    el('diagLastUaWrite').textContent = rt.lastUaWriteUtc ? relTime(rt.lastUaWriteUtc) : 'never';
-    el('diagLastUaWriteMeta').textContent = rt.lastUaWriteUtc ? ((rt.lastUaWriteCount ?? 0) + ' writes') : '';
     el('diagSessionId').textContent = rt.sessionId != null && rt.sessionId > 0 ? String(rt.sessionId) : '—';
     el('diagInteractive').textContent = rt.interactiveSession ? 'interactive' : '';
+    el('diagHealthUpdated').textContent = 'updated ' + new Date().toLocaleTimeString();
 
     // Integration health (MQTT / InfluxDB)
     setIntegrationHealth(

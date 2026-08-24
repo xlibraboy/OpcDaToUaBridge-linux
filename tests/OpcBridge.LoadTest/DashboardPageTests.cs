@@ -510,16 +510,26 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
-    public void Html_DiagnosticsViewContainsHealthSummaryRuntimeIntegrationsAndProblems()
+    public void Html_DiagnosticsViewShowsOnlyNonDuplicatedData()
     {
-        // Diagnostics tab = bridge health overview: summary strip, runtime counters,
-        // MQTT/InfluxDB integration health, and problem lists.
+        // De-duplication vs ops/monitor: bridge state, last error, DA connection,
+        // UA clients/nodes, mapping count and last DA read / UA write are ALL
+        // displayed on Monitor already — Diagnostics must not repeat them.
+        foreach (string banned in new[]
+        {
+            "diagBridgeState", "diagDaConn", "diagUaClients", "diagMappedNodes",
+            "diagLastError", "diagLastDaRead", "diagLastDaReadMeta",
+            "diagLastUaWrite", "diagLastUaWriteMeta"
+        })
+        {
+            Assert.DoesNotContain($"id=\"{banned}\"", DashboardPage.Html);
+        }
+
+        // Metrics unique to Diagnostics stay: uptime, values/sec, poll duration,
+        // DCOM session, integration health strips, problem lists, write queue, STA.
         foreach (string id in new[]
         {
-            "diagBridgeState", "diagDaConn", "diagUptime", "diagValueRate", "diagUaClients",
-            "diagLastError",
-            "diagMappingCount", "diagPollDuration", "diagLastDaRead", "diagLastDaReadMeta",
-            "diagLastUaWrite", "diagLastUaWriteMeta", "diagSessionId",
+            "diagUptime", "diagValueRate", "diagPollDuration", "diagSessionId",
             "diagMqttState", "diagMqttRate", "diagMqttTotals", "diagMqttError",
             "diagInfluxState", "diagInfluxRate", "diagInfluxTotal", "diagInfluxError",
             "diagDiscCount", "diagDisconnected", "diagBadCount", "diagBadQuality"
@@ -530,6 +540,8 @@ public sealed class DashboardPageTests
         // Write Queue and STA Thread Health stay on the Diagnostics tab.
         Assert.Contains("id=\"diagWqDepth\"", DashboardPage.Html);
         Assert.Contains("id=\"diagStaThreads\"", DashboardPage.Html);
+        // The standalone Runtime Counters section is gone entirely.
+        Assert.DoesNotContain(">Runtime Counters<", DashboardPage.Html);
     }
 
     [Fact]
@@ -600,9 +612,10 @@ public sealed class DashboardPageTests
     [Fact]
     public void Script_RendersExtendedDiagnosticsPayload()
     {
-        // renderDiagnostics consumes every new section of /api/diagnostics.
+        // renderDiagnostics consumes the diagnostics sections it renders.
+        // (p.uaServer is intentionally NOT rendered here: UA client/node counts
+        // live on ops/monitor.)
         Assert.Contains("p.runtime", DashboardPage.Script);
-        Assert.Contains("p.uaServer", DashboardPage.Script);
         Assert.Contains("p.uptimeSeconds", DashboardPage.Script);
         Assert.Contains("p.mqtt", DashboardPage.Script);
         Assert.Contains("p.influx", DashboardPage.Script);
