@@ -209,7 +209,10 @@ docker run --rm -v "$PWD/<worktree>":/src -w /src -v "$HOME/.nuget-cache":/home/
 
 ## Deploy to Windows
 
-**Target host (verified):** `DESKTOP-BC2AU7H` (`192.168.48.129`, VMnet subnet) — also runs `Matrikon.OPC.Simulation.1` as DA source `opc-vm`; path `C:\Users\xlibr\Documents\OpcBridge\publish\`. Old target `DESKTOP-MENOJUS` / SSH alias `xlibr-win` (`192.168.20.13`) is retired (unreachable).
+**Deploy targets:**
+- **Windows host** (separate PC): `C:\Users\xlibr\Documents\OpcBridge\`
+- **Windows VM `DESKTOP-BC2AU7H`** (`192.168.48.129`, VMnet subnet; also runs `Matrikon.OPC.Simulation.1` as DA source `opc-vm`): `C:\Users\Tested1\Documents\OpcBridge\` — renamed from `Documents\OpcDaToUaBridge` on 2026-08-24; scheduled task `OpcDaToUaBridge` (Boot+Logon triggers, InteractiveToken Hidden) runs `publish\OpcBridge.App.exe`; host deploy script `winvm-deploy.ps1` lives in that folder. SSH: use alias **`winvm-direct`** (`Tested1@192.168.48.129`) — the `winvm` alias's ProxyCommand jump host is currently broken.
+- Old target `DESKTOP-MENOJUS` / SSH alias `xlibr-win` (`192.168.20.13`) is retired (unreachable).
 
 **Known pending:** one other machine (different location) is still configured against retired MENOJUS — leave as-is for now; reconfigure later.
 
