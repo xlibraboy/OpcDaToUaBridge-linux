@@ -192,6 +192,8 @@ public sealed class MappingStore
     /// <summary>
     /// Move every mapping of one source off a named subscription back onto the source default
     /// (empty Subscription). Used when a named subscription is deleted (spec §6). Returns count moved.
+    /// Batched like RenameDaGroup: one lock pass, ONE Persist and ONE Changed event per call
+    /// (per-tag TryUpdate would block the remove request on a full rewrite per matched tag).
     /// </summary>
     public int ReassignSubscription(string sourceId, string subscriptionName)
     {
@@ -200,56 +202,23 @@ public sealed class MappingStore
             return 0;
         }
 
-        string target = subscriptionName.Trim();
-        (IReadOnlyList<TagMapping> mappings, _) = GetSnapshot();
-        int moved = 0;
-        for (int i = 0; i < mappings.Count; i++)
+        int moved;
+        lock (sync_)
         {
-            TagMapping mapping = mappings[i];
-            if (!string.Equals(mapping.SourceId, sourceId, StringComparison.OrdinalIgnoreCase))
+            moved = 0;
+            for (int i = 0; i < mappings_.Count; i++)
             {
-                continue;
-            }
-
-            if (!string.Equals((mapping.Subscription ?? string.Empty).Trim(), target, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            TagMapping updated = CloneMapping(mapping);
-            updated.Subscription = string.Empty;
-            if (TryUpdate(updated, out _))
-            {
+                TagMapping m = mappings_[i];
+                if (!string.Equals(m.SourceId, sourceId, StringComparison.OrdinalIgnoreCase)) continue;
+                if (!string.Equals((m.Subscription ?? string.Empty).Trim(), subscriptionName.Trim(), StringComparison.OrdinalIgnoreCase)) continue;
+                TagMapping copy = Normalize(m); copy.Subscription = string.Empty; mappings_[i] = copy;
                 moved++;
             }
+            if (moved > 0) { version_++; Persist(); }
         }
-
+        if (moved > 0) Changed?.Invoke(version_);
         return moved;
     }
-
-    private static TagMapping CloneMapping(TagMapping m) => new()
-    {
-        ProviderSourceId = m.ProviderSourceId,
-        ProviderItemId = m.ProviderItemId,
-        SourceId = m.SourceId,
-        ItemId = m.ItemId,
-        UaNodeId = m.UaNodeId,
-        DisplayName = m.DisplayName,
-        Description = m.Description,
-        DataType = m.DataType,
-        Enabled = m.Enabled,
-        Mode = m.Mode,
-        ManualValue = m.ManualValue,
-        PollRateMs = m.PollRateMs,
-        DaGroup = m.DaGroup,
-        DeadbandPct = m.DeadbandPct,
-        Writeable = m.Writeable,
-        AccessRights = m.AccessRights,
-        MqttEnabled = m.MqttEnabled,
-        MqttTopic = m.MqttTopic,
-        InfluxEnabled = m.InfluxEnabled,
-        Subscription = m.Subscription
-    };
 
     public long SetAll(IEnumerable<TagMapping> tags)
     {

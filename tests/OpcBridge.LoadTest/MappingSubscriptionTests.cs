@@ -108,4 +108,38 @@ public sealed class MappingSubscriptionTests
         Assert.Equal("Fast", Single(snap, "a1").Subscription);
         Assert.Equal(string.Empty, Single(snap, "a2").Subscription);
     }
+
+    [Fact]
+    public void ReassignSubscription_PersistsAndBroadcasts_OncePerCall()
+    {
+        MappingStore store = NewStore(
+            Tag("ua-a", "a1", "Fast"),
+            Tag("ua-a", "a2", "fast"),
+            Tag("ua-a", "a3", "Slow"),
+            Tag("ua-a", "a4"));
+
+        long baseVersion = store.Version;
+        int broadcasts = 0;
+        store.Changed += _ => broadcasts++;
+
+        int moved = store.ReassignSubscription("ua-a", "FAST");
+
+        // Two matched tags move in ONE batched write: exactly one version bump
+        // and one Changed broadcast for the whole call (per-tag TryUpdate would
+        // have produced two of each).
+        Assert.Equal(2, moved);
+        Assert.Equal(baseVersion + 1, store.Version);
+        Assert.Equal(1, broadcasts);
+
+        (IReadOnlyList<TagMapping> snap, _) = store.GetSnapshot();
+        Assert.Equal(string.Empty, Single(snap, "a1").Subscription);
+        Assert.Equal(string.Empty, Single(snap, "a2").Subscription);
+        Assert.Equal("Slow", Single(snap, "a3").Subscription);      // other subscription untouched
+        Assert.Equal(string.Empty, Single(snap, "a4").Subscription); // already default, untouched
+
+        // No-match calls stay fully silent: no persist, no broadcast.
+        Assert.Equal(0, store.ReassignSubscription("ua-zz", "Fast"));
+        Assert.Equal(baseVersion + 1, store.Version);
+        Assert.Equal(1, broadcasts);
+    }
 }
