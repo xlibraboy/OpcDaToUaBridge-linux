@@ -189,6 +189,37 @@ public sealed class MappingStore
         return raisedVersion;
     }
 
+    /// <summary>
+    /// Move every mapping of one source off a named subscription back onto the source default
+    /// (empty Subscription). Used when a named subscription is deleted (spec §6). Returns count moved.
+    /// Batched like RenameDaGroup: one lock pass, ONE Persist and ONE Changed event per call
+    /// (per-tag TryUpdate would block the remove request on a full rewrite per matched tag).
+    /// </summary>
+    public int ReassignSubscription(string sourceId, string subscriptionName)
+    {
+        if (string.IsNullOrWhiteSpace(sourceId) || string.IsNullOrWhiteSpace(subscriptionName))
+        {
+            return 0;
+        }
+
+        int moved;
+        lock (sync_)
+        {
+            moved = 0;
+            for (int i = 0; i < mappings_.Count; i++)
+            {
+                TagMapping m = mappings_[i];
+                if (!string.Equals(m.SourceId, sourceId, StringComparison.OrdinalIgnoreCase)) continue;
+                if (!string.Equals((m.Subscription ?? string.Empty).Trim(), subscriptionName.Trim(), StringComparison.OrdinalIgnoreCase)) continue;
+                TagMapping copy = Normalize(m); copy.Subscription = string.Empty; mappings_[i] = copy;
+                moved++;
+            }
+            if (moved > 0) { version_++; Persist(); }
+        }
+        if (moved > 0) Changed?.Invoke(version_);
+        return moved;
+    }
+
     public long SetAll(IEnumerable<TagMapping> tags)
     {
         long raisedVersion;
@@ -340,7 +371,8 @@ public sealed class MappingStore
             AccessRights = accessRights,
             MqttEnabled = tag.MqttEnabled,
             MqttTopic = string.IsNullOrWhiteSpace(tag.MqttTopic) ? null : tag.MqttTopic.Trim(),
-            InfluxEnabled = tag.InfluxEnabled
+            InfluxEnabled = tag.InfluxEnabled,
+            Subscription = (tag.Subscription ?? string.Empty).Trim()
         };
     }
 

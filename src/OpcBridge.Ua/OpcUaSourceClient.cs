@@ -26,7 +26,16 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
 
     private ApplicationConfiguration? configuration_;
     private Session? session_;
-    private Subscription? subscription_;
+    private sealed class SubscriptionBucket
+    {
+        public string Key { get; init; } = UaSubscriptionPlan.DefaultBucketKey;
+        public int PublishingIntervalMs { get; set; }
+        public Subscription? Subscription { get; set; }
+        public HashSet<string> ItemIds { get; } = new(StringComparer.Ordinal);
+    }
+
+    private readonly Dictionary<string, SubscriptionBucket> buckets_ =
+        new(StringComparer.OrdinalIgnoreCase);
     private SessionReconnectHandler? reconnect_handler_;
     private IReadOnlyList<TagMapping> last_desired_mappings_ = Array.Empty<TagMapping>();
     private readonly Dictionary<string, MonitoredItem> monitored_items_ =
@@ -134,11 +143,8 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
                     previous = session_;
                     session_ = session;
                     configuration_ = configuration;
-                    // New session owns its own subscription; drop local bookkeeping for the old one.
-                    subscription_ = null;
-                    monitored_items_.Clear();
-                    node_id_by_display_.Clear();
-                    subscriptions_active_ = false;
+                    // New session owns its own subscriptions; drop local bookkeeping for the old one.
+                    ResetBucketBookkeepingLocked();
                     session.KeepAlive += OnSessionKeepAlive;
                     session = null!; // ownership transferred
                 }
@@ -265,10 +271,7 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
 
                 session_ = handlerSession;
                 handlerSession.KeepAlive += OnSessionKeepAlive;
-                subscription_ = null;
-                monitored_items_.Clear();
-                node_id_by_display_.Clear();
-                subscriptions_active_ = false;
+                ResetBucketBookkeepingLocked();
                 recreated = handlerSession;
                 recreatedAdopted = true;
                 logger_.LogInformation(
@@ -293,6 +296,15 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
                     task => logger_.LogError(task.Exception, "Reconnect reconcile failed for source {SourceId}", options_.SourceId),
                     TaskContinuationOptions.OnlyOnFaulted);
         }
+    }
+
+    private void ResetBucketBookkeepingLocked()
+    {
+        // Called under gate_: drop all bucket state; the SDK-side subscriptions die with the old session.
+        buckets_.Clear();
+        monitored_items_.Clear();
+        node_id_by_display_.Clear();
+        subscriptions_active_ = false;
     }
 
     public async Task<IReadOnlyList<BridgeValue>> ReadAsync(
@@ -544,7 +556,7 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
     {
         if (!options_.UseSubscriptions)
         {
-            await TearDownSubscriptionAsync(keepSession: true).ConfigureAwait(false);
+            await TearDownAllBucketsAsync(keepSession: true).ConfigureAwait(false);
             return;
         }
 
@@ -562,16 +574,14 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
         try
         {
             int defaultSampling = Math.Max(100, options_.UpdateRateMs);
-            Dictionary<string, int> desiredSampling = UaSamplingRates.BuildDesiredSampling(desiredMappings, defaultSampling);
-            IReadOnlyCollection<string> desiredIds = desiredSampling.Keys;
-            int desiredPublishing = UaSamplingRates.DesiredPublishingInterval(desiredSampling, defaultSampling);
+            Dictionary<string, Dictionary<string, int>> plan =
+                UaSubscriptionPlan.GroupByBucket(desiredMappings, options_.Subscriptions, defaultSampling);
 
             lock (gate_)
             {
-                // Drop bookkeeping for failures that are no longer desired (mapping
-                // removed/changed); stop the retry timer once nothing is left to retry.
                 if (failed_items_.Count > 0)
                 {
+                    IEnumerable<string> desiredIds = plan.Values.SelectMany(b => b.Keys);
                     failed_items_.RemoveWhere(id => !desiredIds.Contains(id));
                     if (failed_items_.Count == 0)
                     {
@@ -581,169 +591,44 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
                 }
             }
 
-            Subscription subscription = await EnsureSubscriptionAsync(session, desiredPublishing, cancellationToken)
-                .ConfigureAwait(false);
+            int totalDesired = plan.Values.Sum(b => b.Count);
 
-            string[] activeIds;
+            // Buckets that are no longer defined/desired go away entirely.
+            List<string> staleBuckets;
             lock (gate_)
             {
-                activeIds = monitored_items_.Keys.ToArray();
+                staleBuckets = buckets_.Keys.Where(k => !plan.ContainsKey(k)).ToList();
+            }
+            foreach (string staleKey in staleBuckets)
+            {
+                await RemoveBucketAsync(session, staleKey, keepSession: true, cancellationToken)
+                    .ConfigureAwait(false);
             }
 
-            (IReadOnlyList<string> toAdd, IReadOnlyList<string> toRemove) =
-                MonitoredItemReconcile.Diff(desiredIds, activeIds);
-
-            for (int offset = 0; offset < toRemove.Count; offset += MonitoredItemBatchSize)
+            foreach (KeyValuePair<string, Dictionary<string, int>> bucketPlan in plan)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                int count = Math.Min(MonitoredItemBatchSize, toRemove.Count - offset);
-                List<MonitoredItem> batch = new(count);
-                lock (gate_)
-                {
-                    for (int i = 0; i < count; i++)
-                    {
-                        string nodeId = toRemove[offset + i];
-                        if (monitored_items_.Remove(nodeId, out MonitoredItem? item))
-                        {
-                            node_id_by_display_.Remove(item.DisplayName);
-                            item.Notification -= OnMonitoredItemNotification;
-                            batch.Add(item);
-                        }
-                    }
-                }
-
-                if (batch.Count == 0)
-                {
-                    continue;
-                }
-
-                subscription.RemoveItems(batch);
-                await subscription.ApplyChangesAsync(cancellationToken).ConfigureAwait(false);
-            }
-
-            for (int offset = 0; offset < toAdd.Count; offset += MonitoredItemBatchSize)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                int count = Math.Min(MonitoredItemBatchSize, toAdd.Count - offset);
-                List<MonitoredItem> batch = new(count);
-
-                for (int i = 0; i < count; i++)
-                {
-                    string nodeIdString = toAdd[offset + i];
-                    if (!NodeId.TryParse(nodeIdString, out NodeId? nodeId) || nodeId is null)
-                    {
-                        logger_.LogDebug(
-                            "Skipping invalid NodeId for UA subscription on {SourceId}: {NodeId}",
-                            options_.SourceId,
-                            nodeIdString);
-                        continue;
-                    }
-
-                    int sampling = desiredSampling.TryGetValue(nodeIdString, out int s)
-                        ? s
-                        : Math.Max(100, options_.UpdateRateMs);
-
-                    // No ITelemetryContext on source client yet — parameterless ctor is obsolete but fine.
-#pragma warning disable CS0618
-                    MonitoredItem item = new()
-                    {
-                        StartNodeId = nodeId,
-                        AttributeId = Attributes.Value,
-                        DisplayName = nodeIdString,
-                        SamplingInterval = sampling,
-                        QueueSize = 1,
-                        DiscardOldest = true,
-                        MonitoringMode = MonitoringMode.Reporting,
-                        Handle = nodeIdString
-                    };
-#pragma warning restore CS0618
-                    item.Notification += OnMonitoredItemNotification;
-                    batch.Add(item);
-                }
-
-                if (batch.Count == 0)
-                {
-                    continue;
-                }
-
-                subscription.AddItems(batch);
-                await subscription.ApplyChangesAsync(cancellationToken).ConfigureAwait(false);
-
-                lock (gate_)
-                {
-                    for (int i = 0; i < batch.Count; i++)
-                    {
-                        MonitoredItem item = batch[i];
-                        string key = item.Handle as string ?? item.DisplayName;
-                        ServiceResult? createError = item.Status.Error;
-                        if (!item.Status.Created
-                            || (createError is not null && StatusCode.IsBad(createError.StatusCode)))
-                        {
-                            logger_.LogDebug(
-                                "MonitoredItem create failed for {SourceId} {NodeId}: created={Created} status={Status}",
-                                options_.SourceId,
-                                key,
-                                item.Status.Created,
-                                createError?.StatusCode);
-                            item.Notification -= OnMonitoredItemNotification;
-                            subscription.RemoveItem(item);
-                            NoteItemCreateFailure(key);
-                            continue;
-                        }
-
-                        monitored_items_[key] = item;
-                        node_id_by_display_[item.DisplayName] = key;
-                        failed_items_.Remove(key);
-                    }
-                }
-
-                // Drop failed creates from the subscription if any were removed above.
-                if (subscription.ChangesPending)
-                {
-                    await subscription.ApplyChangesAsync(cancellationToken).ConfigureAwait(false);
-                }
-            }
-
-            // Keep sampling intervals aligned for items that remain desired. The set-diff
-            // above is by NodeId, so a rate-only change (same tag, new PollRateMs) shows up
-            // as neither add nor remove — update the existing items so the per-tag rate
-            // from the Maps faceplate takes effect without a session bounce.
-            bool samplingChanged = false;
-            lock (gate_)
-            {
-                foreach (KeyValuePair<string, int> kv in desiredSampling)
-                {
-                    if (monitored_items_.TryGetValue(kv.Key, out MonitoredItem? item))
-                    {
-                        int desired = kv.Value > 0 ? kv.Value : defaultSampling;
-                        if (item.SamplingInterval != desired)
-                        {
-                            item.SamplingInterval = desired;
-                            samplingChanged = true;
-                        }
-                    }
-                }
-            }
-
-            if (samplingChanged)
-            {
-                await subscription.ApplyChangesAsync(cancellationToken).ConfigureAwait(false);
+                await ReconcileBucketAsync(
+                    session,
+                    bucketPlan.Key,
+                    bucketPlan.Value,
+                    defaultSampling,
+                    cancellationToken).ConfigureAwait(false);
             }
 
             lock (gate_)
             {
-                // Only disable poll when at least one MonitoredItem is actually tracked.
-                // Empty desired (Manual-only) or all creates failed → keep poll path.
-                subscriptions_active_ = subscription.Created && monitored_items_.Count > 0;
+                bool allCreated = buckets_.Values.All(b => b.Subscription is { Created: true });
+                subscriptions_active_ = totalDesired > 0 && allCreated && monitored_items_.Count > 0;
             }
 
             logger_.LogInformation(
-                "OPC UA source {SourceId} subscription reconcile: desired={Desired} active={Active} added={Added} removed={Removed}",
+                "OPC UA source {SourceId} subscription reconcile: desired={Desired} active={Active} buckets=[{Buckets}]",
                 options_.SourceId,
-                desiredIds.Count,
+                totalDesired,
                 monitored_items_.Count,
-                toAdd.Count,
-                toRemove.Count);
+                string.Join(", ", plan.Select(kv =>
+                    $"{(kv.Key.Length == 0 ? "default" : kv.Key)}:{kv.Value.Count}@{kv.Value.Values.DefaultIfEmpty(defaultSampling).Min()}ms")));
         }
         catch (OperationCanceledException)
         {
@@ -755,7 +640,170 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
                 ex,
                 "OPC UA source {SourceId} subscription reconcile failed; falling back to poll",
                 options_.SourceId);
-            await TearDownSubscriptionAsync(keepSession: true).ConfigureAwait(false);
+            await TearDownAllBucketsAsync(keepSession: true).ConfigureAwait(false);
+        }
+    }
+
+    private async Task ReconcileBucketAsync(
+        Session session,
+        string bucketKey,
+        Dictionary<string, int> desiredSampling,
+        int defaultSampling,
+        CancellationToken cancellationToken)
+    {
+        SubscriptionBucket bucket;
+        lock (gate_)
+        {
+            if (!buckets_.TryGetValue(bucketKey, out SubscriptionBucket? found))
+            {
+                found = new SubscriptionBucket { Key = bucketKey };
+                buckets_[bucketKey] = found;
+            }
+            bucket = found;
+        }
+
+        Subscription subscription = await EnsureBucketSubscriptionAsync(
+                session, bucket, desiredSampling.Values.DefaultIfEmpty(defaultSampling).Min(),
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        string[] activeIds;
+        lock (gate_)
+        {
+            activeIds = bucket.ItemIds.ToArray();
+        }
+
+        (IReadOnlyList<string> toAdd, IReadOnlyList<string> toRemove) =
+            MonitoredItemReconcile.Diff(desiredSampling.Keys, activeIds);
+
+        for (int offset = 0; offset < toRemove.Count; offset += MonitoredItemBatchSize)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            int count = Math.Min(MonitoredItemBatchSize, toRemove.Count - offset);
+            List<MonitoredItem> batch = new(count);
+            lock (gate_)
+            {
+                for (int i = 0; i < count; i++)
+                {
+                    string nodeId = toRemove[offset + i];
+                    if (monitored_items_.Remove(nodeId, out MonitoredItem? item))
+                    {
+                        node_id_by_display_.Remove(item.DisplayName);
+                        item.Notification -= OnMonitoredItemNotification;
+                        batch.Add(item);
+                    }
+                    bucket.ItemIds.Remove(nodeId);
+                }
+            }
+
+            if (batch.Count == 0)
+            {
+                continue;
+            }
+
+            subscription.RemoveItems(batch);
+            await subscription.ApplyChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
+
+        for (int offset = 0; offset < toAdd.Count; offset += MonitoredItemBatchSize)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            int count = Math.Min(MonitoredItemBatchSize, toAdd.Count - offset);
+            List<MonitoredItem> batch = new(count);
+
+            for (int i = 0; i < count; i++)
+            {
+                string nodeIdString = toAdd[offset + i];
+                if (!NodeId.TryParse(nodeIdString, out NodeId? nodeId) || nodeId is null)
+                {
+                    logger_.LogDebug(
+                        "Skipping invalid NodeId for UA subscription on {SourceId}: {NodeId}",
+                        options_.SourceId, nodeIdString);
+                    continue;
+                }
+
+                int sampling = desiredSampling.TryGetValue(nodeIdString, out int s)
+                    ? s
+                    : defaultSampling;
+
+#pragma warning disable CS0618
+                MonitoredItem item = new()
+                {
+                    StartNodeId = nodeId,
+                    AttributeId = Attributes.Value,
+                    DisplayName = nodeIdString,
+                    SamplingInterval = sampling,
+                    QueueSize = 1,
+                    DiscardOldest = true,
+                    MonitoringMode = MonitoringMode.Reporting,
+                    Handle = nodeIdString
+                };
+#pragma warning restore CS0618
+                item.Notification += OnMonitoredItemNotification;
+                batch.Add(item);
+            }
+
+            if (batch.Count == 0)
+            {
+                continue;
+            }
+
+            subscription.AddItems(batch);
+            await subscription.ApplyChangesAsync(cancellationToken).ConfigureAwait(false);
+
+            lock (gate_)
+            {
+                for (int i = 0; i < batch.Count; i++)
+                {
+                    MonitoredItem item = batch[i];
+                    string key = item.Handle as string ?? item.DisplayName;
+                    ServiceResult? createError = item.Status.Error;
+                    if (!item.Status.Created
+                        || (createError is not null && StatusCode.IsBad(createError.StatusCode)))
+                    {
+                        logger_.LogDebug(
+                            "MonitoredItem create failed for {SourceId} {NodeId}: created={Created} status={Status}",
+                            options_.SourceId, key, item.Status.Created, createError?.StatusCode);
+                        item.Notification -= OnMonitoredItemNotification;
+                        subscription.RemoveItem(item);
+                        NoteItemCreateFailure(key);
+                        continue;
+                    }
+
+                    monitored_items_[key] = item;
+                    node_id_by_display_[item.DisplayName] = key;
+                    bucket.ItemIds.Add(key);
+                    failed_items_.Remove(key);
+                }
+            }
+
+            if (subscription.ChangesPending)
+            {
+                await subscription.ApplyChangesAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        // Rate-only changes on surviving members (per-tag overrides in the default bucket).
+        bool samplingChanged = false;
+        lock (gate_)
+        {
+            foreach (KeyValuePair<string, int> kv in desiredSampling)
+            {
+                if (monitored_items_.TryGetValue(kv.Key, out MonitoredItem? item))
+                {
+                    int desired = kv.Value > 0 ? kv.Value : defaultSampling;
+                    if (item.SamplingInterval != desired)
+                    {
+                        item.SamplingInterval = desired;
+                        samplingChanged = true;
+                    }
+                }
+            }
+        }
+
+        if (samplingChanged)
+        {
+            await subscription.ApplyChangesAsync(cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -812,6 +860,26 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
         }
     }
 
+    /// <summary>Live per-bucket snapshot for the dashboard (requested vs server-revised interval).</summary>
+    public IReadOnlyList<UaSubscriptionStatus> GetSubscriptionsStatus()
+    {
+        List<UaSubscriptionStatus> statuses = new();
+        lock (gate_)
+        {
+            foreach (SubscriptionBucket bucket in buckets_.Values.OrderBy(b => b.Key, StringComparer.OrdinalIgnoreCase))
+            {
+                Subscription? sub = bucket.Subscription;
+                statuses.Add(new UaSubscriptionStatus(
+                    bucket.Key,
+                    bucket.PublishingIntervalMs,
+                    sub?.CurrentPublishingInterval ?? 0,
+                    bucket.ItemIds.Count,
+                    sub?.Created ?? false));
+            }
+        }
+        return statuses;
+    }
+
     public async ValueTask DisposeAsync()
     {
         Session? session;
@@ -835,7 +903,7 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
             reconnect_handler_ = null;
         }
 
-        await TearDownSubscriptionAsync(keepSession: false).ConfigureAwait(false);
+        await TearDownAllBucketsAsync(keepSession: false).ConfigureAwait(false);
 
         failed_item_retry_timer_?.Dispose();
         failed_item_retry_timer_ = null;
@@ -850,32 +918,37 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
 
     }
 
-    private async Task<Subscription> EnsureSubscriptionAsync(Session session, int publishingIntervalMs, CancellationToken cancellationToken)
+    private async Task<Subscription> EnsureBucketSubscriptionAsync(
+        Session session,
+        SubscriptionBucket bucket,
+        int publishingIntervalMs,
+        CancellationToken cancellationToken)
     {
         int publishing = Math.Max(100, publishingIntervalMs);
 
         lock (gate_)
         {
-            Subscription? current = subscription_;
+            Subscription? current = bucket.Subscription;
             if (current is not null
                 && ReferenceEquals(current.Session, session)
                 && current.Created
-                && current.PublishingInterval == publishing)
+                && bucket.PublishingIntervalMs == publishing)
             {
                 return current;
             }
         }
 
-        // Drop stale subscription bookkeeping (session may have changed), or a subscription
-        // whose publishing interval no longer matches the fastest configured rate. Servers
-        // don't reliably apply a publishing-interval change to a live subscription, so
-        // recreate it — the caller's reconcile re-adds the monitored items afterwards.
-        await TearDownSubscriptionAsync(keepSession: true).ConfigureAwait(false);
-        // No ITelemetryContext on source client yet — parameterless ctor is obsolete but fine.
+        // Servers don't reliably apply a publishing-interval change to a live subscription,
+        // so recreate just this bucket — the caller's reconcile re-adds its monitored items.
+        await RemoveBucketAsync(session, bucket.Key, keepSession: true, cancellationToken)
+            .ConfigureAwait(false);
+
 #pragma warning disable CS0618
         Subscription subscription = new()
         {
-            DisplayName = $"OpcBridge_{options_.SourceId}",
+            DisplayName = bucket.Key.Length == 0
+                ? $"OpcBridge_{options_.SourceId}"
+                : $"OpcBridge_{options_.SourceId}_{bucket.Key}",
             PublishingEnabled = true,
             PublishingInterval = publishing,
             KeepAliveCount = 10,
@@ -886,23 +959,14 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
         };
 #pragma warning restore CS0618
 
-        // Prefer batch notification path for large publish sets.
         subscription.FastDataChangeCallback = OnFastDataChange;
 
         if (!session.AddSubscription(subscription))
         {
-            try
-            {
-                subscription.FastDataChangeCallback = null;
-            }
-            catch
-            {
-                // ignore
-            }
-
+            try { subscription.FastDataChangeCallback = null; } catch { }
             subscription.Dispose();
             throw new InvalidOperationException(
-                $"Failed to add OPC UA subscription for source '{options_.SourceId}'.");
+                $"Failed to add OPC UA subscription '{bucket.Key}' for source '{options_.SourceId}'.");
         }
 
         try
@@ -911,27 +975,27 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
             if (!subscription.Created)
             {
                 throw new InvalidOperationException(
-                    $"OPC UA subscription create failed for source '{options_.SourceId}'.");
+                    $"OPC UA subscription create failed for source '{options_.SourceId}' bucket '{bucket.Key}'.");
             }
         }
         catch
         {
-            // CreateAsync may throw before Created, or return with Created=false.
-            // subscription_ is still null — tear down the local object so it is not orphaned on the session.
             await DiscardUnownedSubscriptionAsync(session, subscription).ConfigureAwait(false);
             throw;
         }
 
         lock (gate_)
         {
-            subscription_ = subscription;
+            bucket.Subscription = subscription;
+            bucket.PublishingIntervalMs = publishing;
+            buckets_[bucket.Key] = bucket; // re-register: RemoveBucketAsync unlinked us during recreate
         }
 
         return subscription;
     }
 
     /// <summary>
-    /// Delete/Remove/Dispose a subscription that was added to the session but never stored in <see cref="subscription_"/>.
+    /// Delete/Remove/Dispose a subscription that was added to the session but never stored in a bucket.
     /// </summary>
     private async Task DiscardUnownedSubscriptionAsync(Session session, Subscription subscription)
     {
@@ -978,45 +1042,78 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
         }
     }
 
-    private async Task TearDownSubscriptionAsync(bool keepSession)
+    private async Task TearDownAllBucketsAsync(bool keepSession)
     {
-        Subscription? subscription;
-        List<MonitoredItem> items;
+        List<string> keys;
         lock (gate_)
         {
-            subscription = subscription_;
-            subscription_ = null;
-            items = monitored_items_.Values.ToList();
+            keys = buckets_.Keys.ToList();
+        }
+
+        foreach (string key in keys)
+        {
+            await RemoveBucketAsync(GetSessionIfAny(), key, keepSession, CancellationToken.None)
+                .ConfigureAwait(false);
+        }
+
+        List<MonitoredItem> orphans;
+        lock (gate_)
+        {
+            orphans = monitored_items_.Values.ToList();
             monitored_items_.Clear();
             node_id_by_display_.Clear();
             subscriptions_active_ = false;
         }
 
-        for (int i = 0; i < items.Count; i++)
+        for (int i = 0; i < orphans.Count; i++)
         {
-            try
+            try { orphans[i].Notification -= OnMonitoredItemNotification; } catch { }
+        }
+    }
+
+    private Session? GetSessionIfAny()
+    {
+        lock (gate_)
+        {
+            return session_;
+        }
+    }
+
+    private async Task RemoveBucketAsync(Session? session, string bucketKey, bool keepSession, CancellationToken cancellationToken)
+    {
+        SubscriptionBucket bucket;
+        lock (gate_)
+        {
+            if (!buckets_.Remove(bucketKey, out SubscriptionBucket? found))
             {
-                items[i].Notification -= OnMonitoredItemNotification;
+                return;
             }
-            catch
+            bucket = found;
+
+            foreach (string nodeId in bucket.ItemIds)
             {
-                // ignore
+                if (monitored_items_.Remove(nodeId, out MonitoredItem? item))
+                {
+                    node_id_by_display_.Remove(item.DisplayName);
+                    try { item.Notification -= OnMonitoredItemNotification; } catch { }
+                }
+            }
+            bucket.ItemIds.Clear();
+
+            if (monitored_items_.Count == 0)
+            {
+                subscriptions_active_ = false;
             }
         }
 
+        Subscription? subscription = bucket.Subscription;
+        bucket.Subscription = null;
         if (subscription is null)
         {
             return;
         }
 
-        try
-        {
-            subscription.FastDataChangeCallback = null;
-        }
-        catch
-        {
-            // ignore
-        }
+        try { subscription.FastDataChangeCallback = null; } catch { }
 
         try
         {
@@ -1027,12 +1124,13 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
         }
         catch (Exception ex)
         {
-            logger_.LogDebug(ex, "Error deleting OPC UA subscription for source {SourceId}", options_.SourceId);
+            logger_.LogDebug(ex, "Error deleting OPC UA subscription '{Bucket}' for source {SourceId}",
+                bucketKey, options_.SourceId);
         }
 
         try
         {
-            if (subscription.Session is ISession s && keepSession)
+            if (session is not null && subscription.Session is ISession s && keepSession)
             {
                 await s.RemoveSubscriptionAsync(subscription, CancellationToken.None).ConfigureAwait(false);
             }
@@ -1042,16 +1140,7 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
             // ignore remove races on dispose
         }
 
-        try
-        {
-            subscription.Dispose();
-        }
-        catch
-        {
-            // ignore
-        }
-
-        _ = keepSession;
+        try { subscription.Dispose(); } catch { }
     }
 
     private void OnFastDataChange(
@@ -1095,9 +1184,12 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
     private void OnMonitoredItemNotification(MonitoredItem item, MonitoredItemNotificationEventArgs e)
     {
         // FastDataChangeCallback is preferred; per-item handler is a fallback if Fast path is unset.
-        if (subscription_?.FastDataChangeCallback is not null)
+        lock (gate_)
         {
-            return;
+            if (buckets_.Values.Any(b => b.Subscription?.FastDataChangeCallback is not null))
+            {
+                return;
+            }
         }
 
         string? itemId = ResolveMonitoredItemId(item);

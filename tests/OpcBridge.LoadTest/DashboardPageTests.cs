@@ -287,7 +287,7 @@ public sealed class DashboardPageTests
         // it can never be cut off.
         Assert.Contains(".li .li-badge-clip { display: flex;", DashboardPage.Html);
         Assert.Contains(".li .li-badge-status { flex-shrink: 0; margin-left: 2px;", DashboardPage.Html);
-        Assert.Contains("<span class=\"li-badge-clip\">${typeBadge}${deadbandBadge}${rateBadge}${mqttBadge}${influxBadge}</span><span class=\"li-badge-status\">${discBadge ? `<span title=\"${attr(discTitle)}\">${discBadge}</span>` : ''}${accessBadge}</span>", DashboardPage.Script);
+        Assert.Contains("<span class=\"li-badge-clip\">${typeBadge}${deadbandBadge}${rateBadge}${subBadge}${mqttBadge}${influxBadge}</span><span class=\"li-badge-status\">${discBadge ? `<span title=\"${attr(discTitle)}\">${discBadge}</span>` : ''}${accessBadge}</span>", DashboardPage.Script);
     }
 
     [Fact]
@@ -442,5 +442,70 @@ public sealed class DashboardPageTests
         Assert.Contains(".nav-group .tabbtn.active::before { background: var(--accent); opacity: .5; }", DashboardPage.Html);
         Assert.Contains(".nav-group .tabbtn:last-child:not(.active)::before { bottom: auto; height: 55%; }", DashboardPage.Html);
         Assert.Contains(".nav-group .tabbtn::before { display: none; }", DashboardPage.Html);
+    }
+
+    [Fact]
+    public void Html_HasUaSubscriptionsNavViewAndCardShell()
+    {
+        // UA Subs sits in the Connectivity nav group next to OPC UA. The view mirrors
+        // the DA Groups card workflow: per-source collapsible cards in uaSubsContainer,
+        // Expand/Collapse All in the header, an add/edit modal, and a status line.
+        Assert.Contains("data-tab=\"ua-subs\"", DashboardPage.Html);
+        Assert.Contains("id=\"view-ua-subs\"", DashboardPage.Html);
+        Assert.Contains(">UA Subs</button>", DashboardPage.Html);
+        Assert.Contains("id=\"uaSubsContainer\"", DashboardPage.Html);
+        Assert.Contains("onclick=\"expandAllUaSubs()\"", DashboardPage.Html);
+        Assert.Contains("onclick=\"collapseAllUaSubs()\"", DashboardPage.Html);
+        Assert.Contains("id=\"uaSubModal\"", DashboardPage.Html);
+        Assert.Contains("id=\"uaSubModalName\"", DashboardPage.Html);
+        Assert.Contains("id=\"uaSubModalRate\"", DashboardPage.Html);
+        Assert.Contains("onclick=\"uaSubModalSave()\"", DashboardPage.Html);
+        Assert.Contains("id=\"subsMsg\"", DashboardPage.Html);
+    }
+
+    [Fact]
+    public void Script_RoutesUaSubsTabAndManagesSubscriptionsViaWireApi()
+    {
+        // Navigation registers 'ua-subs' alongside its connectivity siblings; the
+        // card workflow loads every source's subscriptions from the wire API, renders
+        // DA-Groups-style tiles (read-only default tile + Edit/Delete per named sub),
+        // and adds/edits through the modal. Remove reports movedMappings.
+        Assert.Contains("'connectivity/ua-subs': 'ua-subs'", DashboardPage.Script);
+        Assert.Contains("if (activeTab === 'ua-subs')", DashboardPage.Script);
+        Assert.Contains("function loadUaSubs(", DashboardPage.Script);
+        Assert.Contains("function renderUaSubsForSource(", DashboardPage.Script);
+        Assert.Contains("function toggleUaSubsCard(", DashboardPage.Script);
+        Assert.Contains("function expandAllUaSubs(", DashboardPage.Script);
+        Assert.Contains("function collapseAllUaSubs(", DashboardPage.Script);
+        Assert.Contains("function openUaSubAdd(", DashboardPage.Script);
+        Assert.Contains("function openUaSubEdit(", DashboardPage.Script);
+        Assert.Contains("function closeUaSubModal(", DashboardPage.Script);
+        Assert.Contains("function uaSubModalSave(", DashboardPage.Script);
+        Assert.Contains("function deleteUaSub(", DashboardPage.Script);
+        Assert.Contains("/api/ua/subscriptions", DashboardPage.Script);
+        Assert.Contains("/api/ua/subscriptions/remove", DashboardPage.Script);
+        Assert.Contains("actualPublishingIntervalMs", DashboardPage.Script);
+        Assert.Contains("movedMappings", DashboardPage.Script);
+        Assert.Contains("defaultStats", DashboardPage.Script);
+        Assert.Contains("let uaSubsCache = [];", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Script_MapsFaceplateAssignsNamedSubscription()
+    {
+        // The faceplate Setup pane carries a Subscription select for OPC UA sources:
+        // Source Default (with rate label) + one option per named sub, saved through
+        // the same updateMapping collect path as pollRateMs. A non-empty choice
+        // disables the per-tag Update Rate input; rows show a pill with the name.
+        Assert.Contains("id=\"fpSubscription\"", DashboardPage.Html);
+        Assert.Contains("id=\"fpSubscriptionField\"", DashboardPage.Html);
+        Assert.Contains("function fpSubscriptionOptions(", DashboardPage.Script);
+        Assert.Contains("Source Default (${formatMs(defRate)})", DashboardPage.Script);
+        Assert.Contains("payload.subscription", DashboardPage.Script);
+        // updateMapping preserves the stored assignment for callers that don't touch it.
+        Assert.Contains("subscription: mapping.subscription ?? mapping.Subscription ?? '',", DashboardPage.Script);
+        Assert.Contains("rate.disabled = !!subSel.value;", DashboardPage.Script);
+        Assert.Contains("const subBadge = subName ?", DashboardPage.Script);
+        Assert.Contains("title=\"UA subscription\"", DashboardPage.Script);
     }
 }

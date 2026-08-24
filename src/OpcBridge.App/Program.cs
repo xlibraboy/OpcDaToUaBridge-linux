@@ -362,7 +362,7 @@ app.MapGet("/api/status/ports", () =>
         uaBind,
         uaClient));
 });
- app.MapGet("/api/dashboard", (BridgeState state, UaServerHost uaServer, BridgeAppDiscovery discovery, MappingStore mappingStore, BridgeWorker worker, int? limit, string? sourceId) =>
+ app.MapGet("/api/dashboard", (BridgeState state, UaServerHost uaServer, BridgeAppDiscovery discovery, MappingStore mappingStore, BridgeWorker worker, DaRuntimeSettings daSettings, int? limit, string? sourceId) =>
  {
      IReadOnlyList<BridgeValueSnapshot> values = state.GetValues(limit ?? DashboardValuesLimit, sourceId);
 
@@ -372,11 +372,16 @@ app.MapGet("/api/status/ports", () =>
      (IReadOnlyList<TagMapping> mappings, _) = mappingStore.GetSnapshot();
      Dictionary<string, string> dataTypeByKey = DashboardValues.BuildDataTypeLookup(mappings);
 
-     // Effective update rate per tag: per-tag PollRateMs wins, else the source default.
+     // Effective update rate per tag: assigned named subscription (clamped ≥ 100 ms)
+     // wins, else per-tag PollRateMs, else the source default.
      Dictionary<string, int> sourceRates = state.GetStatus().Sources
          .GroupBy(source => source.SourceId, StringComparer.OrdinalIgnoreCase)
          .ToDictionary(group => group.Key, group => group.First().UpdateRateMs, StringComparer.OrdinalIgnoreCase);
-     Dictionary<string, int> updateRateByKey = DashboardValues.BuildUpdateRateLookup(mappings, sourceRates);
+     DaRuntimeSettingsSnapshot daSnapshot = daSettings.GetSnapshot();
+     Dictionary<string, IReadOnlyList<UaSubscriptionSettings>> uaSubscriptionsBySource = daSnapshot.Sources
+         .Where(source => source.UaSubscriptions.Count > 0)
+         .ToDictionary(source => source.SourceId, source => source.UaSubscriptions, StringComparer.OrdinalIgnoreCase);
+     Dictionary<string, int> updateRateByKey = DashboardValues.BuildUpdateRateLookup(mappings, sourceRates, uaSubscriptionsBySource);
 
      return Results.Json(new
      {
@@ -1631,6 +1636,96 @@ app.MapPost("/api/ua/browse", async (
         error = result.Error
     });
 });
+
+app.MapGet("/api/ua/subscriptions", (DaRuntimeSettings settings, BridgeWorker worker, string? sourceId) =>
+{
+    DaRuntimeSettingsSnapshot snapshot = settings.GetSnapshot();
+    IReadOnlyDictionary<string, IReadOnlyList<UaSubscriptionStatus>> live = worker.GetUaSubscriptionStatus();
+    IEnumerable<DaSourceRuntimeSettings> sources = string.IsNullOrWhiteSpace(sourceId)
+        ? snapshot.Sources
+        : snapshot.Sources.Where(s => string.Equals(s.SourceId, sourceId, StringComparison.OrdinalIgnoreCase));
+
+    object payload = new
+    {
+        sources = sources
+            .Where(s => string.Equals(s.SourceType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
+            .Select(s =>
+            {
+                IReadOnlyList<UaSubscriptionStatus>? liveForSource = live.TryGetValue(s.SourceId, out IReadOnlyList<UaSubscriptionStatus>? list)
+                    ? list
+                    : null;
+
+                // Live stats of the implicit default bucket (client reports it under the "" key
+                // whenever unassigned tags are being monitored). Zeroed when not connected.
+                UaSubscriptionStatus? defaultStatus = liveForSource?
+                    .FirstOrDefault(st => st.BucketKey.Length == 0);
+
+                return new
+                {
+                    sourceId = s.SourceId,
+                    displayName = s.DisplayName,
+                    defaultUpdateRateMs = s.UpdateRateMs,
+                    defaultStats = new
+                    {
+                        updateRateMs = s.UpdateRateMs,
+                        itemCount = defaultStatus?.ItemCount ?? 0,
+                        actualPublishingIntervalMs = defaultStatus?.ActualPublishingIntervalMs ?? 0,
+                        created = defaultStatus?.Created ?? false
+                    },
+                    subscriptions = s.UaSubscriptions
+                        .OrderBy(def => def.Name, StringComparer.OrdinalIgnoreCase)
+                        .Select(def =>
+                        {
+                            UaSubscriptionStatus? status = liveForSource?
+                                .FirstOrDefault(st => string.Equals(st.BucketKey, def.Name, StringComparison.OrdinalIgnoreCase));
+                            return new
+                            {
+                                name = def.Name,
+                                updateRateMs = def.UpdateRateMs,
+                                itemCount = status?.ItemCount ?? 0,
+                                actualPublishingIntervalMs = status?.ActualPublishingIntervalMs ?? 0,
+                                created = status?.Created ?? false
+                            };
+                        })
+                        .ToList()
+                };
+            })
+            .ToList()
+    };
+    return Results.Json(payload);
+});
+
+app.MapPost("/api/ua/subscriptions", (UaSubscriptionUpsertRequest request, DaRuntimeSettings settings) =>
+{
+    if (string.IsNullOrWhiteSpace(request.SourceId))
+    {
+        return Results.BadRequest(new { error = "sourceId is required." });
+    }
+
+    try
+    {
+        DaRuntimeSettingsSnapshot snapshot = settings.UpsertUaSubscription(request.SourceId, request.Name, request.UpdateRateMs);
+        return Results.Ok(new { ok = true, version = snapshot.Version });
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+app.MapPost("/api/ua/subscriptions/remove", (UaSubscriptionRemoveRequest request, DaRuntimeSettings settings, MappingStore store) =>
+{
+    try
+    {
+        DaRuntimeSettingsSnapshot snapshot = settings.RemoveUaSubscription(request.SourceId, request.Name);
+        int movedMappings = store.ReassignSubscription(request.SourceId, request.Name);
+        return Results.Ok(new { ok = true, version = snapshot.Version, movedMappings });
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
 app.MapGet("/api/mqtt/config", (MqttRuntimeSettings settings) =>
 {
     MqttRuntimeSnapshot snapshot = settings.GetSnapshot();
@@ -2506,7 +2601,8 @@ static TagMapping ToTagMapping(MappingTagDto tag) => new()
     AccessRights = tag.AccessRights ?? string.Empty,
     MqttEnabled = tag.MqttEnabled ?? false,
     MqttTopic = string.IsNullOrWhiteSpace(tag.MqttTopic) ? null : tag.MqttTopic,
-    InfluxEnabled = tag.InfluxEnabled ?? false
+    InfluxEnabled = tag.InfluxEnabled ?? false,
+    Subscription = tag.Subscription ?? string.Empty
 };
 
 static bool ValidateMelsecMappings(List<TagMapping> tags, DaRuntimeSettings daSettings, MappingStore store, out string error)

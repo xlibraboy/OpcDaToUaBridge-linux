@@ -920,6 +920,36 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                         changed.Add(source.SourceId);
                     }
                 }
+
+                // Named-subscription definition changes need a MonitoredItem reconcile,
+                // NOT a session rebuild: buckets are created/deleted/re-rated live (spec §6).
+                if (!existing.Source.UaSubscriptionsEqual(source)
+                    && sessions[source.SourceId].Client is OpcUaSourceClient uaDefClient)
+                {
+                    SourceMappingCache? defCache = source_mapping_cache_;
+                    if (defCache is not null)
+                    {
+                        try
+                        {
+                            await uaDefClient.ReconcileMonitoredItemsAsync(
+                                defCache.GetSourceReadMappings(source.SourceId),
+                                cancellationToken).ConfigureAwait(false);
+
+                            // Advance the stored baseline ONLY after a successful reconcile so the
+                            // definitions-changed check does not re-fire on every pass. On failure
+                            // the stale baseline is kept deliberately: the next pass retries.
+                            sessions[source.SourceId] = new SourceSession(source, existing.Client)
+                            {
+                                PollerCts = existing.PollerCts
+                            };
+                        }
+                        catch (Exception ex)
+                        {
+                            logger_.LogWarning(ex,
+                                "UA subscription-def reconcile failed for source {SourceId}", source.SourceId);
+                        }
+                    }
+                }
                 continue;
             }
 
@@ -1539,6 +1569,27 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
 
         return value;
     }
+
+    /// <summary>Live named-subscription status per connected UA source (dashboard Subscriptions tab).</summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<UaSubscriptionStatus>> GetUaSubscriptionStatus()
+    {
+        Dictionary<string, IReadOnlyList<UaSubscriptionStatus>> result =
+            new(StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, SourceSession>? sessions = active_sessions_;
+        if (sessions is not null)
+        {
+            foreach ((string sourceId, SourceSession session) in sessions)
+            {
+                if (session.Client is OpcUaSourceClient uaClient)
+                {
+                    result[sourceId] = uaClient.GetSubscriptionsStatus();
+                }
+            }
+        }
+
+        return result;
+    }
+
     public object GetDiagnostics()
     {
         // STA thread health per source

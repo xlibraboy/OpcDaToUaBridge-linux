@@ -118,4 +118,44 @@ public sealed class DashboardValuesTests
 
         Assert.Null(DashboardValues.ResolveDataType(null, lookup, "ua-a", "Tag00001"));
     }
+
+    [Fact]
+    public void BuildUpdateRateLookup_SubscriptionAssignment_WinsOverPollRateAndDefault()
+    {
+        var subs = new Dictionary<string, IReadOnlyList<UaSubscriptionSettings>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["ua-a"] = new List<UaSubscriptionSettings> { new("Fast", 250), new("Slow", 5000) }
+        };
+        var defaults = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { ["ua-a"] = 1000 };
+        var mappings = new List<TagMapping>
+        {
+            new() { SourceId = "ua-a", ItemId = "t1", Subscription = "fast", PollRateMs = 777 }, // sub wins
+            new() { SourceId = "ua-a", ItemId = "t2", Subscription = "Ghost", PollRateMs = 333 }, // unknown -> poll rate
+            new() { SourceId = "ua-a", ItemId = "t3" }                                            // default
+        };
+
+        var lookup = DashboardValues.BuildUpdateRateLookup(mappings, defaults, subs);
+
+        Assert.Equal(250, DashboardValues.LookupUpdateRate(lookup, "ua-a", "t1"));
+        Assert.Equal(333, DashboardValues.LookupUpdateRate(lookup, "ua-a", "t2"));
+        Assert.Equal(1000, DashboardValues.LookupUpdateRate(lookup, "ua-a", "t3"));
+    }
+
+    [Fact]
+    public void BuildUpdateRateLookup_SubscriptionBelowMinimum_IsClampedTo100()
+    {
+        var subs = new Dictionary<string, IReadOnlyList<UaSubscriptionSettings>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["ua-a"] = new List<UaSubscriptionSettings> { new("Turbo", 50) }
+        };
+        var defaults = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { ["ua-a"] = 1000 };
+        var mappings = new List<TagMapping>
+        {
+            new() { SourceId = "ua-a", ItemId = "t1", Subscription = "turbo" } // assigned sub wins, clamped up
+        };
+
+        var lookup = DashboardValues.BuildUpdateRateLookup(mappings, defaults, subs);
+
+        Assert.Equal(100, DashboardValues.LookupUpdateRate(lookup, "ua-a", "t1"));
+    }
 }
