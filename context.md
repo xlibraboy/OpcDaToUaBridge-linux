@@ -132,7 +132,7 @@ Endpoints (all in `Program.cs`):
 - `GET /` — dashboard HTML
 - `GET /api/values` — current `BridgeState` values
 - `GET /api/dashboard?limit=&sourceId=` — Live Values payload: `values[]` with `{sourceId, itemId, value, timestampUtc, daQuality, isGood, dataType, updateRate}` (dataType + updateRate resolved via `DashboardValues`; `updateRate` = effective ms per tag — per-tag `PollRateMs` wins, else the source default), `valuesTotal`, plus bridge/UA status blocks
-- `GET /api/status` | `/api/diagnostics` — bridge + UA status; diagnostics includes writeQueue stats, uaBandwidth, UA sessions/subscriptions
+- `GET /api/status` | `/api/diagnostics` — bridge + UA status; diagnostics includes writeQueue stats, uaBandwidth, UA sessions/subscriptions, plus dashboard-facing sections: `runtime` (bridge/DA state, counters), `uaServer` (clients/nodes), `uptimeSeconds`, `mqtt` + `influx` health, `problems` (disconnected/bad-quality tags). Sections are individually guarded (`DiagnosticsSections.Safe`) — one failing section degrades to null instead of 500-ing the payload. Dashboard: Diagnostics tab = health overview; Ops ▸ Sessions tab = per-source/session detail (DA sources, time sync, UA sessions/subs/bandwidth).
 - `GET /api/hmi/tags` — HMI tag snapshot (mappings + current values)
 - `POST /api/hmi/write` — HMI write; gated on mapping access rights; reuses `WriteQueue` / `ApplyUaWriteAsync`
 - `GET /api/hmi/trends?sourceId=&daItemId=&from=&to=&maxPoints=` — history via bridge Influx proxy (HMI never holds Influx token). Soft-fails with empty points + `error` when Influx unavailable.

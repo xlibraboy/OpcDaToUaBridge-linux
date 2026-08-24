@@ -193,6 +193,9 @@ builder.Services.AddSingleton<IInfluxTrendQuery>(sp =>
 WebApplication app = builder.Build();
 TryMigrateLegacyDaLinks(app);
 
+// Wall-clock-independent tick captured at startup; powers uptimeSeconds on /api/diagnostics.
+long processStartTickMs = Environment.TickCount64;
+
 app.MapGet("/", (HttpContext ctx) => {
     ctx.Response.Headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
     ctx.Response.Headers["Pragma"] = "no-cache";
@@ -404,15 +407,73 @@ app.MapGet("/api/status/ports", () =>
          badQuality = state.GetBadQualityTags().Select(tag => new { sourceId = tag.SourceId, itemId = tag.ItemId })
      });
  });
-app.MapGet("/api/diagnostics", (BridgeWorker worker, UaServerHost uaServer) => Results.Json(new
+app.MapGet("/api/diagnostics", (BridgeWorker worker, UaServerHost uaServer, BridgeState state, MqttRuntimeSettings mqttSettings, InfluxRuntimeSettings influxSettings, ILogger<Program> logger) =>
 {
-    bridge = worker.GetDiagnostics(),
-    ua = new
+    void LogSectionFailure(string name, Exception exception) =>
+        logger.LogError(exception, "/api/diagnostics: section {Section} failed; omitting it from the payload", name);
+
+    BridgeRuntimeStatus runtimeStatus = state.GetStatus();
+    UaServerStatus uaStatus = uaServer.GetStatus();
+    MqttRuntimeSnapshot mqttSnapshot = mqttSettings.GetSnapshot();
+    InfluxRuntimeSnapshot influxSnapshot = influxSettings.GetSnapshot();
+    IReadOnlyList<(string SourceId, string ItemId)> badQualityTags = state.GetBadQualityTags();
+    return Results.Json(new
     {
-        sessions = uaServer.GetSessionDiagnostics(),
-        subscriptions = uaServer.GetSubscriptionDiagnostics()
-    }
-}));
+        bridge = DiagnosticsSections.Safe("bridge", () => worker.GetDiagnostics(), ex => LogSectionFailure("bridge", ex)),
+        ua = new
+        {
+            sessions = DiagnosticsSections.Safe("ua.sessions", () => uaServer.GetSessionDiagnostics(), ex => LogSectionFailure("ua.sessions", ex)),
+            subscriptions = DiagnosticsSections.Safe("ua.subscriptions", () => uaServer.GetSubscriptionDiagnostics(), ex => LogSectionFailure("ua.subscriptions", ex))
+        },
+        runtime = new
+        {
+            bridgeState = runtimeStatus.BridgeState,
+            daConnectionState = runtimeStatus.DaConnectionState,
+            updateRateMs = runtimeStatus.UpdateRateMs,
+            mappingCount = runtimeStatus.MappingCount,
+            lastDaReadUtc = runtimeStatus.LastDaReadUtc,
+            lastDaReadCount = runtimeStatus.LastDaReadCount,
+            lastUaWriteUtc = runtimeStatus.LastUaWriteUtc,
+            lastUaWriteCount = runtimeStatus.LastUaWriteCount,
+            lastPollDurationMs = runtimeStatus.LastPollDurationMs,
+            lastPollValueRate = runtimeStatus.LastPollValueRate,
+            sessionId = runtimeStatus.SessionId,
+            interactiveSession = runtimeStatus.InteractiveSession
+        },
+        uaServer = new
+        {
+            state = uaStatus.State,
+            endpointUrl = uaStatus.EndpointUrl,
+            connectedClientCount = uaStatus.ConnectedClientCount,
+            mappedNodeCount = uaStatus.MappedNodeCount
+        },
+        uptimeSeconds = Math.Round((Environment.TickCount64 - processStartTickMs) / 1000.0, 1),
+        mqtt = new
+        {
+            enabled = mqttSnapshot.Options.Enabled,
+            state = mqttSnapshot.State,
+            lastError = mqttSnapshot.LastError,
+            publishedCount = mqttSnapshot.PublishedCount,
+            receivedCount = mqttSnapshot.ReceivedCount,
+            publishedRate = mqttSnapshot.PublishedRate,
+            receivedRate = mqttSnapshot.ReceivedRate
+        },
+        influx = new
+        {
+            enabled = influxSnapshot.Options.Enabled,
+            state = influxSnapshot.State,
+            lastError = influxSnapshot.LastError,
+            writtenCount = influxSnapshot.WrittenCount,
+            writtenRate = influxSnapshot.WrittenRate
+        },
+        problems = new
+        {
+            disconnected = DiagnosticsSections.Safe("problems.disconnected", () => worker.GetDisconnectedTags().Select(t => new { t.SourceId, t.ItemId }), ex => LogSectionFailure("problems.disconnected", ex)),
+            badQualityTotal = badQualityTags.Count,
+            badQuality = badQualityTags.Take(50).Select(t => new { t.SourceId, t.ItemId })
+        }
+    });
+});
 app.MapGet("/api/logs", (DashboardLogStore logStore, int? limit, string? level) =>
 {
     LogLevel? minimumLevel = TryParseLogLevel(level, out LogLevel parsedLevel)
