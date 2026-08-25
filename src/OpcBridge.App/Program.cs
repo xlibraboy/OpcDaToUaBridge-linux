@@ -908,7 +908,10 @@ app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings
         upsertMelsec,
         upsertS7200,
         upsertMx,
-        SourceConfigMigration.NormalizeIoMode(request.IoMode)));
+        SourceConfigMigration.NormalizeIoMode(request.IoMode),
+        // The /api/da/sources payload carries no plcGroups field today, so this is
+        // always the carry-over branch (see ResolvePlcGroups below).
+        PlcGroups: ResolvePlcGroups(null, settings, request.SourceId)));
 
     DaSourceRuntimeSettings source = snapshot.GetSource(request.SourceId)!;
 
@@ -927,6 +930,29 @@ app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings
 
         DaSourceRuntimeSettings? existing = settings.GetSnapshot().GetSource(sourceId);
         return existing?.OpcDa?.GroupIoModes;
+    }
+
+    // Preserves existing PLC group definitions when the request omits them (same
+    // shape as ResolveGroupIoModes above): an incoming definition list would win
+    // after normalization, otherwise the stored source's definitions are carried
+    // over so source edits (name/timeout/retry) cannot silently wipe group CRUD
+    // state. Normalize() keeps carried-over groups for MxComponent sources only,
+    // so non-MX upserts are unaffected. The request DTO has no plcGroups field
+    // yet, making omit-that-field-means-preserve the whole contract; when a
+    // plcGroups (or UA subscriptions) request field lands, thread it through the
+    // same incoming branch instead of null.
+    static IReadOnlyList<PlcGroupSettings>? ResolvePlcGroups(
+        IReadOnlyList<PlcGroupSettings>? incoming,
+        DaRuntimeSettings settings,
+        string sourceId)
+    {
+        if (incoming is { Count: > 0 })
+        {
+            return SourceConfigMigration.NormalizePlcGroups(incoming);
+        }
+
+        DaSourceRuntimeSettings? existing = settings.GetSnapshot().GetSource(sourceId);
+        return existing?.PlcGroupsList;
     }
     return Results.Json(new
     {

@@ -266,6 +266,51 @@ public sealed class PlcGroupApiTests
     }
 
     [Fact]
+    public async Task DaSourceEdit_WithoutGroupPayload_PreservesExistingPlcGroups()
+    {
+        await using TestAppHandle handle = await TestAppHandle.StartAsync(dir => WriteMinimalAppsettings(dir));
+        await SeedMxSourceAsync(handle, "mx1");
+
+        using (HttpResponseMessage up = await handle.Client.PostAsync(
+            "/api/plc/groups",
+            JsonBody(new { sourceId = "mx1", name = "Fast", updateRateMs = 250 })))
+        {
+            Assert.Equal(HttpStatusCode.OK, up.StatusCode);
+        }
+
+        // Dashboard-style re-save of the SAME source with a changed field (timeout)
+        // and no group payload: the edit must not silently delete the definitions.
+        using (HttpResponseMessage edit = await handle.Client.PostAsync(
+            "/api/da/sources",
+            JsonBody(new
+            {
+                sourceId = "mx1",
+                displayName = "MX mx1 edited",
+                sourceType = "MxComponent",
+                logicalStationNumber = 4,
+                timeoutMs = 4500,
+                retryCount = 2,
+                maxMappedTags = 500,
+                updateRateMs = 1000
+            })))
+        {
+            Assert.Equal(HttpStatusCode.OK, edit.StatusCode);
+
+            // Sanity: the edit actually replaced the record (not a silent no-op).
+            using JsonDocument body = JsonDocument.Parse(await edit.Content.ReadAsStringAsync());
+            Assert.Equal(4500, body.RootElement.GetProperty("source").GetProperty("timeoutMs").GetInt32());
+        }
+
+        using (JsonDocument list = await handle.GetJsonAsync("/api/plc/groups?sourceId=mx1"))
+        {
+            JsonElement src = GetSource(list, "mx1");
+            Assert.Equal(1, src.GetProperty("groups").GetArrayLength());
+            Assert.Equal("Fast", src.GetProperty("groups")[0].GetProperty("name").GetString());
+            Assert.Equal(250, src.GetProperty("groups")[0].GetProperty("updateRateMs").GetInt32());
+        }
+    }
+
+    [Fact]
     public async Task MappingAdd_PlcGroupField_RoundTripsThroughAllMappingEndpoints()
     {
         await using TestAppHandle handle = await TestAppHandle.StartAsync(dir => WriteMinimalAppsettings(dir));
