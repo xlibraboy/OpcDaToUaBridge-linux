@@ -105,6 +105,14 @@ public sealed class MappingStore
                 return false;
             }
 
+            // Group-rate-wins hygiene (spec §4): unassigning a PLC group drops any stale
+            // numeric rate override, mirroring ClearDaGroup/ReassignPlcGroup semantics.
+            if (string.IsNullOrWhiteSpace(normalized.PlcGroup)
+                && !string.IsNullOrWhiteSpace(mappings_[index].PlcGroup))
+            {
+                normalized.PollRateMs = 0;
+            }
+
             mappings_[index] = normalized;
             version_++;
             Persist();
@@ -287,6 +295,39 @@ public sealed class MappingStore
     }
 
     /// <summary>
+    /// Moves every mapping of one source off a named PLC group back onto the source default
+    /// (empty PlcGroup) and zeroes PollRateMs so no stale numeric override survives the
+    /// "group rate wins" model (spec §4). Used when a PLC group is deleted. One lock pass,
+    /// ONE Persist and ONE Changed event per call. Returns count moved.
+    /// </summary>
+    public int ReassignPlcGroup(string sourceId, string groupName)
+    {
+        if (string.IsNullOrWhiteSpace(sourceId) || string.IsNullOrWhiteSpace(groupName))
+        {
+            return 0;
+        }
+
+        int moved;
+        lock (sync_)
+        {
+            moved = 0;
+            for (int i = 0; i < mappings_.Count; i++)
+            {
+                TagMapping m = mappings_[i];
+                if (!string.Equals(m.SourceId, sourceId, StringComparison.OrdinalIgnoreCase)) continue;
+                if (!string.Equals((m.PlcGroup ?? string.Empty).Trim(), groupName.Trim(), StringComparison.OrdinalIgnoreCase)) continue;
+                TagMapping copy = Normalize(m); copy.PlcGroup = string.Empty; copy.PollRateMs = 0; mappings_[i] = copy;
+                moved++;
+            }
+
+            if (moved > 0) { version_++; Persist(); }
+        }
+
+        if (moved > 0) Changed?.Invoke(version_);
+        return moved;
+    }
+
+    /// <summary>
     /// Keeps member tags' numeric rate aligned with their named group's current
     /// rate (the COM bucket is still rate-keyed). Returns the count aligned.
     /// </summary>
@@ -372,7 +413,10 @@ public sealed class MappingStore
             MqttEnabled = tag.MqttEnabled,
             MqttTopic = string.IsNullOrWhiteSpace(tag.MqttTopic) ? null : tag.MqttTopic.Trim(),
             InfluxEnabled = tag.InfluxEnabled,
-            Subscription = (tag.Subscription ?? string.Empty).Trim()
+            Subscription = (tag.Subscription ?? string.Empty).Trim(),
+            // Preserve PLC group membership through normalization exactly like
+            // Subscription: empty stays empty (= source default bucket), else trimmed.
+            PlcGroup = (tag.PlcGroup ?? string.Empty).Trim()
         };
     }
 
