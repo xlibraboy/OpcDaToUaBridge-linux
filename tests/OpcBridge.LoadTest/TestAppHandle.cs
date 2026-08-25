@@ -27,7 +27,7 @@ public sealed class TestAppHandle : IAsyncDisposable
 
     public static async Task<TestAppHandle> StartAsync(Action<string> configureAppDirectory)
     {
-        string sourceDirectory = Path.GetDirectoryName(typeof(DaLinkStore).Assembly.Location)
+        string sourceDirectory = Path.GetDirectoryName(typeof(InterlinkStore).Assembly.Location)
             ?? throw new InvalidOperationException("Could not locate OpcBridge.App output.");
         string appDirectory = Path.Combine(Path.GetTempPath(), "OpcBridge.LoadTest", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(appDirectory);
@@ -55,6 +55,10 @@ public sealed class TestAppHandle : IAsyncDisposable
             UseShellExecute = false
         };
         startInfo.ArgumentList.Add(Path.Combine(appDirectory, "OpcBridge.App.dll"));
+
+        // Isolate the single-instance lock per test app so concurrently (or previously)
+        // running bridge instances never block a test host from starting.
+        startInfo.Environment["OPCBRIDGE_INSTANCE_LOCK"] = Path.Combine(appDirectory, "instance.lock");
 
         Process process = new() { StartInfo = startInfo };
         TestAppHandle handle = new(process, appDirectory);

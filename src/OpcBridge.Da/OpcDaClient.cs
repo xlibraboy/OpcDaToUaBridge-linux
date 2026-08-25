@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Runtime.Versioning;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
@@ -6,18 +7,23 @@ using OpcBridge.Core;
 
 namespace OpcBridge.Da;
 
-public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
+public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISubscriptionActiveSource
 {
     private const int OpcDataSourceDevice = 2;
     private static readonly int ItemStateSize = Marshal.SizeOf<OpcItemState>();
     private static readonly int ItemValueOffset = (int)Marshal.OffsetOf<OpcItemState>(nameof(OpcItemState.Value));
 
     private readonly DaClientOptions options_;
+
+    /// <summary>Client options; exposed for tests and diagnostics.</summary>
+    public DaClientOptions Options => options_;
     private OpcComThread? com_thread_;
     private object? server_com_object_;
     private IOPCServer? server_;
+    private OpcDaServerInfo? server_info_;
     private readonly Dictionary<int, RateGroup> rate_groups_ = new();
     private bool subscriptions_active_;
+    private readonly HashSet<int> subscription_fallback_warned_rates_ = new();
 
     /// <summary>
     /// Raised when a DA subscription delivers values via IOPCDataCallback.
@@ -30,6 +36,25 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
     /// group silently falls back to polling). Subscribed by BridgeWorker for logging.
     /// </summary>
     public event Action<string>? Warning;
+
+    /// <summary>
+    /// Raised on OPC DA I/O activity — group creation, subscription setup, sync reads,
+    /// and data-change notifications — an "Advise Log" like Matrikon OPC Explorer's.
+    /// </summary>
+    public event Action<string>? IOTrace;
+
+    /// <summary>
+    /// Detected OPC DA server identity (spec level, server version, vendor) after a
+    /// successful connect. Null before connect or when detection is unavailable.
+    /// </summary>
+    public OpcDaServerInfo? ServerInfo => server_info_;
+
+    /// <summary>
+    /// True when DA subscriptions (IOPCDataCallback) are established so values arrive
+    /// via callbacks and <see cref="ReadAsync"/> performs no device reads; false when
+    /// the source is polling via IOPCSyncIO.Read (subscriptions disabled or unsupported).
+    /// </summary>
+    public bool IsSubscriptionActive => subscriptions_active_;
 
     public OpcDaClient(DaClientOptions options)
     {
@@ -149,6 +174,7 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
 
             server_com_object_ = serverObject;
             server_ = server;
+            server_info_ = DetectServerInfo(serverObject);
             return;
         }
 
@@ -226,6 +252,85 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
 
         server_com_object_ = serverObject;
         server_ = server;
+        server_info_ = DetectServerInfo(serverObject);
+    }
+
+    [SupportedOSPlatform("windows")]
+    private OpcDaServerInfo DetectServerInfo(object serverObject)
+    {
+        string specVersion = DetectSpecVersion(serverObject);
+        try
+        {
+            int hr = server_!.GetStatus(out IntPtr statusPtr);
+            if (hr != 0 || statusPtr == IntPtr.Zero)
+            {
+                return new OpcDaServerInfo(specVersion, 0, 0, 0, null, "Unknown");
+            }
+
+            // The OPCSERVERSTATUS block (and the LPWSTR it embeds) is server/proxy
+            // memory: some servers hand back pointers that are not valid in this
+            // process, and an AccessViolation raised while reading one is not
+            // reliably catchable. Probe readability before touching the pointer so
+            // a misbehaving server can never take the whole bridge down.
+            if (!IsRangeReadable(statusPtr, Marshal.SizeOf<OpcServerStatus>()))
+            {
+                return new OpcDaServerInfo(specVersion, 0, 0, 0, null, "Unknown");
+            }
+
+            try
+            {
+                OpcServerStatus status = Marshal.PtrToStructure<OpcServerStatus>(statusPtr);
+                return new OpcDaServerInfo(
+                    specVersion,
+                    status.MajorVersion,
+                    status.MinorVersion,
+                    status.BuildNumber,
+                    SafeReadUnicodeString(status.VendorInfo),
+                    OpcDaServerInfo.DescribeState(status.State));
+            }
+            finally
+            {
+                // OPC DA requires the client to free the status block with
+                // CoTaskMemFree; only reached when the pointer passed the probe.
+                Marshal.FreeCoTaskMem(statusPtr);
+            }
+        }
+        catch
+        {
+            // Best-effort detection: a server that fails GetStatus must never block the
+            // connection, so fall back to spec-level-only info.
+            return new OpcDaServerInfo(specVersion, 0, 0, 0, null, "Unknown");
+        }
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static string DetectSpecVersion(object serverObject)
+    {
+        // OPC DA splits its interfaces between the server object and group objects.
+        // The async I/O interfaces (IOPCAsyncIO/IOPCAsyncIO2/IOPCAsyncIO3) live on
+        // GROUP objects, so probing them here (against the server object) always
+        // fails even for compliant servers. The spec-level markers on the SERVER
+        // object are:
+        //   IOPCItemIO                 -> DA 3.0 (the server-based DA 3.0 addition)
+        //   IOPCItemProperties         -> DA 2.0 (introduced with DA 2.0)
+        //   IOPCBrowseServerAddressSpace -> DA 2.0 (DA 2.0 browsing, optional but common)
+        // `is` on a COM RCW performs a QueryInterface for the interface GUID.
+        if (serverObject is IOPCItemIO)
+        {
+            return "3.0";
+        }
+
+        if (serverObject is IOPCItemProperties)
+        {
+            return "2.0";
+        }
+
+        if (serverObject is IOPCBrowseServerAddressSpace)
+        {
+            return "2.0";
+        }
+
+        return "Unknown";
     }
 
     public Task<IReadOnlyList<BridgeValue>> ReadAsync(
@@ -265,13 +370,42 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
 
         return Task.FromResult(allValues);
     }
-    public Task<bool> WriteAsync(string itemId, object? value, CancellationToken cancellationToken)
+    private const int AsyncWriteTimeoutMs = 10_000;
+    private readonly ConcurrentDictionary<int, TaskCompletionSource<(bool Ok, string? Error)>> pending_writes_ = new();
+    private int write_transaction_counter_;
+
+    /// <summary>
+    /// True when writes go through IOPCAsyncIO2.Write (async path, completion confirmed
+    /// via IOPCDataCallback.OnWriteComplete); false when they use IOPCSyncIO.Write.
+    /// Follows the resolved I/O mode like Matrikon: Sync always writes sync, Async20
+    /// forces async (when the callback subscription is live), AutoDetect follows
+    /// whatever read path the group ended up on.
+    /// </summary>
+    public bool IsAsyncWriteActive
+    {
+        get
+        {
+            foreach (RateGroup group in rate_groups_.Values)
+            {
+                if (group.AsyncIo2 is not null
+                    && group.Sink is not null
+                    && !string.Equals(EffectiveIoMode(group.Rate), "Sync", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
+
+    public async Task<bool> WriteAsync(string itemId, object? value, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
         if (string.IsNullOrWhiteSpace(itemId) || value is null)
         {
-            return Task.FromResult(false);
+            return false;
         }
 
         EnsureConnected();
@@ -281,41 +415,125 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
             throw new PlatformNotSupportedException("OPC DA requires Windows.");
         }
 
-        bool success = com_thread_!.EnqueueAndWait(() => WriteOnStaThread(itemId, value));
-        return Task.FromResult(success);
-    }
-
-    private bool WriteOnStaThread(string itemId, object value)
-    {
-        if (!OperatingSystem.IsWindows())
+        (RateGroup? group, int serverHandle) = com_thread_!.EnqueueAndWait(() => ResolveWriteTarget(itemId));
+        if (group is null || serverHandle == 0)
         {
-            throw new PlatformNotSupportedException("OPC DA requires Windows.");
+            return false;
         }
 
-        // Locate the server handle for this item across all rate groups.
-        int serverHandle = 0;
-        IOPCSyncIO? syncIo = null;
+        // Writes follow the resolved I/O mode (Matrikon behavior): sync mode always
+        // writes via IOPCSyncIO.Write; async mode uses IOPCAsyncIO2.Write when the
+        // group has a live callback subscription to confirm completion.
+        if (!ShouldWriteAsync(group))
+        {
+            IOTrace?.Invoke($"OPC DA sync write posted for group 'OpcBridge_{group.Rate}' Item Count (1).");
+            bool ok = com_thread_!.EnqueueAndWait(() => WriteSyncOnStaThread(group, serverHandle, value));
+            return ok;
+        }
+
+        int transactionId = Interlocked.Increment(ref write_transaction_counter_);
+        TaskCompletionSource<(bool Ok, string? Error)> tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        pending_writes_[transactionId] = tcs;
+
+        int postHresult;
+        try
+        {
+            postHresult = com_thread_!.EnqueueAndWait(
+                () => PostAsyncWriteOnStaThread(group, transactionId, serverHandle, value));
+        }
+        catch
+        {
+            pending_writes_.TryRemove(transactionId, out _);
+            throw;
+        }
+
+        if (postHresult < 0)
+        {
+            // The async write could not be posted; fall back to the synchronous
+            // write so the value still lands (the failure is visible in the Advise Log).
+            pending_writes_.TryRemove(transactionId, out _);
+            IOTrace?.Invoke(
+                $"OPC DA async write failed to post for group 'OpcBridge_{group.Rate}' " +
+                $"(0x{postHresult:X8}); falling back to sync write.");
+            return com_thread_!.EnqueueAndWait(() => WriteSyncOnStaThread(group, serverHandle, value));
+        }
+
+        try
+        {
+            (bool ok, _) = await tcs.Task.WaitAsync(TimeSpan.FromMilliseconds(AsyncWriteTimeoutMs), cancellationToken)
+                .ConfigureAwait(false);
+            return ok;
+        }
+        catch (OperationCanceledException)
+        {
+            pending_writes_.TryRemove(transactionId, out _);
+            return false;
+        }
+    }
+
+    private (RateGroup? Group, int ServerHandle) ResolveWriteTarget(string itemId)
+    {
         foreach (RateGroup group in rate_groups_.Values)
         {
             for (int i = 0; i < group.Bindings.Length; i++)
             {
                 if (string.Equals(group.Bindings[i].ItemId, itemId, StringComparison.OrdinalIgnoreCase))
                 {
-                    serverHandle = group.Bindings[i].ServerHandle;
-                    syncIo = group.SyncIo;
-                    break;
+                    return (group, group.Bindings[i].ServerHandle);
                 }
-            }
-
-            if (serverHandle != 0)
-            {
-                break;
             }
         }
 
-        if (serverHandle == 0 || syncIo is null)
+        return (null, 0);
+    }
+
+    /// <summary>
+    /// Decides the write channel for a group: async (IOPCAsyncIO2.Write) only when the
+    /// server exposes the interface AND a live callback subscription can confirm the
+    /// completion; otherwise the synchronous write. Sync mode never writes async.
+    /// </summary>
+    private bool ShouldWriteAsync(RateGroup group)
+    {
+        if (group.AsyncIo2 is null || group.Sink is null)
         {
             return false;
+        }
+
+        return !string.Equals(EffectiveIoMode(group.Rate), "Sync", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Effective I/O mode for a rate group: the per-group override when one is
+    /// configured, otherwise the source-level mode.
+    /// </summary>
+    private string EffectiveIoMode(int rate)
+        => options_.GroupIoModes.TryGetValue(rate, out string? mode) ? mode : options_.IoMode;
+
+    /// <summary>
+    /// Whether a group attempts the IOPCDataCallback push path. Sync-mode groups never
+    /// do; Async20 groups always do; AutoDetect groups follow the global switch.
+    /// </summary>
+    private bool GroupShouldAttemptSubscription(RateGroup group)
+    {
+        string mode = EffectiveIoMode(group.Rate);
+        if (string.Equals(mode, "Sync", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (string.Equals(mode, "Async20", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return options_.UseSubscriptions;
+    }
+
+    private bool WriteSyncOnStaThread(RateGroup group, int serverHandle, object value)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            throw new PlatformNotSupportedException("OPC DA requires Windows.");
         }
 
         IntPtr handlesPtr = Marshal.AllocHGlobal(Marshal.SizeOf<int>());
@@ -327,7 +545,7 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
             Marshal.WriteInt32(handlesPtr, serverHandle);
             Marshal.GetNativeVariantForObject(value, valuesPtr);
 
-            int hr = syncIo.Write(1, handlesPtr, valuesPtr, out errorsPtr);
+            int hr = group.SyncIo!.Write(1, handlesPtr, valuesPtr, out errorsPtr);
             if (hr < 0)
             {
                 return false;
@@ -344,6 +562,74 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
             Marshal.FreeHGlobal(valuesPtr);
             Marshal.FreeHGlobal(handlesPtr);
         }
+    }
+
+    private int PostAsyncWriteOnStaThread(RateGroup group, int transactionId, int serverHandle, object value)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            throw new PlatformNotSupportedException("OPC DA requires Windows.");
+        }
+
+        IntPtr handlesPtr = Marshal.AllocHGlobal(Marshal.SizeOf<int>());
+        IntPtr valuesPtr = Marshal.AllocHGlobal(16); // VARIANT is 16 bytes
+
+        try
+        {
+            Marshal.WriteInt32(handlesPtr, serverHandle);
+            Marshal.GetNativeVariantForObject(value, valuesPtr);
+
+            int hr = group.AsyncIo2!.Write(1, handlesPtr, valuesPtr, transactionId, out int cancelId);
+            if (hr >= 0)
+            {
+                IOTrace?.Invoke(
+                    $"OPC DA async write posted for group 'OpcBridge_{group.Rate}' Item Count (1): " +
+                    $"Transaction ID: {transactionId:X8} Cancel ID: {cancelId:X8}");
+            }
+
+            return hr;
+        }
+        finally
+        {
+            VariantClear(valuesPtr);
+            Marshal.FreeHGlobal(valuesPtr);
+            Marshal.FreeHGlobal(handlesPtr);
+        }
+    }
+
+    /// <summary>
+    /// Resolves an IOPCDataCallback.OnWriteComplete notification against a pending
+    /// async write, reporting per-item errors. Runs on the COM STA thread.
+    /// </summary>
+    private void OnWriteCompleteFromSink(int transactionId, int masterError, int count, IntPtr clientHandles, IntPtr errors)
+    {
+        if (!pending_writes_.TryRemove(transactionId, out TaskCompletionSource<(bool Ok, string? Error)>? tcs))
+        {
+            return;
+        }
+
+        bool ok = masterError >= 0;
+        string? error = null;
+        if (ok && errors != IntPtr.Zero && count > 0)
+        {
+            int[] itemErrors = new int[count];
+            Marshal.Copy(errors, itemErrors, 0, count);
+            for (int i = 0; i < itemErrors.Length; i++)
+            {
+                if (itemErrors[i] < 0)
+                {
+                    ok = false;
+                    error = $"item error 0x{itemErrors[i]:X8}";
+                    break;
+                }
+            }
+        }
+        else if (!ok)
+        {
+            error = $"master error 0x{masterError:X8}";
+        }
+
+        tcs.TrySetResult((ok, error));
     }
 
 
@@ -367,8 +653,10 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
             EnsureGroupItemsConfigured(group, rateMappings);
 
             // Establish a subscription so values arrive via IOPCDataCallback instead of polling.
-            // If the server doesn't support it, fall back silently to device reads below.
-            if (options_.UseSubscriptions && group.ConnectionPoint is null && group.Sink is null)
+            // Whether this group attempts the push path depends on its effective I/O mode:
+            // Sync groups never do, Async20 groups always do, AutoDetect follows the global
+            // switch. If the server doesn't support it, fall back silently to device reads.
+            if (GroupShouldAttemptSubscription(group) && group.ConnectionPoint is null && group.Sink is null)
             {
                 TrySetupSubscription(group, rateMappings);
             }
@@ -418,10 +706,17 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
             out object groupObject);
         ThrowOnFailed(addGroupHresult, $"Failed to create OPC DA group for rate {rate}ms.");
 
+        IOTrace?.Invoke(
+            $"OPC DA group 'OpcBridge_{rate}' created (rate {rate}ms, deadband {deadbandPct:0.#}%).");
+
         IOPCItemMgt itemManagement = groupObject as IOPCItemMgt
             ?? throw new InvalidOperationException("OPC DA group does not expose IOPCItemMgt.");
         IOPCSyncIO syncIo = groupObject as IOPCSyncIO
             ?? throw new InvalidOperationException("OPC DA group does not expose IOPCSyncIO.");
+
+        // May be null for servers without DA 2.0 async support; async writes only use
+        // it when present AND a live callback subscription can confirm completion.
+        IOPCAsyncIO2? asyncIo2 = groupObject as IOPCAsyncIO2;
 
         return new RateGroup
         {
@@ -429,6 +724,7 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
             ComObject = groupObject,
             ItemManagement = itemManagement,
             SyncIo = syncIo,
+            AsyncIo2 = asyncIo2,
             ServerGroupHandle = serverGroupHandle,
             Bindings = [],
             DeadbandPtr = deadbandPtr
@@ -452,13 +748,33 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
             return;
         }
 
+        // When the user forced Async I/O 2.0 for this group (per-group override or
+        // source-level mode), the fallback warning is loud so the mismatch (requested
+        // push, server can't) is never silent.
+        string forcedMode = string.Equals(EffectiveIoMode(group.Rate), "Async20", StringComparison.OrdinalIgnoreCase)
+            ? "Forced Async I/O 2.0: "
+            : string.Empty;
+
+        // Warn once per client per rate group; the attempt repeats every poll cycle
+        // while the subscription stays unavailable, so re-warning would flood logs.
+        bool WarnOnce(string message)
+        {
+            if (!subscription_fallback_warned_rates_.Add(group.Rate))
+            {
+                return false;
+            }
+
+            Warning?.Invoke(message);
+            return true;
+        }
+
         try
         {
             if (group.ComObject is not IConnectionPointContainer cpc)
             {
                 subscriptions_active_ = false;
-                Warning?.Invoke(
-                    $"OPC DA group for rate {group.Rate}ms does not expose IConnectionPointContainer; " +
+                WarnOnce(
+                    $"{forcedMode}OPC DA group for rate {group.Rate}ms does not expose IConnectionPointContainer; " +
                     "subscription unavailable, falling back to polling.");
                 return;
             }
@@ -468,11 +784,14 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
             if (hr < 0)
             {
                 subscriptions_active_ = false;
-                Warning?.Invoke(
-                    $"OPC DA callback connection point unavailable for rate {group.Rate}ms " +
+                WarnOnce(
+                    $"{forcedMode}OPC DA callback connection point unavailable for rate {group.Rate}ms " +
                     $"(0x{hr:X8}); falling back to polling.");
                 return;
             }
+
+            IOTrace?.Invoke(
+                $"OPC DA group 'OpcBridge_{group.Rate}': IOPCDataCallback connection point found (Async I/O 2.0).");
 
             // Build client-handle → item-id map for the callback to unpack notifications.
             Dictionary<int, string> handleMap = new(group.Bindings.Length);
@@ -482,13 +801,19 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
             }
 
             Action<IReadOnlyList<BridgeValue>> handler = ValuesReceived ?? (_ => { });
-            OpcDaCallbackSink sink = new(options_.SourceId, handleMap, handler);
+            OpcDaCallbackSink sink = new(
+                options_.SourceId,
+                $"OpcBridge_{group.Rate}",
+                handleMap,
+                handler,
+                TraceSink,
+                OnWriteCompleteFromSink);
             hr = cp.Advise(sink, out int cookie);
             if (hr < 0)
             {
                 subscriptions_active_ = false;
-                Warning?.Invoke(
-                    $"OPC DA callback Advise failed for rate {group.Rate}ms (0x{hr:X8}); " +
+                WarnOnce(
+                    $"{forcedMode}OPC DA callback Advise failed for rate {group.Rate}ms (0x{hr:X8}); " +
                     "falling back to polling.");
                 return;
             }
@@ -497,11 +822,24 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
             group.ConnectionPoint = cp;
             group.CallbackCookie = cookie;
             subscriptions_active_ = true;
+
+            IOTrace?.Invoke(
+                $"OPC DA group 'OpcBridge_{group.Rate}': subscription active (Advise cookie {cookie}).");
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            // Never fail silently: an unexpected error while establishing the
+            // subscription must surface (the user may have forced Async I/O 2.0).
             subscriptions_active_ = false;
+            WarnOnce(
+                $"{forcedMode}OPC DA subscription setup failed for rate {group.Rate}ms: {ex.Message}; " +
+                "falling back to polling.");
         }
+    }
+
+    private void TraceSink(string message)
+    {
+        IOTrace?.Invoke(message);
     }
 
     private static void UnadviseCallback(RateGroup group)
@@ -755,6 +1093,9 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
                 out itemStatesPointer,
                 out errorsPointer);
             ThrowOnFailed(readHresult, "OPC DA read failed.");
+
+            IOTrace?.Invoke(
+                $"OPC DA sync read posted for group 'OpcBridge_{group.Rate}' Item Count ({serverHandles.Length}).");
 
             int[] itemErrors = new int[serverHandles.Length];
             Marshal.Copy(errorsPointer, itemErrors, 0, serverHandles.Length);
@@ -1214,6 +1555,9 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
         public object? ComObject;
         public IOPCItemMgt? ItemManagement;
         public IOPCSyncIO? SyncIo;
+
+        /// <summary>Async I/O 2.0 interface on the group object; null when the server does not expose it.</summary>
+        public IOPCAsyncIO2? AsyncIo2;
         public int ServerGroupHandle;
         public ItemBinding[] Bindings = [];
         public IntPtr DeadbandPtr;
@@ -1263,6 +1607,120 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
 
         [MarshalAs(UnmanagedType.Struct)]
         public object? Value;
+    }
+
+    // OPC DA OPCSERVERSTATUS: 3×FILETIME, 4×DWORD, then LPWSTR vendor info.
+    [StructLayout(LayoutKind.Sequential)]
+    private struct OpcServerStatus
+    {
+        public FILETIME StartTime;
+        public FILETIME CurrentTime;
+        public FILETIME LastUpdateTime;
+        public uint MajorVersion;
+        public uint MinorVersion;
+        public uint BuildNumber;
+        public uint State;
+        public IntPtr VendorInfo;
+    }
+
+    // ---- Safe reads of GetStatus output -------------------------------------
+    // OPCSERVERSTATUS is allocated by the server/proxy. Before dereferencing it
+    // (or the vendor string it embeds) probe the range with VirtualQuery: a wild
+    // pointer would otherwise raise an AccessViolation that is not reliably
+    // catchable and would crash the whole bridge process.
+
+    [DllImport("kernel32.dll")]
+    private static extern UIntPtr VirtualQuery(IntPtr address, out MemoryBasicInformation buffer, UIntPtr length);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MemoryBasicInformation
+    {
+        public IntPtr BaseAddress;
+        public IntPtr AllocationBase;
+        public uint AllocationProtect;
+        public UIntPtr RegionSize;
+        public uint State;
+        public uint Protect;
+        public uint Type;
+    }
+
+    private const uint MemCommit = 0x1000;
+    private const uint PageNoAccess = 0x01;
+    private const uint PageReadOnly = 0x02;
+    private const uint PageReadWrite = 0x04;
+    private const uint PageWriteCopy = 0x08;
+    private const uint PageExecuteRead = 0x20;
+    private const uint PageExecuteReadWrite = 0x40;
+    private const uint PageExecuteWriteCopy = 0x80;
+    private const uint PageGuard = 0x100;
+
+    [SupportedOSPlatform("windows")]
+    private static bool TryGetReadableRegion(IntPtr address, out long regionEnd)
+    {
+        regionEnd = 0;
+
+        MemoryBasicInformation mbi = default;
+        if (VirtualQuery(address, out mbi, (UIntPtr)Marshal.SizeOf<MemoryBasicInformation>()) == UIntPtr.Zero)
+        {
+            return false;
+        }
+
+        if (mbi.State != MemCommit || (mbi.Protect & PageGuard) != 0)
+        {
+            return false;
+        }
+
+        uint protect = mbi.Protect & 0xFF;
+        bool readable = protect is PageReadOnly or PageReadWrite or PageWriteCopy
+            or PageExecuteRead or PageExecuteReadWrite or PageExecuteWriteCopy;
+        if (!readable)
+        {
+            return false;
+        }
+
+        regionEnd = (long)mbi.BaseAddress + (long)mbi.RegionSize.ToUInt64();
+        return true;
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static bool IsRangeReadable(IntPtr address, int byteCount)
+    {
+        if (address == IntPtr.Zero || byteCount <= 0)
+        {
+            return false;
+        }
+
+        return TryGetReadableRegion(address, out long regionEnd)
+            && (long)address + byteCount <= regionEnd;
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static string? SafeReadUnicodeString(IntPtr address)
+    {
+        if (address == IntPtr.Zero || !TryGetReadableRegion(address, out long regionEnd))
+        {
+            return null;
+        }
+
+        // Walk the wide string within the committed region only, so a string that
+        // runs off into unmapped memory truncates instead of crashing.
+        const int maxChars = 256;
+        char[] chars = new char[maxChars];
+        int count = 0;
+        long cursor = (long)address;
+        while (count < maxChars && cursor + 2 <= regionEnd)
+        {
+            char c = (char)Marshal.ReadInt16((IntPtr)cursor);
+            if (c == '\0')
+            {
+                break;
+            }
+
+            chars[count++] = c;
+            cursor += 2;
+        }
+
+        return count == 0 ? null : new string(chars, 0, count);
     }
 
     [ComImport]
@@ -1331,33 +1789,86 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
     }
 
     [ComImport]
+    // IOPCAsyncIO2 (opcda.idl): 39C13A71-011E-11D0-9675-0020AFD8ADB3.
+    // Vtable order MUST match opcda.idl: Read, Write, Refresh2, Cancel2, SetEnable,
+    // GetEnable (slots 3-8). Only Write is used; the rest keep the slots aligned.
+    [Guid("39C13A71-011E-11D0-9675-0020AFD8ADB3")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IOPCAsyncIO2
+    {
+        int Read(int count, [MarshalAs(UnmanagedType.LPArray, SizeParamIndex = 0)] int[] serverHandles, int transactionId, out int cancelId, out IntPtr itemValues);
+
+        int Write(int count, IntPtr serverHandles, IntPtr values, int transactionId, out int cancelId);
+
+        int Refresh2(int options, int transactionId, out int cancelId);
+
+        int Cancel2(int masterId);
+
+        int SetEnable(int enable);
+
+        int GetEnable(out int enable);
+    }
+
+    // Probe-only declarations: never invoked. `is` on a COM RCW performs a
+    // QueryInterface for the interface GUID, so these detect which OPC DA spec
+    // level a server implements. These are SERVER-object interfaces (the async
+    // I/O interfaces live on group objects and can't be probed here). GUIDs are
+    // the spec-defined ones (opcda.idl / opcda30.idl).
+    [ComImport]
+    [Guid("85C0B427-2893-4CBC-BD78-E5FC5146F08F")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IOPCItemIO
+    {
+    }
+
+    [ComImport]
+    [Guid("39C13A72-011E-11D0-9675-0020AFD8ADB3")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IOPCItemProperties
+    {
+    }
+
+    [ComImport]
+    [Guid("39C13A4F-011E-11D0-9675-0020AFD8ADB3")]
+    [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IOPCBrowseServerAddressSpace
+    {
+    }
+
+    [ComImport]
     [Guid("B196B284-BAB4-101A-B69C-00AA00341D07")]
     [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    // Vtable order MUST match ocidl.h: EnumConnectionPoints is slot 3, FindConnectionPoint slot 4.
     private interface IConnectionPointContainer
     {
-        int EnumConnectionPoints(out IntPtr ppEnum);
+        [PreserveSig] int EnumConnectionPoints(out IntPtr ppEnum);
 
-        int FindConnectionPoint(ref Guid riid, out IConnectionPoint ppCP);
+        [PreserveSig] int FindConnectionPoint(ref Guid riid, out IConnectionPoint ppCP);
     }
 
     [ComImport]
     [Guid("B196B286-BAB4-101A-B69C-00AA00341D07")]
     [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    // Vtable order MUST match ocidl.h: GetConnectionInterface, GetConnectionPointContainer,
+    // Advise, Unadvise, EnumConnections (slots 3-7).
     private interface IConnectionPoint
     {
-        int GetConnectionInterface(out Guid pIID);
+        [PreserveSig] int GetConnectionInterface(out Guid pIID);
 
-        int GetConnectionPointContainer(out IConnectionPointContainer ppCPC);
+        [PreserveSig] int GetConnectionPointContainer(out IConnectionPointContainer ppCPC);
 
-        int Advise([MarshalAs(UnmanagedType.IUnknown)] object pUnkSink, out int pdwCookie);
+        [PreserveSig] int Advise([MarshalAs(UnmanagedType.IUnknown)] object pUnkSink, out int pdwCookie);
 
-        int Unadvise(int dwCookie);
+        [PreserveSig] int Unadvise(int dwCookie);
 
-        int EnumConnections(out IntPtr ppEnum);
+        [PreserveSig] int EnumConnections(out IntPtr ppEnum);
     }
 
     [ComImport]
-    [Guid("39C13A71-011E-11D0-9675-0020AFD8ADB3")]
+    // IOPCDataCallback (opcda.idl): 39C13A70-011E-11D0-9675-0020AFD8ADB3.
+    // 39C13A71 is IOPCAsyncIO2 — passing that IID to FindConnectionPoint makes even
+    // callback-capable servers answer CONNECT_E_NOCONNECTION (0x80040200).
+    [Guid("39C13A70-011E-11D0-9675-0020AFD8ADB3")]
     [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     public interface IOPCDataCallback
     {
@@ -1365,7 +1876,7 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
             int dwTransid,
             int hGroup,
             int hrMasterquality,
-            int hrQuality,
+            int hrMastererror,
             int dwCount,
             IntPtr phClientItems,
             IntPtr pvValues,
@@ -1377,7 +1888,7 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
             int dwTransid,
             int hGroup,
             int hrMasterquality,
-            int hrQuality,
+            int hrMastererror,
             int dwCount,
             IntPtr phClientItems,
             IntPtr pvValues,
@@ -1388,13 +1899,9 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient
         int OnWriteComplete(
             int dwTransid,
             int hGroup,
-            int hrMasterquality,
-            int hrQuality,
+            int hrMastererr,
             int dwCount,
-            IntPtr phClientItems,
-            IntPtr pvValues,
-            IntPtr pwQualities,
-            IntPtr pftTimeStamps,
+            IntPtr pClienthandles,
             IntPtr pErrors);
 
         int OnCancelComplete(int dwTransid, int hGroup);

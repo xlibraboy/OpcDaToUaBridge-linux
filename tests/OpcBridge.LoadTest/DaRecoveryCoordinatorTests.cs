@@ -15,7 +15,7 @@ namespace OpcBridge.LoadTest;
 /// <summary>
 /// Tests the coordinator's reconnect-with-backoff and subscription-watchdog behavior.
 /// </summary>
-[Collection(nameof(DaLinkApiAppCollection))]
+[Collection(nameof(InterlinkApiAppCollection))]
 public sealed class DaRecoveryCoordinatorTests
 {
     [Fact]
@@ -31,7 +31,7 @@ public sealed class DaRecoveryCoordinatorTests
             ]
         }));
         MappingStore mappingStore = new(Options.Create(new BridgeOptions()));
-        DaLinkStore linkStore = new(Options.Create(new BridgeOptions()));
+        InterlinkStore linkStore = new(Options.Create(new BridgeOptions()));
         UaServerHost uaServer = new(
             Options.Create(new UaServerOptions { EndpointUrl = "opc.tcp://127.0.0.1:4100/OpcBridge" }),
             loggerFactory.CreateLogger<UaServerHost>(),
@@ -193,7 +193,7 @@ public sealed class DaRecoveryCoordinatorTests
         }
         DaRuntimeSettings settings = new(Options.Create(clientOptions));
         MappingStore mappingStore = new(Options.Create(new BridgeOptions()));
-        DaLinkStore linkStore = new(Options.Create(new BridgeOptions()));
+        InterlinkStore linkStore = new(Options.Create(new BridgeOptions()));
         UaServerHost uaServer = new(
             Options.Create(new UaServerOptions { EndpointUrl = "opc.tcp://127.0.0.1:4100/OpcBridge" }),
             loggerFactory.CreateLogger<UaServerHost>(),

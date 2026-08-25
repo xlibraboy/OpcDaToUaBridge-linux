@@ -10,6 +10,7 @@ namespace OpcBridge.LoadTest;
 /// "writeable" alone must take effect (was defeated by a Read pre-fill),
 /// and both "ReadWrite" and "Read-Write" spellings must normalize the same.
 /// </summary>
+[Collection(nameof(InterlinkApiAppCollection))]
 public sealed class AccessRightsNormalizationTests
 {
     private static MappingStore CreateStore()

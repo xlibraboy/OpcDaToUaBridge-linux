@@ -1,4 +1,4 @@
-# context.md — OpcDaToUaBridge
+# context.md — OpcBridge
 
 Instruction file for AI agents working in this repo. All facts below are verified against committed code on `main` as of 2026-08-07 (`a55e3da`).
 
@@ -78,6 +78,7 @@ The UA server is a **mirror**, not a computation path. Every value shown in the 
 - `OpcUaSourceClient` keeps a `last_desired_mappings_` list and re-reconciles monitored items on session reconnect. **All reconciles (connect, mapping-change, reconnect) are serialized through a `SemaphoreSlim`** — do not remove; concurrent reconciles left stale monitored items (a tag flipped to Write stayed subscribed).
 - **Per-source update-rate changes recreate the UA session** (`UpdateRateMs` is part of `SourceConnectionEquals` for UA sources — it drives the subscription `PublishingInterval`, which is fixed at client creation). Without this, `POST /api/da/sources/update-rate` reported success while values kept arriving at the old cadence (regression-tested in `SourceConnectionEqualsTests`).
 - **Failed monitored-item creates are retried on a 15s timer** (since `fix/monitored-item-retry`): a tag that does not exist at the source yet (or transiently rejected) is re-attempted automatically until it succeeds or the mapping stops being desired. Without this it stayed disconnected until the next mapping change or reconnect.
+- **Named subscriptions per source:** a UA source can run multiple named subscriptions, each with its own update rate — managed via `/api/ua/subscriptions` (GET list with live status, POST upsert) and `/api/ua/subscriptions/remove`, persisted in `sources.json` under each source's `OpcUa` options (`subscriptions`: name 1–64 chars + `updateRateMs`). A mapping opts in via `TagMapping.Subscription` (empty = default bucket; unknown names tolerate-load and group into the default at runtime). Reconcile partitions desired tags with `UaSubscriptionPlan.GroupByBucket` and diffs each bucket independently — a named-bucket rate change recreates only that subscription (servers don't reliably apply live publishing-interval changes), while a source-rate change still recreates the whole session (`UpdateRateMs` stays in `SourceConnectionEquals`). Deleting a sub auto-reassigns its tags to default (`MappingStore.ReassignSubscription` → `movedMappings`). Validation: `updateRateMs <= 0` rejected at the API (400); >= 1 accepted but clamped to a 100 ms floor; max 16 named subs per source (`SourceConfigMigration.MaxUaSubscriptionsPerSource`). UI: dashboard UA Subscriptions tab (requested vs actual interval per sub) and Maps/faceplate subscription select.
 
 ### Manual mode
 
@@ -114,7 +115,7 @@ When `TagMapping.Mode == "Manual"`, `BridgeWorker.ApplyManualMappings` synthesiz
 ## UA server
 
 - SDK: `OPCFoundation.NetStandard.Opc.Ua` 1.5.378.145.
-- Namespace URI `urn:ohmypi:opc-da-to-ua-bridge:tags` (index 2 at runtime). Root folder `OpcDaTags` under Objects. Mirror node id: string `{sourceId}/{itemId}` in that namespace (e.g. `ns=2;s=ua-a/ns=2;s=Tag00001`).
+- Namespace URI `urn:ohmypi:opc-bridge:tags` (index 2 at runtime). Root folder `OpcDaTags` under Objects. Mirror node id: string `{sourceId}/{itemId}` in that namespace (e.g. `ns=2;s=ua-a/ns=2;s=Tag00001`).
 - Endpoint `opc.tcp://0.0.0.0:4840/OpcBridge` (runtime port from `Bridge:OpcUaPort`), security policy `None` only, `AutoAcceptUntrustedCertificates = true` (dev default — tighten for production).
 - PKI directory stores: `pki/own`, `pki/trusted`, `pki/issuers`, `pki/rejected`.
 - `BridgeNodeManager.SyncMappings` (via `BridgeUaServer`) adds/removes nodes AND **refreshes mapping-driven attributes in place** when a mapping changes: `AccessLevel`/`UserAccessLevel` (from `AccessRights` via `ToAccessLevel`), `DataType` (via `ToDataTypeId`; a type change resets the value to a type-consistent initial), `DisplayName`/`Description`, and the `OnWriteValue` handler. Guarded by a change check so steady-state SyncMappings over 100k nodes is a near no-op. `ToAccessLevel`/`ToDataTypeId` are `internal` and unit-tested.
@@ -133,7 +134,7 @@ Endpoints (all in `Program.cs`):
 - `GET /` — dashboard HTML
 - `GET /api/values` — current `BridgeState` values
 - `GET /api/dashboard?limit=&sourceId=` — Live Values payload: `values[]` with `{sourceId, itemId, value, timestampUtc, daQuality, isGood, dataType, updateRate}` (dataType + updateRate resolved via `DashboardValues`; `updateRate` = effective ms per tag — per-tag `PollRateMs` wins, else the source default), `valuesTotal`, plus bridge/UA status blocks
-- `GET /api/status` | `/api/diagnostics` — bridge + UA status; diagnostics includes writeQueue stats, uaBandwidth, UA sessions/subscriptions
+- `GET /api/status` | `/api/diagnostics` — bridge + UA status; diagnostics includes writeQueue stats, uaBandwidth, UA sessions/subscriptions, plus dashboard-facing sections: `runtime` (bridge/DA state, counters), `uaServer` (clients/nodes), `uptimeSeconds`, `mqtt` + `influx` health, `problems` (disconnected/bad-quality tags). Sections are individually guarded (`DiagnosticsSections.Safe`) — one failing section degrades to null instead of 500-ing the payload. Dashboard: Diagnostics tab = health overview; Ops ▸ Sessions tab = per-source/session detail (DA sources, time sync, UA sessions/subs/bandwidth).
 - `GET /api/hmi/tags` — HMI tag snapshot (mappings + current values)
 - `POST /api/hmi/write` — HMI write; gated on mapping access rights; reuses `WriteQueue` / `ApplyUaWriteAsync`
 - `GET /api/hmi/trends?sourceId=&daItemId=&from=&to=&maxPoints=` — history via bridge Influx proxy (HMI never holds Influx token). Soft-fails with empty points + `error` when Influx unavailable.
@@ -146,7 +147,7 @@ Endpoints (all in `Program.cs`):
 - `POST /api/da/servers` — enumerate OPC DA servers (Windows-only, 10s timeout); `POST /api/da/tags` — browse tags (Windows-only, 15s timeout)
 - `POST /api/ua/test-connection` — probe an external UA endpoint from the bridge
 - `GET /api/mappings`; `POST /api/mappings/add` | `/bulk-add` | `/update` | `/remove` (see API gotchas above)
-- `GET /api/da-links` (and related write endpoints) — provider/consumer links
+- `GET /api/interlinks` (and related write endpoints) — provider/consumer interlinks
 - MQTT config/status/values endpoints under `/api/mqtt/*`
 - Influx config/connect/status endpoints under `/api/influx/*` (opt-in per-tag `InfluxEnabled` logging)
 - `GET /health` — `{ "status": "ok" }`
@@ -157,7 +158,7 @@ HMI note: the operator UI is not embedded in the dashboard; run `dotnet run --pr
 
 ### Dashboard UI (DashboardPage.cs)
 
-- Sidebar: Sources (OPC DA / OPC UA / Diagnostics tabs), Drivers, Maps, DA Links, MQTT, Traffic, InfluxDB, Monitor (Live Values / Logs / Diagram / Guide / About).
+- Sidebar: Sources (OPC DA / OPC UA / Diagnostics tabs), Drivers, Maps, Interlinks, MQTT, Traffic, InfluxDB, Monitor (Live Values / Logs / Diagram / Guide / About).
 - Live Values: 7-column table (Source | Item ID | Value | Type | Rate | Quality | Timestamp) fed by `/api/dashboard`; `colgroup` 11/23/20/9/9/10/18%. The **Rate** column shows each tag's effective update rate (`updateRate` per value — per-tag `PollRateMs` override, else the source default; `formatMs` renders `—` for unknown).
 - Maps tab defaults to the **opc-da** subtab — on UA-only rigs click `[data-map-type="opc-ua"]` to see rows.
 - Mapping rows: value + badge cluster (type, deadband, rate, MQTT, Influx) clipped with a right-edge mask fade; the **status cluster (connection-state + access rights) is pinned right outside the fade** (`flex-shrink:0`) and never clipped; row height fixed 34px. Connection badges (since `fix/ui-disconnect-badges`, main `cc97b52`) are driven by **server-side signals in the `/api/dashboard` payload — never by absence from the capped 2000-value window** (that bug showed Disc on ~98% of rows after reload): `disconnected` = failed monitored items (auto-retrying) → pinned **Disc** badge; `badQuality` = full-store scan of `IsGood=false` values → pinned **Bad** badge; source `connectionState != Connected` → **Disc** on all its rows. `refresh()` re-renders Maps rows while the Maps tab is visible so badges track live state. Disabled mappings excluded.
@@ -202,7 +203,7 @@ docker run --rm -v "$PWD/<worktree>":/src -w /src -v "$HOME/.nuget-cache":/home/
 
 **Worktree workflow (session convention):** fixes live in `git worktree add .worktrees/<branch-slug> -b <branch> main`; one worktree per branch; full suite per branch before merge; merge to main with `--no-ff`; push to origin. **Tool path quirk:** `edit`/`write` with relative `.worktrees/...` paths sometimes land in the main checkout — always use absolute paths and verify with grep after. `.dockerignore` excludes `.worktrees/` (7+ GB) so images can be built from the main checkout.
 
-**Windows host build:** `"%USERPROFILE%\AppData\Local\Microsoft\dotnet\dotnet.exe" build OpcDaToUaBridge.sln` — the `C:\Program Files\dotnet` install lacks the ASP.NET shared framework. Stop the running app before building (it locks `OpcBridge.Ua.dll`).
+**Windows host build:** `"%USERPROFILE%\AppData\Local\Microsoft\dotnet\dotnet.exe" build OpcBridge.sln` — the `C:\Program Files\dotnet` install lacks the ASP.NET shared framework. Stop the running app before building (it locks `OpcBridge.Ua.dll`).
 
 ## Load-test rig & harness
 
@@ -213,16 +214,21 @@ docker run --rm -v "$PWD/<worktree>":/src -w /src -v "$HOME/.nuget-cache":/home/
 
 ## Deploy to Windows
 
-**Target host (verified):** `DESKTOP-MENOJUS` / SSH alias `xlibr-win` (`192.168.20.13`), user `xlibr`, path `C:\Users\xlibr\Documents\OpcDaToUaBridge\publish\`.
+**Deploy targets:**
+- **Windows host** (separate PC): `C:\Users\xlibr\Documents\OpcBridge\`
+- **Windows VM `DESKTOP-BC2AU7H`** (`192.168.48.129`, VMnet subnet; also runs `Matrikon.OPC.Simulation.1` as DA source `opc-vm`): `C:\Users\Tested1\Documents\OpcBridge\` — renamed from `Documents\OpcDaToUaBridge` on 2026-08-24; scheduled task **`OpcBridge`** (renamed from `OpcDaToUaBridge` 2026-08-24; Boot+Logon triggers, InteractiveToken Hidden) runs `publish\OpcBridge.App.exe`; host deploy script `winvm-deploy.ps1` lives in that folder. SSH: use alias **`winvm-direct`** (`Tested1@192.168.48.129`) — the `winvm` alias's ProxyCommand jump host is currently broken.
+- Old target `DESKTOP-MENOJUS` / SSH alias `xlibr-win` (`192.168.20.13`) is retired (unreachable).
 
-**Linux publish (framework-dependent, 32-bit COM):**
+**Known pending:** one other machine (different location) is still configured against retired MENOJUS — leave as-is for now; reconfigure later.
+
+**Linux publish (self-contained, 32-bit COM):**
 ```bash
 docker run --rm -v "$PWD":/src -w /src mcr.microsoft.com/dotnet/sdk:8.0 \
-  bash -lc 'dotnet publish src/OpcBridge.App/OpcBridge.App.csproj -c Release -r win-x86 --self-contained false -o /src/publish.tmp'
+  bash -lc 'dotnet publish src/OpcBridge.App/OpcBridge.App.csproj -c Release -r win-x86 --self-contained true -o /src/publish.tmp'
 ```
 Package `publish.tmp` → tar.gz, SCP to host as `publish-new.tar.gz`, then run host deploy script (backs up `appsettings.json` / `mappings.json` / `pki`, clears publish, extracts, restores runtime state, re-registers task).
 
-**Host launcher:** scheduled task `OpcDaToUaBridge` → `scripts/windows/start-published-bridge.cmd` which `pushd`s into `publish\` and runs `C:\Program Files (x86)\dotnet\dotnet.exe OpcBridge.App.dll` (CWD must be the publish folder so `appsettings.json` resolves).
+**Host launcher:** scheduled task `OpcBridge` → `scripts/windows/start-published-bridge.cmd` which `cd`s into `publish\` and runs `OpcBridge.App.exe` (self-contained apphost — carries its own runtime; falls back to `dotnet OpcBridge.App.dll`. CWD must be the publish folder so `appsettings.json` resolves).
 
 **register-published-task.ps1** kills old process, re-registers AtStartup S4U task, starts it, probes `http://127.0.0.1:8080/health`.
 
@@ -233,7 +239,7 @@ Package `publish.tmp` → tar.gz, SCP to host as `publish-new.tar.gz`, then run 
 - Delete stale apphost / pollution before copy if the directory was previously dirtied.
 - Optional: delete `publish/pki/own/cert.der` when UA hostname/SAN must regenerate.
 
-**Git remotes:** `origin` = `OpcDaToUaBridge-linux` (SSH). Push merges to both origin and `win` (`OpcDaToUaBridge-windows`) when the change affects the Windows deploy.
+**Git remotes:** single remote — `origin` = `OpcBridge-linux` (GitHub). The old `win` (`OpcBridge-windows`) remote is retired; push everything to `origin` only.
 
 ## Conventions
 

@@ -30,9 +30,17 @@ public sealed record DaServerConfigRequest(
     int ReconnectDelayMs = 0,
     int MaxMappedTags = 0,
     bool? UseSubscriptions = null,
+    string? IoMode = null,
     int UpdateRateMs = 0,
     int? WatchdogTimeoutMs = null,
-    int LogicalStationNumber = 0);
+    int LogicalStationNumber = 0,
+    IReadOnlyList<DaGroupIoModeRequest>? Groups = null);
+
+public sealed record DaSourceIoModeRequest(string SourceId, string IoMode);
+
+public sealed record DaGroupIoModeRequest(string SourceId, string Name, int Rate, string IoMode, string? RenameFrom = null);
+
+public sealed record DaGroupIoModeResetRequest(string SourceId, string? Name = null, int? Rate = null);
 
 public sealed record MelsecTestConnectionRequest(
     string? SourceId = null,

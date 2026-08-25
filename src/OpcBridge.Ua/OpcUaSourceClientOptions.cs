@@ -13,7 +13,11 @@ public sealed class OpcUaSourceClientOptions
     public int SessionTimeoutMs { get; set; } = 60000;
     public int ReconnectDelayMs { get; set; } = 5000;
     public bool UseSubscriptions { get; set; } = true;
-    public string ApplicationName { get; set; } = "OpcDaToUaBridge.UaClient";
+
+    /// <summary>Named subscription definitions (name + rate ms). Empty = legacy single-subscription behavior.</summary>
+    public IReadOnlyList<OpcBridge.Core.UaSubscriptionSettings> Subscriptions { get; set; } =
+        Array.Empty<OpcBridge.Core.UaSubscriptionSettings>();
+    public string ApplicationName { get; set; } = "OpcBridge.UaClient";
     public string PkiRoot { get; set; } = "pki/ua-client"; // under BaseDirectory
     public bool AutoAcceptUntrustedCertificates { get; set; } = true; // lab default
 }

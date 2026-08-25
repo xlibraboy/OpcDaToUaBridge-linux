@@ -6,7 +6,7 @@ namespace OpcBridge.Ua;
 
 internal sealed class BridgeNodeManager : CustomNodeManager2
 {
-    private const string NamespaceUri = "urn:ohmypi:opc-da-to-ua-bridge:tags";
+    private const string NamespaceUri = "urn:ohmypi:opc-bridge:tags";
     private readonly IReadOnlyList<TagMapping> mappings_;
     private readonly Dictionary<string, BaseDataVariableState> variables_by_mapping_key_ = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<NodeId, (string SourceId, string ItemId)> node_to_mapping_ = new();

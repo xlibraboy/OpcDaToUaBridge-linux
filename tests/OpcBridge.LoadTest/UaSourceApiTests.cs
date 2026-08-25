@@ -5,7 +5,7 @@ using Xunit;
 
 namespace OpcBridge.LoadTest;
 
-[Collection(nameof(DaLinkApiAppCollection))]
+[Collection(nameof(InterlinkApiAppCollection))]
 public sealed class UaSourceApiTests
 {
     private static void WriteMinimalAppsettings(string dir, string uaEndpoint = "opc.tcp://0.0.0.0:4840/OpcBridge")
@@ -15,7 +15,7 @@ public sealed class UaSourceApiTests
             Da = new { ProgId = "Matrikon.OPC.Simulation.1", Host = "localhost", UpdateRateMs = 1000, UseSubscriptions = true },
             Ua = new
             {
-                ApplicationName = "OpcDaToUaBridge",
+                ApplicationName = "OpcBridge",
                 EndpointUrl = uaEndpoint,
                 AutoAcceptUntrustedCertificates = true,
                 RequireAuthentication = false,
@@ -28,7 +28,7 @@ public sealed class UaSourceApiTests
             {
                 Enabled = false,
                 BrokerUrl = "tcp://localhost:1883",
-                ClientId = "OpcDaToUaBridge",
+                ClientId = "OpcBridge",
                 UserName = (string?)null,
                 Password = (string?)null,
                 Tls = false,

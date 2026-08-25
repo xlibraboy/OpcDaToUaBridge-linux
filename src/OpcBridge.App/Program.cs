@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Diagnostics;
 using Newtonsoft.Json.Linq;
 using System.IO.Ports;
 using System.Text.Json;
@@ -24,6 +25,44 @@ using OpcBridge.Ua;
 // Dashboard UI feed cap: the live-values payload is re-fetched and re-rendered every
 // poll cycle; beyond this many values it freezes browsers. UI shows total separately.
 const int DashboardValuesLimit = 2000;
+
+// ---- Single-instance guard: only one bridge may run per machine/user at a time ----
+// A lock file is opened with FileShare.None and held for the process lifetime; the OS
+// releases it automatically if the process exits or crashes, so there is no stale lock.
+// OPCBRIDGE_INSTANCE_LOCK overrides the path (used by the test host to isolate instances).
+string lockPath = Environment.GetEnvironmentVariable("OPCBRIDGE_INSTANCE_LOCK")
+    ?? Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "OpcBridge",
+        "bridge.lock");
+
+try
+{
+    Directory.CreateDirectory(Path.GetDirectoryName(lockPath)!);
+}
+catch (Exception ex)
+{
+    Console.Error.WriteLine($"OpcBridge: could not create instance-lock directory: {ex.Message}");
+}
+
+FileStream? acquiredLock = null;
+try
+{
+    acquiredLock = new FileStream(lockPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+    acquiredLock.SetLength(0);
+    byte[] pidBytes = System.Text.Encoding.UTF8.GetBytes(Environment.ProcessId.ToString());
+    acquiredLock.Write(pidBytes, 0, pidBytes.Length);
+    acquiredLock.Flush();
+}
+catch (IOException)
+{
+    Console.Error.WriteLine(
+        $"OpcBridge: another instance is already running (lock file: {lockPath}). " +
+        "Refusing to start a second instance.");
+    return;
+}
+
+using FileStream instanceLock = acquiredLock!;
 
 // Port auto-assignment: check defaults, auto-roll if in use, persist to appsettings.json
 string cfgPath = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
@@ -78,6 +117,30 @@ if (httpPort != savedHttp || uaPort != savedUa)
 }
 
 BridgeState.ConfigurePorts(httpPort, uaPort, httpAuto, uaAuto);
+
+// Windows session awareness: session-bound PLC simulators (GX Simulator's shared
+// memory behind MX OPC, etc.) are only reachable from the interactive desktop
+// session. A bridge launched into session 0 (SSH/WMI, services, S4U tasks) looks
+// healthy but gets Bad values from those servers — surface it instead of failing
+// silently. The dashboard shows a banner; the log warns here.
+int sessionId = 0;
+bool interactiveSession = true;
+if (OperatingSystem.IsWindows())
+{
+    sessionId = Process.GetCurrentProcess().SessionId;
+    interactiveSession = sessionId != 0;
+    if (!interactiveSession)
+    {
+        logger.LogWarning(
+            "Bridge is running in non-interactive Windows session {SessionId} (session 0). " +
+            "Session-bound OPC DA servers (GX Simulator via MX OPC, or any simulator using " +
+            "session-scoped shared memory) will not deliver values. Launch the bridge from the " +
+            "interactive desktop session instead.",
+            sessionId);
+    }
+}
+
+BridgeState.ConfigureSession(sessionId, interactiveSession);
 logger.LogInformation("Bridge listening on http://0.0.0.0:{HttpPort}", httpPort);
 logger.LogInformation("OPC UA server endpoint: opc.tcp://0.0.0.0:{UaPort}/OpcBridge", uaPort);
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
@@ -99,8 +162,8 @@ builder.Services.AddSingleton<DaRuntimeSettings>();
 builder.Services.AddSingleton<SourceClientFactory>();
 builder.Services.AddSingleton<BridgeState>();
 builder.Services.AddSingleton<MappingStore>();
-builder.Services.AddSingleton<DaLinkStore>();
-builder.Services.AddSingleton<IDaLinkMetadataResolver>(sp => sp.GetRequiredService<BridgeWorker>());
+builder.Services.AddSingleton<InterlinkStore>();
+builder.Services.AddSingleton<IInterlinkMetadataResolver>(sp => sp.GetRequiredService<BridgeWorker>());
 builder.Services.AddSingleton<UaServerHost>();
 builder.Services.AddSingleton<OpcUaBrowseService>();
 builder.Services.AddSingleton<IMqttBridge, MqttBridge>();
@@ -130,7 +193,10 @@ builder.Services.AddSingleton<IInfluxTrendQuery>(sp =>
 
 
 WebApplication app = builder.Build();
-TryMigrateLegacyDaLinks(app);
+TryMigrateLegacyInterlinks(app);
+
+// Wall-clock-independent tick captured at startup; powers uptimeSeconds on /api/diagnostics.
+long processStartTickMs = Environment.TickCount64;
 
 app.MapGet("/", (HttpContext ctx) => {
     ctx.Response.Headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
@@ -261,8 +327,99 @@ app.MapDelete("/api/hmi/displays/{id}", (string id, DisplayStore displayStore) =
  {
      bridge = state.GetStatus(),
      ua = uaServer.GetStatus(),
-     apps = discovery.GetStatus()
+     apps = discovery.GetStatus(),
  }));
+
+// Resolve a session-0 (non-interactive) launch: relaunch the bridge into the
+// logged-in interactive desktop session so session-bound OPC DA servers
+// (GX Simulator via MX OPC, etc.) deliver values. The current process cannot
+// move itself across sessions, so it registers an Interactive-logon scheduled
+// task whose launcher waits for this PID to exit (releasing the single-instance
+// lock and the HTTP/UA ports), then starts the bridge exe in session 1. The
+// old process then stops itself; the dashboard reconnects on the same ports.
+app.MapPost("/api/session/resolve", (IHostApplicationLifetime lifetime) =>
+{
+    if (!OperatingSystem.IsWindows())
+        return Results.Json(new { status = "error", message = "Resolve is only available on Windows." });
+    if (BridgeState.InteractiveSession)
+        return Results.Json(new { status = "error", message = "Bridge is already running in an interactive session." });
+
+    string? user = GetInteractiveWindowsUser();
+    if (string.IsNullOrWhiteSpace(user))
+        return Results.Json(new { status = "error", message = "No interactive desktop user is logged on. Log in at the console and retry." });
+
+    string dir = AppContext.BaseDirectory.TrimEnd('\\', '/');
+    string apphost = Path.Combine(dir, "OpcBridge.App.exe");
+    string dll = Path.Combine(dir, "OpcBridge.App.dll");
+    string exePath = Environment.ProcessPath ?? apphost;
+    // Prefer apphost exe (framework-dependent publish produces it); fall back to dotnet + dll
+    string exeToLaunch;
+    string launchArgs = "";
+    if (File.Exists(apphost))
+    {
+        exeToLaunch = apphost;
+    }
+    else if (exePath.EndsWith("dotnet.exe", StringComparison.OrdinalIgnoreCase) && File.Exists(dll))
+    {
+        exeToLaunch = exePath;
+        launchArgs = $"\"{dll}\"";
+    }
+    else
+    {
+        exeToLaunch = exePath;
+    }
+    if (!File.Exists(exeToLaunch))
+        return Results.Json(new { status = "error", message = $"Bridge executable not found: {exeToLaunch}" });
+
+    string launcherPath = Path.Combine(dir, "resolve-interactive.ps1");
+    string registerPath = Path.Combine(dir, "resolve-register.ps1");
+
+    try
+    {
+        string launchCmd = string.IsNullOrEmpty(launchArgs)
+            ? $"Start-Process -FilePath $exe -WorkingDirectory $dir -WindowStyle Hidden"
+            : $"Start-Process -FilePath $exe -ArgumentList $args -WorkingDirectory $dir -WindowStyle Hidden";
+        string launcher =
+            "param([int]$OldPid)\r\n" +
+            "$exe = '" + exeToLaunch.Replace("'", "''") + "'\r\n" +
+            "$args = '" + launchArgs.Replace("'", "''") + "'\r\n" +
+            "$dir = '" + dir.Replace("'", "''") + "'\r\n" +
+            "$deadline = (Get-Date).AddSeconds(90)\r\n" +
+            "while ((Get-Process -Id $OldPid -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 1 }\r\n" +
+            "if (Get-Process -Id $OldPid -ErrorAction SilentlyContinue) { exit 2 }\r\n" +
+            launchCmd + "\r\n" +
+            "schtasks /delete /tn OpcBridgeResolve /f *> $null\r\n" +
+            "Remove-Item -LiteralPath '" + launcherPath.Replace("'", "''") + "' -Force -ErrorAction SilentlyContinue\r\n";
+        File.WriteAllText(launcherPath, launcher);
+
+        string actionArgs =
+            "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" + launcherPath + "\" -OldPid " + Environment.ProcessId;
+        string register =
+            "$ErrorActionPreference = 'Stop'\r\n" +
+            "$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '" + actionArgs.Replace("'", "''") + "'\r\n" +
+            "$principal = New-ScheduledTaskPrincipal -UserId '" + user + "' -LogonType Interactive -RunLevel Highest\r\n" +
+            "Register-ScheduledTask -TaskName 'OpcBridgeResolve' -Action $action -Principal $principal -Force | Out-Null\r\n" +
+            "Start-ScheduledTask -TaskName 'OpcBridgeResolve'\r\n" +
+            "Remove-Item -LiteralPath '" + registerPath.Replace("'", "''") + "' -Force -ErrorAction SilentlyContinue\r\n";
+        File.WriteAllText(registerPath, register);
+
+        (int code, string stdout, string stderr) = RunHiddenProcess(
+            "powershell.exe",
+            $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{registerPath}\"",
+            30000);
+        if (code != 0)
+            return Results.Json(new { status = "error", message = $"Could not start resolve task (exit {code}): {stderr.Trim()} {stdout.Trim()}" });
+    }
+    catch (Exception ex)
+    {
+        return Results.Json(new { status = "error", message = "Resolve failed: " + ex.Message });
+    }
+
+    // Let the HTTP response flush, then stop this instance so the launcher can
+    // start the new one (single-instance lock + ports must be released first).
+    _ = Task.Run(async () => { await Task.Delay(2000); lifetime.StopApplication(); });
+    return Results.Json(new { status = "ok", message = "Relaunching bridge into the interactive desktop session. This page will reconnect automatically." });
+});
 app.MapGet("/api/status/ports", () =>
 {
     string hostName = System.Net.Dns.GetHostName();
@@ -278,7 +435,7 @@ app.MapGet("/api/status/ports", () =>
         uaBind,
         uaClient));
 });
- app.MapGet("/api/dashboard", (BridgeState state, UaServerHost uaServer, BridgeAppDiscovery discovery, MappingStore mappingStore, BridgeWorker worker, int? limit, string? sourceId) =>
+ app.MapGet("/api/dashboard", (BridgeState state, UaServerHost uaServer, BridgeAppDiscovery discovery, MappingStore mappingStore, BridgeWorker worker, DaRuntimeSettings daSettings, int? limit, string? sourceId) =>
  {
      IReadOnlyList<BridgeValueSnapshot> values = state.GetValues(limit ?? DashboardValuesLimit, sourceId);
 
@@ -288,11 +445,16 @@ app.MapGet("/api/status/ports", () =>
      (IReadOnlyList<TagMapping> mappings, _) = mappingStore.GetSnapshot();
      Dictionary<string, string> dataTypeByKey = DashboardValues.BuildDataTypeLookup(mappings);
 
-     // Effective update rate per tag: per-tag PollRateMs wins, else the source default.
+     // Effective update rate per tag: assigned named subscription (clamped ≥ 100 ms)
+     // wins, else per-tag PollRateMs, else the source default.
      Dictionary<string, int> sourceRates = state.GetStatus().Sources
          .GroupBy(source => source.SourceId, StringComparer.OrdinalIgnoreCase)
          .ToDictionary(group => group.Key, group => group.First().UpdateRateMs, StringComparer.OrdinalIgnoreCase);
-     Dictionary<string, int> updateRateByKey = DashboardValues.BuildUpdateRateLookup(mappings, sourceRates);
+     DaRuntimeSettingsSnapshot daSnapshot = daSettings.GetSnapshot();
+     Dictionary<string, IReadOnlyList<UaSubscriptionSettings>> uaSubscriptionsBySource = daSnapshot.Sources
+         .Where(source => source.UaSubscriptions.Count > 0)
+         .ToDictionary(source => source.SourceId, source => source.UaSubscriptions, StringComparer.OrdinalIgnoreCase);
+     Dictionary<string, int> updateRateByKey = DashboardValues.BuildUpdateRateLookup(mappings, sourceRates, uaSubscriptionsBySource);
 
      return Results.Json(new
      {
@@ -315,15 +477,73 @@ app.MapGet("/api/status/ports", () =>
          badQuality = state.GetBadQualityTags().Select(tag => new { sourceId = tag.SourceId, itemId = tag.ItemId })
      });
  });
-app.MapGet("/api/diagnostics", (BridgeWorker worker, UaServerHost uaServer) => Results.Json(new
+app.MapGet("/api/diagnostics", (BridgeWorker worker, UaServerHost uaServer, BridgeState state, MqttRuntimeSettings mqttSettings, InfluxRuntimeSettings influxSettings, ILogger<Program> logger) =>
 {
-    bridge = worker.GetDiagnostics(),
-    ua = new
+    void LogSectionFailure(string name, Exception exception) =>
+        logger.LogError(exception, "/api/diagnostics: section {Section} failed; omitting it from the payload", name);
+
+    BridgeRuntimeStatus runtimeStatus = state.GetStatus();
+    UaServerStatus uaStatus = uaServer.GetStatus();
+    MqttRuntimeSnapshot mqttSnapshot = mqttSettings.GetSnapshot();
+    InfluxRuntimeSnapshot influxSnapshot = influxSettings.GetSnapshot();
+    IReadOnlyList<(string SourceId, string ItemId)> badQualityTags = state.GetBadQualityTags();
+    return Results.Json(new
     {
-        sessions = uaServer.GetSessionDiagnostics(),
-        subscriptions = uaServer.GetSubscriptionDiagnostics()
-    }
-}));
+        bridge = DiagnosticsSections.Safe("bridge", () => worker.GetDiagnostics(), ex => LogSectionFailure("bridge", ex)),
+        ua = new
+        {
+            sessions = DiagnosticsSections.Safe("ua.sessions", () => uaServer.GetSessionDiagnostics(), ex => LogSectionFailure("ua.sessions", ex)),
+            subscriptions = DiagnosticsSections.Safe("ua.subscriptions", () => uaServer.GetSubscriptionDiagnostics(), ex => LogSectionFailure("ua.subscriptions", ex))
+        },
+        runtime = new
+        {
+            bridgeState = runtimeStatus.BridgeState,
+            daConnectionState = runtimeStatus.DaConnectionState,
+            updateRateMs = runtimeStatus.UpdateRateMs,
+            mappingCount = runtimeStatus.MappingCount,
+            lastDaReadUtc = runtimeStatus.LastDaReadUtc,
+            lastDaReadCount = runtimeStatus.LastDaReadCount,
+            lastUaWriteUtc = runtimeStatus.LastUaWriteUtc,
+            lastUaWriteCount = runtimeStatus.LastUaWriteCount,
+            lastPollDurationMs = runtimeStatus.LastPollDurationMs,
+            lastPollValueRate = runtimeStatus.LastPollValueRate,
+            sessionId = runtimeStatus.SessionId,
+            interactiveSession = runtimeStatus.InteractiveSession
+        },
+        uaServer = new
+        {
+            state = uaStatus.State,
+            endpointUrl = uaStatus.EndpointUrl,
+            connectedClientCount = uaStatus.ConnectedClientCount,
+            mappedNodeCount = uaStatus.MappedNodeCount
+        },
+        uptimeSeconds = Math.Round((Environment.TickCount64 - processStartTickMs) / 1000.0, 1),
+        mqtt = new
+        {
+            enabled = mqttSnapshot.Options.Enabled,
+            state = mqttSnapshot.State,
+            lastError = mqttSnapshot.LastError,
+            publishedCount = mqttSnapshot.PublishedCount,
+            receivedCount = mqttSnapshot.ReceivedCount,
+            publishedRate = mqttSnapshot.PublishedRate,
+            receivedRate = mqttSnapshot.ReceivedRate
+        },
+        influx = new
+        {
+            enabled = influxSnapshot.Options.Enabled,
+            state = influxSnapshot.State,
+            lastError = influxSnapshot.LastError,
+            writtenCount = influxSnapshot.WrittenCount,
+            writtenRate = influxSnapshot.WrittenRate
+        },
+        problems = new
+        {
+            disconnected = DiagnosticsSections.Safe("problems.disconnected", () => worker.GetDisconnectedTags().Select(t => new { t.SourceId, t.ItemId }), ex => LogSectionFailure("problems.disconnected", ex)),
+            badQualityTotal = badQualityTags.Count,
+            badQuality = badQualityTags.Take(50).Select(t => new { t.SourceId, t.ItemId })
+        }
+    });
+});
 app.MapGet("/api/logs", (DashboardLogStore logStore, int? limit, string? level) =>
 {
     LogLevel? minimumLevel = TryParseLogLevel(level, out LogLevel parsedLevel)
@@ -428,6 +648,247 @@ app.MapPost("/api/da/sources/update-rate", (DaSourceUpdateRateRequest request, D
         updateRateMs = source.UpdateRateMs
     });
 });
+app.MapPost("/api/da/sources/io-mode", (DaSourceIoModeRequest request, DaRuntimeSettings settings) =>
+{
+    if (string.IsNullOrWhiteSpace(request.SourceId))
+    {
+        return Results.BadRequest(new { error = "Source ID is required." });
+    }
+
+    if (string.IsNullOrWhiteSpace(request.IoMode))
+    {
+        return Results.BadRequest(new { error = "I/O mode is required." });
+    }
+
+    string normalizedMode = SourceConfigMigration.NormalizeIoMode(request.IoMode);
+    if (!string.Equals(normalizedMode, request.IoMode, StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.BadRequest(new { error = "I/O mode must be AutoDetect, Sync or Async20." });
+    }
+
+    DaRuntimeSettingsSnapshot snapshot = settings.SetSourceIoMode(request.SourceId, normalizedMode);
+    DaSourceRuntimeSettings? source = snapshot.GetSource(request.SourceId);
+    if (source is null)
+    {
+        return Results.BadRequest(new { error = "Source not found." });
+    }
+
+    return Results.Json(new
+    {
+        version = snapshot.Version,
+        sourceId = source.SourceId,
+        ioMode = source.IoMode
+    });
+});
+app.MapGet("/api/da/sources/groups", (string? sourceId, DaRuntimeSettings settings, MappingStore mappingStore) =>
+{
+    if (string.IsNullOrWhiteSpace(sourceId))
+    {
+        return Results.BadRequest(new { error = "Source ID is required." });
+    }
+
+    DaRuntimeSettingsSnapshot snapshot = settings.GetSnapshot();
+    DaSourceRuntimeSettings? source = snapshot.GetSource(sourceId);
+    if (source is null)
+    {
+        return Results.BadRequest(new { error = "Source not found." });
+    }
+
+    if (!string.Equals(source.SourceType, SourceTypes.OpcDa, StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.BadRequest(new { error = "Source is not an OPC DA source." });
+    }
+
+    // Rate buckets = distinct effective poll rates of the source's mapped tags
+    // (per-tag PollRateMs wins, else the source default) — the same derivation the
+    // poller uses to create OPC DA groups.
+    // Also include any explicit GroupIoModes rates so a newly added group without tags still appears.
+    (IReadOnlyList<TagMapping> mappings, _) = mappingStore.GetSnapshot();
+    int defaultRate = Math.Max(100, source.UpdateRateMs);
+    HashSet<int> rates = new();
+    foreach (TagMapping mapping in mappings)
+    {
+        if (mapping.Enabled
+            && string.Equals(mapping.SourceId, sourceId, StringComparison.OrdinalIgnoreCase))
+        {
+            rates.Add(mapping.PollRateMs > 0 ? mapping.PollRateMs : defaultRate);
+        }
+    }
+
+    foreach (DaGroupIoMode g in source.GroupIoModes)
+    {
+        rates.Add(g.Rate);
+    }
+
+    if (rates.Count == 0)
+    {
+        rates.Add(defaultRate);
+    }
+
+    Dictionary<string, DaGroupIoMode> byName = source.GroupIoModes.ToDictionary(g => g.Name, g => g, StringComparer.OrdinalIgnoreCase);
+    // tag counts per rate for display (legacy PollRateMs routing)
+    Dictionary<int, int> tagCounts = new();
+    foreach (int r in rates) tagCounts[r] = 0;
+    foreach (TagMapping mapping in mappings)
+    {
+        if (mapping.Enabled && string.Equals(mapping.SourceId, sourceId, StringComparison.OrdinalIgnoreCase))
+        {
+            int eff = mapping.PollRateMs > 0 ? mapping.PollRateMs : defaultRate;
+            if (tagCounts.ContainsKey(eff)) tagCounts[eff]++;
+        }
+    }
+    // tag counts per group name for named groups (DaGroup)
+    Dictionary<string, int> tagCountsByGroup = new(StringComparer.OrdinalIgnoreCase);
+    foreach (var g in source.GroupIoModes) tagCountsByGroup[g.Name] = 0;
+    foreach (TagMapping mapping in mappings)
+    {
+        if (mapping.Enabled && string.Equals(mapping.SourceId, sourceId, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(mapping.DaGroup))
+        {
+            if (tagCountsByGroup.ContainsKey(mapping.DaGroup!)) tagCountsByGroup[mapping.DaGroup!]++;
+        }
+    }
+
+    // For named groups, return one entry per DaGroupIoMode (per Name), plus any distinct PollRateMs without explicit group
+    var groupsByName = source.GroupIoModes.ToDictionary(g => g.Name, g => g, StringComparer.OrdinalIgnoreCase);
+    var groups = new List<object>();
+    // First, explicit named groups
+    foreach (var g in source.GroupIoModes.OrderBy(x => x.Name))
+    {
+        int tc = tagCountsByGroup.TryGetValue(g.Name, out int c) ? c : 0;
+        // For named groups, also count PollRateMs tags that match Rate but have no DaGroup (back-compat)
+        if (tc == 0) tagCounts.TryGetValue(g.Rate, out tc);
+        groups.Add(new
+        {
+            name = g.Name,
+            rate = g.Rate,
+            groupId = g.Name,
+            ioMode = (string?)g.IoMode,
+            effective = g.IoMode,
+            isDefault = false,
+            tagCount = tc
+        });
+    }
+    // Then, distinct PollRateMs rates that have no explicit named group
+    var existingNames = new HashSet<string>(source.GroupIoModes.Select(g => g.Name), StringComparer.OrdinalIgnoreCase);
+    var distinctRates = new HashSet<int>(rates);
+    foreach (int rate in distinctRates.OrderBy(r => r))
+    {
+        // if there's already a named group with this rate, skip (to avoid duplicate Rate entries when Name is the key)
+        // Instead, check if any named group has this rate - if yes, don't create default
+        bool hasNamedWithRate = source.GroupIoModes.Any(g => g.Rate == rate);
+        if (hasNamedWithRate) continue;
+        int tc = tagCounts.TryGetValue(rate, out int c) ? c : 0;
+        groups.Add(new
+        {
+            name = $"OpcBridge_{rate}",
+            rate,
+            groupId = $"OpcBridge_{rate}",
+            ioMode = (string?)null,
+            effective = source.IoMode,
+            isDefault = true,
+            tagCount = tc
+        });
+    }
+    // Ensure at least default if no groups at all
+    if (groups.Count == 0)
+    {
+        int defRate = rates.FirstOrDefault();
+        if (defRate == 0) defRate = defaultRate;
+        groups.Add(new
+        {
+            name = $"OpcBridge_{defRate}",
+            rate = defRate,
+            groupId = $"OpcBridge_{defRate}",
+            ioMode = (string?)null,
+            effective = source.IoMode,
+            isDefault = true,
+            tagCount = tagCounts.TryGetValue(defRate, out int c) ? c : 0
+        });
+    }
+    var groupsArray = groups.OrderBy(g => ((dynamic)g).name).ToArray();
+
+    return Results.Json(new
+    {
+        version = snapshot.Version,
+        sourceId = source.SourceId,
+        sourceIoMode = source.IoMode,
+        groups = groupsArray
+    });
+});
+app.MapPost("/api/da/sources/groups", (DaGroupIoModeRequest request, DaRuntimeSettings settings, MappingStore mappingStore) =>
+{
+    if (string.IsNullOrWhiteSpace(request.SourceId))
+    {
+        return Results.BadRequest(new { error = "Source ID is required." });
+    }
+
+    if (request.Rate < 100)
+    {
+        return Results.BadRequest(new { error = "Rate must be at least 100 ms." });
+    }
+
+    if (string.IsNullOrWhiteSpace(request.IoMode))
+    {
+        return Results.BadRequest(new { error = "I/O mode is required." });
+    }
+
+    string normalizedMode = SourceConfigMigration.NormalizeIoMode(request.IoMode);
+    if (!string.Equals(normalizedMode, request.IoMode, StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.BadRequest(new { error = "I/O mode must be AutoDetect, Sync or Async20." });
+    }
+
+    if (string.IsNullOrWhiteSpace(request.Name)) return Results.BadRequest(new { error = "Group name is required." });
+    if (!string.IsNullOrWhiteSpace(request.RenameFrom) &&
+        !string.Equals(request.RenameFrom, request.Name, StringComparison.OrdinalIgnoreCase))
+    {
+        // Rename: rewrite mapping references so faceplates follow the new name.
+        mappingStore.RenameDaGroup(request.SourceId, request.RenameFrom!, request.Name);
+    }
+    DaRuntimeSettingsSnapshot snapshot = settings.SetSourceGroupIoMode(request.SourceId, request.Name!, request.Rate, normalizedMode);
+    DaSourceRuntimeSettings? source = snapshot.GetSource(request.SourceId);
+    if (source is null)
+    {
+        return Results.BadRequest(new { error = "Source not found." });
+    }
+    // Keep member tags' numeric rate aligned with the named group (COM buckets are rate-keyed).
+    int tagsSynced = mappingStore.SyncDaGroupRate(request.SourceId, request.Name!, request.Rate);
+
+    return Results.Json(new
+    {
+        version = snapshot.Version,
+        sourceId = source.SourceId,
+        rate = request.Rate,
+        ioMode = normalizedMode,
+        tagsSynced
+    });
+});
+app.MapPost("/api/da/sources/groups/reset", (DaGroupIoModeResetRequest request, DaRuntimeSettings settings, MappingStore mappingStore) =>
+{
+    if (string.IsNullOrWhiteSpace(request.SourceId))
+    {
+        return Results.BadRequest(new { error = "Source ID is required." });
+    }
+
+    DaRuntimeSettingsSnapshot snapshot = settings.ResetSourceGroupIoMode(request.SourceId, request.Name, request.Rate);
+    DaSourceRuntimeSettings? source = snapshot.GetSource(request.SourceId);
+    if (source is null)
+    {
+        return Results.BadRequest(new { error = "Source not found." });
+    }
+    // Group deleted: member tags fall back to Source Default (per design).
+    int tagsDetached = string.IsNullOrWhiteSpace(request.Name)
+        ? 0
+        : mappingStore.ClearDaGroup(request.SourceId, request.Name!);
+
+    return Results.Json(new
+    {
+        version = snapshot.Version,
+        sourceId = source.SourceId,
+        rate = request.Rate,
+        tagsDetached
+    });
+});
 app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings settings, UaServerHost uaServer) =>
 {
     if (string.IsNullOrWhiteSpace(request.SourceId))
@@ -500,7 +961,8 @@ app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings
             request.Host ?? string.Empty,
             request.RemoteUsername,
             request.RemotePassword,
-            request.RemoteDomain);
+            request.RemoteDomain,
+            ResolveGroupIoModes(request.Groups, settings, request.SourceId));
     }
 
     DaRuntimeSettingsSnapshot snapshot = settings.UpsertSource(new DaSourceRuntimeSettings(
@@ -514,16 +976,34 @@ app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings
         upsertUa,
         upsertMelsec,
         upsertS7200,
-        upsertMx));
+        upsertMx,
+        SourceConfigMigration.NormalizeIoMode(request.IoMode)));
 
     DaSourceRuntimeSettings source = snapshot.GetSource(request.SourceId)!;
+
+    // Preserves existing per-group overrides when the request omits them (the
+    // dashboard's source form does not carry group settings).
+    static IReadOnlyList<DaGroupIoMode>? ResolveGroupIoModes(
+        IReadOnlyList<DaGroupIoModeRequest>? groups,
+        DaRuntimeSettings settings,
+        string sourceId)
+    {
+        if (groups is not null)
+        {
+            return SourceConfigMigration.NormalizeGroupIoModes(
+                groups.Select(g => new DaGroupIoMode(g.Name, g.Rate, g.IoMode)));
+        }
+
+        DaSourceRuntimeSettings? existing = settings.GetSnapshot().GetSource(sourceId);
+        return existing?.OpcDa?.GroupIoModes;
+    }
     return Results.Json(new
     {
         version = snapshot.Version,
         source = ToSourceApiDto(source)
     });
 });
-app.MapPost("/api/da/sources/remove", (DaSourceRemoveRequest request, DaRuntimeSettings settings, MappingStore store, DaLinkStore daLinkStore) =>
+app.MapPost("/api/da/sources/remove", (DaSourceRemoveRequest request, DaRuntimeSettings settings, MappingStore store, InterlinkStore interlinkStore) =>
 {
     if (!settings.TryRemoveSource(request.SourceId, out DaRuntimeSettingsSnapshot snapshot))
     {
@@ -531,8 +1011,8 @@ app.MapPost("/api/da/sources/remove", (DaSourceRemoveRequest request, DaRuntimeS
     }
 
     long mappingVersion = store.RemoveSource(request.SourceId);
-    long daLinkVersion = daLinkStore.RemoveBySource(request.SourceId);
-    return Results.Json(new { version = snapshot.Version, mappingVersion, daLinkVersion });
+    long interlinkVersion = interlinkStore.RemoveBySource(request.SourceId);
+    return Results.Json(new { version = snapshot.Version, mappingVersion, interlinkVersion });
 });
 app.MapPost("/api/drivers/melsec-a3n/parse-address", (MelsecParseAddressRequest request) =>
 {
@@ -589,6 +1069,30 @@ app.MapPost("/api/drivers/mx-component/test-connection", async (MxComponentTestC
     {
         return Results.Json(new { ok = false, error = ex.Message });
     }
+});
+
+// Accepted PLC device addresses for MELSEC sources. MX Component shares the serial
+// driver's addressing; the table is generated from the same catalog the parser
+// enforces, so what this endpoint reports is exactly what tag upserts accept.
+app.MapGet("/api/drivers/mx-component/address-ranges", () =>
+{
+    return Results.Json(new
+    {
+        sourceType = SourceTypes.MxComponent,
+        devices = MelsecDeviceCatalog.Devices.Select(range => new
+        {
+            device = range.Device,
+            displayName = range.DisplayName,
+            signalType = range.SignalType,
+            numberBase = range.NumberBase.ToString(),
+            min = range.MinNumber,
+            max = range.MaxNumber,
+            bitSuffixAllowed = range.BitSuffixAllowed,
+            maxBitIndex = range.MaxBitIndex,
+            aliases = range.Aliases,
+            example = range.Example
+        })
+    });
 });
 
 app.MapPost("/api/drivers/s7200-ppi/parse-address", (S7200ParseAddressRequest request) =>
@@ -695,23 +1199,23 @@ app.MapPost("/api/da/tags", async (DaTagBrowseRequest request) =>
         return Results.Json(new { error = exception.Message, branches = Array.Empty<object>(), tags = Array.Empty<object>() });
     }
 });
-app.MapGet("/api/da-links", (DaLinkStore store) =>
+app.MapGet("/api/interlinks", (InterlinkStore store) =>
 {
-    (IReadOnlyList<DaLinkRule> rules, long version) = store.GetSnapshot();
+    (IReadOnlyList<InterlinkRule> rules, long version) = store.GetSnapshot();
     return Results.Json(new
     {
-        links = rules.Select(ToDaLinkDto),
+        links = rules.Select(ToInterlinkDto),
         version
     });
 });
-app.MapPost("/api/da-links", (CreateDaLinkRequest request, DaLinkStore store, IDaLinkMetadataResolver metadataResolver) =>
+app.MapPost("/api/interlinks", (CreateInterlinkRequest request, InterlinkStore store, MappingStore mappingStore, IInterlinkMetadataResolver metadataResolver) =>
 {
     if (request.Link is null)
     {
         return Results.BadRequest(new { error = "Link is required." });
     }
 
-    if (!TryBuildValidatedDaLinkRule(request.Link, null, store, metadataResolver, out DaLinkRule rule, out string? error))
+    if (!TryBuildValidatedInterlinkRule(request.Link, null, mappingStore, store, metadataResolver, out InterlinkRule rule, out string? error))
     {
         return Results.BadRequest(new { error });
     }
@@ -723,21 +1227,21 @@ app.MapPost("/api/da-links", (CreateDaLinkRequest request, DaLinkStore store, ID
             : Results.BadRequest(new { error = storeError });
     }
 
-    return Results.Json(new { link = ToDaLinkDto(rule), version });
+    return Results.Json(new { link = ToInterlinkDto(rule), version });
 });
 
-app.MapPut("/api/da-links/{id:guid}", (Guid id, UpdateDaLinkRequest request, DaLinkStore store, IDaLinkMetadataResolver metadataResolver) =>
+app.MapPut("/api/interlinks/{id:guid}", (Guid id, UpdateInterlinkRequest request, InterlinkStore store, MappingStore mappingStore, IInterlinkMetadataResolver metadataResolver) =>
 {
     if (request.Link is null)
     {
         return Results.BadRequest(new { error = "Link is required." });
     }
-    if (!DaLinkApiHelpers.TryGetStoredDaLinkRule(store, id, out _))
+    if (!InterlinkApiHelpers.TryGetStoredInterlinkRule(store, id, out _))
     {
         return Results.NotFound(new { error = "Rule not found." });
     }
 
-    if (!TryBuildValidatedDaLinkRule(request.Link, id, store, metadataResolver, out DaLinkRule rule, out string? error))
+    if (!TryBuildValidatedInterlinkRule(request.Link, id, mappingStore, store, metadataResolver, out InterlinkRule rule, out string? error))
     {
         return Results.BadRequest(new { error });
     }
@@ -749,9 +1253,9 @@ app.MapPut("/api/da-links/{id:guid}", (Guid id, UpdateDaLinkRequest request, DaL
             : Results.BadRequest(new { error = storeError });
     }
 
-    return Results.Json(new { link = ToDaLinkDto(rule), version });
+    return Results.Json(new { link = ToInterlinkDto(rule), version });
 });
-app.MapDelete("/api/da-links/{id:guid}", (Guid id, DaLinkStore store) =>
+app.MapDelete("/api/interlinks/{id:guid}", (Guid id, InterlinkStore store) =>
 {
     if (!store.TryRemove(id, out long version))
     {
@@ -1287,6 +1791,96 @@ app.MapPost("/api/ua/browse", async (
         error = result.Error
     });
 });
+
+app.MapGet("/api/ua/subscriptions", (DaRuntimeSettings settings, BridgeWorker worker, string? sourceId) =>
+{
+    DaRuntimeSettingsSnapshot snapshot = settings.GetSnapshot();
+    IReadOnlyDictionary<string, IReadOnlyList<UaSubscriptionStatus>> live = worker.GetUaSubscriptionStatus();
+    IEnumerable<DaSourceRuntimeSettings> sources = string.IsNullOrWhiteSpace(sourceId)
+        ? snapshot.Sources
+        : snapshot.Sources.Where(s => string.Equals(s.SourceId, sourceId, StringComparison.OrdinalIgnoreCase));
+
+    object payload = new
+    {
+        sources = sources
+            .Where(s => string.Equals(s.SourceType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
+            .Select(s =>
+            {
+                IReadOnlyList<UaSubscriptionStatus>? liveForSource = live.TryGetValue(s.SourceId, out IReadOnlyList<UaSubscriptionStatus>? list)
+                    ? list
+                    : null;
+
+                // Live stats of the implicit default bucket (client reports it under the "" key
+                // whenever unassigned tags are being monitored). Zeroed when not connected.
+                UaSubscriptionStatus? defaultStatus = liveForSource?
+                    .FirstOrDefault(st => st.BucketKey.Length == 0);
+
+                return new
+                {
+                    sourceId = s.SourceId,
+                    displayName = s.DisplayName,
+                    defaultUpdateRateMs = s.UpdateRateMs,
+                    defaultStats = new
+                    {
+                        updateRateMs = s.UpdateRateMs,
+                        itemCount = defaultStatus?.ItemCount ?? 0,
+                        actualPublishingIntervalMs = defaultStatus?.ActualPublishingIntervalMs ?? 0,
+                        created = defaultStatus?.Created ?? false
+                    },
+                    subscriptions = s.UaSubscriptions
+                        .OrderBy(def => def.Name, StringComparer.OrdinalIgnoreCase)
+                        .Select(def =>
+                        {
+                            UaSubscriptionStatus? status = liveForSource?
+                                .FirstOrDefault(st => string.Equals(st.BucketKey, def.Name, StringComparison.OrdinalIgnoreCase));
+                            return new
+                            {
+                                name = def.Name,
+                                updateRateMs = def.UpdateRateMs,
+                                itemCount = status?.ItemCount ?? 0,
+                                actualPublishingIntervalMs = status?.ActualPublishingIntervalMs ?? 0,
+                                created = status?.Created ?? false
+                            };
+                        })
+                        .ToList()
+                };
+            })
+            .ToList()
+    };
+    return Results.Json(payload);
+});
+
+app.MapPost("/api/ua/subscriptions", (UaSubscriptionUpsertRequest request, DaRuntimeSettings settings) =>
+{
+    if (string.IsNullOrWhiteSpace(request.SourceId))
+    {
+        return Results.BadRequest(new { error = "sourceId is required." });
+    }
+
+    try
+    {
+        DaRuntimeSettingsSnapshot snapshot = settings.UpsertUaSubscription(request.SourceId, request.Name, request.UpdateRateMs);
+        return Results.Ok(new { ok = true, version = snapshot.Version });
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+app.MapPost("/api/ua/subscriptions/remove", (UaSubscriptionRemoveRequest request, DaRuntimeSettings settings, MappingStore store) =>
+{
+    try
+    {
+        DaRuntimeSettingsSnapshot snapshot = settings.RemoveUaSubscription(request.SourceId, request.Name);
+        int movedMappings = store.ReassignSubscription(request.SourceId, request.Name);
+        return Results.Ok(new { ok = true, version = snapshot.Version, movedMappings });
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
 app.MapGet("/api/mqtt/config", (MqttRuntimeSettings settings) =>
 {
     MqttRuntimeSnapshot snapshot = settings.GetSnapshot();
@@ -1467,21 +2061,21 @@ static OpcTagBrowseResult BrowseDaTags(DaTagBrowseRequest request)
 }
 
 
-static void TryMigrateLegacyDaLinks(WebApplication app)
+static void TryMigrateLegacyInterlinks(WebApplication app)
 {
-    string daLinksPath = Path.Combine(AppContext.BaseDirectory, "links.json");
-    if (File.Exists(daLinksPath))
+    string interlinksPath = Path.Combine(AppContext.BaseDirectory, "links.json");
+    if (File.Exists(interlinksPath))
     {
         return;
     }
 
     MappingStore mappingStore = app.Services.GetRequiredService<MappingStore>();
-    DaLinkStore daLinkStore = app.Services.GetRequiredService<DaLinkStore>();
+    InterlinkStore interlinkStore = app.Services.GetRequiredService<InterlinkStore>();
     (IReadOnlyList<TagMapping> legacyMappings, _) = mappingStore.GetSnapshot();
 
     DashboardLogStore logStore = app.Services.GetRequiredService<DashboardLogStore>();
-    _ = DaLinkApiHelpers.TryMigrateLegacyDaLinks(
-        daLinkStore,
+    _ = InterlinkApiHelpers.TryMigrateLegacyInterlinks(
+        interlinkStore,
         legacyMappings,
         logStore,
         app.Logger,
@@ -1489,9 +2083,9 @@ static void TryMigrateLegacyDaLinks(WebApplication app)
 }
 
 
-static DaLinkDto ToDaLinkDto(DaLinkRule rule)
+static InterlinkDto ToInterlinkDto(InterlinkRule rule)
 {
-    return new DaLinkDto(
+    return new InterlinkDto(
         rule.Id,
         rule.ProviderSourceId,
         rule.ProviderItemId,
@@ -1502,44 +2096,61 @@ static DaLinkDto ToDaLinkDto(DaLinkRule rule)
         rule.ConsumerCanonicalType);
 }
 
-static bool TryBuildValidatedDaLinkRule(
-    DaLinkDto link,
+static bool TryBuildValidatedInterlinkRule(
+    InterlinkDto link,
     Guid? routeId,
-    DaLinkStore linkStore,
-    IDaLinkMetadataResolver metadataResolver,
-    out DaLinkRule rule,
+    MappingStore mappingStore,
+    InterlinkStore linkStore,
+    IInterlinkMetadataResolver metadataResolver,
+    out InterlinkRule rule,
     out string? error)
 {
-    DaLinkDto normalizedLink = link with
+    InterlinkDto normalizedLink = link with
     {
         Id = routeId ?? (link.Id == Guid.Empty ? Guid.NewGuid() : link.Id),
-        ProviderSourceId = NormalizeDaLinkSourceId(link.ProviderSourceId),
+        ProviderSourceId = NormalizeInterlinkSourceId(link.ProviderSourceId),
         ProviderItemId = link.ProviderItemId?.Trim() ?? string.Empty,
-        ConsumerSourceId = NormalizeDaLinkSourceId(link.ConsumerSourceId),
+        ConsumerSourceId = NormalizeInterlinkSourceId(link.ConsumerSourceId),
         ConsumerItemId = link.ConsumerItemId?.Trim() ?? string.Empty
     };
 
-    (IReadOnlyList<DaLinkRule> rules, _) = linkStore.GetSnapshot();
+    // Mapped-tags contract: both endpoints must already exist as enabled tags in
+    // Maps, otherwise values could never flow. Checked before live server contact.
+    (IReadOnlyList<TagMapping> storedMappings, _) = mappingStore.GetSnapshot();
+    if (!InterlinkApiHelpers.TryEnsureSidesAreMapped(
+            storedMappings,
+            normalizedLink.ProviderSourceId,
+            normalizedLink.ProviderItemId,
+            normalizedLink.ConsumerSourceId,
+            normalizedLink.ConsumerItemId,
+            out string? mappedError))
+    {
+        error = mappedError;
+        rule = null!;
+        return false;
+    }
+
+    (IReadOnlyList<InterlinkRule> rules, _) = linkStore.GetSnapshot();
     bool consumerHasProvider = rules.Any(existing =>
         existing.Id != normalizedLink.Id &&
         string.Equals(existing.ConsumerSourceId, normalizedLink.ConsumerSourceId, StringComparison.OrdinalIgnoreCase) &&
         string.Equals(existing.ConsumerItemId, normalizedLink.ConsumerItemId, StringComparison.OrdinalIgnoreCase));
 
-    if (!metadataResolver.TryResolve(normalizedLink.ProviderSourceId, normalizedLink.ProviderItemId, out DaTagMetadata providerMetadata))
+    if (!metadataResolver.TryResolve(normalizedLink.ProviderSourceId, normalizedLink.ProviderItemId, out InterlinkTagMetadata providerMetadata))
     {
         error = "Provider tag not found.";
         rule = null!;
         return false;
     }
 
-    if (!metadataResolver.TryResolve(normalizedLink.ConsumerSourceId, normalizedLink.ConsumerItemId, out DaTagMetadata consumerMetadata))
+    if (!metadataResolver.TryResolve(normalizedLink.ConsumerSourceId, normalizedLink.ConsumerItemId, out InterlinkTagMetadata consumerMetadata))
     {
         error = "Consumer tag not found.";
         rule = null!;
         return false;
     }
 
-    DaLinkDto validatedLink = normalizedLink with
+    InterlinkDto validatedLink = normalizedLink with
     {
         ProviderCanonicalType = providerMetadata.CanonicalType,
         ConsumerCanonicalType = consumerMetadata.CanonicalType,
@@ -1547,8 +2158,8 @@ static bool TryBuildValidatedDaLinkRule(
         ConsumerAccessRights = consumerMetadata.AccessRights
     };
 
-    error = DaLinkValidators.Validate(validatedLink, consumerHasProvider);
-    rule = new DaLinkRule(
+    error = InterlinkValidators.Validate(validatedLink, consumerHasProvider);
+    rule = new InterlinkRule(
         validatedLink.Id,
         validatedLink.ProviderSourceId,
         validatedLink.ProviderItemId,
@@ -1560,7 +2171,7 @@ static bool TryBuildValidatedDaLinkRule(
     return error is null;
 }
 
-static string NormalizeDaLinkSourceId(string? sourceId)
+static string NormalizeInterlinkSourceId(string? sourceId)
 {
     string value = sourceId?.Trim() ?? string.Empty;
     return value.Length == 0 ? DaRuntimeSettings.DefaultSourceId : value;
@@ -1595,6 +2206,7 @@ static object ToSourceApiDto(DaSourceRuntimeSettings source)
         reconnectDelayMs = source.ReconnectDelayMs,
         maxMappedTags = source.MaxMappedTags,
         useSubscriptions = source.UseSubscriptions,
+        ioMode = source.IoMode,
         remoteUsername = source.RemoteUsername,
         remoteDomain = source.RemoteDomain,
         uaUsername = source.UaUsername,
@@ -2161,7 +2773,8 @@ static TagMapping ToTagMapping(MappingTagDto tag) => new()
     AccessRights = tag.AccessRights ?? string.Empty,
     MqttEnabled = tag.MqttEnabled ?? false,
     MqttTopic = string.IsNullOrWhiteSpace(tag.MqttTopic) ? null : tag.MqttTopic,
-    InfluxEnabled = tag.InfluxEnabled ?? false
+    InfluxEnabled = tag.InfluxEnabled ?? false,
+    Subscription = tag.Subscription ?? string.Empty
 };
 
 static bool ValidateMelsecMappings(List<TagMapping> tags, DaRuntimeSettings daSettings, MappingStore store, out string error)
@@ -2365,6 +2978,53 @@ static string PatchPortInUrl(string url, int port)
         // No port in URL — append it
         return url.TrimEnd('/') + $":{port}";
     }
+}
+
+/// <summary>Runs a process hidden, returns exit code + captured output. Never throws on failure.</summary>
+static (int ExitCode, string StdOut, string StdErr) RunHiddenProcess(string fileName, string arguments, int timeoutMs)
+{
+    try
+    {
+        using var process = new Process
+        {
+            StartInfo = new ProcessStartInfo
+            {
+                FileName = fileName,
+                Arguments = arguments,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true
+            }
+        };
+        if (!process.Start())
+            return (-1, string.Empty, "Failed to start " + fileName);
+        string stdout = process.StandardOutput.ReadToEnd();
+        string stderr = process.StandardError.ReadToEnd();
+        if (!process.WaitForExit(timeoutMs))
+        {
+            try { process.Kill(); } catch { }
+            return (-2, stdout, stderr + " (timed out after " + timeoutMs + " ms)");
+        }
+        return (process.ExitCode, stdout, stderr);
+    }
+    catch (Exception ex)
+    {
+        return (-3, string.Empty, ex.Message);
+    }
+}
+
+/// <summary>Returns the console (interactive) user as DOMAIN\user, or null when nobody is logged on.</summary>
+static string? GetInteractiveWindowsUser()
+{
+    (int code, string stdout, _) = RunHiddenProcess(
+        "powershell.exe",
+        "-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"(Get-CimInstance Win32_ComputerSystem).UserName\"",
+        15000);
+    if (code != 0)
+        return null;
+    string? user = stdout.Trim();
+    return string.IsNullOrWhiteSpace(user) ? null : user;
 }
 
 internal sealed class StringTupleComparerIgnoreCase : IEqualityComparer<(string SourceId, string ItemId)>

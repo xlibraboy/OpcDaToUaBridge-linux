@@ -2,7 +2,7 @@ namespace OpcBridge.Ua;
 
 public sealed class UaServerOptions
 {
-    public string ApplicationName { get; set; } = "OpcDaToUaBridge";
+    public string ApplicationName { get; set; } = "OpcBridge";
     public string EndpointUrl { get; set; } = "opc.tcp://0.0.0.0:4840/OpcBridge";
     public bool AutoAcceptUntrustedCertificates { get; set; } = true;
     public bool RequireAuthentication { get; set; } = false;

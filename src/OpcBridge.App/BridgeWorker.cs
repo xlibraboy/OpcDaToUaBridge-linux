@@ -15,14 +15,14 @@ using System.Text.Json;
 
 namespace OpcBridge.App;
 
-public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
+public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
 {
     private const int CoordinatorTickMs = 200;
 
     private readonly UaServerHost ua_server_;
     private readonly BridgeState bridge_state_;
     private readonly MappingStore mapping_store_;
-    private readonly DaLinkStore da_link_store_;
+    private readonly InterlinkStore interlink_store_;
     private readonly DaRuntimeSettings da_settings_;
     private readonly SourceClientFactory da_client_factory_;
     private readonly ILogger<BridgeWorker> logger_;
@@ -58,7 +58,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
         UaServerHost uaServer,
         BridgeState bridgeState,
         MappingStore mappingStore,
-        DaLinkStore daLinkStore,
+        InterlinkStore interlinkStore,
         DaRuntimeSettings daSettings,
         SourceClientFactory daClientFactory,
         IOptions<BridgeOptions> bridgeOptions,
@@ -72,7 +72,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
         ua_server_ = uaServer;
         bridge_state_ = bridgeState;
         mapping_store_ = mappingStore;
-        da_link_store_ = daLinkStore;
+        interlink_store_ = interlinkStore;
         da_settings_ = daSettings;
         da_client_factory_ = daClientFactory;
         logger_ = logger;
@@ -88,7 +88,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
     {
         DaRuntimeSettingsSnapshot settings = da_settings_.GetSnapshot();
         (IReadOnlyList<TagMapping> mappings, long mappingVersion) = mapping_store_.GetSnapshot();
-        (IReadOnlyList<DaLinkRule> rules, long daLinkVersion) = da_link_store_.GetSnapshot();
+        (IReadOnlyList<InterlinkRule> rules, long interlinkVersion) = interlink_store_.GetSnapshot();
         SourceMappingCache sourceMappingCache = SourceMappingCache.Build(mappings, rules);
         source_mapping_cache_ = sourceMappingCache;
         IReadOnlyList<TagMapping> activeMappings = sourceMappingCache.GetActiveMappings();
@@ -119,7 +119,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
             });
 
             long uaMappingVersion = mappingVersion;
-            long appliedDaLinkVersion = daLinkVersion;
+            long appliedInterlinkVersion = interlinkVersion;
             long connectedVersion = -1;
             Dictionary<string, SourceSession> sessions = new(StringComparer.OrdinalIgnoreCase);
             Dictionary<string, Task> pollers = new(StringComparer.OrdinalIgnoreCase);
@@ -163,7 +163,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                 {
                     settings = da_settings_.GetSnapshot();
                     (mappings, mappingVersion) = mapping_store_.GetSnapshot();
-                    (rules, daLinkVersion) = da_link_store_.GetSnapshot();
+                    (rules, interlinkVersion) = interlink_store_.GetSnapshot();
 
                     try
                     {
@@ -204,7 +204,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                         }
 
                         bool mappingsChanged = mappingVersion != uaMappingVersion;
-                        bool rulesChanged = daLinkVersion != appliedDaLinkVersion;
+                        bool rulesChanged = interlinkVersion != appliedInterlinkVersion;
                         if (mappingsChanged || rulesChanged)
                         {
                             // Snapshot each source's current distinct rate set before the cache is
@@ -321,7 +321,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
 
                             if (rulesChanged)
                             {
-                                appliedDaLinkVersion = daLinkVersion;
+                                appliedInterlinkVersion = interlinkVersion;
                             }
                         }
 
@@ -743,6 +743,8 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
 
             readTimer.Stop();
             bridge_state_.UpdateDaRead(source.SourceId, values, readTimer.Elapsed);
+            bridge_state_.SetSourceReadMode(source.SourceId, ResolveReadMode(session.Client));
+            bridge_state_.SetSourceWriteMode(source.SourceId, ResolveWriteMode(session.Client, source.SourceType));
             for (int valueIndex = 0; valueIndex < values.Count; valueIndex++)
             {
                 BridgeValue value = values[valueIndex];
@@ -918,6 +920,36 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                         changed.Add(source.SourceId);
                     }
                 }
+
+                // Named-subscription definition changes need a MonitoredItem reconcile,
+                // NOT a session rebuild: buckets are created/deleted/re-rated live (spec §6).
+                if (!existing.Source.UaSubscriptionsEqual(source)
+                    && sessions[source.SourceId].Client is OpcUaSourceClient uaDefClient)
+                {
+                    SourceMappingCache? defCache = source_mapping_cache_;
+                    if (defCache is not null)
+                    {
+                        try
+                        {
+                            await uaDefClient.ReconcileMonitoredItemsAsync(
+                                defCache.GetSourceReadMappings(source.SourceId),
+                                cancellationToken).ConfigureAwait(false);
+
+                            // Advance the stored baseline ONLY after a successful reconcile so the
+                            // definitions-changed check does not re-fire on every pass. On failure
+                            // the stale baseline is kept deliberately: the next pass retries.
+                            sessions[source.SourceId] = new SourceSession(source, existing.Client)
+                            {
+                                PollerCts = existing.PollerCts
+                            };
+                        }
+                        catch (Exception ex)
+                        {
+                            logger_.LogWarning(ex,
+                                "UA subscription-def reconcile failed for source {SourceId}", source.SourceId);
+                        }
+                    }
+                }
                 continue;
             }
 
@@ -993,8 +1025,10 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
             {
                 bridge_state_.SetSourceConnectionState(source.SourceId, "Connecting");
                 ISourceClient client = da_client_factory_.Create(settings, source);
-                await client.ConnectAsync(cancellationToken).ConfigureAwait(false);
 
+                // Attach handlers BEFORE connect: the DA client raises Warning during
+                // ConnectAsync when the subscription attempt fails (server lacks
+                // IOPCDataCallback), and values can arrive immediately after connect.
                 if (client is ISubscribableSourceClient subscribable)
                 {
                     subscribable.ValuesReceived += values => OnSubscriptionValues(values);
@@ -1004,10 +1038,32 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                 {
                     daClient.Warning += message =>
                         logger_.LogWarning("OPC DA source {SourceId}: {Message}", source.SourceId, message);
+
+                    // Matrikon OPC Explorer-style "Advise Log": group creation, sync reads,
+                    // subscription setup, and data-change notifications surface in /api/logs.
+                    daClient.IOTrace += message =>
+                        logger_.LogInformation("OPC DA source {SourceId}: {Message}", source.SourceId, message);
                 }
+
+                await client.ConnectAsync(cancellationToken).ConfigureAwait(false);
 
                 sessions[source.SourceId] = new SourceSession(source, client);
                 bridge_state_.SetSourceConnectionState(source.SourceId, "Connected");
+
+                if (client is OpcDaClient connectedDaClient)
+                {
+                    bridge_state_.SetSourceServerInfo(
+                        source.SourceId,
+                        connectedDaClient.ServerInfo?.Describe() ?? string.Empty);
+                }
+
+                // Writes follow the driver's I/O mode: DA writes via IOPCSyncIO.Write
+                // (sync) or IOPCAsyncIO2.Write (async, when the mode resolves to push),
+                // UA via the request/response Write service, native drivers via their
+                // protocol's synchronous write. Refreshed each poll so a live I/O-mode
+                // hot-switch is reflected.
+                bridge_state_.SetSourceWriteMode(source.SourceId, ResolveWriteMode(client, source.SourceType));
+
                 changed.Add(source.SourceId);
                 watchdog_activity_.TryRemove(source.SourceId, out _);
 
@@ -1109,7 +1165,30 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
             && string.Equals(a.Host, b.Host, StringComparison.OrdinalIgnoreCase)
             && string.Equals(a.RemoteUsername, b.RemoteUsername, StringComparison.Ordinal)
             && string.Equals(a.RemotePassword, b.RemotePassword, StringComparison.Ordinal)
-            && string.Equals(a.RemoteDomain, b.RemoteDomain, StringComparison.OrdinalIgnoreCase);
+            && string.Equals(a.RemoteDomain, b.RemoteDomain, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(a.IoMode, b.IoMode, StringComparison.Ordinal)
+            && DaGroupIoModesEqual(a, b);
+    }
+
+    private static bool DaGroupIoModesEqual(DaSourceRuntimeSettings a, DaSourceRuntimeSettings b)
+    {
+        IReadOnlyList<DaGroupIoMode> left = a.GroupIoModes;
+        IReadOnlyList<DaGroupIoMode> right = b.GroupIoModes;
+        if (left.Count != right.Count)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < left.Count; i++)
+        {
+            if (left[i].Rate != right[i].Rate
+                || !string.Equals(left[i].IoMode, right[i].IoMode, StringComparison.Ordinal))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private static bool SourceSettingsEquals(DaSourceRuntimeSettings a, DaSourceRuntimeSettings b)
@@ -1150,6 +1229,34 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
                     sourceId);
             }
         }
+    }
+
+    /// <summary>
+    /// Effective value-delivery mode for a source: subscription (async callbacks /
+    /// monitored items) when the client reports one active, otherwise sync polling.
+    /// </summary>
+    private static string ResolveReadMode(ISourceClient client)
+        => client is ISubscriptionActiveSource subscribed && subscribed.IsSubscriptionActive
+            ? "async (subscription)"
+            : "sync (polling)";
+
+    /// <summary>
+    /// Write operation type per driver. DA writes follow the source's resolved I/O
+    /// mode: IOPCAsyncIO2.Write when the async path is live, otherwise IOPCSyncIO.Write.
+    /// UA and native drivers are synchronous request/response.
+    /// </summary>
+    private static string ResolveWriteMode(ISourceClient client, string sourceType)
+    {
+        if (string.Equals(sourceType, SourceTypes.OpcDa, StringComparison.OrdinalIgnoreCase))
+        {
+            return client is OpcDaClient daClient && daClient.IsAsyncWriteActive
+                ? "async (IOPCAsyncIO2.Write)"
+                : "sync (IOPCSyncIO.Write)";
+        }
+
+        return string.Equals(sourceType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase)
+            ? "sync (UA Write)"
+            : "sync (protocol write)";
     }
 
     private void OnSubscriptionValues(IReadOnlyList<BridgeValue> values)
@@ -1462,6 +1569,27 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
 
         return value;
     }
+
+    /// <summary>Live named-subscription status per connected UA source (dashboard Subscriptions tab).</summary>
+    public IReadOnlyDictionary<string, IReadOnlyList<UaSubscriptionStatus>> GetUaSubscriptionStatus()
+    {
+        Dictionary<string, IReadOnlyList<UaSubscriptionStatus>> result =
+            new(StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, SourceSession>? sessions = active_sessions_;
+        if (sessions is not null)
+        {
+            foreach ((string sourceId, SourceSession session) in sessions)
+            {
+                if (session.Client is OpcUaSourceClient uaClient)
+                {
+                    result[sourceId] = uaClient.GetSubscriptionsStatus();
+                }
+            }
+        }
+
+        return result;
+    }
+
     public object GetDiagnostics()
     {
         // STA thread health per source
@@ -1515,9 +1643,9 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
         };
     }
 
-    public bool TryResolve(string sourceId, string itemId, out DaTagMetadata metadata)
+    public bool TryResolve(string sourceId, string itemId, out InterlinkTagMetadata metadata)
     {
-        metadata = new DaTagMetadata(null, null);
+        metadata = new InterlinkTagMetadata(null, null);
 
         Dictionary<string, SourceSession>? sessions = active_sessions_;
         if (sessions is null || string.IsNullOrWhiteSpace(itemId))
@@ -1536,7 +1664,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
             return false;
         }
 
-        metadata = new DaTagMetadata(canonicalDataType, accessRights);
+        metadata = new InterlinkTagMetadata(canonicalDataType, accessRights);
         return true;
     }
 
@@ -1752,10 +1880,10 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
 
         public static SourceMappingCache Build(IReadOnlyList<TagMapping> mappings)
         {
-            return Build(mappings, Array.Empty<DaLinkRule>());
+            return Build(mappings, Array.Empty<InterlinkRule>());
         }
 
-        public static SourceMappingCache Build(IReadOnlyList<TagMapping> mappings, IReadOnlyList<DaLinkRule> rules)
+        public static SourceMappingCache Build(IReadOnlyList<TagMapping> mappings, IReadOnlyList<InterlinkRule> rules)
         {
             Dictionary<string, List<TagMapping>> groupedMappings = new(StringComparer.OrdinalIgnoreCase);
             List<TagMapping> activeMappings = new(mappings.Count);
@@ -1782,7 +1910,7 @@ public sealed class BridgeWorker : BackgroundService, IDaLinkMetadataResolver
             Dictionary<string, List<TagMapping>> consumersByProvider = new(StringComparer.OrdinalIgnoreCase);
             for (int i = 0; i < rules.Count; i++)
             {
-                DaLinkRule rule = rules[i];
+                InterlinkRule rule = rules[i];
                 if (!rule.Enabled)
                 {
                     continue;

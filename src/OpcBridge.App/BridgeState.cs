@@ -35,6 +35,23 @@ public sealed class BridgeState
         UaAutoAssigned = uaAuto;
     }
 
+    /// <summary>Windows session the bridge runs in. Set once at startup.</summary>
+    public static int SessionId { get; private set; }
+
+    /// <summary>
+    /// True when running in a logged-on interactive session. Session-bound PLC
+    /// simulators (e.g. GX Simulator shared memory behind MX OPC) are only
+    /// reachable from the interactive session, so a session-0 launch must be
+    /// surfaced instead of failing silently.
+    /// </summary>
+    public static bool InteractiveSession { get; private set; } = true;
+
+    public static void ConfigureSession(int sessionId, bool interactive)
+    {
+        SessionId = sessionId;
+        InteractiveSession = interactive;
+    }
+
 
     public void Configure(int updateRateMs, int mappingCount, IReadOnlyList<DaSourceRuntimeSettings> sources)
     {
@@ -45,6 +62,39 @@ public sealed class BridgeState
         rate_groups_.Clear();
         lock (status_lock_)
         {
+            // Detection must survive a status reset. Configure() runs on every
+            // reconfigure tick while a source is in retry (or whenever the source
+            // set changes), so without this the detected server info set right
+            // after connect would be wiped on the very next tick. Preserve the
+            // previously detected info for sources that are still configured.
+            Dictionary<string, string> previousServerInfo = status_.Sources
+                .Where(source => !string.IsNullOrEmpty(source.ServerInfo))
+                .ToDictionary(source => source.SourceId, source => source.ServerInfo, StringComparer.OrdinalIgnoreCase);
+            Dictionary<string, string> previousReadMode = status_.Sources
+                .Where(source => !string.IsNullOrEmpty(source.ReadMode))
+                .ToDictionary(source => source.SourceId, source => source.ReadMode, StringComparer.OrdinalIgnoreCase);
+            Dictionary<string, string> previousWriteMode = status_.Sources
+                .Where(source => !string.IsNullOrEmpty(source.WriteMode))
+                .ToDictionary(source => source.SourceId, source => source.WriteMode, StringComparer.OrdinalIgnoreCase);
+
+            for (int i = 0; i < sourceStatuses.Length; i++)
+            {
+                if (previousServerInfo.TryGetValue(sourceStatuses[i].SourceId, out string? serverInfo))
+                {
+                    sourceStatuses[i] = sourceStatuses[i] with { ServerInfo = serverInfo };
+                }
+
+                if (previousReadMode.TryGetValue(sourceStatuses[i].SourceId, out string? readMode))
+                {
+                    sourceStatuses[i] = sourceStatuses[i] with { ReadMode = readMode };
+                }
+
+                if (previousWriteMode.TryGetValue(sourceStatuses[i].SourceId, out string? writeMode))
+                {
+                    sourceStatuses[i] = sourceStatuses[i] with { WriteMode = writeMode };
+                }
+            }
+
             status_ = status_ with
             {
                 BridgeState = "Starting",
@@ -58,7 +108,9 @@ public sealed class BridgeState
                 LastPollDurationMs = 0,
                 LastPollValueRate = 0,
                 LastError = null,
-                Sources = sourceStatuses
+                Sources = sourceStatuses,
+                SessionId = SessionId,
+                InteractiveSession = InteractiveSession
             };
         }
     }
@@ -211,6 +263,60 @@ public sealed class BridgeState
                     {
                         LastError = exception.Message
                     }
+                    : source)
+                .ToArray();
+
+            status_ = status_ with
+            {
+                DaConnectionState = AggregateConnectionState(updated),
+                Sources = updated
+            };
+        }
+    }
+
+    public void SetSourceServerInfo(string sourceId, string serverInfo)
+    {
+        lock (status_lock_)
+        {
+            DaSourceStatusSnapshot[] updated = status_.Sources
+                .Select(source => string.Equals(source.SourceId, sourceId, StringComparison.OrdinalIgnoreCase)
+                    ? source with { ServerInfo = serverInfo }
+                    : source)
+                .ToArray();
+
+            status_ = status_ with
+            {
+                DaConnectionState = AggregateConnectionState(updated),
+                Sources = updated
+            };
+        }
+    }
+
+    public void SetSourceReadMode(string sourceId, string readMode)
+    {
+        lock (status_lock_)
+        {
+            DaSourceStatusSnapshot[] updated = status_.Sources
+                .Select(source => string.Equals(source.SourceId, sourceId, StringComparison.OrdinalIgnoreCase)
+                    ? source with { ReadMode = readMode }
+                    : source)
+                .ToArray();
+
+            status_ = status_ with
+            {
+                DaConnectionState = AggregateConnectionState(updated),
+                Sources = updated
+            };
+        }
+    }
+
+    public void SetSourceWriteMode(string sourceId, string writeMode)
+    {
+        lock (status_lock_)
+        {
+            DaSourceStatusSnapshot[] updated = status_.Sources
+                .Select(source => string.Equals(source.SourceId, sourceId, StringComparison.OrdinalIgnoreCase)
+                    ? source with { WriteMode = writeMode }
                     : source)
                 .ToArray();
 
@@ -543,7 +649,9 @@ public sealed record BridgeRuntimeStatus(
     string? LastError,
     IReadOnlyList<DaSourceStatusSnapshot> Sources,
     IReadOnlyList<RateGroupStatus> RateGroups,
-    ResourceSnapshot? Resources)
+    ResourceSnapshot? Resources,
+    int SessionId = 0,
+    bool InteractiveSession = true)
 {
     public static BridgeRuntimeStatus Empty { get; } = new(
         "Stopped",
@@ -589,7 +697,10 @@ public sealed record DaSourceStatusSnapshot(
     double LastDaReadDurationMs,
     double? DaClockOffsetMs,
     string SourceType = "OpcDa",
-    string EndpointSummary = "");
+    string EndpointSummary = "",
+    string ServerInfo = "",
+    string ReadMode = "",
+    string WriteMode = "");
 
 public sealed record BridgeValueSnapshot(
     string SourceId,

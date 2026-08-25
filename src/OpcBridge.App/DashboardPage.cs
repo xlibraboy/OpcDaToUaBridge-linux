@@ -6,10 +6,10 @@ namespace OpcBridge.App;
 //   function loadInfluxConfig/loadInfluxStatus/saveInflux/connectInflux/disconnectInflux
 //   /api/influx/config, influxEnabled: el('fpInfluxEnabled').checked, if (name === 'influx')
 //   id="pApps", text "Apps", "pApps" in script, "detectedCount" in script
-//   text "DA Links", id="linkSourceStatus", id="linkBrowseTree", id="btnClearLinkSelection"
-//   text "Clear Selection", text "Delete Saved Link", function clearLinkDraftSelection
-//   state.linkDraft.consumer = null, state.linkDraft.provider = null
-//   function browseLinkTags(, state.linkDraft, data-action="pick-link-consumer", data-action="pick-link-provider"
+//   text "Interlinks", id="btnClearLinkSelection"
+//   text "Clear Selection", text "Delete Saved Link", function clearInterlinkDraftSelection
+//   state.interlinkDraft.consumer = null, state.interlinkDraft.provider = null
+//   function renderInterlinkPickers(, state.interlinkDraft, data-action="pick-interlink-consumer", data-action="pick-interlink-provider"
 //   data-tab="opc-da", id="view-opc-da", data-route="connectivity/opc-da", text "OPC DA"
 //   Sources is a sidebar group label only (not a page); legacy connectivity/sources → opc-da
 //   data-tab="drivers", id="view-drivers", data-route="connectivity/drivers", id="wzDrv" (driver wizard)
@@ -23,6 +23,10 @@ namespace OpcBridge.App;
 //   data-tab="opc-ua", id="view-opc-ua", data-route="connectivity/opc-ua", text "OPC UA"
 //   data-tab="connection", id="view-connection", id="sourcesStatusList", data-route="connectivity/sources", text "Sources"
 //   id="uaCfgEndpointUrl", id="uaCfgSourceId", function saveUaSource/testUaConnection
+//   data-tab="ua-subs", id="view-ua-subs", data-route="connectivity/ua-subs", text "UA Subs"
+//   per-source collapsible cards in uaSubsContainer, uaSubModal add/edit, id="subsMsg"
+//   function loadUaSubs(/renderUaSubsForSource(/openUaSubAdd(/openUaSubEdit(/deleteUaSub(/uaSubModalSave(, /api/ua/subscriptions[/remove]
+//   faceplate: id="fpSubscription"/"fpSubscriptionField", function fpSubscriptionOptions(/updateFpRateEnabled(
 //   id="mapTypeTabs", data-map-type="opc-da|opc-ua|drivers", function setMapType(/opcDaSources(/mapTypeSources(
 //   tags/maps/opc-da, tags/maps/opc-ua, tags/maps/drivers
 internal static class DashboardPage
@@ -44,6 +48,7 @@ internal static class DashboardPage
             --border2: #2e3848;
             --text: #d8e0ea;
             --muted: #6b7689;
+            --muted-strong: #93a0b4;
             --good: #34d399;
             --bad: #f87171;
             --warn: #fbbf24;
@@ -64,19 +69,24 @@ internal static class DashboardPage
         .pill .k { color: var(--muted); text-transform: uppercase; font-size: 10px; letter-spacing: .05em; }
         .topbar .clock { margin-left: auto; color: var(--muted); font-size: 11px; white-space: nowrap; }
 .app-shell { display: flex; flex: 1; min-height: 0; overflow: hidden; }
-.tabbar { display: flex; flex-direction: column; background: var(--panel); border-right: 1px solid var(--border2); padding: 8px 0; width: 200px; flex-shrink: 0; overflow-y: auto; }
+.tabbar { display: flex; flex-direction: column; background: var(--panel); border-right: 1px solid var(--border2); padding: 10px 0; width: 200px; flex-shrink: 0; overflow-y: auto; }
 .tabbtn { background: none; border: none; color: var(--muted); padding: 11px 16px; font-size: 13px; font-weight: 500; cursor: pointer; border-left: 3px solid transparent; display: flex; align-items: center; gap: 8px; text-align: left; }
 .tabbtn:hover { color: var(--text); background: var(--panel2); }
 .tabbtn.active { color: var(--accent); border-left-color: var(--accent); background: var(--panel2); }
-.nav-group { padding: 6px 0; border-bottom: 1px solid var(--border); }
+.nav-group { padding: 10px 0 8px; border-bottom: 1px solid var(--border); }
 .nav-group:last-child { border-bottom: none; }
-.nav-group-h { display: flex; align-items: center; gap: 7px; padding: 8px 16px 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
-.nav-group-h .nav-ico { width: 13px; height: 13px; flex-shrink: 0; opacity: .85; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-.nav-group .tabbtn { padding-left: 22px; }
+.nav-group-h { display: flex; align-items: center; gap: 7px; padding: 2px 16px 8px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .09em; color: var(--muted-strong); transition: color .15s ease; }
+.nav-group-h .nav-ico { width: 13px; height: 13px; flex-shrink: 0; opacity: .95; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.nav-group:has(.tabbtn.active) .nav-group-h { color: var(--accent); }
+.nav-group .tabbtn { position: relative; padding-top: 8px; padding-bottom: 8px; padding-left: 44px; }
+.nav-group .tabbtn::before { content: ''; position: absolute; left: 24px; top: 0; bottom: 0; width: 2px; background: var(--border); }
+.nav-group .tabbtn:hover::before { background: var(--border2); }
+.nav-group .tabbtn.active::before { background: var(--accent); opacity: .5; }
+.nav-group .tabbtn:last-child:not(.active)::before { bottom: auto; height: 55%; }
 .content { flex: 1; min-width: 0; overflow: auto; }
 .view { display: none; padding: 16px 18px; }
 .view.active { display: block; }
-@media (max-width: 600px) { .app-shell { flex-direction: column; } .tabbar { flex-direction: row; width: 100%; border-right: none; border-bottom: 1px solid var(--border2); padding: 0 8px; overflow-x: auto; } .tabbtn { border-left: none; border-bottom: 3px solid transparent; padding: 10px 14px; } .tabbtn.active { border-left: none; border-bottom-color: var(--accent); } .nav-group { border-bottom: none; } .nav-group-h { display: none; } }
+@media (max-width: 600px) { .app-shell { flex-direction: column; } .tabbar { flex-direction: row; width: 100%; border-right: none; border-bottom: 1px solid var(--border2); padding: 0 8px; overflow-x: auto; } .tabbtn { border-left: none; border-bottom: 3px solid transparent; padding: 10px 14px; } .tabbtn.active { border-left: none; border-bottom-color: var(--accent); } .nav-group { border-bottom: none; } .nav-group-h { display: none; } .nav-group .tabbtn { padding: 10px 14px; } .nav-group .tabbtn::before { display: none; } }
         .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
         @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
         .box { background: var(--panel); border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
@@ -95,9 +105,11 @@ internal static class DashboardPage
         .alarm-bar.warning { background: rgba(251,191,36,.1); border: 1px solid rgba(251,191,36,.3); color: var(--warn); }
         .alarm-bar.bad { background: rgba(248,113,113,.1); border: 1px solid rgba(248,113,113,.3); color: var(--bad); }
         .first-run-banner { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 7px; margin-bottom: 12px; font-size: 12px; background: rgba(56,189,248,.08); border: 1px solid rgba(56,189,248,.3); color: var(--text); }
+        .session-warn-banner { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 7px; margin-bottom: 12px; font-size: 12px; font-weight: 600; background: rgba(245,158,11,.12); border: 1px solid rgba(245,158,11,.45); color: var(--text); }
         .first-run-banner button { margin-left: auto; }
         .port-banner { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 7px; margin-bottom: 12px; font-size: 12px; font-weight: 600; background: rgba(251,191,36,.1); border: 1px solid rgba(251,191,36,.3); color: var(--warn); }
         .port-banner button { margin-left: auto; }
+        .session-warn-banner button { margin-left: auto; }
         .stat .k { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
         .stat .v { margin-top: 6px; font-size: 16px; font-weight: 700; line-height: 1.1; }
         .stat .s { margin-top: 4px; color: var(--muted); font-size: 11px; }
@@ -172,8 +184,12 @@ internal static class DashboardPage
         .fp-tabpane { display: flex; flex-direction: column; gap: 10px; }
         .fp-tabpane .field { margin-bottom: 0; }
         .fp-body { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .fp-body.with-flow { grid-template-columns: 1fr auto 1fr; align-items: stretch; }
+        .il-flow { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; cursor: help; user-select: none; padding: 0 2px; }
+        .il-flow .il-arrow { font-size: 22px; line-height: 1; color: var(--accent); }
+        .il-flow .il-flow-hint { font-size: 8px; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
         .mapping-toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; align-items: center; }
-        @media (max-width: 520px) { .fp-body { grid-template-columns: 1fr; } }
+        @media (max-width: 520px) { .fp-body { grid-template-columns: 1fr; } .fp-body.with-flow { grid-template-columns: 1fr; } .il-flow .il-arrow { transform: rotate(90deg); } }
         .fp-panel { background: var(--bg); border: 1px solid var(--border2); border-radius: 6px; padding: 12px 13px; }
         .fp-k { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 7px; }
         .fp-v { font-size: 22px; font-weight: 700; line-height: 1.1; word-break: break-word; }
@@ -208,10 +224,42 @@ internal static class DashboardPage
         .log-entry:last-child { border-bottom: none; }
         .log-entry .meta { color: var(--muted); font-size: 11px; margin-bottom: 4px; }
         .rate-limit-table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 12px; }
+        .address-ranges-table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 12px; }
+        .address-ranges-table th { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+        .address-ranges-table td { padding: 4px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
         .rate-limit-table th { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border2); color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
         .rate-limit-table td { padding: 5px 8px; border-bottom: 1px solid var(--border); }
         .rate-limit-table td:first-child { font-weight: 600; white-space: nowrap; }
         .rate-limit-table td:nth-child(2) { text-align: center; white-space: nowrap; }
+
+        /* Shared data table (DA Groups etc.) */
+        .tbl { width: 100%; border-collapse: collapse; }
+        .tbl th { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border2); color: var(--muted); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; white-space: nowrap; }
+        .tbl td { padding: 6px 8px; border-bottom: 1px solid var(--border); font-size: 12px; vertical-align: middle; }
+        .tbl tbody tr:hover { background: rgba(56,189,248,.04); }
+        .tbl th.num, .tbl td.num { text-align: right; }
+        .tbl tfoot td { border-bottom: none; border-top: 1px solid var(--border2); padding-top: 9px; }
+        .tbl input[type=text], .tbl select { min-width: 0; height: 24px; padding: 2px 6px; font-size: 12px; }
+        .tbl input[type=text] { width: 130px; }
+        .tbl select { width: auto; }
+        .tbl .btn { height: 24px; padding: 0 10px; font-size: 11px; }
+
+        /* DA Groups source-card header */
+        .dag-src-name { font-weight: 600; font-size: 12.5px; color: var(--text); text-transform: none; letter-spacing: 0; }
+        .dag-src-meta { font-family: 'Consolas', monospace; text-transform: none; letter-spacing: 0; margin-left: 2px; }
+        .dag-src-host { margin-left: auto; font-family: 'Consolas', monospace; text-transform: none; letter-spacing: 0; }
+
+        /* DA Groups v3 — card grid */
+        .dag-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; }
+        .dag-card { background: var(--bg); border: 1px solid var(--border2); border-radius: 6px; padding: 9px 11px; display: flex; flex-direction: column; gap: 6px; transition: opacity .15s ease; }
+        .dag-card.default { border-color: rgba(56,189,248,.45); }
+        .dag-card .n { font-size: 12.5px; font-weight: 600; word-break: break-all; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+        .dag-badges { display: flex; gap: 5px; flex-wrap: wrap; }
+        .dag-badge { font-size: 10px; padding: 1px 7px; border-radius: 9px; background: var(--panel2); border: 1px solid var(--border2); color: var(--muted); white-space: nowrap; }
+        .dag-badge.accent { color: var(--accent); border-color: rgba(56,189,248,.35); }
+        .dag-meta { font-size: 11px; color: var(--muted); }
+        .dag-actions { display: flex; gap: 6px; margin-top: auto; align-items: center; }
+        .dag-actions .btn { height: 22px; padding: 0 9px; font-size: 11px; }
 
         .log-entry .message { white-space: pre-wrap; word-break: break-word; }
         .log-entry .exception { white-space: pre-wrap; word-break: break-word; margin-top: 6px; color: var(--bad); }
@@ -227,16 +275,32 @@ internal static class DashboardPage
         .help-subtab.active, .map-type-tab.active { color: var(--text); background: var(--panel2); box-shadow: 0 1px 3px rgba(0,0,0,.2); }
         .help-subtab-content { display: none; }
         .help-subtab-content.active { display: block; }
-        .help-accordion { display: flex; flex-direction: column; gap: 8px; }
-        .help-section { background: var(--panel); border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
-        .help-section > summary { padding: 10px 14px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none; list-style: none; }
-        .help-section > summary::-webkit-details-marker { display: none; }
-        .help-section > summary::before { content: '\25B6'; font-size: 10px; color: var(--muted); transition: transform .15s ease; }
-        .help-section[open] > summary::before { transform: rotate(90deg); }
-        .help-section > summary:hover { background: var(--panel2); }
-        .help-section[open] > summary { border-bottom: 1px solid var(--border); background: var(--panel2); }
+        .help-layout { display: flex; align-items: flex-start; gap: 14px; }
+        .help-searchbar { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; }
+        .help-search { flex: 1; background: var(--panel); border: 1px solid var(--border); color: var(--text); padding: 8px 12px; border-radius: 6px; font-size: 13px; outline: none; }
+        .help-search:focus { border-color: var(--accent); }
+        .help-search-clear { background: var(--panel2); border: 1px solid var(--border); color: var(--muted); width: 32px; height: 32px; border-radius: 6px; cursor: pointer; font-size: 15px; line-height: 1; flex: none; }
+        .help-search-clear:hover { color: var(--text); background: var(--border); }
+        .help-search-loc { display: block; font-size: 9px; text-transform: uppercase; letter-spacing: .06em; opacity: .75; margin-bottom: 2px; }
+        .help-search-snippet { display: block; font-size: 10px; font-weight: 400; opacity: .8; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .help-noresults { padding: 14px; color: var(--muted); font-size: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; }
+        .help-toc { flex: 0 0 230px; display: flex; flex-direction: column; gap: 4px; position: sticky; top: 12px; }
+        .help-toc-item { text-align: left; background: var(--panel); border: 1px solid var(--border); color: var(--muted); padding: 9px 12px; font-size: 12px; font-weight: 600; cursor: pointer; border-radius: 6px; transition: all .15s ease; line-height: 1.35; }
+        .help-toc-item:hover { color: var(--text); background: var(--panel2); }
+        .help-toc-item.active { color: var(--bg); background: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 75%, #000)); border-color: transparent; box-shadow: 0 2px 10px rgba(0,0,0,.35); }
+        .help-pane { flex: 1; min-width: 0; background: var(--panel); border: 1px solid var(--border); border-radius: 7px; }
+        .help-article { display: none; }
+        .help-article.active { display: block; }
+        .help-article-title { font-size: 16px; font-weight: 700; padding: 14px 16px 0; margin: 0; }
+        .help-article .help-body { padding-top: 6px; }
+        @media (max-width: 800px) {
+            .help-layout { flex-direction: column; }
+            .help-toc { flex-direction: row; overflow-x: auto; position: static; flex: none; width: 100%; padding-bottom: 4px; }
+            .help-toc-item { white-space: nowrap; flex: none; }
+            .help-toc-item.active { flex: none; }
+        }
         .help-body { padding: 12px 14px; }
-        .help-body ul { padding-left: 18px; color: var(--muted); }
+        .help-body ul, .help-body ol { padding-left: 18px; color: var(--muted); }
         .help-body li + li { margin-top: 6px; }
         .help-body h4 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 12px 0 6px; }
         .help-body h4:first-child { margin-top: 0; }
@@ -252,7 +316,6 @@ internal static class DashboardPage
         .help-body th { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border2); color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
         .help-body td { padding: 5px 8px; border-bottom: 1px solid var(--border); }
         .help-body td:first-child { font-weight: 600; white-space: nowrap; }
-        .help-body td:nth-child(2) { text-align: center; white-space: nowrap; }
         .kv { display: grid; grid-template-columns: 140px 1fr; gap: 8px 12px; align-items: start; }
         .kv .k { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
         .kv .v { word-break: break-word; }
@@ -277,45 +340,73 @@ internal static class DashboardPage
             border-bottom: 1px solid var(--border);
             background: var(--panel);
         }
-        .diag-tab {
+        .diag-seg {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            gap: 2px;
+            padding: 3px;
             background: var(--panel2);
             border: 1px solid var(--border);
-            color: var(--text);
+            border-radius: 8px;
+        }
+        .seg-pill {
+            position: absolute;
+            top: 3px;
+            bottom: 3px;
+            left: 0;
+            width: 0;
+            border-radius: 6px;
+            background: var(--accent);
+            background: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 75%, #000));
+            box-shadow: 0 2px 10px rgba(0,0,0,.35);
+            transition: transform .28s cubic-bezier(.22,.9,.34,1), width .28s cubic-bezier(.22,.9,.34,1);
+            pointer-events: none;
+        }
+        .diag-tab {
+            position: relative;
+            z-index: 1;
+            background: transparent;
+            border: none;
+            color: var(--muted);
             padding: 6px 14px;
-            border-radius: 4px;
+            border-radius: 6px;
             cursor: pointer;
             font-size: 12px;
-            font-weight: 500;
-            transition: all 0.15s;
+            font-weight: 600;
+            transition: color 0.18s;
         }
         .diag-tab:hover {
-            background: var(--border);
+            color: var(--text);
         }
         .diag-tab.active {
-            background: var(--accent);
-            border-color: var(--accent);
             color: var(--bg);
         }
         .diag-zoom {
             display: flex;
             align-items: center;
-            gap: 6px;
+            gap: 2px;
             margin-left: 8px;
-        }
-        .diag-zoom-btn {
+            padding: 3px;
             background: var(--panel2);
             border: 1px solid var(--border);
-            color: var(--text);
+            border-radius: 8px;
+        }
+        .diag-zoom-btn {
+            background: transparent;
+            border: none;
+            color: var(--muted);
             min-width: 28px;
-            height: 28px;
+            height: 26px;
             padding: 0 8px;
-            border-radius: 4px;
+            border-radius: 6px;
             cursor: pointer;
             font-size: 13px;
             font-weight: 600;
             line-height: 1;
+            transition: color 0.15s, background 0.15s;
         }
-        .diag-zoom-btn:hover { background: var(--border); }
+        .diag-zoom-btn:hover { color: var(--text); background: var(--border); }
         .diag-zoom-btn:disabled { opacity: 0.4; cursor: default; }
         .diag-zoom-label {
             min-width: 44px;
@@ -331,11 +422,18 @@ internal static class DashboardPage
             font-size: 11px;
             color: var(--muted);
         }
-        .legend-item {
-            display: flex;
+        .legend-chip {
+            display: inline-flex;
             align-items: center;
             gap: 6px;
+            padding: 3px 10px;
+            border-radius: 999px;
+            background: var(--panel2);
+            border: 1px solid var(--border);
         }
+        .legend-chip .legend-dot.good { box-shadow: 0 0 6px var(--good); }
+        .legend-chip .legend-dot.warn { box-shadow: 0 0 6px var(--warn); }
+        .legend-chip .legend-dot.bad { box-shadow: 0 0 6px var(--bad); }
         .legend-dot {
             width: 8px;
             height: 8px;
@@ -365,11 +463,18 @@ internal static class DashboardPage
         .diag-node {
             cursor: pointer;
         }
+        .diag-node > rect {
+            fill: url(#diagCardGrad);
+            filter: url(#diagDrop);
+        }
         .diag-node rect {
             transition: all 0.15s;
         }
         .diag-node:hover rect {
-            stroke-width: 2;
+            stroke-width: 2.5;
+        }
+        .diag-node:hover text {
+            fill: #ffffff;
         }
         .diag-node text {
             fill: var(--text);
@@ -380,6 +485,7 @@ internal static class DashboardPage
         .diag-edge {
             fill: none;
             stroke-width: 2;
+            stroke-opacity: 0.9;
             transition: stroke 0.3s;
         }
         .diag-edge.good { stroke: var(--good); }
@@ -430,11 +536,17 @@ internal static class DashboardPage
             font-family: var(--font-mono);
             font-weight: 500;
         }
+        @media (prefers-reduced-motion: reduce) {
+            .diag-node, .diag-edge, .diag-flow, .seg-pill, .diag-tooltip {
+                animation: none !important;
+                transition: none !important;
+            }
+        }
     </style>
 </head>
 <body>
 <div class="topbar">
-    <div class="brand"><span class="dot" id="dot"></span>OPC DA&#8594;UA Bridge <span class="ver" id="appVersion"></span></div>
+    <div class="brand"><span class="dot" id="dot"></span>OPC Bridge <span class="ver" id="appVersion"></span></div>
     <div class="pills">
         <div class="pill"><span class="k">Bridge</span><span id="pBridge">&#8212;</span></div>
         <div class="pill"><span class="k">DA</span><span id="pDa">&#8212;</span></div>
@@ -451,15 +563,16 @@ internal static class DashboardPage
     <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><circle cx="7" cy="7" r="1" fill="currentColor" stroke="none"/><circle cx="7" cy="17" r="1" fill="currentColor" stroke="none"/></svg>Sources</div>
     <button class="tabbtn" data-tab="connection" data-route="connectivity/sources" onclick="navigate('connectivity/sources')">Sources</button>
     <button class="tabbtn" data-tab="opc-da" data-route="connectivity/opc-da" onclick="navigate('connectivity/opc-da')">OPC DA</button>
+    <button class="tabbtn" data-tab="opc-da-groups" data-route="connectivity/opc-da-groups" onclick="navigate('connectivity/opc-da-groups')">DA Groups</button>
     <button class="tabbtn" data-tab="opc-ua" data-route="connectivity/opc-ua" onclick="navigate('connectivity/opc-ua')">OPC UA</button>
+    <button class="tabbtn" data-tab="ua-subs" data-route="connectivity/ua-subs" onclick="navigate('connectivity/ua-subs')">UA Subs</button>
     <button class="tabbtn" data-tab="drivers" data-route="connectivity/drivers" onclick="navigate('connectivity/drivers')">Drivers</button>
     <button class="tabbtn" data-tab="mx-component" data-route="connectivity/mx-component" onclick="navigate('connectivity/mx-component')">MX Component</button>
-    <button class="tabbtn" data-tab="diagnostics" data-route="connectivity/diagnostics" onclick="navigate('connectivity/diagnostics')">Diagnostics</button>
   </div>
   <div class="nav-group">
     <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><circle cx="7" cy="7" r="1.5" fill="currentColor" stroke="none"/></svg>Tags</div>
     <button class="tabbtn" data-tab="tags" data-route="tags/maps" onclick="navigate('tags/maps')">Maps</button>
-    <button class="tabbtn" data-tab="links" data-route="tags/links" onclick="navigate('tags/links')">DA Links</button>
+    <button class="tabbtn" data-tab="interlinks" data-route="tags/interlinks" onclick="navigate('tags/interlinks')">Interlinks</button>
   </div>
   <div class="nav-group">
     <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1.2" fill="currentColor" stroke="none"/></svg>IoT</div>
@@ -473,7 +586,9 @@ internal static class DashboardPage
   <div class="nav-group">
     <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>Ops</div>
     <button class="tabbtn active" data-tab="monitor" data-route="ops/monitor" onclick="navigate('ops/monitor')">Monitor</button>
+    <button class="tabbtn" data-tab="diagnostics" data-route="ops/diagnostics" onclick="navigate('ops/diagnostics')">Diagnostics</button>
     <button class="tabbtn" data-tab="values" data-route="ops/values" onclick="navigate('ops/values')">Live Values</button>
+    <button class="tabbtn" data-tab="sessions" data-route="ops/sessions" onclick="navigate('ops/sessions')">Sessions</button>
     <button class="tabbtn" data-tab="logs" data-route="ops/logs" onclick="navigate('ops/logs')">Logs</button>
     <button class="tabbtn" data-tab="diagram" data-route="ops/diagram" onclick="navigate('ops/diagram')">Diagram</button>
   </div>
@@ -489,6 +604,7 @@ internal static class DashboardPage
     <div class="first-run-banner" id="bannerNoSources" style="display:none"></div>
     <div class="first-run-banner" id="bannerNoMappings" style="display:none"></div>
     <div class="alarm-bar" id="rateAlarmBar" style="display:none"></div>
+    <div class="session-warn-banner" id="sessionBanner" style="display:none"></div>
     <div class="mon-stats">
         <div class="mon-stat-group">
             <div class="mon-stat-group-h">Bridge</div>
@@ -537,6 +653,10 @@ internal static class DashboardPage
             </div>
         </div>
     </div>
+    <div class="box" style="margin-top:14px">
+        <div class="box-h">Bridge Fleet <span class="info" data-tip="Other OpcBridge instances discovered on the network (UDP/HTTP probe). 'Local' is the instance serving this dashboard.">i</span><span class="msg" id="fleetCount" style="margin-left:auto"></span></div>
+        <div class="box-b"><div class="list" id="fleetList" style="max-height:220px"><span class="msg">No fleet data yet.</span></div></div>
+    </div>
 </div>
 <div class="view" id="view-values">
     <div class="box">
@@ -554,11 +674,71 @@ internal static class DashboardPage
 </div>
 <div class="view" id="view-diagnostics">
     <div class="box" style="margin-bottom:14px">
-        <div class="box-h">DA Source Diagnostics <span class="msg" id="diagDaSummary" style="margin-left:auto"></span></div>
+        <div class="box-h">Bridge Vitals <span class="info" data-tip="Process-level metrics shown nowhere else: uptime, aggregate values/sec through the bridge, duration of the most recent DA poll cycle, and the Windows session hosting the DA servers. Connection states, counters and last-error live on ops/monitor.">i</span><span class="msg" id="diagHealthUpdated" style="margin-left:auto"></span></div>
+        <div class="box-b">
+            <div class="stats">
+                <div class="stat"><div class="k">Uptime</div><div class="v" id="diagUptime">&#8212;</div></div>
+                <div class="stat"><div class="k">Values/sec</div><div class="v" id="diagValueRate">&#8212;</div><div class="s" id="diagUpdateRate"></div></div>
+                <div class="stat"><div class="k">Last Poll</div><div class="v" id="diagPollDuration">&#8212;</div></div>
+                <div class="stat"><div class="k">DCOM Session</div><div class="v" id="diagSessionId">&#8212;</div><div class="s" id="diagInteractive"></div></div>
+            </div>
+        </div>
+    </div>
+    <div class="grid2" style="margin-bottom:14px">
+        <div class="box">
+            <div class="box-h">MQTT <span class="msg" id="diagMqttBadge" style="margin-left:auto"></span></div>
+            <div class="box-b">
+                <div class="stats">
+                    <div class="stat"><div class="k">Throughput</div><div class="v" id="diagMqttState">&#8212;</div><div class="s" id="diagMqttTotals"></div></div>
+                    <div class="stat"><div class="k">Rates</div><div class="v" id="diagMqttRate">&#8212;</div></div>
+                </div>
+                <div class="hint" id="diagMqttError" style="display:none;margin-top:8px"></div>
+            </div>
+        </div>
+        <div class="box">
+            <div class="box-h">InfluxDB <span class="msg" id="diagInfluxBadge" style="margin-left:auto"></span></div>
+            <div class="box-b">
+                <div class="stats">
+                    <div class="stat"><div class="k">Throughput</div><div class="v" id="diagInfluxState">&#8212;</div><div class="s" id="diagInfluxTotal"></div></div>
+                    <div class="stat"><div class="k">Write Rate</div><div class="v" id="diagInfluxRate">&#8212;</div></div>
+                </div>
+                <div class="hint" id="diagInfluxError" style="display:none;margin-top:8px"></div>
+            </div>
+        </div>
+    </div>
+    <div class="grid2" style="margin-bottom:14px">
+        <div class="box">
+            <div class="box-h">Disconnected Tags <span class="info" data-tip="UA monitored items whose creation failed and are being retried automatically. Common causes: the item disappeared from the source, or the source connection dropped.">i</span><span class="msg" id="diagDiscCount" style="margin-left:auto"></span></div>
+            <div class="box-b"><div class="list" id="diagDisconnected" style="max-height:220px"><span class="msg">Loading…</span></div></div>
+        </div>
+        <div class="box">
+            <div class="box-h">Bad Quality Tags <span class="info" data-tip="Mapped tags currently delivering a non-good quality from their source. The count reflects all affected tags; the list shows up to 50.">i</span><span class="msg" id="diagBadCount" style="margin-left:auto"></span></div>
+            <div class="box-b"><div class="list" id="diagBadQuality" style="max-height:220px"><span class="msg">Loading…</span></div></div>
+        </div>
+    </div>
+    <div class="grid2">
+        <div class="box">
+            <div class="box-h">Write Queue <span class="info" data-tip="UA client writes are queued in a bounded channel (capacity 1024) and drained by per-source consumer tasks. Success rate shows confirmed DA writes.">i</span></div>
+            <div class="box-b">
+                <div class="stats">
+                    <div class="stat"><div class="k">Current Depth</div><div class="v" id="diagWqDepth">&#8212;</div></div>
+                    <div class="stat"><div class="k">Success Rate</div><div class="v" id="diagWqRate">&#8212;</div><div class="s" id="diagWqTotals">0 enqueued</div></div>
+                </div>
+            </div>
+        </div>
+        <div class="box">
+            <div class="box-h">STA Thread Health <span class="info" data-tip="Each OPC DA source has a dedicated Single-Threaded Apartment (STA) thread. All COM calls for that source serialize through it. 'Queued' shows pending COM operations; 'Last action' shows the most recent COM call time.">i</span></div>
+            <div class="box-b"><div class="list" id="diagStaThreads" style="max-height:280px"><span class="msg">Loading…</span></div></div>
+        </div>
+    </div>
+</div>
+<div class="view" id="view-sessions">
+    <div class="box" style="margin-bottom:14px">
+        <div class="box-h">Source Diagnostics <span class="info" data-tip="Health of every configured source — OPC DA, OPC UA, and driver sources (Melsec, S7, MX Component). Shows connection state, read latency, rate-group budget for polled sources, the last fault reason, and data freshness.">i</span><span class="msg" id="diagDaSummary" style="margin-left:auto"></span></div>
         <div class="box-b" id="diagDaSources"><span class="msg">Loading…</span></div>
     </div>
     <div class="box" style="margin-bottom:14px">
-        <div class="box-h">Time Sync <span class="info" data-tip="Compares the DA server's clock to the bridge machine's clock. A large offset (>500ms) indicates the DA server or bridge needs NTP time sync. UA clients receive both SourceTimestamp (DA server time) and ServerTimestamp (bridge time) for each value.">i</span></div>
+        <div class="box-h">Time Sync <span class="info" data-tip="OPC DA sources only: compares the DA server's clock to the bridge machine's clock. A large offset (>500ms) indicates the DA server or bridge needs NTP time sync. UA clients receive both SourceTimestamp (DA server time) and ServerTimestamp (bridge time) for each value. UA and driver sources have no DA clock and show —.">i</span></div>
         <div class="box-b"><div class="list" id="diagTimeSync"><span class="msg">Loading…</span></div></div>
     </div>
     <div class="grid2" style="margin-bottom:14px">
@@ -571,29 +751,14 @@ internal static class DashboardPage
             <div class="box-b"><div class="list" id="diagUaSubscriptions" style="max-height:300px"><span class="msg">Loading…</span></div></div>
         </div>
     </div>
-    <div class="grid2" style="margin-bottom:14px">
-        <div class="box">
-            <div class="box-h">UA Bandwidth <span class="info" data-tip="Notifications/sec counts how many value changes were pushed to UA nodes. Estimated bandwidth = notifications/sec x ~80 bytes (typical UA notification encoding). The SDK does not expose actual wire bytes.">i</span></div>
-            <div class="box-b">
-                <div class="stats">
-                    <div class="stat"><div class="k">Notifications/sec</div><div class="v" id="diagNotifPerSec">&#8212;</div></div>
-                    <div class="stat"><div class="k">Est. Bandwidth</div><div class="v" id="diagBandwidth">&#8212;</div><div class="s" id="diagTotalNotif">0 total</div></div>
-                </div>
-            </div>
-        </div>
-        <div class="box">
-            <div class="box-h">Write Queue <span class="info" data-tip="UA client writes are queued in a bounded channel (capacity 1024) and drained by per-source consumer tasks. Success rate shows confirmed DA writes.">i</span></div>
-            <div class="box-b">
-                <div class="stats">
-                    <div class="stat"><div class="k">Current Depth</div><div class="v" id="diagWqDepth">&#8212;</div></div>
-                    <div class="stat"><div class="k">Success Rate</div><div class="v" id="diagWqRate">&#8212;</div><div class="s" id="diagWqTotals">0 enqueued</div></div>
-                </div>
-            </div>
-        </div>
-    </div>
     <div class="box">
-        <div class="box-h">STA Thread Health <span class="info" data-tip="Each OPC DA source has a dedicated Single-Threaded Apartment (STA) thread. All COM calls for that source serialize through it. 'Queued' shows pending COM operations; 'Last action' shows the most recent COM call time.">i</span></div>
-        <div class="box-b"><div class="list" id="diagStaThreads" style="max-height:280px"><span class="msg">Loading…</span></div></div>
+        <div class="box-h">UA Bandwidth <span class="info" data-tip="Notifications/sec counts how many value changes were pushed to UA nodes. Estimated bandwidth = notifications/sec x ~80 bytes (typical UA notification encoding). The SDK does not expose actual wire bytes.">i</span></div>
+        <div class="box-b">
+            <div class="stats">
+                <div class="stat"><div class="k">Notifications/sec</div><div class="v" id="diagNotifPerSec">&#8212;</div></div>
+                <div class="stat"><div class="k">Est. Bandwidth</div><div class="v" id="diagBandwidth">&#8212;</div><div class="s" id="diagTotalNotif">0 total</div></div>
+            </div>
+        </div>
     </div>
 </div>
 <div class="view" id="view-connection">
@@ -623,6 +788,12 @@ internal static class DashboardPage
                         <div class="field"><label class="fl">Host <span class="info" data-tip="Machine where the OPC DA server runs. Use 'localhost' for this PC, or an IP/hostname for remote.">i</span></label><input id="cfgHost" type="text" placeholder="localhost" style="flex:1"></div>
                     </div>
                     <div class="conn-section">
+                        <div class="conn-section-h">Detected Server <span class="info" data-tip="Identified on connect: OPC DA spec level (1.0/2.0/3.0, probed from the server-object marker interfaces) plus the server's own version and vendor string (IOPCServer.GetStatus).">i</span></div>
+                        <div class="field"><label class="fl">Server</label><span class="msg" id="cfgServerInfo" style="font-weight:400;text-transform:none;letter-spacing:0">—</span></div>
+                        <div class="field"><label class="fl">Read Mode <span class="info" data-tip="How values are delivered right now: async (subscription) = IOPCDataCallback push; sync (polling) = IOPCSyncIO.Read polling. Updated live; depends on the server exposing the callback connection point.">i</span></label><span class="msg" id="cfgReadMode" style="font-weight:400;text-transform:none;letter-spacing:0">—</span></div>
+                        <div class="field"><label class="fl">Write Mode <span class="info" data-tip="How writes are sent right now: DA follows the source's I/O mode — async (IOPCAsyncIO2.Write, confirmed via OnWriteComplete) when the push path is live, otherwise sync (IOPCSyncIO.Write). UA uses the Write service.">i</span></label><span class="msg" id="cfgWriteMode" style="font-weight:400;text-transform:none;letter-spacing:0">—</span></div>
+                    </div>
+                    <div class="conn-section">
                         <div class="conn-section-h">Credentials <span class="info" data-tip="Only required for remote DCOM with specific user accounts, or to access OPC DA servers registered in another user's profile.">i</span></div>
                         <div class="field"><label class="fl">User</label><input id="cfgUser" type="text" placeholder="username" style="flex:1"><input id="cfgPass" type="password" placeholder="password" style="flex:1"><input id="cfgDomain" type="text" placeholder="domain" style="flex:1"></div>
                     </div>
@@ -631,8 +802,17 @@ internal static class DashboardPage
                         <div class="field"><label class="fl">Rate</label><select id="cfgUpdateRate"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select><button class="btn ghost" id="cfgApplyRate" type="button">Apply</button><span class="msg" id="rateMessage">Applies live</span></div>
                     </div>
                     <div class="conn-section">
-                        <div class="conn-section-h">DA Subscriptions <span class="info" data-tip="When ON, the bridge uses IOPCDataCallback to receive value changes from the DA server (faster, supports deadband). When OFF, the bridge polls with IOPCSyncIO.Read. Changing this requires a source reconnect.">i</span></div>
-                        <div class="field"><label class="fl">Subscriptions</label><input type="checkbox" id="cfgUseSubscriptions" checked><span class="msg" id="subMessage">Applies on reconnect</span></div>
+                        <div class="conn-section-h">I/O Mode <span class="info" data-tip="Client-side value-delivery mode for this source, like Matrikon OPC Explorer's per-group I/O selector. AutoDetect I/O: try IOPCDataCallback push, fall back to polling when the server can't. Synchronous I/O: always poll with IOPCSyncIO.Read. Async I/O 2.0: force the push path (even if the global switch is off); falls back to polling with a warning if the server can't provide it. Applied live — no restart.">i</span></div>
+                        <div class="field"><label class="fl">Mode</label><select id="cfgIoMode"><option value="AutoDetect">AutoDetect I/O</option><option value="Sync">Synchronous I/O</option><option value="Async20">Async I/O 2.0</option></select><span class="msg" id="ioModeHint" style="font-weight:400;text-transform:none;letter-spacing:0"></span></div>
+                    </div>
+                    <div class="conn-section">
+                        <div class="conn-section-h">Groups <span class="info" data-tip="Read-only summary of this source's OPC DA groups. Add, edit, rename or delete groups in the DA Groups panel (Manage groups) — changes apply live, no restart.">i</span></div>
+                        <div id="cfgGroups" style="display:flex;flex-direction:column;gap:6px"></div>
+                        <div class="msg" id="cfgGroupsMsg" style="margin-top:4px"></div>
+                    </div>
+                    <div class="conn-section">
+                        <div class="conn-section-h">DA Subscriptions <span class="info" data-tip="Global master switch: when OFF, AutoDetect sources never attempt push. When ON, AutoDetect sources use IOPCDataCallback when the server supports it (faster, supports deadband). Sources forced to Async I/O 2.0 always attempt push regardless. Applies on reconnect.">i</span></div>
+                        <div class="field"><label class="fl">Global</label><input type="checkbox" id="cfgUseSubscriptions" checked><span class="msg" id="subMessage">Applies on reconnect</span></div>
                     </div>
                     <div class="toolbar" style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
                         <button class="btn" id="cfgApply" type="button" style="display:none">Save</button>
@@ -674,6 +854,15 @@ internal static class DashboardPage
         </div>
     </div>
 </div>
+<div class="view" id="view-opc-da-groups">
+    <div class="box" style="max-width:720px">
+        <div class="box-h" style="padding:8px 12px;font-size:13px">OPC DA Groups <span class="msg" id="daGroupsMsg" style="margin-left:12px;font-size:11px"></span><span style="margin-left:auto;display:flex;gap:4px"><button class="btn ghost" type="button" style="height:20px;padding:0 6px;font-size:11px" onclick="expandAllDaGroups()">Expand All</button><button class="btn ghost" type="button" style="height:20px;padding:0 6px;font-size:11px" onclick="collapseAllDaGroups()">Collapse All</button></span></div>
+        <div class="box-b" style="padding:10px 12px">
+            <div id="daGroupsContainer" style="display:flex;flex-direction:column;gap:8px"></div>
+            <div class="hint" style="font-size:11px;margin-top:8px">Each rate is a COM group OpcBridge_&lt;rate&gt; — add/delete per source, set I/O per group. Live apply.</div>
+        </div>
+    </div>
+</div>
 <div class="view" id="view-opc-ua">
     <div class="conn-layout">
         <div class="conn-main">
@@ -701,6 +890,8 @@ internal static class DashboardPage
                         <div class="field"><label class="fl">Update Rate</label><select id="uaCfgUpdateRate"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
                         <div class="field"><label class="fl">Max Mapped Tags <span class="info" data-tip="Hard cap on mappings for this UA source. Only mapped NodeIds are subscribed.">i</span></label><input id="uaCfgMaxMappedTags" type="number" min="1" value="50000" style="flex:1"></div>
                         <div class="field"><label class="fl">Subscriptions</label><input type="checkbox" id="uaCfgUseSubscriptions" checked><span class="msg" id="uaSubMessage">MonitoredItems for mapped tags</span></div>
+                        <div class="field"><label class="fl">Read Mode <span class="info" data-tip="How values are delivered right now: async (subscription) = MonitoredItems push; sync (polling) = polling. Follows the Subscriptions checkbox on reconnect.">i</span></label><span class="msg" id="uaCfgReadMode" style="font-weight:400;text-transform:none;letter-spacing:0">—</span></div>
+                        <div class="field"><label class="fl">Write Mode <span class="info" data-tip="How writes are sent: always a synchronous request/response via the UA Write service.">i</span></label><span class="msg" id="uaCfgWriteMode" style="font-weight:400;text-transform:none;letter-spacing:0">—</span></div>
                     </div>
                     <div class="toolbar" style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
                         <button class="btn" id="btnUaTestConnection" type="button">Test Connection</button>
@@ -737,6 +928,40 @@ internal static class DashboardPage
                 </div>
             </div>
         </div>
+    </div>
+</div>
+<div class="view" id="view-ua-subs">
+    <div class="box" style="max-width:720px">
+        <div class="box-h" style="padding:8px 12px;font-size:13px">UA Subscriptions <span class="msg" id="subsMsg" style="margin-left:12px;font-size:11px"></span><span style="margin-left:auto;display:flex;gap:4px"><button class="btn ghost" type="button" style="height:20px;padding:0 6px;font-size:11px" onclick="expandAllUaSubs()">Expand All</button><button class="btn ghost" type="button" style="height:20px;padding:0 6px;font-size:11px" onclick="collapseAllUaSubs()">Collapse All</button></span></div>
+        <div class="box-b" style="padding:10px 12px">
+            <div id="uaSubsContainer" style="display:flex;flex-direction:column;gap:8px"></div>
+            <div class="hint" style="font-size:11px;margin-top:8px">Tags assigned to a named subscription publish at that rate; unassigned tags ride the read-only Default tile (source Update Rate). Removing a subscription moves its tags back to default.</div>
+        </div>
+    </div>
+</div>
+<div class="modal-overlay" id="dagModal" onclick="if(event.target===this)closeDagModal()">
+    <div class="modal" style="width:min(420px,94vw)">
+        <div class="modal-h"><div class="n" id="dagModalTitle">Add Group</div><button class="modal-close" type="button" onclick="closeDagModal()">×</button></div>
+        <div class="modal-b">
+            <div class="field"><label class="fl">Source</label><span class="msg" id="dagModalSource" style="font-family:'Consolas',monospace"></span></div>
+            <div class="field"><label class="fl">Name</label><input id="dagModalName" type="text" placeholder="OpcBridge_1000" style="flex:1"></div>
+            <div class="field"><label class="fl">Rate</label><select id="dagModalRate" style="flex:1"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
+            <div class="field"><label class="fl">I/O Mode</label><select id="dagModalIo" style="flex:1"><option value="AutoDetect">AutoDetect</option><option value="Sync">Sync</option><option value="Async20">Async20</option></select></div>
+            <div class="msg" id="dagModalMsg"></div>
+        </div>
+        <div class="modal-f"><button class="btn ghost" type="button" onclick="closeDagModal()">Cancel</button><button class="btn" type="button" id="dagModalSaveBtn" onclick="dagModalSave()">Save</button></div>
+    </div>
+</div>
+<div class="modal-overlay" id="uaSubModal" onclick="if(event.target===this)closeUaSubModal()">
+    <div class="modal" style="width:min(420px,94vw)">
+        <div class="modal-h"><div class="n" id="uaSubModalTitle">Add Subscription</div><button class="modal-close" type="button" onclick="closeUaSubModal()">×</button></div>
+        <div class="modal-b">
+            <div class="field"><label class="fl">Source</label><span class="msg" id="uaSubModalSource" style="font-family:'Consolas',monospace"></span></div>
+            <div class="field"><label class="fl">Name</label><input id="uaSubModalName" type="text" placeholder="fast" style="flex:1"></div>
+            <div class="field"><label class="fl">Rate</label><select id="uaSubModalRate" style="flex:1"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
+            <div class="msg" id="uaSubModalMsg"></div>
+        </div>
+        <div class="modal-f"><button class="btn ghost" type="button" onclick="closeUaSubModal()">Cancel</button><button class="btn" type="button" id="uaSubModalSaveBtn" onclick="uaSubModalSave()">Save</button></div>
     </div>
 </div>
 <div class="modal-overlay" id="addSourceWizard" onclick="if(event.target===this)closeAddSourceWizard()">
@@ -857,6 +1082,8 @@ internal static class DashboardPage
                 <div class="box-h">Addressing</div>
                 <div class="box-b">
                     <div class="hint">Map tags on the Tags page with device addresses, e.g. <span class="mono">D100</span>, <span class="mono">M10</span>, <span class="mono">X20</span>, <span class="mono">D100:8</span>.</div>
+                    <button class="btn ghost" type="button" id="mxRangesToggle" style="margin-top:8px" onclick="toggleAddressRanges('mxAddressRanges', this)">Show accepted addresses ▾</button>
+                    <div id="mxAddressRanges" style="display:none"></div>
                 </div>
             </div>
         </div>
@@ -995,6 +1222,10 @@ internal static class DashboardPage
                 <span class="msg" id="tagSourceStatus"></span>
                 <span class="msg" id="mapSourceHint"></span>
             </div>
+            <div style="margin:-6px 0 8px 0">
+                <button class="btn ghost" type="button" id="mapAddressRangesToggle" style="display:none;padding:3px 9px;font-size:11px" onclick="toggleAddressRanges('mapAddressRanges', this)">Show accepted addresses ▾</button>
+                <div id="mapAddressRanges" style="display:none"></div>
+            </div>
             <div class="tag-browser-toolbar" id="mapBrowseToolbar">
                 <button class="btn" id="btnBrowseAllTags" type="button">Browse All Tags</button>
                 <button class="btn ghost" id="btnBrowseTags" type="button">Browse Folders</button>
@@ -1038,35 +1269,30 @@ internal static class DashboardPage
         </div>
     </div>
 </div>
-<div class="view" id="view-links">
+<div class="view" id="view-interlinks">
     <div class="box">
-        <div class="box-h">DA Links <span class="msg" id="linksCount" style="margin-left:auto"></span></div>
+        <div class="box-h">Interlinks <span class="msg" id="linksCount" style="margin-left:auto"></span></div>
         <div class="box-b">
-            <div class="hint" id="linksMessage" style="margin-bottom:10px">Create provider-consumer DA rules here. DA Links are separate from OPC UA tag mappings.</div>
-            <div class="field" style="margin-bottom:10px">
-                <label class="fl">Active Source</label>
-                <span class="msg" id="linkSourceStatus">Select a saved source, then browse tags below.</span>
-            </div>
-            <div class="fp-body" style="margin-bottom:10px">
+            <div class="hint" id="linksMessage" style="margin-bottom:10px">Create tag-to-tag rules between sources here. Interlinks are a separate subsystem from OPC UA tag mappings.</div>
+            <div class="fp-body with-flow" style="margin-bottom:10px">
                 <div class="fp-panel">
-                    <div class="fp-k">Consumer</div>
-                    <div class="fp-meta" id="linkConsumerTarget"><span class="msg">Browse the active source and choose a consumer tag.</span></div>
+                    <div class="fp-k">Consumer <span class="info" data-tip="Receives the value. When the provider tag changes, the bridge writes that value into this tag. Each consumer has exactly one provider - delete the saved link first to attach a different provider.">i</span></div>
+                    <select id="interlinkConsumerSource" style="width:100%;margin-bottom:8px" onchange="onInterlinkSourceChange('consumer')"></select>
+                    <div class="list" id="interlinkConsumerList" style="max-height:220px"><span class="msg">Select a source to list its Maps tags.</span></div>
                 </div>
+                <div class="il-flow" data-tip="Values flow from the Provider into the Consumer: each provider change is written into every consumer linked to it."><span class="il-arrow">⇐</span><span class="il-flow-hint">value flow</span></div>
                 <div class="fp-panel">
-                    <div class="fp-k">Provider</div>
-                    <div class="fp-meta" id="linkProviderTarget"><span class="msg">Browse the active source and choose a provider tag.</span></div>
+                    <div class="fp-k">Provider <span class="info" data-tip="Sends the value. Its changes are copied into every consumer linked to it - one provider can feed many consumers across any OPC DA / OPC UA / MX Component source.">i</span></div>
+                    <select id="interlinkProviderSource" style="width:100%;margin-bottom:8px" onchange="onInterlinkSourceChange('provider')"></select>
+                    <div class="list" id="interlinkProviderList" style="max-height:220px"><span class="msg">Select a source to list its Maps tags.</span></div>
                 </div>
             </div>
             <div class="tag-browser-toolbar">
-                <button class="btn" id="btnBrowseAllLinkTags" type="button">Browse All Tags</button>
-                <button class="btn ghost" id="btnBrowseLinkTags" type="button">Browse Folders</button>
                 <button class="btn" type="button" id="btnSetLink">Save Link</button>
                 <button class="btn ghost" type="button" id="btnClearLink">Delete Saved Link</button>
                 <button class="btn ghost" type="button" id="btnClearLinkSelection">Clear Selection</button>
-                <span class="msg" id="linkBrowseStatus">Use the active source selection from Connection or Tags, then pick consumer/provider tags.</span>
+                <span class="msg" id="interlinkStatus">Pick both endpoints from Maps tags — OPC DA, OPC UA or MX Component — so every saved interlink can carry values.</span>
             </div>
-            <div class="breadcrumb" id="linkBrowseBreadcrumb"><span class="current">root</span></div>
-            <div class="list" id="linkBrowseTree"><span class="msg">Use the active source to browse tags for DA links.</span></div>
             <div class="list" id="linksList" style="margin-top:10px"></div>
         </div>
     </div>
@@ -1095,6 +1321,7 @@ internal static class DashboardPage
             <div class="fp-tabpane" id="fp-pane-setup" style="display:none">
                 <div class="field"><label class="fl">Access Rights</label><select id="fpAccess" data-action="tag-access"><option value="Read">Read (Source → UA)</option><option value="Read-Write">Read-Write (Source ↔ UA)</option><option value="Write">Write (UA → Source)</option></select></div>
                 <div class="field"><label class="fl">Enabled</label><input type="checkbox" id="fpEnabled" data-action="toggle-tag-enabled"></div>
+                <div class="field" id="fpSubscriptionField" style="display:none"><label class="fl">Subscription</label><select id="fpSubscription"></select><span class="msg" id="fpSubscriptionHint"></span></div>
                 <div class="field"><label class="fl">Update Rate</label><select id="fpPollRate" data-action="tag-poll-rate"><option value="0">Source Default</option><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
                 <div class="field"><label class="fl">Deadband %</label><input type="number" id="fpDeadband" min="0" max="100" step="0.1" value="0" style="width:80px"></div>
                 <div class="hint" style="margin-top:4px">Update Rate = source poll/publish interval. With subscriptions on, the source pushes changes at this rate when supported. With subscriptions off, the bridge polls at this rate.</div>
@@ -1151,17 +1378,25 @@ internal static class DashboardPage
 <div class="view" id="view-help">
     <div class="help-subtabs">
         <button class="help-subtab active" onclick="switchHelpSubTab('getting-started')">Getting Started</button>
-        <button class="help-subtab" onclick="switchHelpSubTab('dashboard-tabs')">Dashboard Tabs</button>
+        <button class="help-subtab" onclick="switchHelpSubTab('features')">Features</button>
         <button class="help-subtab" onclick="switchHelpSubTab('reference')">Reference</button>
     </div>
-    <div class="help-subtab-content active" id="help-getting-started">
-        <div class="help-accordion" id="helpContent1"><span class="msg">Loading help…</span></div>
+    <div class="help-searchbar">
+        <input type="search" id="helpSearch" class="help-search" placeholder="Search all topics…" autocomplete="off" oninput="helpSearch(this.value)">
+        <button type="button" class="help-search-clear" id="helpSearchClear" style="display:none" onclick="helpSearchClear()" title="Clear search">&times;</button>
     </div>
-    <div class="help-subtab-content" id="help-dashboard-tabs">
-        <div class="help-accordion" id="helpContent2"></div>
+    <div class="help-layout" id="helpSearchLayout" style="display:none">
+        <nav class="help-toc" id="helpSearchToc"></nav>
+        <div class="help-pane" id="helpSearchPane"></div>
+    </div>
+    <div class="help-subtab-content active" id="help-getting-started">
+        <div class="help-layout" id="helpLayout1"><span class="msg">Loading help…</span></div>
+    </div>
+    <div class="help-subtab-content" id="help-features">
+        <div class="help-layout" id="helpLayout2"></div>
     </div>
     <div class="help-subtab-content" id="help-reference">
-        <div class="help-accordion" id="helpContent3"></div>
+        <div class="help-layout" id="helpLayout3"></div>
     </div>
 </div>
 <div class="view" id="view-about">
@@ -1242,7 +1477,7 @@ internal static class DashboardPage
     <div class="wizard-body">
       <div class="wizard-pane active" data-pane="1">
         <div class="field"><label class="fl">Broker URL</label><input type="text" id="wzMqttUrl" placeholder="tcp://localhost:1883"></div>
-        <div class="field"><label class="fl">Client ID</label><input type="text" id="wzMqttClientId" placeholder="OpcDaToUaBridge"></div>
+        <div class="field"><label class="fl">Client ID</label><input type="text" id="wzMqttClientId" placeholder="OpcBridge"></div>
         <div class="field"><label class="fl">Auto-connect</label><input type="checkbox" id="wzMqttAuto" checked></div>
       </div>
       <div class="wizard-pane" data-pane="2">
@@ -1361,10 +1596,13 @@ internal static class DashboardPage
 </div>
 <div class="view" id="view-diagram">
     <div class="diag-toolbar">
-        <button class="diag-tab active" data-diag="all" onclick="showDiagTab('all')">All</button>
-        <button class="diag-tab" data-diag="da-ua" onclick="showDiagTab('da-ua')">DA→UA</button>
-        <button class="diag-tab" data-diag="da-da" onclick="showDiagTab('da-da')">DA to DA</button>
-        <button class="diag-tab" data-diag="mqtt" onclick="showDiagTab('mqtt')">MQTT</button>
+        <div class="diag-seg" id="diagSeg">
+            <span class="seg-pill" id="segPill"></span>
+            <button class="diag-tab active" data-diag="all" onclick="showDiagTab('all')">All</button>
+            <button class="diag-tab" data-diag="da-ua" onclick="showDiagTab('da-ua')">DA→UA</button>
+            <button class="diag-tab" data-diag="interlinks" onclick="showDiagTab('interlinks')">Interlinks</button>
+            <button class="diag-tab" data-diag="mqtt" onclick="showDiagTab('mqtt')">MQTT</button>
+        </div>
         <div class="diag-zoom" title="Ctrl+wheel zoom toward cursor · drag canvas to pan">
             <button type="button" class="diag-zoom-btn" id="diagZoomOut" title="Zoom out">&minus;</button>
             <span class="diag-zoom-label" id="diagZoomLabel">100%</span>
@@ -1374,10 +1612,10 @@ internal static class DashboardPage
             <button type="button" class="diag-zoom-btn" id="diagZoomReset" title="Reset zoom">Reset</button>
         </div>
         <div class="diag-legend">
-            <span class="legend-item"><span class="legend-dot good"></span>Good</span>
-            <span class="legend-item"><span class="legend-dot warn"></span>Stale</span>
-            <span class="legend-item"><span class="legend-dot bad"></span>Error</span>
-            <span class="legend-item"><span class="legend-dot off"></span>Disabled</span>
+            <span class="legend-chip"><span class="legend-dot good"></span>Good</span>
+            <span class="legend-chip"><span class="legend-dot warn"></span>Stale</span>
+            <span class="legend-chip"><span class="legend-dot bad"></span>Error</span>
+            <span class="legend-chip"><span class="legend-dot off"></span>Disabled</span>
         </div>
     </div>
     <div class="diag-canvas" id="diagCanvas">
@@ -1396,7 +1634,7 @@ const esc = s => String(s ?? '').replace(/[&<>'"]/g, c => ESC[c]);
 const attr = esc;
 let tipEl;
 document.addEventListener('mouseover', e => {
-    const info = e.target.closest('.info');
+    const info = e.target.closest('.info, [data-tip]');
     if (!info || !info.dataset.tip) return;
     if (!tipEl) { tipEl = document.createElement('div'); tipEl.className = 'tip'; document.body.appendChild(tipEl); }
     tipEl.textContent = info.dataset.tip;
@@ -1410,12 +1648,12 @@ document.addEventListener('mouseover', e => {
     tipEl.style.left = x + 'px';
     tipEl.style.top = y + 'px';
 });
-document.addEventListener('mouseout', e => { if (e.target.closest('.info') && tipEl) tipEl.classList.remove('show'); });
+document.addEventListener('mouseout', e => { if (e.target.closest('.info, [data-tip]') && tipEl) tipEl.classList.remove('show'); });
 const el = id => document.getElementById(id);
 const state = {
     tagPath: '',
     uaBrowseTrail: [],
-    linkBrowsePath: '',
+    interlinkSideSource: { consumer: '', provider: '' },
     sources: [],
     selectedSourceId: 'default',
     editingNewSource: false,
@@ -1423,6 +1661,7 @@ const state = {
     editingNewDriver: false,
     selectedMxId: '',
     editingNewMx: false,
+    addressRangesCache: null,
     editingNewUaSource: false,
     liveValuesEnabled: true,
     liveValuesSource: '',
@@ -1432,8 +1671,8 @@ const state = {
     logsLoaded: false,
     appInfoLoaded: false,
     mappings: [],
-    daLinks: [],
-    linkDraft: { consumer: null, provider: null },
+    interlinks: [],
+    interlinkDraft: { consumer: null, provider: null },
     mappingSort: 'name',
     mappingSortDir: 1,
     mappingFilter: '',
@@ -1443,6 +1682,7 @@ const state = {
     mqttConnectionState: 'Disconnected',
     influxConfigured: false,
     influxState: 'Disconnected',
+    sessionBannerDismissed: false,
     mqttValFilter: { direction: '', topic: '' },
     valuesByKey: new Map(),
     disconnectedKeys: new Set(),
@@ -1450,6 +1690,8 @@ const state = {
     disconnectedSources: new Set(),
     handleHistory: [],
     handleBaseline: null,
+    gdiHistory: [],
+    userHistory: [],
     diagramTab: 'all',
     diagramLoaded: false,
     diagramZoom: 1,
@@ -1592,6 +1834,32 @@ function bindDiagramPanZoom() {
     applyDiagramZoom();
 }
 
+function syncSegPill() {
+    const seg = el('diagSeg');
+    const pill = el('segPill');
+    const btn = seg ? seg.querySelector('.diag-tab.active') : null;
+    if (!seg || !pill || !btn) return;
+    pill.style.width = btn.offsetWidth + 'px';
+    pill.style.transform = 'translateX(' + btn.offsetLeft + 'px)';
+}
+window.addEventListener('resize', syncSegPill);
+
+function diagEmptyState(title, hint, w = 1100, h = 600) {
+    const cx = Math.round(w / 2), cy = Math.round(h / 2);
+    return `<g class="diag-empty" transform="translate(${cx} ${cy})">` +
+        `<rect x="-240" y="-62" width="480" height="124" rx="10" fill="url(#diagCardGrad)" stroke="#2a3547" stroke-dasharray="5 5"/>` +
+        `<text y="-8" text-anchor="middle" fill="#d8e0ea" font-size="14" font-weight="600">${escapeHtml(title)}</text>` +
+        `<text y="16" text-anchor="middle" fill="#6b7689" font-size="11">${escapeHtml(hint)}</text></g>`;
+}
+
+const DIAG_DEFS = '<defs>' +
+    '<linearGradient id="diagCardGrad" x1="0" y1="0" x2="0" y2="1">' +
+    '<stop offset="0" stop-color="#18202e"/><stop offset="1" stop-color="#10151f"/>' +
+    '</linearGradient>' +
+    '<filter id="diagDrop" x="-20%" y="-20%" width="140%" height="140%">' +
+    '<feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000000" flood-opacity="0.35"/>' +
+    '</filter></defs>';
+
 function showDiagTab(tab) {
     state.diagramTab = tab;
     document.querySelectorAll('.diag-tab').forEach(b => b.classList.toggle('active', b.dataset.diag === tab));
@@ -1617,8 +1885,8 @@ function renderDiagram() {
         html = result.svg;
         maxHeight = result.maxHeight;
         maxWidth = result.maxWidth || maxWidth;
-    } else if (tab === 'da-da') {
-        const result = renderDaDaDiagram();
+    } else if (tab === 'interlinks') {
+        const result = renderInterlinksDiagram();
         html = result.svg;
         maxHeight = result.maxHeight;
         maxWidth = result.maxWidth || maxWidth;
@@ -1632,8 +1900,9 @@ function renderDiagram() {
     state.diagramBaseWidth = maxWidth;
     state.diagramBaseHeight = maxHeight;
     svg.setAttribute('viewBox', `0 0 ${maxWidth} ${maxHeight}`);
-    svg.innerHTML = html;
+    svg.innerHTML = DIAG_DEFS + html;
     applyDiagramZoom();
+    syncSegPill();
 }
 
 function linkEndpoints(link) {
@@ -1652,7 +1921,7 @@ function linkEndpoints(link) {
     };
 }
 
-function collectDaLinks() {
+function collectInterlinks() {
     const links = [];
     const seen = new Set();
     const push = (link, kind) => {
@@ -1664,7 +1933,7 @@ function collectDaLinks() {
         seen.add(key);
         links.push({ ...link, ...ep, _kind: kind });
     };
-    (state.daLinks || []).forEach(l => push(l, 'rule'));
+    (state.interlinks || []).forEach(l => push(l, 'rule'));
     // legacy provider fields still present on mappings
     (state.mappings || []).forEach(m => {
         const pSid = m.providerSourceId || m.ProviderSourceId;
@@ -1737,10 +2006,10 @@ function summarizeTags(tags) {
 function renderAllDiagram() {
     const mappings = state.mappings || [];
     const sources = state.sources || [];
-    const links = collectDaLinks();
+    const links = collectInterlinks();
 
     if (mappings.length === 0 && sources.length === 0) {
-        return { svg: '<text x="50%" y="50%" text-anchor="middle" fill="#6b7689" font-size="14">No sources or tags configured</text>', maxHeight: 600, maxWidth: 1400 };
+        return { svg: diagEmptyState('No sources or tags configured', 'Add a DA source or mapping to see the plant overview', 1400), maxHeight: 600, maxWidth: 1400 };
     }
 
     // Aggregated overview: source → tag-group → UA/MQTT (O(sources), not O(tags))
@@ -1766,7 +2035,7 @@ function renderAllDiagram() {
 
     let svg = '';
     svg += `<text x="40" y="30" fill="#6b7689" font-size="11" font-weight="600">PLANT OVERVIEW (aggregated)</text>`;
-    svg += `<text x="40" y="48" fill="#6b7689" font-size="10">Sources → tag groups → UA / MQTT · trunks colored by live status · detail on DA→UA / DA-to-DA / MQTT tabs</text>`;
+    svg += `<text x="40" y="48" fill="#6b7689" font-size="10">Sources → tag groups → UA / MQTT · trunks colored by live status · detail on DA→UA / Interlinks / MQTT tabs</text>`;
 
     const sourcePositions = new Map();
     const groupPositions = new Map();
@@ -1819,7 +2088,7 @@ function renderAllDiagram() {
         currentY += rowH + sourceGap;
     });
 
-    // Aggregate DA-to-DA by source pair
+    // Aggregate interlinks by source pair
     const pairMap = new Map();
     links.forEach(link => {
         const ep = linkEndpoints(link);
@@ -1903,7 +2172,7 @@ function renderDaUaDiagram() {
     const sources = state.sources || [];
 
     if (mappings.length === 0) {
-        return { svg: '<text x="50%" y="50%" text-anchor="middle" fill="#6b7689" font-size="14">No tags configured</text>', maxHeight: 600, maxWidth: 1100 };
+        return { svg: diagEmptyState('No tags configured', 'Map a tag to watch it flow from its source to UA', 1100), maxHeight: 600, maxWidth: 1100 };
     }
 
     // Default: aggregated source trunks (scales to tens of thousands).
@@ -2072,13 +2341,13 @@ function renderDaUaDiagram() {
     return { svg, maxHeight: maxY + 60, maxWidth: 1120 };
 }
 
-function renderDaDaDiagram() {
+function renderInterlinksDiagram() {
     const mappings = state.mappings || [];
     const sources = state.sources || [];
-    const links = collectDaLinks();
+    const links = collectInterlinks();
 
     if (mappings.length === 0 && links.length === 0) {
-        return { svg: '<text x="50%" y="50%" text-anchor="middle" fill="#6b7689" font-size="14">No tags or DA-to-DA links configured</text>', maxHeight: 600, maxWidth: 1100 };
+        return { svg: diagEmptyState('No tags or interlinks configured', 'Create an interlink to see providers feed consumers', 1100), maxHeight: 600, maxWidth: 1100 };
     }
 
     // Aggregated by source pair (scales with links/sources, not every tag).
@@ -2257,7 +2526,7 @@ function renderMqttDiagram() {
     const sources = state.sources || [];
 
     if (mappings.length === 0) {
-        return { svg: '<text x="50%" y="50%" text-anchor="middle" fill="#6b7689" font-size="14">No mapped tags</text>', maxHeight: 600, maxWidth: 1100 };
+        return { svg: diagEmptyState('No mapped tags', 'Enable MQTT on a mapped tag to see it published to the broker', 1100), maxHeight: 600, maxWidth: 1100 };
     }
 
     // Aggregated by DA source → MQTT broker. Expand source for paged tag detail.
@@ -2532,39 +2801,67 @@ function linkTagLabel(sourceId, itemId, nameOverride = null) {
     const name = nameOverride || (mapping ? (mapping.displayName || mapping.DisplayName || itemId) : itemId);
     return `${name} (${sourceId || 'default'} · ${itemId})`;
 }
-function renderLinkSourceStatus() {
-    const sourceStatus = el('linkSourceStatus');
-    if (!sourceStatus) return;
-    const source = currentSource();
-    if (source) {
-        if (!sourceMatchesMapType(source, 'opc-da')) {
-            sourceStatus.innerHTML = `<span class="msg">${esc(source.displayName || source.sourceId)} is not an OPC DA source — DA Links require an OPC DA source.</span>`;
-            return;
-        }
-        const cs = get(source, 'connectionState') || '—';
-        sourceStatus.innerHTML = `${badge(cs, stateClass(cs))} <span class="msg">${esc(source.displayName || source.sourceId)} · ${esc(source.sourceId)}</span>`;
+function isLinkableInterlinkSource(source) {
+    const t = String(get(source, 'sourceType') || 'OpcDa');
+    return t === 'OpcDa' || t === 'OpcUa' || t === 'MxComponent';
+}
+function interlinkSideIds() { return ['consumer', 'provider']; }
+function interlinkSourceSelectId(side) { return side === 'consumer' ? 'interlinkConsumerSource' : 'interlinkProviderSource'; }
+function interlinkListId(side) { return side === 'consumer' ? 'interlinkConsumerList' : 'interlinkProviderList'; }
+function renderInterlinkPickers() {
+    const sources = (state.sources || []).filter(isLinkableInterlinkSource);
+    interlinkSideIds().forEach(side => {
+        const sel = el(interlinkSourceSelectId(side));
+        if (!sel) return;
+        const current = state.interlinkSideSource[side] || '';
+        sel.innerHTML = '<option value="">— select source —</option>' + sources.map(s =>
+            `<option value="${attr(s.sourceId)}"${s.sourceId === current ? ' selected' : ''}>${esc(s.displayName || s.sourceId)} (${esc(sourceTypeLabel(s))})</option>`).join('');
+        renderInterlinkTagList(side);
+    });
+}
+function onInterlinkSourceChange(side) {
+    const sel = el(interlinkSourceSelectId(side));
+    if (!sel) return;
+    state.interlinkSideSource[side] = sel.value || '';
+    renderInterlinkTagList(side);
+}
+function renderInterlinkTagList(side) {
+    const listEl = el(interlinkListId(side));
+    if (!listEl) return;
+    const sid = state.interlinkSideSource[side];
+    if (!sid) {
+        listEl.innerHTML = '<span class="msg">Select a source to list its Maps tags.</span>';
         return;
     }
-    if (state.editingNewSource) {
-        sourceStatus.innerHTML = '<span class="msg">Save the new source before browsing DA links.</span>';
-        return;
-    }
-    sourceStatus.innerHTML = '<span class="msg">Select a saved source, then browse tags below.</span>';
+    const rows = (state.mappings || [])
+        .filter(m => String(m.sourceId || m.SourceId || 'default') === sid && (m.enabled ?? m.Enabled) !== false)
+        .map(m => {
+            const item = m.itemId || m.ItemId || m.daItemId || m.DaItemId || '';
+            const name = m.displayName || m.DisplayName || item;
+            const key = tagKey(sid, item);
+            const picked = state.interlinkDraft[side] && state.interlinkDraft[side].key === key;
+            return `<div class="li"><div style="flex:1;min-width:0"><div class="n">${esc(name)}</div><div class="p">${esc(item)}</div></div><button class="btn ghost" data-action="pick-interlink-${side}" data-source-id="${attr(sid)}" data-item-id="${attr(item)}" data-name="${attr(name)}">${picked ? '✓ Picked' : 'Pick'}</button></div>`;
+        });
+    listEl.innerHTML = rows.length ? rows.join('') : '<span class="msg">No Maps tags for this source yet — add tags on the Maps tab first.</span>';
 }
-function renderLinkDraftTarget(targetId, selection, emptyMessage) {
-    el(targetId).innerHTML = selection
-        ? `<span>${esc(linkTagLabel(selection.sourceId, selection.itemId, selection.name || null))}</span>`
-        : `<span class="msg">${esc(emptyMessage)}</span>`;
+function setInterlinkSelection(role, sourceId, itemId, name) {
+    state.interlinkDraft[role] = {
+        key: tagKey(sourceId, itemId),
+        sourceId: sourceId || 'default',
+        itemId,
+        name: name || itemId
+    };
+    const roleName = role === 'consumer' ? 'Consumer' : 'Provider';
+    el('linksMessage').textContent = roleName + ' selected from source ' + (sourceId || 'default') + '.';
+    renderInterlinksView();
 }
-function renderLinksView() {
-    const links = state.daLinks || [];
-    const consumer = state.linkDraft.consumer;
-    const provider = state.linkDraft.provider;
-    renderLinkSourceStatus();
-    renderLinkDraftTarget('linkConsumerTarget', consumer, 'Browse the active source and choose a consumer tag.');
-    renderLinkDraftTarget('linkProviderTarget', provider, 'Browse the active source and choose a provider tag.');
+function renderInterlinksView() {
+    const links = state.interlinks || [];
+    const consumer = state.interlinkDraft.consumer;
+    const provider = state.interlinkDraft.provider;
+    renderInterlinkPickers();
     el('btnSetLink').disabled = !(consumer && provider);
-    el('btnClearLink').disabled = !(consumer && findDaLinkByConsumer(consumer.key));
+    el('btnClearLink').disabled = !(consumer && findInterlinkByConsumer(consumer.key));
     el('btnClearLinkSelection').disabled = !(consumer || provider);
     el('linksCount').textContent = links.length ? links.length + (links.length === 1 ? ' rule' : ' rules') : 'No rules';
     el('linksList').innerHTML = links.length ? links.map(link => {
@@ -2574,17 +2871,17 @@ function renderLinksView() {
         const providerItemId = link.providerItemId || link.ProviderItemId || '';
         const linkId = link.id || link.Id || '';
         return `<div class="li"><div style="flex:1;min-width:0"><span class="n">${esc(linkTagLabel(consumerSourceId, consumerItemId))}</span></div><span class="pill" style="padding:1px 6px;font-size:10px;background:#e8f0fe;color:#1a73e8">⇠ fed by</span><div style="flex:1;min-width:0"><span class="n">${esc(linkTagLabel(providerSourceId, providerItemId))}</span></div><button class="btn ghost" type="button" data-action="unlink" data-link-id="${attr(linkId)}">Delete</button></div>`;
-    }).join('') : '<span class="msg">No DA links yet. Browse the active source and pick a consumer/provider pair.</span>';
+    }).join('') : '<span class="msg">No interlinks yet. Pick a consumer and a provider above, then Save Link.</span>';
 }
-function findDaLinkByConsumer(consumerKey) {
-    return (state.daLinks || []).find(link => tagKey(link.consumerSourceId || link.ConsumerSourceId || 'default', link.consumerItemId || link.ConsumerItemId || '') === consumerKey) || null;
+function findInterlinkByConsumer(consumerKey) {
+    return (state.interlinks || []).find(link => tagKey(link.consumerSourceId || link.ConsumerSourceId || 'default', link.consumerItemId || link.ConsumerItemId || '') === consumerKey) || null;
 }
-async function saveDaLink(consumerKey, providerKey) {
+async function saveInterlink(consumerKey, providerKey) {
     if (!consumerKey || !providerKey) { el('linksMessage').textContent = 'Pick both a consumer and a provider.'; return; }
     if (consumerKey === providerKey) { el('linksMessage').textContent = '✗ A tag cannot link to itself.'; return; }
     const [consumerSourceId, consumerItemId] = parseTagKey(consumerKey);
     const [providerSourceId, providerItemId] = parseTagKey(providerKey);
-    const existing = findDaLinkByConsumer(consumerKey);
+    const existing = findInterlinkByConsumer(consumerKey);
     const link = {
         id: existing ? (existing.id || existing.Id) : '00000000-0000-0000-0000-000000000000',
         providerSourceId: providerSourceId || 'default',
@@ -2593,7 +2890,7 @@ async function saveDaLink(consumerKey, providerKey) {
         consumerItemId,
         enabled: existing ? ((existing.enabled ?? existing.Enabled) !== false) : true
     };
-    const url = existing ? '/api/da-links/' + encodeURIComponent(link.id) : '/api/da-links';
+    const url = existing ? '/api/interlinks/' + encodeURIComponent(link.id) : '/api/interlinks';
     const method = existing ? 'PUT' : 'POST';
     const r = await fetch(url, {
         method,
@@ -2602,22 +2899,22 @@ async function saveDaLink(consumerKey, providerKey) {
     });
     const p = await r.json();
     if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
-    el('linksMessage').textContent = existing ? '✓ DA link updated.' : '✓ DA link created.';
-    await loadDaLinks();
+    el('linksMessage').textContent = existing ? '✓ Interlink updated.' : '✓ Interlink created.';
+    await loadInterlinks();
 }
-async function deleteDaLink(linkId) {
-    if (!linkId) { el('linksMessage').textContent = 'Pick a saved DA link to delete.'; return; }
-    const r = await fetch('/api/da-links/' + encodeURIComponent(linkId), { method: 'DELETE' });
+async function deleteInterlink(linkId) {
+    if (!linkId) { el('linksMessage').textContent = 'Pick a saved interlink to delete.'; return; }
+    const r = await fetch('/api/interlinks/' + encodeURIComponent(linkId), { method: 'DELETE' });
     const p = await r.json();
     if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
-    el('linksMessage').textContent = '✓ DA link removed.';
-    await loadDaLinks();
+    el('linksMessage').textContent = '✓ Interlink removed.';
+    await loadInterlinks();
 }
-function clearLinkDraftSelection() {
-    state.linkDraft.consumer = null;
-    state.linkDraft.provider = null;
+function clearInterlinkDraftSelection() {
+    state.interlinkDraft.consumer = null;
+    state.interlinkDraft.provider = null;
     el('linksMessage').textContent = 'Selection cleared.';
-    renderLinksView();
+    renderInterlinksView();
 }
 function renderMappingRow(mapping) {
     const sourceId = mapping.sourceId || mapping.SourceId || 'default';
@@ -2635,6 +2932,8 @@ function renderMappingRow(mapping) {
     if (!enabled) { accessBadge = badge('Disabled', 'bad'); }
     else { accessBadge = badge(access + (simulated && access !== 'Write' ? ' / Sim' : ''), access === 'Read' ? 'good' : access === 'Read-Write' ? 'partial' : 'warn'); }
     const rateBadge = pollRate > 0 ? `<span class="pill" style="padding:1px 6px;font-size:10px">${pollRate}ms</span>` : '';
+    const subName = String(mapping.subscription ?? mapping.Subscription ?? '').trim();
+    const subBadge = subName ? `<span class="pill" style="padding:1px 6px;font-size:10px" title="UA subscription">${esc(subName)}</span>` : '';
     const deadbandBadge = deadband > 0 ? `<span class="pill" style="padding:1px 6px;font-size:10px">db ${deadband}%</span>` : '';
     const mqttOn = (mapping.mqttEnabled ?? mapping.MqttEnabled) === true;
     const mqttBadge = mqttOn ? `<span class="pill" style="padding:1px 6px;font-size:10px">MQTT</span>` : '';
@@ -2656,12 +2955,12 @@ function renderMappingRow(mapping) {
     else if (failedItem) { discBadge = badge('Disc', 'bad'); discTitle = 'Disconnected — no value received (auto-retrying)'; }
     else if (badQuality) { discBadge = badge('Bad', 'bad'); discTitle = 'Bad quality from source'; }
     // Full status summary — clipped badges stay discoverable via the row tooltip.
-    const statusSummary = [mappedType + ' type', deadband > 0 ? 'db ' + deadband + '%' : null, pollRate > 0 ? pollRate + 'ms' : null, mqttOn ? 'MQTT' : null, influxOn ? 'Influx' : null, sourceDown ? 'Source disconnected' : null, failedItem ? 'Disconnected (auto-retrying)' : null, badQuality ? 'Bad quality' : null, access + (simulated && access !== 'Write' ? ' / Sim' : '')].filter(Boolean).join(' · ');
+    const statusSummary = [mappedType + ' type', deadband > 0 ? 'db ' + deadband + '%' : null, pollRate > 0 ? pollRate + 'ms' : null, subName ? 'sub ' + subName : null, mqttOn ? 'MQTT' : null, influxOn ? 'Influx' : null, sourceDown ? 'Source disconnected' : null, failedItem ? 'Disconnected (auto-retrying)' : null, badQuality ? 'Bad quality' : null, access + (simulated && access !== 'Write' ? ' / Sim' : '')].filter(Boolean).join(' · ');
     const desc = (mapping.description || mapping.Description || '').trim();
     const descIcon = desc ? `<span class="li-desc" title="${attr(desc)}" data-action="open-faceplate" data-source-id="${attr(sourceId)}" data-item-id="${attr(item)}">&#8505;</span>` : '';
     // Config badges clip/fade first; the colored access status is pinned at the far
     // right and never gets cut off.
-    return `<div class="li clickable" data-action="open-faceplate" data-source-id="${attr(sourceId)}" data-item-id="${attr(item)}">${descIcon}<div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="n">${esc(name)}</span> <span class="p">${esc(sourceId)} · ${esc(item)} · UA: ${esc(node)}</span></div><div class="li-badge" title="${attr(statusSummary)}"><span class="li-badge-clip">${typeBadge}${deadbandBadge}${rateBadge}${mqttBadge}${influxBadge}</span><span class="li-badge-status">${discBadge ? `<span title="${attr(discTitle)}">${discBadge}</span>` : ''}${accessBadge}</span></div></div>`;
+    return `<div class="li clickable" data-action="open-faceplate" data-source-id="${attr(sourceId)}" data-item-id="${attr(item)}">${descIcon}<div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="n">${esc(name)}</span> <span class="p">${esc(sourceId)} · ${esc(item)} · UA: ${esc(node)}</span></div><div class="li-badge" title="${attr(statusSummary)}"><span class="li-badge-clip">${typeBadge}${deadbandBadge}${rateBadge}${subBadge}${mqttBadge}${influxBadge}</span><span class="li-badge-status">${discBadge ? `<span title="${attr(discTitle)}">${discBadge}</span>` : ''}${accessBadge}</span></div></div>`;
 }
 
 const MAPPING_ROWS_CAP = 1000;
@@ -2699,7 +2998,34 @@ function openFaceplate(sourceId, itemId) {
     el('fpSimulated').checked = simulated;
     el('fpManualInput').value = String(manualValue ?? '');
     const pollRate = mapping.pollRateMs ?? mapping.PollRateMs ?? 0;
-    el('fpPollRate').value = String(pollRate);
+    const mapDaGroup = String(mapping.daGroup ?? mapping.DaGroup ?? '');
+    {
+        const sel = el('fpPollRate');
+        if (sel) sel.innerHTML = fpRateOptions(sourceId, mapDaGroup, pollRate);
+    }
+    ensureDaGroupsCache(sourceId).then(() => {
+        const sel = el('fpPollRate');
+        if (sel && document.activeElement !== sel) sel.innerHTML = fpRateOptions(sourceId, mapDaGroup, pollRate);
+    }).catch(() => {});
+    // SUBSCRIPTION selector (OPC UA sources only): named subs from uaSubsCache.
+    // A non-empty choice locks the per-tag rate input — rate comes from the subscription.
+    const subApplies = isUaSource(state.sources.find(s => s.sourceId === sourceId) || null);
+    const fpSubField = el('fpSubscriptionField');
+    const fpSubSel = el('fpSubscription');
+    if (fpSubField && fpSubSel) {
+        fpSubField.style.display = subApplies ? '' : 'none';
+        const fpSubVal = String(mapping.subscription ?? mapping.Subscription ?? '');
+        fpSubSel.innerHTML = fpSubscriptionOptions(sourceId, fpSubVal);
+        updateFpRateEnabled();
+        if (subApplies) {
+            loadUaSubs().then(() => {
+                if (!faceplateOpen || faceplateKey !== valueKey(sourceId, itemId)) return;
+                const sel2 = el('fpSubscription');
+                if (sel2 && document.activeElement !== sel2) sel2.innerHTML = fpSubscriptionOptions(sourceId, sel2.value || fpSubVal);
+                updateFpRateEnabled();
+            }).catch(() => {});
+        }
+    }
     const deadband = Number(mapping.deadbandPct ?? mapping.DeadbandPct ?? 0);
     el('fpDeadband').value = String(deadband);
     el('fpMqttEnabled').checked = (mapping.mqttEnabled ?? mapping.MqttEnabled) === true;
@@ -2755,16 +3081,21 @@ function updateManualInputState() {
 const ROUTE_TO_TAB = {
   'connectivity/sources': 'connection',
   'connectivity/opc-da': 'opc-da',
+  'connectivity/opc-da-groups': 'opc-da-groups',
   'connectivity/opc-ua': 'opc-ua',
+  'connectivity/ua-subs': 'ua-subs',
   'connectivity/drivers': 'drivers',
   'connectivity/mx-component': 'mx-component',
+  'ops/diagnostics': 'diagnostics',
   'connectivity/diagnostics': 'diagnostics',
+  'ops/sessions': 'sessions',
   'tags/maps': 'tags',
   'tags/maps/opc-da': 'tags',
   'tags/maps/opc-ua': 'tags',
   'tags/maps/drivers': 'tags',
   'tags/maps/mx': 'tags',
-  'tags/links': 'links',
+  'tags/interlinks': 'interlinks',
+  'tags/links': 'interlinks', // bookmark alias
   'iot/mqtt': 'mqtt',
   'iot/traffic': 'iot-traffic',
   'historian/influx': 'influx',
@@ -2797,10 +3128,10 @@ async function showTab(name, route) {
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + activeTab));
   if (location.hash !== '#/' + route) history.replaceState(null, '', '#/' + route);
   if (activeTab === 'logs') { state.logsLoaded = false; loadLogs(true).catch(e => el('logMessage').textContent = '✗ ' + e.message); }
-  if (activeTab === 'diagnostics') { diagnosticsActive = true; loadDiagnostics(); }
+  if (activeTab === 'diagnostics' || activeTab === 'sessions') { diagnosticsActive = true; loadDiagnostics(); }
   else { diagnosticsActive = false; }
   if (activeTab === 'about') loadAppInfo().catch(e => el('aboutName').textContent = '✗ ' + e.message);
-  if (activeTab === 'help') loadHelp().catch(e => el('helpContent').innerHTML = '<span class="msg bad">✗ ' + esc(e.message) + '</span>');
+  if (activeTab === 'help') loadHelp().catch(e => { const c = el('helpLayout1'); if (c) c.innerHTML = '<span class="msg bad">✗ ' + esc(e.message) + '</span>'; });
   if (activeTab === 'mx-component') { renderMx(); }
   if (activeTab === 'mqtt') { await loadMqtt(); }
   if (activeTab === 'iot-traffic') { await loadMqttValues(); }
@@ -2808,10 +3139,17 @@ async function showTab(name, route) {
   if (activeTab === 'opc-da' || activeTab === 'opc-ua' || activeTab === 'connection') {
     await loadSources().catch(e => console.warn(e));
   }
+  if (activeTab === 'ua-subs') {
+    await loadUaSubs().catch(e => el('subsMsg').textContent = '✗ ' + e.message);
+  }
   if (activeTab === 'drivers') {
     await loadSources().catch(e => console.warn(e));
     renderDrivers();
   }
+  if (activeTab === 'opc-da-groups') {
+     await loadSources().catch(e => console.warn(e));
+     await loadDaGroupsTab().catch(e => console.warn(e));
+   }
   if (activeTab === 'tags') {
     await loadSources().catch(e => console.warn(e));
     await loadMappings().catch(e => console.warn(e));
@@ -2824,7 +3162,7 @@ async function showTab(name, route) {
   }
   if (activeTab === 'diagram') {
     state.diagramLoaded = true;
-    await Promise.all([loadSources(), loadMappings(), loadDaLinks(), loadMqtt().catch(() => {})]);
+    await Promise.all([loadSources(), loadMappings(), loadInterlinks(), loadMqtt().catch(() => {})]);
     renderDiagram();
   }
 }
@@ -3023,8 +3361,14 @@ function sourceEndpointSummary(source) {
 function sourceStatusRowHtml(source) {
     const st = source.connectionState || source.ConnectionState || '';
     const err = source.lastError || source.LastError || '';
+    const info = source.serverInfo || source.ServerInfo || '';
+    const mode = source.readMode || source.ReadMode || '';
+    const wmode = source.writeMode || source.WriteMode || '';
     const errBit = err ? ` · <span class="bad">${esc(err)}</span>` : '';
-    return `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)} ${sourceTypeBadge(source)} ${st ? badge(st, stateClass(st)) : ''}</div><div class="p">${esc(source.sourceId)} · ${sourceEndpointSummary(source)} · ${formatMs(source.updateRateMs)}${errBit}</div></div><button class="btn ghost" data-action="select-source-status" data-source-id="${attr(source.sourceId)}">Select</button></div>`;
+    const infoBit = info ? ` · ${esc(info)}` : '';
+    const modeBit = mode ? ` · <span class="msg" style="font-weight:400">${esc(mode)}</span>` : '';
+    const wmodeBit = wmode ? ` · <span class="msg" style="font-weight:400">${esc(wmode)}</span>` : '';
+    return `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)} ${sourceTypeBadge(source)} ${st ? badge(st, stateClass(st)) : ''}</div><div class="p">${esc(source.sourceId)} · ${sourceEndpointSummary(source)} · ${formatMs(source.updateRateMs)}${infoBit}${modeBit}${wmodeBit}${errBit}</div></div><button class="btn ghost" data-action="select-source-status" data-source-id="${attr(source.sourceId)}">Select</button></div>`;
 }
 function renderSourcesStatusList() {
     const host = el('sourcesStatusList');
@@ -3090,7 +3434,97 @@ function updateMapSourceHint() {
     const hint = el('mapSourceHint');
     if (!hint) return;
     const source = state.sources.find(s => s.sourceId === state.selectedSourceId);
-    hint.textContent = source && (isMelsecSource(source) || isMxSource(source)) ? 'Device address e.g. D100, M10, X20, D100:8' : (source && isS7Source(source) ? 'Siemens address e.g. VW100, I0.0, M10.2, QB0' : '');
+    const melsecLike = source && (isMelsecSource(source) || isMxSource(source));
+    hint.textContent = melsecLike ? 'Device address e.g. D100, M10, X20, D100:8' : (source && isS7Source(source) ? 'Siemens address e.g. VW100, I0.0, M10.2, QB0' : '');
+    const tgl = el('mapAddressRangesToggle');
+    const wrap = el('mapAddressRanges');
+    if (tgl) tgl.style.display = melsecLike ? '' : 'none';
+    if (!melsecLike && wrap && wrap.style.display !== 'none') {
+        // Source switched away from MELSEC — collapse the ranges table.
+        wrap.style.display = 'none';
+        const btn = el('mapAddressRangesToggle');
+        if (btn) btn.textContent = 'Show accepted addresses ▾';
+    }
+}
+// Accepted PLC address ranges (MELSEC devices shared by serial + MX Component drivers).
+// Served by GET /api/drivers/mx-component/address-ranges from the same catalog the
+// parser enforces, so the table always matches what tag upserts accept.
+async function ensureAddressRanges() {
+    if (!state.addressRangesCache) {
+        const r = await fetch('/api/drivers/mx-component/address-ranges');
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const p = await r.json();
+        state.addressRangesCache = p.devices || [];
+    }
+    return state.addressRangesCache;
+}
+function addressRangeText(d) {
+    if (d.numberBase === 'OctalOrHex') {
+        return d.min + '\u2013' + Number(d.max).toString(8).toUpperCase() + '\u2088';
+    }
+    return String(d.min) + '\u2013' + String(d.max);
+}
+function addressRangesTableHtml(devices) {
+    const rows = devices.map(d => {
+        const alias = (d.aliases && d.aliases.length)
+            ? ' <span class="msg">(' + d.aliases.map(a => '<span class="mono">' + esc(a) + '</span>').join(', ') + ' alias)</span>'
+            : '';
+        const suffix = d.bitSuffixAllowed ? ':' + d.maxBitIndex : '';
+        return '<tr>'
+            + '<td class="mono">' + esc(d.device) + '</td>'
+            + '<td>' + esc(d.displayName) + alias + '</td>'
+            + '<td>' + esc(d.signalType) + '</td>'
+            + '<td>' + esc(d.numberBase === 'OctalOrHex' ? 'Octal/hex' : 'Decimal') + '</td>'
+            + '<td class="mono">' + esc(addressRangeText(d)) + suffix + '</td>'
+            + '<td class="mono">' + esc(d.example) + '</td>'
+            + '</tr>';
+    }).join('');
+    return '<table class="address-ranges-table"><thead><tr><th>Device</th><th>Meaning</th><th>Type</th><th>Numbering</th><th>Accepted range</th><th>Example</th></tr></thead><tbody>' + rows + '</tbody></table>'
+        + '<div class="hint" style="margin-top:6px">Bit-in-word suffix (<span class="mono">D100:8</span>) is only valid on D registers, bits 0\u201315. X/Y use octal digits; hex forms like <span class="mono">Y0F</span> also parse.</div>';
+}
+async function toggleAddressRanges(containerId, btn) {
+    const wrap = el(containerId);
+    if (!wrap) return;
+    if (wrap.style.display !== 'none') {
+        wrap.style.display = 'none';
+        if (btn) btn.textContent = 'Show accepted addresses \u25be';
+        return;
+    }
+    try {
+        const devices = await ensureAddressRanges();
+        wrap.innerHTML = addressRangesTableHtml(devices);
+        wrap.style.display = '';
+        if (btn) btn.textContent = 'Hide accepted addresses \u25b4';
+    } catch (err) {
+        wrap.innerHTML = '<span class="msg">\u2717 Could not load accepted addresses: ' + esc(String((err && err.message) || err)) + '</span>';
+        wrap.style.display = '';
+    }
+}
+function updateCfgServerInfo(source) {
+    const info = el('cfgServerInfo');
+    const mode = el('cfgReadMode');
+    const wmode = el('cfgWriteMode');
+    if (!info) return;
+    if (!source || isUaSource(source)) {
+        info.textContent = '—';
+        if (mode) mode.textContent = '—';
+        if (wmode) wmode.textContent = '—';
+        return;
+    }
+    info.textContent = source.serverInfo
+        ? source.serverInfo
+        : 'Not detected — info appears after the source connects.';
+    if (mode) mode.textContent = source.readMode || source.ReadMode || '—';
+    if (wmode) wmode.textContent = source.writeMode || source.WriteMode || '—';
+}
+function updateUaCfgReadMode(source) {
+    const mode = el('uaCfgReadMode');
+    const wmode = el('uaCfgWriteMode');
+    if (!mode && !wmode) return;
+    const readMode = (source && (source.readMode || source.ReadMode)) ? (source.readMode || source.ReadMode) : '—';
+    const writeMode = (source && (source.writeMode || source.WriteMode)) ? (source.writeMode || source.WriteMode) : '—';
+    if (mode) mode.textContent = readMode;
+    if (wmode) wmode.textContent = writeMode;
 }
 function loadSelectedSourceForm() {
     if (state.editingNewSource) return;
@@ -3104,9 +3538,12 @@ function loadSelectedSourceForm() {
         el('cfgUser').value = '';
         el('cfgPass').value = '';
         el('cfgDomain').value = '';
+        if (el('cfgIoMode')) el('cfgIoMode').value = 'AutoDetect';
+        const ioModeHint = el('ioModeHint'); if (ioModeHint) ioModeHint.textContent = '';
         el('cfgMessage').textContent = source
             ? 'Select a saved OPC DA connection or click New.'
             : 'No OPC DA sources configured. Click + Add Source or New.';
+        updateCfgServerInfo(null);
         hideSaveReset();
         return;
     }
@@ -3118,11 +3555,18 @@ function loadSelectedSourceForm() {
     el('cfgUser').value = source.remoteUsername || '';
     el('cfgPass').value = '';
     el('cfgDomain').value = source.remoteDomain || '';
+    if (el('cfgIoMode')) {
+        el('cfgIoMode').value = (source.ioMode === 'Sync' || source.ioMode === 'Async20') ? source.ioMode : 'AutoDetect';
+        const ioModeHint = el('ioModeHint');
+        if (ioModeHint) ioModeHint.textContent = 'Requested: ' + el('cfgIoMode').value + ' · effective: see Read Mode above';
+    }
     el('cfgMessage').textContent = (isMelsecSource(source) || isS7Source(source))
         ? 'Serial driver source — edit it on the Drivers page.'
         : (isMxSource(source)
             ? 'MX Component source — edit it on the MX Component page.'
             : 'Editing ' + (source.displayName || source.sourceId) + '.');
+    updateCfgServerInfo(source);
+    loadGroupsSection();
     hideSaveReset();
 }
 function loadSelectedUaSourceForm() {
@@ -3143,6 +3587,7 @@ function loadSelectedUaSourceForm() {
         el('uaCfgMessage').textContent = source
             ? 'Select a saved OPC UA connection or click New.'
             : 'No OPC UA sources configured. Click + Add Source or New.';
+        updateUaCfgReadMode(null);
         hideUaSaveReset();
         return;
     }
@@ -3158,6 +3603,7 @@ function loadSelectedUaSourceForm() {
     el('uaCfgMaxMappedTags').value = String(source.maxMappedTags || 50000);
     el('uaCfgUseSubscriptions').checked = source.useSubscriptions !== false;
     el('uaCfgMessage').textContent = 'Editing ' + (source.displayName || source.sourceId) + '.';
+    updateUaCfgReadMode(source);
     hideUaSaveReset();
 }
 async function loadSources() {
@@ -3171,6 +3617,9 @@ async function loadSources() {
         if (status) {
             source.connectionState = get(status, 'connectionState');
             source.lastError = get(status, 'lastError');
+            source.serverInfo = get(status, 'serverInfo');
+            source.readMode = get(status, 'readMode') || '';
+            source.writeMode = get(status, 'writeMode') || '';
         }
     });
     state.updateRateMs = Number(payload.updateRateMs || state.updateRateMs || 1000);
@@ -3179,7 +3628,7 @@ async function loadSources() {
     if (el('cfgUpdateRate') && document.activeElement !== el('cfgUpdateRate')) el('cfgUpdateRate').value = String(state.updateRateMs);
     renderSources();
     populateLiveValuesSource();
-    if (document.getElementById('view-links')?.classList.contains('active')) renderLinksView();
+    if (document.getElementById('view-interlinks')?.classList.contains('active')) renderInterlinksView();
 }
 function updateLiveValuesUi() {
     el('toggleLiveValues').textContent = state.liveValuesEnabled ? 'Disable Live Data' : 'Enable Live Data';
@@ -3263,6 +3712,59 @@ async function loadLogs(force = false) {
 }
 
 let diagnosticsActive = false;
+
+// Formats seconds as compact human uptime: 2d 3h · 4h 12m · 5m 20s · 42s.
+function fmtUptime(sec) {
+    sec = Math.max(0, Math.floor(Number(sec) || 0));
+    const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+    if (d > 0) return d + 'd ' + h + 'h';
+    if (h > 0) return h + 'h ' + m + 'm';
+    if (m > 0) return m + 'm ' + s + 's';
+    return s + 's';
+}
+
+// Shared renderer for the MQTT / InfluxDB integration cards on the Diagnostics tab.
+// d: { enabled, state, lastError, ...counters }. Colors: connected/running=good,
+// error/fault=bad, everything else live=warn, disabled=muted.
+function setIntegrationHealth(ids, d, countersText, rateText) {
+    if (!ids || !d) return;
+    const enabled = d.enabled === true;
+    const stateText = enabled ? (d.state || '—') : 'Disabled';
+    let cls = 'msg';
+    if (enabled) {
+        const s = String(d.state || '').toLowerCase();
+        cls = s.includes('error') || s.includes('fault') ? 'bad' : (s === 'connected' || s === 'running' ? 'good' : 'warn');
+    }
+    ids.badge.innerHTML = '<span class="' + cls + '">' + esc(stateText) + '</span>';
+    ids.state.textContent = stateText;
+    ids.totals.textContent = countersText;
+    ids.rate.textContent = rateText;
+    const err = d.lastError;
+    if (err) { ids.error.style.display = ''; ids.error.innerHTML = '<span class="bad">⚠ Last error:</span> ' + esc(err); }
+    else { ids.error.style.display = 'none'; }
+}
+
+// Average-to-recent growth percentage over a capped history window.
+// Returns null when there is not enough data yet (needs >= 12 samples).
+function windowTrendPct(history) {
+    if (!history || history.length < 12) return null;
+    const q = Math.floor(history.length / 4);
+    const earlyAvg = history.slice(0, q).reduce((a, b) => a + b, 0) / q;
+    const recentAvg = history.slice(-q).reduce((a, b) => a + b, 0) / q;
+    return earlyAvg > 0 ? ((recentAvg - earlyAvg) / earlyAvg) * 100 : 0;
+}
+
+// Collapse a long problem list to per-source counts, sorted by count desc:
+// [['source-a', 12], ['source-b', 3]]
+function groupProblemsBySource(items) {
+    const bySource = {};
+    (items || []).forEach(it => {
+        const sid = get(it, 'sourceId') || '—';
+        bySource[sid] = (bySource[sid] || 0) + 1;
+    });
+    return Object.entries(bySource).sort((a, b) => b[1] - a[1]);
+}
+
 async function loadDiagnostics() {
     if (!diagnosticsActive) return;
     try {
@@ -3319,8 +3821,75 @@ async function refreshPortsInfo() {
     }
 }
 
+// Fleet strip on ops/monitor: every OpcBridge instance the discovery probe
+// found (this instance included, badged Local).
+function renderFleet(apps) {
+    const listEl = el('fleetList');
+    if (!listEl) return;
+    const list = (apps && get(apps, 'detectedApps')) || [];
+    const countEl = el('fleetCount');
+    if (countEl) countEl.textContent = list.length + ' detected';
+    listEl.innerHTML = list.length ? list.map(a => {
+        const machine = get(a, 'machineName') || '—';
+        const version = get(a, 'version') || '—';
+        const isLocal = !!get(a, 'isLocal');
+        const probeHost = get(a, 'probeHost') || '';
+        return `<div class="li"><div style="flex:1"><div class="n">${esc(machine)} ${badge(isLocal ? 'Local' : 'Remote', isLocal ? 'good' : 'msg')}</div><div class="p">${esc(probeHost)} · v${esc(version)}</div></div></div>`;
+    }).join('') : '<span class="msg">No other bridge instances detected.</span>';
+}
+
 function renderDiagnostics(p) {
-    // DA Source Diagnostics — reuse state data from /api/dashboard
+    // Bridge Vitals — only metrics NOT shown on ops/monitor (bridge state, DA
+    // connection, UA clients/nodes, mapping count, last DA read / UA write and
+    // last error live there; repeating them here would double-display data).
+    const rt = p.runtime || {};
+    el('diagUptime').textContent = fmtUptime(p.uptimeSeconds);
+    const vrate = Number(rt.lastPollValueRate || 0);
+    el('diagValueRate').textContent = vrate > 0 ? vrate.toFixed(1) : '0';
+    el('diagUpdateRate').textContent = rt.updateRateMs ? 'update ' + formatMs(rt.updateRateMs) : '';
+    el('diagPollDuration').textContent = formatMs(rt.lastPollDurationMs);
+    el('diagSessionId').textContent = rt.sessionId != null && rt.sessionId > 0 ? String(rt.sessionId) : '—';
+    el('diagInteractive').textContent = rt.interactiveSession ? 'interactive' : '';
+    el('diagHealthUpdated').textContent = 'updated ' + new Date().toLocaleTimeString();
+
+    // Integration health (MQTT / InfluxDB)
+    setIntegrationHealth(
+        { state: el('diagMqttState'), badge: el('diagMqttBadge'), rate: el('diagMqttRate'), totals: el('diagMqttTotals'), error: el('diagMqttError') },
+        p.mqtt,
+        (p.mqtt?.publishedCount ?? 0).toLocaleString() + ' published · ' + (p.mqtt?.receivedCount ?? 0).toLocaleString() + ' received',
+        '↑ ' + Number(p.mqtt?.publishedRate || 0).toFixed(1) + '/s · ↓ ' + Number(p.mqtt?.receivedRate || 0).toFixed(1) + '/s');
+    setIntegrationHealth(
+        { state: el('diagInfluxState'), badge: el('diagInfluxBadge'), rate: el('diagInfluxRate'), totals: el('diagInfluxTotal'), error: el('diagInfluxError') },
+        p.influx,
+        (p.influx?.writtenCount ?? 0).toLocaleString() + ' written',
+        Number(p.influx?.writtenRate || 0).toFixed(1) + '/s');
+
+    // Problems — disconnected UA tags being retried
+    const problems = p.problems || {};
+    const disc = problems.disconnected || [];
+    el('diagDiscCount').textContent = disc.length === 1 ? '1 retrying' : disc.length + ' retrying';
+    el('diagDisconnected').innerHTML = disc.length === 0
+        ? '<span class="good">&#10003; All monitored items connected</span>'
+        : disc.length > 8
+            ? groupProblemsBySource(disc).map(([sid, count]) =>
+                `<div class="li"><div style="flex:1"><div class="n">${esc(sid)}</div><div class="p">${count} tag${count === 1 ? '' : 's'} auto-retrying</div></div><span class="warn">grouped</span></div>`).join('')
+            : disc.map(d =>
+                `<div class="li"><div style="flex:1"><div class="n">${esc(get(d, 'sourceId') || '')}</div><div class="p">${esc(get(d, 'itemId') || '')}</div></div><span class="warn">auto-retry</span></div>`).join('');
+
+    // Problems — bad-quality tags
+    const badTotal = problems.badQualityTotal || 0;
+    const badItems = problems.badQuality || [];
+    el('diagBadCount').textContent = badTotal === 1 ? '1 affected' : badTotal + ' affected';
+    el('diagBadQuality').innerHTML = badTotal === 0
+        ? '<span class="good">&#10003; No bad-quality tags</span>'
+        : badItems.length > 8
+            ? groupProblemsBySource(badItems).map(([sid, count]) =>
+                `<div class="li"><div style="flex:1"><div class="n">${esc(sid)}</div><div class="p">${count} tag${count === 1 ? '' : 's'} bad quality</div></div><span class="bad">grouped</span></div>`).join('')
+                + (badTotal > badItems.length ? `<div class="li"><span class="msg">+ ${badTotal - badItems.length} more…</span></div>` : '')
+            : badItems.map(b => `<div class="li"><div style="flex:1"><div class="n">${esc(get(b, 'sourceId') || '')}</div><div class="p">${esc(get(b, 'itemId') || '')}</div></div><span class="bad">bad</span></div>`).join('')
+                + (badTotal > badItems.length ? `<div class="li"><span class="msg">+ ${badTotal - badItems.length} more…</span></div>` : '');
+
+    // Source Diagnostics — reuse state data from /api/dashboard (all source types)
     const sources = state.sources || [];
     const rateGroups = (state.rateGroups || []);
     const daHtml = sources.length ? sources.map(src => {
@@ -3335,7 +3904,9 @@ function renderDiagnostics(p) {
             const budgetCls = budget >= 80 ? 'bad' : (budget >= 50 ? 'warn' : 'good');
             return `<div class="li"><div style="flex:1"><div class="n">${formatMs(g.rateMs)} · ${g.tagCount} tags</div><div class="p">budget <span class="${budgetCls}">${budget}%</span> · limit ${g.tagLimit || '—'}</div></div></div>`;
         }).join('') : '<span class="msg">No rate groups.</span>';
-        return `<div class="li"><div style="flex:1"><div class="n">${esc(get(src,'displayName') || sid)} ${sourceTypeBadge(src)} ${badge(conn, stateClass(conn))}</div><div class="p">${endpoint ? esc(endpoint) + ' · ' : ''}Latency: ${latency} · ${totalTags} tags in ${srcGroups.length} rate group(s)</div></div></div>${groupRows}`;
+        const lastRead = get(src,'lastDaReadUtc') ? 'last read ' + relTime(get(src,'lastDaReadUtc')) : 'no reads yet';
+        const srcErr = get(src,'lastError');
+        return `<div class="li"><div style="flex:1"><div class="n">${esc(get(src,'displayName') || sid)} ${sourceTypeBadge(src)} ${badge(conn, stateClass(conn))}</div><div class="p">${endpoint ? esc(endpoint) + ' · ' : ''}Latency: ${latency} · ${totalTags} tags in ${srcGroups.length} rate group(s)</div><div class="p">${lastRead}${srcErr ? ' · <span class="bad" title="Last source error">' + esc(srcErr) + '</span>' : ''}</div></div></div>${groupRows}`;
     }).join('') : '<span class="msg">No sources configured.</span>';
     el('diagDaSources').innerHTML = daHtml;
     el('diagDaSummary').textContent = sources.length + ' source' + (sources.length !== 1 ? 's' : '');
@@ -3364,7 +3935,7 @@ function renderDiagnostics(p) {
     el('diagUaSessionCount').textContent = sessions.length + ' active';
     el('diagUaSessions').innerHTML = sessions.length ? sessions.map(s => {
         const last = relTime(s.lastContactUtc);
-        return `<div class="li"><div style="flex:1"><div class="n">${esc(s.clientName || 'anonymous')}</div><div class="p">${s.subscriptions} subs · ${s.monitoredItems} monitored · ${s.publishRequestsInQueue} publish queued · ${s.totalPublishCount} total publishes</div><div class="p">last contact ${last}</div></div></div>`;
+        return `<div class="li"><div style="flex:1"><div class="n">${esc(s.clientName || 'anonymous')}</div><div class="p">${s.endpointUrl ? esc(s.endpointUrl) + ' · ' : ''}session #${s.sessionId ?? '—'}</div><div class="p">${s.subscriptions} subs · ${s.monitoredItems} monitored · ${s.publishRequestsInQueue} publish queued · ${s.totalPublishCount} total publishes</div><div class="p">last contact ${last}</div></div></div>`;
     }).join('') : '<span class="msg">No active UA sessions.</span>';
 
     // UA Subscriptions
@@ -3399,7 +3970,8 @@ function renderDiagnostics(p) {
         const aliveCls = t.alive ? 'good' : 'bad';
         const aliveBadge = t.alive ? badge('Alive', 'good') : badge('Dead', 'bad');
         const last = t.lastActionUtc ? relTime(t.lastActionUtc) : 'never';
-        return `<div class="li"><div style="flex:1"><div class="n">${esc(t.sourceId)} ${aliveBadge}</div><div class="p">queued: ${t.queuedItems} · last action ${last}</div></div></div>`;
+        const qCls = t.queuedItems >= 50 ? 'bad' : (t.queuedItems >= 10 ? 'warn' : 'good');
+        return `<div class="li"><div style="flex:1"><div class="n">${esc(t.sourceId)} ${aliveBadge}</div><div class="p">queued: <span class="${qCls}">${t.queuedItems}</span> · last action ${last}</div></div></div>`;
     }).join('') : '<span class="msg">No STA threads (non-Windows or no sources connected).</span>';
 }
 
@@ -3420,10 +3992,12 @@ async function loadAppInfo(force = false) {
 }
 
 let helpLoaded = false;
+const inlineFmt = (s) => s.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>');
 function renderMarkdown(md) {
     const lines = md.replace(/\r\n/g, '\n').split('\n');
-    let html = '', inList = false, inTable = false, inCode = false, tableHeader = false;
-    const closeList = () => { if (inList) { html += '</ul>'; inList = false; } };
+    let html = '', listType = null, inTable = false, inCode = false, tableHeader = false;
+    const closeList = () => { if (listType) { html += listType === 'ol' ? '</ol>' : '</ul>'; listType = null; } };
+    const openList = (t) => { if (listType !== t) { closeList(); html += t === 'ol' ? '<ol>' : '<ul>'; listType = t; } };
     const closeTable = () => { if (inTable) { html += '</tbody></table>'; inTable = false; } };
     for (let i = 0; i < lines.length; i++) {
         let line = lines[i];
@@ -3434,55 +4008,142 @@ function renderMarkdown(md) {
         }
         if (inCode) { html += line + '\n'; continue; }
         if (/^---\s*$/.test(line)) { closeList(); closeTable(); html += '<hr>'; continue; }
-        if (/^#\s+/.test(line)) { closeList(); closeTable(); html += `<h1>${line.replace(/^#\s+/, '')}</h1>`; continue; }
-        if (/^##\s+/.test(line)) { closeList(); closeTable(); html += `<h2>${line.replace(/^##\s+/, '')}</h2>`; continue; }
-        if (/^###\s+/.test(line)) { closeList(); closeTable(); html += `<h3>${line.replace(/^###\s+/, '')}</h3>`; continue; }
-        if (/^####\s+/.test(line)) { closeList(); closeTable(); html += `<h4>${line.replace(/^####\s+/, '')}</h4>`; continue; }
-        if (/^\*\s+|^-\s+/.test(line)) { closeTable(); if (!inList) { html += '<ul>'; inList = true; } html += `<li>${line.replace(/^\*\s+|^-\s+/, '')}</li>`; continue; }
+        if (/^#\s+/.test(line)) { closeList(); closeTable(); html += `<h1>${inlineFmt(line.replace(/^#\s+/, ''))}</h1>`; continue; }
+        if (/^##\s+/.test(line)) { closeList(); closeTable(); html += `<h2>${inlineFmt(line.replace(/^##\s+/, ''))}</h2>`; continue; }
+        if (/^###\s+/.test(line)) { closeList(); closeTable(); html += `<h3>${inlineFmt(line.replace(/^###\s+/, ''))}</h3>`; continue; }
+        if (/^####\s+/.test(line)) { closeList(); closeTable(); html += `<h4>${inlineFmt(line.replace(/^####\s+/, ''))}</h4>`; continue; }
+        const olItem = line.match(/^\d+\.\s+(.*)$/);
+        if (olItem) { closeTable(); openList('ol'); html += `<li>${inlineFmt(olItem[1])}</li>`; continue; }
+        if (/^\*\s+|^-\s+/.test(line)) { closeTable(); openList('ul'); html += `<li>${inlineFmt(line.replace(/^\*\s+|^-\s+/, ''))}</li>`; continue; }
         closeList();
         if (/^\|/.test(line)) {
             if (line.replace(/\s/g, '').match(/^\|[-:|]+\|$/)) { tableHeader = true; continue; }
             const cells = line.split('|').filter((_, j, a) => j > 0 && j < a.length - 1).map(c => c.trim());
-            if (!inTable) { html += '<table><thead><tr>'; html += cells.map(c => `<th>${c}</th>`).join(''); html += '</tr></thead><tbody>'; inTable = true; tableHeader = false; }
+            if (!inTable) { html += '<table><thead><tr>'; html += cells.map(c => `<th>${inlineFmt(c)}</th>`).join(''); html += '</tr></thead><tbody>'; inTable = true; tableHeader = false; }
             else if (tableHeader) { tableHeader = false; continue; }
-            else { html += '<tr>' + cells.map(c => `<td>${c}</td>`).join('') + '</tr>'; }
+            else { html += '<tr>' + cells.map(c => `<td>${inlineFmt(c)}</td>`).join('') + '</tr>'; }
             continue;
         }
         closeTable();
         if (line.trim() === '') continue;
-        if (/^\*/.test(line) && /\*$/.test(line)) { html += `<p><em>${line.replace(/^\*|\*$/g, '')}</em></p>`; }
-        else { html += `<p>${line}</p>`; }
+        if (/^\*.+\*$/.test(line)) { html += `<p><em>${inlineFmt(line.replace(/^\*|\*$/g, ''))}</em></p>`; }
+        else { html += `<p>${inlineFmt(line)}</p>`; }
     }
     closeList(); closeTable();
     if (inCode) html += '</code></pre>';
-    return html.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`(.+?)`/g, '<code>$1</code>');
+    return html;
 }
 async function loadHelp() {
     if (helpLoaded) return;
     const p = await (await fetch('/api/help', { cache: 'no-store' })).json();
     const groups = (p.markdown || '').split(/\r?\n===\r?\n/).filter(s => s.trim());
-    
-    const renderGroup = (groupMarkdown, containerId, openCount = 2) => {
+    window.helpSearchIndex = [];
+
+    const renderGroup = (groupMarkdown, containerId, groupIdx) => {
         const sections = groupMarkdown.split(/\r?\n---\r?\n/).filter(s => s.trim());
         const container = el(containerId);
         if (!container) return;
-        container.innerHTML = sections.map((section, i) => {
+        const items = sections.map((section, i) => {
             const titleMatch = section.match(/^#\s+(.+)/m);
-            const title = titleMatch ? titleMatch[1] : 'Section';
+            const title = titleMatch ? titleMatch[1] : 'Section ' + (i + 1);
             const body = renderMarkdown(section.replace(/^#\s+.+/m, ''));
-            const openAttr = i < openCount ? ' open' : '';
-            return `<details class="help-section"${openAttr}><summary>${esc(title)}</summary><div class="help-body">${body}</div></details>`;
-        }).join('');
+            return { title, body };
+        });
+        items.forEach((it, i) => {
+            window.helpSearchIndex.push({
+                group: groupIdx, index: i, title: it.title, raw: it.body,
+                text: (it.title + ' ' + it.body).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').toLowerCase()
+            });
+        });
+        container.innerHTML =
+            '<nav class="help-toc">' +
+            items.map((it, i) => `<button class="help-toc-item${i === 0 ? ' active' : ''}" data-help-topic="${i}" onclick="switchHelpTopic(this)">${esc(it.title)}</button>`).join('') +
+            '</nav>' +
+            '<div class="help-pane">' +
+            items.map((it, i) => `<article class="help-article${i === 0 ? ' active' : ''}" data-help-article="${i}"><h3 class="help-article-title">${esc(it.title)}</h3><div class="help-body">${it.body}</div></article>`).join('') +
+            '</div>';
     };
-    
-    renderGroup(groups[0] || '', 'helpContent1', 2);
-    renderGroup(groups[1] || '', 'helpContent2', 2);
-    renderGroup(groups[2] || '', 'helpContent3', 1);
-    
+
+    renderGroup(groups[0] || '', 'helpLayout1', 0);
+    renderGroup(groups[1] || '', 'helpLayout2', 1);
+    renderGroup(groups[2] || '', 'helpLayout3', 2);
+
     helpLoaded = true;
 }
 
+function switchHelpTopic(btn) {
+    const layout = btn.closest('.help-layout');
+    if (!layout) return;
+    const idx = btn.getAttribute('data-help-topic');
+    layout.querySelectorAll('.help-toc-item').forEach(b => b.classList.toggle('active', b === btn));
+    layout.querySelectorAll('.help-article').forEach(a => a.classList.toggle('active', a.getAttribute('data-help-article') === idx));
+    const pane = layout.querySelector('.help-pane');
+    if (pane) pane.scrollTop = 0;
+    window.scrollTo({ top: layout.getBoundingClientRect().top + window.scrollY - 12, behavior: 'smooth' });
+}
+
+function setHelpSearchMode(on) {
+    ['help-getting-started', 'help-features', 'help-reference'].forEach(id => {
+        const n = el(id);
+        if (n) n.style.display = on ? 'none' : '';
+    });
+    const sl = el('helpSearchLayout');
+    if (sl) sl.style.display = on ? 'flex' : 'none';
+    const cl = el('helpSearchClear');
+    if (cl) cl.style.display = on ? '' : 'none';
+}
+
+let helpSearchTimer = null;
+function helpSearch(v) {
+    clearTimeout(helpSearchTimer);
+    helpSearchTimer = setTimeout(() => helpSearchRun(v), 120);
+}
+
+function helpSearchRun(raw) {
+    const q = (raw || '').trim().toLowerCase();
+    setHelpSearchMode(q !== '');
+    if (!q) return;
+    const hits = (window.helpSearchIndex || []).filter(it => it.text.includes(q));
+    const toc = el('helpSearchToc'), pane = el('helpSearchPane');
+    if (!toc || !pane) return;
+    if (!hits.length) {
+        toc.innerHTML = '<div class="help-noresults">No topics match &quot;' + esc(raw.trim()) + '&quot;</div>';
+        pane.innerHTML = '';
+        return;
+    }
+    const GROUPS = ['Getting Started', 'Features', 'Reference'];
+    const rx = new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'i');
+    window.helpSearchHits = hits;
+    toc.innerHTML = hits.map((h, i) => {
+        const pos = h.text.indexOf(q);
+        const start = Math.max(0, pos - 60);
+        const snip = h.text.slice(start, Math.min(h.text.length, pos + q.length + 60)).trim();
+        const snipHtml = esc(snip).replace(rx, '<b>$1</b>');
+        return `<button class="help-toc-item help-search-item${i === 0 ? ' active' : ''}" data-hit="${i}" onclick="helpSearchPick(this)"><span class="help-search-loc">${GROUPS[h.group]}</span>${esc(h.title)}<span class="help-search-snippet">…${snipHtml}…</span></button>`;
+    }).join('');
+    helpSearchPick(toc.querySelector('[data-hit="0"]'));
+}
+
+function helpSearchPick(btn) {
+    if (!btn) return;
+    const i = +btn.getAttribute('data-hit');
+    const h = (window.helpSearchHits || [])[i];
+    if (!h) return;
+    const toc = el('helpSearchToc');
+    toc.querySelectorAll('.help-toc-item').forEach(b => b.classList.toggle('active', b === btn));
+    const pane = el('helpSearchPane');
+    if (pane) pane.innerHTML = `<article class="help-article active"><h3 class="help-article-title">${esc(h.title)}</h3><div class="help-body">${h.raw}</div></article>`;
+}
+
+function helpSearchClear() {
+    const s = el('helpSearch');
+    if (s) s.value = '';
+    helpSearchRun('');
+}
+
 function switchHelpSubTab(tabName) {
+    const searchBox = el('helpSearch');
+    if (searchBox && searchBox.value) { searchBox.value = ''; helpSearchRun(''); }
     document.querySelectorAll('.help-subtab').forEach(btn => {
         btn.classList.toggle('active', btn.textContent.toLowerCase().replace(/\s+/g, '-') === tabName);
     });
@@ -3491,6 +4152,27 @@ function switchHelpSubTab(tabName) {
     });
 }
 
+async function resolveSessionBanner() {
+    const banner = el('sessionBanner');
+    if (!banner) return;
+    banner.innerHTML = '⚠ Relaunching bridge into the interactive desktop session… this page will reconnect automatically.';
+    state.sessionBannerDismissed = true;
+    try {
+        const r = await fetch('/api/session/resolve', { method: 'POST' });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || j.status !== "ok") {
+            state.sessionBannerDismissed = false;
+            banner.style.display = '';
+            banner.innerHTML = '⚠ Resolve failed: ' + esc(j.message || j.status || 'unknown error') + ' <button class="btn" type="button" onclick="resolveSessionBanner()">Retry</button> <button class="btn" type="button" onclick="state.sessionBannerDismissed=true;el(\'sessionBanner\').style.display=\'none\'">Dismiss</button>';
+            return;
+        }
+        banner.style.display = 'none';
+    } catch (e) {
+        state.sessionBannerDismissed = false;
+        banner.style.display = '';
+        banner.innerHTML = '⚠ Resolve failed: ' + esc(e.message) + ' <button class="btn" type="button" onclick="resolveSessionBanner()">Retry</button> <button class="btn" type="button" onclick="state.sessionBannerDismissed=true;el(\'sessionBanner\').style.display=\'none\'">Dismiss</button>';
+    }
+}
 async function refresh() {
     try {
         const lvSource = state.liveValuesSource || '';
@@ -3508,7 +4190,22 @@ async function refresh() {
          el('pUa').innerHTML = badge(get(ua, 'state') || '—', stateClass(get(ua, 'state')));
          el('pTags').textContent = get(b, 'mappingCount') ?? 0;
          el('pApps').textContent = get(apps, 'detectedCount') ?? 1;
+         renderFleet(apps);
         el('bridgeState').innerHTML = badge(get(b, 'bridgeState') || '—', stateClass(get(b, 'bridgeState')));
+        const sessionBanner = el('sessionBanner');
+        if (sessionBanner) {
+            if (get(b, 'sessionId') === 0 && get(b, 'interactiveSession') === false) {
+                if (state.sessionBannerDismissed) {
+                    sessionBanner.style.display = 'none';
+                } else {
+                    sessionBanner.style.display = '';
+                    sessionBanner.innerHTML = '⚠ This bridge runs in a non-interactive Windows session (session 0). Session-bound OPC DA servers (GX Simulator via MX OPC, or any simulator using session-scoped shared memory) will not deliver values. <button class="btn" type="button" onclick="resolveSessionBanner()">Resolve</button> <button class="btn" type="button" onclick="state.sessionBannerDismissed=true;el(\'sessionBanner\').style.display=\'none\'">Dismiss</button>';
+                }
+            } else {
+                sessionBanner.style.display = 'none';
+                state.sessionBannerDismissed = false;
+            }
+        }
         const err = get(b, 'lastError');
         el('lastError').textContent = err || 'No errors';
         el('lastError').className = 's' + (err ? ' bad' : '');
@@ -3551,7 +4248,11 @@ async function refresh() {
         const srcCountH = el('sourceCountH'); if (srcCountH) srcCountH.textContent = sources.length + ' source' + (sources.length !== 1 ? 's' : '');
         const tagSrcStatus = el('tagSourceStatus');
         if (tagSrcStatus) {
-            const selSrc = sources.find(s => (s.sourceId || s.SourceId) === state.selectedSourceId);
+            // Only report a source that matches the active map type — the dropdown is
+            // map-type-filtered, so a source of another type left in selectedSourceId
+            // (e.g. a connected DA source while the OPC UA tab has no sources) must
+            // not surface as "Connected" next to an empty dropdown.
+            const selSrc = sources.find(s => (s.sourceId || s.SourceId) === state.selectedSourceId && sourceMatchesMapType(s));
             if (selSrc) {
                 const cs = get(selSrc, 'connectionState') || '—';
                 tagSrcStatus.innerHTML = badge(cs, stateClass(cs));
@@ -3569,14 +4270,44 @@ async function refresh() {
                 if (status) {
                     source.connectionState = get(status, 'connectionState');
                     source.lastError = get(status, 'lastError');
+                    source.serverInfo = get(status, 'serverInfo');
+                    source.readMode = get(status, 'readMode') || '';
+                    source.writeMode = get(status, 'writeMode') || '';
                 }
             });
             renderSourcesStatusList();
         }
+        // Keep the config forms' Detected Server / Read Mode lines live.
+        const activeView = document.querySelector('.view.active')?.id || '';
+        if (activeView === 'view-opc-da') {
+            const selId = String(state.selectedSourceId || '').toLowerCase();
+            const current = state.sources.find(s => String(s.sourceId || '').toLowerCase() === selId);
+            const status = sources.find(s => String(get(s, 'sourceId') || '').toLowerCase() === selId);
+            if (current && status) {
+                current.connectionState = get(status, 'connectionState');
+                current.lastError = get(status, 'lastError');
+                current.serverInfo = get(status, 'serverInfo');
+                current.readMode = get(status, 'readMode') || '';
+                current.writeMode = get(status, 'writeMode') || '';
+            }
+            updateCfgServerInfo(current);
+        } else if (activeView === 'view-opc-ua') {
+            const selId = String(state.selectedSourceId || '').toLowerCase();
+            const current = state.sources.find(s => String(s.sourceId || '').toLowerCase() === selId);
+            const status = sources.find(s => String(get(s, 'sourceId') || '').toLowerCase() === selId);
+            if (current && status) {
+                current.readMode = get(status, 'readMode') || '';
+                current.writeMode = get(status, 'writeMode') || '';
+            }
+            updateUaCfgReadMode(current);
+        }
         el('sourceStatusList').innerHTML = sources.length ? sources.map(source => {
             const connState = get(source,'connectionState') || '—';
             const connClass = stateClass(connState);
-            return `<div class="li"><div style="flex:1"><div class="n">${esc(get(source,'displayName') || get(source,'sourceId'))} ${badge(connState, connClass)}</div><div class="p">${esc(get(source,'sourceId'))} · ${esc(get(source,'host') || '')} · ${esc(get(source,'progId') || '')}</div><div class="p">${formatMs(get(source,'updateRateMs'))} · ${(get(source,'lastDaReadCount') ?? 0)} values in ${formatMs(get(source,'lastDaReadDurationMs'))}${get(source,'lastError') ? ' · <span class="bad">' + esc(get(source,'lastError')) + '</span>' : ''}</div></div></div>`;
+            const readMode = get(source,'readMode') || '';
+            const writeMode = get(source,'writeMode') || '';
+            const ioBit = (readMode || writeMode) ? ' · <span style="font-weight:400">' + esc([readMode, writeMode].filter(Boolean).join(' · ')) + '</span>' : '';
+            return `<div class="li"><div style="flex:1"><div class="n">${esc(get(source,'displayName') || get(source,'sourceId'))} ${badge(connState, connClass)}</div><div class="p">${esc(get(source,'sourceId'))} · ${esc(get(source,'host') || '')} · ${esc(get(source,'progId') || '')}${ioBit}</div><div class="p">${formatMs(get(source,'updateRateMs'))} · ${(get(source,'lastDaReadCount') ?? 0)} values in ${formatMs(get(source,'lastDaReadDurationMs'))}${get(source,'lastError') ? ' · <span class="bad">' + esc(get(source,'lastError')) + '</span>' : ''}</div></div></div>`;
         }).join('') : '<span class="msg">No source status yet.</span>';
         const rateGroups = get(b, 'rateGroups') || [];
         const alarmBar = el('rateAlarmBar');
@@ -3614,26 +4345,30 @@ async function refresh() {
                     state.handleHistory.push(hc);
                     if (state.handleHistory.length > 60) state.handleHistory.shift();
                 }
+                const gdiN = Number(res.gdiObjects ?? 0);
+                const userN = Number(res.userObjects ?? 0);
+                if (gdiN > 0) {
+                    state.gdiHistory.push(gdiN);
+                    if (state.gdiHistory.length > 60) state.gdiHistory.shift();
+                }
+                if (userN > 0) {
+                    state.userHistory.push(userN);
+                    if (state.userHistory.length > 60) state.userHistory.shift();
+                }
 
                 if (resA && resAD) {
-                    const gdi = Number(res.gdiObjects ?? 0);
-                    const user = Number(res.userObjects ?? 0);
+                    const gdi = gdiN;
+                    const user = userN;
                     const baseline = state.handleBaseline ?? hc;
                     const drift = hc - baseline;
                     const gdiPct = (gdi / 10000) * 100;
                     const userPct = (user / 10000) * 100;
 
-                    // Determine growth trend from history (compare first quarter to last quarter avg)
-                    let trend = 'stable';
-                    let trendPct = 0;
-                    if (state.handleHistory.length >= 12) {
-                        const q = Math.floor(state.handleHistory.length / 4);
-                        const earlyAvg = state.handleHistory.slice(0, q).reduce((a, b) => a + b, 0) / q;
-                        const recentAvg = state.handleHistory.slice(-q).reduce((a, b) => a + b, 0) / q;
-                        trendPct = earlyAvg > 0 ? ((recentAvg - earlyAvg) / earlyAvg) * 100 : 0;
-                        if (trendPct > 15) trend = 'rising';
-                        else if (trendPct < -5) trend = 'falling';
-                    }
+                    // Growth trends from history (handles + GDI + USER)
+                    const trendPct = windowTrendPct(state.handleHistory) ?? 0;
+                    const trend = trendPct > 15 ? 'rising' : (trendPct < -5 ? 'falling' : 'stable');
+                    const gdiTrend = windowTrendPct(state.gdiHistory) ?? 0;
+                    const userTrend = windowTrendPct(state.userHistory) ?? 0;
 
                     let verdict, cls, detail;
                     if (gdiPct >= 80 || userPct >= 80) {
@@ -3642,9 +4377,13 @@ async function refresh() {
                     } else if (gdiPct >= 50 || userPct >= 50) {
                         verdict = 'Warning'; cls = 'warn';
                         detail = 'GDI/USER above 50% of the 10,000 per-process limit.';
-                    } else if (drift > 200 && trend === 'rising') {
+                    } else if ((drift > 200 && trend === 'rising') || gdiTrend > 15 || userTrend > 15) {
                         verdict = 'Watch'; cls = 'warn';
-                        detail = 'Handle count rising (+' + Math.round(trendPct) + '% trend, +' + drift + ' since start). Possible leak.';
+                        const parts = [];
+                        if (drift > 200 && trend === 'rising') parts.push('handles +' + Math.round(trendPct) + '% trend, +' + drift + ' since start');
+                        if (gdiTrend > 15) parts.push('GDI +' + Math.round(gdiTrend) + '% trend');
+                        if (userTrend > 15) parts.push('USER +' + Math.round(userTrend) + '% trend');
+                        detail = parts.join('; ') + ' — possible leak.';
                     } else if (drift > 500) {
                         verdict = 'Watch'; cls = 'warn';
                         detail = 'Handle count +' + drift + ' above baseline. Monitor for continued growth.';
@@ -3684,10 +4423,10 @@ async function refresh() {
         }
     }
 }
-async function loadDaLinks() {
-    const p = await (await fetch('/api/da-links', { cache: 'no-store' })).json();
-    state.daLinks = p.links || [];
-    if (document.getElementById('view-links')?.classList.contains('active')) renderLinksView();
+async function loadInterlinks() {
+    const p = await (await fetch('/api/interlinks', { cache: 'no-store' })).json();
+    state.interlinks = p.links || [];
+    if (document.getElementById('view-interlinks')?.classList.contains('active')) renderInterlinksView();
 }
 
 async function loadMappings() {
@@ -3700,7 +4439,7 @@ async function loadMappings() {
     if (el('mapCount')) el('mapCount').textContent = view.length + (view.length !== typed.length ? ' / ' + typed.length + ' mappings' : ' mappings');
     updateNoMappingsBanner();
     refreshTagBrowserMappedBadges();
-    if (document.getElementById('view-links')?.classList.contains('active')) renderLinksView();
+    if (document.getElementById('view-interlinks')?.classList.contains('active')) renderInterlinksView();
 }
 function refreshTagBrowserMappedBadges() {
     const tree = el('tagTree');
@@ -3793,7 +4532,7 @@ async function openMqttWizard() {
   wzMqttStepCur = 1;
   await loadMqtt();
   el('wzMqttUrl').value = el('mqttBrokerUrl').value || 'tcp://localhost:1883';
-  el('wzMqttClientId').value = el('mqttClientId').value || 'OpcDaToUaBridge';
+  el('wzMqttClientId').value = el('mqttClientId').value || 'OpcBridge';
   el('wzMqttAuto').checked = el('mqttEnabled').checked;
   el('wzMqttUser').value = el('mqttUser').value;
   el('wzMqttPass').value = el('mqttPass').value;
@@ -3838,7 +4577,7 @@ function wzMqttValidate(step) {
 }
 async function wzMqttFinish() {
   el('mqttBrokerUrl').value = el('wzMqttUrl').value.trim();
-  el('mqttClientId').value = el('wzMqttClientId').value.trim() || 'OpcDaToUaBridge';
+  el('mqttClientId').value = el('wzMqttClientId').value.trim() || 'OpcBridge';
   el('mqttEnabled').checked = el('wzMqttAuto').checked;
   el('mqttUser').value = el('wzMqttUser').value;
   el('mqttPass').value = el('wzMqttPass').value;
@@ -4091,6 +4830,8 @@ async function updateMapping(sourceId, itemId, mutate) {
         mode: mapping.mode || mapping.Mode || 'Source',
         manualValue: mapping.manualValue ?? mapping.ManualValue ?? null,
         pollRateMs: mapping.pollRateMs ?? mapping.PollRateMs ?? 0,
+        daGroup: mapping.daGroup ?? mapping.DaGroup ?? null,
+        subscription: mapping.subscription ?? mapping.Subscription ?? '',
         deadbandPct: Number(mapping.deadbandPct ?? mapping.DeadbandPct ?? 0),
         writeable: (mapping.writeable ?? mapping.Writeable) === true,
         accessRights: mapping.accessRights || mapping.AccessRights || 'Read',
@@ -4120,9 +4861,8 @@ function pickSource(sourceId, opts) {
     el('tagTree').innerHTML = '<span class="msg">Browse the active source to load tags.</span>';
     el('tagStatus').textContent = 'Browse all tags, or open folders one level at a time.';
     renderCrumb();
-    resetLinkBrowser();
     renderSources();
-    if (document.getElementById('view-links')?.classList.contains('active')) renderLinksView();
+    if (document.getElementById('view-interlinks')?.classList.contains('active')) renderInterlinksView();
     if (opts && opts.openConfig) {
         const src = state.sources.find(s => s.sourceId === sourceId);
         if (src && isUaSource(src)) navigate('connectivity/opc-ua');
@@ -4152,7 +4892,8 @@ async function saveSource() {
         host: el('cfgHost').value.trim() || 'localhost',
         remoteUsername: el('cfgUser').value.trim() || null,
         remotePassword: el('cfgPass').value || null,
-        remoteDomain: el('cfgDomain').value.trim() || null
+        remoteDomain: el('cfgDomain').value.trim() || null,
+        ioMode: el('cfgIoMode') ? el('cfgIoMode').value : undefined
     };
     const r = await fetch('/api/da/sources', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const p = await r.json();
@@ -4163,6 +4904,319 @@ async function saveSource() {
     await refresh();
     el('cfgMessage').textContent = 'Source saved.';
     hideSaveReset();
+}
+async function loadGroupsSection() {
+    const container = el('cfgGroups');
+    if (!container) return;
+    const source = currentSource();
+    if (!source || isUaSource(source) || isMelsecSource(source) || isS7Source(source) || isMxSource(source)) {
+        container.innerHTML = '';
+        const msg = el('cfgGroupsMsg'); if (msg) msg.textContent = '';
+        return;
+    }
+    try {
+        const r = await fetch('/api/da/sources/groups?sourceId=' + encodeURIComponent(source.sourceId));
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const data = await r.json();
+        renderGroups((data.groups || []), source.sourceId, data.sourceIoMode);
+        const msg = el('cfgGroupsMsg'); if (msg) msg.textContent = '';
+    } catch (e) {
+        container.innerHTML = '';
+        const msg = el('cfgGroupsMsg'); if (msg) msg.textContent = 'Failed to load rate groups: ' + e.message;
+    }
+}
+function renderGroups(groups, sourceId, sourceIoMode) {
+    // Read-only summary — editing lives in the DA Groups panel.
+    const container = el('cfgGroups');
+    if (!container) return;
+    let html = '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">' +
+        '<span style="font-weight:600;font-size:12px">' + groups.length + ' group(s)</span>' +
+        '<button class="btn ghost" type="button" style="height:20px;padding:0 8px;font-size:11px" onclick="navigate(\'connectivity/opc-da-groups\')">Manage groups</button>' +
+        '</div>';
+    if (!groups.length) {
+        html += '<span class="msg">No groups yet.</span>';
+    } else {
+        html += '<div style="display:flex;gap:5px;flex-wrap:wrap">';
+        for (const g of groups) {
+            html += '<span class="dag-badge' + (g.isDefault ? ' accent' : '') + '">' +
+                esc(g.name) + ' · ' + esc(daPrettyRate(g.rate)) + ' · ' + esc(prettyIoMode(g.ioMode || 'AutoDetect')) +
+                (g.isDefault ? ' · default' : '') + '</span>';
+        }
+        html += '</div>';
+    }
+    container.innerHTML = html;
+}
+function prettyIoMode(mode) {
+    if (mode === 'Sync') return 'Synchronous I/O';
+    if (mode === 'Async20') return 'Async I/O 2.0';
+    return 'AutoDetect I/O';
+}
+async function loadDaGroupsTab() {
+    const container = el('daGroupsContainer');
+    const msg = el('daGroupsMsg');
+    if (!container) return;
+    container.innerHTML = '<div class="hint">Loading…</div>';
+    if (msg) msg.textContent = '';
+    try {
+        const opcDaSrcs = state.sources.filter(s => !isUaSource(s) && !isDriverSource(s) && !isMxSource(s));
+        if (opcDaSrcs.length === 0) {
+            container.innerHTML = '<div class="hint">No OPC DA sources — add one in <a href="#/connectivity/opc-da" onclick="navigate(\'connectivity/opc-da\');return false;">OPC DA</a>.</div>';
+            return;
+        }
+        container.innerHTML = '';
+        for (const src of opcDaSrcs) {
+            const card = document.createElement('div');
+            card.className = 'box';
+            card.style.cssText = 'margin-bottom:8px';
+            const header = document.createElement('div');
+            header.className = 'box-h';
+            header.style.cssText = 'padding:6px 10px;font-size:12px;gap:6px;cursor:pointer;user-select:none';
+            const bodyId = 'daGroupsBody-' + src.sourceId;
+            const isCollapsed = (state.collapsedDaGroups || {})[src.sourceId];
+            header.innerHTML = '<span class="toggle" style="width:14px;text-align:center;font-size:10px;opacity:.6">' + (isCollapsed ? '▶' : '▼') + '</span><span class="dag-src-name">' + esc(src.displayName || src.sourceId) + '</span> <span class="msg dag-src-meta">' + esc(src.sourceId) + ' · ' + esc(src.progId || '') + '</span><span class="msg dag-src-host">' + esc(src.host || 'localhost') + '</span><button class="btn ghost" type="button" style="height:20px;padding:0 8px;font-size:11px" onclick="event.stopPropagation();openDagAdd(\'' + esc(src.sourceId).replace(/'/g, "\'") + '\')">+ Add Group</button>';
+            const body = document.createElement('div');
+            body.className = 'box-b';
+            body.id = bodyId;
+            body.style.cssText = 'padding:8px 10px' + (isCollapsed ? ';display:none' : '');
+            header.onclick = () => {
+                const b = document.getElementById(bodyId);
+                const t = header.querySelector('.toggle');
+                if (!b) return;
+                const collapsed = b.style.display === 'none';
+                b.style.display = collapsed ? '' : 'none';
+                if (t) t.textContent = collapsed ? '▼' : '▶';
+                state.collapsedDaGroups = state.collapsedDaGroups || {};
+                state.collapsedDaGroups[src.sourceId] = !collapsed;
+            };
+            body.innerHTML = '<div class="hint" id="daGroupsHint-' + esc(src.sourceId) + '" style="font-size:11px;margin-bottom:4px">Loading groups…</div><div id="daGroupsTable-' + esc(src.sourceId) + '"></div>';
+            card.appendChild(header);
+            card.appendChild(body);
+            container.appendChild(card);
+            await reloadDaGroups(src.sourceId);
+        }
+    } catch (e) {
+        if (msg) msg.textContent = 'Failed to load: ' + e.message;
+    }
+}
+function setDaGroupsStatus(t) {
+    const m = document.getElementById('daGroupsMsg');
+    if (m) m.textContent = t;
+}
+async function reloadDaGroups(sourceId) {
+    // Sequenced per source: whichever request started latest wins; superseded
+    // responses are dropped instead of painting stale data over newer.
+    state.daGroupRenderSeq = state.daGroupRenderSeq || {};
+    const seq = (state.daGroupRenderSeq[sourceId] || 0) + 1;
+    state.daGroupRenderSeq[sourceId] = seq;
+    try {
+        const r = await fetch('/api/da/sources/groups?sourceId=' + encodeURIComponent(sourceId));
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const data = await r.json();
+        if (state.daGroupRenderSeq[sourceId] !== seq) return false;
+        renderDaGroupsForSource(sourceId, data.groups || [], data.sourceIoMode);
+        return true;
+    } catch (e) {
+        if (state.daGroupRenderSeq[sourceId] === seq) {
+            const hint = document.getElementById('daGroupsHint-' + sourceId);
+            if (hint) hint.textContent = 'Failed to load groups: ' + e.message;
+        }
+        return false;
+    }
+}
+function daPrettyRate(ms) {
+    const n = Number(ms) || 0;
+    return n >= 1000 ? (n / 1000) + ' s' : n + ' ms';
+}
+function ensureDaGroupsCache(sourceId) {
+    // Named DA groups per source, for the faceplate UPDATE RATE selector.
+    state.daGroupsCache = state.daGroupsCache || {};
+    if (state.daGroupsCache[sourceId]) return Promise.resolve(state.daGroupsCache[sourceId]);
+    return fetch('/api/da/sources/groups?sourceId=' + encodeURIComponent(sourceId))
+        .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+        .then(data => { state.daGroupsCache[sourceId] = data.groups || []; return state.daGroupsCache[sourceId]; });
+}
+function invalidateDaGroupsCache(sourceId) {
+    if (state.daGroupsCache) delete state.daGroupsCache[sourceId];
+}
+function daGroupRateFor(sourceId, name) {
+    const gs = (state.daGroupsCache || {})[sourceId] || [];
+    const g = gs.find(x => String(x.name ?? '').toLowerCase() === String(name ?? '').toLowerCase());
+    return g ? (Number(g.rate) || 0) : 0;
+}
+// UPDATE RATE selector: Source Default + one option per named group.
+// Legacy numeric rates survive as synthetic "@<ms>" entries until touched.
+function fpRateOptions(sourceId, selectedDaGroup, pollRateMs) {
+    const gs = (state.daGroupsCache || {})[sourceId] || [];
+    const want = String(selectedDaGroup || '').toLowerCase();
+    let matched = false;
+    let html = '';
+    for (const g of gs) {
+        const name = String(g.name ?? '');
+        const sel = want !== '' && want === name.toLowerCase();
+        if (sel) matched = true;
+        html += '<option value="' + attr(name) + '"' + (sel ? ' selected' : '') + '>' + esc(name) + ' · ' + esc(daPrettyRate(g.rate)) + '</option>';
+    }
+    let defaultSelected = false;
+    const rateN = Number(pollRateMs) || 0;
+    if (!matched) {
+        if (rateN > 0 && !gs.some(g => Number(g.rate) === rateN)) {
+            html += '<option value="@' + rateN + '" selected>' + esc(daPrettyRate(rateN)) + ' (legacy rate)</option>';
+        } else {
+            defaultSelected = true;
+        }
+    }
+    return '<option value=""' + (defaultSelected ? ' selected' : '') + '>Source Default</option>' + html;
+}
+// SUBSCRIPTION selector (OPC UA sources): Source Default (with the source's default
+// rate label) plus one option per named subscription with its rate. Matching is
+// case-insensitive, mirroring the server-side subscription-name comparisons.
+function fpSubscriptionOptions(sourceId, selected) {
+    const src = uaSubsFor(sourceId);
+    const want = String(selected || '').trim().toLowerCase();
+    let matched = false;
+    let html = '';
+    for (const sub of (src ? src.subscriptions : [])) {
+        const sel = want !== '' && want === String(sub.name).toLowerCase();
+        if (sel) matched = true;
+        html += `<option value="${attr(sub.name)}"${sel ? ' selected' : ''}>${esc(sub.name)} (${formatMs(sub.updateRateMs)})</option>`;
+    }
+    if (want !== '' && !matched) {
+        html += `<option value="${attr(selected)}" selected>${esc(selected)}</option>`;
+    }
+    const defRate = src ? src.defaultUpdateRateMs : ((state.sources.find(s => s.sourceId === sourceId) || {}).updateRateMs ?? 0);
+    return `<option value=""${matched ? '' : ' selected'}>Source Default (${formatMs(defRate)})</option>` + html;
+}
+// A named subscription owns the tag's rate: lock the per-tag Update Rate input
+// while a subscription is chosen, unlock when back on Source Default.
+function updateFpRateEnabled() {
+    const subSel = el('fpSubscription');
+    const rate = el('fpPollRate');
+    const hint = el('fpSubscriptionHint');
+    if (!subSel || !rate) return;
+    rate.disabled = !!subSel.value;
+    if (hint) hint.textContent = subSel.value ? 'Rate comes from the named subscription.' : '';
+}
+function renderDaGroupsForSource(sourceId, groups, sourceIoMode) {
+    const hint = document.getElementById('daGroupsHint-' + sourceId);
+    const wrap = document.getElementById('daGroupsTable-' + sourceId);
+    if (!wrap) return;
+    if (!groups || groups.length === 0) {
+        if (hint) { hint.textContent = 'No groups — default (' + prettyIoMode(sourceIoMode) + ')'; hint.style.cssText = 'font-size:11px'; }
+        wrap.innerHTML = '';
+        return;
+    }
+    if (hint) { hint.textContent = groups.length + ' group(s) — ' + prettyIoMode(sourceIoMode) + ' default'; hint.style.cssText = 'font-size:11px;margin-bottom:6px'; }
+    const sidA = esc(sourceId).replace(/'/g, "\\'");
+    let html = '<div class="dag-grid">';
+    for (const g of groups) {
+        const isDef = !!g.isDefault;
+        const tags = g.tagCount ?? 0;
+        html += '<div class="dag-card' + (isDef ? ' default' : '') + '" data-name="' + esc(g.name) + '" data-rate="' + esc(String(g.rate)) + '" data-io="' + esc(g.ioMode || 'AutoDetect') + '">' +
+            '<div class="n">' + esc(g.name) + (isDef ? ' <span class="badge partial" style="font-size:10px;padding:0 7px">default</span>' : '') + '</div>' +
+            '<div class="dag-badges">' +
+                '<span class="dag-badge accent">' + esc(daPrettyRate(g.rate)) + '</span>' +
+                '<span class="dag-badge">' + esc(prettyIoMode(g.ioMode || 'AutoDetect')) + '</span>' +
+            '</div>' +
+            '<div class="dag-meta">effective: ' + esc(prettyIoMode(g.effective)) + ' · ' + tags + ' tag' + (tags === 1 ? '' : 's') + '</div>' +
+            '<div class="dag-actions">' + (isDef
+                ? '<span class="msg">read-only</span>'
+                : '<button class="btn ghost" type="button" onclick="openDagEdit(\'' + sidA + '\', this.closest(\'.dag-card\'))">Edit</button>' +
+                  '<button class="btn ghost" type="button" onclick="deleteDaGroup(\'' + sidA + '\', \'' + esc(g.name).replace(/'/g, "\\'") + '\')">Delete</button>') +
+            '</div>' +
+        '</div>';
+    }
+    html += '</div>';
+    wrap.innerHTML = html;
+}
+async function deleteDaGroup(sourceId, name) {
+    if (!confirm('Delete group ' + name + ' for ' + sourceId + '?')) return;
+    try {
+        const r = await fetch('/api/da/sources/groups/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId, name }) });
+        const p = await r.json();
+        if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
+        setDaGroupsStatus('Deleted ' + name);
+        invalidateDaGroupsCache(sourceId);
+        await reloadDaGroups(sourceId);
+        refresh().catch(()=>{});
+        loadGroupsSection().catch(()=>{});
+    } catch (e) {
+        setDaGroupsStatus('Delete failed: ' + e.message);
+    }
+}
+let dagModalCtx = null;
+function openDagAdd(sourceId) {
+    dagModalCtx = { sourceId: sourceId, oldName: null };
+    el('dagModalTitle').textContent = 'Add Group';
+    el('dagModalSource').textContent = sourceId;
+    el('dagModalName').value = 'OpcBridge_' + (Date.now() % 10000);
+    el('dagModalName').disabled = false;
+    el('dagModalRate').value = '1000';
+    el('dagModalIo').value = 'AutoDetect';
+    el('dagModalMsg').textContent = '';
+    const b = el('dagModalSaveBtn'); if (b) b.disabled = false;
+    const m = el('dagModal'); if (m) m.classList.add('open');
+    setTimeout(() => { const n = el('dagModalName'); if (n) n.focus(); }, 50);
+}
+function openDagEdit(sourceId, card) {
+    if (!card) return;
+    dagModalCtx = { sourceId: sourceId, oldName: card.dataset.name };
+    el('dagModalTitle').textContent = 'Edit Group';
+    el('dagModalSource').textContent = sourceId;
+    el('dagModalName').value = card.dataset.name || '';
+    el('dagModalName').disabled = false;
+    el('dagModalRate').value = String(card.dataset.rate || '1000');
+    el('dagModalIo').value = card.dataset.io || 'AutoDetect';
+    el('dagModalMsg').textContent = '';
+    const b = el('dagModalSaveBtn'); if (b) b.disabled = false;
+    const m = el('dagModal'); if (m) m.classList.add('open');
+}
+function closeDagModal() {
+    const m = el('dagModal'); if (m) m.classList.remove('open');
+    dagModalCtx = null;
+}
+async function dagModalSave() {
+    if (!dagModalCtx) return;
+    const sourceId = dagModalCtx.sourceId;
+    const oldName = dagModalCtx.oldName;
+    const name = el('dagModalName').value.trim();
+    const rate = parseInt(el('dagModalRate').value, 10);
+    const ioMode = el('dagModalIo').value;
+    if (!name) { el('dagModalMsg').textContent = 'Name required'; return; }
+    const saveBtn = el('dagModalSaveBtn');
+    if (saveBtn) saveBtn.disabled = true;
+    try {
+        // rename => delete old entry first (name is the group key)
+        if (oldName && oldName !== name) {
+            const del = await fetch('/api/da/sources/groups/reset', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId: sourceId, name: oldName }) });
+            if (!del.ok) { const p = await del.json().catch(() => ({})); throw new Error(p.error || ('HTTP ' + del.status)); }
+        }
+        const r = await fetch('/api/da/sources/groups', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId: sourceId, name: name, rate: rate, ioMode: ioMode, renameFrom: (oldName && oldName !== name) ? oldName : null }) });
+        const p = await r.json();
+        if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
+        closeDagModal();
+        invalidateDaGroupsCache(sourceId);
+        await reloadDaGroups(sourceId);
+        setDaGroupsStatus('Saved ' + name + ' (' + daPrettyRate(rate) + ') → ' + prettyIoMode(ioMode));
+        refresh().catch(() => {});
+        loadGroupsSection().catch(() => {});
+    } catch (e) {
+        el('dagModalMsg').textContent = 'Save failed: ' + e.message;
+        if (saveBtn) saveBtn.disabled = false;
+    }
+}
+function expandAllDaGroups() {
+    state.collapsedDaGroups = {};
+    document.querySelectorAll('[id^="daGroupsBody-"]').forEach(b => b.style.display = '');
+    document.querySelectorAll('#daGroupsContainer .box-h .toggle').forEach(t => t.textContent = '▼');
+}
+function collapseAllDaGroups() {
+    state.collapsedDaGroups = {};
+    document.querySelectorAll('[id^="daGroupsBody-"]').forEach(b => {
+        const sid = b.id.replace('daGroupsBody-', '');
+        state.collapsedDaGroups[sid] = true;
+        b.style.display = 'none';
+    });
+    document.querySelectorAll('#daGroupsContainer .box-h .toggle').forEach(t => t.textContent = '▶');
 }
 async function saveUpdateRate() {
     const updateRateMs = Number.parseInt(el('cfgUpdateRate').value, 10);
@@ -4198,6 +5252,201 @@ async function removeSelectedSource() {
 }
 function showSaveReset() { el('cfgApply').style.display = ''; el('cfgReset').style.display = ''; }
 function hideSaveReset() { el('cfgApply').style.display = 'none'; el('cfgReset').style.display = 'none'; }
+
+// --- Named UA subscriptions (UA Subs tab) ---
+// Group UA tags onto shared monitored items: GET lists per-source definitions plus
+// live status; POST upserts; /remove deletes and moves its mappings back to default.
+let uaSubsCache = [];
+function setUaSubsStatus(t) {
+    const m = document.getElementById('subsMsg');
+    if (m) m.textContent = t;
+}
+async function loadUaSubs() {
+    const container = el('uaSubsContainer');
+    if (!container) return;
+    const p = await (await fetch('/api/ua/subscriptions', { cache: 'no-store' })).json();
+    uaSubsCache = p.sources || [];
+    if (!uaSubsCache.length) {
+        container.innerHTML = '<div class="hint">No OPC UA sources — add one in <a href="#/connectivity/opc-ua" onclick="navigate(\'connectivity/opc-ua\');return false;">OPC UA</a>.</div>';
+        return;
+    }
+    let html = '';
+    for (const s of uaSubsCache) {
+        const collapsed = (state.collapsedUaSubs || {})[s.sourceId];
+        const sidA = esc(s.sourceId).replace(/'/g, "\\'");
+        html += '<div class="box" style="margin-bottom:8px">' +
+            '<div class="box-h" style="padding:6px 10px;font-size:12px;gap:6px;cursor:pointer;user-select:none" onclick="toggleUaSubsCard(\'' + sidA + '\')">' +
+                '<span class="toggle" style="width:14px;text-align:center;font-size:10px;opacity:.6" id="uaSubsToggle-' + attr(s.sourceId) + '">' + (collapsed ? '▶' : '▼') + '</span>' +
+                '<span class="dag-src-name">' + esc(s.displayName || s.sourceId) + '</span>' +
+                '<span class="msg dag-src-meta">' + esc(s.sourceId) + ' · default ' + esc(formatMs(s.defaultUpdateRateMs)) + '</span>' +
+                '<button class="btn ghost" type="button" style="height:20px;padding:0 8px;font-size:11px;margin-left:auto" onclick="event.stopPropagation();openUaSubAdd(\'' + sidA + '\')">+ Add Subscription</button>' +
+            '</div>' +
+            '<div class="box-b" id="uaSubsBody-' + attr(s.sourceId) + '" style="padding:8px 10px' + (collapsed ? ';display:none' : '') + '">' +
+                '<div class="hint" id="uaSubsHint-' + attr(s.sourceId) + '" style="font-size:11px;margin-bottom:6px">Loading…</div>' +
+                '<div class="dag-grid" id="uaSubsGrid-' + attr(s.sourceId) + '"></div>' +
+            '</div>' +
+        '</div>';
+    }
+    container.innerHTML = html;
+    for (const s of uaSubsCache) renderUaSubsForSource(s);
+}
+function toggleUaSubsCard(sourceId) {
+    const b = document.getElementById('uaSubsBody-' + sourceId);
+    if (!b) return;
+    const t = document.getElementById('uaSubsToggle-' + sourceId);
+    const collapsed = b.style.display === 'none';
+    b.style.display = collapsed ? '' : 'none';
+    if (t) t.textContent = collapsed ? '▼' : '▶';
+    state.collapsedUaSubs = state.collapsedUaSubs || {};
+    state.collapsedUaSubs[sourceId] = !collapsed;
+}
+function setAllUaSubsCollapsed(collapsed) {
+    state.collapsedUaSubs = {};
+    for (const s of uaSubsCache) {
+        state.collapsedUaSubs[s.sourceId] = collapsed;
+        const b = document.getElementById('uaSubsBody-' + s.sourceId);
+        const t = document.getElementById('uaSubsToggle-' + s.sourceId);
+        if (b) b.style.display = collapsed ? 'none' : '';
+        if (t) t.textContent = collapsed ? '▶' : '▼';
+    }
+}
+function expandAllUaSubs() { setAllUaSubsCollapsed(false); }
+function collapseAllUaSubs() { setAllUaSubsCollapsed(true); }
+function renderUaSubsForSource(s) {
+    const hint = document.getElementById('uaSubsHint-' + s.sourceId);
+    const grid = document.getElementById('uaSubsGrid-' + s.sourceId);
+    if (!grid) return;
+    const named = s.subscriptions || [];
+    const d = s.defaultStats || {};
+    const defTags = d.itemCount ?? 0;
+    if (hint) hint.textContent = named.length + ' named subscription' + (named.length === 1 ? '' : 's') + ' · unassigned tags ride Default';
+    const sidA = esc(s.sourceId).replace(/'/g, "\\'");
+    let html = '';
+    // Read-only Default tile — mirrors DA Groups' read-only default group card.
+    html += '<div class="dag-card default">' +
+        '<div class="n">default <span class="badge partial" style="font-size:10px;padding:0 7px">default</span></div>' +
+        '<div class="dag-badges">' +
+            '<span class="dag-badge accent">' + esc(formatMs(s.defaultUpdateRateMs)) + '</span>' +
+            '<span class="dag-badge">' + (d.created ? 'live' : 'idle') + '</span>' +
+        '</div>' +
+        '<div class="dag-meta">actual: ' + esc(formatMs(Math.round(d.actualPublishingIntervalMs || 0))) + ' · ' + defTags + ' tag' + (defTags === 1 ? '' : 's') + '</div>' +
+        '<div class="dag-actions"><span class="msg">read-only</span></div>' +
+    '</div>';
+    for (const sub of named) {
+        const tags = sub.itemCount ?? 0;
+        html += '<div class="dag-card" data-name="' + attr(sub.name) + '" data-rate="' + esc(String(sub.updateRateMs)) + '">' +
+            '<div class="n">' + esc(sub.name) + '</div>' +
+            '<div class="dag-badges">' +
+                '<span class="dag-badge accent">' + esc(formatMs(sub.updateRateMs)) + '</span>' +
+                '<span class="dag-badge">' + (sub.created ? 'live' : 'idle') + '</span>' +
+            '</div>' +
+            '<div class="dag-meta">actual: ' + esc(formatMs(Math.round(sub.actualPublishingIntervalMs || 0))) + ' · ' + tags + ' tag' + (tags === 1 ? '' : 's') + '</div>' +
+            '<div class="dag-actions">' +
+                '<button class="btn ghost" type="button" onclick="openUaSubEdit(\'' + sidA + '\', this.closest(\'.dag-card\'))">Edit</button>' +
+                '<button class="btn ghost" type="button" onclick="deleteUaSub(\'' + sidA + '\', \'' + esc(sub.name).replace(/'/g, "\\'") + '\')">Delete</button>' +
+            '</div>' +
+        '</div>';
+    }
+    grid.innerHTML = html;
+}
+let uaSubModalCtx = null;
+function uaSubsFor(sourceId) {
+    return (uaSubsCache || []).find(s => String(s.sourceId).toLowerCase() === String(sourceId || '').toLowerCase()) || null;
+}
+function openUaSubAdd(sourceId) {
+    uaSubModalCtx = { sourceId: sourceId, oldName: null };
+    el('uaSubModalTitle').textContent = 'Add Subscription';
+    el('uaSubModalSource').textContent = sourceId;
+    el('uaSubModalName').value = '';
+    el('uaSubModalName').disabled = false;
+    el('uaSubModalRate').value = '1000';
+    el('uaSubModalMsg').textContent = '';
+    const b = el('uaSubModalSaveBtn'); if (b) b.disabled = false;
+    const m = el('uaSubModal'); if (m) m.classList.add('open');
+    setTimeout(() => { const n = el('uaSubModalName'); if (n) n.focus(); }, 50);
+}
+function openUaSubEdit(sourceId, card) {
+    if (!card) return;
+    uaSubModalCtx = { sourceId: sourceId, oldName: card.dataset.name };
+    el('uaSubModalTitle').textContent = 'Edit Subscription';
+    el('uaSubModalSource').textContent = sourceId;
+    el('uaSubModalName').value = card.dataset.name || '';
+    el('uaSubModalName').disabled = false;
+    el('uaSubModalRate').value = String(card.dataset.rate || '1000');
+    el('uaSubModalMsg').textContent = '';
+    const b = el('uaSubModalSaveBtn'); if (b) b.disabled = false;
+    const m = el('uaSubModal'); if (m) m.classList.add('open');
+}
+function closeUaSubModal() {
+    const m = el('uaSubModal'); if (m) m.classList.remove('open');
+    uaSubModalCtx = null;
+}
+// Rename support: /api/mappings/update replaces the whole mapping, so send each
+// affected mapping back verbatim with only `subscription` swapped to the new name.
+async function repointMappingsSubscription(sourceId, fromName, toName) {
+    const data = await (await fetch('/api/mappings', { cache: 'no-store' })).json();
+    const matches = (data.mappings || []).filter(m =>
+        String(m.sourceId).toLowerCase() === String(sourceId).toLowerCase() &&
+        String(m.subscription || '').trim().toLowerCase() === String(fromName).toLowerCase());
+    for (const m of matches) {
+        const r = await fetch('/api/mappings/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tag: Object.assign({}, m, { subscription: toName }) })
+        });
+        if (!r.ok) throw new Error('Re-point failed for ' + (m.itemId || 'tag') + ' (HTTP ' + r.status + ')');
+    }
+    return matches.length;
+}
+async function uaSubModalSave() {
+    if (!uaSubModalCtx) return;
+    const sourceId = uaSubModalCtx.sourceId;
+    const oldName = uaSubModalCtx.oldName;
+    const name = el('uaSubModalName').value.trim();
+    const updateRateMs = parseInt(el('uaSubModalRate').value, 10);
+    if (!name) { el('uaSubModalMsg').textContent = 'Name required'; return; }
+    if (!Number.isFinite(updateRateMs) || updateRateMs <= 0) { el('uaSubModalMsg').textContent = 'Rate must be positive'; return; }
+    const saveBtn = el('uaSubModalSaveBtn');
+    if (saveBtn) saveBtn.disabled = true;
+    try {
+        // Upsert by (case-insensitive) name; a casing-only change is an in-place rate edit.
+        const renamed = !!oldName && oldName.toLowerCase() !== name.toLowerCase();
+        const r = await fetch('/api/ua/subscriptions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId, name, updateRateMs }) });
+        const p = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
+        if (renamed) {
+            // Name is the bucket key: drop the old entry, then re-point its tags to
+            // the new name via the mappings update API (remove alone lands them on default).
+            const del = await fetch('/api/ua/subscriptions/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId, name: oldName }) });
+            const dp = await del.json().catch(() => ({}));
+            if (!del.ok) throw new Error(dp.error || ('HTTP ' + del.status));
+            const moved = await repointMappingsSubscription(sourceId, oldName, name);
+            setUaSubsStatus('✓ Renamed ' + oldName + ' → ' + name + (moved > 0 ? ' — ' + moved + ' tag(s) re-pointed.' : ''));
+        } else {
+            setUaSubsStatus('✓ Saved ' + name + ' (' + formatMs(updateRateMs) + ').');
+        }
+        closeUaSubModal();
+        await loadUaSubs();
+        await loadMappings().catch(() => {});
+    } catch (e) {
+        el('uaSubModalMsg').textContent = '✗ ' + e.message;
+        const btn = el('uaSubModalSaveBtn'); if (btn) btn.disabled = false;
+    }
+}
+async function deleteUaSub(sourceId, name) {
+    if (!confirm('Delete subscription ' + name + ' for ' + sourceId + '? Its tags move back to default.')) return;
+    try {
+        const r = await fetch('/api/ua/subscriptions/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId, name }) });
+        const p = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
+        setUaSubsStatus('Deleted ' + name + '. ' + (p.movedMappings ?? 0) + ' tag(s) moved to default.');
+        await loadUaSubs();
+        // Reassigned tags changed their effective rate/pill — refresh Maps rows.
+        await loadMappings().catch(() => {});
+    } catch (e) {
+        setUaSubsStatus('✗ Delete failed: ' + e.message);
+    }
+}
 
 // --- PLC driver sources (Melsec A3N) ---
 function mxSources() { return state.sources.filter(s => isMxSource(s)); }
@@ -4602,6 +5851,7 @@ function newSource() {
     el('cfgDomain').value = '';
     el('tagTree').innerHTML = '<span class="msg">Save the new source before browsing tags.</span>';
     el('cfgMessage').textContent = 'Enter a unique Source ID, then save.';
+    updateCfgServerInfo(null);
     showSaveReset();
 }
 function showUaSaveReset() { el('uaCfgApply').style.display = ''; el('uaCfgReset').style.display = ''; }
@@ -4894,6 +6144,7 @@ async function wzFinish() {
   el('cfgUser').value = el('wzUser').value.trim();
   el('cfgPass').value = el('wzPass').value;
   el('cfgDomain').value = el('wzDomain').value.trim();
+  if (el('cfgIoMode')) el('cfgIoMode').value = el('wzSubs').checked ? 'AutoDetect' : 'Sync';
   state.editingNewSource = true;
   try {
     await saveSource();
@@ -4927,97 +6178,6 @@ function pickServer(progId, host) {
     el('cfgProgId').value = progId;
     el('cfgHost').value = host;
     el('cfgMessage').textContent = 'Selected server; save source to apply.';
-}
-function renderLinkCrumb() {
-    const bc = el('linkBrowseBreadcrumb');
-    if (!state.linkBrowsePath) {
-        bc.innerHTML = '<span class="current">root</span>';
-        return;
-    }
-    const parts = state.linkBrowsePath.split('.');
-    let html = '<a data-link-crumb="">root</a><span class="sep">/</span>';
-    let acc = '';
-    for (let i = 0; i < parts.length; i++) {
-        acc = acc ? acc + '.' + parts[i] : parts[i];
-        if (i < parts.length - 1) {
-            html += `<a data-link-crumb="${attr(acc)}">${esc(parts[i])}</a><span class="sep">/</span>`;
-        } else {
-            html += `<span class="current">${esc(parts[i])}</span>`;
-        }
-    }
-    bc.innerHTML = html;
-}
-function resetLinkBrowser() {
-    state.linkBrowsePath = '';
-    renderLinkCrumb();
-    el('linkBrowseTree').innerHTML = '<span class="msg">Use the active source to browse tags for DA links.</span>';
-    el('linkBrowseStatus').textContent = 'Use the active source selection from Connection or Tags, then pick consumer/provider tags.';
-}
-function setLinkDraftSelection(role, sourceId, itemId, name) {
-    state.linkDraft[role] = {
-        key: tagKey(sourceId, itemId),
-        sourceId: sourceId || 'default',
-        itemId,
-        name: name || itemId
-    };
-    const roleName = role === 'consumer' ? 'Consumer' : 'Provider';
-    el('linksMessage').textContent = roleName + ' selected from source ' + (sourceId || 'default') + '.';
-    renderLinksView();
-}
-async function browseLinkTags(path, recursive = false) {
-    const source = currentSource();
-    if (!source || state.editingNewSource) {
-        el('linkBrowseTree').innerHTML = '<span class="msg">Select or save a source before browsing DA links.</span>';
-        el('linkBrowseBreadcrumb').innerHTML = '';
-        return;
-    }
-    if (!sourceMatchesMapType(source, 'opc-da')) {
-        // DA Links forward DA→DA only, but the active source comes from any tab
-        // (e.g. an OPC UA source selected on the OPC UA maps tab). A non-DA source
-        // must never be posted to the OPC DA browse endpoint.
-        el('linkBrowseTree').innerHTML = '<span class="msg">DA Links browse OPC DA sources only — select an OPC DA source from Connection or Tags first.</span>';
-        el('linkBrowseBreadcrumb').innerHTML = '';
-        return;
-    }
-    state.linkBrowsePath = path || '';
-    renderLinkCrumb();
-    el('linkBrowseTree').innerHTML = '<span class="msg">Browsing…</span>';
-    el('linkBrowseStatus').textContent = recursive ? 'Loading all tags…' : 'Loading folder…';
-    const body = {
-        sourceId: source.sourceId,
-        progId: source.progId,
-        host: source.host || 'localhost',
-        path: state.linkBrowsePath,
-        recursive,
-        remoteUsername: source.remoteUsername || null,
-        remotePassword: null,
-        remoteDomain: source.remoteDomain || null
-    };
-    const p = await (await fetch('/api/da/tags', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json();
-    if (p.error) throw new Error(p.error);
-    const branches = p.branches || [];
-    const tags = p.tags || [];
-    const rows = [];
-    if (state.linkBrowsePath) {
-        const parent = state.linkBrowsePath.includes('.') ? state.linkBrowsePath.substring(0, state.linkBrowsePath.lastIndexOf('.')) : '';
-        rows.push(`<div class="li clickable" data-action="open-link-branch" data-path="${attr(parent)}"><span class="icon folder">&#9650;</span><div style="flex:1"><div class="n">..</div><div class="p">Up one level</div></div></div>`);
-    }
-    for (const branch of branches) {
-        const child = state.linkBrowsePath ? state.linkBrowsePath + '.' + branch : branch;
-        rows.push(`<div class="li clickable" data-action="open-link-branch" data-path="${attr(child)}"><span class="icon folder">&#128193;</span><div style="flex:1"><div class="n">${esc(branch)}</div><div class="p">folder</div></div></div>`);
-    }
-    for (const tag of tags) {
-        const itemId = tag.itemId || tag.ItemId || tag.daItemId || tag.DaItemId;
-        const name = tag.name || tag.Name || itemId;
-        const key = tagKey(source.sourceId, itemId);
-        const existing = findDaLinkByConsumer(key);
-        const isConsumer = state.linkDraft.consumer && state.linkDraft.consumer.key === key;
-        const isProvider = state.linkDraft.provider && state.linkDraft.provider.key === key;
-        rows.push(`<div class="li"><span class="icon tag">&#9878;</span><div style="flex:1"><div class="n">${esc(name)}</div><div class="p">${esc(itemId)}</div></div><div class="li-actions">${existing ? '<span class="mapped-badge">Linked consumer</span>' : ''}${isConsumer ? '<span class="pill" style="padding:1px 6px;font-size:10px">Consumer</span>' : ''}${isProvider ? '<span class="pill" style="padding:1px 6px;font-size:10px">Provider</span>' : ''}<button class="btn ghost" data-action="pick-link-consumer" data-source-id="${attr(source.sourceId)}" data-item-id="${attr(itemId)}" data-name="${attr(name)}">Consumer</button><button class="btn ghost" data-action="pick-link-provider" data-source-id="${attr(source.sourceId)}" data-item-id="${attr(itemId)}" data-name="${attr(name)}">Provider</button></div></div>`);
-    }
-    el('linkBrowseTree').innerHTML = rows.length ? rows.join('') : '<span class="msg">No tags or folders here.</span>';
-    el('linkBrowseStatus').textContent = branches.length + ' folders · ' + tags.length + ' tags';
-    renderLinksView();
 }
 function renderCrumb() {
     const bc = el('tagBreadcrumb');
@@ -5277,25 +6437,15 @@ function bindDynamicButtons() {
         }
         browseTags(link.dataset.crumb || '').catch(e => el('tagTree').innerHTML = `<span class="bad">${esc(e.message)}</span>`);
     });
-    el('linkBrowseTree').addEventListener('click', event => {
-        const actionEl = event.target.closest('[data-action]');
-        if (!actionEl) return;
-        if (actionEl.dataset.action === 'open-link-branch') {
-            browseLinkTags(actionEl.dataset.path || '').catch(e => el('linkBrowseTree').innerHTML = `<span class="bad">${esc(e.message)}</span>`);
-            return;
-        }
-        if (actionEl.tagName === 'BUTTON' && actionEl.dataset.action === 'pick-link-consumer') {
-            setLinkDraftSelection('consumer', actionEl.dataset.sourceId || '', actionEl.dataset.itemId || '', actionEl.dataset.name || '');
-            return;
-        }
-        if (actionEl.tagName === 'BUTTON' && actionEl.dataset.action === 'pick-link-provider') {
-            setLinkDraftSelection('provider', actionEl.dataset.sourceId || '', actionEl.dataset.itemId || '', actionEl.dataset.name || '');
-        }
+    el('interlinkConsumerList').addEventListener('click', event => {
+        const btn = event.target.closest('button[data-action="pick-interlink-consumer"]');
+        if (!btn) return;
+        setInterlinkSelection('consumer', btn.dataset.sourceId || '', btn.dataset.itemId || '', btn.dataset.name || '');
     });
-    el('linkBrowseBreadcrumb').addEventListener('click', event => {
-        const link = event.target.closest('a[data-link-crumb]');
-        if (!link) return;
-        browseLinkTags(link.dataset.linkCrumb || '').catch(e => el('linkBrowseTree').innerHTML = `<span class="bad">${esc(e.message)}</span>`);
+    el('interlinkProviderList').addEventListener('click', event => {
+        const btn = event.target.closest('button[data-action="pick-interlink-provider"]');
+        if (!btn) return;
+        setInterlinkSelection('provider', btn.dataset.sourceId || '', btn.dataset.itemId || '', btn.dataset.name || '');
     });
     el('mappedList').addEventListener('click', event => {
         const row = event.target.closest('[data-action="open-faceplate"]');
@@ -5316,7 +6466,25 @@ function bindDynamicButtons() {
                 const simulated = el('fpSimulated').checked;
                 payload.displayName = el('fpDisplayName').value.trim() || itemId;
                 payload.accessRights = el('fpAccess').value;
-                payload.pollRateMs = Number.parseInt(el('fpPollRate').value, 10) || 0;
+                const rateValue = el('fpPollRate').value;
+                if (rateValue.startsWith('@')) {
+                    // legacy fixed rate kept until the user picks something else
+                    payload.daGroup = null;
+                    payload.pollRateMs = Number.parseInt(rateValue.slice(1), 10) || 0;
+                } else if (!rateValue) {
+                    payload.daGroup = null;          // Source Default
+                    payload.pollRateMs = 0;
+                } else if (/^\d+$/.test(rateValue)) {
+                    payload.daGroup = null;          // plain numeric legacy choice
+                    payload.pollRateMs = Number.parseInt(rateValue, 10);
+                } else {
+                    payload.daGroup = rateValue;     // named DA group
+                    const srcId = el('fpApply').dataset.sourceId || sourceId;
+                    payload.pollRateMs = daGroupRateFor(srcId, rateValue) || 1000;
+                }
+                if (el('fpSubscriptionField') && el('fpSubscriptionField').style.display !== 'none' && el('fpSubscription')) {
+                    payload.subscription = el('fpSubscription').value.trim(); // '' = source default
+                }
                 payload.deadbandPct = Math.max(0, Math.min(100, Number.parseFloat(el('fpDeadband').value) || 0));
                 payload.description = el('fpDescription').value.trim() || null;
                 if (simulated) {
@@ -5352,6 +6520,9 @@ function bindDynamicButtons() {
         }
         if (target.id === 'fpAccess') {
             updateManualInputState();
+        }
+        if (target.id === 'fpSubscription') {
+            updateFpRateEnabled();
         }
     });
 }
@@ -5443,6 +6614,31 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch (err) { el('configMessage').textContent = '✗ ' + err.message; }
         e.target.value = '';
     });
+    const ioModeSel = el('cfgIoMode');
+    if (ioModeSel) ioModeSel.addEventListener('change', async () => {
+        const ioModeHint = el('ioModeHint');
+        if (state.editingNewSource) {
+            if (ioModeHint) ioModeHint.textContent = 'Will apply when the source is saved.';
+            showSaveReset();
+            return;
+        }
+        const src = currentSource();
+        if (!src) return;
+        try {
+            const r = await fetch('/api/da/sources/io-mode', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sourceId: src.sourceId, ioMode: ioModeSel.value })
+            });
+            const p = await r.json();
+            if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
+            if (ioModeHint) ioModeHint.textContent = 'Applied live — requested: ' + p.ioMode + ' · effective: see Read Mode above';
+            await loadSources();
+            await refresh();
+        } catch (err) {
+            if (ioModeHint) ioModeHint.textContent = '✗ ' + err.message;
+        }
+    });
     el('cfgUseSubscriptions').addEventListener('change', async e => {
         try {
             const r = await fetch('/api/da/use-subscriptions', {
@@ -5487,19 +6683,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         state.logsLoaded = false;
         loadLogs(true).catch(e => el('logMessage').textContent = '✗ ' + e.message);
     });
-    el('btnBrowseLinkTags').addEventListener('click', () => browseLinkTags('').catch(e => el('linkBrowseTree').innerHTML = `<span class="bad">${esc(e.message)}</span>`));
-    el('btnBrowseAllLinkTags').addEventListener('click', () => browseLinkTags('', true).catch(e => el('linkBrowseTree').innerHTML = `<span class="bad">${esc(e.message)}</span>`));
-    el('btnSetLink').addEventListener('click', () => saveDaLink(state.linkDraft.consumer ? state.linkDraft.consumer.key : '', state.linkDraft.provider ? state.linkDraft.provider.key : '').catch(e => el('linksMessage').textContent = '✗ ' + e.message));
+    el('btnSetLink').addEventListener('click', () => saveInterlink(state.interlinkDraft.consumer ? state.interlinkDraft.consumer.key : '', state.interlinkDraft.provider ? state.interlinkDraft.provider.key : '').catch(e => el('linksMessage').textContent = '✗ ' + e.message));
     el('btnClearLink').addEventListener('click', () => {
-        const consumerKey = state.linkDraft.consumer ? state.linkDraft.consumer.key : '';
-        const existing = findDaLinkByConsumer(consumerKey);
-        deleteDaLink(existing ? (existing.id || existing.Id || '') : '').catch(e => el('linksMessage').textContent = '✗ ' + e.message);
+        const consumerKey = state.interlinkDraft.consumer ? state.interlinkDraft.consumer.key : '';
+        const existing = findInterlinkByConsumer(consumerKey);
+        deleteInterlink(existing ? (existing.id || existing.Id || '') : '').catch(e => el('linksMessage').textContent = '✗ ' + e.message);
     });
-    el('btnClearLinkSelection').addEventListener('click', () => clearLinkDraftSelection());
+    el('btnClearLinkSelection').addEventListener('click', () => clearInterlinkDraftSelection());
     el('linksList').addEventListener('click', event => {
         const btn = event.target.closest('button[data-action="unlink"]');
         if (!btn) return;
-        deleteDaLink(btn.dataset.linkId || '').catch(e => el('linksMessage').textContent = '✗ ' + e.message);
+        deleteInterlink(btn.dataset.linkId || '').catch(e => el('linksMessage').textContent = '✗ ' + e.message);
     });
     bindDynamicButtons();
     const LEGACY_TAB_TO_ROUTE = {
@@ -5507,9 +6701,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       connection: 'connectivity/sources',
       'opc-da': 'connectivity/opc-da',
       'opc-ua': 'connectivity/opc-ua',
-      diagnostics: 'connectivity/diagnostics',
+      diagnostics: 'ops/diagnostics',
+      sessions: 'ops/sessions',
       tags: 'tags/maps',
-      links: 'tags/links',
+      links: 'tags/interlinks',
       logs: 'ops/logs',
       mqtt: 'iot/mqtt',
       'iot-traffic': 'iot/traffic',

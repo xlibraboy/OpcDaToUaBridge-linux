@@ -1,5 +1,5 @@
 param(
-    [string]$TaskName = 'OpcDaToUaBridge',
+    [string]$TaskName = 'OpcBridge',
     [string]$HealthUrl = '',
     [int]$ProbeSeconds = 20,
     # S4U runs the bridge in session 0 (no interactive desktop). Use 'Interactive'
@@ -40,20 +40,38 @@ if (-not $HealthUrl) {
      throw "Publish dll not found: $publishDll"
  }
 
-if (-not (Test-Path $cmdScript)) {
-    throw "Launcher cmd not found: $cmdScript"
-}
-
  Get-CimInstance Win32_Process | Where-Object {
      $_.Name -eq 'OpcBridge.App.exe' -or ($_.Name -eq 'dotnet.exe' -and ($_.CommandLine -like '*OpcBridge.App.dll*' -or $_.CommandLine -like '*OpcBridge.App*'))
  } | ForEach-Object {
      Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue
  }
 
-$action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument "/c `"$cmdScript`""
-$trigger = New-ScheduledTaskTrigger -AtStartup
-$principal = New-ScheduledTaskPrincipal -UserId "$env:COMPUTERNAME\$env:USERNAME" -LogonType $LogonType -RunLevel Highest
-$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 0)
+# Prefer direct apphost exe — for Interactive use hidden PowerShell wrapper with -Wait so no visible conhost and task stays Running
+ $publishExe = Join-Path $publishDir 'OpcBridge.App.exe'
+ if (Test-Path $publishExe) {
+     if ($LogonType -eq 'Interactive') {
+         $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -Command `"Start-Process -FilePath '$publishExe' -WorkingDirectory '$publishDir' -WindowStyle Hidden -Wait`""
+     } else {
+         $action = New-ScheduledTaskAction -Execute $publishExe -WorkingDirectory $publishDir
+     }
+     $cmdScriptExists = $true
+ } else {
+     if (-not (Test-Path $cmdScript)) { throw "Launcher cmd not found: $cmdScript and apphost exe not found: $publishExe" }
+     $action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument "/c `"$cmdScript`""
+     $cmdScriptExists = Test-Path $cmdScript
+ }
+if ($LogonType -eq 'Interactive') {
+    $trigger = @(
+        (New-ScheduledTaskTrigger -AtStartup)
+        (New-ScheduledTaskTrigger -AtLogOn -User "$env:COMPUTERNAME\$env:USERNAME")
+    )
+    $principal = New-ScheduledTaskPrincipal -UserId "$env:COMPUTERNAME\$env:USERNAME" -LogonType Interactive -RunLevel Highest
+    $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 0) -Hidden
+} else {
+    $trigger = New-ScheduledTaskTrigger -AtStartup
+    $principal = New-ScheduledTaskPrincipal -UserId "$env:COMPUTERNAME\$env:USERNAME" -LogonType S4U -RunLevel Highest
+    $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Hours 0)
+}
 
 $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 if ($existing) {

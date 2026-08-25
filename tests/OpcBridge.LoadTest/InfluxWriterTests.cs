@@ -7,6 +7,10 @@ using Xunit;
 
 namespace OpcBridge.LoadTest;
 
+// Joins InterlinkApiAppCollection because MappingStore_Preserves_InfluxEnabled deletes and
+// recreates AppContext.BaseDirectory/mappings.json — the same shared file other
+// MappingStore tests round-trip; parallel collections would race on it.
+[Collection(nameof(InterlinkApiAppCollection))]
 public sealed class InfluxWriterTests
 {
     [Fact]

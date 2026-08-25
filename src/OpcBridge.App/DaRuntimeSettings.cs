@@ -144,6 +144,245 @@ public sealed class DaRuntimeSettings
         }
     }
 
+    /// <summary>Add/update a named UA subscription on an OpcUa-type source. Throws ArgumentException on invalid input.</summary>
+    public DaRuntimeSettingsSnapshot UpsertUaSubscription(string sourceId, string name, int updateRateMs)
+    {
+        if (updateRateMs <= 0)
+        {
+            throw new ArgumentException("Update rate must be a positive number of milliseconds.", nameof(updateRateMs));
+        }
+
+        string trimmed = (name ?? string.Empty).Trim();
+        if (trimmed.Length == 0 || trimmed.Length > 64)
+        {
+            throw new ArgumentException("Subscription name must be 1-64 characters.", nameof(name));
+        }
+
+        int clampedRate = Math.Max(100, updateRateMs);
+
+        lock (sync_)
+        {
+            List<DaSourceRuntimeSettings> sources = snapshot_.Sources.ToList();
+            int index = sources.FindIndex(source =>
+                string.Equals(source.SourceId, sourceId, StringComparison.OrdinalIgnoreCase));
+
+            if (index < 0)
+            {
+                throw new ArgumentException($"Source '{sourceId}' does not exist.", nameof(sourceId));
+            }
+
+            if (!string.Equals(sources[index].SourceType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException(
+                    $"Source '{sourceId}' is not an OPC UA source; subscriptions apply to OPC UA sources only.",
+                    nameof(sourceId));
+            }
+
+            DaSourceRuntimeSettings current = sources[index];
+            List<UaSubscriptionSettings> subs = SourceConfigMigration
+                .NormalizeUaSubscriptions(current.UaSubscriptions)
+                .ToList();
+            UaSubscriptionSettings updated = new(trimmed, clampedRate);
+            int subIndex = subs.FindIndex(s => string.Equals(s.Name, trimmed, StringComparison.OrdinalIgnoreCase));
+            if (subIndex >= 0)
+            {
+                subs[subIndex] = updated;
+            }
+            else
+            {
+                if (subs.Count >= SourceConfigMigration.MaxUaSubscriptionsPerSource)
+                {
+                    throw new ArgumentException(
+                        $"Source '{sourceId}' already has the maximum of {SourceConfigMigration.MaxUaSubscriptionsPerSource} named subscriptions.");
+                }
+                subs.Add(updated);
+            }
+
+            sources[index] = current with
+            {
+                OpcUa = (current.OpcUa ?? new OpcUaSourceOptions(string.Empty, "None", "None", null, null, 60000, 5000))
+                    with { Subscriptions = subs }
+            };
+            snapshot_ = snapshot_ with
+            {
+                Sources = sources,
+                Version = snapshot_.Version + 1
+            };
+
+            Persist();
+            return snapshot_;
+        }
+    }
+
+    /// <summary>Remove a named UA subscription. Throws ArgumentException when the source/sub doesn't exist.</summary>
+    public DaRuntimeSettingsSnapshot RemoveUaSubscription(string sourceId, string name)
+    {
+        string trimmed = (name ?? string.Empty).Trim();
+
+        lock (sync_)
+        {
+            List<DaSourceRuntimeSettings> sources = snapshot_.Sources.ToList();
+            int index = sources.FindIndex(source =>
+                string.Equals(source.SourceId, sourceId, StringComparison.OrdinalIgnoreCase));
+
+            if (index < 0)
+            {
+                throw new ArgumentException($"Source '{sourceId}' does not exist.", nameof(sourceId));
+            }
+
+            DaSourceRuntimeSettings current = sources[index];
+            List<UaSubscriptionSettings> subs = SourceConfigMigration
+                .NormalizeUaSubscriptions(current.UaSubscriptions)
+                .ToList();
+            int subIndex = subs.FindIndex(s => string.Equals(s.Name, trimmed, StringComparison.OrdinalIgnoreCase));
+            if (subIndex < 0)
+            {
+                throw new ArgumentException($"Subscription '{trimmed}' does not exist on source '{sourceId}'.");
+            }
+
+            subs.RemoveAt(subIndex);
+            sources[index] = current with
+            {
+                OpcUa = (current.OpcUa ?? new OpcUaSourceOptions(string.Empty, "None", "None", null, null, 60000, 5000))
+                    with { Subscriptions = subs }
+            };
+            snapshot_ = snapshot_ with
+            {
+                Sources = sources,
+                Version = snapshot_.Version + 1
+            };
+
+            Persist();
+            return snapshot_;
+        }
+    }
+
+    /// <summary>
+    /// Sets the per-source client I/O mode (AutoDetect | Sync | Async20). Invalid or
+    /// unknown values normalize to AutoDetect. Returns the updated snapshot, or the
+    /// unchanged snapshot when the source does not exist.
+    /// </summary>
+    public DaRuntimeSettingsSnapshot SetSourceIoMode(string sourceId, string ioMode)
+    {
+        string normalizedMode = SourceConfigMigration.NormalizeIoMode(ioMode);
+
+        lock (sync_)
+        {
+            List<DaSourceRuntimeSettings> sources = snapshot_.Sources.ToList();
+            int index = sources.FindIndex(source =>
+                string.Equals(source.SourceId, sourceId, StringComparison.OrdinalIgnoreCase));
+
+            if (index < 0)
+            {
+                return snapshot_;
+            }
+
+            sources[index] = sources[index] with { IoMode = normalizedMode };
+            snapshot_ = snapshot_ with
+            {
+                Sources = sources,
+                Version = snapshot_.Version + 1
+            };
+
+            Persist();
+            return snapshot_;
+        }
+    }
+
+    /// <summary>
+    /// Sets the per-group I/O mode override (AutoDetect | Sync | Async20) for a rate
+    /// bucket of an OPC DA source, upserting by rate. Invalid modes normalize to
+    /// AutoDetect; rates below the OPC DA minimum (100 ms) are rejected.
+    /// </summary>
+    public DaRuntimeSettingsSnapshot SetSourceGroupIoMode(string sourceId, string name, int rate, string ioMode)
+    {
+        if (rate < 100 || string.IsNullOrWhiteSpace(name))
+        {
+            return snapshot_;
+        }
+
+        string normalizedMode = SourceConfigMigration.NormalizeIoMode(ioMode);
+        string trimmedName = name.Trim();
+
+        lock (sync_)
+        {
+            List<DaSourceRuntimeSettings> sources = snapshot_.Sources.ToList();
+            int index = sources.FindIndex(source =>
+                string.Equals(source.SourceId, sourceId, StringComparison.OrdinalIgnoreCase));
+
+            if (index < 0 || sources[index].OpcDa is null)
+            {
+                return snapshot_;
+            }
+
+            DaSourceRuntimeSettings current = sources[index];
+            List<DaGroupIoMode> groups = current.OpcDa!.GroupIoModes?.ToList() ?? new();
+            groups.RemoveAll(g => string.Equals(g.Name, trimmedName, StringComparison.OrdinalIgnoreCase));
+            groups.Add(new DaGroupIoMode(trimmedName, rate, normalizedMode));
+            groups.Sort((a, b) => string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase));
+
+            sources[index] = current with
+            {
+                OpcDa = current.OpcDa with { GroupIoModes = groups }
+            };
+            snapshot_ = snapshot_ with
+            {
+                Sources = sources,
+                Version = snapshot_.Version + 1
+            };
+
+            Persist();
+            return snapshot_;
+        }
+    }
+
+    /// <summary>
+    /// Removes the per-group I/O mode override for one group by name, or by rate for back-compat,
+    /// or for every bucket when both are null (revert to source-level mode).
+    /// </summary>
+    public DaRuntimeSettingsSnapshot ResetSourceGroupIoMode(string sourceId, string? name, int? rate)
+    {
+        lock (sync_)
+        {
+            List<DaSourceRuntimeSettings> sources = snapshot_.Sources.ToList();
+            int index = sources.FindIndex(source =>
+                string.Equals(source.SourceId, sourceId, StringComparison.OrdinalIgnoreCase));
+
+            if (index < 0 || sources[index].OpcDa is null)
+            {
+                return snapshot_;
+            }
+
+            DaSourceRuntimeSettings current = sources[index];
+            List<DaGroupIoMode> groups = current.OpcDa!.GroupIoModes?.ToList() ?? new();
+            if (string.IsNullOrWhiteSpace(name) && rate is null)
+            {
+                groups.Clear();
+            }
+            else if (!string.IsNullOrWhiteSpace(name))
+            {
+                groups.RemoveAll(g => string.Equals(g.Name, name!.Trim(), StringComparison.OrdinalIgnoreCase));
+            }
+            else
+            {
+                groups.RemoveAll(g => g.Rate == rate!.Value);
+            }
+
+            sources[index] = current with
+            {
+                OpcDa = current.OpcDa with { GroupIoModes = groups.Count == 0 ? null : groups }
+            };
+            snapshot_ = snapshot_ with
+            {
+                Sources = sources,
+                Version = snapshot_.Version + 1
+            };
+
+            Persist();
+            return snapshot_;
+        }
+    }
+
     public DaRuntimeSettingsSnapshot SetUseSubscriptions(bool enabled)
     {
         lock (sync_)
@@ -366,12 +605,20 @@ public sealed record DaRuntimeSettingsSnapshot(
     }
 }
 
+/// <summary>
+/// Per-rate-group I/O mode override for an OPC DA source. <c>Rate</c> is the group
+/// identity (the poll-rate bucket in ms); <c>IoMode</c> is one of AutoDetect,
+/// Sync or Async20 and overrides the source-level I/O mode for that group only.
+/// </summary>
+public sealed record DaGroupIoMode(string Name, int Rate, string IoMode);
+
 public sealed record OpcDaSourceOptions(
     string ProgId,
     string Host,
     string? RemoteUsername,
     string? RemotePassword,
-    string? RemoteDomain);
+    string? RemoteDomain,
+    IReadOnlyList<DaGroupIoMode>? GroupIoModes = null);
 
 public sealed record OpcUaSourceOptions(
     string EndpointUrl,
@@ -381,7 +628,8 @@ public sealed record OpcUaSourceOptions(
     string? Password,
     int SessionTimeoutMs,
     int ReconnectDelayMs,
-    int WatchdogTimeoutMs = 60000);
+    int WatchdogTimeoutMs = 60000,
+    IReadOnlyList<UaSubscriptionSettings>? Subscriptions = null);
 
 public sealed record MelsecA3nSourceOptions(
     string Transport,
@@ -424,7 +672,8 @@ public sealed record DaSourceRuntimeSettings(
     OpcUaSourceOptions? OpcUa,
     MelsecA3nSourceOptions? Melsec,
     S7200PpiSourceOptions? S7200,
-    MxComponentSourceOptions? MxComponent)
+    MxComponentSourceOptions? MxComponent,
+    string IoMode = "AutoDetect")
 {
     // Compat getters — flat access for Program/UI during Phase 1.
     public string ProgId => OpcDa?.ProgId ?? string.Empty;
@@ -447,6 +696,8 @@ public sealed record DaSourceRuntimeSettings(
     public int LogicalStationNumber => MxComponent?.LogicalStationNumber ?? 0;
     public int MxComponentTimeoutMs => MxComponent?.TimeoutMs ?? 3000;
     public int MxComponentRetryCount => MxComponent?.RetryCount ?? 2;
+    /// <summary>Per-group I/O mode overrides (rate bucket → mode); empty when none configured.</summary>
+    public IReadOnlyList<DaGroupIoMode> GroupIoModes => OpcDa?.GroupIoModes ?? [];
     public string EndpointUrl => OpcUa?.EndpointUrl ?? string.Empty;
     public string SecurityMode => OpcUa?.SecurityMode ?? "None";
     public string SecurityPolicy => OpcUa?.SecurityPolicy ?? "None";
@@ -456,7 +707,40 @@ public sealed record DaSourceRuntimeSettings(
     public int ReconnectDelayMs => OpcUa?.ReconnectDelayMs ?? 5000;
     public int WatchdogTimeoutMs => OpcUa?.WatchdogTimeoutMs ?? 60000;
 
-    public DaClientOptions ToOptions(bool useSubscriptions)
+    /// <summary>Named UA subscription definitions; empty for non-UA sources or legacy configs.</summary>
+    public IReadOnlyList<UaSubscriptionSettings> UaSubscriptions
+        => OpcUa?.Subscriptions ?? Array.Empty<UaSubscriptionSettings>();
+
+    /// <summary>Order-insensitive comparison of named-subscription definitions (case-insensitive names).</summary>
+    public bool UaSubscriptionsEqual(DaSourceRuntimeSettings other)
+    {
+        IReadOnlyList<UaSubscriptionSettings> left = UaSubscriptions;
+        IReadOnlyList<UaSubscriptionSettings> right = other.UaSubscriptions;
+        if (left.Count != right.Count)
+        {
+            return false;
+        }
+
+        Dictionary<string, int> byName = new(StringComparer.OrdinalIgnoreCase);
+        foreach (UaSubscriptionSettings s in left)
+        {
+            byName[s.Name.Trim()] = s.UpdateRateMs;
+        }
+
+        foreach (UaSubscriptionSettings s in right)
+        {
+            string key = s.Name.Trim();
+            if (!byName.TryGetValue(key, out int rate) || rate != s.UpdateRateMs)
+            {
+                return false;
+            }
+            byName.Remove(key);
+        }
+
+        return byName.Count == 0;
+    }
+
+    public DaClientOptions ToOptions(bool useSubscriptions, string? ioMode = null)
     {
         OpcDaSourceOptions da = OpcDa ?? new OpcDaSourceOptions(string.Empty, "localhost", null, null, null);
         return new DaClientOptions
@@ -467,10 +751,31 @@ public sealed record DaSourceRuntimeSettings(
             Host = da.Host,
             UpdateRateMs = UpdateRateMs,
             UseSubscriptions = useSubscriptions,
+            IoMode = string.IsNullOrWhiteSpace(ioMode) ? IoMode : ioMode,
             RemoteUsername = da.RemoteUsername,
             RemotePassword = da.RemotePassword,
-            RemoteDomain = da.RemoteDomain
+            RemoteDomain = da.RemoteDomain,
+            GroupIoModes = BuildGroupIoModeMap(da.GroupIoModes)
         };
+    }
+
+    private static IReadOnlyDictionary<int, string> BuildGroupIoModeMap(IReadOnlyList<DaGroupIoMode>? groups)
+    {
+        Dictionary<int, string> map = new();
+        if (groups is null)
+        {
+            return map;
+        }
+
+        foreach (DaGroupIoMode group in groups)
+        {
+            if (group.Rate > 0)
+            {
+                map[group.Rate] = group.IoMode;
+            }
+        }
+
+        return map;
     }
 
     public OpcBridge.Ua.OpcUaSourceClientOptions ToUaOptions(DaRuntimeSettingsSnapshot settings)
@@ -489,7 +794,8 @@ public sealed record DaSourceRuntimeSettings(
             UpdateRateMs = UpdateRateMs,
             SessionTimeoutMs = ua.SessionTimeoutMs,
             ReconnectDelayMs = ua.ReconnectDelayMs,
-            UseSubscriptions = effectiveUseSubscriptions
+            UseSubscriptions = effectiveUseSubscriptions,
+            Subscriptions = UaSubscriptions
         };
     }
 }
@@ -509,6 +815,7 @@ public sealed class SourceConfigDto
 
     // Shared header
     public bool UseSubscriptions { get; set; } = true;
+    public string IoMode { get; set; } = "AutoDetect";
     public int UpdateRateMs { get; set; }
     public int MaxMappedTags { get; set; }
 
@@ -553,6 +860,14 @@ public sealed class OpcDaSourceOptionsDto
     public string? RemoteUsername { get; set; }
     public string? RemotePassword { get; set; }
     public string? RemoteDomain { get; set; }
+    public List<DaGroupIoModeDto>? Groups { get; set; }
+}
+
+public sealed class DaGroupIoModeDto
+{
+    public string? Name { get; set; }
+    public int Rate { get; set; }
+    public string? IoMode { get; set; }
 }
 
 public sealed class OpcUaSourceOptionsDto
@@ -568,6 +883,13 @@ public sealed class OpcUaSourceOptionsDto
     public int ReconnectDelayMs { get; set; }
     public int MaxMappedTags { get; set; }
     public int? WatchdogTimeoutMs { get; set; }
+    public List<UaSubscriptionDto>? Subscriptions { get; set; }
+}
+
+public sealed class UaSubscriptionDto
+{
+    public string? Name { get; set; }
+    public int UpdateRateMs { get; set; }
 }
 
 public sealed class MelsecA3nSourceOptionsDto
@@ -607,6 +929,14 @@ public sealed class MxComponentSourceOptionsDto
 
 public static class SourceConfigMigration
 {
+    /// <summary>Canonical per-source client I/O mode; unknown values default to AutoDetect.</summary>
+    public static string NormalizeIoMode(string? ioMode)
+    {
+        if (string.Equals(ioMode, "Sync", StringComparison.OrdinalIgnoreCase)) return "Sync";
+        if (string.Equals(ioMode, "Async20", StringComparison.OrdinalIgnoreCase)) return "Async20";
+        return "AutoDetect";
+    }
+
     public static DaSourceRuntimeSettings FromDto(SourceConfigDto dto, int defaultUpdateRate)
     {
         string sourceType = NormalizeSourceType(dto.SourceType);
@@ -629,7 +959,8 @@ public static class SourceConfigMigration
                 dto.OpcDa.Host ?? string.Empty,
                 dto.OpcDa.RemoteUsername,
                 dto.OpcDa.RemotePassword,
-                dto.OpcDa.RemoteDomain);
+                dto.OpcDa.RemoteDomain,
+                NormalizeGroupIoModes(dto.OpcDa.Groups?.Select(g => new DaGroupIoMode(g.Name ?? $"OpcBridge_{g.Rate}", g.Rate, g.IoMode ?? string.Empty))));
         }
         else if (HasFlatDa(dto))
         {
@@ -651,7 +982,10 @@ public static class SourceConfigMigration
                 FirstNonEmpty(dto.OpcUa.Password, dto.OpcUa.UaPassword),
                 dto.OpcUa.SessionTimeoutMs,
                 dto.OpcUa.ReconnectDelayMs,
-                dto.OpcUa.WatchdogTimeoutMs ?? 60000);
+                dto.OpcUa.WatchdogTimeoutMs ?? 60000,
+                dto.OpcUa.Subscriptions is { Count: > 0 }
+                    ? dto.OpcUa.Subscriptions.Select(d => new UaSubscriptionSettings(d.Name ?? string.Empty, d.UpdateRateMs)).ToList()
+                    : null);
         }
         else if (HasFlatUa(dto))
         {
@@ -750,7 +1084,8 @@ public static class SourceConfigMigration
                 dto.Host ?? string.Empty,
                 dto.RemoteUsername,
                 dto.RemotePassword,
-                dto.RemoteDomain);
+                dto.RemoteDomain,
+                NormalizeGroupIoModes(dto.OpcDa?.Groups?.Select(g => new DaGroupIoMode(g.Name ?? $"OpcBridge_{g.Rate}", g.Rate, g.IoMode ?? string.Empty))));
         }
         else if (string.Equals(sourceType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase) && opcUa is null)
         {
@@ -810,7 +1145,8 @@ public static class SourceConfigMigration
             opcUa,
             melsec,
             s7200,
-            mx), defaultUpdateRate);
+            mx,
+            NormalizeIoMode(dto.IoMode)), defaultUpdateRate);
     }
 
     public static SourceConfigDto ToDto(DaSourceRuntimeSettings source)
@@ -823,6 +1159,7 @@ public static class SourceConfigMigration
             SourceType = source.SourceType,
             UpdateRateMs = source.UpdateRateMs,
             UseSubscriptions = source.UseSubscriptions,
+            IoMode = NormalizeIoMode(source.IoMode),
             MaxMappedTags = source.MaxMappedTags,
             OpcDa = source.OpcDa is null ? null : new OpcDaSourceOptionsDto
             {
@@ -830,7 +1167,10 @@ public static class SourceConfigMigration
                 Host = source.OpcDa.Host,
                 RemoteUsername = source.OpcDa.RemoteUsername,
                 RemotePassword = source.OpcDa.RemotePassword,
-                RemoteDomain = source.OpcDa.RemoteDomain
+                RemoteDomain = source.OpcDa.RemoteDomain,
+                Groups = source.OpcDa.GroupIoModes is null || source.OpcDa.GroupIoModes.Count == 0
+                    ? null
+                    : source.OpcDa.GroupIoModes.Select(g => new DaGroupIoModeDto { Name = g.Name, Rate = g.Rate, IoMode = g.IoMode }).ToList()
             },
             OpcUa = source.OpcUa is null ? null : new OpcUaSourceOptionsDto
             {
@@ -841,7 +1181,10 @@ public static class SourceConfigMigration
                 Password = source.OpcUa.Password,
                 SessionTimeoutMs = source.OpcUa.SessionTimeoutMs,
                 ReconnectDelayMs = source.OpcUa.ReconnectDelayMs,
-                WatchdogTimeoutMs = source.OpcUa.WatchdogTimeoutMs
+                WatchdogTimeoutMs = source.OpcUa.WatchdogTimeoutMs,
+                Subscriptions = source.UaSubscriptions.Count == 0
+                    ? null
+                    : source.UaSubscriptions.Select(s => new UaSubscriptionDto { Name = s.Name, UpdateRateMs = s.UpdateRateMs }).ToList()
             },
             Melsec = source.Melsec is null ? null : new MelsecA3nSourceOptionsDto
             {
@@ -911,7 +1254,8 @@ public static class SourceConfigMigration
                 string.IsNullOrWhiteSpace(raw.Password) ? null : raw.Password,
                 raw.SessionTimeoutMs <= 0 ? 60000 : raw.SessionTimeoutMs,
                 raw.ReconnectDelayMs <= 0 ? 5000 : raw.ReconnectDelayMs,
-                raw.WatchdogTimeoutMs < 0 ? 0 : raw.WatchdogTimeoutMs);
+                raw.WatchdogTimeoutMs < 0 ? 0 : raw.WatchdogTimeoutMs,
+                NormalizeUaSubscriptions(raw.Subscriptions));
         }
         else if (string.Equals(sourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase))
         {
@@ -992,7 +1336,8 @@ public static class SourceConfigMigration
                 string.IsNullOrWhiteSpace(raw.Host) ? "localhost" : raw.Host.Trim(),
                 string.IsNullOrWhiteSpace(raw.RemoteUsername) ? null : raw.RemoteUsername.Trim(),
                 string.IsNullOrWhiteSpace(raw.RemotePassword) ? null : raw.RemotePassword,
-                string.IsNullOrWhiteSpace(raw.RemoteDomain) ? null : raw.RemoteDomain.Trim());
+                string.IsNullOrWhiteSpace(raw.RemoteDomain) ? null : raw.RemoteDomain.Trim(),
+                NormalizeGroupIoModes(raw.GroupIoModes));
         }
 
         return new DaSourceRuntimeSettings(
@@ -1006,7 +1351,76 @@ public static class SourceConfigMigration
             opcUa,
             melsec,
             s7200,
-            mx);
+            mx,
+            NormalizeIoMode(source.IoMode));
+    }
+
+    /// <summary>
+    /// Validates and canonicalizes a list of per-group I/O mode overrides: drops
+    /// rates below the OPC DA minimum, dedupes by name (last wins, case-insensitive) and sorts by
+    /// name. Returns null when nothing remains so configs stay clean on disk.
+    /// </summary>
+    public static IReadOnlyList<DaGroupIoMode>? NormalizeGroupIoModes(IEnumerable<DaGroupIoMode>? groups)
+    {
+        if (groups is null)
+        {
+            return null;
+        }
+
+        Dictionary<string, DaGroupIoMode> byName = new(StringComparer.OrdinalIgnoreCase);
+        foreach (DaGroupIoMode group in groups)
+        {
+            if (group.Rate >= 100 && !string.IsNullOrWhiteSpace(group.Name))
+            {
+                string name = group.Name.Trim();
+                byName[name] = new DaGroupIoMode(name, group.Rate, NormalizeIoMode(group.IoMode));
+            }
+            else if (group.Rate >= 100)
+            {
+                // Back-compat: groups without name get auto-name OpcBridge_<Rate>
+                string autoName = $"OpcBridge_{group.Rate}";
+                byName[autoName] = new DaGroupIoMode(autoName, group.Rate, NormalizeIoMode(group.IoMode));
+            }
+        }
+
+        if (byName.Count == 0)
+        {
+            return null;
+        }
+
+        return byName.Values
+            .OrderBy(g => g.Name)
+            .ToArray();
+    }
+
+    public const int MaxUaSubscriptionsPerSource = 16;
+
+    /// <summary>Trim names, dedupe case-insensitively (first wins), clamp rates to >= 100 ms, drop blanks.</summary>
+    public static IReadOnlyList<UaSubscriptionSettings> NormalizeUaSubscriptions(
+        IEnumerable<UaSubscriptionSettings>? subscriptions)
+    {
+        if (subscriptions is null)
+        {
+            return Array.Empty<UaSubscriptionSettings>();
+        }
+
+        Dictionary<string, UaSubscriptionSettings> result = new(StringComparer.OrdinalIgnoreCase);
+        foreach (UaSubscriptionSettings sub in subscriptions)
+        {
+            string name = sub.Name?.Trim() ?? string.Empty;
+            if (name.Length == 0)
+            {
+                continue;
+            }
+
+            int rate = Math.Max(100, sub.UpdateRateMs);
+            if (!result.ContainsKey(name))
+            {
+                result[name] = new UaSubscriptionSettings(name, rate);
+            }
+        }
+
+        return result.Values.ToList();
     }
 
     private static bool HasFlatDa(SourceConfigDto dto) =>

@@ -6,39 +6,76 @@ namespace OpcBridge.LoadTest;
 public sealed class DashboardPageTests
 {
     [Fact]
-    public void Html_UsesDedicatedDaLinksBrowseWorkflow()
+    public void Html_InterlinksViewUsesMappedTagPickers()
     {
         Assert.DoesNotContain("id=\"fpProvider\"", DashboardPage.Html);
         Assert.DoesNotContain("Set up links from a tag's faceplate", DashboardPage.Html);
-        Assert.DoesNotContain("id=\"linkConsumerSelect\"", DashboardPage.Html);
-        Assert.DoesNotContain("id=\"linkProviderSelect\"", DashboardPage.Html);
-        Assert.Contains("DA Links", DashboardPage.Html);
-        Assert.Contains("id=\"linkSourceStatus\"", DashboardPage.Html);
-        Assert.Contains("id=\"linkBrowseTree\"", DashboardPage.Html);
+        // Renamed surface: sidebar entry under Tags, route, and view id.
+        Assert.Contains(">Interlinks</button>", DashboardPage.Html);
+        Assert.Contains("data-route=\"tags/interlinks\"", DashboardPage.Html);
+        Assert.Contains("id=\"view-interlinks\"", DashboardPage.Html);
+        Assert.Contains("Interlinks", DashboardPage.Html);
+        // Mapped-tag pickers: each side selects a source, then a tag from Maps.
+        Assert.Contains("id=\"interlinkConsumerSource\"", DashboardPage.Html);
+        Assert.Contains("id=\"interlinkProviderSource\"", DashboardPage.Html);
+        Assert.Contains("id=\"interlinkConsumerList\"", DashboardPage.Html);
+        Assert.Contains("id=\"interlinkProviderList\"", DashboardPage.Html);
+        // The DA-only browse workflow is fully retired.
+        Assert.DoesNotContain("DA Links", DashboardPage.Html);
+        Assert.DoesNotContain("id=\"linkBrowseTree\"", DashboardPage.Html);
+        Assert.DoesNotContain("id=\"linkSourceStatus\"", DashboardPage.Html);
     }
 
     [Fact]
-    public void Script_BrowsesDaTagsForLinksInsteadOfReusingMappings()
+    public void Script_PicksInterlinkTagsFromMappedTags()
     {
-        Assert.Contains("/api/da-links", DashboardPage.Script);
-        Assert.Contains("function browseLinkTags(", DashboardPage.Script);
-        Assert.Contains("state.linkDraft", DashboardPage.Script);
-        Assert.Contains("data-action=\"pick-link-consumer\"", DashboardPage.Script);
-        Assert.Contains("data-action=\"pick-link-provider\"", DashboardPage.Script);
-        Assert.DoesNotContain("el('linkConsumerSelect').innerHTML = opts;", DashboardPage.Script);
-        Assert.DoesNotContain("el('linkProviderSelect').innerHTML = opts;", DashboardPage.Script);
-        Assert.DoesNotContain("const opts = '<option value=\"\">— select —</option>' + mappings.map", DashboardPage.Script);
+        // Both endpoints are picked from tags already defined in Maps, so every
+        // saved interlink can actually carry values; sources of any linkable
+        // type (OPC DA / OPC UA / MX Component) are offered per side.
+        Assert.Contains("/api/interlinks", DashboardPage.Script);
+        Assert.Contains("function isLinkableInterlinkSource(", DashboardPage.Script);
+        Assert.Contains("function renderInterlinkPickers(", DashboardPage.Script);
+        Assert.Contains("function renderInterlinkTagList(", DashboardPage.Script);
+        Assert.Contains("function setInterlinkSelection(", DashboardPage.Script);
+        Assert.Contains("state.interlinkDraft", DashboardPage.Script);
+        Assert.Contains("data-action=\"pick-interlink-consumer\"", DashboardPage.Script);
+        Assert.Contains("data-action=\"pick-interlink-provider\"", DashboardPage.Script);
+        // The old DA-only browse flow and API are gone.
+        Assert.DoesNotContain("/api/da-links", DashboardPage.Script);
+        Assert.DoesNotContain("function browseLinkTags(", DashboardPage.Script);
+        Assert.DoesNotContain("state.linkDraft", DashboardPage.Script);
     }
 
     [Fact]
-    public void LinkDraft_CanBeClearedWithoutDeletingSavedRule()
+    public void InterlinkDraft_CanBeClearedWithoutDeletingSavedRule()
     {
         Assert.Contains("id=\"btnClearLinkSelection\"", DashboardPage.Html);
         Assert.Contains(">Clear Selection<", DashboardPage.Html);
         Assert.Contains(">Delete Saved Link<", DashboardPage.Html);
-        Assert.Contains("function clearLinkDraftSelection()", DashboardPage.Script);
-        Assert.Contains("state.linkDraft.consumer = null", DashboardPage.Script);
-        Assert.Contains("state.linkDraft.provider = null", DashboardPage.Script);
+        Assert.Contains("function clearInterlinkDraftSelection()", DashboardPage.Script);
+        Assert.Contains("state.interlinkDraft.consumer = null", DashboardPage.Script);
+        Assert.Contains("state.interlinkDraft.provider = null", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Html_InterlinksExplainsConsumerProviderRoles()
+    {
+        // ⓘ tooltips on both panel headers spell out the receive/send roles
+        // and the fan-in/fan-out rules so operators never guess them.
+        Assert.Contains("Receives the value.", DashboardPage.Html);
+        Assert.Contains("exactly one provider", DashboardPage.Html);
+        Assert.Contains("Sends the value.", DashboardPage.Html);
+        Assert.Contains("one provider can feed many consumers", DashboardPage.Html);
+    }
+
+    [Fact]
+    public void Html_InterlinksShowsProviderToConsumerFlowArrow()
+    {
+        // A visible arrow between the panels makes the copy direction obvious:
+        // values always travel from the Provider side into the Consumer side.
+        Assert.Contains("class=\"il-flow\"", DashboardPage.Html);
+        Assert.Contains("\u21d0", DashboardPage.Html); // ⇐ points from Provider to Consumer
+        Assert.Contains("Values flow from the Provider", DashboardPage.Html);
     }
 
     [Fact]
@@ -212,14 +249,23 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
-    public void Script_LinkBrowseRefusesNonDaSource()
+    public void Script_InterlinksNoLongerRestrictedToDaSources()
     {
-        // DA Links forward DA→DA only. The active source can be a UA/driver/MX source
-        // selected on another tab, so the link browser must refuse to post it to the
-        // OPC DA browse endpoint instead of failing with a confusing error.
-        Assert.Contains("if (!sourceMatchesMapType(source, 'opc-da')) {", DashboardPage.Script);
-        Assert.Contains("DA Links browse OPC DA sources only", DashboardPage.Script);
-        Assert.Contains("DA Links require an OPC DA source", DashboardPage.Script);
+        // Interlinks span OPC DA, OPC UA and MX Component sources, so the old
+        // OPC-DA-only browse guards must be gone entirely.
+        Assert.DoesNotContain("browse OPC DA sources only", DashboardPage.Script);
+        Assert.DoesNotContain("require an OPC DA source", DashboardPage.Script);
+        Assert.DoesNotContain("not an OPC DA source", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Script_DiagramLabelsUseInterlinkNaming()
+    {
+        // The Diagram tab's link view is renamed along with the subsystem.
+        Assert.Contains(">Interlinks</button>", DashboardPage.Html);
+        Assert.Contains("function renderInterlinksDiagram(", DashboardPage.Script);
+        Assert.DoesNotContain("DA-to-DA", DashboardPage.Script);
+        Assert.DoesNotContain("DA to DA", DashboardPage.Html);
     }
 
     [Fact]
@@ -230,6 +276,16 @@ public sealed class DashboardPageTests
         // the OPC UA map tab has no UA sources). Browse must refuse instead.
         Assert.Contains("if (!sourceMatchesMapType(source)) {", DashboardPage.Script);
         Assert.Contains("This tab browses ${mapTypeLabel()} sources only", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Script_TagSourceStatusRespectsActiveMapType()
+    {
+        // The Tag Browser's connection badge must only report a source that matches the
+        // active map type. Otherwise — with e.g. the OPC UA tab empty and a connected
+        // DA source left in selectedSourceId — the empty dropdown would still show
+        // "Connected" next to the "No OPC UA sources yet" banner.
+        Assert.Contains("=== state.selectedSourceId && sourceMatchesMapType(s))", DashboardPage.Script);
     }
 
     [Fact]
@@ -287,7 +343,7 @@ public sealed class DashboardPageTests
         // it can never be cut off.
         Assert.Contains(".li .li-badge-clip { display: flex;", DashboardPage.Html);
         Assert.Contains(".li .li-badge-status { flex-shrink: 0; margin-left: 2px;", DashboardPage.Html);
-        Assert.Contains("<span class=\"li-badge-clip\">${typeBadge}${deadbandBadge}${rateBadge}${mqttBadge}${influxBadge}</span><span class=\"li-badge-status\">${discBadge ? `<span title=\"${attr(discTitle)}\">${discBadge}</span>` : ''}${accessBadge}</span>", DashboardPage.Script);
+        Assert.Contains("<span class=\"li-badge-clip\">${typeBadge}${deadbandBadge}${rateBadge}${subBadge}${mqttBadge}${influxBadge}</span><span class=\"li-badge-status\">${discBadge ? `<span title=\"${attr(discTitle)}\">${discBadge}</span>` : ''}${accessBadge}</span>", DashboardPage.Script);
     }
 
     [Fact]
@@ -325,5 +381,591 @@ public sealed class DashboardPageTests
         Assert.Contains("renderLiveValue(currentValue(sourceId, itemId), mapping.dataType || mapping.DataType || null)", DashboardPage.Script);
         // The panel header label is redundant — the big value + meta row carry the context.
         Assert.DoesNotContain("Real value", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Css_DefinesDaGroupsTableStyles()
+    {
+        // .tbl was referenced by the DA Groups renderer but never defined, so the
+        // table rendered as an unstyled browser table (cramped, no header row).
+        Assert.Contains(".tbl th {", DashboardPage.Html);
+        Assert.Contains(".tbl td {", DashboardPage.Html);
+        Assert.Contains(".tbl tbody tr:hover", DashboardPage.Html);
+    }
+
+    [Fact]
+    public void DaGroups_V3UsesCardGridWithModalEditor()
+    {
+        // v3 redesign: groups render as cards in a responsive grid; add/edit happen
+        // in a modal dialog. No table, no tfoot, no inline-row editing anywhere in
+        // the DA Groups panel — nothing can repaint under the cursor mid-typing.
+        Assert.Contains("dag-card", DashboardPage.Html);
+        Assert.Contains("dag-grid", DashboardPage.Html);
+        Assert.DoesNotContain("<tfoot>", DashboardPage.Script);
+        Assert.DoesNotContain("daGroupsTfootHtml", DashboardPage.Script);
+
+        // Modal editor: markup + open/save/close functions.
+        Assert.Contains("id=\"dagModal\"", DashboardPage.Html);
+        Assert.Contains("id=\"dagModalName\"", DashboardPage.Html);
+        Assert.Contains("id=\"dagModalRate\"", DashboardPage.Html);
+        Assert.Contains("id=\"dagModalIo\"", DashboardPage.Html);
+        Assert.Contains("function openDagAdd(", DashboardPage.Script);
+        Assert.Contains("function openDagEdit(", DashboardPage.Script);
+        Assert.Contains("function dagModalSave(", DashboardPage.Script);
+        Assert.Contains("function closeDagModal(", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void DaGroups_PreservesElementIdsAndHandlers()
+    {
+        // The panel container ids and the expand/collapse + delete flows stay.
+        foreach (string fragment in new[]
+        {
+            "daGroupsHint-", "daGroupsTable-", "daGroupsMsg",
+            "function deleteDaGroup(",
+            "function expandAllDaGroups(", "function collapseAllDaGroups(",
+            "function loadDaGroupsTab("
+        })
+        {
+            Assert.Contains(fragment, DashboardPage.Script);
+        }
+        // v2/v1 machinery is gone for good.
+        foreach (string fragment in new[]
+        {
+            "saveDaGroupEdit", "ensureDaGroupAddControls", "mountDaGroupAddRow",
+            "stowDaGroupAddControls", "_dagNodes"
+        })
+        {
+            Assert.DoesNotContain(fragment, DashboardPage.Script);
+        }
+    }
+
+    [Fact]
+    public void DaGroups_ReloadsAreSequencedPerSource()
+    {
+        // Regression: racing follow-up GETs could repaint older data over newer
+        // ("sometimes added, sometimes not"). Whichever reload started latest wins.
+        Assert.Contains("state.daGroupRenderSeq", DashboardPage.Script);
+        Assert.Contains("state.daGroupRenderSeq[sourceId] = seq", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void DaGroups_AddButtonDisablesWhileInFlight()
+    {
+        Assert.Contains(".disabled = true", DashboardPage.Script);
+        Assert.Contains(".disabled = false", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void OpcDaView_GroupsSectionIsReadOnlySummary()
+    {
+        // OPC DA view shows groups read-only (total + name·rate·io badges) with
+        // a Manage button jumping to the DA Groups panel — editing lives there.
+        Assert.Contains(">Manage groups<", DashboardPage.Script);
+        Assert.DoesNotContain("function applyGroupMode(", DashboardPage.Script);
+        Assert.DoesNotContain("function resetGroupMode(", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Faceplate_UpdateRateSelectsDaGroup()
+    {
+        // UPDATE RATE on the faceplate Setup tab selects a named DA group:
+        // options come from the per-source group cache, saving stores daGroup
+        // (and aligned pollRateMs), legacy numeric rates stay selectable.
+        Assert.Contains("function ensureDaGroupsCache(", DashboardPage.Script);
+        Assert.Contains("function fpRateOptions(", DashboardPage.Script);
+        Assert.Contains("payload.daGroup", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void GroupRenamePropagatesToMappings()
+    {
+        // Renaming a group in the DA Groups modal tells the server the old name
+        // so mapping references (TagMapping.DaGroup) are rewritten, not orphaned.
+        Assert.Contains("renameFrom", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Html_SidebarShowsClearParentChildHierarchy()
+    {
+        // Sidebar must read as a tree: group headers are the parents, tab buttons
+        // the children. Parents highlight (accent) while any child page is active,
+        // children hang off a vertical rail under the parent icon with deeper
+        // indent, and the rail disappears in the horizontal mobile layout.
+        Assert.Contains(".nav-group:has(.tabbtn.active) .nav-group-h { color: var(--accent); }", DashboardPage.Html);
+        Assert.Contains(".nav-group .tabbtn { position: relative; padding-top: 8px; padding-bottom: 8px; padding-left: 44px; }", DashboardPage.Html);
+        Assert.Contains(".nav-group .tabbtn::before { content: ''; position: absolute; left: 24px; top: 0; bottom: 0; width: 2px; background: var(--border); }", DashboardPage.Html);
+        Assert.Contains(".nav-group .tabbtn.active::before { background: var(--accent); opacity: .5; }", DashboardPage.Html);
+        Assert.Contains(".nav-group .tabbtn:last-child:not(.active)::before { bottom: auto; height: 55%; }", DashboardPage.Html);
+        Assert.Contains(".nav-group .tabbtn::before { display: none; }", DashboardPage.Html);
+    }
+
+    [Fact]
+    public void Html_HasUaSubscriptionsNavViewAndCardShell()
+    {
+        // UA Subs sits in the Connectivity nav group next to OPC UA. The view mirrors
+        // the DA Groups card workflow: per-source collapsible cards in uaSubsContainer,
+        // Expand/Collapse All in the header, an add/edit modal, and a status line.
+        Assert.Contains("data-tab=\"ua-subs\"", DashboardPage.Html);
+        Assert.Contains("id=\"view-ua-subs\"", DashboardPage.Html);
+        Assert.Contains(">UA Subs</button>", DashboardPage.Html);
+        Assert.Contains("id=\"uaSubsContainer\"", DashboardPage.Html);
+        Assert.Contains("onclick=\"expandAllUaSubs()\"", DashboardPage.Html);
+        Assert.Contains("onclick=\"collapseAllUaSubs()\"", DashboardPage.Html);
+        Assert.Contains("id=\"uaSubModal\"", DashboardPage.Html);
+        Assert.Contains("id=\"uaSubModalName\"", DashboardPage.Html);
+        Assert.Contains("id=\"uaSubModalRate\"", DashboardPage.Html);
+        Assert.Contains("onclick=\"uaSubModalSave()\"", DashboardPage.Html);
+        Assert.Contains("id=\"subsMsg\"", DashboardPage.Html);
+    }
+
+    [Fact]
+    public void Script_RoutesUaSubsTabAndManagesSubscriptionsViaWireApi()
+    {
+        // Navigation registers 'ua-subs' alongside its connectivity siblings; the
+        // card workflow loads every source's subscriptions from the wire API, renders
+        // DA-Groups-style tiles (read-only default tile + Edit/Delete per named sub),
+        // and adds/edits through the modal. Remove reports movedMappings.
+        Assert.Contains("'connectivity/ua-subs': 'ua-subs'", DashboardPage.Script);
+        Assert.Contains("if (activeTab === 'ua-subs')", DashboardPage.Script);
+        Assert.Contains("function loadUaSubs(", DashboardPage.Script);
+        Assert.Contains("function renderUaSubsForSource(", DashboardPage.Script);
+        Assert.Contains("function toggleUaSubsCard(", DashboardPage.Script);
+        Assert.Contains("function expandAllUaSubs(", DashboardPage.Script);
+        Assert.Contains("function collapseAllUaSubs(", DashboardPage.Script);
+        Assert.Contains("function openUaSubAdd(", DashboardPage.Script);
+        Assert.Contains("function openUaSubEdit(", DashboardPage.Script);
+        Assert.Contains("function closeUaSubModal(", DashboardPage.Script);
+        Assert.Contains("function uaSubModalSave(", DashboardPage.Script);
+        Assert.Contains("function deleteUaSub(", DashboardPage.Script);
+        Assert.Contains("/api/ua/subscriptions", DashboardPage.Script);
+        Assert.Contains("/api/ua/subscriptions/remove", DashboardPage.Script);
+        Assert.Contains("actualPublishingIntervalMs", DashboardPage.Script);
+        Assert.Contains("movedMappings", DashboardPage.Script);
+        Assert.Contains("defaultStats", DashboardPage.Script);
+        Assert.Contains("let uaSubsCache = [];", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Script_MapsFaceplateAssignsNamedSubscription()
+    {
+        // The faceplate Setup pane carries a Subscription select for OPC UA sources:
+        // Source Default (with rate label) + one option per named sub, saved through
+        // the same updateMapping collect path as pollRateMs. A non-empty choice
+        // disables the per-tag Update Rate input; rows show a pill with the name.
+        Assert.Contains("id=\"fpSubscription\"", DashboardPage.Html);
+        Assert.Contains("id=\"fpSubscriptionField\"", DashboardPage.Html);
+        Assert.Contains("function fpSubscriptionOptions(", DashboardPage.Script);
+        Assert.Contains("Source Default (${formatMs(defRate)})", DashboardPage.Script);
+        Assert.Contains("payload.subscription", DashboardPage.Script);
+        // updateMapping preserves the stored assignment for callers that don't touch it.
+        Assert.Contains("subscription: mapping.subscription ?? mapping.Subscription ?? '',", DashboardPage.Script);
+        Assert.Contains("rate.disabled = !!subSel.value;", DashboardPage.Script);
+        Assert.Contains("const subBadge = subName ?", DashboardPage.Script);
+        Assert.Contains("title=\"UA subscription\"", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Html_DiagnosticsViewShowsOnlyNonDuplicatedData()
+    {
+        // De-duplication vs ops/monitor: bridge state, last error, DA connection,
+        // UA clients/nodes, mapping count and last DA read / UA write are ALL
+        // displayed on Monitor already — Diagnostics must not repeat them.
+        foreach (string banned in new[]
+        {
+            "diagBridgeState", "diagDaConn", "diagUaClients", "diagMappedNodes",
+            "diagLastError", "diagLastDaRead", "diagLastDaReadMeta",
+            "diagLastUaWrite", "diagLastUaWriteMeta"
+        })
+        {
+            Assert.DoesNotContain($"id=\"{banned}\"", DashboardPage.Html);
+        }
+
+        // Metrics unique to Diagnostics stay: uptime, values/sec, poll duration,
+        // DCOM session, integration health strips, problem lists, write queue, STA.
+        foreach (string id in new[]
+        {
+            "diagUptime", "diagValueRate", "diagPollDuration", "diagSessionId",
+            "diagMqttState", "diagMqttRate", "diagMqttTotals", "diagMqttError",
+            "diagInfluxState", "diagInfluxRate", "diagInfluxTotal", "diagInfluxError",
+            "diagDiscCount", "diagDisconnected", "diagBadCount", "diagBadQuality"
+        })
+        {
+            Assert.Contains($"id=\"{id}\"", DashboardPage.Html);
+        }
+        // Write Queue and STA Thread Health stay on the Diagnostics tab.
+        Assert.Contains("id=\"diagWqDepth\"", DashboardPage.Html);
+        Assert.Contains("id=\"diagStaThreads\"", DashboardPage.Html);
+        // The standalone Runtime Counters section is gone entirely.
+        Assert.DoesNotContain(">Runtime Counters<", DashboardPage.Html);
+    }
+
+    [Fact]
+    public void Html_SessionsTabHoldsCommsDetailSections()
+    {
+        // New Ops > Sessions tab carries the per-connection detail sections so the
+        // Diagnostics overview stays scannable.
+        Assert.Contains("data-tab=\"sessions\"", DashboardPage.Html);
+        Assert.Contains("data-route=\"ops/sessions\"", DashboardPage.Html);
+        Assert.Contains("id=\"view-sessions\"", DashboardPage.Html);
+        foreach (string id in new[] { "diagDaSources", "diagTimeSync", "diagUaSessions", "diagUaSubscriptions", "diagNotifPerSec" })
+        {
+            Assert.Contains($"id=\"{id}\"", DashboardPage.Html);
+        }
+
+        // Section placement: DA sources / time sync / UA sessions live inside the
+        // sessions view; write queue + STA stay inside the diagnostics view.
+        int diagView = DashboardPage.Html.IndexOf("id=\"view-diagnostics\"", StringComparison.Ordinal);
+        int sessView = DashboardPage.Html.IndexOf("id=\"view-sessions\"", StringComparison.Ordinal);
+        Assert.True(diagView >= 0 && sessView > diagView, "sessions view must follow diagnostics view");
+        foreach (string id in new[] { "diagDaSources", "diagTimeSync", "diagUaSessions", "diagNotifPerSec" })
+        {
+            int at = DashboardPage.Html.IndexOf($"id=\"{id}\"", StringComparison.Ordinal);
+            Assert.True(at > sessView, $"{id} should be inside view-sessions");
+        }
+        foreach (string id in new[] { "diagWqDepth", "diagStaThreads" })
+        {
+            int at = DashboardPage.Html.IndexOf($"id=\"{id}\"", StringComparison.Ordinal);
+            int closeAt = DashboardPage.Html.IndexOf("id=\"view-sessions\"", StringComparison.Ordinal);
+            Assert.True(at > diagView && at < closeAt, $"{id} should stay inside view-diagnostics");
+        }
+    }
+
+    [Fact]
+    public void Script_RoutesSessionsTabAndPollsDiagnosticsForBothViews()
+    {
+        Assert.Contains("'ops/sessions': 'sessions'", DashboardPage.Script);
+        Assert.Contains("sessions: 'ops/sessions'", DashboardPage.Script);
+        // Both tabs drive the same 2s diagnostics poll.
+        Assert.Contains("activeTab === 'diagnostics' || activeTab === 'sessions'", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Html_DiagnosticsTabLivesInOpsGroup()
+    {
+        // Diagnostics is operational tooling: its button sits inside the Ops nav
+        // group (after Monitor, before Logs) and routes under ops/.
+        Assert.Contains("data-tab=\"diagnostics\" data-route=\"ops/diagnostics\"", DashboardPage.Html);
+        Assert.DoesNotContain("data-tab=\"diagnostics\" data-route=\"connectivity/diagnostics\"", DashboardPage.Html);
+
+        int monitorBtn = DashboardPage.Html.IndexOf("data-route=\"ops/monitor\"", StringComparison.Ordinal);
+        int diagBtn = DashboardPage.Html.IndexOf("data-route=\"ops/diagnostics\"", StringComparison.Ordinal);
+        int logsBtn = DashboardPage.Html.IndexOf("data-route=\"ops/logs\"", StringComparison.Ordinal);
+        Assert.True(monitorBtn >= 0 && diagBtn > monitorBtn && logsBtn > diagBtn,
+            "Diagnostics must sit between Monitor and Logs in the Ops group");
+    }
+
+    [Fact]
+    public void Script_RoutesDiagnosticsUnderOpsWithLegacyAlias()
+    {
+        // Forward + reverse maps use the new ops route; the old connectivity
+        // route stays resolvable so existing bookmarks keep working.
+        Assert.Contains("'ops/diagnostics': 'diagnostics'", DashboardPage.Script);
+        Assert.Contains("'connectivity/diagnostics': 'diagnostics'", DashboardPage.Script); // bookmark alias
+        Assert.Contains("diagnostics: 'ops/diagnostics'", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Script_RendersIntegrationRatesWithRealArrowGlyphs()
+    {
+        // Integration rate text is set via textContent, which does NOT decode
+        // HTML entities — numeric entities like &#8593; would render as literal
+        // "&#8593;" text (seen in the RATES tile). Use real Unicode glyphs.
+        Assert.DoesNotContain("&#8593;", DashboardPage.Script);
+        Assert.DoesNotContain("&#8595;", DashboardPage.Script);
+        Assert.Contains("\u2191", DashboardPage.Script); // ↑ published arrow
+        Assert.Contains("\u2193", DashboardPage.Script); // ↓ received arrow
+    }
+
+    [Fact]
+    public void Html_SessionsSourceSectionIsTypeNeutral()
+    {
+        // The section lists ALL source types (OPC DA, UA, Melsec/S7/MX drivers)
+        // — the header must not claim DA-only.
+        Assert.Contains(">Source Diagnostics <", DashboardPage.Html);
+        Assert.DoesNotContain("DA Source Diagnostics", DashboardPage.Html);
+    }
+
+    [Fact]
+    public void Script_SessionsDaRowsShowLastErrorAndReadAge()
+    {
+        // Sessions DA rows must surface the per-source fault reason and data
+        // freshness — previously only Monitor showed the lastError text.
+        Assert.Contains("relTime(get(src,'lastDaReadUtc'))", DashboardPage.Script);
+        Assert.Contains("get(src,'lastError')", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Script_UaSessionsShowEndpointAndSessionId()
+    {
+        // UaSessionDiagnostic carries EndpointUrl + SessionId; render both so
+        // operators can tell WHICH client from WHERE is connected.
+        Assert.Contains("s.endpointUrl", DashboardPage.Script);
+        Assert.Contains("s.sessionId", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Script_StaThreadQueuedDepthIsThresholdColored()
+    {
+        // Pending COM ops are the earliest STA saturation signal — color them:
+        // warn >= 10, bad >= 50.
+        Assert.Contains("t.queuedItems >= 50", DashboardPage.Script);
+        Assert.Contains("t.queuedItems >= 10", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Script_ProblemListsGroupBySourceWhenLong()
+    {
+        // Long problem lists collapse to per-source counts for scannability.
+        Assert.Contains("function groupProblemsBySource(", DashboardPage.Script);
+        Assert.Contains("groupProblemsBySource(disc", DashboardPage.Script);
+        Assert.Contains("groupProblemsBySource(badItems", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Script_MonitorTracksGdiUserHistoryForLeakTrend()
+    {
+        // Handle leak-trend already exists; GDI/USER must get the same
+        // history-based growth assessment instead of limit-percentage checks only.
+        Assert.Contains("state.gdiHistory", DashboardPage.Script);
+        Assert.Contains("state.userHistory", DashboardPage.Script);
+        Assert.Contains("gdiTrend", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Html_MonitorHasFleetStripAndScriptRendersIt()
+    {
+        // Detected bridge apps currently surface only as a sidebar count pill;
+        // Monitor gets a fleet list (machine, version, local/remote).
+        Assert.Contains("id=\"fleetList\"", DashboardPage.Html);
+        Assert.Contains("function renderFleet(", DashboardPage.Script);
+        Assert.Contains("renderFleet(apps)", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Script_RendersExtendedDiagnosticsPayload()
+    {
+        // renderDiagnostics consumes the diagnostics sections it renders.
+        // (p.uaServer is intentionally NOT rendered here: UA client/node counts
+        // live on ops/monitor.)
+        Assert.Contains("p.runtime", DashboardPage.Script);
+        Assert.Contains("p.uptimeSeconds", DashboardPage.Script);
+        Assert.Contains("p.mqtt", DashboardPage.Script);
+        Assert.Contains("p.influx", DashboardPage.Script);
+        Assert.Contains("p.problems", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Guide_FeaturesSubTab_RenamedAndSingleAccordionOpenByDefault()
+    {
+        // The middle sub-tab is "Features" (was "Dashboard Tabs") and its DOM ids match.
+        Assert.Contains("switchHelpSubTab('features')", DashboardPage.Html);
+        Assert.Contains(">Features</button>", DashboardPage.Html);
+        Assert.Contains("id=\"help-features\"", DashboardPage.Html);
+        Assert.DoesNotContain("dashboard-tabs", DashboardPage.Html);
+    }
+
+    [Fact]
+    public void Guide_HelpSearch_FullTextAcrossTopics()
+    {
+        // Global search box between the sub-tab strip and the layouts.
+        Assert.Contains("id=\"helpSearch\"", DashboardPage.Html);
+        Assert.Contains("Search all topics", DashboardPage.Html);
+
+        // Dedicated results layout (hidden until a query is typed).
+        Assert.Contains("id=\"helpSearchLayout\"", DashboardPage.Html);
+
+        // Index + search pipeline + snippet + empty state.
+        Assert.Contains("helpSearchIndex", DashboardPage.Script);
+        Assert.Contains("function helpSearch(", DashboardPage.Script);
+        Assert.Contains("function helpSearchPick(", DashboardPage.Script);
+        Assert.Contains("help-search-snippet", DashboardPage.Script);
+        Assert.Contains("No topics match", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Guide_HelpUsesTocLeftContentRightLayout()
+    {
+        // Each sub-tab renders a master-detail layout: topic titles on the left,
+        // selected topic's content ("materi") on the right. Accordions are gone.
+        Assert.Contains("id=\"helpLayout1\"", DashboardPage.Html);
+        Assert.Contains("id=\"helpLayout2\"", DashboardPage.Html);
+        Assert.Contains("id=\"helpLayout3\"", DashboardPage.Html);
+        Assert.Contains("class=\"help-toc\"", DashboardPage.Script);
+        Assert.Contains("help-toc-item", DashboardPage.Script);
+        Assert.Contains("help-article", DashboardPage.Script);
+        Assert.Contains("function switchHelpTopic(", DashboardPage.Script);
+        Assert.Contains("data-help-topic=", DashboardPage.Script);
+
+        // Active topic is visually highlighted.
+        Assert.Contains("help-toc-item.active", DashboardPage.Html);
+
+        // Narrow screens stack the layout.
+        Assert.Contains("@media (max-width: 800px)", DashboardPage.Html);
+
+        // The old accordion markup must be gone everywhere.
+        Assert.DoesNotContain("help-accordion", DashboardPage.Html);
+        Assert.DoesNotContain("help-accordion", DashboardPage.Script);
+        Assert.DoesNotContain("<details class=\"help-section\"", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Guide_MarkdownRenderer_OrderedListsAndCodeSafeInlineFormatting()
+    {
+        // Numbered setup steps render as real ordered lists.
+        Assert.Contains(@"^\d+\.\s+", DashboardPage.Script);
+        Assert.Contains("<ol>", DashboardPage.Script);
+        Assert.Contains("</ol>", DashboardPage.Script);
+
+        // Bold/inline-code formatting is applied per text node via a helper and
+        // never as a global pass over the assembled HTML (which would reach into
+        // <pre><code> blocks).
+        Assert.Contains("const inlineFmt =", DashboardPage.Script);
+        Assert.DoesNotContain(@"return html.replace(/\*\*(.+?)\*\*/g", DashboardPage.Script);
+
+        // Table CSS: no hardcoded second-column centering; ol shares list styling with ul.
+        Assert.DoesNotContain(".help-body td:nth-child(2)", DashboardPage.Html);
+        Assert.Contains(".help-body ul, .help-body ol", DashboardPage.Html);
+    }
+
+    [Fact]
+    public void Html_DiagramToolbarUsesSegmentedControlAndLegendChips()
+    {
+        // Sub-tabs live in a segmented control; legend uses compact chips.
+        Assert.Contains("class=\"diag-seg\"", DashboardPage.Html);
+        Assert.Contains("class=\"seg-pill\"", DashboardPage.Html);
+        Assert.Contains("legend-chip", DashboardPage.Html);
+    }
+
+    [Fact]
+    public void Script_HasBalancedBraces()
+    {
+        // Regression guard: a bad merge once left a duplicate '}' inside
+        // renderInterlinksDiagram, making the whole <script> block unparseable
+        // (browsers discard the entire block => nothing on the page is clickable).
+        var script = ExtractScript();
+        Assert.True(script.Length > 10000, "script block missing");
+
+        var depth = new Stack<int>();
+        var state = 'c'; // c=code, s=single, d=double, t=template, r=regex, cls=regex-class, l=line-comment, b=block-comment
+        var prevSignificant = ';';
+        for (var i = 0; i < script.Length; i++)
+        {
+            var c = script[i];
+            var next = i + 1 < script.Length ? script[i + 1] : '\0';
+            switch (state)
+            {
+                case 'l':
+                    if (c == '\n') state = 'c';
+                    continue;
+                case 'b':
+                    if (c == '*' && next == '/') { state = 'c'; prevSignificant = 'x'; i++; }
+                    continue;
+                case 's':
+                    if (c == '\\') i++;
+                    else if (c == '\'') { state = 'c'; prevSignificant = 'x'; }
+                    continue;
+                case 'd':
+                    if (c == '\\') i++;
+                    else if (c == '"') { state = 'c'; prevSignificant = 'x'; }
+                    continue;
+                case 't':
+                    if (c == '\\') i++;
+                    else if (c == '`') { state = 'c'; prevSignificant = 'x'; }
+                    else if (c == '\n') state = 'c';
+                    continue;
+                case 'r':
+                    if (c == '\\') i++;
+                    else if (c == '[') state = 'k';
+                    else if (c == '/') state = 'c'; // regex ends; flags are identifier chars
+                    else if (c == '\n') state = 'c';
+                    continue;
+                case 'k':
+                    if (c == '\\') i++;
+                    else if (c == ']') state = 'r';
+                    else if (c == '\n') state = 'c';
+                    continue;
+            }
+            switch (c)
+            {
+                case '/':
+                    if (next == '/') state = 'l';
+                    else if (next == '*') state = 'b';
+                    else if ("(=:[!&|?{};+-*%~^<>,;".Contains(prevSignificant))
+                        state = 'r'; // division never follows these; regex does
+                    else prevSignificant = '/';
+                    break;
+                case '\'': state = 's'; break;
+                case '"': state = 'd'; break;
+                case '`': state = 't'; break;
+                case '{': depth.Push(1); prevSignificant = c; break;
+                case '(':
+                case '[': depth.Push(0); prevSignificant = c; break;
+                case '}':
+                    Assert.True(depth.Count > 0, $"unmatched }} near index {i}");
+                    depth.Pop(); prevSignificant = c; break;
+                case ')':
+                case ']':
+                    Assert.True(depth.Count > 0, $"unmatched {c} near index {i}");
+                    depth.Pop(); prevSignificant = c; break;
+                default:
+                    if (!char.IsWhiteSpace(c)) prevSignificant = c;
+                    break;
+            }
+        }
+        Assert.Equal(0, depth.Count);
+    }
+
+    private static string ExtractScript() => DashboardPage.Script;
+
+    [Fact]
+    public void Html_DiagramIsStaticExceptFlowDashes()
+    {
+        // Entrance/draw/pulse motion removed: renders are instant and still.
+        Assert.DoesNotContain("@keyframes diagNodeIn", DashboardPage.Html);
+        Assert.DoesNotContain("@keyframes diagEdgeDraw", DashboardPage.Html);
+        Assert.DoesNotContain("@keyframes diagPulse", DashboardPage.Html);
+        Assert.DoesNotContain("animation: diagNodeIn", DashboardPage.Html);
+        Assert.DoesNotContain("animation: diagEdgeDraw", DashboardPage.Html);
+        // Flow dashes stay as the live-data indicator.
+        Assert.Contains("@keyframes flow", DashboardPage.Html);
+        Assert.Contains("animation: flow 1s linear infinite", DashboardPage.Html);
+    }
+
+    [Fact]
+    public void Html_DiagramRespectsPrefersReducedMotion()
+    {
+        // All diagram motion is disabled for reduced-motion users.
+        var idx = DashboardPage.Html.IndexOf(".diag-canvas", StringComparison.Ordinal);
+        Assert.True(idx >= 0, "diagram styles missing");
+        Assert.Contains("@media (prefers-reduced-motion: reduce)",
+            DashboardPage.Html[idx..]);
+    }
+
+    [Fact]
+    public void Html_DiagramPolishRefinesHoverAndEdgeHierarchy()
+    {
+        // Hover affordance brightens labels; base lines sit under the flow layer.
+        Assert.Contains(".diag-node:hover text", DashboardPage.Html);
+        Assert.Contains("stroke-opacity", DashboardPage.Html);
+    }
+
+    [Fact]
+    public void Script_DiagramRendersStaticWithCardDefs()
+    {
+        // No per-render stagger loops or draw-on helpers remain.
+        Assert.DoesNotContain("setProperty('--i'", DashboardPage.Script);
+        Assert.DoesNotContain("pathLength=\"1\"", DashboardPage.Script);
+        // Card gradient + drop shadow defs still injected once per render.
+        Assert.Contains("id=\"diagCardGrad\"", ExtractScript());
+        Assert.Contains("id=\"diagDrop\"", ExtractScript());
+    }
+
+    [Fact]
+    public void Script_DiagramShowsRichEmptyState()
+    {
+        // Empty configurations render a centered card, not bare text.
+        Assert.Contains("function diagEmptyState(", DashboardPage.Script);
+        Assert.Contains("class=\"diag-empty\"", DashboardPage.Script);
     }
 }
