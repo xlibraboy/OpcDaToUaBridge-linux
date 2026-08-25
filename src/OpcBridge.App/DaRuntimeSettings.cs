@@ -100,6 +100,10 @@ public sealed class DaRuntimeSettings
             return true;
         }
     }
+    /// <summary>The source default update rate is fixed at 1000 ms (1 s). Rate customization
+    /// belongs to named PLC Groups or per-tag PollRateMs overrides.</summary>
+    public const int FixedUpdateRateMs = 1000;
+
     public DaRuntimeSettingsSnapshot SetUpdateRate(int updateRateMs)
     {
         int normalizedUpdateRate = NormalizeUpdateRate(updateRateMs);
@@ -617,12 +621,9 @@ public sealed class DaRuntimeSettings
 
     private static int NormalizeUpdateRate(int updateRateMs)
     {
-        if (updateRateMs <= 0)
-        {
-            return 1000;
-        }
-
-        return Math.Max(100, updateRateMs);
+        // Fixed policy: the source default rate is always 1 s (see FixedUpdateRateMs).
+        _ = updateRateMs;
+        return FixedUpdateRateMs;
     }
     private void Persist()
     {
@@ -1694,12 +1695,9 @@ public static class SourceConfigMigration
 
     private static int NormalizeUpdateRate(int updateRateMs)
     {
-        if (updateRateMs <= 0)
-        {
-            return 1000;
-        }
-
-        return Math.Max(100, updateRateMs);
+        // Fixed policy: the source default rate is always 1 s (see DaRuntimeSettings.FixedUpdateRateMs).
+        _ = updateRateMs;
+        return DaRuntimeSettings.FixedUpdateRateMs;
     }
 
     private static bool HasFlatSerial(SourceConfigDto dto) =>

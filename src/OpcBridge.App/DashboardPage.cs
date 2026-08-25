@@ -801,8 +801,8 @@ internal static class DashboardPage
                         <div class="field"><label class="fl">User</label><input id="cfgUser" type="text" placeholder="username" style="flex:1"><input id="cfgPass" type="password" placeholder="password" style="flex:1"><input id="cfgDomain" type="text" placeholder="domain" style="flex:1"></div>
                     </div>
                     <div class="conn-section">
-                        <div class="conn-section-h">Default Update Rate <span class="info" data-tip="Fallback update rate for tags set to 'Source Default' (Tags tab → faceplate → Update Rate). Tags with a specific rate override this.">i</span></div>
-                        <div class="field"><label class="fl">Rate</label><select id="cfgUpdateRate"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select><button class="btn ghost" id="cfgApplyRate" type="button">Apply</button><span class="msg" id="rateMessage">Applies live</span></div>
+                        <div class="conn-section-h">Default Update Rate <span class="info" data-tip="Fixed at 1000 ms. This is the fallback rate for tags set to 'Source Default'. For other cadences use Sources → PLC Groups (named groups per rate) or a specific per-tag Update Rate.">i</span></div>
+                        <div class="field"><label class="fl">Rate</label><select id="cfgUpdateRate" disabled><option value="1000">1 s (fixed)</option></select><span class="msg" id="rateMessage">Fixed at 1 s — use Sources → PLC Groups for other rates.</span></div>
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">I/O Mode <span class="info" data-tip="Client-side value-delivery mode for this source, like Matrikon OPC Explorer's per-group I/O selector. AutoDetect I/O: try IOPCDataCallback push, fall back to polling when the server can't. Synchronous I/O: always poll with IOPCSyncIO.Read. Async I/O 2.0: force the push path (even if the global switch is off); falls back to polling with a warning if the server can't provide it. Applied live — no restart.">i</span></div>
@@ -5340,23 +5340,9 @@ function collapseAllDaGroups() {
     document.querySelectorAll('#daGroupsContainer .box-h .toggle').forEach(t => t.textContent = '▶');
 }
 async function saveUpdateRate() {
-    const updateRateMs = Number.parseInt(el('cfgUpdateRate').value, 10);
-    if (!Number.isFinite(updateRateMs) || updateRateMs <= 0) {
-        el('rateMessage').textContent = '✗ Select a rate.';
-        return;
-    }
-
-    const r = await fetch('/api/da/update-rate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ updateRateMs })
-    });
-    const p = await r.json();
-    if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
-    state.updateRateMs = Number(p.updateRateMs || updateRateMs);
-    el('cfgUpdateRate').value = String(state.updateRateMs);
-    await refresh();
-    el('rateMessage').textContent = 'Default rate applied: ' + state.updateRateMs + ' ms.';
+    // Fixed policy: the default update rate is pinned to 1000 ms; PLC Groups and
+    // per-tag rates own every other cadence. Kept as a no-op guard for old callers.
+    el('rateMessage').textContent = 'Default update rate is fixed at 1 s.';
 }
 async function removeSelectedSource() {
     const source = currentSource();
@@ -6821,7 +6807,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const evt = node.tagName === 'SELECT' || node.type === 'checkbox' ? 'change' : 'input';
         node.addEventListener(evt, () => { if (!state.editingNewUaSource) showUaSaveReset(); });
     });
-    el('cfgApplyRate').addEventListener('click', () => saveUpdateRate().catch(e => el('rateMessage').textContent = '✗ ' + e.message));
+    // Default Update Rate is fixed — no apply button; saveUpdateRate() is a guarded no-op.
     el('btnExportConfig').addEventListener('click', async () => {
         try {
             const r = await fetch('/api/config/export');

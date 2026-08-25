@@ -1042,7 +1042,7 @@ Always preserve `pki/` across updates. It's listed in the update guide as "never
 
 - **Da:ProgId** — OPC DA server ProgID (e.g. `Matrikon.OPC.Simulation.1`)
 - **Da:Host** — DA server host (localhost or remote IP)
-- **Da:UpdateRateMs** — default update rate for new sources (min 100ms); can be changed live in Sources → OPC DA → Default Update Rate
+- **Da:UpdateRateMs** — fixed at 1000 ms (1 s); not changeable. Use Sources → PLC Groups (named groups per rate) or a per-tag Update Rate for other cadences.
 - **Da:UseSubscriptions** — use `IOPCDataCallback` subscriptions (default `true`); can be toggled live in Sources → OPC DA → DA Subscriptions
 - **Ua:EndpointUrl** — OPC UA server endpoint (default `opc.tcp://0.0.0.0:4840/OpcBridge`)
 - **Ua:AutoAcceptUntrustedCertificates** — accept untrusted UA client certs (dev/test)

@@ -642,9 +642,9 @@ app.MapGet("/api/da/sources", (DaRuntimeSettings settings) =>
 });
 app.MapPost("/api/da/update-rate", (DaUpdateRateRequest request, DaRuntimeSettings settings) =>
 {
-    if (request.UpdateRateMs <= 0)
+    if (request.UpdateRateMs != DaRuntimeSettings.FixedUpdateRateMs)
     {
-        return Results.BadRequest(new { error = "Update rate must be greater than 0 ms." });
+        return Results.BadRequest(new { error = "Default update rate is fixed at 1000 ms; use PLC Groups or per-tag rates for other cadences." });
     }
 
     DaRuntimeSettingsSnapshot snapshot = settings.SetUpdateRate(request.UpdateRateMs);
@@ -670,9 +670,9 @@ app.MapPost("/api/da/sources/update-rate", (DaSourceUpdateRateRequest request, D
         return Results.BadRequest(new { error = "Source ID is required." });
     }
 
-    if (request.UpdateRateMs <= 0)
+    if (request.UpdateRateMs != DaRuntimeSettings.FixedUpdateRateMs)
     {
-        return Results.BadRequest(new { error = "Update rate must be greater than 0 ms." });
+        return Results.BadRequest(new { error = "Default update rate is fixed at 1000 ms; use PLC Groups or per-tag rates for other cadences." });
     }
 
     DaRuntimeSettingsSnapshot snapshot = settings.SetSourceUpdateRate(request.SourceId, request.UpdateRateMs);
@@ -1466,7 +1466,8 @@ app.MapPost("/api/config/import", async (HttpContext context, DaRuntimeSettings 
         // Restore DA sources
         if (root.TryGetProperty("daSources", out JsonElement daSourcesEl))
         {
-            int updateRate = daSourcesEl.TryGetProperty("updateRateMs", out JsonElement ur) ? ur.GetInt32() : 1000;
+            // Fixed policy: import always lands at the fixed 1 s source default rate.
+            int updateRate = DaRuntimeSettings.FixedUpdateRateMs;
             List<DaSourceRuntimeSettings> sources = new();
 
             if (daSourcesEl.TryGetProperty("sources", out JsonElement sourcesEl) && sourcesEl.ValueKind == JsonValueKind.Array)
@@ -1503,7 +1504,7 @@ app.MapPost("/api/config/import", async (HttpContext context, DaRuntimeSettings 
                         ReconnectDelayMs = s.TryGetProperty("reconnectDelayMs", out JsonElement rcd) ? rcd.GetInt32() : 0,
                         MaxMappedTags = s.TryGetProperty("maxMappedTags", out JsonElement mmt) ? mmt.GetInt32() : 0,
                         UseSubscriptions = s.TryGetProperty("useSubscriptions", out JsonElement usrc) ? usrc.GetBoolean() : true,
-                        UpdateRateMs = s.TryGetProperty("updateRateMs", out JsonElement sur) ? sur.GetInt32() : updateRate,
+                        UpdateRateMs = DaRuntimeSettings.FixedUpdateRateMs,
                         // Nested export shape (if present)
                         OpcDa = s.TryGetProperty("opcDa", out JsonElement opcDaEl) && opcDaEl.ValueKind == JsonValueKind.Object
                             ? new OpcDaSourceOptionsDto
