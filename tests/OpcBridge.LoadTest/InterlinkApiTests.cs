@@ -301,6 +301,22 @@ public sealed class InterlinkApiTests
     }
 
     [Fact]
+    public async Task DashboardPayload_IncludesLinkStatsArray()
+    {
+        // The Interlinks page renders live per-link status from this payload;
+        // the field must always exist so the UI can rely on it.
+        await using TestAppHandle app = await TestAppHandle.StartAsync(static appDirectory =>
+        {
+            File.WriteAllText(Path.Combine(appDirectory, "mappings.json"), "[]");
+            DeleteIfExists(Path.Combine(appDirectory, "links.json"));
+        });
+
+        using JsonDocument body = await app.GetJsonAsync("/api/dashboard");
+        Assert.True(body.RootElement.TryGetProperty("linkStats", out JsonElement linkStats));
+        Assert.Equal(JsonValueKind.Array, linkStats.ValueKind);
+    }
+
+    [Fact]
     public void ValidateLink_RejectsTypeMismatch()
     {
         InterlinkDto request = new(

@@ -124,6 +124,23 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
+    public void Script_InterlinksRowsShowLiveStatus()
+    {
+        // Live per-link telemetry rides the 1s dashboard poll into the rows:
+        // status pill (flowing/idle/waiting/write-failed), forward counters and
+        // last-write age, plus explicit read/write direction chips.
+        Assert.Contains("state.linkStatsById = {}", DashboardPage.Script);
+        Assert.Contains("(p.linkStats || []).forEach", DashboardPage.Script);
+        Assert.Contains("if (document.getElementById('view-interlinks')?.classList.contains('active')) renderInterlinksView();", DashboardPage.Script);
+        Assert.Contains("function interlinkStatusMeta(", DashboardPage.Script);
+        Assert.Contains("'write-failed': ['Write failed', 'bad']", DashboardPage.Script);
+        Assert.Contains("il-status-pill", DashboardPage.Script);
+        Assert.Contains("(read)", DashboardPage.Script);
+        Assert.Contains("(write)", DashboardPage.Script);
+        Assert.Contains("last write ", DashboardPage.Script);
+    }
+
+    [Fact]
     public void Script_RoutesDriversTabAndSavesMelsecSource()
     {
         Assert.Contains("'connectivity/drivers': 'drivers'", DashboardPage.Script);

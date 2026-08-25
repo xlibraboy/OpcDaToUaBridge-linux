@@ -857,6 +857,29 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
             write_queue_.Enqueue(
                 consumer.SourceId,
                 new WriteRequest(consumer.SourceId, consumer.ItemId, providerValue.Value, tcs));
+
+            // The write result IS the link's flow truth: observe it so the
+            // Interlinks page can show flowing / write-failed per connection.
+            _ = tcs.Task.ContinueWith(
+                static (Task<bool> task, object? state) =>
+                {
+                    var target = ((string SourceId, string ItemId, BridgeState State))state!;
+                    if (task.IsCompletedSuccessfully)
+                    {
+                        target.State.RecordLinkForward(target.SourceId, target.ItemId, task.Result, null);
+                    }
+                    else
+                    {
+                        string message = task.IsFaulted
+                            ? task.Exception?.GetBaseException().Message ?? "write failed"
+                            : "write cancelled";
+                        target.State.RecordLinkForward(target.SourceId, target.ItemId, false, message);
+                    }
+                },
+                (consumer.SourceId, consumer.ItemId, bridge_state_),
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
         }
     }
 
