@@ -101,4 +101,17 @@ public sealed class PlcGroupSettingsTests
         Assert.Equal("Slow", normalized[1].Name);
         Assert.Equal(100, normalized[1].UpdateRateMs);
     }
+
+    [Fact]
+    public void ShouldRestartPollersForPlcGroups_DefinitionChange_True_ElseFalse()
+    {
+        DaSourceRuntimeSettings applied = MxSource(new[] { new PlcGroupSettings("Fast", 250) });
+
+        Assert.True(BridgeWorker.ShouldRestartPollersForPlcGroups(applied, MxSource(new[] { new PlcGroupSettings("Fast", 400) })));
+        Assert.True(BridgeWorker.ShouldRestartPollersForPlcGroups(applied, MxSource(Array.Empty<PlcGroupSettings>())));
+        Assert.True(BridgeWorker.ShouldRestartPollersForPlcGroups(MxSource(null), MxSource(new[] { new PlcGroupSettings("New", 100) })));
+
+        // Unrelated settings churn must NOT trigger a restart.
+        Assert.False(BridgeWorker.ShouldRestartPollersForPlcGroups(applied, MxSource(new[] { new PlcGroupSettings("Fast", 250) })));
+    }
 }

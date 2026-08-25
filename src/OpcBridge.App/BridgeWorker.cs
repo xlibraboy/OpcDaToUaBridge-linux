@@ -89,7 +89,10 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
         DaRuntimeSettingsSnapshot settings = da_settings_.GetSnapshot();
         (IReadOnlyList<TagMapping> mappings, long mappingVersion) = mapping_store_.GetSnapshot();
         (IReadOnlyList<InterlinkRule> rules, long interlinkVersion) = interlink_store_.GetSnapshot();
-        SourceMappingCache sourceMappingCache = SourceMappingCache.Build(mappings, rules);
+        SourceMappingCache sourceMappingCache = SourceMappingCache.Build(
+            mappings,
+            rules,
+            sourceId => da_settings_.GetSnapshot().GetSource(sourceId)?.PlcGroupsList ?? Array.Empty<PlcGroupSettings>());
         source_mapping_cache_ = sourceMappingCache;
         IReadOnlyList<TagMapping> activeMappings = sourceMappingCache.GetActiveMappings();
         bridge_state_.Configure(settings.UpdateRateMs, activeMappings.Count, settings.Sources);
@@ -221,7 +224,11 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
                                 }
                             }
 
-                            cacheHolder.Cache = SourceMappingCache.Build(mappings, rules);
+                            cacheHolder.Cache = SourceMappingCache.Build(
+                                mappings,
+                                rules,
+                                sourceId => da_settings_.GetSnapshot()
+                                    .GetSource(sourceId)?.PlcGroupsList ?? Array.Empty<PlcGroupSettings>());
                             source_mapping_cache_ = cacheHolder.Cache;
 
                             if (mappingsChanged)
@@ -950,6 +957,18 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
                         }
                     }
                 }
+
+                // PLC group definition changes need a POLLER restart only: rate buckets are
+                // bridge-side timers over the existing COM session (spec §5). Resolver-based
+                // cache resolution picks up the new definitions without a rebuild.
+                if (ShouldRestartPollersForPlcGroups(existing.Source, source))
+                {
+                    changed.Add(source.SourceId);
+                    sessions[source.SourceId] = new SourceSession(source, existing.Client)
+                    {
+                        PollerCts = existing.PollerCts
+                    };
+                }
                 continue;
             }
 
@@ -1169,6 +1188,13 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
             && string.Equals(a.IoMode, b.IoMode, StringComparison.Ordinal)
             && DaGroupIoModesEqual(a, b);
     }
+
+    /// <summary>True when a source's PLC group definitions changed — those sources need their
+    /// pollers restarted (rate buckets moved), but never a session rebuild (spec §5).</summary>
+    internal static bool ShouldRestartPollersForPlcGroups(
+        DaSourceRuntimeSettings existing,
+        DaSourceRuntimeSettings candidate)
+        => !existing.PlcGroupsEqual(candidate);
 
     private static bool DaGroupIoModesEqual(DaSourceRuntimeSettings a, DaSourceRuntimeSettings b)
     {
