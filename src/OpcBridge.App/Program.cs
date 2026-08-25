@@ -435,7 +435,7 @@ app.MapGet("/api/status/ports", () =>
         uaBind,
         uaClient));
 });
- app.MapGet("/api/dashboard", (BridgeState state, UaServerHost uaServer, BridgeAppDiscovery discovery, MappingStore mappingStore, BridgeWorker worker, DaRuntimeSettings daSettings, int? limit, string? sourceId) =>
+ app.MapGet("/api/dashboard", (BridgeState state, UaServerHost uaServer, BridgeAppDiscovery discovery, MappingStore mappingStore, InterlinkStore interlinkStore, BridgeWorker worker, DaRuntimeSettings daSettings, int? limit, string? sourceId) =>
  {
      IReadOnlyList<BridgeValueSnapshot> values = state.GetValues(limit ?? DashboardValuesLimit, sourceId);
 
@@ -456,6 +456,45 @@ app.MapGet("/api/status/ports", () =>
          .ToDictionary(source => source.SourceId, source => source.UaSubscriptions, StringComparer.OrdinalIgnoreCase);
      Dictionary<string, int> updateRateByKey = DashboardValues.BuildUpdateRateLookup(mappings, sourceRates, uaSubscriptionsBySource);
 
+     // Per-interlink runtime health: derive each saved rule's status from its
+     // endpoints' live state (provider value quality, consumer source connection)
+     // plus the forwarding telemetry BridgeWorker records per write.
+     DateTime nowUtc = DateTime.UtcNow;
+     IReadOnlyDictionary<string, DaSourceStatusSnapshot> sourceStates = state.GetStatus().Sources
+         .GroupBy(source => source.SourceId, StringComparer.OrdinalIgnoreCase)
+         .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+     IReadOnlyDictionary<string, InterlinkStats> statsByKey = state.GetLinkStats();
+     var linkStats = interlinkStore.GetSnapshot().Rules.Select(rule =>
+     {
+         statsByKey.TryGetValue(BridgeState.NormalizeKey(rule.ConsumerSourceId, rule.ConsumerItemId), out InterlinkStats? stats);
+         InterlinkStats telemetry = stats ?? InterlinkStats.Empty;
+         bool consumerConnected = sourceStates.TryGetValue(rule.ConsumerSourceId, out DaSourceStatusSnapshot? consumerStatus)
+             && string.Equals(consumerStatus.ConnectionState, "Connected", StringComparison.OrdinalIgnoreCase);
+         bool providerHasValue = state.TryGetSnapshot(rule.ProviderSourceId, rule.ProviderItemId, out BridgeValueSnapshot providerSnapshot);
+         InterlinkHealth health = InterlinkStatusEvaluator.Derive(new InterlinkStatusInput(
+             rule.Enabled,
+             providerHasValue,
+             providerHasValue && providerSnapshot.IsGood,
+             consumerConnected,
+             telemetry.Attempts,
+             telemetry.Failures,
+             telemetry.LastForwardUtc,
+             telemetry.LastWriteSuccess,
+             telemetry.LastError,
+             nowUtc), out string? reason);
+         return new
+         {
+             id = rule.Id,
+             status = health.ToString().ToLowerInvariant(),
+             reason,
+             attempts = telemetry.Attempts,
+             ok = telemetry.Successes,
+             failed = telemetry.Failures,
+             lastForwardUtc = telemetry.LastForwardUtc,
+             lastError = telemetry.LastError
+         };
+     }).ToArray();
+
      return Results.Json(new
      {
          bridge = state.GetStatus(),
@@ -474,7 +513,8 @@ app.MapGet("/api/status/ports", () =>
          }),
          valuesTotal = state.GetValueCount(sourceId),
          disconnected = worker.GetDisconnectedTags(),
-         badQuality = state.GetBadQualityTags().Select(tag => new { sourceId = tag.SourceId, itemId = tag.ItemId })
+         badQuality = state.GetBadQualityTags().Select(tag => new { sourceId = tag.SourceId, itemId = tag.ItemId }),
+         linkStats
      });
  });
 app.MapGet("/api/diagnostics", (BridgeWorker worker, UaServerHost uaServer, BridgeState state, MqttRuntimeSettings mqttSettings, InfluxRuntimeSettings influxSettings, ILogger<Program> logger) =>

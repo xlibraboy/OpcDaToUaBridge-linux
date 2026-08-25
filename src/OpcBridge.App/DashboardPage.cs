@@ -1673,6 +1673,7 @@ const state = {
     mappings: [],
     interlinks: [],
     interlinkDraft: { consumer: null, provider: null },
+    linkStatsById: {},
     mappingSort: 'name',
     mappingSortDir: 1,
     mappingFilter: '',
@@ -2855,6 +2856,39 @@ function setInterlinkSelection(role, sourceId, itemId, name) {
     el('linksMessage').textContent = roleName + ' selected from source ' + (sourceId || 'default') + '.';
     renderInterlinksView();
 }
+function interlinkStatusMeta(status) {
+    const map = {
+        'flowing': ['Flowing', 'good'],
+        'idle': ['Idle', ''],
+        'waiting': ['Waiting', 'warn'],
+        'write-failed': ['Write failed', 'bad']
+    };
+    return map[status] || ['—', 'warn'];
+}
+function formatAgo(isoUtc) {
+    if (!isoUtc) return '';
+    const ms = Date.now() - new Date(isoUtc).getTime();
+    if (!isFinite(ms) || ms < 0) return 'just now';
+    if (ms < 60000) return Math.max(1, Math.round(ms / 1000)) + 's ago';
+    if (ms < 3600000) return Math.round(ms / 60000) + 'm ago';
+    return Math.round(ms / 3600000) + 'h ago';
+}
+function renderInterlinkStatusPill(stats) {
+    const status = String(get(stats, 'status') || '');
+    const meta = interlinkStatusMeta(status);
+    const label = meta[0], cls = meta[1];
+    const reason = get(stats, 'reason');
+    const lastError = get(stats, 'lastError');
+    const title = (status === 'write-failed' && lastError) ? lastError : reason;
+    return `<span class="pill il-status-pill${cls ? ' ' + cls : ''}" style="padding:1px 7px;font-size:10px"${title ? ` title="${attr(title)}"` : ''}>${esc(label)}</span>`;
+}
+function renderInterlinkCounters(stats) {
+    if (!stats || !get(stats, 'attempts')) return '<span class="msg" style="font-size:10px">no writes yet</span>';
+    const ok = Number(get(stats, 'ok') || 0);
+    const failed = Number(get(stats, 'failed') || 0);
+    const ago = formatAgo(get(stats, 'lastForwardUtc'));
+    return `<span class="mono" style="font-size:10px">${Number(get(stats, 'attempts'))} fwd · <span class="good">✓ ${ok}</span>${failed ? ' · <span class="bad">✗ ' + failed + '</span>' : ''}${ago ? ' · last write ' + esc(ago) : ''}</span>`;
+}
 function renderInterlinksView() {
     const links = state.interlinks || [];
     const consumer = state.interlinkDraft.consumer;
@@ -2870,7 +2904,8 @@ function renderInterlinksView() {
         const providerSourceId = link.providerSourceId || link.ProviderSourceId || 'default';
         const providerItemId = link.providerItemId || link.ProviderItemId || '';
         const linkId = link.id || link.Id || '';
-        return `<div class="li"><div style="flex:1;min-width:0"><span class="n">${esc(linkTagLabel(consumerSourceId, consumerItemId))}</span></div><span class="pill" style="padding:1px 6px;font-size:10px;background:#e8f0fe;color:#1a73e8">⇠ fed by</span><div style="flex:1;min-width:0"><span class="n">${esc(linkTagLabel(providerSourceId, providerItemId))}</span></div><button class="btn ghost" type="button" data-action="unlink" data-link-id="${attr(linkId)}">Delete</button></div>`;
+        const stats = state.linkStatsById[String(linkId)];
+        return `<div class="li"><div style="flex:1;min-width:0"><span class="n">${esc(linkTagLabel(consumerSourceId, consumerItemId))} <span class="msg" style="font-size:10px">(write)</span></span></div><span class="pill" style="padding:1px 6px;font-size:10px;background:#e8f0fe;color:#1a73e8">⇠ fed by</span><div style="flex:1;min-width:0"><span class="n">${esc(linkTagLabel(providerSourceId, providerItemId))} <span class="msg" style="font-size:10px">(read)</span></span></div>${renderInterlinkStatusPill(stats)}<div style="min-width:150px;text-align:right">${renderInterlinkCounters(stats)}</div><button class="btn ghost" type="button" data-action="unlink" data-link-id="${attr(linkId)}">Delete</button></div>`;
     }).join('') : '<span class="msg">No interlinks yet. Pick a consumer and a provider above, then Save Link.</span>';
 }
 function findInterlinkByConsumer(consumerKey) {
@@ -4224,6 +4259,9 @@ async function refresh() {
         state.disconnectedKeys = new Set((p.disconnected || []).map(d => valueKey(get(d, 'sourceId') || '', get(d, 'itemId') || '')));
         state.badQualityKeys = new Set((p.badQuality || []).map(d => valueKey(get(d, 'sourceId') || '', get(d, 'itemId') || '')));
         state.disconnectedSources = new Set((sources || []).filter(s => String(get(s, 'connectionState') || '').toLowerCase() !== 'connected').map(s => String(get(s, 'sourceId') || '')));
+        state.linkStatsById = {};
+        (p.linkStats || []).forEach(s => { state.linkStatsById[String(get(s, 'id') || '')] = s; });
+        if (document.getElementById('view-interlinks')?.classList.contains('active')) renderInterlinksView();
         updateFaceplateLiveValues();
         if (state.diagramLoaded && document.querySelector('.tabbtn.active')?.dataset.tab === 'diagram') {
             renderDiagram();

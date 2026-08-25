@@ -11,6 +11,7 @@ public sealed class BridgeState
     private readonly Dictionary<string, RateGroupStatus> rate_groups_ = new(StringComparer.OrdinalIgnoreCase);
     private BridgeRuntimeStatus status_ = BridgeRuntimeStatus.Empty;
     private readonly object status_lock_ = new();
+    private readonly ConcurrentDictionary<string, InterlinkStats> link_stats_ = new(StringComparer.OrdinalIgnoreCase);
 
     public BridgeState(IOptions<BridgeOptions> options)
     {
@@ -457,6 +458,51 @@ public sealed class BridgeState
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Records one interlink forwarding attempt for the consumer tag (source::item).
+    /// Attempts counts immediately; the write outcome updates successes/failures and
+    /// the last-error when it completes. Keys are case-insensitive and trimmed.
+    /// </summary>
+    public void RecordLinkForward(string consumerSourceId, string consumerItemId, bool success, string? error)
+    {
+        DateTime nowUtc = DateTime.UtcNow;
+        string key = NormalizeKey(consumerSourceId, consumerItemId);
+
+        link_stats_.AddOrUpdate(
+            key,
+            _ => new InterlinkStats(
+                Attempts: 1,
+                Successes: success ? 1 : 0,
+                Failures: success ? 0 : 1,
+                LastForwardUtc: nowUtc,
+                LastWriteSuccess: success,
+                LastError: error),
+            (_, existing) => new InterlinkStats(
+                Attempts: existing.Attempts + 1,
+                Successes: existing.Successes + (success ? 1 : 0),
+                Failures: existing.Failures + (success ? 0 : 1),
+                LastForwardUtc: nowUtc,
+                LastWriteSuccess: success,
+                LastError: error));
+    }
+
+    public IReadOnlyDictionary<string, InterlinkStats> GetLinkStats()
+    {
+        Dictionary<string, InterlinkStats> snapshot = new(StringComparer.OrdinalIgnoreCase);
+        foreach (KeyValuePair<string, InterlinkStats> pair in link_stats_)
+        {
+            snapshot[pair.Key] = pair.Value;
+        }
+
+        return snapshot;
+    }
+
+    /// <summary>Latest value snapshot for one tag, if any value has arrived for it.</summary>
+    public bool TryGetSnapshot(string sourceId, string itemId, out BridgeValueSnapshot snapshot)
+    {
+        return values_by_key_.TryGetValue(NormalizeKey(sourceId, itemId), out snapshot!);
     }
 
     /// <summary>Value count for a specific source, or the global total when sourceId is blank.</summary>
