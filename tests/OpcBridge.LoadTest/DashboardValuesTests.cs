@@ -158,4 +158,31 @@ public sealed class DashboardValuesTests
 
         Assert.Equal(100, DashboardValues.LookupUpdateRate(lookup, "ua-a", "t1"));
     }
+
+    [Fact]
+    public void BuildUpdateRateLookup_PlcGroupWinsOverPerTagRate_UnknownFallsThrough()
+    {
+        var mappings = new[]
+        {
+            new TagMapping { SourceId = "mx1", ItemId = "D100", PlcGroup = "Fast", PollRateMs = 999 },
+            new TagMapping { SourceId = "mx1", ItemId = "D101", PlcGroup = "Ghost", PollRateMs = 750 },
+            new TagMapping { SourceId = "mx1", ItemId = "D102", PollRateMs = 0 }
+        };
+        var sourceRates = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase) { ["mx1"] = 2000 };
+        var mxGroups = new Dictionary<string, IReadOnlyList<PlcGroupSettings>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["mx1"] = new[] { new PlcGroupSettings("Fast", 250) }
+        };
+        var uaSubs = new Dictionary<string, IReadOnlyList<UaSubscriptionSettings>>(StringComparer.OrdinalIgnoreCase);
+
+        Dictionary<string, int> lookup = DashboardValues.BuildUpdateRateLookup(
+            mappings, sourceRates, uaSubs,
+            sourceId => mxGroups.TryGetValue(sourceId, out IReadOnlyList<PlcGroupSettings>? groups)
+                ? groups
+                : Array.Empty<PlcGroupSettings>());
+
+        Assert.Equal(250, DashboardValues.LookupUpdateRate(lookup, "mx1", "D100")); // group wins
+        Assert.Equal(750, DashboardValues.LookupUpdateRate(lookup, "mx1", "D101")); // unknown -> per-tag
+        Assert.Equal(2000, DashboardValues.LookupUpdateRate(lookup, "mx1", "D102")); // default
+    }
 }

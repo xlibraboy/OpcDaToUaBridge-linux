@@ -384,7 +384,8 @@ app.MapGet("/api/status/ports", () =>
      Dictionary<string, IReadOnlyList<UaSubscriptionSettings>> uaSubscriptionsBySource = daSnapshot.Sources
          .Where(source => source.UaSubscriptions.Count > 0)
          .ToDictionary(source => source.SourceId, source => source.UaSubscriptions, StringComparer.OrdinalIgnoreCase);
-     Dictionary<string, int> updateRateByKey = DashboardValues.BuildUpdateRateLookup(mappings, sourceRates, uaSubscriptionsBySource);
+     Dictionary<string, int> updateRateByKey = DashboardValues.BuildUpdateRateLookup(mappings, sourceRates, uaSubscriptionsBySource,
+         sourceId => daSnapshot.GetSource(sourceId)?.PlcGroupsList ?? Array.Empty<PlcGroupSettings>());
 
      return Results.Json(new
      {

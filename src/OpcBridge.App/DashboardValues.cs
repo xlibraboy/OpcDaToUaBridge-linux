@@ -34,6 +34,10 @@ internal static class DashboardValues
     /// (clamped to ≥ 100 ms); otherwise the per-tag <c>PollRateMs</c> override;
     /// otherwise the source's default rate. Unknown sources fall back to 0.
     /// </summary>
+    /// <remarks>
+    /// The overload taking <paramref name="plcGroupsResolver"/> additionally checks the
+    /// tag's assigned PLC group (clamped ≥ 100 ms) BEFORE subscriptions/per-tag/default.
+    /// </remarks>
     public static Dictionary<string, int> BuildUpdateRateLookup(
         IReadOnlyList<TagMapping> mappings,
         IReadOnlyDictionary<string, int> sourceDefaultRates)
@@ -53,7 +57,28 @@ internal static class DashboardValues
             TagMapping mapping = mappings[i];
             uaSubscriptionsBySource.TryGetValue(mapping.SourceId,
                 out IReadOnlyList<UaSubscriptionSettings>? subs);
-            int rate = ResolveEffectiveRate(mapping, sourceDefaultRates, subs);
+            int rate = ResolveEffectiveRate(mapping, sourceDefaultRates, subs, plcGroups: null);
+            lookup[BridgeState.NormalizeKey(mapping.SourceId, mapping.ItemId)] = rate;
+        }
+
+        return lookup;
+    }
+
+    public static Dictionary<string, int> BuildUpdateRateLookup(
+        IReadOnlyList<TagMapping> mappings,
+        IReadOnlyDictionary<string, int> sourceDefaultRates,
+        IReadOnlyDictionary<string, IReadOnlyList<UaSubscriptionSettings>> uaSubscriptionsBySource,
+        Func<string, IReadOnlyList<PlcGroupSettings>>? plcGroupsResolver = null)
+    {
+        Dictionary<string, int> lookup = new(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < mappings.Count; i++)
+        {
+            TagMapping mapping = mappings[i];
+            uaSubscriptionsBySource.TryGetValue(mapping.SourceId,
+                out IReadOnlyList<UaSubscriptionSettings>? subs);
+            IReadOnlyList<PlcGroupSettings> groups =
+                plcGroupsResolver?.Invoke(mapping.SourceId) ?? Array.Empty<PlcGroupSettings>();
+            int rate = ResolveEffectiveRate(mapping, sourceDefaultRates, subs, groups);
             lookup[BridgeState.NormalizeKey(mapping.SourceId, mapping.ItemId)] = rate;
         }
 
@@ -63,8 +88,21 @@ internal static class DashboardValues
     private static int ResolveEffectiveRate(
         TagMapping mapping,
         IReadOnlyDictionary<string, int> sourceDefaultRates,
-        IReadOnlyList<UaSubscriptionSettings>? subscriptions)
+        IReadOnlyList<UaSubscriptionSettings>? subscriptions,
+        IReadOnlyList<PlcGroupSettings>? plcGroups)
     {
+        string requestedGroup = (mapping.PlcGroup ?? string.Empty).Trim();
+        if (requestedGroup.Length > 0 && plcGroups is not null)
+        {
+            for (int i = 0; i < plcGroups.Count; i++)
+            {
+                if (string.Equals(plcGroups[i].Name.Trim(), requestedGroup, StringComparison.OrdinalIgnoreCase))
+                {
+                    return Math.Max(100, plcGroups[i].UpdateRateMs);
+                }
+            }
+        }
+
         string requested = (mapping.Subscription ?? string.Empty).Trim();
         if (requested.Length > 0 && subscriptions is not null)
         {
