@@ -940,4 +940,24 @@ public sealed class DashboardPageTests
         Assert.Contains("function diagEmptyState(", DashboardPage.Script);
         Assert.Contains("class=\"diag-empty\"", DashboardPage.Script);
     }
+
+    [Fact]
+    public void Html_ContainsPlcGroupsTab_AndRoute()
+    {
+        Assert.Contains("data-route=\"connectivity/plc-groups\"", DashboardPage.Html);
+        Assert.Contains("id=\"view-plc-groups\"", DashboardPage.Html);
+        Assert.Contains(">PLC Groups</button>", DashboardPage.Html);
+    }
+
+    [Fact]
+    public void Html_PlcGroupsTab_WiresCrudFunctions()
+    {
+        // JS lives in the Script block (DashboardPage.Html = markup only), so the
+        // wiring assertions target Script like every other script-contract test.
+        Assert.Contains("function loadPlcGroups(", DashboardPage.Script);
+        Assert.Contains("function plcGroupModalSave(", DashboardPage.Script);
+        Assert.Contains("function deletePlcGroup(", DashboardPage.Script);
+        Assert.Contains("/api/plc/groups/remove", DashboardPage.Script);
+        Assert.Contains("/api/plc/groups", DashboardPage.Script);
+    }
 }
