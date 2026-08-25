@@ -1811,6 +1811,96 @@ app.MapPost("/api/ua/subscriptions/remove", (UaSubscriptionRemoveRequest request
         return Results.BadRequest(new { error = ex.Message });
     }
 });
+
+app.MapPost("/api/plc/groups", (PlcGroupUpsertRequest request, DaRuntimeSettings settings) =>
+{
+    if (string.IsNullOrWhiteSpace(request.SourceId))
+    {
+        return Results.BadRequest(new { error = "sourceId is required." });
+    }
+
+    try
+    {
+        DaRuntimeSettingsSnapshot snapshot = settings.UpsertPlcGroup(request.SourceId, request.Name, request.UpdateRateMs);
+        return Results.Ok(new { ok = true, version = snapshot.Version });
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+app.MapPost("/api/plc/groups/remove", (PlcGroupRemoveRequest request, DaRuntimeSettings settings, MappingStore store) =>
+{
+    try
+    {
+        DaRuntimeSettingsSnapshot snapshot = settings.RemovePlcGroup(request.SourceId, request.Name);
+        int movedMappings = store.ReassignPlcGroup(request.SourceId, request.Name);
+        return Results.Ok(new { ok = true, version = snapshot.Version, movedMappings });
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+app.MapGet("/api/plc/groups", (DaRuntimeSettings settings, MappingStore store, string? sourceId) =>
+{
+    DaRuntimeSettingsSnapshot snapshot = settings.GetSnapshot();
+    (IReadOnlyList<TagMapping> mappings, _) = store.GetSnapshot();
+
+    var sources = snapshot.Sources
+        .Where(s => string.Equals(s.SourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
+        .Where(s => string.IsNullOrWhiteSpace(sourceId)
+            || string.Equals(s.SourceId, sourceId, StringComparison.OrdinalIgnoreCase))
+        .Select(s =>
+        {
+            List<TagMapping> sourceMappings = mappings
+                .Where(m => string.Equals(m.SourceId, s.SourceId, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            // Effective distinct rates per spec §6: group rate wins, else per-tag, else bridge default.
+            HashSet<int> effectiveRates = new();
+            foreach (TagMapping m in sourceMappings)
+            {
+                string requested = (m.PlcGroup ?? string.Empty).Trim();
+                int rate = m.PollRateMs;
+                if (requested.Length > 0)
+                {
+                    PlcGroupSettings? def = s.PlcGroupsList.FirstOrDefault(g =>
+                        string.Equals(g.Name.Trim(), requested, StringComparison.OrdinalIgnoreCase));
+                    if (def is not null)
+                    {
+                        rate = Math.Max(100, def.UpdateRateMs);
+                    }
+                }
+
+                effectiveRates.Add(rate > 0 ? rate : snapshot.UpdateRateMs);
+            }
+
+            return new
+            {
+                sourceId = s.SourceId,
+                displayName = s.DisplayName,
+                defaultUpdateRateMs = snapshot.UpdateRateMs,
+                effectiveRates = effectiveRates.Order().ToArray(),
+                groups = s.PlcGroupsList
+                    .OrderBy(g => g.Name, StringComparer.OrdinalIgnoreCase)
+                    .Select(g => new
+                    {
+                        name = g.Name,
+                        updateRateMs = g.UpdateRateMs,
+                        memberCount = sourceMappings.Count(m =>
+                            string.Equals((m.PlcGroup ?? string.Empty).Trim(), g.Name, StringComparison.OrdinalIgnoreCase))
+                    })
+                    .ToArray()
+            };
+        })
+        .ToArray();
+
+    return Results.Json(new { sources });
+});
+
 app.MapGet("/api/mqtt/config", (MqttRuntimeSettings settings) =>
 {
     MqttRuntimeSnapshot snapshot = settings.GetSnapshot();
@@ -2704,7 +2794,8 @@ static TagMapping ToTagMapping(MappingTagDto tag) => new()
     MqttEnabled = tag.MqttEnabled ?? false,
     MqttTopic = string.IsNullOrWhiteSpace(tag.MqttTopic) ? null : tag.MqttTopic,
     InfluxEnabled = tag.InfluxEnabled ?? false,
-    Subscription = tag.Subscription ?? string.Empty
+    Subscription = tag.Subscription ?? string.Empty,
+    PlcGroup = tag.PlcGroup ?? string.Empty
 };
 
 static bool ValidateMelsecMappings(List<TagMapping> tags, DaRuntimeSettings daSettings, MappingStore store, out string error)
