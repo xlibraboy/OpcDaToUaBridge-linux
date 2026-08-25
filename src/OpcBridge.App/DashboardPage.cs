@@ -890,7 +890,7 @@ internal static class DashboardPage
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">Update &amp; Scale</div>
-                        <div class="field"><label class="fl">Update Rate</label><select id="uaCfgUpdateRate"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
+                        <div class="field"><label class="fl">Update Rate</label><select id="uaCfgUpdateRate" disabled><option value="1000">1 s (fixed)</option></select><span class="msg">Fixed — use UA Subscriptions for other rates.</span></div>
                         <div class="field"><label class="fl">Max Mapped Tags <span class="info" data-tip="Hard cap on mappings for this UA source. Only mapped NodeIds are subscribed.">i</span></label><input id="uaCfgMaxMappedTags" type="number" min="1" value="50000" style="flex:1"></div>
                         <div class="field"><label class="fl">Subscriptions</label><input type="checkbox" id="uaCfgUseSubscriptions" checked><span class="msg" id="uaSubMessage">MonitoredItems for mapped tags</span></div>
                         <div class="field"><label class="fl">Read Mode <span class="info" data-tip="How values are delivered right now: async (subscription) = MonitoredItems push; sync (polling) = polling. Follows the Subscriptions checkbox on reconnect.">i</span></label><span class="msg" id="uaCfgReadMode" style="font-weight:400;text-transform:none;letter-spacing:0">—</span></div>
@@ -1049,7 +1049,7 @@ internal static class DashboardPage
                 </div>
             </div>
             <div class="wizard-pane" data-pane="5">
-                <div class="field"><label class="fl">Update Rate</label><select id="wzUpdateRate"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000" selected>1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
+                <div class="field"><label class="fl">Update Rate</label><select id="wzUpdateRate" disabled><option value="1000">1 s (fixed)</option></select></div>
                 <div class="field"><label class="fl">Subscriptions</label><input type="checkbox" id="wzSubs" checked> <span class="msg" id="wzSubsHint">Use IOPCDataCallback (recommended)</span></div>
                 <div class="field" id="wzMaxTagsField" style="display:none"><label class="fl">Max Mapped Tags</label><input type="number" id="wzMaxMappedTags" min="1" value="50000"></div>
             </div>
@@ -1086,7 +1086,7 @@ internal static class DashboardPage
                         <div class="conn-section-h">Defaults</div>
                         <div class="field"><label class="fl">Timeout ms</label><input id="mxTimeout" type="number" min="100" step="100" value="3000" style="width:100px">
                         <label class="fl" style="width:auto">Retries</label><input id="mxRetry" type="number" min="0" max="10" value="2" style="width:70px"></div>
-                        <div class="field"><label class="fl">Update Rate</label><select id="mxRate"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000" selected>1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select>
+                        <div class="field"><label class="fl">Update Rate</label><select id="mxRate" disabled><option value="1000">1 s (fixed)</option></select><span class="msg">Fixed — use Sources → PLC Groups for other rates.</span>
                         <label class="fl" style="width:auto">Max tags <span class="info" data-tip="Safety limit on mapped tags for this source; adding mappings beyond it is rejected.">i</span></label><input id="mxMaxTags" type="number" min="1" step="1" value="2000" style="width:90px"></div>
                     </div>
                     <div class="toolbar" style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
@@ -1149,7 +1149,7 @@ internal static class DashboardPage
                         <div class="conn-section-h">Defaults</div>
                         <div class="field"><label class="fl">Timeout ms</label><input id="drvA3nTimeout" type="number" min="100" step="100" value="3000" style="width:100px">
                         <label class="fl" style="width:auto">Retries</label><input id="drvA3nRetry" type="number" min="0" max="10" value="2" style="width:70px"></div>
-                        <div class="field"><label class="fl">Update Rate</label><select id="drvA3nRate"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000" selected>1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select>
+                        <div class="field"><label class="fl">Update Rate</label><select id="drvA3nRate" disabled><option value="1000">1 s (fixed)</option></select><span class="msg">Fixed — use Sources → PLC Groups for other rates.</span></div>
                         <label class="fl" style="width:auto">Max tags <span class="info" data-tip="Safety limit on mapped tags for this serial link; adding mappings beyond it is rejected.">i</span></label><input id="drvA3nMaxTags" type="number" min="1" step="1" value="2000" style="width:90px"></div>
                     </div>
                     <div class="toolbar" style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
@@ -1217,7 +1217,7 @@ internal static class DashboardPage
             <div class="wzdrv-pane" data-pane="4">
                 <div class="field"><label class="fl">Timeout ms</label><input type="number" id="wzDrvTimeout" min="100" step="100" value="3000" style="width:100px">
                 <label class="fl" style="width:auto">Retries</label><input type="number" id="wzDrvRetry" min="0" max="10" value="2" style="width:70px"></div>
-                <div class="field"><label class="fl">Update Rate</label><select id="wzDrvRate"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000" selected>1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select>
+                <div class="field"><label class="fl">Update Rate</label><select id="wzDrvRate" disabled><option value="1000">1 s (fixed)</option></select>
                 <label class="fl" style="width:auto">Max tags</label><input type="number" id="wzDrvMaxTags" min="1" step="1" value="2000" style="width:90px"></div>
             </div>
             <div class="wzdrv-pane" data-pane="5">
