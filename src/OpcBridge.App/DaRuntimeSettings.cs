@@ -257,6 +257,108 @@ public sealed class DaRuntimeSettings
         }
     }
 
+    /// <summary>Add or update a named PLC group on an MxComponent source. Throws ArgumentException
+    /// for unknown sources, non-MX sources (PLC Groups are MX Component-only this iteration),
+    /// invalid names, or past the 16-group cap. Clamps the rate to the 100 ms floor (spec §4).</summary>
+    public DaRuntimeSettingsSnapshot UpsertPlcGroup(string sourceId, string name, int updateRateMs)
+    {
+        string trimmed = (name ?? string.Empty).Trim();
+        if (trimmed.Length == 0 || trimmed.Length > 64)
+        {
+            throw new ArgumentException("PLC group name must be 1-64 characters.", nameof(name));
+        }
+
+        int clampedRate = Math.Max(100, updateRateMs);
+
+        lock (sync_)
+        {
+            List<DaSourceRuntimeSettings> sources = snapshot_.Sources.ToList();
+            int index = sources.FindIndex(source =>
+                string.Equals(source.SourceId, sourceId, StringComparison.OrdinalIgnoreCase));
+
+            if (index < 0)
+            {
+                throw new ArgumentException($"Source '{sourceId}' does not exist.", nameof(sourceId));
+            }
+
+            if (!string.Equals(sources[index].SourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException(
+                    $"Source '{sourceId}' is not an MX Component source; PLC Groups apply to MX Component sources only.",
+                    nameof(sourceId));
+            }
+
+            DaSourceRuntimeSettings current = sources[index];
+            List<PlcGroupSettings> groups = SourceConfigMigration
+                .NormalizePlcGroups(current.PlcGroups)
+                .ToList();
+            PlcGroupSettings updated = new(trimmed, clampedRate);
+            int groupIndex = groups.FindIndex(g => string.Equals(g.Name, trimmed, StringComparison.OrdinalIgnoreCase));
+            if (groupIndex >= 0)
+            {
+                groups[groupIndex] = updated;
+            }
+            else
+            {
+                if (groups.Count >= SourceConfigMigration.MaxPlcGroupsPerSource)
+                {
+                    throw new ArgumentException(
+                        $"Source '{sourceId}' already has the maximum of {SourceConfigMigration.MaxPlcGroupsPerSource} PLC groups.");
+                }
+
+                groups.Add(updated);
+            }
+
+            sources[index] = current with { PlcGroups = groups };
+            snapshot_ = snapshot_ with { Sources = sources, Version = snapshot_.Version + 1 };
+            Persist();
+            return snapshot_;
+        }
+    }
+
+    /// <summary>Remove a named PLC group. Throws ArgumentException when the source/group doesn't exist
+    /// or the source is not MX Component type. Member-tag reassignment runs through MappingStore
+    /// at the API layer (mirrors the UA subscription remove flow).</summary>
+    public DaRuntimeSettingsSnapshot RemovePlcGroup(string sourceId, string name)
+    {
+        string trimmed = (name ?? string.Empty).Trim();
+
+        lock (sync_)
+        {
+            List<DaSourceRuntimeSettings> sources = snapshot_.Sources.ToList();
+            int index = sources.FindIndex(source =>
+                string.Equals(source.SourceId, sourceId, StringComparison.OrdinalIgnoreCase));
+
+            if (index < 0)
+            {
+                throw new ArgumentException($"Source '{sourceId}' does not exist.", nameof(sourceId));
+            }
+
+            if (!string.Equals(sources[index].SourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException(
+                    $"Source '{sourceId}' is not an MX Component source; PLC Groups apply to MX Component sources only.",
+                    nameof(sourceId));
+            }
+
+            DaSourceRuntimeSettings current = sources[index];
+            List<PlcGroupSettings> groups = SourceConfigMigration
+                .NormalizePlcGroups(current.PlcGroups)
+                .ToList();
+            int groupIndex = groups.FindIndex(g => string.Equals(g.Name, trimmed, StringComparison.OrdinalIgnoreCase));
+            if (groupIndex < 0)
+            {
+                throw new ArgumentException($"Source '{sourceId}' has no PLC group named '{trimmed}'.", nameof(name));
+            }
+
+            groups.RemoveAt(groupIndex);
+            sources[index] = current with { PlcGroups = groups };
+            snapshot_ = snapshot_ with { Sources = sources, Version = snapshot_.Version + 1 };
+            Persist();
+            return snapshot_;
+        }
+    }
+
     /// <summary>
     /// Sets the per-source client I/O mode (AutoDetect | Sync | Async20). Invalid or
     /// unknown values normalize to AutoDetect. Returns the updated snapshot, or the
