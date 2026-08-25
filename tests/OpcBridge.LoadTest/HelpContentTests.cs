@@ -91,6 +91,15 @@ public sealed class HelpContentTests
     }
 
     [Fact]
+    public void HelpText_DescribesPlcGroups()
+    {
+        Assert.Contains("## PLC Groups (MX Component)", HelpContent.Markdown);
+        Assert.Contains("group rate wins", HelpContent.Markdown);
+        Assert.Contains("/api/plc/groups", HelpContent.Markdown);
+        Assert.Contains("Sources → PLC Groups", HelpContent.Markdown);
+    }
+
+    [Fact]
     public void DashboardNavigation_MatchesActualSidebarPages()
     {
         var md = HelpContent.Markdown;

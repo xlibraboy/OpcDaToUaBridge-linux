@@ -502,6 +502,17 @@ run in the **same logged-in desktop session**. In practice this means:
 Windows hosts. On Linux it shows a clear "requires Windows" error, matching the OPC DA sources.
 The serial A3N driver on the Drivers page works on any platform.
 
+## PLC Groups (MX Component)
+
+Named polling groups give an MX Component source multiple update rates:
+
+- **Manage:** Sources → PLC Groups — pick a source, add/edit/delete groups (name + rate, min 100 ms, up to 16 per source).
+- **Assign:** tag faceplate → PLC Group dropdown. A grouped tag polls at its GROUP's rate ("group rate wins"); removing a tag from a group clears any per-tag numeric rate.
+- **Delete:** deleting a group moves its tags back to the source default rate automatically.
+- **How it works:** MX Component reads are synchronous (ActUtlType COM calls; MELSOFT Programming Manual sh081085 — `EntryDeviceStatus` is alarm monitoring only, ≤20 points, 1–3600 s), so each group is a bridge-side poll loop over the shared logical-station session. All buckets of a source share one link; a slow bucket waits at most one fast batch behind it.
+
+Config keys: `sources.json` → source `PlcGroups`; `mappings.json` → tag `plcGroup` (`""` = default bucket). API: `POST /api/plc/groups`, `POST /api/plc/groups/remove`, `GET /api/plc/groups`.
+
 ---
 
 # PLC Drivers (Siemens S7-200 PPI)
