@@ -886,6 +886,9 @@ public sealed class SourceConfigDto
     public int SessionTimeoutMs { get; set; }
     public int ReconnectDelayMs { get; set; }
     public int? WatchdogTimeoutMs { get; set; }
+
+    // PLC polling groups (MX Component sources)
+    public List<PlcGroupDto>? PlcGroups { get; set; }
 }
 
 public sealed class OpcDaSourceOptionsDto
@@ -960,6 +963,12 @@ public sealed class MxComponentSourceOptionsDto
     public int LogicalStationNumber { get; set; }
     public int TimeoutMs { get; set; }
     public int RetryCount { get; set; }
+}
+
+public sealed class PlcGroupDto
+{
+    public string? Name { get; set; }
+    public int UpdateRateMs { get; set; }
 }
 
 public static class SourceConfigMigration
@@ -1169,6 +1178,13 @@ public static class SourceConfigMigration
                 dto.RetryCount);
         }
 
+        IReadOnlyList<PlcGroupSettings>? plcGroups = null;
+        if (dto.PlcGroups is { Count: > 0 }
+            && string.Equals(sourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
+        {
+            plcGroups = dto.PlcGroups.Select(g => new PlcGroupSettings(g.Name ?? string.Empty, g.UpdateRateMs)).ToList();
+        }
+
         return Normalize(new DaSourceRuntimeSettings(
             dto.SourceId ?? DaRuntimeSettings.DefaultSourceId,
             dto.DisplayName ?? string.Empty,
@@ -1181,7 +1197,8 @@ public static class SourceConfigMigration
             melsec,
             s7200,
             mx,
-            NormalizeIoMode(dto.IoMode)), defaultUpdateRate);
+            NormalizeIoMode(dto.IoMode),
+            plcGroups), defaultUpdateRate);
     }
 
     public static SourceConfigDto ToDto(DaSourceRuntimeSettings source)
@@ -1252,7 +1269,10 @@ public static class SourceConfigMigration
                 LogicalStationNumber = source.MxComponent.LogicalStationNumber,
                 TimeoutMs = source.MxComponent.TimeoutMs,
                 RetryCount = source.MxComponent.RetryCount
-            }
+            },
+            PlcGroups = source.PlcGroupsList.Count == 0
+                ? null
+                : source.PlcGroupsList.Select(g => new PlcGroupDto { Name = g.Name, UpdateRateMs = g.UpdateRateMs }).ToList()
         };
     }
 
@@ -1375,6 +1395,16 @@ public static class SourceConfigMigration
                 NormalizeGroupIoModes(raw.GroupIoModes));
         }
 
+        IReadOnlyList<PlcGroupSettings>? plcGroups = null;
+        if (string.Equals(sourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
+        {
+            IReadOnlyList<PlcGroupSettings> normalizedGroups = NormalizePlcGroups(source.PlcGroups);
+            if (normalizedGroups.Count > 0)
+            {
+                plcGroups = normalizedGroups;
+            }
+        }
+
         return new DaSourceRuntimeSettings(
             sourceId,
             displayName,
@@ -1387,7 +1417,8 @@ public static class SourceConfigMigration
             melsec,
             s7200,
             mx,
-            NormalizeIoMode(source.IoMode));
+            NormalizeIoMode(source.IoMode),
+            PlcGroups: plcGroups);
     }
 
     /// <summary>
@@ -1429,6 +1460,35 @@ public static class SourceConfigMigration
     }
 
     public const int MaxUaSubscriptionsPerSource = 16;
+
+    public const int MaxPlcGroupsPerSource = 16;
+
+    /// <summary>Trim names, dedupe case-insensitively (first wins), clamp rates to >= 100 ms, drop blanks.</summary>
+    public static IReadOnlyList<PlcGroupSettings> NormalizePlcGroups(IEnumerable<PlcGroupSettings>? groups)
+    {
+        if (groups is null)
+        {
+            return Array.Empty<PlcGroupSettings>();
+        }
+
+        Dictionary<string, PlcGroupSettings> result = new(StringComparer.OrdinalIgnoreCase);
+        foreach (PlcGroupSettings group in groups)
+        {
+            string name = group.Name?.Trim() ?? string.Empty;
+            if (name.Length == 0)
+            {
+                continue;
+            }
+
+            int rate = Math.Max(100, group.UpdateRateMs);
+            if (!result.ContainsKey(name))
+            {
+                result[name] = new PlcGroupSettings(name, rate);
+            }
+        }
+
+        return result.Values.ToList();
+    }
 
     /// <summary>Trim names, dedupe case-insensitively (first wins), clamp rates to >= 100 ms, drop blanks.</summary>
     public static IReadOnlyList<UaSubscriptionSettings> NormalizeUaSubscriptions(

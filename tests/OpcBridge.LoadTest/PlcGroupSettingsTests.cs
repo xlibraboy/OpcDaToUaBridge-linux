@@ -50,4 +50,55 @@ public sealed class PlcGroupSettingsTests
     {
         Assert.True(MxSource(null).PlcGroupsEqual(MxSource(Array.Empty<PlcGroupSettings>())));
     }
+
+    [Fact]
+    public void ToDto_FromDto_RoundTripsPlcGroups_ForMxSources()
+    {
+        DaSourceRuntimeSettings source = MxSource(new[]
+        {
+            new PlcGroupSettings("Fast", 250),
+            new PlcGroupSettings("Slow", 5000)
+        });
+
+        SourceConfigDto dto = SourceConfigMigration.ToDto(source);
+        Assert.NotNull(dto.PlcGroups);
+        Assert.Equal(2, dto.PlcGroups!.Count);
+
+        DaSourceRuntimeSettings restored = SourceConfigMigration.FromDto(dto, 1000);
+        Assert.True(restored.PlcGroupsEqual(source));
+    }
+
+    [Fact]
+    public void FromDto_ClearsPlcGroups_ForNonMxSources()
+    {
+        SourceConfigDto dto = new()
+        {
+            SourceId = "da1",
+            SourceType = SourceTypes.OpcDa,
+            ProgId = "Server.1",
+            Host = "localhost",
+            PlcGroups = new List<PlcGroupDto> { new() { Name = "Fast", UpdateRateMs = 250 } }
+        };
+
+        DaSourceRuntimeSettings restored = SourceConfigMigration.FromDto(dto, 1000);
+        Assert.Empty(restored.PlcGroupsList);
+    }
+
+    [Fact]
+    public void NormalizePlcGroups_TrimsDedupesClampsAndDropsBlanks()
+    {
+        IReadOnlyList<PlcGroupSettings> normalized = SourceConfigMigration.NormalizePlcGroups(new[]
+        {
+            new PlcGroupSettings("  Fast ", 1),     // clamped to 100
+            new PlcGroupSettings("fast", 999),      // duplicate CI — first wins (100)
+            new PlcGroupSettings("   ", 500),       // blank dropped
+            new PlcGroupSettings("Slow", 0)         // clamped to 100
+        });
+
+        Assert.Equal(2, normalized.Count);
+        Assert.Equal("Fast", normalized[0].Name);
+        Assert.Equal(100, normalized[0].UpdateRateMs);
+        Assert.Equal("Slow", normalized[1].Name);
+        Assert.Equal(100, normalized[1].UpdateRateMs);
+    }
 }
