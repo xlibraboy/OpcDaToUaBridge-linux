@@ -673,7 +673,8 @@ public sealed record DaSourceRuntimeSettings(
     MelsecA3nSourceOptions? Melsec,
     S7200PpiSourceOptions? S7200,
     MxComponentSourceOptions? MxComponent,
-    string IoMode = "AutoDetect")
+    string IoMode = "AutoDetect",
+    IReadOnlyList<PlcGroupSettings>? PlcGroups = null)
 {
     // Compat getters — flat access for Program/UI during Phase 1.
     public string ProgId => OpcDa?.ProgId ?? string.Empty;
@@ -734,6 +735,40 @@ public sealed record DaSourceRuntimeSettings(
             {
                 return false;
             }
+            byName.Remove(key);
+        }
+
+        return byName.Count == 0;
+    }
+
+    /// <summary>Named PLC group definitions; empty for non-MX sources or legacy configs.</summary>
+    public IReadOnlyList<PlcGroupSettings> PlcGroupsList
+        => PlcGroups ?? Array.Empty<PlcGroupSettings>();
+
+    /// <summary>Order-insensitive comparison of named PLC group definitions (case-insensitive names).</summary>
+    public bool PlcGroupsEqual(DaSourceRuntimeSettings other)
+    {
+        IReadOnlyList<PlcGroupSettings> left = PlcGroupsList;
+        IReadOnlyList<PlcGroupSettings> right = other.PlcGroupsList;
+        if (left.Count != right.Count)
+        {
+            return false;
+        }
+
+        Dictionary<string, int> byName = new(StringComparer.OrdinalIgnoreCase);
+        foreach (PlcGroupSettings g in left)
+        {
+            byName[g.Name.Trim()] = g.UpdateRateMs;
+        }
+
+        foreach (PlcGroupSettings g in right)
+        {
+            string key = g.Name.Trim();
+            if (!byName.TryGetValue(key, out int rate) || rate != g.UpdateRateMs)
+            {
+                return false;
+            }
+
             byName.Remove(key);
         }
 
