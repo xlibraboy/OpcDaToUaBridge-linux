@@ -796,6 +796,61 @@ powershell -File scripts\windows\show-published-logs.ps1
 schtasks /delete /tn OpcBridge /f
 ```
 
+## Windows Sessions (Session 0 vs Desktop Session)
+
+Since Windows Vista, Windows **services** run in **session 0** — headless, no desktop, starting at boot
+without anyone logging on. Logged-on users' applications run in **desktop sessions** (session 1, 2, …).
+The bridge can be deployed in either mode; the table below decides which one your data sources need.
+
+### The rule
+
+- **DCOM starts the server process in the caller's session.** A bridge running in session 0 gets its own
+  private copy of each launched OPC DA server inside session 0.
+- **GX Simulator exposes the simulated PLC through session-scoped shared memory**, visible only inside the
+  session where GX Works runs.
+- Network connections to real PLC hardware (Ethernet/serial) are **machine-global** — every session can use them.
+
+### What works where
+
+| Data source path | Bridge in session 0 (S4U/SYSTEM service-style) | Bridge in desktop session (Interactive) |
+|---|---|---|
+| Real PLC via Ethernet/serial (direct or via an OPC DA server) | ✅ | ✅ |
+| OPC DA server installed as a Windows Service | ✅ | ✅ |
+| GX Simulator via MxComponent (`ActUtlType`) | ❌ `0x0180800E` | ✅ |
+| GX Simulator via MXOPC (OPC DA) | ⚠️ connects, one dead snapshot, then a watchdog reconnect loop | ✅ |
+
+### Symptom decoder
+
+- **`0x80040154 Class not registered`** (MxComponent/ActUtlType) — bitness mismatch: Mitsubishi registers
+  ActUtlType **32-bit-only** (`WOW6432Node`), so a 64-bit bridge process cannot see it. Run the bridge **x86**
+  (the install steps above already use the x86 runtime).
+- **`0x0180800E Shared memory open error`** — either GX Simulator is not started, or the bridge runs in a
+  different session than the simulator (typical: service-style bridge in session 0, GX Simulator in the desktop).
+  Move the bridge into the interactive desktop session.
+- **OPC DA source connects, delivers exactly one snapshot, then goes silent until the subscription watchdog
+  reconnects** — the server was launched inside the bridge's session 0 and cannot reach its device (usually the
+  desktop's GX Simulator). Confirm with Task Manager which session each server process lives in.
+
+### Checking and switching modes
+
+```powershell
+# Which session is the bridge running in? (0 = service-style, 1+ = desktop)
+powershell -NoProfile -Command "Get-Process OpcBridge.App | Select-Object Id,SessionId"
+
+# List sessions (console = the physical desktop)
+query session
+```
+
+Deployment modes:
+
+- **Service-style / headless (session 0)** — scheduled task as SYSTEM or S4U default logon. Starts at boot
+  without login. Use when every source targets real PLC hardware over Ethernet/serial or servers installed as services.
+- **Interactive desktop (session 1)** — scheduled task with `-LogonType Interactive`; runs while that user is
+  logged into the console. Required for GX Simulator sources (via MxComponent or MXOPC).
+
+Switching between modes is just enabling/disabling the corresponding tasks and restarting the app —
+`mappings.json`, `sources.json`, and the `pki\` certificates are shared and untouched.
+
 ## Backup and restore
 
 Use the **Sources → OPC DA → Backup & Restore** section in the dashboard:

@@ -100,6 +100,27 @@ public sealed class HelpContentTests
     }
 
     [Fact]
+    public void HelpText_DocumentsWindowsSessions()
+    {
+        var md = HelpContent.Markdown;
+        Assert.Contains("## Windows Sessions (Session 0 vs Desktop Session)", md);
+        Assert.Contains("DCOM starts the server process in the caller's session", md);
+        Assert.Contains("session-scoped shared memory", md);
+
+        // Symptom decoder: the two MX Component failure signatures and their causes
+        Assert.Contains("0x80040154", md);
+        Assert.Contains("32-bit-only", md);
+        Assert.Contains("0x0180800E", md);
+        Assert.Contains("Shared memory open error", md);
+        Assert.Contains("watchdog reconnect loop", md);
+
+        // Mode selection + verification commands
+        Assert.Contains("| Real PLC via Ethernet/serial", md);
+        Assert.Contains("Get-Process OpcBridge.App | Select-Object Id,SessionId", md);
+        Assert.Contains("-LogonType Interactive", md);
+    }
+
+    [Fact]
     public void DashboardNavigation_MatchesActualSidebarPages()
     {
         var md = HelpContent.Markdown;
