@@ -550,7 +550,8 @@ public sealed class DashboardPageTests
         Assert.Contains("payload.subscription", DashboardPage.Script);
         // updateMapping preserves the stored assignment for callers that don't touch it.
         Assert.Contains("subscription: mapping.subscription ?? mapping.Subscription ?? '',", DashboardPage.Script);
-        Assert.Contains("rate.disabled = !!subSel.value;", DashboardPage.Script);
+        // PLC Group shares the same rate-lock gate (Task 11): one lock authority.
+        Assert.Contains("rate.disabled = subLocked || !!grpName;", DashboardPage.Script);
         Assert.Contains("const subBadge = subName ?", DashboardPage.Script);
         Assert.Contains("title=\"UA subscription\"", DashboardPage.Script);
     }
@@ -959,5 +960,28 @@ public sealed class DashboardPageTests
         Assert.Contains("function deletePlcGroup(", DashboardPage.Script);
         Assert.Contains("/api/plc/groups/remove", DashboardPage.Script);
         Assert.Contains("/api/plc/groups", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Html_Faceplate_HasPlcGroupField_AndBuilder()
+    {
+        Assert.Contains("id=\"fpPlcGroupField\"", DashboardPage.Html);
+        Assert.Contains("id=\"fpPlcGroup\"", DashboardPage.Html);
+        // JS lives in the Script block; DashboardPage.Html is markup only.
+        Assert.Contains("function fpPlcGroupOptions(", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Script_FaceplatePlcGroup_WiresVisibilitySaveAndRateLock()
+    {
+        // MX-only visibility: the open faceplate records its source id for the
+        // option builder and gates the field on the MxComponent source type.
+        Assert.Contains("id=\"fpPlcGroupHint\"", DashboardPage.Html);
+        Assert.Contains("window.__fpSourceId = sourceId", DashboardPage.Script);
+        Assert.Contains("isMxSource(state.sources.find(s => s.sourceId === sourceId)", DashboardPage.Script);
+        // Saving sends plcGroup in the update payload.
+        Assert.Contains("payload.plcGroup = el('fpPlcGroup').value.trim()", DashboardPage.Script);
+        // Grouped tags lock the rate input with the "set by group" hint.
+        Assert.Contains("set by group '", DashboardPage.Script);
     }
 }
