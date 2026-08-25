@@ -52,6 +52,22 @@ public sealed class SourceConnectionEqualsTests
         S7200: null,
         MxComponent: null);
 
+    private static DaSourceRuntimeSettings MxSource(IReadOnlyList<PlcGroupSettings>? groups = null)
+        => new("mx1", "MX", SourceTypes.MxComponent, 1000, true, 50000,
+            null, null, null, null,
+            new MxComponentSourceOptions(0, 3000, 2),
+            IoMode: "AutoDetect", PlcGroups: groups);
+
+    [Fact]
+    public void ConnectionEquality_IgnoresPlcGroupChanges()
+    {
+        DaSourceRuntimeSettings applied = MxSource(new[] { new PlcGroupSettings("Fast", 250) });
+        DaSourceRuntimeSettings regrouped = MxSource(new[] { new PlcGroupSettings("Slow", 5000) });
+
+        // SourceConnectionEquals must remain true across ANY group edit (spec §5: no session reopen).
+        Assert.True(BridgeWorker.SourceConnectionEquals(applied, regrouped));
+    }
+
     [Fact]
     public void UaSource_RateChange_IsConnectionChange()
     {

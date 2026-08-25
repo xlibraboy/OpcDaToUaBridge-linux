@@ -26,7 +26,9 @@ namespace OpcBridge.App;
 //   data-tab="ua-subs", id="view-ua-subs", data-route="connectivity/ua-subs", text "UA Subs"
 //   per-source collapsible cards in uaSubsContainer, uaSubModal add/edit, id="subsMsg"
 //   function loadUaSubs(/renderUaSubsForSource(/openUaSubAdd(/openUaSubEdit(/deleteUaSub(/uaSubModalSave(, /api/ua/subscriptions[/remove]
-//   faceplate: id="fpSubscription"/"fpSubscriptionField", function fpSubscriptionOptions(/updateFpRateEnabled(
+//   data-tab="plc-groups", id="view-plc-groups", data-route="connectivity/plc-groups", text "PLC Groups", plcGroupSourcePicker/plcGroupsList/plcGroupModal/plcGroupName/plcGroupRate/plcGroupModalSaveBtn/plcMsg
+//   function loadPlcGroups(/renderPlcGroupSourcePicker(/renderPlcGroupsAll(/openPlcGroupAdd(/openPlcGroupEdit(/closePlcGroupModal(/plcGroupModalSave(/deletePlcGroup(, /api/plc/groups[/remove]
+//   faceplate: id="fpSubscription"/"fpSubscriptionField", function fpSubscriptionOptions(/updateFpRateEnabled(, id="fpPlcGroup"/"fpPlcGroupField", function fpPlcGroupOptions(/plcGroupRateFor(
 //   id="mapTypeTabs", data-map-type="opc-da|opc-ua|drivers", function setMapType(/opcDaSources(/mapTypeSources(
 //   tags/maps/opc-da, tags/maps/opc-ua, tags/maps/drivers
 internal static class DashboardPage
@@ -568,6 +570,7 @@ internal static class DashboardPage
     <button class="tabbtn" data-tab="ua-subs" data-route="connectivity/ua-subs" onclick="navigate('connectivity/ua-subs')">UA Subs</button>
     <button class="tabbtn" data-tab="drivers" data-route="connectivity/drivers" onclick="navigate('connectivity/drivers')">Drivers</button>
     <button class="tabbtn" data-tab="mx-component" data-route="connectivity/mx-component" onclick="navigate('connectivity/mx-component')">MX Component</button>
+    <button class="tabbtn" data-tab="plc-groups" data-route="connectivity/plc-groups" onclick="navigate('connectivity/plc-groups')">PLC Groups</button>
   </div>
   <div class="nav-group">
     <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><circle cx="7" cy="7" r="1.5" fill="currentColor" stroke="none"/></svg>Tags</div>
@@ -937,6 +940,31 @@ internal static class DashboardPage
             <div id="uaSubsContainer" style="display:flex;flex-direction:column;gap:8px"></div>
             <div class="hint" style="font-size:11px;margin-top:8px">Tags assigned to a named subscription publish at that rate; unassigned tags ride the read-only Default tile (source Update Rate). Removing a subscription moves its tags back to default.</div>
         </div>
+    </div>
+</div>
+<div class="view" id="view-plc-groups">
+    <div class="box" style="max-width:720px">
+        <div class="box-h" style="padding:8px 12px;font-size:13px">PLC Groups</div>
+        <div class="box-b" style="padding:10px 12px">
+            <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+                <select id="plcGroupSourcePicker" onchange="renderPlcGroupsAll()" style="max-width:280px;flex:1"></select>
+                <span id="plcMsg" class="msg"></span>
+                <button class="btn ghost" type="button" style="margin-left:auto" onclick="openPlcGroupAdd(document.getElementById('plcGroupSourcePicker').value)">+ Add Group</button>
+            </div>
+            <div id="plcGroupsList" class="dag-grid"></div>
+            <div class="hint" style="font-size:11px;margin-top:8px">Named polling groups for MX Component sources. Each group polls its member tags at its own update rate; tags without a group ride the source default rate. MX Component has no push model — groups are bridge-side timers sharing the PLC link (Programming Manual sh081085 §5.2).</div>
+        </div>
+    </div>
+</div>
+<div class="modal-overlay" id="plcGroupModal" onclick="if(event.target===this)closePlcGroupModal()">
+    <div class="modal" style="width:min(420px,94vw)">
+        <div class="modal-h"><div class="n" id="plcGroupModalTitle">Add PLC Group</div><button class="modal-close" type="button" onclick="closePlcGroupModal()">×</button></div>
+        <div class="modal-b">
+            <div class="field"><label class="fl">Source</label><span class="msg" id="plcGroupModalSource" style="font-family:'Consolas',monospace"></span></div>
+            <div class="field"><label class="fl">Name</label><input id="plcGroupName" type="text" maxlength="64" placeholder="Fast" style="flex:1"></div>
+            <div class="field"><label class="fl">Update Rate (ms)</label><input id="plcGroupRate" type="number" min="100" step="50" value="1000" style="flex:1"></div>
+        </div>
+        <div class="modal-f"><button class="btn ghost" type="button" onclick="closePlcGroupModal()">Cancel</button><button class="btn" type="button" id="plcGroupModalSaveBtn" onclick="plcGroupModalSave()">Save</button></div>
     </div>
 </div>
 <div class="modal-overlay" id="dagModal" onclick="if(event.target===this)closeDagModal()">
@@ -1322,6 +1350,7 @@ internal static class DashboardPage
                 <div class="field"><label class="fl">Access Rights</label><select id="fpAccess" data-action="tag-access"><option value="Read">Read (Source → UA)</option><option value="Read-Write">Read-Write (Source ↔ UA)</option><option value="Write">Write (UA → Source)</option></select></div>
                 <div class="field"><label class="fl">Enabled</label><input type="checkbox" id="fpEnabled" data-action="toggle-tag-enabled"></div>
                 <div class="field" id="fpSubscriptionField" style="display:none"><label class="fl">Subscription</label><select id="fpSubscription"></select><span class="msg" id="fpSubscriptionHint"></span></div>
+                <div class="field" id="fpPlcGroupField" style="display:none"><label class="fl">PLC Group</label><select id="fpPlcGroup"></select><span class="msg" id="fpPlcGroupHint"></span></div>
                 <div class="field"><label class="fl">Update Rate</label><select id="fpPollRate" data-action="tag-poll-rate"><option value="0">Source Default</option><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
                 <div class="field"><label class="fl">Deadband %</label><input type="number" id="fpDeadband" min="0" max="100" step="0.1" value="0" style="width:80px"></div>
                 <div class="hint" style="margin-top:4px">Update Rate = source poll/publish interval. With subscriptions on, the source pushes changes at this rate when supported. With subscriptions off, the bridge polls at this rate.</div>
@@ -3015,6 +3044,7 @@ function openFaceplate(sourceId, itemId) {
     if (!mapping) return;
     faceplateOpen = true;
     faceplateKey = valueKey(sourceId, itemId);
+    window.__fpSourceId = sourceId; // used by fpPlcGroupOptions() to find this tag source's groups
     const name = mapping.displayName || mapping.DisplayName || itemId;
     const node = mapping.uaNodeId || mapping.UaNodeId || defaultUaNodeId(sourceId, itemId);
     const mode = mapping.mode || mapping.Mode || 'Source';
@@ -3041,6 +3071,7 @@ function openFaceplate(sourceId, itemId) {
     ensureDaGroupsCache(sourceId).then(() => {
         const sel = el('fpPollRate');
         if (sel && document.activeElement !== sel) sel.innerHTML = fpRateOptions(sourceId, mapDaGroup, pollRate);
+        updateFpRateEnabled();
     }).catch(() => {});
     // SUBSCRIPTION selector (OPC UA sources only): named subs from uaSubsCache.
     // A non-empty choice locks the per-tag rate input — rate comes from the subscription.
@@ -3057,6 +3088,26 @@ function openFaceplate(sourceId, itemId) {
                 if (!faceplateOpen || faceplateKey !== valueKey(sourceId, itemId)) return;
                 const sel2 = el('fpSubscription');
                 if (sel2 && document.activeElement !== sel2) sel2.innerHTML = fpSubscriptionOptions(sourceId, sel2.value || fpSubVal);
+                updateFpRateEnabled();
+            }).catch(() => {});
+        }
+    }
+    // PLC GROUP selector (MX Component sources only): Default plus the source's
+    // named groups from loadPlcGroups(). A non-empty choice locks the per-tag
+    // rate input — rate comes from the group.
+    const pgApplies = isMxSource(state.sources.find(s => s.sourceId === sourceId) || null);
+    const pgField = el('fpPlcGroupField');
+    const pgSel = el('fpPlcGroup');
+    if (pgField && pgSel) {
+        pgField.style.display = pgApplies ? '' : 'none';
+        const pgVal = String(mapping.plcGroup ?? mapping.PlcGroup ?? '');
+        pgSel.innerHTML = fpPlcGroupOptions(pgVal);
+        updateFpRateEnabled();
+        if (pgApplies) {
+            loadPlcGroups().then(() => {
+                if (!faceplateOpen || faceplateKey !== valueKey(sourceId, itemId)) return;
+                const sel2 = el('fpPlcGroup');
+                if (sel2 && document.activeElement !== sel2) sel2.innerHTML = fpPlcGroupOptions(sel2.value || pgVal);
                 updateFpRateEnabled();
             }).catch(() => {});
         }
@@ -3121,6 +3172,7 @@ const ROUTE_TO_TAB = {
   'connectivity/ua-subs': 'ua-subs',
   'connectivity/drivers': 'drivers',
   'connectivity/mx-component': 'mx-component',
+  'connectivity/plc-groups': 'plc-groups',
   'ops/diagnostics': 'diagnostics',
   'connectivity/diagnostics': 'diagnostics',
   'ops/sessions': 'sessions',
@@ -3185,6 +3237,9 @@ async function showTab(name, route) {
      await loadSources().catch(e => console.warn(e));
      await loadDaGroupsTab().catch(e => console.warn(e));
    }
+  if (activeTab === 'plc-groups') {
+    await loadPlcGroups().catch(e => el('plcMsg').textContent = '✗ ' + e.message);
+  }
   if (activeTab === 'tags') {
     await loadSources().catch(e => console.warn(e));
     await loadMappings().catch(e => console.warn(e));
@@ -4870,6 +4925,7 @@ async function updateMapping(sourceId, itemId, mutate) {
         pollRateMs: mapping.pollRateMs ?? mapping.PollRateMs ?? 0,
         daGroup: mapping.daGroup ?? mapping.DaGroup ?? null,
         subscription: mapping.subscription ?? mapping.Subscription ?? '',
+        plcGroup: mapping.plcGroup ?? mapping.PlcGroup ?? '',
         deadbandPct: Number(mapping.deadbandPct ?? mapping.DeadbandPct ?? 0),
         writeable: (mapping.writeable ?? mapping.Writeable) === true,
         accessRights: mapping.accessRights || mapping.AccessRights || 'Read',
@@ -5124,15 +5180,42 @@ function fpSubscriptionOptions(sourceId, selected) {
     const defRate = src ? src.defaultUpdateRateMs : ((state.sources.find(s => s.sourceId === sourceId) || {}).updateRateMs ?? 0);
     return `<option value=""${matched ? '' : ' selected'}>Source Default (${formatMs(defRate)})</option>` + html;
 }
-// A named subscription owns the tag's rate: lock the per-tag Update Rate input
-// while a subscription is chosen, unlock when back on Source Default.
+// A named subscription or PLC group owns the tag's rate: lock the per-tag
+// Update Rate input while one is chosen, unlock when back on the default.
 function updateFpRateEnabled() {
     const subSel = el('fpSubscription');
+    const grpField = el('fpPlcGroupField');
+    const grpSel = el('fpPlcGroup');
     const rate = el('fpPollRate');
     const hint = el('fpSubscriptionHint');
-    if (!subSel || !rate) return;
-    rate.disabled = !!subSel.value;
-    if (hint) hint.textContent = subSel.value ? 'Rate comes from the named subscription.' : '';
+    const grpHint = el('fpPlcGroupHint');
+    if (!rate) return;
+    const subLocked = !!(subSel && subSel.value);
+    const grpVisible = !!(grpField && grpField.style.display !== 'none');
+    const grpName = grpVisible && grpSel ? String(grpSel.value || '').trim() : '';
+    rate.disabled = subLocked || !!grpName;
+    if (hint) hint.textContent = subLocked ? 'Rate comes from the named subscription.' : '';
+    if (grpHint) grpHint.textContent = grpName ? "set by group '" + grpName + "'" : '';
+}
+// PLC GROUP selector (MX Component sources): Default plus one option per named
+// group with its update rate. Matching is case-insensitive, mirroring the
+// server-side group-name comparisons. Reads the open faceplate's source id.
+function fpPlcGroupOptions(selected) {
+    const sid = window.__fpSourceId || '';
+    const src = (typeof plcGroupsCache !== 'undefined' ? plcGroupsCache : []).find(s => s.sourceId === sid);
+    const opts = ['<option value="">Default</option>'];
+    if (src) for (const g of (src.groups || [])) {
+        opts.push('<option value="' + esc(g.name) + '"' + (String(selected || '').toLowerCase() === String(g.name).toLowerCase() ? ' selected' : '') + '>' + esc(g.name) + ' (' + g.updateRateMs + ' ms)</option>');
+    }
+    else if (selected) opts.push('<option value="' + esc(selected) + '" selected>' + esc(selected) + '</option>');
+    return opts.join('');
+}
+// Update rate of a source's named PLC group, for storing the effective rate on
+// save (same pattern as daGroupRateFor). 0 when unknown — cache not loaded yet.
+function plcGroupRateFor(sourceId, name) {
+    const src = (typeof plcGroupsCache !== 'undefined' ? plcGroupsCache : []).find(s => s.sourceId === sourceId);
+    const g = src ? (src.groups || []).find(x => String(x.name ?? '').toLowerCase() === String(name ?? '').toLowerCase()) : null;
+    return g ? (Number(g.updateRateMs) || 0) : 0;
 }
 function renderDaGroupsForSource(sourceId, groups, sourceIoMode) {
     const hint = document.getElementById('daGroupsHint-' + sourceId);
@@ -5483,6 +5566,109 @@ async function deleteUaSub(sourceId, name) {
         await loadMappings().catch(() => {});
     } catch (e) {
         setUaSubsStatus('✗ Delete failed: ' + e.message);
+    }
+}
+
+// --- PLC polling groups (PLC Groups tab, MX Component sources) ---
+// Named bridge-side poll timers sharing each MX Component PLC link: GET lists
+// per-source groups plus effective rates; POST upserts; /remove deletes and its
+// tags fall back to the source default rate.
+let plcGroupsCache = [];
+function setPlcMsg(t) {
+    const m = el('plcMsg');
+    if (m) m.textContent = t;
+}
+async function loadPlcGroups() {
+    const r = await fetch('/api/plc/groups', { cache: 'no-store' });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const data = await r.json();
+    plcGroupsCache = data.sources || [];
+    renderPlcGroupSourcePicker();
+    renderPlcGroupsAll();
+}
+function renderPlcGroupSourcePicker() {
+    const sel = el('plcGroupSourcePicker'); if (!sel) return;
+    sel.innerHTML = plcGroupsCache.map(s => '<option value="' + esc(s.sourceId) + '">' + esc(s.displayName || s.sourceId) + '</option>').join('');
+}
+function renderPlcGroupsAll() {
+    const host = el('plcGroupsList');
+    if (!host) return;
+    const sid = el('plcGroupSourcePicker')?.value;
+    const src = (plcGroupsCache || []).find(s => s.sourceId === sid);
+    if (!src) { host.innerHTML = '<p class="hint">No MX Component sources configured — add one in MX Component.</p>'; return; }
+    const gidA = esc(src.sourceId).replace(/'/g, "\\'");
+    const ratesTxt = esc((src.effectiveRates || []).join(', '));
+    const rows = (src.groups || []).map(g => {
+        const gnA = esc(g.name).replace(/'/g, "\\'");
+        return '<div class="dag-card" data-name="' + attr(g.name) + '">' +
+            '<div class="n">' + esc(g.name) + '</div>' +
+            '<div class="dag-badges"><span class="dag-badge accent">' + esc(formatMs(g.updateRateMs)) + '</span></div>' +
+            '<div class="dag-meta">' + g.memberCount + ' tag' + (g.memberCount === 1 ? '' : 's') +
+            ' · effective rates: ' + ratesTxt + ' ms</div>' +
+            '<div class="dag-actions">' +
+                '<button class="btn ghost" type="button" onclick="openPlcGroupEdit(\'' + gidA + '\', \'' + gnA + '\', ' + g.updateRateMs + ')">Edit</button>' +
+                '<button class="btn ghost" type="button" onclick="deletePlcGroup(\'' + gidA + '\', \'' + gnA + '\', ' + g.memberCount + ')">Delete</button>' +
+            '</div>' +
+        '</div>';
+    }).join('');
+    host.innerHTML = rows || '<p class="hint">No groups yet — click + Add Group.</p>';
+}
+function openPlcGroupAdd(sourceId) {
+    el('plcGroupModalTitle').textContent = 'Add PLC Group';
+    el('plcGroupModalSource').textContent = sourceId || '';
+    el('plcGroupName').value = '';
+    el('plcGroupRate').value = 1000;
+    el('plcGroupName').dataset.editFrom = '';
+    el('plcGroupName').dataset.sourceId = sourceId || '';
+    setPlcMsg('');
+    const b = el('plcGroupModalSaveBtn'); if (b) b.disabled = false;
+    const m = el('plcGroupModal'); if (m) m.classList.add('open');
+    setTimeout(() => { const n = el('plcGroupName'); if (n) n.focus(); }, 50);
+}
+function openPlcGroupEdit(sourceId, name, rate) {
+    el('plcGroupModalTitle').textContent = 'Edit PLC Group';
+    el('plcGroupModalSource').textContent = sourceId || '';
+    el('plcGroupName').value = name;
+    el('plcGroupRate').value = rate;
+    el('plcGroupName').dataset.editFrom = name;
+    el('plcGroupName').dataset.sourceId = sourceId;
+    setPlcMsg('');
+    const b = el('plcGroupModalSaveBtn'); if (b) b.disabled = false;
+    const m = el('plcGroupModal'); if (m) m.classList.add('open');
+}
+function closePlcGroupModal() {
+    const m = el('plcGroupModal'); if (m) m.classList.remove('open');
+}
+async function plcGroupModalSave() {
+    const b = el('plcGroupModalSaveBtn'); if (b) b.disabled = true;
+    try {
+        const sourceId = el('plcGroupName').dataset.sourceId;
+        const name = el('plcGroupName').value.trim();
+        const rate = parseInt(el('plcGroupRate').value, 10) || 100;
+        if (!sourceId) throw new Error('Pick a source first.');
+        if (!name) throw new Error('Name is required.');
+        if (rate < 100) throw new Error('Update rate must be at least 100 ms.');
+        const r = await fetch('/api/plc/groups', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId, name, updateRateMs: rate }) });
+        const p = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
+        closePlcGroupModal();
+        setPlcMsg('✓ Saved ' + name + '.');
+        await loadPlcGroups();
+    } catch (e) {
+        el('plcMsg').textContent = '✗ ' + e.message;
+        const bb = el('plcGroupModalSaveBtn'); if (bb) bb.disabled = false;
+    }
+}
+async function deletePlcGroup(sourceId, name, memberCount) {
+    if (memberCount > 0 && !confirm(memberCount + ' tag(s) will move to the source default rate. Delete "' + name + '" for ' + sourceId + '?')) return;
+    try {
+        const r = await fetch('/api/plc/groups/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId, name }) });
+        const p = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
+        setPlcMsg('Deleted ' + name + '.' + ((p.movedMappings ?? 0) > 0 ? ' ' + p.movedMappings + ' tag(s) moved to default.' : ''));
+        await loadPlcGroups();
+    } catch (e) {
+        setPlcMsg('✗ Delete failed: ' + e.message);
     }
 }
 
@@ -6523,6 +6709,16 @@ function bindDynamicButtons() {
                 if (el('fpSubscriptionField') && el('fpSubscriptionField').style.display !== 'none' && el('fpSubscription')) {
                     payload.subscription = el('fpSubscription').value.trim(); // '' = source default
                 }
+                if (el('fpPlcGroupField') && el('fpPlcGroupField').style.display !== 'none' && el('fpPlcGroup')) {
+                    payload.plcGroup = el('fpPlcGroup').value.trim(); // '' = Default (server zeroes PollRateMs)
+                    if (payload.plcGroup) {
+                        // Keep the effective rate on the tag like named DA groups do;
+                        // unassigning later lets the server zero it.
+                        const pgSrcId = el('fpApply').dataset.sourceId || sourceId;
+                        payload.pollRateMs = plcGroupRateFor(pgSrcId, payload.plcGroup) || 1000;
+                        payload.daGroup = null;
+                    }
+                }
                 payload.deadbandPct = Math.max(0, Math.min(100, Number.parseFloat(el('fpDeadband').value) || 0));
                 payload.description = el('fpDescription').value.trim() || null;
                 if (simulated) {
@@ -6560,6 +6756,9 @@ function bindDynamicButtons() {
             updateManualInputState();
         }
         if (target.id === 'fpSubscription') {
+            updateFpRateEnabled();
+        }
+        if (target.id === 'fpPlcGroup') {
             updateFpRateEnabled();
         }
     });

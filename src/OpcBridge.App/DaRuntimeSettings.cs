@@ -257,6 +257,108 @@ public sealed class DaRuntimeSettings
         }
     }
 
+    /// <summary>Add or update a named PLC group on an MxComponent source. Throws ArgumentException
+    /// for unknown sources, non-MX sources (PLC Groups are MX Component-only this iteration),
+    /// invalid names, or past the 16-group cap. Clamps the rate to the 100 ms floor (spec §4).</summary>
+    public DaRuntimeSettingsSnapshot UpsertPlcGroup(string sourceId, string name, int updateRateMs)
+    {
+        string trimmed = (name ?? string.Empty).Trim();
+        if (trimmed.Length == 0 || trimmed.Length > 64)
+        {
+            throw new ArgumentException("PLC group name must be 1-64 characters.", nameof(name));
+        }
+
+        int clampedRate = Math.Max(100, updateRateMs);
+
+        lock (sync_)
+        {
+            List<DaSourceRuntimeSettings> sources = snapshot_.Sources.ToList();
+            int index = sources.FindIndex(source =>
+                string.Equals(source.SourceId, sourceId, StringComparison.OrdinalIgnoreCase));
+
+            if (index < 0)
+            {
+                throw new ArgumentException($"Source '{sourceId}' does not exist.", nameof(sourceId));
+            }
+
+            if (!string.Equals(sources[index].SourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException(
+                    $"Source '{sourceId}' is not an MX Component source; PLC Groups apply to MX Component sources only.",
+                    nameof(sourceId));
+            }
+
+            DaSourceRuntimeSettings current = sources[index];
+            List<PlcGroupSettings> groups = SourceConfigMigration
+                .NormalizePlcGroups(current.PlcGroups)
+                .ToList();
+            PlcGroupSettings updated = new(trimmed, clampedRate);
+            int groupIndex = groups.FindIndex(g => string.Equals(g.Name, trimmed, StringComparison.OrdinalIgnoreCase));
+            if (groupIndex >= 0)
+            {
+                groups[groupIndex] = updated;
+            }
+            else
+            {
+                if (groups.Count >= SourceConfigMigration.MaxPlcGroupsPerSource)
+                {
+                    throw new ArgumentException(
+                        $"Source '{sourceId}' already has the maximum of {SourceConfigMigration.MaxPlcGroupsPerSource} PLC groups.");
+                }
+
+                groups.Add(updated);
+            }
+
+            sources[index] = current with { PlcGroups = groups };
+            snapshot_ = snapshot_ with { Sources = sources, Version = snapshot_.Version + 1 };
+            Persist();
+            return snapshot_;
+        }
+    }
+
+    /// <summary>Remove a named PLC group. Throws ArgumentException when the source/group doesn't exist
+    /// or the source is not MX Component type. Member-tag reassignment runs through MappingStore
+    /// at the API layer (mirrors the UA subscription remove flow).</summary>
+    public DaRuntimeSettingsSnapshot RemovePlcGroup(string sourceId, string name)
+    {
+        string trimmed = (name ?? string.Empty).Trim();
+
+        lock (sync_)
+        {
+            List<DaSourceRuntimeSettings> sources = snapshot_.Sources.ToList();
+            int index = sources.FindIndex(source =>
+                string.Equals(source.SourceId, sourceId, StringComparison.OrdinalIgnoreCase));
+
+            if (index < 0)
+            {
+                throw new ArgumentException($"Source '{sourceId}' does not exist.", nameof(sourceId));
+            }
+
+            if (!string.Equals(sources[index].SourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException(
+                    $"Source '{sourceId}' is not an MX Component source; PLC Groups apply to MX Component sources only.",
+                    nameof(sourceId));
+            }
+
+            DaSourceRuntimeSettings current = sources[index];
+            List<PlcGroupSettings> groups = SourceConfigMigration
+                .NormalizePlcGroups(current.PlcGroups)
+                .ToList();
+            int groupIndex = groups.FindIndex(g => string.Equals(g.Name, trimmed, StringComparison.OrdinalIgnoreCase));
+            if (groupIndex < 0)
+            {
+                throw new ArgumentException($"Source '{sourceId}' has no PLC group named '{trimmed}'.", nameof(name));
+            }
+
+            groups.RemoveAt(groupIndex);
+            sources[index] = current with { PlcGroups = groups };
+            snapshot_ = snapshot_ with { Sources = sources, Version = snapshot_.Version + 1 };
+            Persist();
+            return snapshot_;
+        }
+    }
+
     /// <summary>
     /// Sets the per-source client I/O mode (AutoDetect | Sync | Async20). Invalid or
     /// unknown values normalize to AutoDetect. Returns the updated snapshot, or the
@@ -673,7 +775,8 @@ public sealed record DaSourceRuntimeSettings(
     MelsecA3nSourceOptions? Melsec,
     S7200PpiSourceOptions? S7200,
     MxComponentSourceOptions? MxComponent,
-    string IoMode = "AutoDetect")
+    string IoMode = "AutoDetect",
+    IReadOnlyList<PlcGroupSettings>? PlcGroups = null)
 {
     // Compat getters — flat access for Program/UI during Phase 1.
     public string ProgId => OpcDa?.ProgId ?? string.Empty;
@@ -734,6 +837,40 @@ public sealed record DaSourceRuntimeSettings(
             {
                 return false;
             }
+            byName.Remove(key);
+        }
+
+        return byName.Count == 0;
+    }
+
+    /// <summary>Named PLC group definitions; empty for non-MX sources or legacy configs.</summary>
+    public IReadOnlyList<PlcGroupSettings> PlcGroupsList
+        => PlcGroups ?? Array.Empty<PlcGroupSettings>();
+
+    /// <summary>Order-insensitive comparison of named PLC group definitions (case-insensitive names).</summary>
+    public bool PlcGroupsEqual(DaSourceRuntimeSettings other)
+    {
+        IReadOnlyList<PlcGroupSettings> left = PlcGroupsList;
+        IReadOnlyList<PlcGroupSettings> right = other.PlcGroupsList;
+        if (left.Count != right.Count)
+        {
+            return false;
+        }
+
+        Dictionary<string, int> byName = new(StringComparer.OrdinalIgnoreCase);
+        foreach (PlcGroupSettings g in left)
+        {
+            byName[g.Name.Trim()] = g.UpdateRateMs;
+        }
+
+        foreach (PlcGroupSettings g in right)
+        {
+            string key = g.Name.Trim();
+            if (!byName.TryGetValue(key, out int rate) || rate != g.UpdateRateMs)
+            {
+                return false;
+            }
+
             byName.Remove(key);
         }
 
@@ -851,6 +988,9 @@ public sealed class SourceConfigDto
     public int SessionTimeoutMs { get; set; }
     public int ReconnectDelayMs { get; set; }
     public int? WatchdogTimeoutMs { get; set; }
+
+    // PLC polling groups (MX Component sources)
+    public List<PlcGroupDto>? PlcGroups { get; set; }
 }
 
 public sealed class OpcDaSourceOptionsDto
@@ -925,6 +1065,12 @@ public sealed class MxComponentSourceOptionsDto
     public int LogicalStationNumber { get; set; }
     public int TimeoutMs { get; set; }
     public int RetryCount { get; set; }
+}
+
+public sealed class PlcGroupDto
+{
+    public string? Name { get; set; }
+    public int UpdateRateMs { get; set; }
 }
 
 public static class SourceConfigMigration
@@ -1134,6 +1280,13 @@ public static class SourceConfigMigration
                 dto.RetryCount);
         }
 
+        IReadOnlyList<PlcGroupSettings>? plcGroups = null;
+        if (dto.PlcGroups is { Count: > 0 }
+            && string.Equals(sourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
+        {
+            plcGroups = dto.PlcGroups.Select(g => new PlcGroupSettings(g.Name ?? string.Empty, g.UpdateRateMs)).ToList();
+        }
+
         return Normalize(new DaSourceRuntimeSettings(
             dto.SourceId ?? DaRuntimeSettings.DefaultSourceId,
             dto.DisplayName ?? string.Empty,
@@ -1146,7 +1299,8 @@ public static class SourceConfigMigration
             melsec,
             s7200,
             mx,
-            NormalizeIoMode(dto.IoMode)), defaultUpdateRate);
+            NormalizeIoMode(dto.IoMode),
+            plcGroups), defaultUpdateRate);
     }
 
     public static SourceConfigDto ToDto(DaSourceRuntimeSettings source)
@@ -1217,7 +1371,10 @@ public static class SourceConfigMigration
                 LogicalStationNumber = source.MxComponent.LogicalStationNumber,
                 TimeoutMs = source.MxComponent.TimeoutMs,
                 RetryCount = source.MxComponent.RetryCount
-            }
+            },
+            PlcGroups = source.PlcGroupsList.Count == 0
+                ? null
+                : source.PlcGroupsList.Select(g => new PlcGroupDto { Name = g.Name, UpdateRateMs = g.UpdateRateMs }).ToList()
         };
     }
 
@@ -1340,6 +1497,16 @@ public static class SourceConfigMigration
                 NormalizeGroupIoModes(raw.GroupIoModes));
         }
 
+        IReadOnlyList<PlcGroupSettings>? plcGroups = null;
+        if (string.Equals(sourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
+        {
+            IReadOnlyList<PlcGroupSettings> normalizedGroups = NormalizePlcGroups(source.PlcGroups);
+            if (normalizedGroups.Count > 0)
+            {
+                plcGroups = normalizedGroups;
+            }
+        }
+
         return new DaSourceRuntimeSettings(
             sourceId,
             displayName,
@@ -1352,7 +1519,8 @@ public static class SourceConfigMigration
             melsec,
             s7200,
             mx,
-            NormalizeIoMode(source.IoMode));
+            NormalizeIoMode(source.IoMode),
+            PlcGroups: plcGroups);
     }
 
     /// <summary>
@@ -1394,6 +1562,35 @@ public static class SourceConfigMigration
     }
 
     public const int MaxUaSubscriptionsPerSource = 16;
+
+    public const int MaxPlcGroupsPerSource = 16;
+
+    /// <summary>Trim names, dedupe case-insensitively (first wins), clamp rates to >= 100 ms, drop blanks.</summary>
+    public static IReadOnlyList<PlcGroupSettings> NormalizePlcGroups(IEnumerable<PlcGroupSettings>? groups)
+    {
+        if (groups is null)
+        {
+            return Array.Empty<PlcGroupSettings>();
+        }
+
+        Dictionary<string, PlcGroupSettings> result = new(StringComparer.OrdinalIgnoreCase);
+        foreach (PlcGroupSettings group in groups)
+        {
+            string name = group.Name?.Trim() ?? string.Empty;
+            if (name.Length == 0)
+            {
+                continue;
+            }
+
+            int rate = Math.Max(100, group.UpdateRateMs);
+            if (!result.ContainsKey(name))
+            {
+                result[name] = new PlcGroupSettings(name, rate);
+            }
+        }
+
+        return result.Values.ToList();
+    }
 
     /// <summary>Trim names, dedupe case-insensitively (first wins), clamp rates to >= 100 ms, drop blanks.</summary>
     public static IReadOnlyList<UaSubscriptionSettings> NormalizeUaSubscriptions(

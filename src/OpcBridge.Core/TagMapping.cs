@@ -40,6 +40,14 @@ public sealed class TagMapping
     /// </summary>
     [JsonPropertyName("subscription")]
     public string Subscription { get; set; } = string.Empty;
+
+    /// <summary>
+    /// PLC sources (MxComponent today) only: name of the source-defined PLC group this
+    /// tag rides on. Empty string = source default bucket (default-rate semantics).
+    /// Unknown names fall back to the default bucket at runtime (spec §4).
+    /// </summary>
+    [JsonPropertyName("plcGroup")]
+    public string PlcGroup { get; set; } = string.Empty;
 }
 public static class TagMode
 {

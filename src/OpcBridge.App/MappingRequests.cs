@@ -17,7 +17,8 @@ public sealed record MappingTagDto(
     bool? MqttEnabled = null,
     string? MqttTopic = null,
     bool? InfluxEnabled = null,
-    string? Subscription = null);
+    string? Subscription = null,
+    string? PlcGroup = null);
 
 public sealed record MappingAddRequest(List<MappingTagDto>? Tags);
 
