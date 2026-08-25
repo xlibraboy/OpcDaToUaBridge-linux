@@ -1,15 +1,19 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using OpcBridge.Client;
+using OpcBridge.Hmi.Core;
 
 namespace OpcBridge.Hmi.ViewModels;
 
 public partial class TagItemViewModel : ObservableObject
 {
     [ObservableProperty]
+    private string _bridgeId = "default";
+
+    [ObservableProperty]
     private string _sourceId = string.Empty;
 
     [ObservableProperty]
-    private string _itemId = string.Empty;
+    private string _daItemId = string.Empty;
 
     [ObservableProperty]
     private string _displayName = string.Empty;
@@ -27,30 +31,52 @@ public partial class TagItemViewModel : ObservableObject
     private string _timestampText = string.Empty;
 
     [ObservableProperty]
-    private string _rateText = string.Empty;
-
-    [ObservableProperty]
     private bool _writeable;
 
-    public string Key => HmiTagCache.Key(SourceId, ItemId);
+    public TagBindingKey BindingKey => TagBindingKey.Create(BridgeId, SourceId, DaItemId);
 
-    public static TagItemViewModel FromDto(HmiTagDto dto)
+    public string Key => BindingKey.CacheKey;
+
+    public static TagItemViewModel FromEntry(MultiBridgeTagEntry entry)
     {
         var vm = new TagItemViewModel();
-        vm.Apply(dto);
+        vm.Apply(entry);
         return vm;
     }
 
-    public void Apply(HmiTagDto dto)
+    public static TagItemViewModel FromDto(string bridgeId, HmiTagDto dto)
     {
+        var vm = new TagItemViewModel();
+        vm.Apply(bridgeId, dto);
+        return vm;
+    }
+
+    // Back-compat for older single-bridge call sites/tests.
+    public static TagItemViewModel FromDto(HmiTagDto dto) => FromDto("default", dto);
+
+    public void Apply(MultiBridgeTagEntry entry)
+    {
+        BridgeId = entry.Key.BridgeId;
+        SourceId = entry.Key.SourceId;
+        DaItemId = entry.Key.DaItemId;
+        DisplayName = string.IsNullOrWhiteSpace(entry.DisplayName) ? entry.Key.DaItemId : entry.DisplayName;
+        DataType = entry.DataType;
+        Writeable = entry.Writeable;
+        ApplyValue(entry.Value, entry.TimestampUtc, entry.DaQuality, entry.IsGood);
+    }
+
+    public void Apply(string bridgeId, HmiTagDto dto)
+    {
+        BridgeId = bridgeId;
         SourceId = dto.SourceId;
-        ItemId = dto.ItemId;
+        DaItemId = dto.ItemId;
         DisplayName = string.IsNullOrWhiteSpace(dto.DisplayName) ? dto.ItemId : dto.DisplayName;
         DataType = dto.DataType;
         Writeable = dto.Writeable;
-        RateText = dto.UpdateRateMs > 0 ? $"{dto.UpdateRateMs} ms" : "—";
         ApplyValue(dto.Value, dto.TimestampUtc, dto.DaQuality, dto.IsGood);
     }
+
+    public void Apply(HmiTagDto dto) => Apply("default", dto);
 
     public void ApplyDelta(HmiValueDelta delta)
     {
@@ -63,7 +89,7 @@ public partial class TagItemViewModel : ObservableObject
         QualityText = FormatQuality(daQuality, isGood);
         TimestampText = timestampUtc is null
             ? string.Empty
-            : timestampUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss.fff");
+            : timestampUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss");
     }
 
     private static string FormatValue(object? value) => value switch

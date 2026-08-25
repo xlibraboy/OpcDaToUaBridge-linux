@@ -1,47 +1,77 @@
 using System.Collections.ObjectModel;
-using System.Text.Json;
+using Avalonia.Controls;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using OpcBridge.Client;
+using OpcBridge.Hmi.Core;
 using OpcBridge.Hmi.Services;
+using OpcBridge.Hmi.Views;
 
 namespace OpcBridge.Hmi.ViewModels;
 
 public partial class MainViewModel : ObservableObject, IAsyncDisposable
 {
-    private readonly BridgeApiClient _api;
-    private readonly HmiHubClient _hub;
-    private readonly HmiTagCache _cache = new();
-    private readonly Dictionary<string, TagItemViewModel> _tagIndex = new(StringComparer.OrdinalIgnoreCase);
-    private readonly bool _ownsClients;
-    private CancellationTokenSource? _connectCts;
-    private int _mappingVersion;
+    private readonly BridgeConnectionManager connections_;
+    private readonly DisplayStoreClient displayStore_;
+    private readonly PopupWindowService popups_;
+    private readonly Dictionary<string, TagItemViewModel> tagIndex_ = new(StringComparer.OrdinalIgnoreCase);
+    private readonly bool ownsServices_;
+    private CancellationTokenSource? connectCts_;
+    private Window? ownerWindow_;
+    private readonly List<FaceplateViewModel> openFaceplates_ = new();
+    private readonly string configPath_;
 
     public MainViewModel()
-        : this(new BridgeApiClient(), new HmiHubClient(), ownsClients: true)
+        : this(new BridgeConnectionManager(), new DisplayStoreClient(), new PopupWindowService(), ownsServices: true)
     {
-        // Restore the last known bridge URL when available (skips the discovery scan).
-        string? saved = HmiSettings.LoadBaseUrl();
-        if (!string.IsNullOrWhiteSpace(saved))
-        {
-            _baseUrl = saved;
-        }
-
-        // Auto-discover the bridge HTTP port (the bridge moves off 8080 when that port is in use).
-        _ = AutoDiscoverAsync();
     }
 
-    public MainViewModel(BridgeApiClient api, HmiHubClient hub, bool ownsClients = false)
+    public MainViewModel(
+        BridgeConnectionManager connections,
+        DisplayStoreClient displayStore,
+        PopupWindowService popups,
+        bool ownsServices = false,
+        string? configPath = null)
     {
-        _api = api;
-        _hub = hub;
-        _ownsClients = ownsClients;
-        _hub.Reconnected += OnHubReconnectedAsync;
+        connections_ = connections;
+        displayStore_ = displayStore;
+        popups_ = popups;
+        ownsServices_ = ownsServices;
+        configPath_ = string.IsNullOrWhiteSpace(configPath)
+            ? Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "OpcBridge.Hmi",
+                "hmi-config.json")
+            : configPath!;
+        DisplaySurface = new DisplaySurfaceViewModel(
+            connections_.Cache,
+            OpenFaceplateFor,
+            WriteForBindingAsync);
+        connections_.CacheChanged += OnCacheChanged;
+        connections_.MappingsChanged += OnMappingsChangedAsync;
+        LoadLocalConfig();
     }
+
+    public DisplaySurfaceViewModel DisplaySurface { get; }
+
+    public void SetOwnerWindow(Window? owner) => ownerWindow_ = owner;
 
     [ObservableProperty]
     private string _baseUrl = "http://127.0.0.1:8080";
+
+    [ObservableProperty]
+    private string _displayStoreUrl = "http://127.0.0.1:8080";
+
+    /// <summary>
+    /// Extra bridges as lines: id|http://host:8080
+    /// Primary BaseUrl is always included as bridge id "default" unless listed.
+    /// </summary>
+    [ObservableProperty]
+    private string _bridgeListText = string.Empty;
+
+    [ObservableProperty]
+    private string _bridgeSummary = string.Empty;
 
     [ObservableProperty]
     private string _connectionState = "Disconnected";
@@ -53,32 +83,17 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     private TagItemViewModel? _selectedTag;
 
     [ObservableProperty]
-    private string _writeValue = string.Empty;
-
-    [ObservableProperty]
     private string _statusMessage = string.Empty;
 
     [ObservableProperty]
     private bool _isConnected;
 
     [ObservableProperty]
-    private string _trendStatus = string.Empty;
-
-    [ObservableProperty]
-    private bool _trendLoading;
-
-    [ObservableProperty]
-    private IReadOnlyList<double> _trendValues = Array.Empty<double>();
-
-    /// <summary>Port summary line, e.g. "HTTP 8081 · OPC UA 4841" (empty until connected).</summary>
-    [ObservableProperty]
-    private string _portsSummary = string.Empty;
-
-    /// <summary>True when any bridge port was auto-assigned away from its default.</summary>
-    [ObservableProperty]
-    private bool _portsWarning;
+    private DisplayListItemDto? _selectedDisplay;
 
     public ObservableCollection<TagItemViewModel> Tags { get; } = new();
+
+    public ObservableCollection<DisplayListItemDto> Displays { get; } = new();
 
     public IEnumerable<TagItemViewModel> FilteredTags =>
         string.IsNullOrWhiteSpace(Filter)
@@ -91,75 +106,48 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     {
         ConnectCommand.NotifyCanExecuteChanged();
         DisconnectCommand.NotifyCanExecuteChanged();
-        WriteCommand.NotifyCanExecuteChanged();
+        OpenFaceplateCommand.NotifyCanExecuteChanged();
+        RefreshDisplaysCommand.NotifyCanExecuteChanged();
+        LoadSelectedDisplayCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnSelectedTagChanged(TagItemViewModel? value)
     {
-        WriteValue = value?.ValueText ?? string.Empty;
-        WriteCommand.NotifyCanExecuteChanged();
-        _ = LoadTrendsForSelectionAsync();
+        OpenFaceplateCommand.NotifyCanExecuteChanged();
     }
 
-    private async Task AutoDiscoverAsync()
+    partial void OnBaseUrlChanged(string value)
     {
-        try
+        if (string.IsNullOrWhiteSpace(DisplayStoreUrl) || DisplayStoreUrl == "http://127.0.0.1:8080")
         {
-            string discovered = await BridgePortDiscovery
-                .DiscoverBaseUrlAsync(BaseUrl, CancellationToken.None)
-                .ConfigureAwait(true);
-            if (!string.Equals(discovered, BaseUrl, StringComparison.OrdinalIgnoreCase))
-            {
-                await PostToUiAsync(() =>
-                {
-                    BaseUrl = discovered;
-                    StatusMessage = $"Bridge auto-discovered at {discovered}";
-                }).ConfigureAwait(true);
-            }
-
-            if (!string.Equals(discovered, HmiSettings.LoadBaseUrl(), StringComparison.OrdinalIgnoreCase))
-            {
-                HmiSettings.SaveBaseUrl(discovered);
-            }
-        }
-        catch
-        {
-            // discovery is best-effort; the user can still connect manually
+            DisplayStoreUrl = value;
         }
     }
 
     [RelayCommand(CanExecute = nameof(CanConnect))]
     private async Task ConnectAsync()
     {
-        _connectCts?.Cancel();
-        _connectCts?.Dispose();
-        _connectCts = new CancellationTokenSource();
-        CancellationToken ct = _connectCts.Token;
+        connectCts_?.Cancel();
+        connectCts_?.Dispose();
+        connectCts_ = new CancellationTokenSource();
+        CancellationToken ct = connectCts_.Token;
 
         try
         {
             ConnectionState = "Connecting";
             StatusMessage = string.Empty;
-            _api.SetBaseAddress(BaseUrl);
 
-            await RefreshSnapshotAsync(ct).ConfigureAwait(true);
-
-            await _hub.ConnectAsync(
-                BaseUrl,
-                OnValuesAsync,
-                OnMappingsChangedAsync,
-                ct).ConfigureAwait(true);
-
-            await RefreshPortsSummaryAsync(ct).ConfigureAwait(true);
+            HmiClientConfig config = BuildConfigFromUi();
+            displayStore_.SetBaseAddress(config.DisplayStoreUrl);
+            await connections_.ConnectAllAsync(config, ct).ConfigureAwait(true);
+            SaveLocalConfig(config);
+            RebuildTagsFromCache();
+            await RefreshDisplaysAsync().ConfigureAwait(true);
 
             IsConnected = true;
             ConnectionState = "Connected";
-            StatusMessage = $"Loaded {Tags.Count} tags (v{_mappingVersion})";
-            _ = TrendRefreshLoopAsync(ct);
-            if (SelectedTag is not null)
-            {
-                await LoadTrendsAsync(ct).ConfigureAwait(true);
-            }
+            BridgeSummary = string.Join(", ", connections_.ConnectedBridgeIds);
+            StatusMessage = $"Loaded {Tags.Count} tags from {connections_.ConnectedBridgeIds.Count} bridge(s)";
         }
         catch (OperationCanceledException)
         {
@@ -180,7 +168,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     [RelayCommand(CanExecute = nameof(CanDisconnect))]
     private async Task Disconnect()
     {
-        _connectCts?.Cancel();
+        connectCts_?.Cancel();
         await SafeDisconnectAsync().ConfigureAwait(true);
         ConnectionState = "Disconnected";
         StatusMessage = "Disconnected";
@@ -188,372 +176,324 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private bool CanDisconnect() => IsConnected;
 
-    [RelayCommand(CanExecute = nameof(CanWrite))]
-    private async Task WriteAsync()
+    [RelayCommand(CanExecute = nameof(CanOpenFaceplate))]
+    private void OpenFaceplate()
     {
         if (SelectedTag is null)
         {
             return;
         }
 
+        OpenFaceplateFor(SelectedTag.BindingKey);
+    }
+
+    private bool CanOpenFaceplate() => IsConnected && SelectedTag is not null;
+
+    [RelayCommand(CanExecute = nameof(CanRefreshDisplays))]
+    private async Task RefreshDisplaysAsync()
+    {
         try
         {
-            object? parsed = ParseWriteValue(WriteValue, SelectedTag.DataType);
-            HmiWriteResponse response = await _api.WriteAsync(
-                new HmiWriteRequest
-                {
-                    SourceId = SelectedTag.SourceId,
-                    ItemId = SelectedTag.ItemId,
-                    Value = parsed
-                },
-                CancellationToken.None).ConfigureAwait(true);
-
-            StatusMessage = response.Ok
-                ? "Write OK"
-                : (response.Error ?? "Write failed");
+            DisplayListResponse list = await displayStore_.ListAsync(CancellationToken.None).ConfigureAwait(true);
+            Displays.Clear();
+            foreach (DisplayListItemDto item in list.Items)
+            {
+                Displays.Add(item);
+            }
         }
         catch (Exception ex)
         {
-            StatusMessage = ex.Message;
+            StatusMessage = "Display list: " + ex.Message;
         }
     }
 
-    private bool CanWrite() => IsConnected && SelectedTag is { Writeable: true };
+    private bool CanRefreshDisplays() => IsConnected;
 
-    public void ApplySnapshot(HmiTagsResponse response)
+    [RelayCommand(CanExecute = nameof(CanLoadSelectedDisplay))]
+    private async Task LoadSelectedDisplayAsync()
     {
-        _mappingVersion = (int)response.Version;
-        _cache.ReplaceAll(response.Tags);
-
-        string? selectedKey = SelectedTag?.Key;
-        Tags.Clear();
-        _tagIndex.Clear();
-
-        foreach (HmiTagDto dto in response.Tags)
+        if (SelectedDisplay is null)
         {
-            TagItemViewModel item = TagItemViewModel.FromDto(dto);
-            _tagIndex[item.Key] = item;
-            Tags.Add(item);
-        }
-
-        SelectedTag = selectedKey is not null && _tagIndex.TryGetValue(selectedKey, out TagItemViewModel? stillThere)
-            ? stillThere
-            : null;
-
-        OnPropertyChanged(nameof(FilteredTags));
-    }
-
-    public void ApplyDeltas(IEnumerable<HmiValueDelta> deltas)
-    {
-        HmiValueDelta[] batch = deltas as HmiValueDelta[] ?? deltas.ToArray();
-        _cache.ApplyDeltas(batch);
-
-        foreach (HmiValueDelta delta in batch)
-        {
-            string key = HmiTagCache.Key(delta.SourceId, delta.ItemId);
-            if (_tagIndex.TryGetValue(key, out TagItemViewModel? item))
-            {
-                item.ApplyDelta(delta);
-            }
-        }
-    }
-
-    private async Task OnValuesAsync(HmiValueDelta[] batch)
-    {
-        await PostToUiAsync(() => ApplyDeltas(batch)).ConfigureAwait(false);
-    }
-
-    private async Task OnMappingsChangedAsync(HmiMappingsChanged msg)
-    {
-        await PostToUiAsync(async () =>
-        {
-            try
-            {
-                await RefreshSnapshotAsync(CancellationToken.None).ConfigureAwait(true);
-                StatusMessage = $"Mappings changed (v{msg.Version})";
-            }
-            catch (Exception ex)
-            {
-                StatusMessage = ex.Message;
-            }
-        }).ConfigureAwait(false);
-    }
-
-    private async Task OnHubReconnectedAsync(string? _)
-    {
-        await PostToUiAsync(async () =>
-        {
-            try
-            {
-                await RefreshSnapshotAsync(CancellationToken.None).ConfigureAwait(true);
-                ConnectionState = "Connected";
-                StatusMessage = "Reconnected; snapshot refreshed";
-            }
-            catch (Exception ex)
-            {
-                StatusMessage = ex.Message;
-            }
-        }).ConfigureAwait(false);
-    }
-
-    private async Task RefreshSnapshotAsync(CancellationToken ct)
-    {
-        HmiTagsResponse response = await _api.GetTagsAsync(ct).ConfigureAwait(true);
-        ApplySnapshot(response);
-    }
-
-    private async Task RefreshPortsSummaryAsync(CancellationToken ct)
-    {
-        HmiPortInfo? info = await _api.GetPortsAsync(ct).ConfigureAwait(true);
-        if (info is null)
-        {
+            StatusMessage = "Select a display first";
             return;
         }
 
-        var parts = new List<string>();
-        if (info.HttpAutoAssigned)
+        try
         {
-            parts.Add($"HTTP {info.HttpPort} (auto-assigned, default {info.HttpDefault} in use)");
+            DisplayDocumentDto? doc = await displayStore_.GetAsync(SelectedDisplay.Id, CancellationToken.None)
+                .ConfigureAwait(true);
+            if (doc is null)
+            {
+                StatusMessage = "Display not found: " + SelectedDisplay.Id;
+                DisplaySurface.Clear();
+                return;
+            }
+
+            DisplaySurface.Load(doc);
+            StatusMessage = string.IsNullOrWhiteSpace(DisplaySurface.StatusMessage)
+                ? $"Loaded display {doc.Name} ({doc.Widgets.Count} widgets)"
+                : DisplaySurface.StatusMessage;
         }
-        else
+        catch (Exception ex)
         {
-            parts.Add($"HTTP {info.HttpPort}");
+            StatusMessage = "Load display: " + ex.Message;
+        }
+    }
+
+    private bool CanLoadSelectedDisplay() => IsConnected && SelectedDisplay is not null;
+
+    partial void OnSelectedDisplayChanged(DisplayListItemDto? value)
+    {
+        LoadSelectedDisplayCommand.NotifyCanExecuteChanged();
+    }
+
+    private async Task<(bool Ok, string? Error)> WriteForBindingAsync(TagBindingKey key, object? value)
+    {
+        if (!connections_.TryGetSession(key.BridgeId, out BridgeConnectionManager.BridgeSession? session)
+            || session is null)
+        {
+            return (false, "Bridge not connected: " + key.BridgeId);
         }
 
-        if (info.UaAutoAssigned)
+        try
         {
-            parts.Add($"OPC UA {info.UaPort} (auto-assigned, default {info.UaDefault} in use)");
+            HmiWriteResponse response = await session.Api.WriteAsync(
+                new HmiWriteRequest
+                {
+                    SourceId = key.SourceId,
+                    ItemId = key.DaItemId,
+                    Value = value
+                },
+                CancellationToken.None).ConfigureAwait(true);
+            return (response.Ok, response.Error);
         }
-        else
+        catch (Exception ex)
         {
-            parts.Add($"OPC UA {info.UaPort}");
+            return (false, ex.Message);
+        }
+    }
+
+    public void OpenFaceplateFor(TagBindingKey key)
+    {
+        popups_.OpenOrFocus(
+            key,
+            trend: false,
+            factory: () =>
+            {
+                if (!connections_.TryGetSession(key.BridgeId, out BridgeConnectionManager.BridgeSession? session)
+                    || session is null)
+                {
+                    throw new InvalidOperationException("Bridge not connected: " + key.BridgeId);
+                }
+
+                FaceplateViewModel vm = new(
+                    key,
+                    session.Api,
+                    connections_.Cache,
+                    openTrend: OpenTrendFor);
+                openFaceplates_.Add(vm);
+                FaceplateWindow window = new(vm);
+                window.Closed += (_, _) => openFaceplates_.Remove(vm);
+                return window;
+            },
+            owner: ownerWindow_);
+    }
+
+    public void OpenTrendFor(TagBindingKey key)
+    {
+        popups_.OpenOrFocus(
+            key,
+            trend: true,
+            factory: () =>
+            {
+                if (!connections_.TryGetSession(key.BridgeId, out BridgeConnectionManager.BridgeSession? session)
+                    || session is null)
+                {
+                    throw new InvalidOperationException("Bridge not connected: " + key.BridgeId);
+                }
+
+                TrendViewModel vm = new(key, session.Api);
+                return new TrendWindow(vm);
+            },
+            owner: ownerWindow_);
+    }
+
+    private void OnCacheChanged()
+    {
+        _ = PostToUiAsync(() =>
+        {
+            RebuildTagsFromCache();
+            DisplaySurface.RefreshLiveValues();
+            foreach (FaceplateViewModel faceplate in openFaceplates_.ToArray())
+            {
+                faceplate.RefreshFromCache();
+            }
+        });
+    }
+
+    private Task OnMappingsChangedAsync(string bridgeId, HmiMappingsChanged msg)
+    {
+        return PostToUiAsync(async () =>
+        {
+            try
+            {
+                await connections_.RefreshBridgeSnapshotAsync(bridgeId, CancellationToken.None).ConfigureAwait(true);
+                StatusMessage = $"Mappings changed on {bridgeId} (v{msg.Version})";
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = ex.Message;
+            }
+        });
+    }
+
+    private void RebuildTagsFromCache()
+    {
+        string? selectedKey = SelectedTag?.Key;
+        Tags.Clear();
+        tagIndex_.Clear();
+        foreach (MultiBridgeTagEntry entry in connections_.Cache.Tags
+                     .OrderBy(t => t.Key.BridgeId, StringComparer.OrdinalIgnoreCase)
+                     .ThenBy(t => t.DisplayName, StringComparer.OrdinalIgnoreCase))
+        {
+            TagItemViewModel item = TagItemViewModel.FromEntry(entry);
+            tagIndex_[item.Key] = item;
+            Tags.Add(item);
         }
 
-        await PostToUiAsync(() =>
-        {
-            PortsSummary = string.Join(" · ", parts);
-            PortsWarning = info.HttpAutoAssigned || info.UaAutoAssigned;
-        }).ConfigureAwait(true);
+        SelectedTag = selectedKey is not null && tagIndex_.TryGetValue(selectedKey, out TagItemViewModel? still)
+            ? still
+            : null;
+        OnPropertyChanged(nameof(FilteredTags));
     }
 
     private async Task SafeDisconnectAsync()
     {
-        IsConnected = false;
-        await _hub.DisposeAsync().ConfigureAwait(true);
-        Tags.Clear();
-        _tagIndex.Clear();
-        _cache.ReplaceAll(Array.Empty<HmiTagDto>());
-        SelectedTag = null;
-        TrendValues = Array.Empty<double>();
-        TrendStatus = string.Empty;
-        TrendLoading = false;
-        PortsSummary = string.Empty;
-        PortsWarning = false;
-        OnPropertyChanged(nameof(FilteredTags));
-    }
-
-    private async Task LoadTrendsForSelectionAsync()
-    {
-        if (_connectCts is null || !IsConnected)
-        {
-            return;
-        }
-
-        await LoadTrendsAsync(_connectCts.Token).ConfigureAwait(true);
-    }
-
-    private async Task TrendRefreshLoopAsync(CancellationToken ct)
-    {
         try
         {
-            using var timer = new PeriodicTimer(TimeSpan.FromSeconds(30));
-            while (await timer.WaitForNextTickAsync(ct).ConfigureAwait(true))
-            {
-                if (SelectedTag is not null)
-                {
-                    await LoadTrendsAsync(ct).ConfigureAwait(true);
-                }
-            }
+            await connections_.DisconnectAllAsync().ConfigureAwait(true);
         }
-        catch (OperationCanceledException)
-        {
-        }
-    }
-
-    private async Task LoadTrendsAsync(CancellationToken ct)
-    {
-        TagItemViewModel? tag = SelectedTag;
-        if (!IsConnected || tag is null)
-        {
-            TrendValues = Array.Empty<double>();
-            TrendStatus = string.Empty;
-            return;
-        }
-
-        TrendLoading = true;
-        try
-        {
-            HmiTrendResponse response = await _api.GetTrendsAsync(
-                tag.SourceId,
-                tag.ItemId,
-                fromUtc: null,
-                toUtc: null,
-                maxPoints: 500,
-                ct).ConfigureAwait(true);
-
-            List<double> ys = new();
-            foreach (HmiTrendPoint p in response.Points)
-            {
-                if (TryToDouble(p.V, out double y))
-                {
-                    ys.Add(y);
-                }
-            }
-
-            TrendValues = ys;
-            if (!string.IsNullOrWhiteSpace(response.Error))
-            {
-                TrendStatus = response.Error!;
-            }
-            else if (ys.Count == 0)
-            {
-                TrendStatus = "No history";
-            }
-            else
-            {
-                TrendStatus = string.Empty;
-            }
-        }
-        catch (OperationCanceledException)
+        catch
         {
             // ignore
         }
-        catch (Exception ex)
+
+        IsConnected = false;
+        Tags.Clear();
+        tagIndex_.Clear();
+        Displays.Clear();
+        SelectedTag = null;
+        SelectedDisplay = null;
+        DisplaySurface.Clear();
+        OnPropertyChanged(nameof(FilteredTags));
+    }
+
+    private void LoadLocalConfig()
+    {
+        try
         {
-            TrendValues = Array.Empty<double>();
-            TrendStatus = ex.Message;
+            HmiClientConfig config = HmiClientConfig.LoadOrDefault(configPath_, BaseUrl);
+            DisplayStoreUrl = config.DisplayStoreUrl;
+            if (config.Bridges.Count > 0)
+            {
+                HmiBridgeEndpoint primary = config.Bridges[0];
+                BaseUrl = string.IsNullOrWhiteSpace(primary.BaseUrl) ? config.DisplayStoreUrl : primary.BaseUrl;
+            }
+
+            IEnumerable<string> extra = config.Bridges
+                .Skip(1)
+                .Where(b => b.Enabled)
+                .Select(b => $"{b.Id}|{b.BaseUrl}");
+            BridgeListText = string.Join(Environment.NewLine, extra);
         }
-        finally
+        catch
         {
-            TrendLoading = false;
+            // keep defaults
         }
     }
 
-    private static bool TryToDouble(object? value, out double y)
+    private HmiClientConfig BuildConfigFromUi()
     {
-        y = 0;
-        if (value is null)
+        var config = new HmiClientConfig
         {
-            return false;
-        }
+            DisplayStoreUrl = string.IsNullOrWhiteSpace(DisplayStoreUrl)
+                ? BaseUrl.Trim().TrimEnd('/')
+                : DisplayStoreUrl.Trim().TrimEnd('/'),
+            Bridges = new List<HmiBridgeEndpoint>()
+        };
 
-        if (value is double d)
+        string primaryUrl = string.IsNullOrWhiteSpace(BaseUrl) ? config.DisplayStoreUrl : BaseUrl.Trim().TrimEnd('/');
+        config.Bridges.Add(new HmiBridgeEndpoint
         {
-            y = d;
-            return true;
-        }
+            Id = "default",
+            BaseUrl = primaryUrl,
+            Enabled = true
+        });
 
-        if (value is float f)
+        foreach (string rawLine in (BridgeListText ?? string.Empty).Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
         {
-            y = f;
-            return true;
-        }
-
-        if (value is int i)
-        {
-            y = i;
-            return true;
-        }
-
-        if (value is long l)
-        {
-            y = l;
-            return true;
-        }
-
-        if (value is JsonElement je)
-        {
-            if (je.ValueKind == JsonValueKind.Number && je.TryGetDouble(out d))
+            string line = rawLine.Trim();
+            if (line.Length == 0 || line.StartsWith('#'))
             {
-                y = d;
-                return true;
+                continue;
             }
 
-            return false;
+            string id;
+            string url;
+            int sep = line.IndexOf('|');
+            if (sep <= 0)
+            {
+                sep = line.IndexOf('=');
+            }
+
+            if (sep > 0)
+            {
+                id = line[..sep].Trim();
+                url = line[(sep + 1)..].Trim().TrimEnd('/');
+            }
+            else
+            {
+                id = "bridge" + (config.Bridges.Count + 1);
+                url = line.TrimEnd('/');
+            }
+
+            if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(url))
+            {
+                continue;
+            }
+
+            if (string.Equals(id, "default", StringComparison.OrdinalIgnoreCase))
+            {
+                config.Bridges[0].BaseUrl = url;
+                continue;
+            }
+
+            config.Bridges.Add(new HmiBridgeEndpoint { Id = id, BaseUrl = url, Enabled = true });
         }
 
-        return double.TryParse(
-            Convert.ToString(value, System.Globalization.CultureInfo.InvariantCulture),
-            System.Globalization.NumberStyles.Float,
-            System.Globalization.CultureInfo.InvariantCulture,
-            out y);
+        return config;
+    }
+
+    private void SaveLocalConfig(HmiClientConfig config)
+    {
+        try
+        {
+            config.Save(configPath_);
+        }
+        catch
+        {
+            // non-fatal
+        }
     }
 
     private bool MatchesFilter(TagItemViewModel tag)
     {
         string f = Filter.Trim();
-        return tag.SourceId.Contains(f, StringComparison.OrdinalIgnoreCase)
-            || tag.ItemId.Contains(f, StringComparison.OrdinalIgnoreCase)
+        return tag.BridgeId.Contains(f, StringComparison.OrdinalIgnoreCase)
+            || tag.SourceId.Contains(f, StringComparison.OrdinalIgnoreCase)
             || tag.DisplayName.Contains(f, StringComparison.OrdinalIgnoreCase)
+            || tag.DaItemId.Contains(f, StringComparison.OrdinalIgnoreCase)
             || tag.ValueText.Contains(f, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static object? ParseWriteValue(string text, string dataType)
-    {
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            return null;
-        }
-
-        string t = dataType.Trim();
-        if (t.Equals("Boolean", StringComparison.OrdinalIgnoreCase)
-            || t.Equals("Bool", StringComparison.OrdinalIgnoreCase))
-        {
-            return bool.Parse(text);
-        }
-
-        if (t.Equals("Int16", StringComparison.OrdinalIgnoreCase)
-            || t.Equals("Short", StringComparison.OrdinalIgnoreCase))
-        {
-            return short.Parse(text, System.Globalization.CultureInfo.InvariantCulture);
-        }
-
-        if (t.Equals("Int32", StringComparison.OrdinalIgnoreCase)
-            || t.Equals("Integer", StringComparison.OrdinalIgnoreCase)
-            || t.Equals("Int", StringComparison.OrdinalIgnoreCase))
-        {
-            return int.Parse(text, System.Globalization.CultureInfo.InvariantCulture);
-        }
-
-        if (t.Equals("Int64", StringComparison.OrdinalIgnoreCase)
-            || t.Equals("Long", StringComparison.OrdinalIgnoreCase))
-        {
-            return long.Parse(text, System.Globalization.CultureInfo.InvariantCulture);
-        }
-
-        if (t.Equals("Float", StringComparison.OrdinalIgnoreCase)
-            || t.Equals("Single", StringComparison.OrdinalIgnoreCase))
-        {
-            return float.Parse(text, System.Globalization.CultureInfo.InvariantCulture);
-        }
-
-        if (t.Equals("Double", StringComparison.OrdinalIgnoreCase)
-            || t.Equals("Float64", StringComparison.OrdinalIgnoreCase))
-        {
-            return double.Parse(text, System.Globalization.CultureInfo.InvariantCulture);
-        }
-
-        if (t.Equals("String", StringComparison.OrdinalIgnoreCase))
-        {
-            return text;
-        }
-
-        if (double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out double d))
-        {
-            return d;
-        }
-
-        return text;
     }
 
     private static Task PostToUiAsync(Action action)
@@ -605,13 +545,14 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        _connectCts?.Cancel();
-        _connectCts?.Dispose();
-        _hub.Reconnected -= OnHubReconnectedAsync;
-        await _hub.DisposeAsync().ConfigureAwait(false);
-        if (_ownsClients)
+        connectCts_?.Cancel();
+        connectCts_?.Dispose();
+        connections_.CacheChanged -= OnCacheChanged;
+        connections_.MappingsChanged -= OnMappingsChangedAsync;
+        if (ownsServices_)
         {
-            _api.Dispose();
+            await connections_.DisposeAsync().ConfigureAwait(false);
+            displayStore_.Dispose();
         }
     }
 }

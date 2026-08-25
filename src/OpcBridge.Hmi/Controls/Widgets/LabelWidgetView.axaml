@@ -1,0 +1,11 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:widgets="using:OpcBridge.Hmi.ViewModels.Widgets"
+             x:Class="OpcBridge.Hmi.Controls.Widgets.LabelWidgetView"
+             x:DataType="widgets:LabelWidgetViewModel">
+  <TextBlock Text="{Binding Text}"
+             FontSize="{Binding FontSize}"
+             Foreground="White"
+             VerticalAlignment="Center"
+             TextTrimming="CharacterEllipsis" />
+</UserControl>

@@ -1,0 +1,41 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:OpcBridge.Hmi.ViewModels"
+        xmlns:controls="using:OpcBridge.Hmi.Controls"
+        x:Class="OpcBridge.Hmi.Views.FaceplateWindow"
+        x:DataType="vm:FaceplateViewModel"
+        Title="{Binding Title}"
+        Width="420"
+        Height="520"
+        MinWidth="360"
+        MinHeight="420"
+        WindowStartupLocation="CenterOwner">
+  <DockPanel Margin="12">
+    <StackPanel DockPanel.Dock="Bottom" Spacing="8" Margin="0,12,0,0">
+      <StackPanel Orientation="Horizontal" Spacing="8"
+                  IsEnabled="{Binding Writeable}">
+        <TextBlock VerticalAlignment="Center" Text="Write:" />
+        <TextBox Width="180" Text="{Binding WriteValue}" />
+        <Button Content="Write" Command="{Binding WriteCommand}" MinWidth="80" />
+      </StackPanel>
+      <Button Content="Open trend" Command="{Binding OpenTrendCommand}" HorizontalAlignment="Left" MinWidth="120" />
+      <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap" Opacity="0.85" />
+    </StackPanel>
+
+    <ScrollViewer>
+      <StackPanel Spacing="6">
+        <TextBlock FontSize="18" FontWeight="SemiBold" Text="{Binding DisplayName}" />
+        <TextBlock Text="{Binding BridgeId, StringFormat=Bridge: {0}}" />
+        <TextBlock Text="{Binding SourceId, StringFormat=Source: {0}}" />
+        <TextBlock Text="{Binding DaItemId, StringFormat=Item: {0}}" />
+        <TextBlock Text="{Binding DataType, StringFormat=Type: {0}}" />
+        <TextBlock FontSize="20" FontWeight="SemiBold" Text="{Binding ValueText, StringFormat=Value: {0}}" />
+        <TextBlock Text="{Binding QualityText, StringFormat=Quality: {0}}" />
+        <TextBlock Text="{Binding TimestampText, StringFormat=Timestamp: {0}}" />
+        <TextBlock Text="History (1h)" FontWeight="SemiBold" Margin="0,8,0,0" />
+        <controls:SparklineControl Height="80" Points="{Binding TrendValues}" />
+        <TextBlock Text="{Binding TrendStatus}" Opacity="0.85" TextWrapping="Wrap" />
+      </StackPanel>
+    </ScrollViewer>
+  </DockPanel>
+</Window>

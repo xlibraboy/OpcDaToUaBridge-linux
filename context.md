@@ -4,14 +4,14 @@ Instruction file for AI agents working in this repo. All facts below are verifie
 
 ## What this project is
 
-A bridge that mirrors OPC DA tag values into an OPC UA server, with a web dashboard for configuration and monitoring and an optional Avalonia HMI operator client. The bridge is a **Linux-first** .NET 8 process: it supports OPC UA **inbound sources** (UA client → external servers), serial PLC drivers (Melsec A3N, S7-200 PPI), and — on Windows only — OPC DA sources via direct COM/DCOM (DA COM requires Windows). The HMI is a **separate process**.
+A bridge that mirrors OPC DA tag values into an OPC UA server, with a web dashboard for configuration and monitoring and Avalonia HMI clients. The bridge is a **Linux-first** .NET 8 process: it supports OPC UA **inbound sources** (UA client → external servers), serial PLC drivers (Melsec A3N, S7-200 PPI), and — on Windows only — OPC DA sources via direct COM/DCOM (DA COM requires Windows). HMI Runtime and Designer are **separate processes**. Edited and built on Linux, deployed to a Windows host.
 
 - **DA side**: connects to OPC DA servers via direct COM/DCOM interop (no vendor SDK) — Windows-only at runtime.
 - **UA side**: an in-process OPC UA server (OPCFoundation.NetStandard SDK) that mirrors source reads as UA variables.
 - **UA inbound sources**: `SourceType=OpcUa` connects outbound as a UA client (`OpcUaSourceClient`) to external servers; feeds the same `BridgeState` → UA node pipeline.
 - **PLC drivers**: `SourceType=MelsecA3n` → `MelsecA3nClient` (1C Frame serial), `SourceType=S7200Ppi` → `S7200Client` (PPI serial); UI under Connectivity → Drivers.
 - **Dashboard**: ASP.NET Core minimal API + single-page HTML dashboard for sources, mappings, browsing, live values (with data-type column), MQTT, InfluxDB writer config, and Diagram topology.
-- **HMI**: Avalonia desktop operator client (`OpcBridge.Hmi`) connecting to bridge HTTP + SignalR on port 8080 only. Faceplate chart loads history via bridge `GET /api/hmi/trends` (Influx proxy — HMI never holds an Influx token). Bridge can log opt-in tags to InfluxDB 2.x/3.x via writer. Auth / Android remain deferred non-goals.
+- **HMI**: Avalonia desktop operator Runtime (`OpcBridge.Hmi`) and standalone Designer (`OpcBridge.Hmi.Designer`). Runtime loads process displays from primary-bridge `/api/hmi/displays`, shows live multi-bridge tags, and opens popup faceplate/trend windows; Designer authors JSON display documents. Both talk HTTP + SignalR only (no DA/UA/COM). Faceplate chart loads history via bridge `GET /api/hmi/trends` (Influx proxy — HMI never holds an Influx token). Bridge can log opt-in tags to InfluxDB 2.x/3.x via writer. Auth / Android remain deferred non-goals.
 
 ## Project map
 
@@ -22,13 +22,15 @@ Projects under `src/`, all .NET 8, `ImplicitUsings` + `Nullable` enabled.
 | `OpcBridge.Core` | `net8.0` | Cross-project contract types: `TagMapping`, `BridgeValue`, `BridgeOptions`, `TagMode`/`TagAccessRights` constants. No dependencies. |
 | `OpcBridge.Da` | `net8.0;net8.0-windows` | DA client + browsing + server enumeration + Windows impersonation. Multi-targeted so it compiles on Linux but only runs COM on Windows. `InternalsVisibleTo OpcBridge.LoadTest` (for `DaConnectErrorClassifier`). |
 | `OpcBridge.Ua` | `net8.0` | UA server: `BridgeUaServer` (extends `StandardServer`), `BridgeNodeManager` (extends `CustomNodeManager2`), `UaServerHost`, plus `OpcUaSourceClient` (the UA **inbound** source client). Depends on `OPCFoundation.NetStandard.Opc.Ua` 1.5.378.145. `InternalsVisibleTo OpcBridge.LoadTest`. |
-| `OpcBridge.App` | `net8.0` (Web SDK) | Entrypoint, HTTP API, dashboard HTML/JS (`DashboardPage`), `BridgeWorker`, `BridgeState`, `MappingStore`, `DaRuntimeSettings`, `SourceClientFactory`, `WriteQueue`, `DashboardValues` (data-type inference), `DashboardLogStore`, Influx runtime settings, HMI snapshot/write/trends API + SignalR hub. References Core, Da, Ua, Mqtt, Influx, Client. |
+| `OpcBridge.App` | `net8.0` (Web SDK) | Entrypoint, HTTP API, dashboard HTML/JS (`DashboardPage`), `BridgeWorker`, `BridgeState`, `MappingStore`, `DaRuntimeSettings`, `SourceClientFactory`, `WriteQueue`, `DashboardValues` (data-type inference), `DashboardLogStore`, Influx runtime settings, `DisplayStore`, HMI snapshot/write/trends/displays API + SignalR hub (`Hmi:BroadcastFlushMs`). References Core, Da, Ua, Mqtt, Influx, Client, Drivers. |
 | `OpcBridge.Mqtt` | `net8.0` | MQTT publish/subscribe helper for mapped tags. |
 | `OpcBridge.Influx` | `net8.0` | Continuous opt-in historical writer to InfluxDB 2.x/3.x (`IInfluxWriter`). |
 | `OpcBridge.Client` | `net8.0` | Shared HMI/App wire DTOs and tag-cache merge helpers: `HmiTagDto`, `HmiTagsResponse`, `HmiValueDelta`, `HmiWriteRequest`/`HmiWriteResponse`, `HmiMappingsChanged`, `HmiTagCache`, `HmiTrendPoint`, `HmiTrendResponse`. No framework deps. |
-| `OpcBridge.Hmi` | `net8.0` (WinExe) | Avalonia 11 operator client: connect bar, tag grid, faceplate write + sparkline (last-hour trends via bridge proxy). References Client; SignalR client for `/hmi`. Separate process from the bridge. |
+| `OpcBridge.Hmi.Core` | `net8.0` | Pure HMI models: `TagBindingKey`, `MultiBridgeTagCache`, `HmiClientConfig`, display helpers. No Avalonia. |
+| `OpcBridge.Hmi` | `net8.0` (WinExe) | Avalonia 11 Runtime: hybrid process display + tag browser, popup faceplate/trend, v1 widgets. References Client + Hmi.Core; SignalR client for `/hmi`. |
+| `OpcBridge.Hmi.Designer` | `net8.0` (WinExe) | Avalonia 11 Designer: palette, add widgets, Open/Save displays on primary store. |
 
-Reference graph: `App → {Core, Da, Ua, Mqtt, Influx, Client}`, `Hmi → Client`, `Da → Core`, `Ua → Core`, `Mqtt → Core`, `Influx → Core`. Core and Client depend on nothing.
+Reference graph: `App → {Core, Da, Ua, Mqtt, Influx, Client, Drivers}`, `Hmi → {Client, Hmi.Core}`, `Hmi.Designer → {Client, Hmi.Core, Hmi}`, `Hmi.Core → Client`, `Da → Core`, `Ua → Core`, `Mqtt → Core`, `Influx → Core`.
 
 ## Key contracts (OpcBridge.Core)
 
@@ -136,6 +138,8 @@ Endpoints (all in `Program.cs`):
 - `GET /api/hmi/tags` — HMI tag snapshot (mappings + current values)
 - `POST /api/hmi/write` — HMI write; gated on mapping access rights; reuses `WriteQueue` / `ApplyUaWriteAsync`
 - `GET /api/hmi/trends?sourceId=&daItemId=&from=&to=&maxPoints=` — history via bridge Influx proxy (HMI never holds Influx token). Soft-fails with empty points + `error` when Influx unavailable.
+- `GET /api/hmi/displays` — list SCADA display page summaries (`id`, `name`, `version`, `widgetCount`)
+- `GET /api/hmi/displays/{id}` — full display document JSON; `PUT` create/update with optimistic `version` (409 on conflict); `DELETE` removes page. Files under `displays/{id}.json`.
 - SignalR hub `/hmi` — events `values` (batched `HmiValueDelta[]`) and `mappingsChanged` (`HmiMappingsChanged`)
 - `GET /api/logs?limit=&level=` — `DashboardLogStore` ring buffer
 - `GET /api/app-info` | `/api/version` | `/api/help` — assembly info / `HelpContent.Markdown`
@@ -183,8 +187,9 @@ Topology views under **Diagram** (SVG canvas, live status colors):
 - `Da:ProgId`, `Da:Host`, `Da:UpdateRateMs` — single-source seed (becomes the `default` source on first run). Multi-source config is via the API at runtime, persisted in `mappings.json` + the in-memory `DaRuntimeSettings`.
 - `Ua:ApplicationName`, `Ua:EndpointUrl`, `Ua:AutoAcceptUntrustedCertificates`.
 - `Bridge:HttpPort` (auto-assigned + persisted), `Bridge:OpcUaPort`, `Bridge:RateLimits` (rate→max-tags map), `Bridge:ExpectedTagCount`, `Bridge:Mappings` (seed mappings, used only if `mappings.json` is absent).
+- `Hmi:BroadcastFlushMs` — SignalR live-value coalesce interval (50–1000 ms, default 100). Caps HMI live update rate (~10 Hz default).
 
-Runtime state files live beside the running app in `AppContext.BaseDirectory` (`mappings.json`). Preserve these during deploy cutover or live bridge state is lost.
+Runtime state files live beside the running app in `AppContext.BaseDirectory` (`mappings.json`, `displays/*.json`). Preserve these during deploy cutover or live bridge / HMI page state is lost.
 
 ## Build & tests
 
@@ -229,7 +234,7 @@ Package `publish.tmp` → tar.gz, SCP to host as `publish-new.tar.gz`, then run 
 
 **Deploy guards:**
 - Restore host-specific `appsettings.json` (do not ship a broken `EndpointUrl` from the build machine).
-- Preserve `mappings.json` and `pki/` across cutover.
+- Preserve `mappings.json`, `displays/`, and `pki/` across cutover.
 - Do **not** copy test platform DLLs (`Microsoft.TestPlatform.*`, `Mono.Cecil.*`, xunit, etc.) into publish.
 - Delete stale apphost / pollution before copy if the directory was previously dirtied.
 - Optional: delete `publish/pki/own/cert.der` when UA hostname/SAN must regenerate.

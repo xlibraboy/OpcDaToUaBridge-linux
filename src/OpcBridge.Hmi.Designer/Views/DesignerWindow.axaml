@@ -1,0 +1,87 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:OpcBridge.Hmi.Designer.ViewModels"
+        xmlns:client="using:OpcBridge.Client"
+        xmlns:controls="using:OpcBridge.Hmi.Controls"
+        x:Class="OpcBridge.Hmi.Designer.Views.DesignerWindow"
+        x:DataType="vm:DesignerViewModel"
+        Title="OpcBridge HMI Designer"
+        Width="1400"
+        Height="860">
+  <DockPanel Margin="12">
+    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+      <TextBlock VerticalAlignment="Center" Text="Store:" />
+      <TextBox Width="260" Text="{Binding StoreUrl}" />
+      <Button Content="Refresh list" Command="{Binding RefreshListCommand}" />
+      <Button Content="Open" Command="{Binding OpenSelectedCommand}" />
+      <Button Content="New" Command="{Binding NewDisplayCommand}" />
+      <Button Content="Save" Command="{Binding SaveCommand}" />
+      <TextBlock VerticalAlignment="Center" Text="{Binding DocumentVersion, StringFormat=v{0}}" />
+      <TextBlock VerticalAlignment="Center" Opacity="0.75" Text="Drag widgets on canvas to move; Save writes positions." />
+    </StackPanel>
+
+    <TextBlock DockPanel.Dock="Bottom"
+               Margin="0,8,0,0"
+               Text="{Binding StatusMessage}"
+               TextWrapping="Wrap"
+               Opacity="0.85" />
+
+    <Grid ColumnDefinitions="220,*,260">
+      <Border Grid.Column="0"
+              BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+              BorderThickness="1"
+              CornerRadius="4"
+              Padding="8"
+              Margin="0,0,8,0">
+        <DockPanel>
+          <TextBlock DockPanel.Dock="Top" FontWeight="SemiBold" Text="Palette" Margin="0,0,0,8" />
+          <Button DockPanel.Dock="Bottom"
+                  Content="Add widget"
+                  Command="{Binding AddWidgetCommand}"
+                  Margin="0,8,0,0"
+                  HorizontalAlignment="Stretch" />
+          <ListBox ItemsSource="{Binding Palette}"
+                   SelectedItem="{Binding SelectedPaletteType}" />
+        </DockPanel>
+      </Border>
+
+      <DockPanel Grid.Column="1" Margin="0,0,8,0">
+        <TextBlock DockPanel.Dock="Top"
+                   FontWeight="SemiBold"
+                   Margin="0,0,0,6"
+                   Text="{Binding DocumentName, StringFormat=Design: {0}}" />
+        <controls:DisplaySurfaceControl DataContext="{Binding Surface}" />
+      </DockPanel>
+
+      <Border Grid.Column="2"
+              BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+              BorderThickness="1"
+              CornerRadius="4"
+              Padding="8">
+        <StackPanel Spacing="8">
+          <TextBlock FontWeight="SemiBold" Text="Document" />
+          <TextBox Watermark="Id" Text="{Binding DocumentId}" />
+          <TextBox Watermark="Name" Text="{Binding DocumentName}" />
+          <TextBlock FontWeight="SemiBold" Text="Next widget binding" Margin="0,8,0,0" />
+          <TextBox Watermark="bridgeId" Text="{Binding BridgeId}" />
+          <TextBox Watermark="sourceId" Text="{Binding SourceId}" />
+          <TextBox Watermark="daItemId" Text="{Binding DaItemId}" />
+          <TextBlock FontWeight="SemiBold" Text="Existing on store" Margin="0,8,0,0" />
+          <ListBox Height="220"
+                   ItemsSource="{Binding ExistingDisplays}"
+                   SelectedItem="{Binding SelectedExisting}">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="client:DisplayListItemDto">
+                <TextBlock>
+                  <Run Text="{Binding Id}" />
+                  <Run Text=" v" />
+                  <Run Text="{Binding Version}" />
+                </TextBlock>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </StackPanel>
+      </Border>
+    </Grid>
+  </DockPanel>
+</Window>

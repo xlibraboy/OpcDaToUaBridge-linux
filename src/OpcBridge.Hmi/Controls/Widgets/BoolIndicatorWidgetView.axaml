@@ -1,0 +1,15 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:widgets="using:OpcBridge.Hmi.ViewModels.Widgets"
+             x:Class="OpcBridge.Hmi.Controls.Widgets.BoolIndicatorWidgetView"
+             x:DataType="widgets:BoolIndicatorWidgetViewModel">
+  <Border Background="#333337"
+          CornerRadius="4"
+          Padding="8,4"
+          PointerPressed="OnPointerPressed">
+    <StackPanel Spacing="2">
+      <TextBlock Text="{Binding Label}" FontSize="11" Opacity="0.8" Foreground="#CCCCCC" />
+      <TextBlock Text="{Binding ValueText}" FontSize="16" FontWeight="SemiBold" Foreground="White" />
+    </StackPanel>
+  </Border>
+</UserControl>

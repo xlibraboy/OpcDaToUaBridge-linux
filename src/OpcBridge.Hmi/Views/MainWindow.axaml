@@ -1,29 +1,27 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:OpcBridge.Hmi.ViewModels"
+        xmlns:client="using:OpcBridge.Client"
         xmlns:controls="using:OpcBridge.Hmi.Controls"
         x:Class="OpcBridge.Hmi.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Title="OpcBridge HMI"
-        Width="1100"
-        Height="700">
+        Width="1280"
+        Height="800">
   <DockPanel Margin="12">
     <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto,Auto" Margin="0,0,0,8">
       <TextBox Grid.Column="0"
-               Watermark="Base URL"
+               Watermark="Bridge Base URL"
                Text="{Binding BaseUrl}"
-               ToolTip.Tip="Bridge HTTP address. Auto-discovered on startup; edit only if the bridge is on another machine."
                Margin="0,0,8,0" />
       <Button Grid.Column="1"
               Content="Connect"
               Command="{Binding ConnectCommand}"
-              ToolTip.Tip="Connect to the bridge and start receiving live values"
               Margin="0,0,8,0"
               MinWidth="96" />
       <Button Grid.Column="2"
               Content="Disconnect"
               Command="{Binding DisconnectCommand}"
-              ToolTip.Tip="Stop receiving live values"
               Margin="0,0,8,0"
               MinWidth="96" />
       <TextBlock Grid.Column="3"
@@ -34,102 +32,98 @@
     <StackPanel DockPanel.Dock="Top"
                 Orientation="Horizontal"
                 Spacing="8"
-                Margin="0,0,0,8"
-                IsVisible="{Binding PortsSummary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-      <TextBlock VerticalAlignment="Center"
-                 Text="{Binding PortsSummary}"
-                 ToolTip.Tip="Bridge HTTP and OPC UA endpoint ports"
-                 Opacity="0.85" />
-      <TextBlock VerticalAlignment="Center"
-                 Text="⚠ default port was in use — bridge auto-assigned"
-                 Foreground="#E6B04A"
-                 ToolTip.Tip="The default port (8080/4840) was already taken, so the bridge picked free ports. Check the summary above for the actual ports."
-                 IsVisible="{Binding PortsWarning}" />
-    </StackPanel>
-
-    <StackPanel DockPanel.Dock="Top"
-                Orientation="Horizontal"
-                Spacing="8"
                 Margin="0,0,0,8">
+      <TextBlock VerticalAlignment="Center" Text="Display store:" />
+      <TextBox Width="220"
+               Watermark="http://primary:8080"
+               Text="{Binding DisplayStoreUrl}" />
+      <Button Content="Refresh"
+              Command="{Binding RefreshDisplaysCommand}"
+              MinWidth="80" />
+      <ComboBox Width="200"
+                ItemsSource="{Binding Displays}"
+                SelectedItem="{Binding SelectedDisplay}"
+                PlaceholderText="Select display">
+        <ComboBox.ItemTemplate>
+          <DataTemplate x:DataType="client:DisplayListItemDto">
+            <TextBlock Text="{Binding Name}" />
+          </DataTemplate>
+        </ComboBox.ItemTemplate>
+      </ComboBox>
+      <Button Content="Load display"
+              Command="{Binding LoadSelectedDisplayCommand}"
+              MinWidth="110" />
       <TextBlock VerticalAlignment="Center" Text="Filter:" />
-      <TextBox Width="320"
-               Watermark="Source, name, or value"
-               Text="{Binding Filter}"
-               ToolTip.Tip="Filter the tag list by source, display name, or current value" />
+      <TextBox Width="160"
+               Watermark="tags filter"
+               Text="{Binding Filter}" />
+      <TextBlock VerticalAlignment="Center"
+                 Text="{Binding BridgeSummary, StringFormat=Bridges: {0}}"
+                 Opacity="0.85" />
     </StackPanel>
 
-    <Grid ColumnDefinitions="2*,*" >
-      <Border Grid.Column="0"
-              BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
-              BorderThickness="1"
-              CornerRadius="4"
-              Padding="8"
-              Margin="0,0,12,0">
-        <DockPanel>
-          <Grid DockPanel.Dock="Top"
-                ColumnDefinitions="*,2*,*,*"
-                Margin="4,0,4,6">
-            <TextBlock Grid.Column="0" FontWeight="SemiBold" Text="Source" ToolTip.Tip="Bridge source that provides this tag (e.g. a UA or DA connection)" />
-            <TextBlock Grid.Column="1" FontWeight="SemiBold" Text="Name" ToolTip.Tip="Display name of the tag" />
-            <TextBlock Grid.Column="2" FontWeight="SemiBold" Text="Value" ToolTip.Tip="Latest value received from the source" />
-            <TextBlock Grid.Column="3" FontWeight="SemiBold" Text="Q" ToolTip.Tip="Quality — Good / Bad / Uncertain" />
-          </Grid>
-          <ListBox ItemsSource="{Binding FilteredTags}"
-                   SelectedItem="{Binding SelectedTag}">
-            <ListBox.ItemTemplate>
-              <DataTemplate x:DataType="vm:TagItemViewModel">
-                <Grid ColumnDefinitions="*,2*,*,*"
-                      ToolTip.Tip="{Binding ItemId, StringFormat=Item: {0}}">
-                  <TextBlock Grid.Column="0" Text="{Binding SourceId}" TextTrimming="CharacterEllipsis" />
-                  <TextBlock Grid.Column="1" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
-                  <TextBlock Grid.Column="2" Text="{Binding ValueText}" TextTrimming="CharacterEllipsis" />
-                  <TextBlock Grid.Column="3" Text="{Binding QualityText}" TextTrimming="CharacterEllipsis" />
-                </Grid>
-              </DataTemplate>
-            </ListBox.ItemTemplate>
-          </ListBox>
-        </DockPanel>
-      </Border>
+    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+      <TextBlock DockPanel.Dock="Left"
+                 VerticalAlignment="Top"
+                 Margin="0,4,8,0"
+                 Text="Extra bridges:" />
+      <TextBox AcceptsReturn="True"
+               TextWrapping="NoWrap"
+               Height="54"
+               Watermark="line2|http://192.168.1.11:8080"
+               Text="{Binding BridgeListText}" />
+    </DockPanel>
+
+    <TextBlock DockPanel.Dock="Bottom"
+               Margin="0,8,0,0"
+               Text="{Binding StatusMessage}"
+               TextWrapping="Wrap"
+               Opacity="0.85" />
+
+    <Grid ColumnDefinitions="3*,2*">
+      <DockPanel Grid.Column="0" Margin="0,0,12,0">
+        <TextBlock DockPanel.Dock="Top"
+                   FontWeight="SemiBold"
+                   Margin="0,0,0,6"
+                   Text="{Binding DisplaySurface.DisplayName, StringFormat=Process display: {0}}" />
+        <controls:DisplaySurfaceControl DataContext="{Binding DisplaySurface}" />
+      </DockPanel>
 
       <Border Grid.Column="1"
               BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
               BorderThickness="1"
               CornerRadius="4"
-              Padding="12">
-        <StackPanel Spacing="8">
-          <TextBlock FontSize="16" FontWeight="SemiBold" Text="Faceplate" />
-          <TextBlock Text="{Binding SelectedTag.DisplayName, StringFormat=Name: {0}}" />
-          <TextBlock Text="{Binding SelectedTag.ItemId, StringFormat=Item: {0}}" />
-          <TextBlock Text="{Binding SelectedTag.DataType, StringFormat=Type: {0}}"
-                     ToolTip.Tip="Data type of the tag value" />
-          <TextBlock Text="{Binding SelectedTag.ValueText, StringFormat=Value: {0}}"
-                     ToolTip.Tip="Latest value received from the source" />
-          <TextBlock Text="{Binding SelectedTag.QualityText, StringFormat=Quality: {0}}"
-                     ToolTip.Tip="Quality — Good / Bad / Uncertain" />
-          <TextBlock Text="{Binding SelectedTag.RateText, StringFormat=Rate: {0}}"
-                     ToolTip.Tip="Configured update/poll rate from the bridge — the configured value, not a measured cadence" />
-          <TextBlock Text="{Binding SelectedTag.TimestampText, StringFormat=Timestamp: {0}}"
-                     ToolTip.Tip="Time the latest value was received (with milliseconds)" />
-          <TextBlock Text="History (1h)" FontWeight="SemiBold" Margin="0,8,0,0"
-                     ToolTip.Tip="Sparkline of the last hour of values for this tag" />
-          <controls:SparklineControl Height="72"
-                                     Points="{Binding TrendValues}" />
-          <TextBlock Text="{Binding TrendStatus}"
-                     Opacity="0.85"
-                     TextWrapping="Wrap" />
-          <StackPanel Orientation="Horizontal"
-                      Spacing="8"
-                      IsEnabled="{Binding SelectedTag.Writeable, FallbackValue=False, TargetNullValue=False}">
-            <TextBlock VerticalAlignment="Center" Text="Write:" />
-            <TextBox Width="160" Text="{Binding WriteValue}"
-                     ToolTip.Tip="Value to write to the tag (only available for writeable tags)" />
-            <Button Content="Write" Command="{Binding WriteCommand}" MinWidth="80"
-                    ToolTip.Tip="Send the value above to the source" />
+              Padding="8">
+        <DockPanel>
+          <Grid DockPanel.Dock="Top" ColumnDefinitions="*,*" Margin="0,0,0,8">
+            <TextBlock Grid.Column="0" FontWeight="SemiBold" Text="Tag browser" VerticalAlignment="Center" />
+            <Button Grid.Column="1"
+                    Content="Open faceplate"
+                    Command="{Binding OpenFaceplateCommand}"
+                    HorizontalAlignment="Right"
+                    MinWidth="120" />
+          </Grid>
+          <StackPanel DockPanel.Dock="Bottom" Spacing="4" Margin="0,8,0,0">
+            <TextBlock Text="{Binding SelectedTag.BridgeId, StringFormat=Bridge: {0}}" />
+            <TextBlock Text="{Binding SelectedTag.DisplayName, StringFormat=Name: {0}}" />
+            <TextBlock Text="{Binding SelectedTag.ValueText, StringFormat=Value: {0}}" />
+            <TextBlock Opacity="0.75" TextWrapping="Wrap"
+                       Text="Double-click tag or click widget to open faceplate. Open trend from faceplate." />
           </StackPanel>
-          <TextBlock Text="{Binding StatusMessage}"
-                     TextWrapping="Wrap"
-                     Opacity="0.85" />
-        </StackPanel>
+          <ListBox ItemsSource="{Binding FilteredTags}"
+                   SelectedItem="{Binding SelectedTag}"
+                   DoubleTapped="OnTagDoubleTapped">
+            <ListBox.ItemTemplate>
+              <DataTemplate x:DataType="vm:TagItemViewModel">
+                <Grid ColumnDefinitions="*,2*,*">
+                  <TextBlock Grid.Column="0" Text="{Binding BridgeId}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Grid.Column="1" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Grid.Column="2" Text="{Binding ValueText}" TextTrimming="CharacterEllipsis" />
+                </Grid>
+              </DataTemplate>
+            </ListBox.ItemTemplate>
+          </ListBox>
+        </DockPanel>
       </Border>
     </Grid>
   </DockPanel>

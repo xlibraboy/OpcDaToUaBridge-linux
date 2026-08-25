@@ -1,0 +1,34 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:OpcBridge.Hmi.ViewModels"
+        xmlns:controls="using:OpcBridge.Hmi.Controls"
+        x:Class="OpcBridge.Hmi.Views.TrendWindow"
+        x:DataType="vm:TrendViewModel"
+        Title="{Binding Title}"
+        Width="640"
+        Height="420"
+        MinWidth="480"
+        MinHeight="320"
+        WindowStartupLocation="CenterOwner">
+  <DockPanel Margin="12">
+    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+      <TextBlock VerticalAlignment="Center" Text="{Binding BridgeId, StringFormat=Bridge: {0}}" />
+      <TextBlock VerticalAlignment="Center" Text="{Binding DaItemId, StringFormat=Item: {0}}" />
+      <Button Content="1h" Command="{Binding SetRangeCommand}" CommandParameter="1" MinWidth="48" />
+      <Button Content="8h" Command="{Binding SetRangeCommand}" CommandParameter="8" MinWidth="48" />
+      <Button Content="24h" Command="{Binding SetRangeCommand}" CommandParameter="24" MinWidth="48" />
+      <Button Content="Refresh" Command="{Binding RefreshCommand}" MinWidth="80" />
+    </StackPanel>
+    <TextBlock DockPanel.Dock="Bottom"
+               Margin="0,8,0,0"
+               Text="{Binding StatusMessage}"
+               TextWrapping="Wrap"
+               Opacity="0.85" />
+    <Border BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+            BorderThickness="1"
+            CornerRadius="4"
+            Padding="8">
+      <controls:SparklineControl Points="{Binding Values}" />
+    </Border>
+  </DockPanel>
+</Window>

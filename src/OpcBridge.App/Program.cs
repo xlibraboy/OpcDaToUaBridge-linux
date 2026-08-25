@@ -153,6 +153,7 @@ builder.Services.Configure<DaClientOptions>(builder.Configuration.GetSection("Da
 builder.Services.Configure<UaServerOptions>(builder.Configuration.GetSection("Ua"));
 builder.Services.Configure<MqttBrokerOptions>(builder.Configuration.GetSection("Mqtt"));
 builder.Services.Configure<InfluxOptions>(builder.Configuration.GetSection("Influx"));
+builder.Services.Configure<HmiOptions>(builder.Configuration.GetSection("Hmi"));
 builder.Services.AddSingleton<DashboardLogStore>();
 builder.Logging.Services.AddSingleton<ILoggerProvider, DashboardLogProvider>();
 
@@ -181,6 +182,7 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<BridgeWorker>());
      BridgeState.HttpPort));
  builder.Services.AddHostedService(sp => sp.GetRequiredService<BridgeAppDiscovery>());
 builder.Services.AddSignalR();
+builder.Services.AddSingleton<DisplayStore>();
 builder.Services.AddHostedService<HmiBroadcastService>();
 builder.Services.AddSingleton<IInfluxTrendQuery>(sp =>
 {
@@ -252,6 +254,74 @@ app.MapGet("/api/hmi/trends", async (
         ct).ConfigureAwait(false);
 
     return Results.Json(response);
+});
+app.MapGet("/api/hmi/displays", (DisplayStore displayStore) =>
+    Results.Json(new DisplayListResponse { Items = displayStore.List() }));
+app.MapGet("/api/hmi/displays/{id}", (string id, DisplayStore displayStore) =>
+{
+    if (!DisplayStore.IsValidId(id))
+    {
+        return Results.Json(new { error = "invalid id" }, statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    if (!displayStore.TryGet(id, out DisplayDocumentDto? document) || document is null)
+    {
+        return Results.Json(new { error = "not found" }, statusCode: StatusCodes.Status404NotFound);
+    }
+
+    return Results.Json(document);
+});
+app.MapPut("/api/hmi/displays/{id}", async (string id, HttpRequest httpRequest, DisplayStore displayStore, CancellationToken ct) =>
+{
+    if (!DisplayStore.IsValidId(id))
+    {
+        return Results.Json(new { error = "invalid id" }, statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    DisplayDocumentDto? body;
+    try
+    {
+        body = await httpRequest.ReadFromJsonAsync<DisplayDocumentDto>(cancellationToken: ct).ConfigureAwait(false);
+    }
+    catch (JsonException)
+    {
+        return Results.Json(new { error = "invalid json" }, statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    if (body is null)
+    {
+        return Results.Json(new { error = "body required" }, statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    // Route id is authoritative.
+    body.Id = id.Trim();
+    DisplayPutResult result = displayStore.Put(body);
+    return result.Status switch
+    {
+        DisplayPutStatus.Ok => Results.Json(result.Document),
+        DisplayPutStatus.Conflict => Results.Json(
+            new DisplayConflictResponse
+            {
+                Error = result.Error ?? "version conflict",
+                CurrentVersion = result.CurrentVersion ?? 0
+            },
+            statusCode: StatusCodes.Status409Conflict),
+        _ => Results.Json(new { error = result.Error ?? "invalid document" }, statusCode: StatusCodes.Status400BadRequest)
+    };
+});
+app.MapDelete("/api/hmi/displays/{id}", (string id, DisplayStore displayStore) =>
+{
+    if (!DisplayStore.IsValidId(id))
+    {
+        return Results.Json(new { error = "invalid id" }, statusCode: StatusCodes.Status400BadRequest);
+    }
+
+    if (!displayStore.Delete(id))
+    {
+        return Results.Json(new { error = "not found" }, statusCode: StatusCodes.Status404NotFound);
+    }
+
+    return Results.NoContent();
 });
  app.MapGet("/api/status", (BridgeState state, UaServerHost uaServer, BridgeAppDiscovery discovery) => Results.Json(new
  {

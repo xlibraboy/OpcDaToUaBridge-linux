@@ -1,0 +1,9 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:widgets="using:OpcBridge.Hmi.ViewModels.Widgets"
+             x:Class="OpcBridge.Hmi.Controls.Widgets.UnsupportedWidgetView"
+             x:DataType="widgets:WidgetViewModelBase">
+  <Border Background="#442222" CornerRadius="4" Padding="6">
+    <TextBlock Text="{Binding StatusText}" Foreground="#FFAAAA" TextWrapping="Wrap" />
+  </Border>
+</UserControl>

@@ -19,5 +19,6 @@
   <ItemGroup>
     <ProjectReference Include="..\OpcBridge.Client\OpcBridge.Client.csproj" />
     <ProjectReference Include="..\OpcBridge.Hmi.Core\OpcBridge.Hmi.Core.csproj" />
+    <ProjectReference Include="..\OpcBridge.Hmi\OpcBridge.Hmi.csproj" />
   </ItemGroup>
 </Project>

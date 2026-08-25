@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using OpcBridge.Client;
 using OpcBridge.Core;
 
@@ -10,22 +11,32 @@ public sealed class HmiBroadcastService : IHostedService
     private readonly BridgeState bridge_state_;
     private readonly MappingStore mapping_store_;
     private readonly IHubContext<HmiHub> hub_;
+    private readonly int flush_ms_;
     private readonly object batch_lock_ = new();
     private readonly Dictionary<string, HmiValueDelta> pending_ = new(StringComparer.OrdinalIgnoreCase);
     private Timer? flush_timer_;
 
-    public HmiBroadcastService(BridgeState bridgeState, MappingStore mappingStore, IHubContext<HmiHub> hub)
+    public HmiBroadcastService(
+        BridgeState bridgeState,
+        MappingStore mappingStore,
+        IHubContext<HmiHub> hub,
+        IOptions<HmiOptions>? options = null)
     {
         bridge_state_ = bridgeState;
         mapping_store_ = mappingStore;
         hub_ = hub;
+        flush_ms_ = HmiOptions.ClampBroadcastFlushMs(
+            options?.Value.BroadcastFlushMs ?? HmiOptions.DefaultBroadcastFlushMs);
     }
+
+    public int BroadcastFlushMs => flush_ms_;
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
         bridge_state_.ValueUpdated += OnValueUpdated;
         mapping_store_.Changed += OnMappingsChanged;
-        flush_timer_ = new Timer(Flush, null, TimeSpan.FromMilliseconds(100), TimeSpan.FromMilliseconds(100));
+        TimeSpan period = TimeSpan.FromMilliseconds(flush_ms_);
+        flush_timer_ = new Timer(Flush, null, period, period);
         return Task.CompletedTask;
     }
 
