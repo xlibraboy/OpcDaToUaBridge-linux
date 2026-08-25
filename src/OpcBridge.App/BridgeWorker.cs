@@ -1867,15 +1867,18 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
         private readonly Dictionary<string, SourceMappingSet> mappings_by_source_;
         private readonly IReadOnlyList<TagMapping> active_mappings_;
         private readonly Dictionary<string, IReadOnlyList<TagMapping>> consumers_by_provider_;
+        private readonly Func<string, IReadOnlyList<PlcGroupSettings>> _plcGroupsResolver;
 
         private SourceMappingCache(
             Dictionary<string, SourceMappingSet> mappingsBySource,
             IReadOnlyList<TagMapping> activeMappings,
-            Dictionary<string, IReadOnlyList<TagMapping>> consumersByProvider)
+            Dictionary<string, IReadOnlyList<TagMapping>> consumersByProvider,
+            Func<string, IReadOnlyList<PlcGroupSettings>> plcGroupsResolver)
         {
             mappings_by_source_ = mappingsBySource;
             active_mappings_ = activeMappings;
             consumers_by_provider_ = consumersByProvider;
+            _plcGroupsResolver = plcGroupsResolver;
         }
 
         public static SourceMappingCache Build(IReadOnlyList<TagMapping> mappings)
@@ -1884,6 +1887,14 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
         }
 
         public static SourceMappingCache Build(IReadOnlyList<TagMapping> mappings, IReadOnlyList<InterlinkRule> rules)
+        {
+            return Build(mappings, rules, _ => Array.Empty<PlcGroupSettings>());
+        }
+
+        public static SourceMappingCache Build(
+            IReadOnlyList<TagMapping> mappings,
+            IReadOnlyList<InterlinkRule> rules,
+            Func<string, IReadOnlyList<PlcGroupSettings>>? plcGroupsResolver)
         {
             Dictionary<string, List<TagMapping>> groupedMappings = new(StringComparer.OrdinalIgnoreCase);
             List<TagMapping> activeMappings = new(mappings.Count);
@@ -1949,7 +1960,11 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
             Dictionary<string, IReadOnlyList<TagMapping>> frozenConsumers = consumersByProvider
                 .ToDictionary(kvp => kvp.Key, kvp => (IReadOnlyList<TagMapping>)kvp.Value.ToArray(), StringComparer.OrdinalIgnoreCase);
 
-            return new SourceMappingCache(frozenMappings, activeMappings.ToArray(), frozenConsumers);
+            return new SourceMappingCache(
+                frozenMappings,
+                activeMappings.ToArray(),
+                frozenConsumers,
+                plcGroupsResolver ?? (_ => Array.Empty<PlcGroupSettings>()));
         }
 
         public IReadOnlyList<TagMapping> GetActiveMappings()
@@ -1978,6 +1993,23 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
                 : EmptyMappings;
         }
 
+        private int ResolveEffectiveRate(TagMapping mapping, string sourceId, int defaultRate)
+        {
+            string requested = (mapping.PlcGroup ?? string.Empty).Trim();
+            if (requested.Length > 0)
+            {
+                foreach (PlcGroupSettings group in _plcGroupsResolver(sourceId))
+                {
+                    if (string.Equals(group.Name.Trim(), requested, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return Math.Max(100, group.UpdateRateMs);
+                    }
+                }
+            }
+
+            return mapping.PollRateMs > 0 ? mapping.PollRateMs : defaultRate;
+        }
+
         public IReadOnlyList<int> GetDistinctRates(string sourceId, int defaultRate)
         {
             if (!mappings_by_source_.TryGetValue(sourceId, out SourceMappingSet? mappings))
@@ -1988,7 +2020,7 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
             HashSet<int> rates = new();
             for (int i = 0; i < mappings.SourceRead.Count; i++)
             {
-                rates.Add(mappings.SourceRead[i].PollRateMs > 0 ? mappings.SourceRead[i].PollRateMs : defaultRate);
+                rates.Add(ResolveEffectiveRate(mappings.SourceRead[i], sourceId, defaultRate));
             }
 
             return rates.Count > 0 ? rates.ToArray() : new[] { defaultRate };
@@ -2002,7 +2034,7 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
             }
 
             return mappings.SourceRead
-                .Where(m => (m.PollRateMs > 0 ? m.PollRateMs : defaultRate) == rate)
+                .Where(m => ResolveEffectiveRate(m, sourceId, defaultRate) == rate)
                 .ToArray();
         }
         /// <summary>
