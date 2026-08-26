@@ -996,6 +996,21 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
+    public void Html_PlcGroupRate_IsSelectionNotFreeText()
+    {
+        // The group rate must be a dropdown on the shared ladder, not a typed number.
+        Assert.Contains("<select id=\"plcGroupRate\"", DashboardPage.Html);
+        Assert.DoesNotContain("id=\"plcGroupRate\" type=\"number\"", DashboardPage.Html);
+        foreach (string rate in new[] { "100 ms", "250 ms", "500 ms", "1 s", "2 s", "5 s", "10 s" })
+        {
+            int selectStart = DashboardPage.Html.IndexOf("<select id=\"plcGroupRate\"", StringComparison.Ordinal);
+            int selectEnd = DashboardPage.Html.IndexOf("</select>", selectStart, StringComparison.Ordinal);
+            Assert.True(selectEnd > selectStart, "plcGroupRate select not found");
+            Assert.Contains(rate, DashboardPage.Html[selectStart..selectEnd]);
+        }
+    }
+
+    [Fact]
     public void Html_PlcGroupsTab_WiresCrudFunctions()
     {
         // JS lives in the Script block (DashboardPage.Html = markup only), so the

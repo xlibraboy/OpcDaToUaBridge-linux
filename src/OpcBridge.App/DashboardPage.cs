@@ -962,7 +962,7 @@ internal static class DashboardPage
         <div class="modal-b">
             <div class="field"><label class="fl">Source</label><span class="msg" id="plcGroupModalSource" style="font-family:'Consolas',monospace"></span></div>
             <div class="field"><label class="fl">Name</label><input id="plcGroupName" type="text" maxlength="64" placeholder="Fast" style="flex:1"></div>
-            <div class="field"><label class="fl">Update Rate (ms)</label><input id="plcGroupRate" type="number" min="100" step="50" value="1000" style="flex:1"></div>
+            <div class="field"><label class="fl">Update Rate (ms)</label><select id="plcGroupRate" style="flex:1"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
         </div>
         <div class="modal-f"><button class="btn ghost" type="button" onclick="closePlcGroupModal()">Cancel</button><button class="btn" type="button" id="plcGroupModalSaveBtn" onclick="plcGroupModalSave()">Save</button></div>
     </div>
@@ -5599,11 +5599,23 @@ function renderPlcGroupsAll() {
     }).join('');
     host.innerHTML = rows || '<p class="hint">No groups yet — click + Add Group.</p>';
 }
+function setPlcGroupRateSelection(rateMs) {
+    // Dropdown ladder; keeps any previously-configured off-ladder rate selectable.
+    const sel = el('plcGroupRate');
+    const v = String(rateMs || 1000);
+    if (!sel.querySelector('option[value="' + v + '"]')) {
+        const opt = document.createElement('option');
+        opt.value = v;
+        opt.textContent = v + ' ms';
+        sel.appendChild(opt);
+    }
+    sel.value = v;
+}
 function openPlcGroupAdd(sourceId) {
     el('plcGroupModalTitle').textContent = 'Add PLC Group';
     el('plcGroupModalSource').textContent = sourceId || '';
     el('plcGroupName').value = '';
-    el('plcGroupRate').value = 1000;
+    setPlcGroupRateSelection(1000);
     el('plcGroupName').dataset.editFrom = '';
     el('plcGroupName').dataset.sourceId = sourceId || '';
     setPlcMsg('');
@@ -5615,7 +5627,7 @@ function openPlcGroupEdit(sourceId, name, rate) {
     el('plcGroupModalTitle').textContent = 'Edit PLC Group';
     el('plcGroupModalSource').textContent = sourceId || '';
     el('plcGroupName').value = name;
-    el('plcGroupRate').value = rate;
+    setPlcGroupRateSelection(rate);
     el('plcGroupName').dataset.editFrom = name;
     el('plcGroupName').dataset.sourceId = sourceId;
     setPlcMsg('');
