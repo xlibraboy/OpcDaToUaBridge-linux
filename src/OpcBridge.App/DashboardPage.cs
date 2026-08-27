@@ -272,6 +272,13 @@ internal static class DashboardPage
         .log-entry .meta .lvl.error, .log-entry .meta .lvl.critical { color: var(--bad); }
         .log-entry .message.error, .log-entry .message.critical { color: var(--bad); }
         .help-subtabs, .map-type-tabs { display: flex; gap: 2px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 4px; margin-bottom: 12px; }
+        .values-subtabs { display: flex; gap: 2px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 4px; margin-bottom: 12px; width: fit-content; }
+        .values-subtab { background: none; border: none; color: var(--muted); padding: 8px 18px; font-size: 12px; font-weight: 600; cursor: pointer; border-radius: 4px; transition: all .15s ease; display: inline-flex; align-items: center; gap: 7px; }
+        .values-subtab:hover { color: var(--text); background: var(--panel2); }
+        .values-subtab.active { color: var(--text); background: var(--panel2); box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+        .values-subtab-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 17px; height: 15px; padding: 0 5px; border-radius: 999px; font-size: 9px; font-weight: 700; background: var(--accent); color: #07121a; }
+        .values-subpane { display: none; }
+        .values-subpane.active { display: block; }
         .help-subtab, .map-type-tab { flex: 1; background: none; border: none; color: var(--muted); padding: 8px 16px; font-size: 12px; font-weight: 600; cursor: pointer; border-radius: 4px; transition: all .15s ease; }
         .help-subtab:hover, .map-type-tab:hover { color: var(--text); background: var(--panel2); }
         .help-subtab.active, .map-type-tab.active { color: var(--text); background: var(--panel2); box-shadow: 0 1px 3px rgba(0,0,0,.2); }
@@ -662,6 +669,11 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="view" id="view-values">
+    <div class="values-subtabs" role="tablist">
+        <button type="button" class="values-subtab active" id="valuesSubTabLive" onclick="switchValuesSubTab('live')">Live Values</button>
+        <button type="button" class="values-subtab" id="valuesSubTabFlow" onclick="switchValuesSubTab('flow')">Interlink Flow <span class="values-subtab-badge" id="ilFlowBadge" style="display:none"></span></button>
+    </div>
+    <div class="values-subpane active" id="valuesPaneLive">
     <div class="box">
         <div class="box-h">Live Values <span class="msg" id="valCount" style="margin-left:auto"></span><select id="liveValuesSource" title="Filter live values by source" style="margin-left:8px"><option value="">All sources</option></select><button class="btn ghost" id="toggleLiveValues" type="button">Disable Live Data</button></div>
         <div class="box-b" style="padding:0">
@@ -672,6 +684,13 @@ internal static class DashboardPage
                     <tbody id="values"><tr><td colspan="7" class="msg">Waiting for values&#8230;</td></tr></tbody>
                 </table>
             </div>
+        </div>
+    </div>
+    </div>
+    <div class="values-subpane" id="valuesPaneFlow">
+        <div class="box">
+            <div class="box-h">Interlink Flow <span class="info" data-tip="Live view of every interlink rule: the provider tag value is forwarded to the consumer tag. Values refresh with the dashboard poll. Status: Flowing = write succeeded recently, Idle = healthy but no provider change in 30s, Waiting = disabled/disconnected/no value/bad quality, Write-failed = last write rejected.">i</span><span class="msg" id="ilFlowCount" style="margin-left:auto"></span></div>
+            <div class="box-b"><div class="list" id="ilFlowList" style="max-height:none"><span class="msg">Loading interlinks&#8230;</span></div></div>
         </div>
     </div>
 </div>
@@ -2940,6 +2959,70 @@ function renderInterlinksView() {
 function findInterlinkByConsumer(consumerKey) {
     return (state.interlinks || []).find(link => tagKey(link.consumerSourceId || link.ConsumerSourceId || 'default', link.consumerItemId || link.ConsumerItemId || '') === consumerKey) || null;
 }
+function switchValuesSubTab(which) {
+    const live = el('valuesPaneLive'), flow = el('valuesPaneFlow');
+    const bLive = el('valuesSubTabLive'), bFlow = el('valuesSubTabFlow');
+    if (!live || !flow || !bLive || !bFlow) return;
+    live.classList.toggle('active', which !== 'flow');
+    flow.classList.toggle('active', which === 'flow');
+    bLive.classList.toggle('active', which !== 'flow');
+    bFlow.classList.toggle('active', which === 'flow');
+    if (which === 'flow') renderInterlinkFlow();
+}
+function updateFlowBadge() {
+    const badgeEl = el('ilFlowBadge');
+    if (!badgeEl) return;
+    const links = state.interlinks || [];
+    if (!links.length) { badgeEl.style.display = 'none'; return; }
+    const flowing = links.filter(l => {
+        const st = state.linkStatsById[String(l.id || l.Id || '')];
+        return st && String(get(st, 'status') || '') === 'flowing';
+    }).length;
+    badgeEl.textContent = flowing + '/' + links.length;
+    badgeEl.style.display = '';
+    badgeEl.style.background = flowing ? 'var(--good)' : 'var(--warn)';
+}
+function renderInterlinkFlow() {
+    const list = el('ilFlowList');
+    if (!list) return;
+    const links = state.interlinks || [];
+    el('ilFlowCount').textContent = links.length ? links.length + (links.length === 1 ? ' link' : ' links') : 'No links';
+    if (!links.length) {
+        list.innerHTML = '<span class="msg">No interlinks yet — create one on Tags &#8594; Interlinks.</span>';
+        return;
+    }
+    list.innerHTML = links.map(link => {
+        const consumerSourceId = link.consumerSourceId || link.ConsumerSourceId || 'default';
+        const consumerItemId = link.consumerItemId || link.ConsumerItemId || '';
+        const providerSourceId = link.providerSourceId || link.ProviderSourceId || 'default';
+        const providerItemId = link.providerItemId || link.ProviderItemId || '';
+        const stats = state.linkStatsById[String(link.id || link.Id || '')];
+        const pv = state.valuesByKey.get(valueKey(providerSourceId, providerItemId));
+        const cv = state.valuesByKey.get(valueKey(consumerSourceId, consumerItemId));
+        const pVal = pv == null ? '&#8212;' : esc(String(get(pv, 'value') ?? ''));
+        const cVal = cv == null ? '&#8212;' : esc(String(get(cv, 'value') ?? ''));
+        const pTime = pv ? shortTime(get(pv, 'timestampUtc')) : '';
+        const cTime = cv ? shortTime(get(cv, 'timestampUtc')) : '';
+        const pGood = pv ? !!get(pv, 'isGood') : false;
+        const cGood = cv ? !!get(cv, 'isGood') : false;
+        const pTs = pv ? `<span class="msg" style="font-size:10px">${esc(pTime)}${pGood ? '' : ' &#9888;'}</span>` : '<span class="msg" style="font-size:10px">no value</span>';
+        return `<div class="li" style="align-items:center;gap:12px">
+            <div style="flex:1;min-width:0">
+                <div class="n" style="font-size:12px">${esc(linkTagLabel(providerSourceId, providerItemId))}</div>
+                <div style="display:flex;align-items:baseline;gap:6px"><span class="mono" style="font-size:15px;font-weight:600;color:${pGood ? 'var(--good)' : 'var(--bad)'}">${pVal}</span>${pTs}</div>
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:center;gap:1px;flex:none">
+                ${renderInterlinkStatusPill(stats)}
+                <span style="color:var(--accent);font-size:16px;line-height:1">&#8592;</span>
+                <span class="msg" style="font-size:9px">forwards</span>
+            </div>
+            <div style="flex:1;min-width:0;text-align:right">
+                <div class="n" style="font-size:12px">${esc(linkTagLabel(consumerSourceId, consumerItemId))}</div>
+                <div style="display:flex;align-items:baseline;gap:6px;justify-content:flex-end"><span class="msg" style="font-size:10px">${esc(cTime)}</span><span class="mono" style="font-size:15px;font-weight:600;color:${cGood ? 'var(--good)' : 'var(--bad)'}">${cVal}</span></div>
+            </div>
+        </div>`;
+    }).join('');
+}
 async function saveInterlink(consumerKey, providerKey) {
     if (!consumerKey || !providerKey) { el('linksMessage').textContent = 'Pick both a consumer and a provider.'; return; }
     if (consumerKey === providerKey) { el('linksMessage').textContent = '✗ A tag cannot link to itself.'; return; }
@@ -3249,6 +3332,11 @@ async function showTab(name, route) {
     updateMapEmptyBanner();
     updateMapBrowseUi();
     rerenderMappings();
+  }
+  if (activeTab === 'values') {
+    await Promise.all([loadSources().catch(() => {}), loadMappings().catch(() => {}), loadInterlinks().catch(() => {})]);
+    renderInterlinkFlow();
+    updateFlowBadge();
   }
   if (activeTab === 'diagram') {
     state.diagramLoaded = true;
@@ -4316,6 +4404,7 @@ async function refresh() {
         state.disconnectedSources = new Set((sources || []).filter(s => String(get(s, 'connectionState') || '').toLowerCase() !== 'connected').map(s => String(get(s, 'sourceId') || '')));
         state.linkStatsById = {};
         (p.linkStats || []).forEach(s => { state.linkStatsById[String(get(s, 'id') || '')] = s; });
+        if (document.getElementById('view-values')?.classList.contains('active')) { renderInterlinkFlow(); updateFlowBadge(); }
         if (document.getElementById('view-interlinks')?.classList.contains('active')) renderInterlinksView();
         updateFaceplateLiveValues();
         if (state.diagramLoaded && document.querySelector('.tabbtn.active')?.dataset.tab === 'diagram') {
@@ -4520,6 +4609,7 @@ async function loadInterlinks() {
     const p = await (await fetch('/api/interlinks', { cache: 'no-store' })).json();
     state.interlinks = p.links || [];
     if (document.getElementById('view-interlinks')?.classList.contains('active')) renderInterlinksView();
+    if (document.getElementById('view-values')?.classList.contains('active')) { renderInterlinkFlow(); updateFlowBadge(); }
 }
 
 async function loadMappings() {
