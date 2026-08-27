@@ -71,13 +71,13 @@ internal static class DashboardPage
         .pill .k { color: var(--muted); text-transform: uppercase; font-size: 10px; letter-spacing: .05em; }
         .topbar .clock { margin-left: auto; color: var(--muted); font-size: 11px; white-space: nowrap; }
 .app-shell { display: flex; flex: 1; min-height: 0; overflow: hidden; }
-.tabbar { display: flex; flex-direction: column; background: var(--panel); border-right: 1px solid var(--border2); padding: 10px 0; width: 200px; flex-shrink: 0; overflow-y: auto; }
-.tabbtn { background: none; border: none; color: var(--muted); padding: 11px 16px; font-size: 13px; font-weight: 500; cursor: pointer; border-left: 3px solid transparent; display: flex; align-items: center; gap: 8px; text-align: left; }
+.tabbar { display: flex; flex-direction: column; background: var(--panel); border-right: 1px solid var(--border2); padding: 10px 0; width: 200px; min-width: 0; flex-shrink: 0; overflow-y: auto; }
+.tabbtn { background: none; border: none; color: var(--muted); padding: 11px 16px; font-size: 13px; font-weight: 500; cursor: pointer; border-left: 3px solid transparent; display: flex; align-items: center; gap: 8px; text-align: left; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tabbtn:hover { color: var(--text); background: var(--panel2); }
 .tabbtn.active { color: var(--accent); border-left-color: var(--accent); background: var(--panel2); }
-.nav-group { padding: 10px 0 8px; border-bottom: 1px solid var(--border); }
+.nav-group { padding: 10px 0 8px; border-bottom: 1px solid var(--border); min-width: 0; }
 .nav-group:last-child { border-bottom: none; }
-.nav-group-h { display: flex; align-items: center; gap: 7px; padding: 2px 16px 8px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .09em; color: var(--muted-strong); transition: color .15s ease; }
+.nav-group-h { display: flex; align-items: center; gap: 7px; padding: 2px 16px 8px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .09em; color: var(--muted-strong); transition: color .15s ease; min-width: 0; }
 .nav-group-h .nav-ico { width: 13px; height: 13px; flex-shrink: 0; opacity: .95; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .nav-group:has(.tabbtn.active) .nav-group-h { color: var(--accent); }
 .nav-group .tabbtn { position: relative; padding-top: 8px; padding-bottom: 8px; padding-left: 44px; }
@@ -88,7 +88,7 @@ internal static class DashboardPage
 .content { flex: 1; min-width: 0; overflow: auto; }
 .view { display: none; padding: 16px 18px; }
 .view.active { display: block; }
-@media (max-width: 600px) { .app-shell { flex-direction: column; } .tabbar { flex-direction: row; width: 100%; border-right: none; border-bottom: 1px solid var(--border2); padding: 0 8px; overflow-x: auto; } .tabbtn { border-left: none; border-bottom: 3px solid transparent; padding: 10px 14px; } .tabbtn.active { border-left: none; border-bottom-color: var(--accent); } .nav-group { border-bottom: none; } .nav-group-h { display: none; } .nav-group .tabbtn { padding: 10px 14px; } .nav-group .tabbtn::before { display: none; } }
+@media (max-width: 600px) { .app-shell { flex-direction: column; } .tabbar { flex-direction: row; width: 100%; min-width: 0; border-right: none; border-bottom: 1px solid var(--border2); padding: 0 8px; overflow-x: auto; } .tabbtn { border-left: none; border-bottom: 3px solid transparent; padding: 10px 14px; white-space: nowrap; overflow: visible; text-overflow: clip; flex-shrink: 0; } .tabbtn.active { border-left: none; border-bottom-color: var(--accent); } .nav-group { border-bottom: none; } .nav-group-h { display: none; } .nav-group .tabbtn { padding: 10px 14px; } .nav-group .tabbtn::before { display: none; } }
         .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
         @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
         .box { background: var(--panel); border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
@@ -1177,7 +1177,6 @@ internal static class DashboardPage
             </div>
         </div>
     </div>
-</div>
 <div class="modal-overlay" id="wzDrv" onclick="if(event.target===this)closeDriverWizard()">
     <div class="modal wizard" role="dialog" aria-modal="true" aria-labelledby="wzDrvTitle">
         <div class="modal-head">
@@ -1652,6 +1651,7 @@ internal static class DashboardPage
             <svg id="diagSvg"></svg>
         </div>
     </div>
+</div>
 </div>
 </div>
 """;
