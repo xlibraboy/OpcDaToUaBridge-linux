@@ -279,6 +279,13 @@ internal static class DashboardPage
         .values-subtab-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 17px; height: 15px; padding: 0 5px; border-radius: 999px; font-size: 9px; font-weight: 700; background: var(--accent); color: #07121a; }
         .values-subpane { display: none; }
         .values-subpane.active { display: block; }
+        .ilf-group { background: var(--panel2); border: 1px solid var(--border); border-radius: 7px; padding: 10px 12px 8px; }
+        .ilf-prov { display: flex; align-items: center; gap: 12px; }
+        .ilf-prov-val { display: flex; align-items: baseline; gap: 7px; margin-left: auto; }
+        .ilf-cons { margin: 8px 0 2px 15px; padding-left: 16px; border-left: 2px solid var(--border2); display: flex; flex-direction: column; gap: 5px; }
+        .ilf-cons-row { position: relative; display: flex; align-items: center; gap: 10px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; }
+        .ilf-cons-row::before { content: ''; position: absolute; left: -16px; top: 50%; width: 14px; height: 2px; background: var(--border2); }
+        .ilf-fanout { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 15px; padding: 0 6px; border-radius: 999px; font-size: 9px; font-weight: 700; background: rgba(56,189,248,.15); border: 1px solid rgba(56,189,248,.4); color: var(--accent); }
         .help-subtab, .map-type-tab { flex: 1; background: none; border: none; color: var(--muted); padding: 8px 16px; font-size: 12px; font-weight: 600; cursor: pointer; border-radius: 4px; transition: all .15s ease; }
         .help-subtab:hover, .map-type-tab:hover { color: var(--text); background: var(--panel2); }
         .help-subtab.active, .map-type-tab.active { color: var(--text); background: var(--panel2); box-shadow: 0 1px 3px rgba(0,0,0,.2); }
@@ -2857,6 +2864,25 @@ function isLinkableInterlinkSource(source) {
 function interlinkSideIds() { return ['consumer', 'provider']; }
 function interlinkSourceSelectId(side) { return side === 'consumer' ? 'interlinkConsumerSource' : 'interlinkProviderSource'; }
 function interlinkListId(side) { return side === 'consumer' ? 'interlinkConsumerList' : 'interlinkProviderList'; }
+function interlinkAddInputId(side) { return side === 'consumer' ? 'interlinkConsumerAdd' : 'interlinkProviderAdd'; }
+function interlinkRequiredRights(side) {
+    // Consumer must accept writes; provider must be readable (Write-only provider can never be read).
+    return side === 'consumer' ? ['Read-Write', 'Write'] : ['Read', 'Read-Write'];
+}
+function mappingAccessRights(mapping) {
+    return String((mapping && (mapping.accessRights || mapping.AccessRights)) || 'Read');
+}
+function interlinkReadiness(side, mapping) {
+    const r = mappingAccessRights(mapping);
+    return interlinkRequiredRights(side).includes(r);
+}
+function interlinkAttention(side, mapping) {
+    if (!mapping) return { ok: false, code: 'unmapped', text: 'Not in Maps yet' };
+    const r = mappingAccessRights(mapping);
+    if (interlinkReadiness(side, mapping)) return { ok: true, code: 'ok', text: r };
+    if (side === 'consumer') return { ok: false, code: 'rights', text: 'Needs Read-Write (now ' + r + ')' };
+    return { ok: false, code: 'rights', text: 'Needs Read (now ' + r + ')' };
+}
 function renderInterlinkPickers() {
     const sources = (state.sources || []).filter(isLinkableInterlinkSource);
     interlinkSideIds().forEach(side => {
@@ -2883,15 +2909,25 @@ function renderInterlinkTagList(side) {
         return;
     }
     const rows = (state.mappings || [])
-        .filter(m => String(m.sourceId || m.SourceId || 'default') === sid && (m.enabled ?? m.Enabled) !== false)
+        .filter(m => String(m.sourceId || m.SourceId || 'default') === sid)
         .map(m => {
             const item = m.itemId || m.ItemId || m.daItemId || m.DaItemId || '';
             const name = m.displayName || m.DisplayName || item;
             const key = tagKey(sid, item);
             const picked = state.interlinkDraft[side] && state.interlinkDraft[side].key === key;
-            return `<div class="li"><div style="flex:1;min-width:0"><div class="n">${esc(name)}</div><div class="p">${esc(item)}</div></div><button class="btn ghost" data-action="pick-interlink-${side}" data-source-id="${attr(sid)}" data-item-id="${attr(item)}" data-name="${attr(name)}">${picked ? '✓ Picked' : 'Pick'}</button></div>`;
+            const at = interlinkAttention(side, m);
+            const disabled = (m.enabled ?? m.Enabled) === false;
+            const pickBtn = `<button class="btn ghost" data-action="pick-interlink-${side}" data-source-id="${attr(sid)}" data-item-id="${attr(item)}" data-name="${attr(name)}"${disabled ? ' title="Tag is disabled — enable it on the Maps tab first."' : ''}>${picked ? '✓ Picked' : 'Pick'}</button>`;
+            const fixBtn = !at.ok
+                ? ` <button class="btn" data-action="interlink-fix-rights" data-side="${attr(side)}" data-source-id="${attr(sid)}" data-item-id="${attr(item)}" title="One click: update the mapping's access rights so this side is usable.">${side === 'consumer' ? 'Set Read-Write' : 'Set Read'}</button>`
+                : '';
+            const badge = at.ok
+                ? `<span class="badge good" style="font-size:9px;padding:0 6px">R</span>`
+                : `<span class="badge warn" style="font-size:9px;padding:0 6px" title="${attr(at.text)}">${side === 'consumer' ? 'needs Write' : 'needs Read'}</span>`;
+            const disabledChip = disabled ? ' <span class="badge bad" style="font-size:9px;padding:0 6px">disabled</span>' : '';
+            return `<div class="li"${disabled ? ' style="opacity:.6"' : ''}><div style="flex:1;min-width:0"><div class="n">${esc(name)} ${badge}${disabledChip}</div><div class="p">${esc(item)}</div></div>${pickBtn}${fixBtn}</div>`;
         });
-    listEl.innerHTML = rows.length ? rows.join('') : '<span class="msg">No Maps tags for this source yet — add tags on the Maps tab first.</span>';
+    listEl.innerHTML = rows.length ? rows.join('') : '<span class="msg">No Maps tags for this source yet — add one by Item ID below or on the Maps tab.</span>';
 }
 function setInterlinkSelection(role, sourceId, itemId, name) {
     state.interlinkDraft[role] = {
@@ -2901,8 +2937,53 @@ function setInterlinkSelection(role, sourceId, itemId, name) {
         name: name || itemId
     };
     const roleName = role === 'consumer' ? 'Consumer' : 'Provider';
-    el('linksMessage').textContent = roleName + ' selected from source ' + (sourceId || 'default') + '.';
+    const mapping = getMapping(sourceId, itemId);
+    const at = interlinkAttention(role, mapping);
+    if (at.ok) {
+        el('linksMessage').textContent = roleName + ' selected from source ' + (sourceId || 'default') + '.';
+        el('linksMessage').className = 'hint';
+    } else {
+        // Draw attention: the picked endpoint is not usable yet, with a one-click fix.
+        el('linksMessage').innerHTML = `&#9888; <b>${esc(roleName)}</b> ${esc(itemId)} selected — ${esc(at.text)}. `
+            + `<button class="btn" type="button" data-action="interlink-fix-rights" data-side="${attr(role)}" data-source-id="${attr(sourceId)}" data-item-id="${attr(itemId)}">${role === 'consumer' ? 'Set Read-Write now' : 'Set Read now'}</button>`
+            + (role === 'consumer' && !mapping ? ' ' : '');
+        el('linksMessage').className = 'hint warn';
+    }
     renderInterlinksView();
+}
+async function interlinkFixRights(side, sourceId, itemId) {
+    const mapping = getMapping(sourceId, itemId);
+    const desired = side === 'consumer' ? 'ReadWrite' : 'Read';
+    let payload;
+    if (mapping) {
+        payload = JSON.parse(JSON.stringify(mapping));
+        payload.accessRights = desired;
+        // Normalize alternate casing keys from the raw DTO to what /api/mappings/update expects
+        payload.sourceId = payload.sourceId || payload.SourceId || sourceId;
+        payload.itemId = payload.itemId || payload.ItemId || itemId;
+    } else {
+        // Not mapped yet — add it with the right access level in one step.
+        await fetch('/api/mappings/bulk-add', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tags: [{ sourceId, itemId, displayName: itemId, dataType: 'Auto', accessRights: desired === 'ReadWrite' ? 'ReadWrite' : 'Read' }] })
+        });
+        await loadMappings();
+        el('linksMessage').textContent = '✓ Tag added to Maps with ' + (desired === 'ReadWrite' ? 'Read-Write' : 'Read') + '.';
+        el('linksMessage').className = 'hint';
+        renderInterlinkTagList(side);
+        return;
+    }
+    const r = await fetch('/api/mappings/update', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tag: payload })
+    });
+    const p = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
+    await loadMappings();
+    el('linksMessage').textContent = '✓ ' + itemId + ' set to ' + (desired === 'ReadWrite' ? 'Read-Write' : 'Read') + ' — ready to link.';
+    el('linksMessage').className = 'hint';
+    renderInterlinkTagList('consumer');
+    renderInterlinkTagList('provider');
 }
 function interlinkStatusMeta(status) {
     const map = {
@@ -2991,43 +3072,68 @@ function renderInterlinkFlow() {
         list.innerHTML = '<span class="msg">No interlinks yet — create one on Tags &#8594; Interlinks.</span>';
         return;
     }
-    list.innerHTML = links.map(link => {
+    // Group by provider so fan-out (one provider -> N consumers) reads as one tree
+    const byProvider = new Map();
+    links.forEach(link => {
+        const pKey = tagKey(link.providerSourceId || link.ProviderSourceId || 'default', link.providerItemId || link.ProviderItemId || '');
+        if (!byProvider.has(pKey)) byProvider.set(pKey, []);
+        byProvider.get(pKey).push(link);
+    });
+    const provHtml = (provSourceId, provItemId, count) => {
+        const pv = state.valuesByKey.get(valueKey(provSourceId, provItemId));
+        const pVal = pv == null ? '&#8212;' : esc(String(get(pv, 'value') ?? ''));
+        const pGood = pv ? !!get(pv, 'isGood') : false;
+        const pTime = pv ? shortTime(get(pv, 'timestampUtc')) : 'no value';
+        return `<div class="ilf-prov">
+            <span class="msg" style="font-size:10px;text-transform:uppercase;letter-spacing:.05em">provider</span>
+            <span class="n" style="font-size:13px">${esc(linkTagLabel(provSourceId, provItemId))}</span>
+            ${count > 1 ? `<span class="ilf-fanout" title="Feeds ${count} consumers">&#8644; ${count}</span>` : ''}
+            <span class="ilf-prov-val"><span class="msg" style="font-size:10px">${esc(pTime)}</span><span class="mono" style="font-size:16px;font-weight:700;color:${pGood ? 'var(--good)' : 'var(--bad)'}">${pVal}</span></span>
+        </div>`;
+    };
+    const consHtml = (link) => {
         const consumerSourceId = link.consumerSourceId || link.ConsumerSourceId || 'default';
         const consumerItemId = link.consumerItemId || link.ConsumerItemId || '';
-        const providerSourceId = link.providerSourceId || link.ProviderSourceId || 'default';
-        const providerItemId = link.providerItemId || link.ProviderItemId || '';
         const stats = state.linkStatsById[String(link.id || link.Id || '')];
-        const pv = state.valuesByKey.get(valueKey(providerSourceId, providerItemId));
         const cv = state.valuesByKey.get(valueKey(consumerSourceId, consumerItemId));
-        const pVal = pv == null ? '&#8212;' : esc(String(get(pv, 'value') ?? ''));
         const cVal = cv == null ? '&#8212;' : esc(String(get(cv, 'value') ?? ''));
-        const pTime = pv ? shortTime(get(pv, 'timestampUtc')) : '';
-        const cTime = cv ? shortTime(get(cv, 'timestampUtc')) : '';
-        const pGood = pv ? !!get(pv, 'isGood') : false;
         const cGood = cv ? !!get(cv, 'isGood') : false;
-        const pTs = pv ? `<span class="msg" style="font-size:10px">${esc(pTime)}${pGood ? '' : ' &#9888;'}</span>` : '<span class="msg" style="font-size:10px">no value</span>';
-        return `<div class="li" style="align-items:center;gap:12px">
-            <div style="flex:1;min-width:0">
-                <div class="n" style="font-size:12px">${esc(linkTagLabel(providerSourceId, providerItemId))}</div>
-                <div style="display:flex;align-items:baseline;gap:6px"><span class="mono" style="font-size:15px;font-weight:600;color:${pGood ? 'var(--good)' : 'var(--bad)'}">${pVal}</span>${pTs}</div>
-            </div>
-            <div style="display:flex;flex-direction:column;align-items:center;gap:1px;flex:none">
-                ${renderInterlinkStatusPill(stats)}
-                <span style="color:var(--accent);font-size:16px;line-height:1">&#8592;</span>
-                <span class="msg" style="font-size:9px">forwards</span>
-            </div>
-            <div style="flex:1;min-width:0;text-align:right">
-                <div class="n" style="font-size:12px">${esc(linkTagLabel(consumerSourceId, consumerItemId))}</div>
-                <div style="display:flex;align-items:baseline;gap:6px;justify-content:flex-end"><span class="msg" style="font-size:10px">${esc(cTime)}</span><span class="mono" style="font-size:15px;font-weight:600;color:${cGood ? 'var(--good)' : 'var(--bad)'}">${cVal}</span></div>
-            </div>
+        const cTime = cv ? shortTime(get(cv, 'timestampUtc')) : 'no value';
+        const pill = renderInterlinkStatusPill(stats);
+        return `<div class="ilf-cons-row">
+            ${pill}
+            <div style="flex:1;min-width:0"><span class="n" style="font-size:12px">${esc(linkTagLabel(consumerSourceId, consumerItemId))}</span></div>
+            <span class="msg" style="font-size:10px">${esc(cTime)}</span>
+            <span class="mono" style="font-size:14px;font-weight:600;color:${cGood ? 'var(--good)' : 'var(--bad)'}">${cVal}</span>
         </div>`;
-    }).join('');
+    };
+    const groups = Array.from(byProvider.entries()).map(([pKey, plinks]) => {
+        const [provSourceId, provItemId] = parseTagKey(pKey);
+        return `<div class="ilf-group">
+            ${provHtml(provSourceId, provItemId, plinks.length)}
+            <div class="ilf-cons">${plinks.map(consHtml).join('')}</div>
+        </div>`;
+    });
+    list.innerHTML = `<div style="display:flex;flex-direction:column;gap:10px">${groups.join('')}</div>`;
 }
 async function saveInterlink(consumerKey, providerKey) {
     if (!consumerKey || !providerKey) { el('linksMessage').textContent = 'Pick both a consumer and a provider.'; return; }
     if (consumerKey === providerKey) { el('linksMessage').textContent = '✗ A tag cannot link to itself.'; return; }
     const [consumerSourceId, consumerItemId] = parseTagKey(consumerKey);
     const [providerSourceId, providerItemId] = parseTagKey(providerKey);
+    // Pre-flight: block the doomed request and surface a one-click fix instead.
+    const problems = [];
+    const consMap = getMapping(consumerSourceId, consumerItemId);
+    const provMap = getMapping(providerSourceId, providerItemId);
+    if (!interlinkReadiness('consumer', consMap)) problems.push({ side: 'consumer', sourceId: consumerSourceId, itemId: consumerItemId, at: interlinkAttention('consumer', consMap) });
+    if (!interlinkReadiness('provider', provMap)) problems.push({ side: 'provider', sourceId: providerSourceId, itemId: providerItemId, at: interlinkAttention('provider', provMap) });
+    if (problems.length) {
+        el('linksMessage').innerHTML = '&#9888; Cannot save yet: ' + problems.map(pr =>
+            `<b>${esc(pr.side)}</b> ${esc(pr.itemId)} — ${esc(pr.at.text)}. <button class="btn" type="button" data-action="interlink-fix-rights" data-side="${attr(pr.side)}" data-source-id="${attr(pr.sourceId)}" data-item-id="${attr(pr.itemId)}">${pr.side === 'consumer' ? 'Set Read-Write now' : 'Set Read now'}</button>`
+        ).join(' ');
+        el('linksMessage').className = 'hint warn';
+        return;
+    }
     const existing = findInterlinkByConsumer(consumerKey);
     const link = {
         id: existing ? (existing.id || existing.Id) : '00000000-0000-0000-0000-000000000000',
@@ -6758,6 +6864,16 @@ function bindDynamicButtons() {
         const btn = event.target.closest('button[data-action="pick-interlink-provider"]');
         if (!btn) return;
         setInterlinkSelection('provider', btn.dataset.sourceId || '', btn.dataset.itemId || '', btn.dataset.name || '');
+    });
+    // One-click fix: repair access rights (or add the tag to Maps) for a picked endpoint.
+    el('view-interlinks').addEventListener('click', event => {
+        const btn = event.target.closest('button[data-action="interlink-fix-rights"]');
+        if (!btn) return;
+        btn.disabled = true;
+        interlinkFixRights(btn.dataset.side || 'consumer', btn.dataset.sourceId || '', btn.dataset.itemId || '')
+            .then(() => renderInterlinksView())
+            .catch(e => { el('linksMessage').textContent = '✗ ' + e.message; el('linksMessage').className = 'hint bad'; })
+            .finally(() => { btn.disabled = false; });
     });
     el('mappedList').addEventListener('click', event => {
         const row = event.target.closest('[data-action="open-faceplate"]');
