@@ -67,6 +67,28 @@ public sealed class UaSourceApiTests
     }
 
     [Fact]
+    public async Task PostSource_OpcUa_SourceIdWithSpace_Returns400()
+    {
+        await using TestAppHandle handle = await TestAppHandle.StartAsync(dir => WriteMinimalAppsettings(dir));
+
+        using HttpResponseMessage res = await handle.Client.PostAsync(
+            "/api/da/sources",
+            JsonBody(new
+            {
+                sourceId = "opc ua sim a",
+                displayName = "OpcUaSimServer",
+                sourceType = "OpcUa",
+                endpointUrl = "opc.tcp://127.0.0.1:49320",
+                securityMode = "None",
+                securityPolicy = "None"
+            }));
+
+        Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
+        using JsonDocument body = JsonDocument.Parse(await res.Content.ReadAsStringAsync());
+        Assert.Equal("Source ID must not contain spaces.", body.RootElement.GetProperty("error").GetString());
+    }
+
+    [Fact]
     public async Task PostSource_OpcUa_PersistsTypeAndEndpoint()
     {
         await using TestAppHandle handle = await TestAppHandle.StartAsync(dir => WriteMinimalAppsettings(dir));

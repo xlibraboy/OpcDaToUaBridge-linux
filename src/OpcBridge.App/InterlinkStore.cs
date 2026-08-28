@@ -214,8 +214,7 @@ public sealed class InterlinkStore
             return false;
         }
 
-        if (string.Equals(providerSourceId, consumerSourceId, StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(providerItemId, consumerItemId, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(providerSourceId, consumerSourceId, StringComparison.OrdinalIgnoreCase))
         {
             rule = default!;
             return false;
@@ -291,11 +290,10 @@ public sealed class InterlinkStore
             return false;
         }
 
-        if (string.Equals(providerSourceId, consumerSourceId, StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(providerItemId, consumerItemId, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(providerSourceId, consumerSourceId, StringComparison.OrdinalIgnoreCase))
         {
             normalized = default!;
-            error = "Provider and consumer cannot be the same item.";
+            error = "Provider and consumer must be on different sources.";
             return false;
         }
 
@@ -327,9 +325,14 @@ public sealed class InterlinkStore
 
     private void Persist()
     {
+        Persist(rules_);
+    }
+
+    private void Persist(List<InterlinkRule> rules)
+    {
         try
         {
-            string json = JsonSerializer.Serialize(rules_, JsonOptions);
+            string json = JsonSerializer.Serialize(rules, JsonOptions);
             File.WriteAllText(persist_path_, json);
         }
         catch
@@ -347,12 +350,33 @@ public sealed class InterlinkStore
             }
 
             string json = File.ReadAllText(persist_path_);
-            return JsonSerializer.Deserialize<List<InterlinkRule>>(json);
+            List<InterlinkRule>? loaded = JsonSerializer.Deserialize<List<InterlinkRule>>(json);
+            if (loaded is null)
+            {
+                return null;
+            }
+
+            // Drop legacy rules that violate the different-sources invariant so they
+            // cannot keep forwarding values after upgrade, then rewrite the file clean.
+            List<InterlinkRule> sanitized = loaded.Where(IsDifferentSourceRule).ToList();
+            if (sanitized.Count != loaded.Count)
+            {
+                Persist(sanitized);
+            }
+
+            return sanitized;
         }
         catch
         {
             return null;
         }
+    }
+
+    private static bool IsDifferentSourceRule(InterlinkRule rule)
+    {
+        string providerSourceId = NormalizeSourceId(rule.ProviderSourceId);
+        string consumerSourceId = NormalizeSourceId(rule.ConsumerSourceId);
+        return !string.Equals(providerSourceId, consumerSourceId, StringComparison.OrdinalIgnoreCase);
     }
 
     private sealed class ConsumerKeyComparer : IEqualityComparer<(string SourceId, string ItemId)>

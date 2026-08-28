@@ -2894,13 +2894,31 @@ function interlinkUsageFor(side, sourceId, itemId) {
     const count = links.filter(x => tagKey(x.providerSourceId || x.ProviderSourceId || 'default', x.providerItemId || x.ProviderItemId || '') === key).length;
     return count ? { role: 'provider', count } : null;
 }
+function interlinkUsedElsewhere(side, sourceId, itemId) {
+    // A tag already taking the other role in a saved interlink must not be offered as
+    // this side's endpoint: consumers cannot also be providers, and vice versa.
+    const key = tagKey(sourceId, itemId);
+    const links = state.interlinks || [];
+    return links.some(x => side === 'consumer'
+        ? tagKey(x.providerSourceId || x.ProviderSourceId || 'default', x.providerItemId || x.ProviderItemId || '') === key
+        : tagKey(x.consumerSourceId || x.ConsumerSourceId || 'default', x.consumerItemId || x.ConsumerItemId || '') === key);
+}
 function renderInterlinkPickers() {
     const sources = (state.sources || []).filter(isLinkableInterlinkSource);
     interlinkSideIds().forEach(side => {
         const sel = el(interlinkSourceSelectId(side));
         if (!sel) return;
+        const other = side === 'consumer' ? 'provider' : 'consumer';
+        const otherId = state.interlinkSideSource[other] || '';
+        // Same-source links are never allowed, so a source picked on one side
+        // must not appear on the other side's dropdown.
+        if ((state.interlinkSideSource[side] || '') && state.interlinkSideSource[side] === otherId) {
+            state.interlinkSideSource[side] = '';
+            state.interlinkDraft[side] = null;
+        }
+        const available = sources.filter(s => s.sourceId !== otherId);
         const current = state.interlinkSideSource[side] || '';
-        sel.innerHTML = '<option value="">— select source —</option>' + sources.map(s =>
+        sel.innerHTML = '<option value="">— select source —</option>' + available.map(s =>
             `<option value="${attr(s.sourceId)}"${s.sourceId === current ? ' selected' : ''}>${esc(s.displayName || s.sourceId)} (${esc(sourceTypeLabel(s))})</option>`).join('');
         renderInterlinkTagList(side);
     });
@@ -2909,7 +2927,8 @@ function onInterlinkSourceChange(side) {
     const sel = el(interlinkSourceSelectId(side));
     if (!sel) return;
     state.interlinkSideSource[side] = sel.value || '';
-    renderInterlinkTagList(side);
+    // Re-render both pickers so the chosen source disappears from the other side.
+    renderInterlinkPickers();
 }
 function renderInterlinkTagList(side) {
     const listEl = el(interlinkListId(side));
@@ -2921,6 +2940,14 @@ function renderInterlinkTagList(side) {
     }
     const rows = (state.mappings || [])
         .filter(m => String(m.sourceId || m.SourceId || 'default') === sid)
+        .filter(m => {
+            const item = m.itemId || m.ItemId || m.daItemId || m.DaItemId || '';
+            if (interlinkUsedElsewhere(side, sid, item)) return false;
+            // Also hide the tag currently picked on the other side of the draft.
+            const other = side === 'consumer' ? 'provider' : 'consumer';
+            const otherPick = state.interlinkDraft[other];
+            return !(otherPick && otherPick.key === tagKey(sid, item));
+        })
         .map(m => {
             const item = m.itemId || m.ItemId || m.daItemId || m.DaItemId || '';
             const name = m.displayName || m.DisplayName || item;
@@ -2939,7 +2966,15 @@ function renderInterlinkTagList(side) {
                 ? ` <button class="btn" data-action="interlink-fix-rights" data-side="${attr(side)}" data-source-id="${attr(sid)}" data-item-id="${attr(item)}" title="One click: update the mapping's access rights so this side is usable.">${side === 'consumer' ? 'Set Read-Write' : 'Set Read'}</button>`
                 : '';
             const badge = at.ok
-                ? `<span class="badge good" style="font-size:9px;padding:0 6px">R</span>`
+                ? (() => {
+                    const r = mappingAccessRights(m);
+                    const short = r === 'Read-Write' ? 'RW' : r === 'Write' ? 'W' : 'R';
+                    const label = side === 'consumer' ? 'writable' : 'readable';
+                    const meaning = side === 'consumer'
+                        ? `Consumer accepts writes (${r})`
+                        : `Provider is readable (${r})`;
+                    return `<span class="badge good" style="font-size:9px;padding:0 6px" title="${attr(meaning)}">${short} ${label}</span>`;
+                })()
                 : `<span class="badge warn" style="font-size:9px;padding:0 6px" title="${attr(at.text)}">${side === 'consumer' ? 'needs Write' : 'needs Read'}</span>`;
             const disabledChip = disabled ? ' <span class="badge bad" style="font-size:9px;padding:0 6px">disabled</span>' : '';
             return `<div class="li"${disabled ? ' style="opacity:.6"' : ''}><div style="flex:1;min-width:0"><div class="n">${esc(name)} ${badge}${usageChip}${disabledChip}</div><div class="p">${esc(item)}</div></div>${pickBtn}${fixBtn}</div>`;
@@ -3135,9 +3170,13 @@ function renderInterlinkFlow() {
 }
 async function saveInterlink(consumerKey, providerKey) {
     if (!consumerKey || !providerKey) { el('linksMessage').textContent = 'Pick both a consumer and a provider.'; return; }
-    if (consumerKey === providerKey) { el('linksMessage').textContent = '✗ A tag cannot link to itself.'; return; }
     const [consumerSourceId, consumerItemId] = parseTagKey(consumerKey);
     const [providerSourceId, providerItemId] = parseTagKey(providerKey);
+    // Same-source links are never allowed: provider and consumer must live on different sources.
+    if (String(consumerSourceId || 'default').toLowerCase() === String(providerSourceId || 'default').toLowerCase()) {
+        el('linksMessage').textContent = '✗ Provider and consumer must be on different sources.';
+        return;
+    }
     // Pre-flight: block the doomed request and surface a one-click fix instead.
     const problems = [];
     const consMap = getMapping(consumerSourceId, consumerItemId);
@@ -5186,6 +5225,10 @@ async function saveSource() {
         el('cfgMessage').textContent = '✗ Source ID is required.';
         return;
     }
+    if (/\s/.test(sourceId)) {
+        el('cfgMessage').textContent = '✗ Source ID must not contain spaces.';
+        return;
+    }
     const existing = state.sources.find(s => s.sourceId === sourceId);
     if (existing && isDriverSource(existing)) {
         el('cfgMessage').textContent = 'Serial driver source — edit it on the Drivers page.';
@@ -5956,6 +5999,10 @@ async function saveMxSource() {
         el('mxMessage').textContent = '✗ Source ID is required.';
         return false;
     }
+    if (/\s/.test(body.sourceId)) {
+        el('mxMessage').textContent = '✗ Source ID must not contain spaces.';
+        return false;
+    }
     const r = await fetch('/api/da/sources', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const p = await r.json();
     if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
@@ -6091,6 +6138,10 @@ async function saveDriverSource() {
     const body = driverFormBody();
     if (!body.sourceId) {
         el('drvA3nMessage').textContent = '✗ Source ID is required.';
+        return false;
+    }
+    if (/\s/.test(body.sourceId)) {
+        el('drvA3nMessage').textContent = '✗ Source ID must not contain spaces.';
         return false;
     }
     if (!body.serialPortName) {
@@ -6325,6 +6376,10 @@ async function saveUaSource() {
         el('uaCfgMessage').textContent = '✗ Source ID is required.';
         return;
     }
+    if (/\s/.test(sourceId)) {
+        el('uaCfgMessage').textContent = '✗ Source ID must not contain spaces.';
+        return;
+    }
     const endpointUrl = el('uaCfgEndpointUrl').value.trim();
     if (!endpointUrl) {
         el('uaCfgMessage').textContent = '✗ Endpoint URL is required.';
@@ -6419,6 +6474,11 @@ function pickUaServer(url, name) {
     if (!url) return;
     el('uaCfgEndpointUrl').value = url;
     if (name && !el('uaCfgDisplayName').value.trim()) el('uaCfgDisplayName').value = name;
+    // Derive a Source ID from the endpoint host (no spaces) when creating a new source.
+    if (state.editingNewUaSource && !el('uaCfgSourceId').value.trim()) {
+        const host = (url.split('://')[1] || url).split('/')[0].split(':')[0];
+        el('uaCfgSourceId').value = host || 'ua-source';
+    }
     el('uaCfgMessage').textContent = 'Selected ' + (name || url) + ' — save source to apply.';
     showUaSaveReset();
 }

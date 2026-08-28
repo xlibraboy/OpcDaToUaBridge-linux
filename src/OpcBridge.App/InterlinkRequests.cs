@@ -67,10 +67,9 @@ internal static class InterlinkValidators
             return "Consumer item is required.";
         }
 
-        if (string.Equals(NormalizeSourceId(link.ProviderSourceId), NormalizeSourceId(link.ConsumerSourceId), StringComparison.OrdinalIgnoreCase) &&
-            string.Equals(link.ProviderItemId.Trim(), link.ConsumerItemId.Trim(), StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(NormalizeSourceId(link.ProviderSourceId), NormalizeSourceId(link.ConsumerSourceId), StringComparison.OrdinalIgnoreCase))
         {
-            return "Provider and consumer cannot be the same tag.";
+            return "Provider and consumer must be on different sources.";
         }
 
         if (!providerReadable)

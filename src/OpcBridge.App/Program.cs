@@ -937,6 +937,11 @@ app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings
         return Results.BadRequest(new { error = "Source ID is required." });
     }
 
+    if (request.SourceId.Any(char.IsWhiteSpace))
+    {
+        return Results.BadRequest(new { error = "Source ID must not contain spaces." });
+    }
+
     if (!TryValidateSourceUpsert(request, uaServer.GetOptions().EndpointUrl, settings, out string? validationError))
     {
         return Results.BadRequest(new { error = validationError });

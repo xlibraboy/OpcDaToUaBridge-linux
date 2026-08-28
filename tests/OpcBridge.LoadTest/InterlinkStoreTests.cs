@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.Extensions.Options;
 using OpcBridge.App;
 using OpcBridge.Core;
@@ -208,6 +209,104 @@ public sealed class InterlinkStoreTests
         Assert.Equal("itemP", rule.ProviderItemId);
         Assert.Equal("consumerA", rule.ConsumerSourceId);
         Assert.Equal("itemA", rule.ConsumerItemId);
+    }
+
+    [Fact]
+    public void TryAdd_RejectsSameSourceLink()
+    {
+        InterlinkStore store = CreateStore();
+
+        bool ok = store.TryAdd(
+            CreateRule(providerSourceId: "sourceA", providerItemId: "itemP", consumerSourceId: "sourceA", consumerItemId: "itemC"),
+            out _,
+            out string? error);
+
+        Assert.False(ok);
+        Assert.Equal("Provider and consumer must be on different sources.", error);
+    }
+
+    [Fact]
+    public void TryUpdate_RejectsSameSourceLink()
+    {
+        InterlinkStore store = CreateStore();
+        Guid id = Guid.NewGuid();
+
+        Assert.True(store.TryAdd(
+            CreateRule(id: id, providerSourceId: "providerA", providerItemId: "itemP", consumerSourceId: "consumerA", consumerItemId: "itemA"),
+            out _,
+            out _));
+
+        bool ok = store.TryUpdate(
+            CreateRule(id: id, providerSourceId: "sourceA", providerItemId: "itemP", consumerSourceId: "sourceA", consumerItemId: "itemA"),
+            out _,
+            out string? error);
+
+        Assert.False(ok);
+        Assert.Equal("Provider and consumer must be on different sources.", error);
+    }
+
+    [Fact]
+    public void SetAll_RejectsSameSourceLink()
+    {
+        InterlinkStore store = CreateStore();
+
+        InvalidOperationException ex = Assert.Throws<InvalidOperationException>(() =>
+            store.SetAll(new[]
+            {
+                CreateRule(providerSourceId: "sourceA", providerItemId: "itemP", consumerSourceId: "sourceA", consumerItemId: "itemC")
+            }));
+
+        Assert.Equal("Provider and consumer must be on different sources.", ex.Message);
+    }
+
+    [Fact]
+    public void MigrateFromMappings_SkipsSameSourceLegacyLinks()
+    {
+        var mappings = new[]
+        {
+            new TagMapping
+            {
+                SourceId = "sourceA",
+                ItemId = "itemC",
+                ProviderSourceId = "sourceA",
+                ProviderItemId = "itemP"
+            }
+        };
+
+        InterlinkStore store = CreateStore();
+
+        int migrated = store.MigrateFromMappings(mappings);
+        (IReadOnlyList<InterlinkRule> rules, _) = store.GetSnapshot();
+
+        Assert.Equal(0, migrated);
+        Assert.Empty(rules);
+    }
+
+    [Fact]
+    public void Constructor_DropsSameSourceRulesFromPersistedFile()
+    {
+        string path = GetPersistPath();
+        if (File.Exists(path))
+        {
+            File.Delete(path);
+        }
+
+        List<InterlinkRule> persisted = new()
+        {
+            CreateRule(providerSourceId: "sourceA", providerItemId: "itemP", consumerSourceId: "sourceA", consumerItemId: "itemC"),
+            CreateRule(providerSourceId: "providerB", providerItemId: "itemP2", consumerSourceId: "consumerB", consumerItemId: "itemB")
+        };
+        File.WriteAllText(path, JsonSerializer.Serialize(persisted));
+
+        InterlinkStore store = new(Options.Create(new BridgeOptions()));
+
+        (IReadOnlyList<InterlinkRule> rules, _) = store.GetSnapshot();
+        InterlinkRule remaining = Assert.Single(rules);
+        Assert.Equal("providerB", remaining.ProviderSourceId);
+        Assert.Equal("itemB", remaining.ConsumerItemId);
+
+        string rewritten = File.ReadAllText(path);
+        Assert.DoesNotContain("sourceA", rewritten, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]

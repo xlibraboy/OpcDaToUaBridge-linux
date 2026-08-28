@@ -212,7 +212,7 @@ Interlinks are a **separate subsystem** from DA → UA mappings. A provider chan
 
 ## Rules
 
-- A tag cannot link to itself.
+- Provider and consumer must be on **different sources** — a source can never link to itself.
 - Cross-source, cross-protocol links are supported (OPC DA / OPC UA / MX Component in any combination).
 - Provider and consumer must use the same data type.
 - v1 allows only **one provider per consumer**.

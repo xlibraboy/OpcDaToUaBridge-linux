@@ -130,7 +130,7 @@ public sealed class OpcUaBrowseService
                         servers.Add(new UaDiscoveredServerDto(
                             ServerUri: null,
                             RecordId: record.RecordId,
-                            DiscoveryUrl: record.DiscoveryUrl,
+                            DiscoveryUrl: RebaseDiscoveryUrl(record.DiscoveryUrl, uri),
                             ServerName: record.ServerName,
                             ServerCapabilities: record.ServerCapabilities?.ToList(),
                             IsOnline: true));
@@ -164,12 +164,14 @@ public sealed class OpcUaBrowseService
                     if (ad.DiscoveryUrls is null) continue;
                     foreach (string url in ad.DiscoveryUrls)
                     {
-                        if (string.IsNullOrWhiteSpace(url) || seen.Contains(url)) continue;
-                        seen.Add(url);
+                        if (string.IsNullOrWhiteSpace(url)) continue;
+                        string rebasedUrl = RebaseDiscoveryUrl(url, uri);
+                        if (seen.Contains(rebasedUrl)) continue;
+                        seen.Add(rebasedUrl);
                         servers.Add(new UaDiscoveredServerDto(
                             ServerUri: ad.ApplicationUri,
                             RecordId: null,
-                            DiscoveryUrl: url,
+                            DiscoveryUrl: rebasedUrl,
                             ServerName: ad.ApplicationName?.Text ?? ad.ApplicationUri,
                             ServerCapabilities: null,
                             IsOnline: true));
@@ -769,6 +771,39 @@ public sealed class OpcUaBrowseService
         return hash >= 0 && hash < policyUri.Length - 1
             ? policyUri[(hash + 1)..]
             : policyUri;
+    }
+
+    /// <summary>
+    /// Rewrites an advertised discovery URL that points at a non-routable bind address
+    /// (0.0.0.0, :: or localhost) to the host:port that was actually probed, keeping the
+    /// original path. A server running inside a container commonly advertises its internal
+    /// bind address (e.g. opc.tcp://0.0.0.0:4840/opcuasim/), which a client container cannot
+    /// reach — rebasing onto the probe URL (e.g. opc.tcp://172.17.0.1:49322/opcuasim/) makes
+    /// the discovered endpoint usable.
+    /// </summary>
+    public static string RebaseDiscoveryUrl(string? advertised, Uri probed)
+    {
+        if (string.IsNullOrWhiteSpace(advertised)
+            || !Uri.TryCreate(advertised, UriKind.Absolute, out Uri? advertisedUri))
+        {
+            return advertised ?? string.Empty;
+        }
+
+        bool isNonRoutable = advertisedUri.Host is "0.0.0.0" or "::" or "localhost"
+            || string.Equals(advertisedUri.Host, "127.0.0.1", StringComparison.Ordinal)
+            || string.Equals(advertisedUri.Host, "::1", StringComparison.Ordinal);
+        if (!isNonRoutable)
+        {
+            return advertised;
+        }
+
+        UriBuilder builder = new(advertisedUri)
+        {
+            Host = probed.Host,
+            Port = probed.Port,
+            Scheme = probed.Scheme
+        };
+        return builder.Uri.ToString();
     }
 
     private static string ExpandedNodeIdToString(ExpandedNodeId expanded, NamespaceTable namespaces)

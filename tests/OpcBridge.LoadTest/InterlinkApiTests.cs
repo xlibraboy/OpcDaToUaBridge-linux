@@ -333,6 +333,23 @@ public sealed class InterlinkApiTests
         Assert.Equal("Provider and consumer must use the same data type.", error);
     }
 
+    [Fact]
+    public void ValidateLink_RejectsSameSource()
+    {
+        InterlinkDto request = new(
+            Id: Guid.NewGuid(),
+            ProviderSourceId: "sourceA",
+            ProviderItemId: "itemP",
+            ConsumerSourceId: "SOURCEA",
+            ConsumerItemId: "itemC",
+            Enabled: true,
+            ProviderCanonicalType: 5,
+            ConsumerCanonicalType: 5);
+
+        string? error = InterlinkValidators.Validate(request, consumerHasProvider: false, providerReadable: true, consumerWritable: true);
+        Assert.Equal("Provider and consumer must be on different sources.", error);
+    }
+
 
     private static Microsoft.Extensions.Options.IOptions<BridgeOptions> ToOptions(BridgeOptions options)
     {

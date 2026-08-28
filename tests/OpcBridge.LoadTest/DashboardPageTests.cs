@@ -276,6 +276,36 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
+    public void Script_InterlinksHideSameSourceOnOtherSide()
+    {
+        // Same-source links are rejected by the store, so the pickers must not offer
+        // the source already selected on the other side.
+        Assert.Contains("// Same-source links are never allowed", DashboardPage.Script);
+        Assert.Contains("const available = sources.filter(s => s.sourceId !== otherId);", DashboardPage.Script);
+        Assert.Contains("renderInterlinkPickers();", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Script_InterlinksHideTagsAlreadyUsedOnOtherSide()
+    {
+        // A tag that already participates in a saved interlink (as consumer or provider)
+        // must not be offered again on the other side.
+        Assert.Contains("function interlinkUsedElsewhere(", DashboardPage.Script);
+        Assert.Contains("if (interlinkUsedElsewhere(side, sid, item)) return false;", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Script_InterlinkReadinessBadgeShowsRoleMeaning()
+    {
+        // The ready badge must carry a short rights label plus a tooltip explaining
+        // what the side needs, so plain "R" is never ambiguous.
+        Assert.Contains("Consumer accepts writes", DashboardPage.Script);
+        Assert.Contains("Provider is readable", DashboardPage.Script);
+        Assert.Contains("const short = r === 'Read-Write' ? 'RW' : r === 'Write' ? 'W' : 'R';", DashboardPage.Script);
+        Assert.Contains("const label = side === 'consumer' ? 'writable' : 'readable';", DashboardPage.Script);
+    }
+
+    [Fact]
     public void Script_DiagramLabelsUseInterlinkNaming()
     {
         // The Diagram tab's link view is renamed along with the subsystem.

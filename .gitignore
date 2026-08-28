@@ -57,3 +57,4 @@ worktrees/
 # Commit skills-lock.json so every PC gets the same skill set; do not commit skill file trees.
 .agents/
 .pi/
+.nuget-cache/
