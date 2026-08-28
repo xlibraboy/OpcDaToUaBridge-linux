@@ -2883,6 +2883,17 @@ function interlinkAttention(side, mapping) {
     if (side === 'consumer') return { ok: false, code: 'rights', text: 'Needs Read-Write (now ' + r + ')' };
     return { ok: false, code: 'rights', text: 'Needs Read (now ' + r + ')' };
 }
+function interlinkUsageFor(side, sourceId, itemId) {
+    // How is this tag already used by saved interlinks?
+    const key = tagKey(sourceId, itemId);
+    const links = state.interlinks || [];
+    if (side === 'consumer') {
+        const l = links.find(x => tagKey(x.consumerSourceId || x.ConsumerSourceId || 'default', x.consumerItemId || x.ConsumerItemId || '') === key);
+        return l ? { role: 'consumer', providerLabel: linkTagLabel(l.providerSourceId || l.ProviderSourceId || 'default', l.providerItemId || l.ProviderItemId || '') } : null;
+    }
+    const count = links.filter(x => tagKey(x.providerSourceId || x.ProviderSourceId || 'default', x.providerItemId || x.ProviderItemId || '') === key).length;
+    return count ? { role: 'provider', count } : null;
+}
 function renderInterlinkPickers() {
     const sources = (state.sources || []).filter(isLinkableInterlinkSource);
     interlinkSideIds().forEach(side => {
@@ -2917,6 +2928,12 @@ function renderInterlinkTagList(side) {
             const picked = state.interlinkDraft[side] && state.interlinkDraft[side].key === key;
             const at = interlinkAttention(side, m);
             const disabled = (m.enabled ?? m.Enabled) === false;
+            const usage = interlinkUsageFor(side, sid, item);
+            const usageChip = usage
+                ? (usage.role === 'consumer'
+                    ? `<span class="badge partial" style="font-size:9px;padding:0 6px" title="Already linked — fed by ${attr(usage.providerLabel)}">&#8656; linked</span>`
+                    : `<span class="badge partial" style="font-size:9px;padding:0 6px" title="Already a provider for ${usage.count} consumer${usage.count > 1 ? 's' : ''}">feeds ${usage.count}</span>`)
+                : '';
             const pickBtn = `<button class="btn ghost" data-action="pick-interlink-${side}" data-source-id="${attr(sid)}" data-item-id="${attr(item)}" data-name="${attr(name)}"${disabled ? ' title="Tag is disabled — enable it on the Maps tab first."' : ''}>${picked ? '✓ Picked' : 'Pick'}</button>`;
             const fixBtn = !at.ok
                 ? ` <button class="btn" data-action="interlink-fix-rights" data-side="${attr(side)}" data-source-id="${attr(sid)}" data-item-id="${attr(item)}" title="One click: update the mapping's access rights so this side is usable.">${side === 'consumer' ? 'Set Read-Write' : 'Set Read'}</button>`
@@ -2925,7 +2942,7 @@ function renderInterlinkTagList(side) {
                 ? `<span class="badge good" style="font-size:9px;padding:0 6px">R</span>`
                 : `<span class="badge warn" style="font-size:9px;padding:0 6px" title="${attr(at.text)}">${side === 'consumer' ? 'needs Write' : 'needs Read'}</span>`;
             const disabledChip = disabled ? ' <span class="badge bad" style="font-size:9px;padding:0 6px">disabled</span>' : '';
-            return `<div class="li"${disabled ? ' style="opacity:.6"' : ''}><div style="flex:1;min-width:0"><div class="n">${esc(name)} ${badge}${disabledChip}</div><div class="p">${esc(item)}</div></div>${pickBtn}${fixBtn}</div>`;
+            return `<div class="li"${disabled ? ' style="opacity:.6"' : ''}><div style="flex:1;min-width:0"><div class="n">${esc(name)} ${badge}${usageChip}${disabledChip}</div><div class="p">${esc(item)}</div></div>${pickBtn}${fixBtn}</div>`;
         });
     listEl.innerHTML = rows.length ? rows.join('') : '<span class="msg">No Maps tags for this source yet — add one by Item ID below or on the Maps tab.</span>';
 }
@@ -3443,6 +3460,10 @@ async function showTab(name, route) {
     await Promise.all([loadSources().catch(() => {}), loadMappings().catch(() => {}), loadInterlinks().catch(() => {})]);
     renderInterlinkFlow();
     updateFlowBadge();
+  }
+  if (activeTab === 'interlinks') {
+    await Promise.all([loadSources().catch(() => {}), loadMappings().catch(() => {}), loadInterlinks().catch(() => {})]);
+    renderInterlinksView();
   }
   if (activeTab === 'diagram') {
     state.diagramLoaded = true;
