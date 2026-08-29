@@ -6472,14 +6472,53 @@ async function discoverUaServers() {
 }
 function pickUaServer(url, name) {
     if (!url) return;
-    el('uaCfgEndpointUrl').value = url;
-    if (name && !el('uaCfgDisplayName').value.trim()) el('uaCfgDisplayName').value = name;
-    // Derive a Source ID from the endpoint host (no spaces) when creating a new source.
-    if (state.editingNewUaSource && !el('uaCfgSourceId').value.trim()) {
-        const host = (url.split('://')[1] || url).split('/')[0].split(':')[0];
-        el('uaCfgSourceId').value = host || 'ua-source';
+    // Normalize so a discovered endpoint matches a saved source regardless of trailing slash.
+    const normalized = url.replace(/\/+$/, '');
+    const existing = uaSources().find(s => (s.endpointUrl || '').replace(/\/+$/, '') === normalized);
+    if (existing) {
+        state.selectedSourceId = existing.sourceId;
+        state.editingNewUaSource = false;
+        loadSelectedUaSourceForm();
+        el('uaCfgMessage').textContent = 'Selected ' + (name || existing.displayName || existing.sourceId) + ' — already configured.';
+        hideUaSaveReset();
+        return;
     }
-    el('uaCfgMessage').textContent = 'Selected ' + (name || url) + ' — save source to apply.';
+    // If the user is already building a new source in the form, just fill it in
+    // instead of auto-saving (the Save button applies it). This prevents "Use"
+    // from silently overwriting an in-progress new source.
+    if (state.editingNewUaSource) {
+        el('uaCfgDisplayName').value = name || el('uaCfgDisplayName').value;
+        el('uaCfgEndpointUrl').value = url;
+        el('uaCfgMessage').textContent = 'Selected ' + (name || url) + ' — save source to apply.';
+        showUaSaveReset();
+        return;
+    }
+    // Not configured yet: fill the form as a NEW (unsaved) source so the user
+    // can review/edit the Source ID before saving. No auto-save — the Save
+    // button applies it. This never overwrites an existing source.
+    state.selectedSourceId = '';
+    state.editingNewUaSource = true;
+    el('uaCfgSourceId').disabled = false;
+    el('uaCfgSourceId').value = '';
+    el('uaCfgDisplayName').value = name || '';
+    el('uaCfgEndpointUrl').value = url;
+    el('uaCfgSecurityMode').value = 'None';
+    el('uaCfgSecurityPolicy').value = 'None';
+    el('uaCfgUser').value = '';
+    el('uaCfgPass').value = '';
+    el('uaCfgUpdateRate').value = String(state.updateRateMs || 1000);
+    el('uaCfgMaxMappedTags').value = '50000';
+    el('uaCfgUseSubscriptions').checked = true;
+    // Suggest a unique Source ID from the endpoint host + port (no spaces),
+    // e.g. "172.17.0.1-49321". If taken, append a numeric suffix so two servers
+    // on the same host never collide. The user can still edit it before saving.
+    const hostPort = (url.split('://')[1] || url).split('/')[0].replace(/^\[|\]$/g, '').replace(/:/g, '-');
+    const baseId = hostPort || 'ua-source';
+    const taken = new Set(uaSources().map(s => s.sourceId));
+    let sourceId = baseId;
+    for (let i = 2; taken.has(sourceId) && i < 1000; i++) sourceId = baseId + '-' + i;
+    el('uaCfgSourceId').value = sourceId;
+    el('uaCfgMessage').textContent = 'Selected ' + (name || url) + ' — review Source ID, then Save.';
     showUaSaveReset();
 }
 async function removeSelectedUaSource() {
