@@ -90,7 +90,7 @@ public partial class FaceplateViewModel : ObservableObject, IAsyncDisposable
             QualityText = FormatQuality(entry.DaQuality, entry.IsGood);
             TimestampText = entry.TimestampUtc is null
                 ? string.Empty
-                : entry.TimestampUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss");
+                : entry.TimestampUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss.fff");
             if (string.IsNullOrWhiteSpace(WriteValue))
             {
                 WriteValue = ValueText;
