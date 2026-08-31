@@ -589,6 +589,7 @@ internal static class DashboardPage
   <div class="nav-group">
     <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><circle cx="7" cy="7" r="1.5" fill="currentColor" stroke="none"/></svg>Tags</div>
     <button class="tabbtn" data-tab="tags" data-route="tags/maps" onclick="navigate('tags/maps')">Maps</button>
+    <button class="tabbtn" data-tab="values" data-route="tags/values" onclick="navigate('tags/values')">Live Values</button>
     <button class="tabbtn" data-tab="interlinks" data-route="tags/interlinks" onclick="navigate('tags/interlinks')">Interlinks</button>
   </div>
   <div class="nav-group">
@@ -604,7 +605,6 @@ internal static class DashboardPage
     <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>Ops</div>
     <button class="tabbtn active" data-tab="monitor" data-route="ops/monitor" onclick="navigate('ops/monitor')">Monitor</button>
     <button class="tabbtn" data-tab="diagnostics" data-route="ops/diagnostics" onclick="navigate('ops/diagnostics')">Diagnostics</button>
-    <button class="tabbtn" data-tab="values" data-route="ops/values" onclick="navigate('ops/values')">Live Values</button>
     <button class="tabbtn" data-tab="sessions" data-route="ops/sessions" onclick="navigate('ops/sessions')">Sessions</button>
     <button class="tabbtn" data-tab="logs" data-route="ops/logs" onclick="navigate('ops/logs')">Logs</button>
     <button class="tabbtn" data-tab="diagram" data-route="ops/diagram" onclick="navigate('ops/diagram')">Diagram</button>
@@ -3437,7 +3437,8 @@ const ROUTE_TO_TAB = {
   'iot/traffic': 'iot-traffic',
   'historian/influx': 'influx',
   'ops/monitor': 'monitor',
-  'ops/values': 'values',
+  'tags/values': 'values',
+  'ops/values': 'values', // bookmark alias
   'ops/logs': 'logs',
   'ops/diagram': 'diagram',
   'help/guide': 'help',
@@ -6504,6 +6505,7 @@ function pickUaServer(url, name) {
     // button applies it. This never overwrites an existing source.
     state.selectedSourceId = '';
     state.editingNewUaSource = true;
+    if (el('uaSelectedSource')) el('uaSelectedSource').value = '';
     el('uaCfgSourceId').disabled = false;
     el('uaCfgSourceId').value = '';
     el('uaCfgDisplayName').value = name || '';
