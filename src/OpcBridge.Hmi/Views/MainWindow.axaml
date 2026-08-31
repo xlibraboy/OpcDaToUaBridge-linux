@@ -8,123 +8,254 @@
         Title="OpcBridge HMI"
         Width="1280"
         Height="800">
-  <DockPanel Margin="12">
-    <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto,Auto" Margin="0,0,0,8">
-      <TextBox Grid.Column="0"
-               Watermark="Bridge Base URL"
-               Text="{Binding BaseUrl}"
-               Margin="0,0,8,0" />
-      <Button Grid.Column="1"
-              Content="Connect"
-              Command="{Binding ConnectCommand}"
-              Margin="0,0,8,0"
-              MinWidth="96" />
-      <Button Grid.Column="2"
-              Content="Disconnect"
-              Command="{Binding DisconnectCommand}"
-              Margin="0,0,8,0"
-              MinWidth="96" />
-      <TextBlock Grid.Column="3"
-                 VerticalAlignment="Center"
-                 Text="{Binding ConnectionState, StringFormat=Status: {0}}" />
-    </Grid>
+  <DockPanel>
+    <!-- ======== Menu bar ======== -->
+    <Menu DockPanel.Dock="Top">
+      <MenuItem Header="_File">
+        <MenuItem Header="Connect" Command="{Binding ConnectCommand}" />
+        <MenuItem Header="Disconnect" Command="{Binding DisconnectCommand}" />
+        <Separator />
+        <MenuItem Header="Exit" Click="OnExitClick" />
+      </MenuItem>
+      <MenuItem Header="_View">
+        <MenuItem Header="Home" Command="{Binding ShowHomeCommand}"
+                  ToggleType="CheckBox" IsChecked="{Binding IsHomePage, Mode=OneWay}"
+                  InputGesture="Ctrl+1" />
+        <MenuItem Header="Config" Command="{Binding ShowConfigCommand}"
+                  ToggleType="CheckBox" IsChecked="{Binding IsConfigPage, Mode=OneWay}"
+                  InputGesture="Ctrl+2" />
+        <Separator />
+        <MenuItem Header="Open faceplate" Command="{Binding OpenFaceplateCommand}" />
+        <MenuItem Header="Refresh displays" Command="{Binding RefreshDisplaysCommand}" />
+      </MenuItem>
+      <MenuItem Header="Confi_g">
+        <MenuItem Header="Connection and display settings" Command="{Binding ShowConfigCommand}" />
+      </MenuItem>
+      <MenuItem Header="_Help">
+        <MenuItem Header="About" Click="OnAboutClick" />
+      </MenuItem>
+    </Menu>
 
-    <StackPanel DockPanel.Dock="Top"
-                Orientation="Horizontal"
-                Spacing="8"
-                Margin="0,0,0,8">
-      <TextBlock VerticalAlignment="Center" Text="Display store:" />
-      <TextBox Width="220"
-               Watermark="http://primary:8080"
-               Text="{Binding DisplayStoreUrl}" />
-      <Button Content="Refresh"
-              Command="{Binding RefreshDisplaysCommand}"
-              MinWidth="80" />
-      <ComboBox Width="200"
-                ItemsSource="{Binding Displays}"
-                SelectedItem="{Binding SelectedDisplay}"
-                PlaceholderText="Select display">
-        <ComboBox.ItemTemplate>
-          <DataTemplate x:DataType="client:DisplayListItemDto">
-            <TextBlock Text="{Binding Name}" />
-          </DataTemplate>
-        </ComboBox.ItemTemplate>
-      </ComboBox>
-      <Button Content="Load display"
-              Command="{Binding LoadSelectedDisplayCommand}"
-              MinWidth="110" />
-      <TextBlock VerticalAlignment="Center" Text="Filter:" />
-      <TextBox Width="160"
-               Watermark="tags filter"
-               Text="{Binding Filter}" />
-      <TextBlock VerticalAlignment="Center"
-                 Text="{Binding BridgeSummary, StringFormat=Bridges: {0}}"
-                 Opacity="0.85" />
-    </StackPanel>
-
-    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
-      <TextBlock DockPanel.Dock="Left"
-                 VerticalAlignment="Top"
-                 Margin="0,4,8,0"
-                 Text="Extra bridges:" />
-      <TextBox AcceptsReturn="True"
-               TextWrapping="NoWrap"
-               Height="54"
-               Watermark="line2|http://192.168.1.11:8080"
-               Text="{Binding BridgeListText}" />
-    </DockPanel>
-
-    <TextBlock DockPanel.Dock="Bottom"
-               Margin="0,8,0,0"
-               Text="{Binding StatusMessage}"
-               TextWrapping="Wrap"
-               Opacity="0.85" />
-
-    <Grid ColumnDefinitions="3*,2*">
-      <DockPanel Grid.Column="0" Margin="0,0,12,0">
-        <TextBlock DockPanel.Dock="Top"
-                   FontWeight="SemiBold"
-                   Margin="0,0,0,6"
-                   Text="{Binding DisplaySurface.DisplayName, StringFormat=Process display: {0}}" />
-        <controls:DisplaySurfaceControl DataContext="{Binding DisplaySurface}" />
+    <!-- ======== Status strip ======== -->
+    <Border DockPanel.Dock="Top"
+            Background="{DynamicResource PanelBrush}"
+            BorderBrush="{DynamicResource CardBorderBrush}"
+            BorderThickness="0,0,0,1"
+            Padding="12,6">
+      <DockPanel>
+        <Border Classes="pill ok" IsVisible="{Binding IsConnected}">
+          <TextBlock Text="{Binding ConnectionState}" />
+        </Border>
+        <Border Classes="pill bad" IsVisible="{Binding !IsConnected}">
+          <TextBlock Text="{Binding ConnectionState}" />
+        </Border>
+        <TextBlock DockPanel.Dock="Right"
+                   Classes="hint"
+                   VerticalAlignment="Center"
+                   MaxWidth="520"
+                   TextTrimming="CharacterEllipsis"
+                   Text="{Binding StatusMessage}" />
+        <TextBlock Margin="12,0,0,0"
+                   Classes="hint"
+                   VerticalAlignment="Center"
+                   Text="{Binding BridgeSummary, StringFormat=Bridges: {0}}" />
       </DockPanel>
+    </Border>
 
-      <Border Grid.Column="1"
-              BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
-              BorderThickness="1"
-              CornerRadius="4"
-              Padding="8">
-        <DockPanel>
-          <Grid DockPanel.Dock="Top" ColumnDefinitions="*,*" Margin="0,0,0,8">
-            <TextBlock Grid.Column="0" FontWeight="SemiBold" Text="Tag browser" VerticalAlignment="Center" />
-            <Button Grid.Column="1"
-                    Content="Open faceplate"
-                    Command="{Binding OpenFaceplateCommand}"
-                    HorizontalAlignment="Right"
-                    MinWidth="120" />
-          </Grid>
-          <StackPanel DockPanel.Dock="Bottom" Spacing="4" Margin="0,8,0,0">
-            <TextBlock Text="{Binding SelectedTag.BridgeId, StringFormat=Bridge: {0}}" />
-            <TextBlock Text="{Binding SelectedTag.DisplayName, StringFormat=Name: {0}}" />
-            <TextBlock Text="{Binding SelectedTag.ValueText, StringFormat=Value: {0}}" />
-            <TextBlock Opacity="0.75" TextWrapping="Wrap"
-                       Text="Double-click tag or click widget to open faceplate. Open trend from faceplate." />
+    <!-- ======== Content pages ======== -->
+    <Grid>
+
+      <!-- ======== HOME ======== -->
+      <Grid IsVisible="{Binding IsHomePage}"
+            RowDefinitions="Auto,*,Auto"
+            Margin="12">
+        <Grid Grid.Row="0" ColumnDefinitions="*,*,*,*" Margin="0,0,0,10">
+          <Border Grid.Column="0" Classes="card" Margin="0,0,8,0">
+            <StackPanel>
+              <TextBlock Classes="cardTitle" Text="Connection" />
+              <TextBlock Classes="cardValue" Text="{Binding ConnectionState}" />
+              <TextBlock Classes="hint" Text="{Binding BaseUrl}" TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+          </Border>
+          <Border Grid.Column="1" Classes="card" Margin="0,0,8,0">
+            <StackPanel>
+              <TextBlock Classes="cardTitle" Text="Bridges" />
+              <TextBlock Classes="cardValue"
+                         Text="{Binding BridgeSummary, TargetNullValue=—}"
+                         TextTrimming="CharacterEllipsis" />
+              <TextBlock Classes="hint" Text="Connected bridge ids" />
+            </StackPanel>
+          </Border>
+          <Border Grid.Column="2" Classes="card" Margin="0,0,8,0">
+            <StackPanel>
+              <TextBlock Classes="cardTitle" Text="Process display" />
+              <TextBlock Classes="cardValue" Text="{Binding DisplayTitle}" TextTrimming="CharacterEllipsis" />
+              <TextBlock Classes="hint" IsVisible="{Binding !HasDisplay}" Text="Load one from Config" />
+              <TextBlock Classes="hint" IsVisible="{Binding HasDisplay}" Text="Live view below" />
+            </StackPanel>
+          </Border>
+          <Border Grid.Column="3" Classes="card">
+            <StackPanel>
+              <TextBlock Classes="cardTitle" Text="Live tags" />
+              <TextBlock Classes="cardValue" Text="{Binding TagCount}" />
+              <TextBlock Classes="hint" Text="Cached tag values" />
+            </StackPanel>
+          </Border>
+        </Grid>
+
+        <!-- Process display (the SCADA overview) -->
+        <Panel Grid.Row="1" IsVisible="{Binding HasDisplay}">
+          <controls:DisplaySurfaceControl DataContext="{Binding DisplaySurface}" />
+        </Panel>
+
+        <!-- Empty state -->
+        <Border Grid.Row="1"
+                Classes="cardDark"
+                IsVisible="{Binding !HasDisplay}"
+                Padding="32">
+          <StackPanel HorizontalAlignment="Center"
+                      VerticalAlignment="Center"
+                      Spacing="10"
+                      MaxWidth="420">
+            <TextBlock FontSize="20" FontWeight="SemiBold" HorizontalAlignment="Center"
+                       Text="No process display loaded" />
+            <TextBlock Classes="hint" TextAlignment="Center" TextWrapping="Wrap"
+                       Text="Connect to the bridge, then pick a display from the store. Displays are designed in OpcBridge HMI Designer." />
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8" Margin="0,8,0,0">
+              <Button Classes="primary" Content="Connect" Command="{Binding ConnectCommand}" />
+              <Button Content="Open Config" Command="{Binding ShowConfigCommand}" />
+            </StackPanel>
           </StackPanel>
-          <ListBox ItemsSource="{Binding FilteredTags}"
-                   SelectedItem="{Binding SelectedTag}"
-                   DoubleTapped="OnTagDoubleTapped">
-            <ListBox.ItemTemplate>
-              <DataTemplate x:DataType="vm:TagItemViewModel">
-                <Grid ColumnDefinitions="*,2*,*">
-                  <TextBlock Grid.Column="0" Text="{Binding BridgeId}" TextTrimming="CharacterEllipsis" />
-                  <TextBlock Grid.Column="1" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
-                  <TextBlock Grid.Column="2" Text="{Binding ValueText}" TextTrimming="CharacterEllipsis" />
+        </Border>
+
+        <TextBlock Grid.Row="2"
+                   Classes="hint"
+                   Margin="0,8,0,0"
+                   Text="{Binding DisplaySurface.StatusMessage}"
+                   TextTrimming="CharacterEllipsis" />
+      </Grid>
+
+      <!-- ======== CONFIG ======== -->
+      <Grid IsVisible="{Binding IsConfigPage}" ColumnDefinitions="640,*" Margin="12">
+        <!-- Bridge lines -->
+        <StackPanel Grid.Column="0" Spacing="10" Margin="0,0,10,0">
+
+          <Border Classes="card">
+            <DockPanel>
+              <TextBlock DockPanel.Dock="Top" Classes="sectionLabel" Text="BRIDGES" />
+              <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="8" Margin="0,8,0,0">
+                <Button Classes="primary" Content="Connect" Command="{Binding ConnectCommand}" />
+                <Button Classes="danger" Content="Disconnect" Command="{Binding DisconnectCommand}" />
+                <Rectangle Classes="vsep" />
+                <Button Content="+ Add bridge" Command="{Binding AddBridgeCommand}" />
+              </StackPanel>
+
+              <StackPanel>
+                <Grid ColumnDefinitions="2.1*,2.1*,1.1*,Auto,Auto" Margin="0,0,0,4">
+                  <TextBlock Grid.Column="0" Classes="listHeader" Text="OPCBRIDGE ADDRESS" Margin="0,0,4,0" />
+                  <TextBlock Grid.Column="1" Classes="listHeader" Text="DISPLAY STORE" Margin="0,0,4,0" />
+                  <TextBlock Grid.Column="2" Classes="listHeader" Text="NAME" Margin="0,0,4,0" />
+                  <TextBlock Grid.Column="3" Classes="listHeader" Text="STATUS" Margin="8,0,8,0" />
+                  <TextBlock Grid.Column="4" Classes="listHeader" Text="" />
                 </Grid>
-              </DataTemplate>
-            </ListBox.ItemTemplate>
-          </ListBox>
-        </DockPanel>
-      </Border>
+                <ItemsControl ItemsSource="{Binding BridgeRows}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:BridgeRow">
+                      <Grid ColumnDefinitions="2.1*,2.1*,1.1*,Auto,Auto" Margin="0,2">
+                        <TextBox Grid.Column="0"
+                                 Margin="0,0,4,0"
+                                 Watermark="http://127.0.0.1:8080"
+                                 Text="{Binding Address}" />
+                        <TextBox Grid.Column="1"
+                                 Margin="0,0,4,0"
+                                 Watermark="= address"
+                                 Text="{Binding DisplayStore}" />
+                        <TextBox Grid.Column="2"
+                                 Margin="0,0,4,0"
+                                 Watermark="name"
+                                 Text="{Binding Name}" />
+                        <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="5" Margin="8,0,8,0" VerticalAlignment="Center">
+                          <Ellipse Width="9" Height="9" IsVisible="{Binding IsConnected}" Fill="{DynamicResource OkBorderBrush}" />
+                          <Ellipse Width="9" Height="9" IsVisible="{Binding !IsConnected}" Fill="{DynamicResource CardBorderBrush}" />
+                          <TextBlock Text="{Binding ScopeKind}" FontWeight="SemiBold" />
+                        </StackPanel>
+                        <Button Grid.Column="4" Classes="tool" Content="✕"
+                                Command="{Binding $parent[ItemsControl].((vm:MainViewModel)DataContext).RemoveBridgeCommand}"
+                                CommandParameter="{Binding}" />
+                      </Grid>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </DockPanel>
+          </Border>
+
+          <Border Classes="card">
+            <StackPanel Spacing="8">
+              <TextBlock Classes="sectionLabel" Text="DISPLAY STORE" />
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Content="Refresh" Command="{Binding RefreshDisplaysCommand}" MinWidth="80" />
+                <ComboBox Width="430"
+                          ItemsSource="{Binding Displays}"
+                          SelectedItem="{Binding SelectedDisplay}">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:DisplayEntry">
+                      <TextBlock Text="{Binding Label}" />
+                    </DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+              </StackPanel>
+              <Button Content="Load display" Command="{Binding LoadSelectedDisplayCommand}" MinWidth="110"
+                      HorizontalAlignment="Left" />
+            </StackPanel>
+          </Border>
+        </StackPanel>
+
+        <!-- Tag browser -->
+        <Border Grid.Column="1" Classes="card">
+          <DockPanel>
+            <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
+              <TextBlock Grid.Column="0" FontWeight="SemiBold" Text="Tag browser" VerticalAlignment="Center" />
+              <Button Grid.Column="1"
+                      Content="Open faceplate"
+                      Command="{Binding OpenFaceplateCommand}"
+                      HorizontalAlignment="Right"
+                      MinWidth="120" />
+            </Grid>
+
+            <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,8">
+              <TextBox Watermark="Filter tags…" Text="{Binding Filter}" />
+              <Grid ColumnDefinitions="*,2*,*">
+                <TextBlock Grid.Column="0" Classes="listHeader" Text="BRIDGE" />
+                <TextBlock Grid.Column="1" Classes="listHeader" Text="TAG" />
+                <TextBlock Grid.Column="2" Classes="listHeader" Text="VALUE" />
+              </Grid>
+            </StackPanel>
+
+            <StackPanel DockPanel.Dock="Bottom" Spacing="4" Margin="0,8,0,0">
+              <TextBlock Text="{Binding SelectedTag.BridgeId, StringFormat=Bridge: {0}}" />
+              <TextBlock Text="{Binding SelectedTag.DisplayName, StringFormat=Name: {0}}" />
+              <TextBlock Text="{Binding SelectedTag.ValueText, StringFormat=Value: {0}}" />
+              <TextBlock Classes="hint" TextWrapping="Wrap"
+                         Text="Double-click tag or click widget to open faceplate. Open trend from faceplate." />
+            </StackPanel>
+
+            <ListBox ItemsSource="{Binding FilteredTags}"
+                     SelectedItem="{Binding SelectedTag}"
+                     DoubleTapped="OnTagDoubleTapped">
+              <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:TagItemViewModel">
+                  <Grid ColumnDefinitions="*,2*,*">
+                    <TextBlock Grid.Column="0" Text="{Binding BridgeId}" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Column="1" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Grid.Column="2" Classes="valueText" Text="{Binding ValueText}" TextTrimming="CharacterEllipsis" />
+                  </Grid>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </DockPanel>
+        </Border>
+      </Grid>
     </Grid>
   </DockPanel>
 </Window>

@@ -10,10 +10,16 @@ using OpcBridge.Hmi.Views;
 
 namespace OpcBridge.Hmi.ViewModels;
 
+public enum HmiPage
+{
+    Home,
+    Config
+}
+
 public partial class MainViewModel : ObservableObject, IAsyncDisposable
 {
     private readonly BridgeConnectionManager connections_;
-    private readonly DisplayStoreClient displayStore_;
+    private readonly Dictionary<string, DisplayStoreClient> storeClients_ = new(StringComparer.OrdinalIgnoreCase);
     private readonly PopupWindowService popups_;
     private readonly Dictionary<string, TagItemViewModel> tagIndex_ = new(StringComparer.OrdinalIgnoreCase);
     private readonly bool ownsServices_;
@@ -23,19 +29,17 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     private readonly string configPath_;
 
     public MainViewModel()
-        : this(new BridgeConnectionManager(), new DisplayStoreClient(), new PopupWindowService(), ownsServices: true)
+        : this(new BridgeConnectionManager(), new PopupWindowService(), ownsServices: true)
     {
     }
 
     public MainViewModel(
         BridgeConnectionManager connections,
-        DisplayStoreClient displayStore,
         PopupWindowService popups,
         bool ownsServices = false,
         string? configPath = null)
     {
         connections_ = connections;
-        displayStore_ = displayStore;
         popups_ = popups;
         ownsServices_ = ownsServices;
         configPath_ = string.IsNullOrWhiteSpace(configPath)
@@ -50,10 +54,82 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             WriteForBindingAsync);
         connections_.CacheChanged += OnCacheChanged;
         connections_.MappingsChanged += OnMappingsChangedAsync;
+        DisplaySurface.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(DisplaySurfaceViewModel.HasDocument) or nameof(DisplaySurfaceViewModel.DisplayName))
+            {
+                OnPropertyChanged(nameof(HasDisplay));
+                OnPropertyChanged(nameof(DisplayTitle));
+            }
+        };
         LoadLocalConfig();
+        _ = DetectLocalBridgeAsync();
+    }
+
+    private async Task DetectLocalBridgeAsync()
+    {
+        string? found = await LocalBridgeDetector.DetectAsync().ConfigureAwait(true);
+        await PostToUiAsync(() =>
+        {
+            BridgeRow? empty = BridgeRows.FirstOrDefault(r => string.IsNullOrWhiteSpace(r.Address));
+            if (found is not null && empty is not null && !IsConnected)
+            {
+                empty.Address = found;
+                RefreshPrimaryAddress();
+                StatusMessage = $"Local OpcBridge detected at {found}";
+            }
+        });
+    }
+
+    private BridgeRow AddBridgeRow(string name = "", string address = "", string displayStore = "")
+    {
+        var row = new BridgeRow { Name = name, Address = address, DisplayStore = displayStore };
+        row.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(BridgeRow.Address) && BridgeRows.Count > 0 && ReferenceEquals(BridgeRows[0], row))
+            {
+                RefreshPrimaryAddress();
+            }
+        };
+        BridgeRows.Add(row);
+        return row;
+    }
+
+    private void RefreshPrimaryAddress()
+    {
+        BaseUrl = BridgeRows.Count > 0 ? BridgeRows[0].Address : string.Empty;
     }
 
     public DisplaySurfaceViewModel DisplaySurface { get; }
+
+    // ---- Page navigation (SCADA shell) ----
+
+    [ObservableProperty]
+    private HmiPage _currentPage = HmiPage.Home;
+
+    public bool IsHomePage => CurrentPage == HmiPage.Home;
+
+    public bool IsConfigPage => CurrentPage == HmiPage.Config;
+
+    partial void OnCurrentPageChanged(HmiPage value)
+    {
+        OnPropertyChanged(nameof(IsHomePage));
+        OnPropertyChanged(nameof(IsConfigPage));
+    }
+
+    [RelayCommand]
+    private void ShowHome() => CurrentPage = HmiPage.Home;
+
+    [RelayCommand]
+    private void ShowConfig() => CurrentPage = HmiPage.Config;
+
+    // ---- Home overview card data ----
+
+    public int TagCount => Tags.Count;
+
+    public bool HasDisplay => DisplaySurface.HasDocument;
+
+    public string DisplayTitle => HasDisplay ? DisplaySurface.DisplayName : "No display loaded";
 
     public void SetOwnerWindow(Window? owner) => ownerWindow_ = owner;
 
@@ -89,11 +165,14 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     private bool _isConnected;
 
     [ObservableProperty]
-    private DisplayListItemDto? _selectedDisplay;
+    private DisplayEntry? _selectedDisplay;
 
     public ObservableCollection<TagItemViewModel> Tags { get; } = new();
 
-    public ObservableCollection<DisplayListItemDto> Displays { get; } = new();
+    public ObservableCollection<DisplayEntry> Displays { get; } = new();
+
+    /// <summary>One editable line per bridge server (address, store, name, status).</summary>
+    public ObservableCollection<BridgeRow> BridgeRows { get; } = new();
 
     public IEnumerable<TagItemViewModel> FilteredTags =>
         string.IsNullOrWhiteSpace(Filter)
@@ -116,11 +195,15 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         OpenFaceplateCommand.NotifyCanExecuteChanged();
     }
 
-    partial void OnBaseUrlChanged(string value)
+    [RelayCommand]
+    private void AddBridge() => AddBridgeRow();
+
+    [RelayCommand]
+    private void RemoveBridge(BridgeRow? row)
     {
-        if (string.IsNullOrWhiteSpace(DisplayStoreUrl) || DisplayStoreUrl == "http://127.0.0.1:8080")
+        if (row is not null)
         {
-            DisplayStoreUrl = value;
+            BridgeRows.Remove(row);
         }
     }
 
@@ -137,17 +220,42 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             ConnectionState = "Connecting";
             StatusMessage = string.Empty;
 
-            HmiClientConfig config = BuildConfigFromUi();
-            displayStore_.SetBaseAddress(config.DisplayStoreUrl);
+            HmiClientConfig config = BuildConfigFromRows(BridgeRows);
+            if (config.Bridges.Count == 0)
+            {
+                ConnectionState = "Disconnected";
+                StatusMessage = "Add at least one bridge address";
+                return;
+            }
+
+            foreach (HmiBridgeEndpoint bridge in config.EnabledBridges())
+            {
+                string store = StoreUrlOf(bridge);
+                if (!storeClients_.ContainsKey(store))
+                {
+                    DisplayStoreClient client = new();
+                    client.SetBaseAddress(store);
+                    storeClients_[store] = client;
+                }
+            }
+
             await connections_.ConnectAllAsync(config, ct).ConfigureAwait(true);
             SaveLocalConfig(config);
             RebuildTagsFromCache();
             await RefreshDisplaysAsync().ConfigureAwait(true);
 
+            IReadOnlyCollection<string> connected = connections_.ConnectedBridgeIds;
+            List<BridgeRow> addressable = BridgeRows.Where(r => !string.IsNullOrWhiteSpace(r.Address)).ToList();
+            for (int i = 0; i < addressable.Count && i < config.Bridges.Count; i++)
+            {
+                addressable[i].IsConnected = connected.Contains(config.Bridges[i].Id, StringComparer.OrdinalIgnoreCase);
+            }
+
             IsConnected = true;
             ConnectionState = "Connected";
-            BridgeSummary = string.Join(", ", connections_.ConnectedBridgeIds);
-            StatusMessage = $"Loaded {Tags.Count} tags from {connections_.ConnectedBridgeIds.Count} bridge(s)";
+            BridgeSummary = string.Join(", ", connected);
+            StatusMessage = $"Loaded {Tags.Count} tags from {connected.Count} bridge(s)";
+            OnPropertyChanged(nameof(TagCount));
         }
         catch (OperationCanceledException)
         {
@@ -192,18 +300,28 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     [RelayCommand(CanExecute = nameof(CanRefreshDisplays))]
     private async Task RefreshDisplaysAsync()
     {
-        try
+        Displays.Clear();
+        List<string> errors = new();
+        foreach ((string store, DisplayStoreClient client) in storeClients_)
         {
-            DisplayListResponse list = await displayStore_.ListAsync(CancellationToken.None).ConfigureAwait(true);
-            Displays.Clear();
-            foreach (DisplayListItemDto item in list.Items)
+            try
             {
-                Displays.Add(item);
+                DisplayListResponse list = await client.ListAsync(CancellationToken.None).ConfigureAwait(true);
+                string label = BridgeRows.FirstOrDefault(r => r.StoreUrl == store)?.Name ?? store;
+                foreach (DisplayListItemDto item in list.Items)
+                {
+                    Displays.Add(new DisplayEntry(store, label, item));
+                }
+            }
+            catch (Exception ex)
+            {
+                errors.Add($"{store}: {ex.Message}");
             }
         }
-        catch (Exception ex)
+
+        if (errors.Count > 0)
         {
-            StatusMessage = "Display list: " + ex.Message;
+            StatusMessage = "Display list: " + string.Join(" | ", errors);
         }
     }
 
@@ -220,11 +338,17 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         try
         {
-            DisplayDocumentDto? doc = await displayStore_.GetAsync(SelectedDisplay.Id, CancellationToken.None)
+            if (!storeClients_.TryGetValue(SelectedDisplay.StoreUrl, out DisplayStoreClient? client) || client is null)
+            {
+                StatusMessage = "Store not connected: " + SelectedDisplay.StoreUrl;
+                return;
+            }
+
+            DisplayDocumentDto? doc = await client.GetAsync(SelectedDisplay.Item.Id, CancellationToken.None)
                 .ConfigureAwait(true);
             if (doc is null)
             {
-                StatusMessage = "Display not found: " + SelectedDisplay.Id;
+                StatusMessage = "Display not found: " + SelectedDisplay.Item.Id;
                 DisplaySurface.Clear();
                 return;
             }
@@ -233,6 +357,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             StatusMessage = string.IsNullOrWhiteSpace(DisplaySurface.StatusMessage)
                 ? $"Loaded display {doc.Name} ({doc.Widgets.Count} widgets)"
                 : DisplaySurface.StatusMessage;
+            CurrentPage = HmiPage.Home;
         }
         catch (Exception ex)
         {
@@ -242,7 +367,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private bool CanLoadSelectedDisplay() => IsConnected && SelectedDisplay is not null;
 
-    partial void OnSelectedDisplayChanged(DisplayListItemDto? value)
+    partial void OnSelectedDisplayChanged(DisplayEntry? value)
     {
         LoadSelectedDisplayCommand.NotifyCanExecuteChanged();
     }
@@ -365,6 +490,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             ? still
             : null;
         OnPropertyChanged(nameof(FilteredTags));
+        OnPropertyChanged(nameof(TagCount));
     }
 
     private async Task SafeDisconnectAsync()
@@ -385,7 +511,19 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         SelectedTag = null;
         SelectedDisplay = null;
         DisplaySurface.Clear();
+        foreach (BridgeRow row in BridgeRows)
+        {
+            row.IsConnected = false;
+        }
+
+        foreach (DisplayStoreClient client in storeClients_.Values)
+        {
+            client.Dispose();
+        }
+
+        storeClients_.Clear();
         OnPropertyChanged(nameof(FilteredTags));
+        OnPropertyChanged(nameof(TagCount));
     }
 
     private void LoadLocalConfig()
@@ -393,86 +531,70 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         try
         {
             HmiClientConfig config = HmiClientConfig.LoadOrDefault(configPath_, BaseUrl);
-            DisplayStoreUrl = config.DisplayStoreUrl;
-            if (config.Bridges.Count > 0)
+            for (int i = 0; i < config.Bridges.Count; i++)
             {
-                HmiBridgeEndpoint primary = config.Bridges[0];
-                BaseUrl = string.IsNullOrWhiteSpace(primary.BaseUrl) ? config.DisplayStoreUrl : primary.BaseUrl;
+                HmiBridgeEndpoint bridge = config.Bridges[i];
+                // Old configs stored the store once, globally — migrate it into the first row.
+                string store = i == 0 && string.IsNullOrWhiteSpace(bridge.DisplayStoreUrl)
+                    ? config.DisplayStoreUrl
+                    : bridge.DisplayStoreUrl;
+                AddBridgeRow(bridge.Id, bridge.BaseUrl, store == bridge.BaseUrl ? string.Empty : store);
             }
 
-            IEnumerable<string> extra = config.Bridges
-                .Skip(1)
-                .Where(b => b.Enabled)
-                .Select(b => $"{b.Id}|{b.BaseUrl}");
-            BridgeListText = string.Join(Environment.NewLine, extra);
+            if (BridgeRows.Count == 0)
+            {
+                AddBridgeRow("default", config.DisplayStoreUrl, string.Empty);
+            }
+
+            RefreshPrimaryAddress();
         }
         catch
         {
-            // keep defaults
+            AddBridgeRow("default", "http://127.0.0.1:8080", string.Empty);
         }
     }
 
-    private HmiClientConfig BuildConfigFromUi()
+    public static HmiClientConfig BuildConfigFromRows(IEnumerable<BridgeRow> rows)
     {
-        var config = new HmiClientConfig
+        var config = new HmiClientConfig();
+        var usedIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        int extra = 1;
+        foreach (BridgeRow row in rows)
         {
-            DisplayStoreUrl = string.IsNullOrWhiteSpace(DisplayStoreUrl)
-                ? BaseUrl.Trim().TrimEnd('/')
-                : DisplayStoreUrl.Trim().TrimEnd('/'),
-            Bridges = new List<HmiBridgeEndpoint>()
-        };
-
-        string primaryUrl = string.IsNullOrWhiteSpace(BaseUrl) ? config.DisplayStoreUrl : BaseUrl.Trim().TrimEnd('/');
-        config.Bridges.Add(new HmiBridgeEndpoint
-        {
-            Id = "default",
-            BaseUrl = primaryUrl,
-            Enabled = true
-        });
-
-        foreach (string rawLine in (BridgeListText ?? string.Empty).Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
-        {
-            string line = rawLine.Trim();
-            if (line.Length == 0 || line.StartsWith('#'))
+            string address = row.Address.Trim().TrimEnd('/');
+            if (string.IsNullOrWhiteSpace(address))
             {
                 continue;
             }
 
-            string id;
-            string url;
-            int sep = line.IndexOf('|');
-            if (sep <= 0)
+            string id = string.IsNullOrWhiteSpace(row.Name)
+                ? (config.Bridges.Count == 0 ? "default" : "bridge" + (++extra))
+                : row.Name.Trim();
+            while (!usedIds.Add(id))
             {
-                sep = line.IndexOf('=');
+                id += "-2";
             }
 
-            if (sep > 0)
+            config.Bridges.Add(new HmiBridgeEndpoint
             {
-                id = line[..sep].Trim();
-                url = line[(sep + 1)..].Trim().TrimEnd('/');
-            }
-            else
-            {
-                id = "bridge" + (config.Bridges.Count + 1);
-                url = line.TrimEnd('/');
-            }
+                Id = id,
+                BaseUrl = address,
+                DisplayStoreUrl = row.StoreUrl == address ? string.Empty : row.DisplayStore.Trim().TrimEnd('/'),
+                Enabled = true
+            });
+        }
 
-            if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(url))
-            {
-                continue;
-            }
-
-            if (string.Equals(id, "default", StringComparison.OrdinalIgnoreCase))
-            {
-                config.Bridges[0].BaseUrl = url;
-                continue;
-            }
-
-            config.Bridges.Add(new HmiBridgeEndpoint { Id = id, BaseUrl = url, Enabled = true });
+        if (config.Bridges.Count > 0)
+        {
+            HmiBridgeEndpoint first = config.Bridges[0];
+            config.DisplayStoreUrl = StoreUrlOf(first);
         }
 
         return config;
     }
+
+    private static string StoreUrlOf(HmiBridgeEndpoint bridge)
+        => string.IsNullOrWhiteSpace(bridge.DisplayStoreUrl) ? bridge.BaseUrl : bridge.DisplayStoreUrl;
 
     private void SaveLocalConfig(HmiClientConfig config)
     {
@@ -549,10 +671,56 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         connectCts_?.Dispose();
         connections_.CacheChanged -= OnCacheChanged;
         connections_.MappingsChanged -= OnMappingsChangedAsync;
+        foreach (DisplayStoreClient client in storeClients_.Values)
+        {
+            client.Dispose();
+        }
+
         if (ownsServices_)
         {
             await connections_.DisposeAsync().ConfigureAwait(false);
-            displayStore_.Dispose();
         }
     }
+}
+
+/// <summary>One editable bridge line in the Config page: address, store, name, status.</summary>
+public sealed partial class BridgeRow : ObservableObject
+{
+    [ObservableProperty]
+    private string _name = string.Empty;
+
+    [ObservableProperty]
+    private string _address = string.Empty;
+
+    /// <summary>Display store override; empty = the bridge's own server hosts the store.</summary>
+    [ObservableProperty]
+    private string _displayStore = string.Empty;
+
+    [ObservableProperty]
+    private bool _isConnected;
+
+    public string ScopeKind => IsLocalAddress(Address) ? "Local" : "External";
+
+    partial void OnAddressChanged(string value) => OnPropertyChanged(nameof(ScopeKind));
+
+    public string StoreUrl
+        => string.IsNullOrWhiteSpace(DisplayStore) ? Address.Trim().TrimEnd('/') : DisplayStore.Trim().TrimEnd('/');
+
+    public static bool IsLocalAddress(string? url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? uri))
+        {
+            return true;
+        }
+
+        return uri.Host is "127.0.0.1" or "localhost" or "::1" or "[::1]";
+    }
+}
+
+/// <summary>A display from one bridge's store, labeled for the merged picker.</summary>
+public sealed record DisplayEntry(string StoreUrl, string BridgeLabel, DisplayListItemDto Item)
+{
+    public string Label => string.IsNullOrWhiteSpace(BridgeLabel)
+        ? Item.Name
+        : $"{Item.Name} ({BridgeLabel})";
 }

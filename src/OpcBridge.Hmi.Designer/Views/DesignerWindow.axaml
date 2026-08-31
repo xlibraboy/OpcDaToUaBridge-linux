@@ -8,33 +8,67 @@
         Title="OpcBridge HMI Designer"
         Width="1400"
         Height="860">
-  <DockPanel Margin="12">
-    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
-      <TextBlock VerticalAlignment="Center" Text="Store:" />
+  <DockPanel>
+    <!-- ======== Menu bar ======== -->
+    <Menu DockPanel.Dock="Top">
+      <MenuItem Header="_File">
+        <MenuItem Header="New" Command="{Binding NewDisplayCommand}" InputGesture="Ctrl+N" />
+        <MenuItem Header="Open…" Command="{Binding OpenSelectedCommand}" InputGesture="Ctrl+O" />
+        <MenuItem Header="Refresh list" Command="{Binding RefreshListCommand}" InputGesture="F5" />
+        <Separator />
+        <MenuItem Header="Save" Command="{Binding SaveCommand}" InputGesture="Ctrl+S" />
+        <Separator />
+        <MenuItem Header="Exit" Click="OnExitClick" />
+      </MenuItem>
+      <MenuItem Header="_Edit">
+        <MenuItem Header="Undo" Command="{Binding UndoCommand}" InputGesture="Ctrl+Z" />
+        <MenuItem Header="Redo" Command="{Binding RedoCommand}" InputGesture="Ctrl+Y" />
+        <Separator />
+        <MenuItem Header="Copy" Command="{Binding CopySelectedCommand}" InputGesture="Ctrl+C" />
+        <MenuItem Header="Paste" Command="{Binding PasteCommand}" InputGesture="Ctrl+V" />
+        <MenuItem Header="Duplicate" Command="{Binding DuplicateSelectedCommand}" InputGesture="Ctrl+D" />
+        <Separator />
+        <MenuItem Header="Delete selected" Command="{Binding DeleteSelectedCommand}" InputGesture="Delete" />
+      </MenuItem>
+      <MenuItem Header="_View">
+        <MenuItem Header="Snap to grid" ToggleType="CheckBox" IsChecked="{Binding SnapEnabled}" InputGesture="Ctrl+G" />
+        <MenuItem Header="Show grid" ToggleType="CheckBox" IsChecked="{Binding ShowGrid}" />
+      </MenuItem>
+      <MenuItem Header="_Help">
+        <MenuItem Header="Designer tips" Click="OnAboutClick" />
+      </MenuItem>
+    </Menu>
+
+    <!-- ======== Store toolbar ======== -->
+    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="12,8,12,4">
+      <TextBlock VerticalAlignment="Center" Classes="hint" Text="Store:" />
       <TextBox Width="260" Text="{Binding StoreUrl}" />
       <Button Content="Refresh list" Command="{Binding RefreshListCommand}" />
       <Button Content="Open" Command="{Binding OpenSelectedCommand}" />
       <Button Content="New" Command="{Binding NewDisplayCommand}" />
-      <Button Content="Save" Command="{Binding SaveCommand}" />
+      <Button Classes="primary" Content="Save" Command="{Binding SaveCommand}" />
+      <Rectangle Classes="vsep" />
       <TextBlock VerticalAlignment="Center" Text="{Binding DocumentVersion, StringFormat=v{0}}" />
-      <TextBlock VerticalAlignment="Center" Opacity="0.75" Text="Drag widgets on canvas to move; Save writes positions." />
+      <TextBlock VerticalAlignment="Center" Classes="hint"
+                 Text="Drag to move · corner handle to resize · Del deletes · arrows nudge (Shift = grid)" />
     </StackPanel>
 
-    <TextBlock DockPanel.Dock="Bottom"
-               Margin="0,8,0,0"
-               Text="{Binding StatusMessage}"
-               TextWrapping="Wrap"
-               Opacity="0.85" />
+    <!-- ======== Status bar ======== -->
+    <Border DockPanel.Dock="Bottom"
+            Background="{DynamicResource PanelBrush}"
+            BorderBrush="{DynamicResource CardBorderBrush}"
+            BorderThickness="0,1,0,0"
+            Padding="12,6">
+      <TextBlock Classes="hint" Text="{Binding StatusMessage}" TextTrimming="CharacterEllipsis" />
+    </Border>
 
-    <Grid ColumnDefinitions="220,*,260">
-      <Border Grid.Column="0"
-              BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
-              BorderThickness="1"
-              CornerRadius="4"
-              Padding="8"
-              Margin="0,0,8,0">
+    <!-- ======== Work area ======== -->
+    <Grid ColumnDefinitions="220,*,280" Margin="12,4,12,8">
+
+      <!-- Palette -->
+      <Border Grid.Column="0" Classes="card" Margin="0,0,8,0">
         <DockPanel>
-          <TextBlock DockPanel.Dock="Top" FontWeight="SemiBold" Text="Palette" Margin="0,0,0,8" />
+          <TextBlock DockPanel.Dock="Top" Classes="sectionLabel" Text="PALETTE" />
           <Button DockPanel.Dock="Bottom"
                   Content="Add widget"
                   Command="{Binding AddWidgetCommand}"
@@ -45,42 +79,111 @@
         </DockPanel>
       </Border>
 
+      <!-- Canvas -->
       <DockPanel Grid.Column="1" Margin="0,0,8,0">
-        <TextBlock DockPanel.Dock="Top"
-                   FontWeight="SemiBold"
-                   Margin="0,0,0,6"
-                   Text="{Binding DocumentName, StringFormat=Design: {0}}" />
+        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+          <TextBlock DockPanel.Dock="Right" Classes="hint" VerticalAlignment="Center"
+                     Text="{Binding DocumentName, StringFormat=Design: {0}}" />
+          <StackPanel Orientation="Horizontal" Spacing="4">
+            <Button Classes="tool" Content="⇤" Command="{Binding AlignLeftCommand}" />
+            <Button Classes="tool" Content="↔" Command="{Binding AlignCenterXCommand}" />
+            <Button Classes="tool" Content="⇥" Command="{Binding AlignRightCommand}" />
+            <Button Classes="tool" Content="⇡" Command="{Binding AlignTopCommand}" />
+            <Button Classes="tool" Content="↕" Command="{Binding AlignCenterYCommand}" />
+            <Button Classes="tool" Content="⇣" Command="{Binding AlignBottomCommand}" />
+            <Rectangle Classes="vsep" />
+            <Button Classes="tool" Content="Z+" Command="{Binding RaiseZCommand}" />
+            <Button Classes="tool" Content="Z−" Command="{Binding LowerZCommand}" />
+          </StackPanel>
+        </DockPanel>
         <controls:DisplaySurfaceControl DataContext="{Binding Surface}" />
       </DockPanel>
 
-      <Border Grid.Column="2"
-              BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
-              BorderThickness="1"
-              CornerRadius="4"
-              Padding="8">
-        <StackPanel Spacing="8">
-          <TextBlock FontWeight="SemiBold" Text="Document" />
-          <TextBox Watermark="Id" Text="{Binding DocumentId}" />
-          <TextBox Watermark="Name" Text="{Binding DocumentName}" />
-          <TextBlock FontWeight="SemiBold" Text="Next widget binding" Margin="0,8,0,0" />
-          <TextBox Watermark="bridgeId" Text="{Binding BridgeId}" />
-          <TextBox Watermark="sourceId" Text="{Binding SourceId}" />
-          <TextBox Watermark="daItemId" Text="{Binding DaItemId}" />
-          <TextBlock FontWeight="SemiBold" Text="Existing on store" Margin="0,8,0,0" />
-          <ListBox Height="220"
-                   ItemsSource="{Binding ExistingDisplays}"
-                   SelectedItem="{Binding SelectedExisting}">
-            <ListBox.ItemTemplate>
-              <DataTemplate x:DataType="client:DisplayListItemDto">
-                <TextBlock>
-                  <Run Text="{Binding Id}" />
-                  <Run Text=" v" />
-                  <Run Text="{Binding Version}" />
-                </TextBlock>
-              </DataTemplate>
-            </ListBox.ItemTemplate>
-          </ListBox>
-        </StackPanel>
+      <!-- Properties -->
+      <Border Grid.Column="2" Classes="card">
+        <ScrollViewer>
+          <StackPanel Spacing="10">
+
+            <TextBlock Classes="sectionLabel" Text="DOCUMENT" />
+            <TextBox Watermark="Id" Text="{Binding DocumentId}" />
+            <TextBox Watermark="Name" Text="{Binding DocumentName}" />
+            <TextBlock Classes="hint" Text="{Binding DocumentVersion, StringFormat=Store version: v{0}}" />
+
+            <Rectangle Height="1" Fill="{DynamicResource CardBorderBrush}" />
+
+            <!-- Selected widget -->
+            <StackPanel IsVisible="{Binding HasSelection}" Spacing="8">
+              <TextBlock Classes="sectionLabel" Text="SELECTED WIDGET" />
+              <TextBlock Classes="hint"
+                         Text="{Binding SelectedWidget.Type, StringFormat=Type: {0}}" />
+              <TextBlock Classes="hint" Text="{Binding SelectedWidget.Id}" />
+              <UniformGrid Columns="2" Rows="2">
+                <StackPanel Margin="0,0,8,4">
+                  <TextBlock Classes="cardTitle" Text="X" />
+                  <TextBox Text="{Binding SelectedWidget.X, UpdateSourceTrigger=LostFocus}" />
+                </StackPanel>
+                <StackPanel Margin="0,0,0,4">
+                  <TextBlock Classes="cardTitle" Text="Y" />
+                  <TextBox Text="{Binding SelectedWidget.Y, UpdateSourceTrigger=LostFocus}" />
+                </StackPanel>
+                <StackPanel Margin="0,0,8,0">
+                  <TextBlock Classes="cardTitle" Text="Width" />
+                  <TextBox Text="{Binding SelectedWidget.Width, UpdateSourceTrigger=LostFocus}" />
+                </StackPanel>
+                <StackPanel>
+                  <TextBlock Classes="cardTitle" Text="Height" />
+                  <TextBox Text="{Binding SelectedWidget.Height, UpdateSourceTrigger=LostFocus}" />
+                </StackPanel>
+              </UniformGrid>
+
+              <StackPanel IsVisible="{Binding SelectedIsTextLabel}" Spacing="4" Margin="0,4,0,0">
+                <TextBlock Classes="cardTitle" Text="Text / label" />
+                <TextBox Text="{Binding SelectedText, UpdateSourceTrigger=LostFocus}" />
+              </StackPanel>
+
+              <StackPanel Spacing="4" Margin="0,4,0,0">
+                <TextBlock Classes="cardTitle" Text="Tag binding" />
+                <TextBox Watermark="bridgeId" Text="{Binding StagingBindingBridgeId}" />
+                <TextBox Watermark="sourceId" Text="{Binding StagingBindingSourceId}" />
+                <TextBox Watermark="daItemId" Text="{Binding StagingBindingDaItemId}" />
+                <Button Content="Apply binding" Command="{Binding ApplySelectedBindingCommand}" />
+                <TextBlock Classes="hint" TextWrapping="Wrap"
+                           Text="Clears apply on Apply. Clear both bridge and item, then Apply, to unbind." />
+              </StackPanel>
+
+              <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
+                <Button Classes="danger" Content="Delete" Command="{Binding DeleteSelectedCommand}" />
+                <Button Content="Duplicate" Command="{Binding DuplicateSelectedCommand}" />
+              </StackPanel>
+
+              <Rectangle Height="1" Fill="{DynamicResource CardBorderBrush}" Margin="0,4,0,0" />
+            </StackPanel>
+
+            <!-- New widget -->
+            <TextBlock Classes="sectionLabel" Text="NEW WIDGET" />
+            <TextBlock Classes="cardTitle" Text="Binding for next widget" />
+            <TextBox Watermark="bridgeId" Text="{Binding BridgeId}" />
+            <TextBox Watermark="sourceId" Text="{Binding SourceId}" />
+            <TextBox Watermark="daItemId" Text="{Binding DaItemId}" />
+
+            <Rectangle Height="1" Fill="{DynamicResource CardBorderBrush}" />
+
+            <TextBlock Classes="sectionLabel" Text="EXISTING ON STORE" />
+            <ListBox Height="200"
+                     ItemsSource="{Binding ExistingDisplays}"
+                     SelectedItem="{Binding SelectedExisting}">
+              <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="client:DisplayListItemDto">
+                  <TextBlock>
+                    <Run Text="{Binding Id}" />
+                    <Run Text=" v" />
+                    <Run Text="{Binding Version}" />
+                  </TextBlock>
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </StackPanel>
+        </ScrollViewer>
       </Border>
     </Grid>
   </DockPanel>
