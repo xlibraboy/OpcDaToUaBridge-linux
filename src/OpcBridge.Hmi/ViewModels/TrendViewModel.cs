@@ -45,6 +45,17 @@ public partial class TrendViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty]
     private string _rangeLabel = "1h";
 
+    public bool IsRange1h => RangeLabel == "1h";
+    public bool IsRange8h => RangeLabel == "8h";
+    public bool IsRange24h => RangeLabel == "24h";
+
+    partial void OnRangeLabelChanged(string value)
+    {
+        OnPropertyChanged(nameof(IsRange1h));
+        OnPropertyChanged(nameof(IsRange8h));
+        OnPropertyChanged(nameof(IsRange24h));
+    }
+
     [ObservableProperty]
     private string _statusMessage = string.Empty;
 

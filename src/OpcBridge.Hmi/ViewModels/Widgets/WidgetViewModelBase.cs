@@ -59,8 +59,23 @@ public partial class WidgetViewModelBase : ObservableObject
 
     [ObservableProperty]
     private bool _isDesignMode;
+
+    public bool CanResize => IsSelected && IsDesignMode;
+
+    partial void OnIsSelectedChanged(bool value) => OnPropertyChanged(nameof(CanResize));
+
+    partial void OnIsDesignModeChanged(bool value) => OnPropertyChanged(nameof(CanResize));
+
     public Dictionary<string, System.Text.Json.JsonElement> Props { get; }
-    public TagBindingKey? Binding { get; }
+
+    public TagBindingKey? Binding { get; private set; }
+
+    /// <summary>Design-time rebinding of a widget (may be null to unbind).</summary>
+    public void UpdateBinding(TagBindingKey? binding)
+    {
+        Binding = binding;
+        RefreshFromCache();
+    }
 
     [ObservableProperty]
     private string _valueText = "—";
@@ -76,6 +91,11 @@ public partial class WidgetViewModelBase : ObservableObject
 
     [ObservableProperty]
     private string _statusText = string.Empty;
+
+    /// <summary>Design-time edit of the primary caption (label/text prop). No-op by default.</summary>
+    public virtual void SetText(string text)
+    {
+    }
 
     public virtual void RefreshFromCache()
     {
@@ -185,8 +205,15 @@ public sealed class LabelWidgetViewModel : WidgetViewModelBase
         FontSize = DisplayPropReader.GetDouble(Props, "fontSize", 14);
     }
 
-    public string Text { get; }
+    public string Text { get; private set; }
     public double FontSize { get; }
+
+    public override void SetText(string text)
+    {
+        Text = string.IsNullOrWhiteSpace(text) ? Id : text;
+        Props["text"] = System.Text.Json.JsonSerializer.SerializeToElement(Text);
+        OnPropertyChanged(nameof(Text));
+    }
 }
 
 public sealed partial class NumericWidgetViewModel : WidgetViewModelBase
@@ -202,9 +229,16 @@ public sealed partial class NumericWidgetViewModel : WidgetViewModelBase
         Unit = DisplayPropReader.GetString(Props, "unit");
     }
 
-    public string Label { get; }
+    public string Label { get; private set; }
     public string Format { get; }
     public string Unit { get; }
+
+    public override void SetText(string text)
+    {
+        Label = text;
+        Props["label"] = System.Text.Json.JsonSerializer.SerializeToElement(text);
+        OnPropertyChanged(nameof(Label));
+    }
 
     protected override void OnLiveValue(MultiBridgeTagEntry entry)
     {
@@ -242,7 +276,14 @@ public sealed partial class QualityLampWidgetViewModel : WidgetViewModelBase
         Label = DisplayPropReader.GetString(Props, "label");
     }
 
-    public string Label { get; }
+    public string Label { get; private set; }
+
+    public override void SetText(string text)
+    {
+        Label = text;
+        Props["label"] = System.Text.Json.JsonSerializer.SerializeToElement(text);
+        OnPropertyChanged(nameof(Label));
+    }
 }
 
 public sealed partial class BoolIndicatorWidgetViewModel : WidgetViewModelBase
@@ -258,9 +299,16 @@ public sealed partial class BoolIndicatorWidgetViewModel : WidgetViewModelBase
         OffText = DisplayPropReader.GetString(Props, "offText", "OFF");
     }
 
-    public string Label { get; }
+    public string Label { get; private set; }
     public string OnText { get; }
     public string OffText { get; }
+
+    public override void SetText(string text)
+    {
+        Label = text;
+        Props["label"] = System.Text.Json.JsonSerializer.SerializeToElement(text);
+        OnPropertyChanged(nameof(Label));
+    }
 
     [ObservableProperty]
     private bool _isOn;
@@ -304,9 +352,16 @@ public sealed partial class PushButtonWidgetViewModel : WidgetViewModelBase
         writeAsync_ = writeAsync;
     }
 
-    public string Text { get; }
+    public string Text { get; private set; }
     public bool Confirm { get; }
     public object? WriteValue { get; }
+
+    public override void SetText(string text)
+    {
+        Text = string.IsNullOrWhiteSpace(text) ? "Write" : text;
+        Props["text"] = System.Text.Json.JsonSerializer.SerializeToElement(Text);
+        OnPropertyChanged(nameof(Text));
+    }
 
     [RelayCommand]
     private async Task PressAsync()

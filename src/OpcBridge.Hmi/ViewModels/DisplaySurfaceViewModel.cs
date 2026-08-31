@@ -47,6 +47,20 @@ public partial class DisplaySurfaceViewModel : ObservableObject
     [ObservableProperty]
     private WidgetViewModelBase? _selectedWidget;
 
+    /// <summary>Grid step in px for drag snapping (design mode only; null disables).</summary>
+    [ObservableProperty]
+    private double? _snapStep;
+
+    /// <summary>Whether to draw the dot-grid background (design mode only).</summary>
+    [ObservableProperty]
+    private bool _showGrid;
+
+    /// <summary>Raised once per drag/resize when the first movement happens, so the
+    /// designer can snapshot undo state BEFORE geometry changes.</summary>
+    public event Action? EditStarted;
+
+    public void RaiseEditStarted() => EditStarted?.Invoke();
+
     public ObservableCollection<WidgetViewModelBase> Widgets { get; } = new();
 
     public void Clear()
@@ -129,8 +143,28 @@ public partial class DisplaySurfaceViewModel : ObservableObject
 
     public void MoveWidgetTo(WidgetViewModelBase widget, double x, double y)
     {
+        double step = SnapStep ?? 0;
+        if (step > 1)
+        {
+            x = Math.Round(x / step) * step;
+            y = Math.Round(y / step) * step;
+        }
+
         widget.X = Math.Max(0, Math.Min(CanvasWidth - Math.Max(8, widget.Width), x));
         widget.Y = Math.Max(0, Math.Min(CanvasHeight - Math.Max(8, widget.Height), y));
+    }
+
+    public void ResizeWidgetTo(WidgetViewModelBase widget, double width, double height)
+    {
+        double step = SnapStep ?? 0;
+        if (step > 1)
+        {
+            width = Math.Round(width / step) * step;
+            height = Math.Round(height / step) * step;
+        }
+
+        widget.Width = Math.Max(24, Math.Min(CanvasWidth - widget.X, width));
+        widget.Height = Math.Max(24, Math.Min(CanvasHeight - widget.Y, height));
     }
 
     public void ApplyDesignMode(bool enabled)

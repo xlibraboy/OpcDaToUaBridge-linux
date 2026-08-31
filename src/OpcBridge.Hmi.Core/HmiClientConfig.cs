@@ -89,6 +89,7 @@ public sealed class HmiClientConfig
         {
             bridge.Id = (bridge.Id ?? string.Empty).Trim();
             bridge.BaseUrl = (bridge.BaseUrl ?? string.Empty).Trim().TrimEnd('/');
+            bridge.DisplayStoreUrl = (bridge.DisplayStoreUrl ?? string.Empty).Trim().TrimEnd('/');
         }
 
         if (!string.IsNullOrWhiteSpace(config.StartupDisplayId))
@@ -109,5 +110,9 @@ public sealed class HmiBridgeEndpoint
 {
     public string Id { get; set; } = string.Empty;
     public string BaseUrl { get; set; } = string.Empty;
+
+    /// <summary>Display store for this bridge; empty = the bridge's own server hosts the store.</summary>
+    public string DisplayStoreUrl { get; set; } = string.Empty;
+
     public bool Enabled { get; set; } = true;
 }
