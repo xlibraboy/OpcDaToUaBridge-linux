@@ -1378,7 +1378,7 @@ internal static class DashboardPage
                 <div class="field" id="fpPlcGroupField" style="display:none"><label class="fl">PLC Group</label><select id="fpPlcGroup"></select><span class="msg" id="fpPlcGroupHint"></span></div>
                 <div class="field"><label class="fl">Update Rate</label><select id="fpPollRate" data-action="tag-poll-rate"><option value="0">Source Default</option><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
                 <div class="field"><label class="fl">Deadband %</label><input type="number" id="fpDeadband" min="0" max="100" step="0.1" value="0" style="width:80px"></div>
-                <div class="field"><label class="fl">Decimals</label><input type="number" id="fpDecimals" min="0" max="15" step="1" value="" placeholder="off (full precision)" style="width:80px"><span class="msg">digits after comma for Float/Double (blank = off, 0 = no decimals)</span></div>
+                <div class="field"><label class="fl">Decimals</label><input type="number" id="fpDecimals" min="0" max="15" step="1" value="" placeholder="off (full precision)" style="width:150px"><span class="msg">digits after comma for Float/Double (blank = off, 0 = no decimals)</span></div>
                 <div class="hint" style="margin-top:4px">Update Rate = source poll/publish interval. With subscriptions on, the source pushes changes at this rate when supported. With subscriptions off, the bridge polls at this rate.</div>
             </div>
             <div class="fp-tabpane" id="fp-pane-sim" style="display:none">
