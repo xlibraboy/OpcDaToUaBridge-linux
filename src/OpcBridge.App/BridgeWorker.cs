@@ -755,6 +755,7 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
             for (int valueIndex = 0; valueIndex < values.Count; valueIndex++)
             {
                 BridgeValue value = values[valueIndex];
+                value = ApplyTagDecimals(value, cache);
                 bridge_state_.SetValue(value);
                 ua_server_.UpdateValue(value);
                 outputValueCount++;
@@ -783,6 +784,20 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
             : SourcePollResult.Failure(source.SourceId, outputValueCount);
     }
 
+    /// <summary>
+    /// Rounds floating-point values per the tag's Decimals setting (null = no rounding).
+    /// Applied where values enter the bridge so every consumer sees the same number.
+    /// </summary>
+    private BridgeValue ApplyTagDecimals(BridgeValue value, SourceMappingCache? cache)
+    {
+        if (cache is not null && cache.TryGetMapping(value.SourceId, value.ItemId, out TagMapping? mapping))
+        {
+            return TagDecimals.Apply(value, mapping);
+        }
+
+        return value;
+    }
+
     private int ApplyManualMappings(IReadOnlyList<TagMapping> manualMappings)
     {
         int updatedCount = 0;
@@ -796,6 +811,7 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
                 continue;
             }
 
+            manualValue = TagDecimals.Apply(manualValue, mapping);
             bridge_state_.SetValue(manualValue);
             ua_server_.UpdateValue(manualValue);
             updatedCount++;
@@ -1323,6 +1339,7 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
         for (int i = 0; i < values.Count; i++)
         {
             BridgeValue value = values[i];
+            value = ApplyTagDecimals(value, cache);
             bridge_state_.SetValue(value);
             ua_server_.UpdateValue(value);
             if (cache is not null)
@@ -1916,17 +1933,20 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
         private readonly Dictionary<string, SourceMappingSet> mappings_by_source_;
         private readonly IReadOnlyList<TagMapping> active_mappings_;
         private readonly Dictionary<string, IReadOnlyList<TagMapping>> consumers_by_provider_;
+        private readonly Dictionary<string, TagMapping> mappings_by_key_;
         private readonly Func<string, IReadOnlyList<PlcGroupSettings>> _plcGroupsResolver;
 
         private SourceMappingCache(
             Dictionary<string, SourceMappingSet> mappingsBySource,
             IReadOnlyList<TagMapping> activeMappings,
             Dictionary<string, IReadOnlyList<TagMapping>> consumersByProvider,
+            Dictionary<string, TagMapping> mappingsByKey,
             Func<string, IReadOnlyList<PlcGroupSettings>> plcGroupsResolver)
         {
             mappings_by_source_ = mappingsBySource;
             active_mappings_ = activeMappings;
             consumers_by_provider_ = consumersByProvider;
+            mappings_by_key_ = mappingsByKey;
             _plcGroupsResolver = plcGroupsResolver;
         }
 
@@ -2013,6 +2033,7 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
                 frozenMappings,
                 activeMappings.ToArray(),
                 frozenConsumers,
+                mappingsByKey,
                 plcGroupsResolver ?? (_ => Array.Empty<PlcGroupSettings>()));
         }
 
@@ -2095,6 +2116,11 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
             return consumers_by_provider_.TryGetValue(GetMappingKey(providerSourceId, providerItemId), out IReadOnlyList<TagMapping>? consumers)
                 ? consumers
                 : EmptyMappings;
+        }
+
+        public bool TryGetMapping(string sourceId, string itemId, out TagMapping? mapping)
+        {
+            return mappings_by_key_.TryGetValue(GetMappingKey(sourceId, itemId), out mapping);
         }
 
         private static string GetMappingKey(string sourceId, string itemId)

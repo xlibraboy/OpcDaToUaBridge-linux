@@ -1378,6 +1378,7 @@ internal static class DashboardPage
                 <div class="field" id="fpPlcGroupField" style="display:none"><label class="fl">PLC Group</label><select id="fpPlcGroup"></select><span class="msg" id="fpPlcGroupHint"></span></div>
                 <div class="field"><label class="fl">Update Rate</label><select id="fpPollRate" data-action="tag-poll-rate"><option value="0">Source Default</option><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
                 <div class="field"><label class="fl">Deadband %</label><input type="number" id="fpDeadband" min="0" max="100" step="0.1" value="0" style="width:80px"></div>
+                <div class="field"><label class="fl">Decimals</label><input type="number" id="fpDecimals" min="0" max="15" step="1" value="" placeholder="off (full precision)" style="width:80px"><span class="msg">digits after comma for Float/Double (blank = off, 0 = no decimals)</span></div>
                 <div class="hint" style="margin-top:4px">Update Rate = source poll/publish interval. With subscriptions on, the source pushes changes at this rate when supported. With subscriptions off, the bridge polls at this rate.</div>
             </div>
             <div class="fp-tabpane" id="fp-pane-sim" style="display:none">
@@ -3244,6 +3245,8 @@ function renderMappingRow(mapping) {
     const subName = String(mapping.subscription ?? mapping.Subscription ?? '').trim();
     const subBadge = subName ? `<span class="pill" style="padding:1px 6px;font-size:10px" title="UA subscription">${esc(subName)}</span>` : '';
     const deadbandBadge = deadband > 0 ? `<span class="pill" style="padding:1px 6px;font-size:10px">db ${deadband}%</span>` : '';
+    const tagDecimals = mapping.decimals ?? mapping.Decimals;
+    const decimalsBadge = (tagDecimals !== null && tagDecimals !== undefined) ? `<span class="pill" style="padding:1px 6px;font-size:10px">dec ${tagDecimals}</span>` : '';
     const mqttOn = (mapping.mqttEnabled ?? mapping.MqttEnabled) === true;
     const mqttBadge = mqttOn ? `<span class="pill" style="padding:1px 6px;font-size:10px">MQTT</span>` : '';
     const influxOn = (mapping.influxEnabled ?? mapping.InfluxEnabled) === true;
@@ -3264,12 +3267,12 @@ function renderMappingRow(mapping) {
     else if (failedItem) { discBadge = badge('Disc', 'bad'); discTitle = 'Disconnected — no value received (auto-retrying)'; }
     else if (badQuality) { discBadge = badge('Bad', 'bad'); discTitle = 'Bad quality from source'; }
     // Full status summary — clipped badges stay discoverable via the row tooltip.
-    const statusSummary = [mappedType + ' type', deadband > 0 ? 'db ' + deadband + '%' : null, pollRate > 0 ? pollRate + 'ms' : null, subName ? 'sub ' + subName : null, mqttOn ? 'MQTT' : null, influxOn ? 'Influx' : null, sourceDown ? 'Source disconnected' : null, failedItem ? 'Disconnected (auto-retrying)' : null, badQuality ? 'Bad quality' : null, access + (simulated && access !== 'Write' ? ' / Sim' : '')].filter(Boolean).join(' · ');
+    const statusSummary = [mappedType + ' type', deadband > 0 ? 'db ' + deadband + '%' : null, (tagDecimals !== null && tagDecimals !== undefined) ? 'dec ' + tagDecimals : null, pollRate > 0 ? pollRate + 'ms' : null, subName ? 'sub ' + subName : null, mqttOn ? 'MQTT' : null, influxOn ? 'Influx' : null, sourceDown ? 'Source disconnected' : null, failedItem ? 'Disconnected (auto-retrying)' : null, badQuality ? 'Bad quality' : null, access + (simulated && access !== 'Write' ? ' / Sim' : '')].filter(Boolean).join(' · ');
     const desc = (mapping.description || mapping.Description || '').trim();
     const descIcon = desc ? `<span class="li-desc" title="${attr(desc)}" data-action="open-faceplate" data-source-id="${attr(sourceId)}" data-item-id="${attr(item)}">&#8505;</span>` : '';
     // Config badges clip/fade first; the colored access status is pinned at the far
     // right and never gets cut off.
-    return `<div class="li clickable" data-action="open-faceplate" data-source-id="${attr(sourceId)}" data-item-id="${attr(item)}">${descIcon}<div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="n">${esc(name)}</span> <span class="p">${esc(sourceId)} · ${esc(item)} · UA: ${esc(node)}</span></div><div class="li-badge" title="${attr(statusSummary)}"><span class="li-badge-clip">${typeBadge}${deadbandBadge}${rateBadge}${subBadge}${mqttBadge}${influxBadge}</span><span class="li-badge-status">${discBadge ? `<span title="${attr(discTitle)}">${discBadge}</span>` : ''}${accessBadge}</span></div></div>`;
+    return `<div class="li clickable" data-action="open-faceplate" data-source-id="${attr(sourceId)}" data-item-id="${attr(item)}">${descIcon}<div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="n">${esc(name)}</span> <span class="p">${esc(sourceId)} · ${esc(item)} · UA: ${esc(node)}</span></div><div class="li-badge" title="${attr(statusSummary)}"><span class="li-badge-clip">${typeBadge}${deadbandBadge}${decimalsBadge}${rateBadge}${subBadge}${mqttBadge}${influxBadge}</span><span class="li-badge-status">${discBadge ? `<span title="${attr(discTitle)}">${discBadge}</span>` : ''}${accessBadge}</span></div></div>`;
 }
 
 const MAPPING_ROWS_CAP = 1000;
@@ -3359,6 +3362,8 @@ function openFaceplate(sourceId, itemId) {
     }
     const deadband = Number(mapping.deadbandPct ?? mapping.DeadbandPct ?? 0);
     el('fpDeadband').value = String(deadband);
+    const decimals = mapping.decimals ?? mapping.Decimals;
+    el('fpDecimals').value = (decimals === null || decimals === undefined) ? '' : String(decimals);
     el('fpMqttEnabled').checked = (mapping.mqttEnabled ?? mapping.MqttEnabled) === true;
     el('fpMqttTopic').value = String(mapping.mqttTopic ?? mapping.MqttTopic ?? '');
     el('fpInfluxEnabled').checked = (mapping.influxEnabled ?? mapping.InfluxEnabled) === true;
@@ -5179,6 +5184,7 @@ async function updateMapping(sourceId, itemId, mutate) {
         mode: mapping.mode || mapping.Mode || 'Source',
         manualValue: mapping.manualValue ?? mapping.ManualValue ?? null,
         pollRateMs: mapping.pollRateMs ?? mapping.PollRateMs ?? 0,
+        decimals: (mapping.decimals ?? mapping.Decimals) ?? null,
         daGroup: mapping.daGroup ?? mapping.DaGroup ?? null,
         subscription: mapping.subscription ?? mapping.Subscription ?? '',
         plcGroup: mapping.plcGroup ?? mapping.PlcGroup ?? '',
@@ -7044,6 +7050,11 @@ function bindDynamicButtons() {
                     }
                 }
                 payload.deadbandPct = Math.max(0, Math.min(100, Number.parseFloat(el('fpDeadband').value) || 0));
+                {
+                    const raw = el('fpDecimals').value.trim();
+                    const parsed = raw === '' ? NaN : Number.parseInt(raw, 10);
+                    payload.decimals = Number.isNaN(parsed) ? null : Math.max(0, Math.min(15, parsed));
+                }
                 payload.description = el('fpDescription').value.trim() || null;
                 if (simulated) {
                     payload.mode = 'Manual';

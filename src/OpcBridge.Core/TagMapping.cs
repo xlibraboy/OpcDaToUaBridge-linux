@@ -24,6 +24,16 @@ public sealed class TagMapping
     public string Mode { get; set; } = TagMode.Source;
     public string? ManualValue { get; set; }
     public int PollRateMs { get; set; }
+
+    /// <summary>
+    /// Digits after the decimal point for floating-point values (Float/Double/Decimal).
+    /// null (default) = no rounding, value passes through untouched.
+    /// 0 = hide all decimals, 1 = one digit, 2 = two digits, ...
+    /// Applied where the value enters the bridge, so UA/MQTT/Influx/dashboard/HMI all
+    /// see the same rounded number.
+    /// </summary>
+    public int? Decimals { get; set; }
+
     public string? DaGroup { get; set; }
     public float DeadbandPct { get; set; }
     public bool Writeable { get; set; }
@@ -60,4 +70,33 @@ public static class TagAccessRights
     public const string Read = "Read";
     public const string ReadWrite = "Read-Write";
     public const string Write = "Write";
+}
+
+public static class TagDecimals
+{
+    private const int MaxDigits = 15;
+
+    /// <summary>
+    /// Applies the tag's Decimals setting to a value. Only floating-point values are
+    /// rounded; other types (and a null or negative/out-of-range Decimals = "off") pass
+    /// through as-is. Uses AwayFromZero so 2.5 rounds to 3 (operator expectation, not
+    /// banker's rounding).
+    /// </summary>
+    public static BridgeValue Apply(BridgeValue value, TagMapping? mapping)
+    {
+        int? digits = mapping?.Decimals;
+        if (digits is not (>= 0 and <= MaxDigits) || value.Value is not (float or double or decimal))
+        {
+            return value;
+        }
+
+        object rounded = value.Value switch
+        {
+            float f => (float)Math.Round(f, digits.Value, MidpointRounding.AwayFromZero),
+            double d => Math.Round(d, digits.Value, MidpointRounding.AwayFromZero),
+            decimal m => Math.Round(m, digits.Value, MidpointRounding.AwayFromZero),
+            _ => value.Value!
+        };
+        return value with { Value = rounded };
+    }
 }

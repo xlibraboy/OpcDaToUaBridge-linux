@@ -406,6 +406,7 @@ public sealed class MappingStore
             Mode = mode,
             ManualValue = string.IsNullOrWhiteSpace(tag.ManualValue) ? null : tag.ManualValue.Trim(),
             PollRateMs = Math.Max(0, tag.PollRateMs),
+            Decimals = tag.Decimals,
             DaGroup = string.IsNullOrWhiteSpace(tag.DaGroup) ? null : tag.DaGroup.Trim(),
             DeadbandPct = Math.Clamp(tag.DeadbandPct, 0f, 100f),
             Writeable = writeable,
