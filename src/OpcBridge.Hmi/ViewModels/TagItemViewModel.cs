@@ -33,6 +33,9 @@ public partial class TagItemViewModel : ObservableObject
     [ObservableProperty]
     private bool _writeable;
 
+    [ObservableProperty]
+    private string _unit = string.Empty;
+
     public TagBindingKey BindingKey => TagBindingKey.Create(BridgeId, SourceId, DaItemId);
 
     public string Key => BindingKey.CacheKey;
@@ -62,6 +65,7 @@ public partial class TagItemViewModel : ObservableObject
         DisplayName = string.IsNullOrWhiteSpace(entry.DisplayName) ? entry.Key.DaItemId : entry.DisplayName;
         DataType = entry.DataType;
         Writeable = entry.Writeable;
+        Unit = entry.Unit ?? string.Empty;
         ApplyValue(entry.Value, entry.TimestampUtc, entry.DaQuality, entry.IsGood);
     }
 
@@ -73,6 +77,7 @@ public partial class TagItemViewModel : ObservableObject
         DisplayName = string.IsNullOrWhiteSpace(dto.DisplayName) ? dto.ItemId : dto.DisplayName;
         DataType = dto.DataType;
         Writeable = dto.Writeable;
+        Unit = dto.Unit ?? string.Empty;
         ApplyValue(dto.Value, dto.TimestampUtc, dto.DaQuality, dto.IsGood);
     }
 

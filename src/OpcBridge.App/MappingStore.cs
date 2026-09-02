@@ -17,7 +17,7 @@ public sealed class MappingStore
 
     public MappingStore(IOptions<BridgeOptions> options)
     {
-        persist_path_ = Path.Combine(AppContext.BaseDirectory, "mappings.json");
+        persist_path_ = DataDirectory.Combine("mappings.json");
         mappings_ = NormalizeAll(LoadFromDisk() ?? options.Value.Mappings ?? new List<TagMapping>());
     }
 
@@ -414,6 +414,7 @@ public sealed class MappingStore
             MqttEnabled = tag.MqttEnabled,
             MqttTopic = string.IsNullOrWhiteSpace(tag.MqttTopic) ? null : tag.MqttTopic.Trim(),
             InfluxEnabled = tag.InfluxEnabled,
+            Unit = string.IsNullOrWhiteSpace(tag.Unit) ? null : tag.Unit.Trim(),
             Subscription = (tag.Subscription ?? string.Empty).Trim(),
             // Preserve PLC group membership through normalization exactly like
             // Subscription: empty stays empty (= source default bucket), else trimmed.

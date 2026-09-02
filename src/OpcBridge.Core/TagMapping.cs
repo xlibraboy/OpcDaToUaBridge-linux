@@ -43,6 +43,12 @@ public sealed class TagMapping
     public bool InfluxEnabled { get; set; }
 
     /// <summary>
+    /// Engineering unit label for this tag (e.g. "°C", "bar", "RPM").
+    /// Set per-tag in the dashboard; flows to the HMI for display on widgets and trends.
+    /// </summary>
+    public string? Unit { get; set; }
+
+    /// <summary>
     /// OPC UA sources only: name of the source-defined named subscription this tag rides on.
     /// Empty string = the source's default bucket (source UpdateRateMs semantics, unchanged).
     /// Matched case-insensitively against the source's definitions; unknown names group into

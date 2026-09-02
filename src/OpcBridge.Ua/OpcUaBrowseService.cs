@@ -414,7 +414,7 @@ public sealed class OpcUaBrowseService
         OpcUaSourceClientOptions options,
         CancellationToken cancellationToken)
     {
-        string pkiRoot = Path.Combine(AppContext.BaseDirectory, options.PkiRoot);
+        string pkiRoot = Path.Combine(DataDirectory.Value, options.PkiRoot);
         string applicationName = string.IsNullOrWhiteSpace(options.ApplicationName)
             ? "OpcBridge.UaClient"
             : options.ApplicationName.Trim();

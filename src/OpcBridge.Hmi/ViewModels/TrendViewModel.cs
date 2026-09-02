@@ -14,7 +14,7 @@ public partial class TrendViewModel : ObservableObject, IAsyncDisposable
     private readonly PeriodicTimer? refreshTimer_;
     private readonly Task? refreshLoop_;
 
-    public TrendViewModel(TagBindingKey key, BridgeApiClient api, bool ownsApi = false)
+    public TrendViewModel(TagBindingKey key, BridgeApiClient api, bool ownsApi = false, string? dataType = null)
     {
         Key = key;
         api_ = api;
@@ -23,12 +23,24 @@ public partial class TrendViewModel : ObservableObject, IAsyncDisposable
         BridgeId = key.BridgeId;
         SourceId = key.SourceId;
         DaItemId = key.DaItemId;
+        DataType = dataType ?? "Double";
+        var range = DataTypeRanges.GetRange(DataType);
+        RangeMinY = range?.Min;
+        RangeMaxY = range?.Max;
         _ = ReloadAsync();
         refreshTimer_ = new PeriodicTimer(TimeSpan.FromSeconds(30));
         refreshLoop_ = RefreshLoopAsync();
     }
 
     public TagBindingKey Key { get; }
+
+    public string DataType { get; }
+
+    /// <summary>Y-axis minimum derived from the tag's data type (null = auto-scale).</summary>
+    public double? RangeMinY { get; }
+
+    /// <summary>Y-axis maximum derived from the tag's data type (null = auto-scale).</summary>
+    public double? RangeMaxY { get; }
 
     [ObservableProperty]
     private string _title = "Trend";

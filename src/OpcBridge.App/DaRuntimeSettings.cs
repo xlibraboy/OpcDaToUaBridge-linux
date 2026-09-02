@@ -17,7 +17,7 @@ public sealed class DaRuntimeSettings
 
     public DaRuntimeSettings(IOptions<DaClientOptions> options)
     {
-        persist_path_ = Path.Combine(AppContext.BaseDirectory, "sources.json");
+        persist_path_ = DataDirectory.Combine("sources.json");
 
         // Load from sources.json if it exists; otherwise seed from appsettings.json.
         DaRuntimeSettingsSnapshot? loaded = LoadFromDisk();

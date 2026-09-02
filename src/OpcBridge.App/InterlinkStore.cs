@@ -16,7 +16,7 @@ public sealed class InterlinkStore
     public InterlinkStore(IOptions<BridgeOptions> options)
     {
         _ = options;
-        persist_path_ = Path.Combine(AppContext.BaseDirectory, "links.json");
+        persist_path_ = DataDirectory.Combine("links.json");
         rules_ = LoadFromDisk() ?? new List<InterlinkRule>();
     }
 

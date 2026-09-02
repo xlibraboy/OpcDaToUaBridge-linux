@@ -76,6 +76,12 @@ public partial class FaceplateViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty]
     private IReadOnlyList<double> _trendValues = Array.Empty<double>();
 
+    /// <summary>Y-axis minimum derived from the tag's data type (null = auto-scale).</summary>
+    public double? RangeMinY { get; private set; }
+
+    /// <summary>Y-axis maximum derived from the tag's data type (null = auto-scale).</summary>
+    public double? RangeMaxY { get; private set; }
+
     public void RefreshFromCache()
     {
         BridgeId = Key.BridgeId;
@@ -91,6 +97,11 @@ public partial class FaceplateViewModel : ObservableObject, IAsyncDisposable
             TimestampText = entry.TimestampUtc is null
                 ? string.Empty
                 : entry.TimestampUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss.fff");
+            var range = DataTypeRanges.GetRange(DataType);
+            RangeMinY = range?.Min;
+            RangeMaxY = range?.Max;
+            OnPropertyChanged(nameof(RangeMinY));
+            OnPropertyChanged(nameof(RangeMaxY));
             if (string.IsNullOrWhiteSpace(WriteValue))
             {
                 WriteValue = ValueText;

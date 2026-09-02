@@ -11,15 +11,33 @@ public sealed class SparklineControl : Control
     public static readonly StyledProperty<IEnumerable<double>?> PointsProperty =
         AvaloniaProperty.Register<SparklineControl, IEnumerable<double>?>(nameof(Points));
 
+    public static readonly StyledProperty<double?> MinYProperty =
+        AvaloniaProperty.Register<SparklineControl, double?>(nameof(MinY));
+
+    public static readonly StyledProperty<double?> MaxYProperty =
+        AvaloniaProperty.Register<SparklineControl, double?>(nameof(MaxY));
+
     public IEnumerable<double>? Points
     {
         get => GetValue(PointsProperty);
         set => SetValue(PointsProperty, value);
     }
 
+    public double? MinY
+    {
+        get => GetValue(MinYProperty);
+        set => SetValue(MinYProperty, value);
+    }
+
+    public double? MaxY
+    {
+        get => GetValue(MaxYProperty);
+        set => SetValue(MaxYProperty, value);
+    }
+
     static SparklineControl()
     {
-        AffectsRender<SparklineControl>(PointsProperty);
+        AffectsRender<SparklineControl>(PointsProperty, MinYProperty, MaxYProperty);
     }
 
     public override void Render(DrawingContext context)
@@ -37,8 +55,15 @@ public sealed class SparklineControl : Control
             return;
         }
 
-        double min = pts.Min();
-        double max = pts.Max();
+        double min = MinY ?? pts.Min();
+        double max = MaxY ?? pts.Max();
+        // Add 5% headroom when using configured range so data doesn't clip at the edge.
+        if (MinY.HasValue || MaxY.HasValue)
+        {
+            double headroom = (max - min) * 0.05;
+            if (!MinY.HasValue) min -= headroom;
+            if (!MaxY.HasValue) max += headroom;
+        }
         double range = max - min;
         if (range <= 0)
         {

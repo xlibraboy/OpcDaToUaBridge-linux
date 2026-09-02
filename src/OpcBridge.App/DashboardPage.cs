@@ -1379,6 +1379,7 @@ internal static class DashboardPage
                 <div class="field"><label class="fl">Update Rate</label><select id="fpPollRate" data-action="tag-poll-rate"><option value="0">Source Default</option><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
                 <div class="field"><label class="fl">Deadband %</label><input type="number" id="fpDeadband" min="0" max="100" step="0.1" value="0" style="width:80px"></div>
                 <div class="field"><label class="fl">Decimals</label><input type="number" id="fpDecimals" min="0" max="15" step="1" value="" placeholder="off (full precision)" style="width:150px"><span class="msg">digits after comma for Float/Double (blank = off, 0 = no decimals)</span></div>
+                <div class="field"><label class="fl">Unit</label><input type="text" id="fpUnit" placeholder="°C, bar, RPM…" style="flex:1"><span class="msg">engineering unit label (shown on HMI widgets)</span></div>
                 <div class="hint" style="margin-top:4px">Update Rate = source poll/publish interval. With subscriptions on, the source pushes changes at this rate when supported. With subscriptions off, the bridge polls at this rate.</div>
             </div>
             <div class="fp-tabpane" id="fp-pane-sim" style="display:none">
@@ -1585,7 +1586,10 @@ internal static class DashboardPage
                 <div class="conn-section">
                     <div class="conn-section-h">Configuration <span class="info" data-tip="Settings saved to influx.json. Changes take effect after Save Config and apply to the next Connect.">i</span></div>
                     <div class="field"><label class="fl" for="influxEnabled">Auto-connect</label><span class="info" data-tip="When ON, the bridge connects to InfluxDB automatically on app startup. When OFF, it starts disconnected. Use Live Connection buttons to connect or disconnect now.">i</span><input type="checkbox" id="influxEnabled"></div>
-                    <div class="field"><label class="fl" for="influxUrl">URL</label><span class="info" data-tip="InfluxDB HTTP API base URL. Example: http://192.168.1.50:8086 or https://us-east-1-1.aws.cloud2.influxdata.com">i</span><input type="text" id="influxUrl" placeholder="http://localhost:8086"></div>
+                    <div class="field"><label class="fl" for="influxUrl">URL</label><span class="info" data-tip="InfluxDB HTTP API base URL. Example: http://192.168.1.50:8086 or https://us-east-1-1.aws.cloud2.influxdata.com">i</span><input type="text" id="influxUrl" placeholder="http://localhost:8086" style="flex:1"><button class="btn ghost" type="button" id="btnInfluxScan">Scan</button></div>
+                    <div class="field" id="influxScanRow" style="display:none"><label class="fl">Host</label><input type="text" id="influxScanHost" placeholder="192.168.1.50" style="flex:1"><button class="btn ghost" type="button" id="btnInfluxProbe">Probe</button></div>
+                    <div class="list" id="listInfluxScan" style="max-height:120px;display:none"></div>
+                    <div class="field"><span class="msg" id="msgInfluxScan"></span></div>
                     <div class="field"><label class="fl" for="influxOrg">Org</label><span class="info" data-tip="InfluxDB organization name (required for 2.x/Cloud).">i</span><input type="text" id="influxOrg" placeholder="my-org"></div>
                     <div class="field"><label class="fl" for="influxBucket">Bucket</label><span class="info" data-tip="Target bucket for written points.">i</span><input type="text" id="influxBucket" placeholder="opc"></div>
                     <div class="field"><label class="fl" for="influxToken">Token</label><span class="info" data-tip="API token with write access to the bucket. Stored in influx.json.">i</span><input type="password" id="influxToken"></div>
@@ -1626,7 +1630,10 @@ internal static class DashboardPage
     </div>
     <div class="wizard-body">
       <div class="wizard-pane active" data-pane="1">
-        <div class="field"><label class="fl">URL</label><input type="text" id="wzInfluxUrl" placeholder="http://localhost:8086"></div>
+        <div class="field"><label class="fl">URL</label><input type="text" id="wzInfluxUrl" placeholder="http://localhost:8086" style="flex:1"><button class="btn ghost" type="button" id="wzBtnInfluxScan">Scan</button></div>
+        <div class="field" id="wzInfluxScanRow" style="display:none"><label class="fl">Host</label><input type="text" id="wzInfluxScanHost" placeholder="192.168.1.50" style="flex:1"><button class="btn ghost" type="button" id="wzBtnInfluxProbe">Probe</button></div>
+        <div class="list" id="wzListInfluxScan" style="max-height:120px;display:none"></div>
+        <div class="field"><span class="msg" id="wzMsgInfluxScan"></span></div>
         <div class="field"><label class="fl">Org</label><input type="text" id="wzInfluxOrg" placeholder="my-org"></div>
         <div class="field"><label class="fl">Bucket</label><input type="text" id="wzInfluxBucket" placeholder="opc"></div>
       </div>
@@ -3247,6 +3254,8 @@ function renderMappingRow(mapping) {
     const deadbandBadge = deadband > 0 ? `<span class="pill" style="padding:1px 6px;font-size:10px">db ${deadband}%</span>` : '';
     const tagDecimals = mapping.decimals ?? mapping.Decimals;
     const decimalsBadge = (tagDecimals !== null && tagDecimals !== undefined) ? `<span class="pill" style="padding:1px 6px;font-size:10px">dec ${tagDecimals}</span>` : '';
+    const tagUnit = String(mapping.unit ?? mapping.Unit ?? '').trim();
+    const unitBadge = tagUnit ? `<span class="pill" style="padding:1px 6px;font-size:10px">${esc(tagUnit)}</span>` : '';
     const mqttOn = (mapping.mqttEnabled ?? mapping.MqttEnabled) === true;
     const mqttBadge = mqttOn ? `<span class="pill" style="padding:1px 6px;font-size:10px">MQTT</span>` : '';
     const influxOn = (mapping.influxEnabled ?? mapping.InfluxEnabled) === true;
@@ -3267,12 +3276,12 @@ function renderMappingRow(mapping) {
     else if (failedItem) { discBadge = badge('Disc', 'bad'); discTitle = 'Disconnected — no value received (auto-retrying)'; }
     else if (badQuality) { discBadge = badge('Bad', 'bad'); discTitle = 'Bad quality from source'; }
     // Full status summary — clipped badges stay discoverable via the row tooltip.
-    const statusSummary = [mappedType + ' type', deadband > 0 ? 'db ' + deadband + '%' : null, (tagDecimals !== null && tagDecimals !== undefined) ? 'dec ' + tagDecimals : null, pollRate > 0 ? pollRate + 'ms' : null, subName ? 'sub ' + subName : null, mqttOn ? 'MQTT' : null, influxOn ? 'Influx' : null, sourceDown ? 'Source disconnected' : null, failedItem ? 'Disconnected (auto-retrying)' : null, badQuality ? 'Bad quality' : null, access + (simulated && access !== 'Write' ? ' / Sim' : '')].filter(Boolean).join(' · ');
+    const statusSummary = [mappedType + ' type', tagUnit ? 'unit ' + tagUnit : null, deadband > 0 ? 'db ' + deadband + '%' : null, (tagDecimals !== null && tagDecimals !== undefined) ? 'dec ' + tagDecimals : null, pollRate > 0 ? pollRate + 'ms' : null, subName ? 'sub ' + subName : null, mqttOn ? 'MQTT' : null, influxOn ? 'Influx' : null, sourceDown ? 'Source disconnected' : null, failedItem ? 'Disconnected (auto-retrying)' : null, badQuality ? 'Bad quality' : null, access + (simulated && access !== 'Write' ? ' / Sim' : '')].filter(Boolean).join(' · ');
     const desc = (mapping.description || mapping.Description || '').trim();
     const descIcon = desc ? `<span class="li-desc" title="${attr(desc)}" data-action="open-faceplate" data-source-id="${attr(sourceId)}" data-item-id="${attr(item)}">&#8505;</span>` : '';
     // Config badges clip/fade first; the colored access status is pinned at the far
     // right and never gets cut off.
-    return `<div class="li clickable" data-action="open-faceplate" data-source-id="${attr(sourceId)}" data-item-id="${attr(item)}">${descIcon}<div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="n">${esc(name)}</span> <span class="p">${esc(sourceId)} · ${esc(item)} · UA: ${esc(node)}</span></div><div class="li-badge" title="${attr(statusSummary)}"><span class="li-badge-clip">${typeBadge}${deadbandBadge}${decimalsBadge}${rateBadge}${subBadge}${mqttBadge}${influxBadge}</span><span class="li-badge-status">${discBadge ? `<span title="${attr(discTitle)}">${discBadge}</span>` : ''}${accessBadge}</span></div></div>`;
+    return `<div class="li clickable" data-action="open-faceplate" data-source-id="${attr(sourceId)}" data-item-id="${attr(item)}">${descIcon}<div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="n">${esc(name)}</span> <span class="p">${esc(sourceId)} · ${esc(item)} · UA: ${esc(node)}</span></div><div class="li-badge" title="${attr(statusSummary)}"><span class="li-badge-clip">${typeBadge}${unitBadge}${deadbandBadge}${decimalsBadge}${rateBadge}${subBadge}${mqttBadge}${influxBadge}</span><span class="li-badge-status">${discBadge ? `<span title="${attr(discTitle)}">${discBadge}</span>` : ''}${accessBadge}</span></div></div>`;
 }
 
 const MAPPING_ROWS_CAP = 1000;
@@ -3367,6 +3376,7 @@ function openFaceplate(sourceId, itemId) {
     el('fpMqttEnabled').checked = (mapping.mqttEnabled ?? mapping.MqttEnabled) === true;
     el('fpMqttTopic').value = String(mapping.mqttTopic ?? mapping.MqttTopic ?? '');
     el('fpInfluxEnabled').checked = (mapping.influxEnabled ?? mapping.InfluxEnabled) === true;
+    el('fpUnit').value = String(mapping.unit ?? mapping.Unit ?? '');
     updateManualInputState();
     el('fpApply').dataset.sourceId = sourceId;
     el('fpApply').dataset.itemId = itemId;
@@ -5038,6 +5048,37 @@ async function connectInflux() {
     el('influxMessage').textContent = p.status === 'ok' ? 'Connected.' : ('✗ ' + (p.error || 'connect failed'));
     await loadInflux();
 }
+// InfluxDB host probe — shared by the Historian panel and the Setup Wizard.
+// ids: { host, list, msg, urlTarget } — urlTarget receives the discovered base URL.
+async function probeInflux(ids) {
+    const host = el(ids.host).value.trim();
+    if (!host) { el(ids.msg).textContent = 'Enter an IP or hostname, e.g. 192.168.1.50.'; return; }
+    el(ids.msg).textContent = 'Scanning…';
+    el(ids.list).innerHTML = '';
+    el(ids.list).style.display = '';
+    try {
+        const r = await fetch('/api/influx/probe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ host }), cache: 'no-store' });
+        const p = await r.json().catch(() => ({}));
+        if (!r.ok || p.ok === false) {
+            el(ids.msg).textContent = '✗ ' + (p.error || ('HTTP ' + r.status));
+            el(ids.list).innerHTML = '';
+            el(ids.list).style.display = 'none';
+            return;
+        }
+        const ver = p.version ? ' · InfluxDB ' + p.version : '';
+        el(ids.list).innerHTML =
+            `<div class="li"><div style="flex:1"><div class="n">${esc(p.url)}</div><div class="p">InfluxDB found${esc(ver)}</div></div>` +
+            `<button class="btn ghost" data-action="use-influx-url" data-url="${attr(p.url)}" data-target="${attr(ids.urlTarget)}" type="button">Use</button></div>`;
+        el(ids.msg).textContent = 'Server found at ' + p.url + ' — click Use to fill URL.';
+    } catch (e) {
+        el(ids.msg).textContent = '✗ ' + e.message;
+        el(ids.list).style.display = 'none';
+    }
+}
+function useInfluxUrl(url, targetId) {
+    el(targetId).value = url;
+    el('msgInfluxScan').textContent = 'URL set: ' + url + ' — fill Org/Bucket/Token, then Save Config.';
+}
 let wzInfluxStepCur = 1;
 const WZ_INFLUX_STEPS = 3;
 
@@ -5194,7 +5235,8 @@ async function updateMapping(sourceId, itemId, mutate) {
         accessRights: mapping.accessRights || mapping.AccessRights || 'Read',
         mqttEnabled: el('fpMqttEnabled').checked,
         mqttTopic: el('fpMqttTopic').value.trim() || null,
-        influxEnabled: el('fpInfluxEnabled').checked
+        influxEnabled: el('fpInfluxEnabled').checked,
+        unit: el('fpUnit').value.trim() || null
     };
     mutate(payload);
     const r = await fetch('/api/mappings/update', {
@@ -7152,6 +7194,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     el('uaCfgRemove').addEventListener('click', () => removeSelectedUaSource().catch(e => el('uaCfgMessage').textContent = '✗ ' + e.message));
     el('btnUaTestConnection').addEventListener('click', () => testUaConnection().catch(e => el('uaCfgMessage').textContent = '✗ ' + e.message));
     el('btnUaDiscover').addEventListener('click', () => discoverUaServers().catch(e => el('msgUaDiscover').textContent = e.message));
+    if (el('btnInfluxScan')) el('btnInfluxScan').addEventListener('click', () => { el('influxScanRow').style.display = ''; el('msgInfluxScan').textContent = 'Enter host IP, then Probe.'; });
+    if (el('btnInfluxProbe')) el('btnInfluxProbe').addEventListener('click', () => probeInflux({ host: 'influxScanHost', list: 'listInfluxScan', msg: 'msgInfluxScan', urlTarget: 'influxUrl' }).catch(e => el('msgInfluxScan').textContent = '✗ ' + e.message));
+    if (el('wzBtnInfluxScan')) el('wzBtnInfluxScan').addEventListener('click', () => { el('wzInfluxScanRow').style.display = ''; el('wzMsgInfluxScan').textContent = 'Enter host IP, then Probe.'; });
+    if (el('wzBtnInfluxProbe')) el('wzBtnInfluxProbe').addEventListener('click', () => probeInflux({ host: 'wzInfluxScanHost', list: 'wzListInfluxScan', msg: 'wzMsgInfluxScan', urlTarget: 'wzInfluxUrl' }).catch(e => el('wzMsgInfluxScan').textContent = '✗ ' + e.message));
+    if (el('listInfluxScan')) el('listInfluxScan').addEventListener('click', event => {
+        const btn = event.target.closest('button[data-action="use-influx-url"]');
+        if (btn) useInfluxUrl(btn.dataset.url || '', btn.dataset.target || 'influxUrl');
+    });
+    if (el('wzListInfluxScan')) el('wzListInfluxScan').addEventListener('click', event => {
+        const btn = event.target.closest('button[data-action="use-influx-url"]');
+        if (btn) useInfluxUrl(btn.dataset.url || '', btn.dataset.target || 'wzInfluxUrl');
+    });
     ['uaCfgSourceId','uaCfgDisplayName','uaCfgEndpointUrl','uaCfgSecurityMode','uaCfgSecurityPolicy','uaCfgUser','uaCfgPass','uaCfgUpdateRate','uaCfgMaxMappedTags','uaCfgUseSubscriptions'].forEach(id => {
         const node = el(id);
         if (!node) return;

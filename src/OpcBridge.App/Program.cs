@@ -22,6 +22,9 @@ using OpcBridge.Mqtt;
 using OpcBridge.Influx;
 using OpcBridge.Ua;
 
+// Resolve the App-local data dir helper; OpcBridge.Ua has a same-named type.
+using DataDirectory = OpcBridge.App.DataDirectory;
+
 // Dashboard UI feed cap: the live-values payload is re-fetched and re-rendered every
 // poll cycle; beyond this many values it freezes browsers. UI shows total separately.
 const int DashboardValuesLimit = 2000;
@@ -65,7 +68,7 @@ catch (IOException)
 using FileStream instanceLock = acquiredLock!;
 
 // Port auto-assignment: check defaults, auto-roll if in use, persist to appsettings.json
-string cfgPath = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
+string cfgPath = DataDirectory.Combine("appsettings.json");
 JObject? cfg = null;
 try { cfg = JObject.Parse(File.ReadAllText(cfgPath)); } catch { }
 
@@ -108,7 +111,7 @@ if (httpPort != savedHttp || uaPort != savedUa)
         logger.LogWarning("OPC UA port {Default} already in use. Auto-assigned to {Port}. appsettings.json updated.", PortHelper.OpcUaScanStart, uaPort);
 
     // Force PKI cert regen when UA port changed
-    string certDer = Path.Combine(AppContext.BaseDirectory, "pki", "own", "cert.der");
+    string certDer = Path.Combine(DataDirectory.Value, "pki", "own", "cert.der");
     if (uaAuto && File.Exists(certDer))
     {
         File.Delete(certDer);
@@ -1599,7 +1602,7 @@ app.MapPost("/api/config/import", async (HttpContext context, DaRuntimeSettings 
 
 app.MapGet("/api/ua/certificates", () =>
 {
-    string pkiRoot = Path.Combine(AppContext.BaseDirectory, "pki");
+    string pkiRoot = Path.Combine(DataDirectory.Value, "pki");
     string trustedDir = Path.Combine(pkiRoot, "trusted");
     string rejectedDir = Path.Combine(pkiRoot, "rejected");
 
@@ -1632,8 +1635,8 @@ app.MapPost("/api/ua/certificates/approve", (HttpContext context) =>
         return Results.BadRequest(new { error = "Invalid file name." });
     }
 
-    string rejectedPath = Path.Combine(AppContext.BaseDirectory, "pki", "rejected", fileName);
-    string trustedPath = Path.Combine(AppContext.BaseDirectory, "pki", "trusted", fileName);
+    string rejectedPath = Path.Combine(DataDirectory.Value, "pki", "rejected", fileName);
+    string trustedPath = Path.Combine(DataDirectory.Value, "pki", "trusted", fileName);
 
     if (!File.Exists(rejectedPath))
     {
@@ -1654,8 +1657,8 @@ app.MapPost("/api/ua/certificates/reject", (HttpContext context) =>
         return Results.BadRequest(new { error = "Invalid file name." });
     }
 
-    string trustedPath = Path.Combine(AppContext.BaseDirectory, "pki", "trusted", fileName);
-    string rejectedPath = Path.Combine(AppContext.BaseDirectory, "pki", "rejected", fileName);
+    string trustedPath = Path.Combine(DataDirectory.Value, "pki", "trusted", fileName);
+    string rejectedPath = Path.Combine(DataDirectory.Value, "pki", "rejected", fileName);
 
     if (!File.Exists(trustedPath))
     {
@@ -1684,7 +1687,7 @@ app.MapPost("/api/ua/certificates/delete", (HttpContext context) =>
         return Results.BadRequest(new { error = "Folder must be 'trusted' or 'rejected'." });
     }
 
-    string path = Path.Combine(AppContext.BaseDirectory, "pki", folder, fileName);
+    string path = Path.Combine(DataDirectory.Value, "pki", folder, fileName);
     if (!File.Exists(path))
     {
         return Results.NotFound(new { error = $"Certificate '{fileName}' not found in {folder}." });
@@ -2141,6 +2144,45 @@ app.MapGet("/api/influx/config", (InfluxRuntimeSettings settings) =>
         verifySsl = snapshot.Options.VerifySsl
     });
 });
+app.MapPost("/api/influx/probe", async (InfluxProbeRequest request, CancellationToken ct) =>
+{
+    string host = request.Host?.Trim() ?? string.Empty;
+    if (host.Length == 0)
+    {
+        return Results.BadRequest(new { ok = false, error = "Host is required." });
+    }
+
+    // Normalize: strip scheme if pasted, keep optional port, else default 8086.
+    string bare = host.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+        || host.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+        ? host[(host.IndexOf("://", StringComparison.Ordinal) + 3)..]
+        : host;
+    bare = bare.TrimEnd('/');
+    string port = bare.Contains(':') ? string.Empty : ":8086";
+    string baseUrl = "http://" + bare + port;
+
+    using HttpClient http = new() { Timeout = TimeSpan.FromSeconds(5) };
+    try
+    {
+        using HttpResponseMessage resp = await http.GetAsync(baseUrl + "/ping", ct).ConfigureAwait(false);
+        if (!resp.IsSuccessStatusCode)
+        {
+            return Results.Json(new { ok = false, error = $"{baseUrl} responded HTTP {(int)resp.StatusCode} — not an InfluxDB API?" });
+        }
+        return Results.Json(new
+        {
+            ok = true,
+            url = baseUrl,
+            version = resp.Headers.Contains("X-Influxdb-Version")
+                ? string.Join(",", resp.Headers.GetValues("X-Influxdb-Version"))
+                : null
+        });
+    }
+    catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+    {
+        return Results.Json(new { ok = false, error = $"Cannot reach {baseUrl}: {ex.Message}" });
+    }
+});
 app.MapPost("/api/influx/config", (InfluxConfigRequest request, InfluxRuntimeSettings settings) =>
 {
     InfluxOptions options = settings.GetOptions();
@@ -2226,7 +2268,7 @@ static OpcTagBrowseResult BrowseDaTags(DaTagBrowseRequest request)
 
 static void TryMigrateLegacyInterlinks(WebApplication app)
 {
-    string interlinksPath = Path.Combine(AppContext.BaseDirectory, "links.json");
+    string interlinksPath = DataDirectory.Combine("links.json");
     if (File.Exists(interlinksPath))
     {
         return;
@@ -2938,6 +2980,7 @@ static TagMapping ToTagMapping(MappingTagDto tag) => new()
     MqttEnabled = tag.MqttEnabled ?? false,
     MqttTopic = string.IsNullOrWhiteSpace(tag.MqttTopic) ? null : tag.MqttTopic,
     InfluxEnabled = tag.InfluxEnabled ?? false,
+    Unit = string.IsNullOrWhiteSpace(tag.Unit) ? null : tag.Unit.Trim(),
     Subscription = tag.Subscription ?? string.Empty,
     PlcGroup = tag.PlcGroup ?? string.Empty
 };

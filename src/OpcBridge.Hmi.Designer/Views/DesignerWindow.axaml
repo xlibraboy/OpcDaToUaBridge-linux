@@ -3,6 +3,7 @@
         xmlns:vm="using:OpcBridge.Hmi.Designer.ViewModels"
         xmlns:client="using:OpcBridge.Client"
         xmlns:controls="using:OpcBridge.Hmi.Controls"
+        xmlns:local="using:OpcBridge.Hmi.Designer.Views"
         x:Class="OpcBridge.Hmi.Designer.Views.DesignerWindow"
         x:DataType="vm:DesignerViewModel"
         Title="OpcBridge HMI Designer"
@@ -139,6 +140,19 @@
               <StackPanel IsVisible="{Binding SelectedIsTextLabel}" Spacing="4" Margin="0,4,0,0">
                 <TextBlock Classes="cardTitle" Text="Text / label" />
                 <TextBox Text="{Binding SelectedText, UpdateSourceTrigger=LostFocus}" />
+              </StackPanel>
+
+              <StackPanel IsVisible="{Binding IsNumericWidget}" Spacing="4" Margin="0,4,0,0">
+                <TextBlock Classes="cardTitle" Text="Unit" />
+                <ComboBox SelectedIndex="{Binding SelectedUnitSource, Converter={x:Static local:UnitSourceConverter.Instance}}">
+                  <ComboBoxItem Content="From Dashboard" />
+                  <ComboBoxItem Content="Manual" />
+                </ComboBox>
+                <TextBox IsVisible="{Binding ShowManualUnit}"
+                         Watermark="e.g. °C, bar, RPM"
+                         Text="{Binding SelectedUnit, UpdateSourceTrigger=LostFocus}" />
+                <TextBlock Classes="hint" TextWrapping="Wrap"
+                           Text="From Dashboard: unit is read from the tag's Unit field (set in the web dashboard). Manual: type a custom unit string." />
               </StackPanel>
 
               <StackPanel Spacing="4" Margin="0,4,0,0">

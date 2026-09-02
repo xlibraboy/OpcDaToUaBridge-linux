@@ -226,12 +226,17 @@ public sealed partial class NumericWidgetViewModel : WidgetViewModelBase
     {
         Label = DisplayPropReader.GetString(Props, "label");
         Format = DisplayPropReader.GetString(Props, "format", "G");
-        Unit = DisplayPropReader.GetString(Props, "unit");
+        UnitSource = DisplayPropReader.GetString(Props, "unitSource", "manual");
+        Unit = UnitSource == "server" ? null : DisplayPropReader.GetString(Props, "unit");
     }
 
     public string Label { get; private set; }
     public string Format { get; }
-    public string Unit { get; }
+
+    /// <summary>"server" = unit from the tag cache (dashboard-configured); "manual" = static widget prop.</summary>
+    public string UnitSource { get; }
+
+    public string? Unit { get; private set; }
 
     public override void SetText(string text)
     {
@@ -258,9 +263,12 @@ public sealed partial class NumericWidgetViewModel : WidgetViewModelBase
             ValueText = FormatValue(entry.Value);
         }
 
-        if (!string.IsNullOrWhiteSpace(Unit) && !string.IsNullOrWhiteSpace(ValueText))
+        // Resolve unit: server mode reads from the tag cache entry; manual mode uses the widget prop.
+        string? effectiveUnit = UnitSource == "server" ? entry.Unit : Unit;
+
+        if (!string.IsNullOrWhiteSpace(effectiveUnit) && !string.IsNullOrWhiteSpace(ValueText))
         {
-            ValueText = ValueText + " " + Unit;
+            ValueText = ValueText + " " + effectiveUnit;
         }
     }
 }

@@ -14,4 +14,7 @@ public sealed class HmiTagDto
 
     /// <summary>Effective update rate in ms (per-tag override, else the source default). 0 = unknown.</summary>
     public int UpdateRateMs { get; set; }
+
+    /// <summary>Engineering unit label (e.g. "°C", "bar"). Set per-tag in the dashboard.</summary>
+    public string? Unit { get; set; }
 }

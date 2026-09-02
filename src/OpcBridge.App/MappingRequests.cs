@@ -18,6 +18,7 @@ public sealed record MappingTagDto(
     bool? MqttEnabled = null,
     string? MqttTopic = null,
     bool? InfluxEnabled = null,
+    string? Unit = null,
     string? Subscription = null,
     string? PlcGroup = null);
 

@@ -31,7 +31,7 @@ public sealed class DisplayStore
     private readonly string displays_dir_;
 
     public DisplayStore()
-        : this(AppContext.BaseDirectory)
+        : this(DataDirectory.Value)
     {
     }
 

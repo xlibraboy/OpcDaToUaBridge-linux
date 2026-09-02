@@ -20,7 +20,7 @@ public sealed class InfluxRuntimeSettings
 
     public InfluxRuntimeSettings(IOptions<InfluxOptions> options)
     {
-        persist_path_ = Path.Combine(AppContext.BaseDirectory, "influx.json");
+        persist_path_ = DataDirectory.Combine("influx.json");
         InfluxOptions? loaded = LoadFromDisk();
         options_ = loaded ?? options.Value;
     }

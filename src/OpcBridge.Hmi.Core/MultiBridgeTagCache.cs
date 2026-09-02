@@ -12,6 +12,7 @@ public sealed class MultiBridgeTagEntry
     public int? DaQuality { get; set; }
     public bool? IsGood { get; set; }
     public bool Writeable { get; set; }
+    public string? Unit { get; set; }
 }
 
 /// <summary>
@@ -122,6 +123,7 @@ public sealed class MultiBridgeTagCache
         TimestampUtc = dto.TimestampUtc,
         DaQuality = dto.DaQuality,
         IsGood = dto.IsGood,
-        Writeable = dto.Writeable
+        Writeable = dto.Writeable,
+        Unit = string.IsNullOrWhiteSpace(dto.Unit) ? null : dto.Unit
     };
 }

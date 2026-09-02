@@ -148,6 +148,10 @@ public partial class DesignerViewModel : ObservableObject, IDisposable
         LowerZCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(HasSelection));
         OnPropertyChanged(nameof(SelectedText));
+        OnPropertyChanged(nameof(IsNumericWidget));
+        OnPropertyChanged(nameof(SelectedUnitSource));
+        OnPropertyChanged(nameof(ShowManualUnit));
+        OnPropertyChanged(nameof(SelectedUnit));
         OnPropertyChanged(nameof(StagingBindingBridgeId));
         OnPropertyChanged(nameof(StagingBindingSourceId));
         OnPropertyChanged(nameof(StagingBindingDaItemId));
@@ -412,6 +416,34 @@ public partial class DesignerViewModel : ObservableObject, IDisposable
 
             PushUndo();
             widget.SetText(value);
+        }
+    }
+
+    public bool IsNumericWidget => SelectedWidget is NumericWidgetViewModel;
+
+    public string SelectedUnitSource
+    {
+        get => (SelectedWidget as NumericWidgetViewModel)?.UnitSource ?? "manual";
+        set
+        {
+            if (SelectedWidget is not NumericWidgetViewModel widget) return;
+            PushUndo();
+            widget.Props["unitSource"] = System.Text.Json.JsonSerializer.SerializeToElement(value);
+            OnPropertyChanged(nameof(SelectedUnitSource));
+            OnPropertyChanged(nameof(ShowManualUnit));
+        }
+    }
+
+    public bool ShowManualUnit => SelectedUnitSource != "server";
+
+    public string SelectedUnit
+    {
+        get => (SelectedWidget as NumericWidgetViewModel)?.Unit ?? string.Empty;
+        set
+        {
+            if (SelectedWidget is not NumericWidgetViewModel widget) return;
+            PushUndo();
+            widget.Props["unit"] = System.Text.Json.JsonSerializer.SerializeToElement(value ?? string.Empty);
         }
     }
 

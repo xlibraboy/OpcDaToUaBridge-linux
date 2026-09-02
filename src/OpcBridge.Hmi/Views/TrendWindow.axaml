@@ -38,7 +38,7 @@
                Text="{Binding StatusMessage}"
                TextWrapping="Wrap" />
     <Border Classes="cardDark" Padding="8">
-      <controls:SparklineControl Points="{Binding Values}" />
+      <controls:SparklineControl Points="{Binding Values}" MinY="{Binding RangeMinY}" MaxY="{Binding RangeMaxY}" />
     </Border>
   </DockPanel>
 </Window>

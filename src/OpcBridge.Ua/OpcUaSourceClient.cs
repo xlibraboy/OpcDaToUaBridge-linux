@@ -1328,7 +1328,7 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
 
     private async Task<ApplicationConfiguration> BuildConfigurationAsync(CancellationToken cancellationToken)
     {
-        string pkiRoot = Path.Combine(AppContext.BaseDirectory, options_.PkiRoot);
+        string pkiRoot = Path.Combine(DataDirectory.Value, options_.PkiRoot);
         string applicationName = string.IsNullOrWhiteSpace(options_.ApplicationName)
             ? "OpcBridge.UaClient"
             : options_.ApplicationName.Trim();

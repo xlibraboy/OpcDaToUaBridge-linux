@@ -23,7 +23,7 @@ public sealed class MqttRuntimeSettings
 
     public MqttRuntimeSettings(IOptions<MqttBrokerOptions> options)
     {
-        persist_path_ = Path.Combine(AppContext.BaseDirectory, "mqtt.json");
+        persist_path_ = DataDirectory.Combine("mqtt.json");
         MqttBrokerOptions? loaded = LoadFromDisk();
         options_ = loaded ?? options.Value;
     }

@@ -21,7 +21,7 @@ public sealed class UaServerHost : IAsyncDisposable
         ILoggerFactory loggerFactory)
     {
         options_ = LoadSettings(options.Value);
-        settings_path_ = Path.Combine(AppContext.BaseDirectory, "ua-settings.json");
+        settings_path_ = DataDirectory.Combine("ua-settings.json");
         logger_ = logger;
         logger_factory_ = loggerFactory;
     }
@@ -38,7 +38,7 @@ public sealed class UaServerHost : IAsyncDisposable
     {
         try
         {
-            string path = Path.Combine(AppContext.BaseDirectory, "ua-settings.json");
+            string path = DataDirectory.Combine("ua-settings.json");
             if (!File.Exists(path)) return defaults;
             string json = File.ReadAllText(path);
             UaServerOptions? loaded = System.Text.Json.JsonSerializer.Deserialize<UaServerOptions>(json);
@@ -169,6 +169,7 @@ public sealed class UaServerHost : IAsyncDisposable
     private ApplicationConfiguration CreateConfiguration()
     {
         string applicationUri = $"urn:ohmypi:{options_.ApplicationName}";
+        string pkiRoot = Path.Combine(DataDirectory.Value, "pki");
 
         return new ApplicationConfiguration
         {
@@ -181,23 +182,23 @@ public sealed class UaServerHost : IAsyncDisposable
                 ApplicationCertificate = new CertificateIdentifier
                 {
                     StoreType = CertificateStoreType.Directory,
-                    StorePath = "pki/own",
+                    StorePath = Path.Combine(pkiRoot, "own"),
                     SubjectName = options_.ApplicationName
                 },
                 TrustedPeerCertificates = new CertificateTrustList
                 {
                     StoreType = CertificateStoreType.Directory,
-                    StorePath = "pki/trusted"
+                    StorePath = Path.Combine(pkiRoot, "trusted")
                 },
                 TrustedIssuerCertificates = new CertificateTrustList
                 {
                     StoreType = CertificateStoreType.Directory,
-                    StorePath = "pki/issuers"
+                    StorePath = Path.Combine(pkiRoot, "issuers")
                 },
                 RejectedCertificateStore = new CertificateTrustList
                 {
                     StoreType = CertificateStoreType.Directory,
-                    StorePath = "pki/rejected"
+                    StorePath = Path.Combine(pkiRoot, "rejected")
                 },
                 AutoAcceptUntrustedCertificates = options_.AutoAcceptUntrustedCertificates,
                 RejectSHA1SignedCertificates = true,
