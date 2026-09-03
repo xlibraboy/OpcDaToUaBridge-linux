@@ -2,8 +2,8 @@ namespace OpcBridge.Hmi.Core;
 
 /// <summary>
 /// Provides the natural min/max range for a given OPC/bridge data type.
-/// Used by the sparkline control to set a fixed Y-axis for integer/boolean types.
-/// Floating-point types (Float, Double, Decimal) return null — the sparkline
+/// Used by the trend charts to pin the Y axis for integer/boolean types.
+/// Floating-point types (Float, Double, Decimal) return null — the chart
 /// auto-scales from the actual data instead.
 /// </summary>
 public static class DataTypeRanges

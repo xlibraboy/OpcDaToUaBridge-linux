@@ -385,12 +385,12 @@ public sealed class DashboardPageTests
     public void Html_MappingStatusBadgePinnedRightAndNeverClipped()
     {
         // The colored access status belongs at the far right of the row: config
-        // badges (type/deadband/decimals/rate/MQTT/Influx) form a clipping group while the
-        // status (connection-state + access) sits outside it with flex-shrink:0 so
+        // badges (type/unit/deadband/decimals/rate/MQTT/Influx) form a clipping group while
+        // the status (connection-state + access) sits outside it with flex-shrink:0 so
         // it can never be cut off.
         Assert.Contains(".li .li-badge-clip { display: flex;", DashboardPage.Html);
         Assert.Contains(".li .li-badge-status { flex-shrink: 0; margin-left: 2px;", DashboardPage.Html);
-        Assert.Contains("<span class=\"li-badge-clip\">${typeBadge}${deadbandBadge}${decimalsBadge}${rateBadge}${subBadge}${mqttBadge}${influxBadge}</span><span class=\"li-badge-status\">${discBadge ? `<span title=\"${attr(discTitle)}\">${discBadge}</span>` : ''}${accessBadge}</span>", DashboardPage.Script);
+        Assert.Contains("<span class=\"li-badge-clip\">${typeBadge}${unitBadge}${deadbandBadge}${decimalsBadge}${rateBadge}${subBadge}${mqttBadge}${influxBadge}</span><span class=\"li-badge-status\">${discBadge ? `<span title=\"${attr(discTitle)}\">${discBadge}</span>` : ''}${accessBadge}</span>", DashboardPage.Script);
     }
 
     [Fact]

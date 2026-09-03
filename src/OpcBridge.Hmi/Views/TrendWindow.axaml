@@ -16,6 +16,12 @@
               Content="Refresh"
               Command="{Binding RefreshCommand}"
               MinWidth="80" />
+      <Button DockPanel.Dock="Right"
+              Content="Reset zoom"
+              Command="{Binding ResetZoomCommand}"
+              IsVisible="{Binding IsZoomed}"
+              MinWidth="90"
+              Margin="0,0,8,0" />
       <StackPanel Orientation="Horizontal" Spacing="4">
         <RadioButton Classes="seg" GroupName="range" Content="1h"
                      IsChecked="{Binding IsRange1h, Mode=OneWay}"
@@ -27,6 +33,12 @@
                      IsChecked="{Binding IsRange24h, Mode=OneWay}"
                      Command="{Binding SetRangeCommand}" CommandParameter="24" />
       </StackPanel>
+      <CheckBox VerticalAlignment="Center"
+                Margin="16,0,0,0"
+                Content="Auto range"
+                IsChecked="{Binding AutoRange}"
+                IsEnabled="{Binding HasFixedRange}"
+                ToolTip.Tip="Fit the Y axis to the data. Turn off to pin the axis to the tag's data-type range (not available for floating-point types)." />
       <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
         <TextBlock Classes="hint" Text="{Binding BridgeId, StringFormat=Bridge: {0}}" />
         <TextBlock Classes="hint" Text="{Binding DaItemId, StringFormat=Item: {0}}" />
@@ -38,7 +50,15 @@
                Text="{Binding StatusMessage}"
                TextWrapping="Wrap" />
     <Border Classes="cardDark" Padding="8">
-      <controls:SparklineControl Points="{Binding Values}" MinY="{Binding RangeMinY}" MaxY="{Binding RangeMaxY}" />
+      <controls:TrendChartControl x:Name="TrendChart"
+                                  EnableRangeZoom="True"
+                                  Samples="{Binding Samples}"
+                                  FromUtc="{Binding FromUtc}"
+                                  ToUtc="{Binding ToUtc}"
+                                  YMin="{Binding AxisMin}"
+                                  YMax="{Binding AxisMax}"
+                                  YStep="{Binding AxisStep}"
+                                  Unit="{Binding Unit}" />
     </Border>
   </DockPanel>
 </Window>

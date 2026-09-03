@@ -21,5 +21,16 @@ public partial class TrendWindow : Window
         : this()
     {
         DataContext = viewModel;
+        // Right-drag on the plot selects a time range → reload history for that window.
+        TrendChart.ZoomRequested += (_, e) =>
+        {
+            _ = viewModel.ZoomToAsync(e.FromUtc, e.ToUtc);
+        };
+
+        // Double-click on the plot zooms back out to the base range.
+        TrendChart.ZoomResetRequested += (_, _) =>
+        {
+            viewModel.ResetZoomCommand.Execute(null);
+        };
     }
 }

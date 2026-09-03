@@ -29,7 +29,7 @@ public partial class FaceplateViewModel : ObservableObject, IAsyncDisposable
         openTrend_ = openTrend;
         ownsApi_ = ownsApi;
         RefreshFromCache();
-        _ = LoadSparklineAsync();
+        _ = LoadHistoryAsync();
     }
 
     public TagBindingKey Key { get; }
@@ -52,6 +52,14 @@ public partial class FaceplateViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty]
     private string _dataType = string.Empty;
 
+    /// <summary>Tag's engineering unit (e.g. "°C"), shown on the history trend readouts.</summary>
+    [ObservableProperty]
+    private string _unit = string.Empty;
+
+    // The tag's type decides the trend axis (booleans pin to 0..1); live cache refresh can
+    // populate it after the history load, so recompute whenever it actually changes.
+    partial void OnDataTypeChanged(string value) => RecomputeTrendAxis();
+
     [ObservableProperty]
     private string _valueText = string.Empty;
 
@@ -73,14 +81,25 @@ public partial class FaceplateViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty]
     private string _trendStatus = string.Empty;
 
+    /// <summary>Numeric history samples with timestamps, newest last.</summary>
     [ObservableProperty]
-    private IReadOnlyList<double> _trendValues = Array.Empty<double>();
+    private IReadOnlyList<TrendSample> _trendSamples = Array.Empty<TrendSample>();
 
-    /// <summary>Y-axis minimum derived from the tag's data type (null = auto-scale).</summary>
-    public double? RangeMinY { get; private set; }
+    [ObservableProperty]
+    private DateTime _trendFromUtc = DateTime.UtcNow.AddHours(-1);
 
-    /// <summary>Y-axis maximum derived from the tag's data type (null = auto-scale).</summary>
-    public double? RangeMaxY { get; private set; }
+    [ObservableProperty]
+    private DateTime _trendToUtc = DateTime.UtcNow;
+
+    /// <summary>Chart Y-axis layout for the 1h history block.</summary>
+    [ObservableProperty]
+    private double _axisMin;
+
+    [ObservableProperty]
+    private double _axisMax = 1;
+
+    [ObservableProperty]
+    private double _axisStep = 0.2;
 
     public void RefreshFromCache()
     {
@@ -91,17 +110,13 @@ public partial class FaceplateViewModel : ObservableObject, IAsyncDisposable
         {
             DisplayName = entry.DisplayName;
             DataType = entry.DataType;
+            Unit = entry.Unit ?? string.Empty;
             Writeable = entry.Writeable;
             ValueText = FormatValue(entry.Value);
             QualityText = FormatQuality(entry.DaQuality, entry.IsGood);
             TimestampText = entry.TimestampUtc is null
                 ? string.Empty
                 : entry.TimestampUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss.fff");
-            var range = DataTypeRanges.GetRange(DataType);
-            RangeMinY = range?.Min;
-            RangeMaxY = range?.Max;
-            OnPropertyChanged(nameof(RangeMinY));
-            OnPropertyChanged(nameof(RangeMaxY));
             if (string.IsNullOrWhiteSpace(WriteValue))
             {
                 WriteValue = ValueText;
@@ -110,6 +125,7 @@ public partial class FaceplateViewModel : ObservableObject, IAsyncDisposable
         else
         {
             DisplayName = Key.DaItemId;
+            Unit = string.Empty;
             ValueText = "—";
             QualityText = "Unbound";
         }
@@ -159,7 +175,7 @@ public partial class FaceplateViewModel : ObservableObject, IAsyncDisposable
     [RelayCommand]
     private void OpenTrend() => openTrend_(Key);
 
-    private async Task LoadSparklineAsync()
+    private async Task LoadHistoryAsync()
     {
         trendCts_?.Cancel();
         trendCts_?.Dispose();
@@ -176,18 +192,32 @@ public partial class FaceplateViewModel : ObservableObject, IAsyncDisposable
                 return;
             }
 
-            List<double> values = new();
+            List<TrendSample> samples = new();
             foreach (HmiTrendPoint point in response.Points ?? Array.Empty<HmiTrendPoint>())
             {
                 if (TryToDouble(point.V, out double y))
                 {
-                    values.Add(y);
+                    samples.Add(new TrendSample(point.T, y));
                 }
             }
 
-            TrendValues = values;
+            samples.Sort((a, b) => a.T.CompareTo(b.T));
+            TrendSamples = samples;
+
+            DateTime fromUtc = response.FromUtc == default ? from : response.FromUtc;
+            DateTime toUtc = response.ToUtc == default ? to : response.ToUtc;
+            if (toUtc <= fromUtc)
+            {
+                fromUtc = from;
+                toUtc = to;
+            }
+
+            TrendFromUtc = fromUtc;
+            TrendToUtc = toUtc;
+            RecomputeTrendAxis();
+
             TrendStatus = string.IsNullOrWhiteSpace(response.Error)
-                ? (values.Count == 0 ? "No history" : $"{values.Count} points (1h)")
+                ? (samples.Count == 0 ? "No history" : $"{samples.Count} points (1h)")
                 : response.Error!;
         }
         catch (OperationCanceledException)
@@ -196,9 +226,43 @@ public partial class FaceplateViewModel : ObservableObject, IAsyncDisposable
         catch (Exception ex)
         {
             TrendStatus = "Trend error: " + ex.Message;
-            TrendValues = Array.Empty<double>();
+            TrendSamples = Array.Empty<TrendSample>();
         }
     }
+
+    /// <summary>
+    /// Resolves the Y axis for the loaded 1h history: booleans stay pinned to their 0..1
+    /// band so an on/off trace reads clearly; everything else auto-fits the samples.
+    /// </summary>
+    private void RecomputeTrendAxis()
+    {
+        (double Min, double Max)? typeRange = TrendTypeRange();
+        double? min = null;
+        double? max = null;
+        foreach (TrendSample sample in TrendSamples)
+        {
+            if (!double.IsFinite(sample.V))
+            {
+                continue;
+            }
+
+            min = min is null ? sample.V : Math.Min(min.Value, sample.V);
+            max = max is null ? sample.V : Math.Max(max.Value, sample.V);
+        }
+
+        TrendAxis axis = TrendScale.Resolve(!IsBooleanLike(DataType), typeRange, min, max);
+        TrendAxis fallback = typeRange is { } tr ? TrendScale.FromTypeRange(tr) : default;
+        AxisMin = axis.IsValid ? axis.Min : fallback.IsValid ? fallback.Min : 0;
+        AxisMax = axis.IsValid ? axis.Max : fallback.IsValid ? fallback.Max : 1;
+        AxisStep = axis.IsValid ? axis.Step : fallback.IsValid ? fallback.Step : 1;
+    }
+
+    private (double Min, double Max)? TrendTypeRange() =>
+        IsBooleanLike(DataType) ? (0, 1) : DataTypeRanges.GetRange(DataType);
+
+    private static bool IsBooleanLike(string? dataType) =>
+        string.Equals(dataType, "Boolean", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(dataType, "Bool", StringComparison.OrdinalIgnoreCase);
 
     private static object? ParseWriteValue(string text, string dataType)
     {

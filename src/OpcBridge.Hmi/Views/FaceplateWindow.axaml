@@ -42,7 +42,14 @@
 
         <TextBlock Classes="sectionLabel" Margin="0,6,0,0" Text="HISTORY (1H)" />
         <Border Classes="cardDark" Padding="8">
-          <controls:SparklineControl Height="80" Points="{Binding TrendValues}" MinY="{Binding RangeMinY}" MaxY="{Binding RangeMaxY}" />
+          <controls:TrendChartControl Height="150"
+                                      Samples="{Binding TrendSamples}"
+                                      FromUtc="{Binding TrendFromUtc}"
+                                      ToUtc="{Binding TrendToUtc}"
+                                      YMin="{Binding AxisMin}"
+                                      YMax="{Binding AxisMax}"
+                                      YStep="{Binding AxisStep}"
+                                      Unit="{Binding Unit}" />
         </Border>
         <TextBlock Classes="hint" Text="{Binding TrendStatus}" TextWrapping="Wrap" />
       </StackPanel>
