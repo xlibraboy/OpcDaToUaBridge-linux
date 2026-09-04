@@ -56,6 +56,13 @@ public partial class FaceplateViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty]
     private string _unit = string.Empty;
 
+    /// <summary>
+    /// How this tag's history renders in the 1h block: "Continuous" (line, default) or
+    /// "Step" (sample-and-hold). Set per-tag in the dashboard Maps faceplate.
+    /// </summary>
+    [ObservableProperty]
+    private string _trendStyle = "Continuous";
+
     // The tag's type decides the trend axis (booleans pin to 0..1); live cache refresh can
     // populate it after the history load, so recompute whenever it actually changes.
     partial void OnDataTypeChanged(string value) => RecomputeTrendAxis();
@@ -111,6 +118,7 @@ public partial class FaceplateViewModel : ObservableObject, IAsyncDisposable
             DisplayName = entry.DisplayName;
             DataType = entry.DataType;
             Unit = entry.Unit ?? string.Empty;
+            TrendStyle = NormalizeTrendStyle(entry.TrendStyle);
             Writeable = entry.Writeable;
             ValueText = FormatValue(entry.Value);
             QualityText = FormatQuality(entry.DaQuality, entry.IsGood);
@@ -126,12 +134,21 @@ public partial class FaceplateViewModel : ObservableObject, IAsyncDisposable
         {
             DisplayName = Key.DaItemId;
             Unit = string.Empty;
+            TrendStyle = "Continuous";
             ValueText = "—";
             QualityText = "Unbound";
         }
 
         Title = string.IsNullOrWhiteSpace(DisplayName) ? Key.DaItemId : DisplayName;
         WriteCommand.NotifyCanExecuteChanged();
+    }
+
+    private static string NormalizeTrendStyle(string? value)
+    {
+        return !string.IsNullOrWhiteSpace(value)
+            && string.Equals(value.Trim(), "Step", StringComparison.OrdinalIgnoreCase)
+            ? "Step"
+            : "Continuous";
     }
 
     [RelayCommand(CanExecute = nameof(CanWrite))]

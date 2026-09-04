@@ -17,7 +17,7 @@ public partial class TrendViewModel : ObservableObject, IAsyncDisposable
     private readonly PeriodicTimer? refreshTimer_;
     private readonly Task? refreshLoop_;
 
-    public TrendViewModel(TagBindingKey key, BridgeApiClient api, bool ownsApi = false, string? dataType = null, string? unit = null)
+    public TrendViewModel(TagBindingKey key, BridgeApiClient api, bool ownsApi = false, string? dataType = null, string? unit = null, string? trendStyle = null)
     {
         Key = key;
         api_ = api;
@@ -28,6 +28,7 @@ public partial class TrendViewModel : ObservableObject, IAsyncDisposable
         DaItemId = key.DaItemId;
         DataType = dataType ?? "Double";
         Unit = unit ?? string.Empty;
+        TrendStyle = NormalizeTrendStyle(trendStyle);
         // Booleans are always plotted on their natural 0..1 band so an on/off trace reads clearly.
         (double, double)? typeRange = DataTypeRanges.GetRange(DataType);
         fixedRange_ = IsBooleanLike(DataType) ? (0, 1) : typeRange;
@@ -45,6 +46,21 @@ public partial class TrendViewModel : ObservableObject, IAsyncDisposable
     /// <summary>Tag's engineering unit (e.g. "°C"), shown on the pinned readout and hover cursor.</summary>
     [ObservableProperty]
     private string _unit = string.Empty;
+
+    /// <summary>
+    /// How this tag's history renders: "Continuous" (line through the samples, default) or
+    /// "Step" (sample-and-hold). Set per-tag in the dashboard Maps faceplate.
+    /// </summary>
+    [ObservableProperty]
+    private string _trendStyle = "Continuous";
+
+    private static string NormalizeTrendStyle(string? value)
+    {
+        return !string.IsNullOrWhiteSpace(value)
+            && string.Equals(value.Trim(), "Step", StringComparison.OrdinalIgnoreCase)
+            ? "Step"
+            : "Continuous";
+    }
 
     [ObservableProperty]
     private string _title = "Trend";

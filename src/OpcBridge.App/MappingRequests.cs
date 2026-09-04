@@ -20,7 +20,8 @@ public sealed record MappingTagDto(
     bool? InfluxEnabled = null,
     string? Unit = null,
     string? Subscription = null,
-    string? PlcGroup = null);
+    string? PlcGroup = null,
+    string? TrendStyle = null);
 
 public sealed record MappingAddRequest(List<MappingTagDto>? Tags);
 

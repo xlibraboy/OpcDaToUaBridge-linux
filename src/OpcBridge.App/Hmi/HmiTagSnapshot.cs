@@ -45,7 +45,8 @@ public static class HmiTagSnapshot
                 IsGood = snap?.IsGood,
                 Writeable = m.Writeable,
                 UpdateRateMs = DashboardValues.LookupUpdateRate(updateRateByKey, m.SourceId, m.ItemId),
-                Unit = string.IsNullOrWhiteSpace(m.Unit) ? null : m.Unit
+                Unit = string.IsNullOrWhiteSpace(m.Unit) ? null : m.Unit,
+                TrendStyle = TrendStyleTypes.Normalize(m.TrendStyle)
             });
         }
 

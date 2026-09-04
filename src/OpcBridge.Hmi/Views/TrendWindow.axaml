@@ -58,7 +58,8 @@
                                   YMin="{Binding AxisMin}"
                                   YMax="{Binding AxisMax}"
                                   YStep="{Binding AxisStep}"
-                                  Unit="{Binding Unit}" />
+                                  Unit="{Binding Unit}"
+                                  TrendStyle="{Binding TrendStyle}" />
     </Border>
   </DockPanel>
 </Window>

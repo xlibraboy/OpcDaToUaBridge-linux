@@ -437,7 +437,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
                     throw new InvalidOperationException("Bridge not connected: " + key.BridgeId);
                 }
 
-                TrendViewModel vm = new(key, session.Api, dataType: connections_.Cache.TryGet(key, out var tagEntry) ? tagEntry?.DataType : null, unit: tagEntry?.Unit);
+                TrendViewModel vm = new(key, session.Api, dataType: connections_.Cache.TryGet(key, out var tagEntry) ? tagEntry?.DataType : null, unit: tagEntry?.Unit, trendStyle: tagEntry?.TrendStyle);
                 return new TrendWindow(vm);
             },
             owner: ownerWindow_);

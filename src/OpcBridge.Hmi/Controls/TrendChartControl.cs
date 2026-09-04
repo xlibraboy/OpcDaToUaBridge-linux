@@ -57,6 +57,9 @@ public sealed class TrendChartControl : Control
     public static readonly StyledProperty<string?> UnitProperty =
         AvaloniaProperty.Register<TrendChartControl, string?>(nameof(Unit));
 
+    public static readonly StyledProperty<string?> TrendStyleProperty =
+        AvaloniaProperty.Register<TrendChartControl, string?>(nameof(TrendStyle), "Continuous");
+
     public IEnumerable<TrendSample>? Samples
     {
         get => GetValue(SamplesProperty);
@@ -112,6 +115,17 @@ public sealed class TrendChartControl : Control
         set => SetValue(UnitProperty, value);
     }
 
+    /// <summary>
+    /// How the value trace is drawn: "Continuous" (line through the samples, default) or
+    /// "Step" (sample-and-hold — the value is held until the next sample's time, so the
+    /// trace steps vertically between samples instead of interpolating a diagonal).
+    /// </summary>
+    public string? TrendStyle
+    {
+        get => GetValue(TrendStyleProperty);
+        set => SetValue(TrendStyleProperty, value);
+    }
+
     /// <summary>Raised when the operator right-drags a time range on the plot.</summary>
     public event EventHandler<TrendZoomRequestedEventArgs>? ZoomRequested;
 
@@ -127,7 +141,8 @@ public sealed class TrendChartControl : Control
             YMinProperty,
             YMaxProperty,
             YStepProperty,
-            UnitProperty);
+            UnitProperty,
+            TrendStyleProperty);
     }
 
     public TrendChartControl()
@@ -137,6 +152,10 @@ public sealed class TrendChartControl : Control
         Cursor = new Cursor(StandardCursorType.Cross);
         AddHandler(Gestures.DoubleTappedEvent, OnChartDoubleTapped);
     }
+
+    private bool IsStepStyle =>
+        !string.IsNullOrWhiteSpace(TrendStyle)
+        && string.Equals(TrendStyle.Trim(), "Step", StringComparison.OrdinalIgnoreCase);
 
     private Point? cursorPoint_;
     private bool zoomDragging_;
@@ -398,6 +417,23 @@ public sealed class TrendChartControl : Control
 
             used.Add(sample);
             trace.Add(new Point(xOf(sample.T), yOf(sample.V)));
+        }
+
+        // ---- Step (sample-and-hold) trace ----
+        // Replace each straight segment with a horizontal hold at the previous sample's
+        // value up to the next sample's time, then a vertical drop/rise onto the new
+        // value. The polyline then contains no diagonals between consecutive samples.
+        if (IsStepStyle && trace.Count > 1)
+        {
+            var stepped = new List<Point>(trace.Count * 2);
+            stepped.Add(trace[0]);
+            for (int i = 1; i < trace.Count; i++)
+            {
+                stepped.Add(new Point(trace[i].X, trace[i - 1].Y));
+                stepped.Add(trace[i]);
+            }
+
+            trace = stepped;
         }
 
         // ---- horizontal gridlines + labels ----

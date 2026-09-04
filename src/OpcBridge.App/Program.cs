@@ -2982,7 +2982,8 @@ static TagMapping ToTagMapping(MappingTagDto tag) => new()
     InfluxEnabled = tag.InfluxEnabled ?? false,
     Unit = string.IsNullOrWhiteSpace(tag.Unit) ? null : tag.Unit.Trim(),
     Subscription = tag.Subscription ?? string.Empty,
-    PlcGroup = tag.PlcGroup ?? string.Empty
+    PlcGroup = tag.PlcGroup ?? string.Empty,
+    TrendStyle = TrendStyleTypes.Normalize(tag.TrendStyle)
 };
 
 static bool ValidateMelsecMappings(List<TagMapping> tags, DaRuntimeSettings daSettings, MappingStore store, out string error)

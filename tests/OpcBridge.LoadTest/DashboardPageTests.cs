@@ -1092,4 +1092,17 @@ public sealed class DashboardPageTests
         Assert.Contains("el('fpManualInput').addEventListener('input', updateManualValueHint)", DashboardPage.Script);
         Assert.Contains("updateManualValueHint();", DashboardPage.Script);
     }
+
+    [Fact]
+    public void Html_FaceplateSetup_HasTrendPlotStylePicker()
+    {
+        // Per-tag Continuous/Step picker for HMI history/trend rendering, next to Unit.
+        Assert.Contains("id=\"fpTrendStyle\"", DashboardPage.Html);
+        Assert.Contains("<option value=\"Continuous\">Continuous (line)</option>", DashboardPage.Html);
+        Assert.Contains("<option value=\"Step\">Step (hold last)</option>", DashboardPage.Html);
+        // Faceplate loads the current style and saves it in the update payload.
+        Assert.Contains("el('fpTrendStyle').value = String(mapping.trendStyle || mapping.TrendStyle || 'Continuous')", DashboardPage.Script);
+        Assert.Contains("trendStyle: mapping.trendStyle || mapping.TrendStyle || 'Continuous'", DashboardPage.Script);
+        Assert.Contains("payload.trendStyle = el('fpTrendStyle').value || 'Continuous'", DashboardPage.Script);
+    }
 }

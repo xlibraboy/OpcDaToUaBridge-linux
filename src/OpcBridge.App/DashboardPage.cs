@@ -1380,6 +1380,7 @@ internal static class DashboardPage
                 <div class="field"><label class="fl">Deadband %</label><input type="number" id="fpDeadband" min="0" max="100" step="0.1" value="0" style="width:80px"></div>
                 <div class="field"><label class="fl">Decimals</label><input type="number" id="fpDecimals" min="0" max="15" step="1" value="" placeholder="off (full precision)" style="width:150px"><span class="msg">digits after comma for Float/Double (blank = off, 0 = no decimals)</span></div>
                 <div class="field"><label class="fl">Unit</label><input type="text" id="fpUnit" placeholder="°C, bar, RPM…" style="flex:1"><span class="msg">engineering unit label (shown on HMI widgets)</span></div>
+                <div class="field"><label class="fl">Trend Plot</label><select id="fpTrendStyle"><option value="Continuous">Continuous (line)</option><option value="Step">Step (hold last)</option></select><span class="msg">HMI history/trend drawing: line between samples, or hold each value until the next sample (classic SCADA step)</span></div>
                 <div class="hint" style="margin-top:4px">Update Rate = source poll/publish interval. With subscriptions on, the source pushes changes at this rate when supported. With subscriptions off, the bridge polls at this rate.</div>
             </div>
             <div class="fp-tabpane" id="fp-pane-sim" style="display:none">
@@ -3378,6 +3379,7 @@ function openFaceplate(sourceId, itemId) {
     el('fpMqttTopic').value = String(mapping.mqttTopic ?? mapping.MqttTopic ?? '');
     el('fpInfluxEnabled').checked = (mapping.influxEnabled ?? mapping.InfluxEnabled) === true;
     el('fpUnit').value = String(mapping.unit ?? mapping.Unit ?? '');
+    el('fpTrendStyle').value = String(mapping.trendStyle || mapping.TrendStyle || 'Continuous');
     updateManualInputState();
     el('fpApply').dataset.sourceId = sourceId;
     el('fpApply').dataset.itemId = itemId;
@@ -5300,7 +5302,8 @@ async function updateMapping(sourceId, itemId, mutate) {
         mqttEnabled: el('fpMqttEnabled').checked,
         mqttTopic: el('fpMqttTopic').value.trim() || null,
         influxEnabled: el('fpInfluxEnabled').checked,
-        unit: el('fpUnit').value.trim() || null
+        unit: el('fpUnit').value.trim() || null,
+        trendStyle: mapping.trendStyle || mapping.TrendStyle || 'Continuous'
     };
     mutate(payload);
     const r = await fetch('/api/mappings/update', {
@@ -7164,6 +7167,7 @@ function bindDynamicButtons() {
                     payload.decimals = Number.isNaN(parsed) ? null : Math.max(0, Math.min(15, parsed));
                 }
                 payload.description = el('fpDescription').value.trim() || null;
+                payload.trendStyle = el('fpTrendStyle').value || 'Continuous';
                 if (simulated) {
                     payload.mode = 'Manual';
                     const manualField = el('fpManualInput');

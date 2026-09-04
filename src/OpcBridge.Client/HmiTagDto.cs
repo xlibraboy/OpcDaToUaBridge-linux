@@ -17,4 +17,10 @@ public sealed class HmiTagDto
 
     /// <summary>Engineering unit label (e.g. "°C", "bar"). Set per-tag in the dashboard.</summary>
     public string? Unit { get; set; }
+
+    /// <summary>
+    /// How this tag's history renders in HMI trend charts: "Continuous" (line through the
+    /// samples, default) or "Step" (sample-and-hold). Set per-tag in the dashboard Maps faceplate.
+    /// </summary>
+    public string TrendStyle { get; set; } = "Continuous";
 }

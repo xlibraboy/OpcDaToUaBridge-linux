@@ -49,6 +49,14 @@ public sealed class TagMapping
     public string? Unit { get; set; }
 
     /// <summary>
+    /// How this tag's history renders in the HMI trend charts: <see cref="TrendStyleTypes.Continuous"/>
+    /// (line through the samples, default) or <see cref="TrendStyleTypes.Step"/> (sample-and-hold
+    /// steps — the value is held constant until the next sample arrives). Set per-tag in the
+    /// dashboard Maps faceplate; applies to both the faceplate 1h history and the tag's trend window.
+    /// </summary>
+    public string TrendStyle { get; set; } = TrendStyleTypes.Continuous;
+
+    /// <summary>
     /// OPC UA sources only: name of the source-defined named subscription this tag rides on.
     /// Empty string = the source's default bucket (source UpdateRateMs semantics, unchanged).
     /// Matched case-insensitively against the source's definitions; unknown names group into
@@ -76,6 +84,24 @@ public static class TagAccessRights
     public const string Read = "Read";
     public const string ReadWrite = "Read-Write";
     public const string Write = "Write";
+}
+
+public static class TrendStyleTypes
+{
+    public const string Continuous = "Continuous";
+    public const string Step = "Step";
+
+    /// <summary>
+    /// Canonicalizes a configured trend style; anything that is not explicitly "Step"
+    /// (empty, "Auto", misspelled, etc.) maps to the <see cref="Continuous"/> default.
+    /// </summary>
+    public static string Normalize(string? value)
+    {
+        return !string.IsNullOrWhiteSpace(value)
+            && string.Equals(value.Trim(), Step, StringComparison.OrdinalIgnoreCase)
+            ? Step
+            : Continuous;
+    }
 }
 
 public static class TagDecimals

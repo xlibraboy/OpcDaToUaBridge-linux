@@ -13,6 +13,12 @@ public sealed class MultiBridgeTagEntry
     public bool? IsGood { get; set; }
     public bool Writeable { get; set; }
     public string? Unit { get; set; }
+
+    /// <summary>
+    /// How this tag's history renders in the HMI trend charts: "Continuous" (line, default)
+    /// or "Step" (sample-and-hold). Set per-tag in the dashboard Maps faceplate.
+    /// </summary>
+    public string TrendStyle { get; set; } = "Continuous";
 }
 
 /// <summary>
@@ -124,6 +130,15 @@ public sealed class MultiBridgeTagCache
         DaQuality = dto.DaQuality,
         IsGood = dto.IsGood,
         Writeable = dto.Writeable,
-        Unit = string.IsNullOrWhiteSpace(dto.Unit) ? null : dto.Unit
+        Unit = string.IsNullOrWhiteSpace(dto.Unit) ? null : dto.Unit,
+        TrendStyle = NormalizeTrendStyle(dto.TrendStyle)
     };
+
+    private static string NormalizeTrendStyle(string? value)
+    {
+        return !string.IsNullOrWhiteSpace(value)
+            && string.Equals(value.Trim(), "Step", StringComparison.OrdinalIgnoreCase)
+            ? "Step"
+            : "Continuous";
+    }
 }

@@ -49,7 +49,8 @@
                                       YMin="{Binding AxisMin}"
                                       YMax="{Binding AxisMax}"
                                       YStep="{Binding AxisStep}"
-                                      Unit="{Binding Unit}" />
+                                      Unit="{Binding Unit}"
+                                      TrendStyle="{Binding TrendStyle}" />
         </Border>
         <TextBlock Classes="hint" Text="{Binding TrendStatus}" TextWrapping="Wrap" />
       </StackPanel>

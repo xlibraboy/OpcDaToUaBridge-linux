@@ -418,7 +418,8 @@ public sealed class MappingStore
             Subscription = (tag.Subscription ?? string.Empty).Trim(),
             // Preserve PLC group membership through normalization exactly like
             // Subscription: empty stays empty (= source default bucket), else trimmed.
-            PlcGroup = (tag.PlcGroup ?? string.Empty).Trim()
+            PlcGroup = (tag.PlcGroup ?? string.Empty).Trim(),
+            TrendStyle = TrendStyleTypes.Normalize(tag.TrendStyle)
         };
     }
 
