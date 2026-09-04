@@ -1074,4 +1074,22 @@ public sealed class DashboardPageTests
         // Grouped tags lock the rate input with the "set by group" hint.
         Assert.Contains("set by group '", DashboardPage.Script);
     }
+
+    [Fact]
+    public void Html_FaceplateSimulation_WarnsWhenManualValueWontParse()
+    {
+        // A warning slot under the Manual Value input in the Simulation tab.
+        Assert.Contains("id=\"fpManualParseHint\"", DashboardPage.Html);
+        Assert.Contains("class=\"hint warn\" id=\"fpManualParseHint\"", DashboardPage.Html);
+        // JS lives in the Script block; DashboardPage.Html is markup only.
+        Assert.Contains("function fpManualTargetType(", DashboardPage.Script);
+        Assert.Contains("function parseManualValueAs(", DashboardPage.Script);
+        Assert.Contains("function updateManualValueHint(", DashboardPage.Script);
+        // The tag's actual type pins Auto mappings; hint text uses the live type name.
+        Assert.Contains("if (declared && declared !== 'Auto') return declared;", DashboardPage.Script);
+        Assert.Contains("Won't parse as ", DashboardPage.Script);
+        // Live validation while typing and on each faceplate refresh.
+        Assert.Contains("el('fpManualInput').addEventListener('input', updateManualValueHint)", DashboardPage.Script);
+        Assert.Contains("updateManualValueHint();", DashboardPage.Script);
+    }
 }

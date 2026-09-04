@@ -82,7 +82,7 @@ The UA server is a **mirror**, not a computation path. Every value shown in the 
 
 ### Manual mode
 
-When `TagMapping.Mode == "Manual"`, `BridgeWorker.ApplyManualMappings` synthesizes a `BridgeValue` from `ManualValue` (parsed by `TryConvertManualValue`) without a source read. Supported types: BOOL, BYTE, SBYTE, INT16, UINT16, INT32, UINT32, INT64, UINT64, FLOAT, DOUBLE, DECIMAL, STRING, plus type inference.
+When `TagMapping.Mode == "Manual"`, `BridgeWorker.ApplyManualMappings` synthesizes a `BridgeValue` from `ManualValue` without a source read. Parsing lives in `ManualValueConverter` (`src/OpcBridge.App/ManualValueConverter.cs`); supported types: BOOL, BYTE, SBYTE, INT16, UINT16, INT32, UINT32, INT64, UINT64, FLOAT, DOUBLE, DECIMAL, STRING, DATETIME. **Auto mappings follow the tag's actual type:** when the mapping `DataType` is `Auto` and the tag already has a real value, the manual text is parsed into that value's runtime type (via `DashboardValues.InferDataType` on the current `BridgeState` snapshot, passed as the reference) — so simulating a live tag can no longer silently re-type it (e.g. typing `5` on a Double/Int32 tag previously produced Int64). A text that won't parse into the actual type rejects the manual value (tag cleared) instead of flipping its type. Generic content inference (bool → integer → floating → string) is only the fallback for tags that never had a real value (e.g. mapped straight into Manual mode) or an unrecognized declared type.
 
 ### Data-type display (Live Values / Maps / faceplate)
 

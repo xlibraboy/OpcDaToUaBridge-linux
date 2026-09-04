@@ -1385,6 +1385,7 @@ internal static class DashboardPage
             <div class="fp-tabpane" id="fp-pane-sim" style="display:none">
                 <div class="field"><label class="fl">Simulated</label><input type="checkbox" id="fpSimulated" data-action="tag-simulated"></div>
                 <div class="field"><label class="fl">Manual Value</label><input type="text" id="fpManualInput" data-action="tag-manual-value" disabled style="flex:1"></div>
+                <div class="hint warn" id="fpManualParseHint" style="display:none;margin-top:4px"></div>
                 <div class="hint" id="fpModeHint" style="margin-top:4px"></div>
             </div>
             <div class="fp-tabpane" id="fp-pane-mqtt" style="display:none">
@@ -3412,6 +3413,7 @@ function updateFaceplateLiveValues() {
     if (!faceplateOpen || !faceplateKey) return;
     const parts = faceplateKey.split('\u0000');
     el('fpLivePanel').innerHTML = renderLiveValue(currentValue(parts[0] || 'default', parts[1] || ''));
+    updateManualValueHint();
 }
 
 function updateManualInputState() {
@@ -3422,6 +3424,68 @@ function updateManualInputState() {
     el('fpModeHint').textContent = simCheck.checked
         ? 'Simulation ON: bridge publishes the Manual Value to UA instead of reading from DA.'
         : 'Simulation OFF: bridge reads from DA (for Read/Read-Write). Toggle to inject a fixed value.';
+    updateManualValueHint();
+}
+
+// Which type a Manual Value must parse as, mirroring the server (ManualValueConverter):
+// an explicit mapping type wins; an Auto mapping follows the tag's actual (runtime) type
+// once a real value exists; with neither, the server infers from the text, so no hint.
+function fpManualTargetType(sourceId, itemId) {
+    const mapping = getMapping(sourceId, itemId);
+    const declared = String((mapping && (mapping.dataType || mapping.DataType)) || 'Auto').trim();
+    if (declared && declared !== 'Auto') return declared;
+    const live = currentValue(sourceId, itemId);
+    return (live && get(live, 'dataType')) || null;
+}
+
+// Client mirror of ManualValueConverter's per-type parse rules (see
+// src/OpcBridge.App/ManualValueConverter.cs). Only approximate where the server uses
+// .NET number parsing, but never stricter, so genuine "won't parse" inputs are caught.
+function parseManualValueAs(text, type) {
+    const t = String(type).trim().toLowerCase();
+    if (t === 'string' || t === 'bytestring') return true;
+    if (t === 'bool' || t === 'boolean') {
+        return /^(true|false)$/i.test(text) || text === '1' || text === '0';
+    }
+    if (t === 'datetime') return !Number.isNaN(Date.parse(text));
+    if (t === 'float' || t === 'single' || t === 'double' || t === 'real8' || t === 'decimal') {
+        // Commas only ever act as thousands grouping (the server parses with
+        // AllowThousands); strip them, then require a plain numeric shape.
+        const compact = text.replace(/,/g, '');
+        return /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(compact);
+    }
+    if (!/^[+-]?\d+$/.test(text)) return false;
+    let n;
+    try { n = BigInt(text); } catch (err) { return false; }
+    const ranges = {
+        byte: [0n, 255n],
+        sbyte: [-128n, 127n],
+        int16: [-32768n, 32767n], short: [-32768n, 32767n],
+        uint16: [0n, 65535n],
+        int32: [-2147483648n, 2147483647n], int: [-2147483648n, 2147483647n],
+        uint32: [0n, 4294967295n],
+        int64: [-9223372036854775808n, 9223372036854775807n], long: [-9223372036854775808n, 9223372036854775807n],
+        uint64: [0n, 18446744073709551615n]
+    };
+    const r = ranges[t];
+    return !!r && n >= r[0] && n <= r[1];
+}
+
+function updateManualValueHint() {
+    const hint = el('fpManualParseHint');
+    if (!hint || !faceplateOpen || !faceplateKey) return;
+    const sim = el('fpSimulated');
+    const input = el('fpManualInput');
+    hint.style.display = 'none';
+    if (!sim || !sim.checked || !input) return;
+    const text = input.value.trim();
+    if (!text) return;
+    const parts = faceplateKey.split('\u0000');
+    const type = fpManualTargetType(parts[0] || 'default', parts[1] || '');
+    if (!type) return; // no known type yet: the server accepts anything (content inference)
+    if (parseManualValueAs(text, type)) return;
+    hint.textContent = "Won't parse as " + type + " — the tag will not update until the Manual Value fits its type.";
+    hint.style.display = '';
 }
 
 const ROUTE_TO_TAB = {
@@ -7141,6 +7205,7 @@ function bindDynamicButtons() {
             updateFpRateEnabled();
         }
     });
+    el('fpManualInput').addEventListener('input', updateManualValueHint);
 }
 
 

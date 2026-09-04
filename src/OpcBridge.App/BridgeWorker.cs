@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Globalization;
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
@@ -805,7 +804,18 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
         for (int i = 0; i < manualMappings.Count; i++)
         {
             TagMapping mapping = manualMappings[i];
-            if (!TryCreateManualValue(mapping, out BridgeValue manualValue))
+
+            // When the tag has a real value (the mapping's DataType is Auto), pass it as the
+            // reference so the manual value is parsed into the tag's actual type instead of
+            // being re-inferred from the typed text (which would change the tag's type, e.g.
+            // "5" on a Double/Int32 tag became Int64).
+            object? lastValue = null;
+            if (bridge_state_.TryGetSnapshot(mapping.SourceId, mapping.ItemId, out BridgeValueSnapshot lastSnapshot))
+            {
+                lastValue = lastSnapshot.Value;
+            }
+
+            if (!TryCreateManualValue(mapping, lastValue, out BridgeValue manualValue))
             {
                 bridge_state_.ClearValue(mapping.SourceId, mapping.ItemId);
                 continue;
@@ -1750,9 +1760,9 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
         }
     }
 
-    private static bool TryCreateManualValue(TagMapping mapping, out BridgeValue value)
+    private static bool TryCreateManualValue(TagMapping mapping, object? lastValue, out BridgeValue value)
     {
-        if (TryConvertManualValue(mapping.DataType, mapping.ManualValue, out object? convertedValue))
+        if (ManualValueConverter.TryConvert(mapping.DataType, mapping.ManualValue, lastValue, out object? convertedValue))
         {
             value = new BridgeValue(
                 mapping.SourceId,
@@ -1766,163 +1776,6 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
 
         value = new BridgeValue(mapping.SourceId, mapping.ItemId, null, DateTime.UtcNow, 0, false);
         return false;
-    }
-
-    private static bool TryConvertManualValue(string dataType, string? manualValue, out object? convertedValue)
-    {
-        string text = manualValue?.Trim() ?? string.Empty;
-        string normalizedDataType = dataType.Trim().ToUpperInvariant();
-
-        if (normalizedDataType is "STRING")
-        {
-            convertedValue = text;
-            return true;
-        }
-
-        if (normalizedDataType is "BOOL" or "BOOLEAN")
-        {
-            if (bool.TryParse(text, out bool boolValue))
-            {
-                convertedValue = boolValue;
-                return true;
-            }
-
-            if (text == "1")
-            {
-                convertedValue = true;
-                return true;
-            }
-
-            if (text == "0")
-            {
-                convertedValue = false;
-                return true;
-            }
-
-            convertedValue = null;
-            return false;
-        }
-
-        if (normalizedDataType is "BYTE")
-        {
-            if (byte.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out byte byteValue))
-            {
-                convertedValue = byteValue;
-                return true;
-            }
-        }
-        else if (normalizedDataType is "SBYTE")
-        {
-            if (sbyte.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out sbyte sbyteValue))
-            {
-                convertedValue = sbyteValue;
-                return true;
-            }
-        }
-        else if (normalizedDataType is "INT16" or "SHORT")
-        {
-            if (short.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out short shortValue))
-            {
-                convertedValue = shortValue;
-                return true;
-            }
-        }
-        else if (normalizedDataType is "UINT16")
-        {
-            if (ushort.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out ushort ushortValue))
-            {
-                convertedValue = ushortValue;
-                return true;
-            }
-        }
-        else if (normalizedDataType is "INT32" or "INT")
-        {
-            if (int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int intValue))
-            {
-                convertedValue = intValue;
-                return true;
-            }
-        }
-        else if (normalizedDataType is "UINT32")
-        {
-            if (uint.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out uint uintValue))
-            {
-                convertedValue = uintValue;
-                return true;
-            }
-        }
-        else if (normalizedDataType is "INT64" or "LONG")
-        {
-            if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out long longValue))
-            {
-                convertedValue = longValue;
-                return true;
-            }
-        }
-        else if (normalizedDataType is "UINT64")
-        {
-            if (ulong.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out ulong ulongValue))
-            {
-                convertedValue = ulongValue;
-                return true;
-            }
-        }
-        else if (normalizedDataType is "FLOAT" or "SINGLE")
-        {
-            if (float.TryParse(text, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out float floatValue))
-            {
-                convertedValue = floatValue;
-                return true;
-            }
-        }
-        else if (normalizedDataType is "DOUBLE" or "REAL8")
-        {
-            if (double.TryParse(text, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out double doubleValue))
-            {
-                convertedValue = doubleValue;
-                return true;
-            }
-        }
-        else if (normalizedDataType is "DECIMAL")
-        {
-            if (decimal.TryParse(text, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out decimal decimalValue))
-            {
-                convertedValue = decimalValue;
-                return true;
-            }
-        }
-        else if (TryInferManualValue(text, out object? inferredValue))
-        {
-            convertedValue = inferredValue;
-            return true;
-        }
-
-        convertedValue = null;
-        return false;
-    }
-
-    private static bool TryInferManualValue(string text, out object? convertedValue)
-    {
-        if (bool.TryParse(text, out bool boolValue))
-        {
-            convertedValue = boolValue;
-            return true;
-        }
-
-        if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out long longValue))
-        {
-            convertedValue = longValue;
-            return true;
-        }
-
-        if (double.TryParse(text, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out double doubleValue))
-        {
-            convertedValue = doubleValue;
-            return true;
-        }
-
-        convertedValue = text;
-        return true;
     }
 
     public sealed record DisconnectedTag(string SourceId, string ItemId);
