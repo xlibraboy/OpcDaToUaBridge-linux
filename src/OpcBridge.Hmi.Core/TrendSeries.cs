@@ -105,6 +105,33 @@ public static class TrendRange
 }
 
 /// <summary>
+/// 0..100 normalization used by the group trend's percentage axis, so tags with very
+/// different engineering units can share one chart. Pure logic and unit-testable.
+/// </summary>
+public static class TrendPercentAxis
+{
+    /// <summary>
+    /// Maps a value into the 0..100 band of its series' visible min/max. Degenerate or
+    /// missing ranges (flat series, no data) map to 50 so the trace stays centered.
+    /// </summary>
+    public static double PercentFor(double value, double min, double max)
+    {
+        if (!double.IsFinite(min) || !double.IsFinite(max))
+        {
+            return 50;
+        }
+
+        double span = max - min;
+        if (!(span > 0) || !double.IsFinite(span))
+        {
+            return 50;
+        }
+
+        return Math.Clamp((value - min) / span * 100.0, 0, 100);
+    }
+}
+
+/// <summary>
 /// Windowed aggregate statistics for one pen, matching the columns of the pen
 /// configuration table (value, minimum, maximum, average, delta). Pure logic so the
 /// numbers are unit-testable without a UI.
@@ -173,5 +200,47 @@ public static class TrendPenStats
             max - min,
             Math.Sqrt(variance),
             count);
+    }
+}
+
+/// <summary>
+/// Builds the CSV export of a trend window: one row per sample in long format
+/// (Series, TimestampUtc, Value, Unit). Pure logic so exports are unit-testable.
+/// </summary>
+public static class TrendCsv
+{
+    public static string Build(IReadOnlyList<TrendSeries> series, bool includeHeader = true)
+    {
+        var sb = new StringBuilder();
+        if (includeHeader)
+        {
+            sb.AppendLine("Series,TimestampUtc,Value,Unit");
+        }
+
+        foreach (TrendSeries item in series)
+        {
+            string name = Escape(item.Name);
+            string unit = Escape(item.Unit);
+            foreach (TrendSample sample in item.Samples)
+            {
+                sb.Append(name).Append(',')
+                    .Append(sample.T.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture)).Append(',')
+                    .Append(sample.V.ToString(CultureInfo.InvariantCulture)).Append(',')
+                    .Append(unit).AppendLine();
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    private static string Escape(string value)
+    {
+        if (string.IsNullOrEmpty(value)
+            || (!value.Contains(',') && !value.Contains('"') && !value.Contains('\n') && !value.Contains('\r')))
+        {
+            return value ?? string.Empty;
+        }
+
+        return "\"" + value.Replace("\"", "\"\"") + "\"";
     }
 }

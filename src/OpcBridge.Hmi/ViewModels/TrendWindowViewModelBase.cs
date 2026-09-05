@@ -139,6 +139,11 @@ public abstract partial class TrendWindowViewModelBase : ObservableObject, IAsyn
     [ObservableProperty]
     private double? _alarmLow;
 
+    // Alarm edits change the single-tag pen's AlarmLimits, so re-publish the series.
+    partial void OnAlarmHighChanged(double? value) => OnPropertyChanged(nameof(Series));
+
+    partial void OnAlarmLowChanged(double? value) => OnPropertyChanged(nameof(Series));
+
     /// <summary>Editable high-limit text; parsed into <see cref="AlarmHigh"/> (single-tag trends).</summary>
     [ObservableProperty]
     private string _alarmHighText = string.Empty;

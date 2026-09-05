@@ -103,7 +103,7 @@ public partial class TrendGroupViewModel : TrendWindowViewModelBase
         string[] errors = PenRows.Where(p => p.HasError).Select(p => p.Name).ToArray();
         string windowLabel = IsZoomed ? FormatDuration(ToUtc - FromUtc) : RangeLabel;
         StatusMessage = errors.Length > 0
-            ? $"{total} points ({windowLabel}) · errors: {string.Join(\", \", errors)}"
+            ? $"{total} points ({windowLabel}) · errors: {string.Join(", ", errors)}"
             : total == 0
                 ? $"No history ({windowLabel})"
                 : $"{total} points ({windowLabel}) across {PenRows.Count} tags";

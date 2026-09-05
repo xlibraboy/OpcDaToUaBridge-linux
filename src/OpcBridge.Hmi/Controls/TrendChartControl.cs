@@ -617,9 +617,9 @@ public sealed class TrendChartControl : Control
                 continue;
             }
 
-            if (pen.FixedAxis is { } fixedAxis && fixedAxis.Value.Max > fixedAxis.Value.Min)
+            if (pen.FixedAxis is { } fixedAxis && fixedAxis.Max > fixedAxis.Min)
             {
-                strips.Add(new StripLayout(pen, used, default, IsDigital: false, Percent: false, fixedAxis.Value.Min, fixedAxis.Value.Max, fixedAxis.Value.Step));
+                strips.Add(new StripLayout(pen, used, default, IsDigital: false, Percent: false, fixedAxis.Min, fixedAxis.Max, fixedAxis.Step));
                 continue;
             }
 
@@ -666,6 +666,7 @@ public sealed class TrendChartControl : Control
         Typeface typeface)
     {
         double totalTicks = (to - from).Ticks;
+        double plotWidth = plotRight - plotLeft;
         double frameTop = bounds.Top - 1;
         var frameRect = new Rect(bounds.Left, frameTop, bounds.Width, bounds.Height + 2);
 
@@ -854,6 +855,7 @@ public sealed class TrendChartControl : Control
             return;
         }
 
+        double plotWidth = plotRight - plotLeft;
         var crosshairPen = new Pen(CrosshairBrush, 1);
         context.DrawLine(crosshairPen, new Point(cursor.X, TopPad), new Point(cursor.X, plotBottom));
 

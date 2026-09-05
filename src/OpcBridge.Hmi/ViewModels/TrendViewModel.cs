@@ -115,10 +115,6 @@ public partial class TrendViewModel : TrendWindowViewModelBase
         }
     }
 
-    partial void OnAlarmHighChanged(double? value) => OnPropertyChanged(nameof(Series));
-
-    partial void OnAlarmLowChanged(double? value) => OnPropertyChanged(nameof(Series));
-
     private static string NormalizeTrendStyle(string? value)
     {
         return !string.IsNullOrWhiteSpace(value)
