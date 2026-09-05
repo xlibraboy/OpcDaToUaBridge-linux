@@ -6,6 +6,9 @@ public sealed class MultiBridgeTagEntry
 {
     public required TagBindingKey Key { get; init; }
     public string DisplayName { get; set; } = string.Empty;
+
+    /// <summary>Tag description for the trend pen table (e.g. "Level of Tank 1").</summary>
+    public string Description { get; set; } = string.Empty;
     public string DataType { get; set; } = "Double";
     public object? Value { get; set; }
     public DateTime? TimestampUtc { get; set; }
@@ -124,6 +127,7 @@ public sealed class MultiBridgeTagCache
     {
         Key = key,
         DisplayName = string.IsNullOrWhiteSpace(dto.DisplayName) ? dto.ItemId : dto.DisplayName,
+        Description = dto.Description ?? string.Empty,
         DataType = dto.DataType,
         Value = dto.Value,
         TimestampUtc = dto.TimestampUtc,

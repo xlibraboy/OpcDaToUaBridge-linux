@@ -4,11 +4,12 @@ using System.Globalization;
 namespace OpcBridge.Hmi.Core;
 
 /// <summary>
-/// One plottable trace in a trend chart: its rendering settings (name, unit, line
-/// style, color, visibility) plus the numeric samples loaded for the current window.
-/// A single-tag trend has exactly one series; a group trend has several, each drawn in
-/// its own color. <see cref="IsBoolean"/> marks discrete on/off signals, which a group
-/// chart draws in their own stacked lanes instead of on the analog axis.
+/// One plottable trace ("pen") in a trend chart: its rendering settings (name,
+/// description, unit, line style, color, visibility) plus the numeric samples loaded
+/// for the current window. A single-tag trend has exactly one pen; a group trend has
+/// several, each drawn in its own strip. <see cref="IsBoolean"/> marks discrete on/off
+/// signals, which render as square-wave strips with optional
+/// <see cref="StateLabels"/> (index 0 = false state text, 1 = true state text).
 /// </summary>
 public readonly record struct TrendSeries(
     string Name,
@@ -16,8 +17,13 @@ public readonly record struct TrendSeries(
     string TrendStyle,
     string Color,
     IReadOnlyList<TrendSample> Samples,
+    string Description = "",
     bool Visible = true,
-    bool IsBoolean = false);
+    bool IsBoolean = false,
+    (double Low, double High)? AlarmLimits = null,
+    string?[]? StateLabels = null,
+    bool UsePercentAxis = false,
+    (double Min, double Max, double Step)? FixedAxis = null);
 
 /// <summary>
 /// Stable per-trace colors used across the HMI trend charts. Single-tag trends always
@@ -99,70 +105,73 @@ public static class TrendRange
 }
 
 /// <summary>
-/// 0..100 normalization used by the group trend's percentage axis, so tags with very
-/// different engineering units can share one chart. Pure logic and unit-testable.
+/// Windowed aggregate statistics for one pen, matching the columns of the pen
+/// configuration table (value, minimum, maximum, average, delta). Pure logic so the
+/// numbers are unit-testable without a UI.
 /// </summary>
-public static class TrendPercentAxis
+public static class TrendPenStats
 {
+    /// <summary>Result of aggregating a pen's samples over the displayed window.</summary>
+    public readonly record struct Result(
+        double Value,
+        double Minimum,
+        double Maximum,
+        double Average,
+        double Delta,
+        double StdDev,
+        int Count);
+
     /// <summary>
-    /// Maps a value into the 0..100 band of its series' visible min/max. Degenerate or
-    /// missing ranges (flat series, no data) map to 50 so the trace stays centered.
+    /// Aggregates finite samples in [from, to]. Returns null when no usable sample
+    /// exists; <see cref="Result.Value"/> is then the last finite sample overall.
     /// </summary>
-    public static double PercentFor(double value, double min, double max)
+    public static Result? Compute(IReadOnlyList<TrendSample> samples, DateTime from, DateTime to)
     {
-        if (!double.IsFinite(min) || !double.IsFinite(max))
-        {
-            return 50;
-        }
+        double lastOverall = double.NaN;
+        double min = double.MaxValue;
+        double max = double.MinValue;
+        double sum = 0;
+        double sumSquares = 0;
+        int count = 0;
 
-        double span = max - min;
-        if (!(span > 0) || !double.IsFinite(span))
+        for (int i = 0; i < samples.Count; i++)
         {
-            return 50;
-        }
-
-        return Math.Clamp((value - min) / span * 100.0, 0, 100);
-    }
-}
-
-/// <summary>
-/// Builds the CSV export of a trend window: one row per sample in long format
-/// (Series, TimestampUtc, Value, Unit). Pure logic so exports are unit-testable.
-/// </summary>
-public static class TrendCsv
-{
-    public static string Build(IReadOnlyList<TrendSeries> series, bool includeHeader = true)
-    {
-        var sb = new StringBuilder();
-        if (includeHeader)
-        {
-            sb.AppendLine("Series,TimestampUtc,Value,Unit");
-        }
-
-        foreach (TrendSeries item in series)
-        {
-            string name = Escape(item.Name);
-            string unit = Escape(item.Unit);
-            foreach (TrendSample sample in item.Samples)
+            TrendSample sample = samples[i];
+            if (!double.IsFinite(sample.V))
             {
-                sb.Append(name).Append(',')
-                    .Append(sample.T.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture)).Append(',')
-                    .Append(sample.V.ToString(CultureInfo.InvariantCulture)).Append(',')
-                    .Append(unit).AppendLine();
+                continue;
             }
+
+            lastOverall = sample.V;
+            if (sample.T < from || sample.T > to)
+            {
+                continue;
+            }
+
+            min = Math.Min(min, sample.V);
+            max = Math.Max(max, sample.V);
+            sum += sample.V;
+            sumSquares += sample.V * sample.V;
+            count++;
         }
 
-        return sb.ToString();
-    }
-
-    private static string Escape(string value)
-    {
-        if (string.IsNullOrEmpty(value)
-            || (!value.Contains(',') && !value.Contains('"') && !value.Contains('\n') && !value.Contains('\r')))
+        if (count == 0)
         {
-            return value ?? string.Empty;
+            return double.IsNaN(lastOverall)
+                ? null
+                : new Result(lastOverall, lastOverall, lastOverall, lastOverall, 0, 0, 0);
         }
 
-        return "\"" + value.Replace("\"", "\"\"") + "\"";
+        double avg = sum / count;
+        // Population stddev; for count==1 the variance is defined as zero.
+        double variance = count > 1 ? Math.Max(0, sumSquares / count - avg * avg) : 0;
+        return new Result(
+            lastOverall,
+            min,
+            max,
+            avg,
+            max - min,
+            Math.Sqrt(variance),
+            count);
     }
 }

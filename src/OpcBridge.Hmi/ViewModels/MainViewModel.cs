@@ -337,7 +337,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// </summary>
     public void OpenTrendGroup(IReadOnlyList<TagItemViewModel> tags)
     {
-        var series = new List<TrendSeriesViewModel>();
+        var series = new List<TrendPenViewModel>();
         foreach (TagItemViewModel tag in tags)
         {
             TagBindingKey key = tag.BindingKey;
@@ -348,9 +348,11 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             }
 
             var entry = connections_.Cache.TryGet(key, out MultiBridgeTagEntry? cached) ? cached : null;
-            series.Add(new TrendSeriesViewModel(
+            series.Add(new TrendPenViewModel(
                 key,
                 session.Api,
+                displayName: tag.DisplayName,
+                description: entry?.Description,
                 dataType: entry?.DataType,
                 unit: entry?.Unit,
                 trendStyle: entry?.TrendStyle));
@@ -519,7 +521,14 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
                     throw new InvalidOperationException("Bridge not connected: " + key.BridgeId);
                 }
 
-                TrendViewModel vm = new(key, session.Api, dataType: connections_.Cache.TryGet(key, out var tagEntry) ? tagEntry?.DataType : null, unit: tagEntry?.Unit, trendStyle: tagEntry?.TrendStyle);
+                TrendViewModel vm = new(
+                    key,
+                    session.Api,
+                    dataType: connections_.Cache.TryGet(key, out var tagEntry) ? tagEntry?.DataType : null,
+                    unit: tagEntry?.Unit,
+                    trendStyle: tagEntry?.TrendStyle,
+                    displayName: tagEntry?.DisplayName,
+                    description: tagEntry?.Description);
                 return new TrendWindow(vm);
             },
             owner: ownerWindow_);

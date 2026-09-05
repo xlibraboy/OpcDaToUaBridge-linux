@@ -6,81 +6,80 @@ using OpcBridge.Hmi.Core;
 namespace OpcBridge.Hmi.ViewModels;
 
 /// <summary>
-/// Group trend window: several tags plotted on one chart with a shared time window,
-/// zoom and Y axis. Each tag is a <see cref="TrendSeriesViewModel"/> drawn in its own
-/// palette color; a legend inside the chart maps colors to tags.
+/// Group trend window: several tags as stacked pens, each in its own strip with its own
+/// Y axis (digital pens as square-wave strips), plus the pen configuration table at the
+/// bottom. Each pen loads its own history for the shared time window.
 /// </summary>
 public partial class TrendGroupViewModel : TrendWindowViewModelBase
 {
-    /// <summary>Tags in stable order; order also fixes the legend/trace palette colors.</summary>
-    public ObservableCollection<TrendSeriesViewModel> SeriesItems { get; } = new();
+    /// <summary>Backing pen collection; order also fixes the strip stack and palette colors.</summary>
+    public ObservableCollection<TrendPenViewModel> PenRows { get; } = new();
 
-    public TrendGroupViewModel(IEnumerable<TrendSeriesViewModel> series)
+    /// <inheritdoc />
+    public override IReadOnlyList<TrendPenViewModel> Pens => PenRows;
+
+    public TrendGroupViewModel(IEnumerable<TrendPenViewModel> pens)
     {
-        foreach (TrendSeriesViewModel item in series)
+        foreach (TrendPenViewModel pen in pens)
         {
-            SeriesItems.Add(item);
-            item.PropertyChanged += OnSeriesPropertyChanged;
+            PenRows.Add(pen);
+            pen.PropertyChanged += OnPenPropertyChanged;
         }
 
-        for (int i = 0; i < SeriesItems.Count; i++)
+        for (int i = 0; i < PenRows.Count; i++)
         {
-            SeriesItems[i].Color = TrendSeriesPalette.ColorFor(i);
+            PenRows[i].Color = TrendSeriesPalette.ColorFor(i);
         }
 
-        Title = SeriesItems.Count switch
+        Title = PenRows.Count switch
         {
             0 => "Trend group",
-            1 => SeriesItems[0].Title,
-            _ => $"Group trend · {SeriesItems.Count} tags"
+            1 => PenRows[0].Name,
+            _ => $"Group trend · {PenRows.Count} tags"
         };
-        // A group mixes tags, so the Y axis is always fitted to the data (no fixed
-        // data-type range); the Auto range toggle stays visible but disabled.
-        HasFixedRange = false;
-        AutoRange = true;
-        RecomputeAxis();
+
         _ = ReloadAsync();
     }
 
-    /// <summary>Group trends offer the shared/percent Y-axis choice for mixed units.</summary>
+    /// <summary>Group trends offer the per-pen/percent Y-axis choice for mixed units.</summary>
     public override bool SupportsPercentAxis => true;
 
-    /// <summary>Chart input: one series per tag, in stable order.</summary>
-    public override IReadOnlyList<TrendSeries> Series => SeriesItems.Select(s => s.Series).ToArray();
+    /// <summary>Chart input: one pen per strip, in stable order.</summary>
+    public override IReadOnlyList<TrendSeries> Series => PenRows.Select(p => p.Series).ToArray();
 
-    private void OnSeriesPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    private void OnPenPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName is nameof(TrendSeriesViewModel.Samples)
-            or nameof(TrendSeriesViewModel.Color)
-            or nameof(TrendSeriesViewModel.IsVisible))
+        if (e.PropertyName is nameof(TrendPenViewModel.Samples)
+            or nameof(TrendPenViewModel.IsVisible)
+            or nameof(TrendPenViewModel.Color))
         {
             OnPropertyChanged(nameof(Series));
         }
     }
 
-    /// <summary>Toggles a trace's visibility from the legend row click.</summary>
-    public void ToggleSeriesVisibility(string seriesName)
+    /// <summary>Toggles a pen's visibility from the pen-table checkbox.</summary>
+    public void TogglePen(string penName)
     {
-        TrendSeriesViewModel? item = FindSeries(seriesName);
-        if (item is not null)
+        TrendPenViewModel? pen = FindPen(penName);
+        if (pen is not null)
         {
-            item.IsVisible = !item.IsVisible;
+            pen.IsVisible = !pen.IsVisible;
         }
     }
 
-    /// <summary>Cycles a trace's color from the legend swatch click.</summary>
-    public void CycleSeriesColor(string seriesName)
+    /// <summary>Cycles a pen's color from the pen-table swatch click.</summary>
+    public void CyclePenColor(string penName)
     {
-        FindSeries(seriesName)?.CycleColor();
+        FindPen(penName)?.CycleColor();
     }
 
-    private TrendSeriesViewModel? FindSeries(string seriesName)
+    private TrendPenViewModel? FindPen(string penName)
     {
-        foreach (TrendSeriesViewModel item in SeriesItems)
+        foreach (TrendPenViewModel pen in PenRows)
         {
-            if (string.Equals(item.Title, seriesName, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(pen.Name, penName, StringComparison.OrdinalIgnoreCase))
             {
-                return item;
+                return pen;
             }
         }
 
@@ -89,7 +88,7 @@ public partial class TrendGroupViewModel : TrendWindowViewModelBase
 
     protected override async Task ReloadDataAsync(DateTime from, DateTime to, CancellationToken ct)
     {
-        Task[] loads = SeriesItems.Select(s => s.LoadAsync(from, to, ct)).ToArray();
+        Task[] loads = PenRows.Select(p => p.LoadAsync(from, to, ct)).ToArray();
         await Task.WhenAll(loads).ConfigureAwait(true);
         if (ct.IsCancellationRequested)
         {
@@ -98,49 +97,23 @@ public partial class TrendGroupViewModel : TrendWindowViewModelBase
 
         FromUtc = from;
         ToUtc = to;
-        RecomputeAxis();
         OnPropertyChanged(nameof(Series));
 
-        int total = SeriesItems.Sum(s => s.Samples.Count);
-        string[] errors = SeriesItems.Where(s => s.HasError).Select(s => s.Title).ToArray();
+        int total = PenRows.Sum(p => p.Samples.Count);
+        string[] errors = PenRows.Where(p => p.HasError).Select(p => p.Name).ToArray();
         string windowLabel = IsZoomed ? FormatDuration(ToUtc - FromUtc) : RangeLabel;
         StatusMessage = errors.Length > 0
-            ? $"{total} points ({windowLabel}) · errors: {string.Join(", ", errors)}"
+            ? $"{total} points ({windowLabel}) · errors: {string.Join(\", \", errors)}"
             : total == 0
                 ? $"No history ({windowLabel})"
-                : $"{total} points ({windowLabel}) across {SeriesItems.Count} tags";
-    }
-
-    /// <summary>Fits the shared Y axis to the numeric samples of every series.</summary>
-    protected override void RecomputeAxis()
-    {
-        double? min = null;
-        double? max = null;
-        foreach (TrendSeriesViewModel item in SeriesItems)
-        {
-            foreach (TrendSample sample in item.Samples)
-            {
-                if (!double.IsFinite(sample.V))
-                {
-                    continue;
-                }
-
-                min = min is null ? sample.V : Math.Min(min.Value, sample.V);
-                max = max is null ? sample.V : Math.Max(max.Value, sample.V);
-            }
-        }
-
-        TrendAxis axis = TrendScale.Resolve(autoRange: true, typeRange: null, min, max);
-        AxisMin = axis.IsValid ? axis.Min : 0;
-        AxisMax = axis.IsValid ? axis.Max : 1;
-        AxisStep = axis.IsValid ? axis.Step : 1;
+                : $"{total} points ({windowLabel}) across {PenRows.Count} tags";
     }
 
     public override async ValueTask DisposeAsync()
     {
-        foreach (TrendSeriesViewModel item in SeriesItems)
+        foreach (TrendPenViewModel pen in PenRows)
         {
-            item.PropertyChanged -= OnSeriesPropertyChanged;
+            pen.PropertyChanged -= OnPenPropertyChanged;
         }
 
         await base.DisposeAsync().ConfigureAwait(false);

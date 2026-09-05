@@ -10,7 +10,7 @@ using OpcBridge.Hmi.Core;
 
 namespace OpcBridge.Hmi.Controls;
 
-/// <summary>Raised after a right-drag zoom selection on the plot.</summary>
+/// <summary>Raised after a drag-zoom selection on the plot.</summary>
 public sealed class TrendZoomRequestedEventArgs : EventArgs
 {
     public TrendZoomRequestedEventArgs(DateTime fromUtc, DateTime toUtc)
@@ -24,28 +24,13 @@ public sealed class TrendZoomRequestedEventArgs : EventArgs
     public DateTime ToUtc { get; }
 }
 
-/// <summary>Raised when the operator clicks a legend row (toggles visibility or cycles color).</summary>
-public sealed class TrendLegendEventArgs : EventArgs
-{
-    public TrendLegendEventArgs(string seriesName)
-    {
-        SeriesName = seriesName;
-    }
-
-    public string SeriesName { get; }
-}
-
 /// <summary>
-/// Standard SCADA-style trend: numeric Y axis with min/max gridline labels on the left,
-/// clock-aligned time axis along the bottom, and value traces drawn across the plot.
-/// One or several series can be plotted (single-tag trend = one series, group trend =
-/// many); each series has its own color and line style, and an interactive legend maps
-/// colors to tags when more than one series is shown (click a swatch to cycle its color,
-/// click the row to show/hide the trace). Group trends additionally support a 0..100%
-/// normalized axis for mixed units and dedicated lanes for boolean signals. Alarm
-/// thresholds (single-tag) render as shaded bands. Right-drag (when
-/// <see cref="EnableRangeZoom"/> is set) selects a time range that the host can load via
-/// <see cref="ZoomRequested"/>.
+/// VTScada-style historical trend: one strip per pen stacked vertically, each with its
+/// own Y axis on the left (digital pens get a square-wave strip with optional state
+/// text instead of numbers). A crosshair follows the mouse with a per-strip value chip
+/// plus a floating time chip; a pin command drops a blue cursor line that stays put
+/// while the data keeps scrolling. Layout (strips, axes, chips, pen table in the host
+/// window) follows the classic SCADA data viewer; colors/fonts stay the app theme.
 /// </summary>
 public sealed class TrendChartControl : Control
 {
@@ -61,6 +46,14 @@ public sealed class TrendChartControl : Control
     public static readonly StyledProperty<DateTime> ToUtcProperty =
         AvaloniaProperty.Register<TrendChartControl, DateTime>(nameof(ToUtc));
 
+    /// <summary>Y-axis mapping for analog pens: "Shared" (one scale) or "Percent" (each strip 0..100%).</summary>
+    public static readonly StyledProperty<string?> YAxisModeProperty =
+        AvaloniaProperty.Register<TrendChartControl, string?>(nameof(YAxisMode), "Shared");
+
+    public static readonly StyledProperty<double?> AlarmHighProperty =
+        AvaloniaProperty.Register<TrendChartControl, double?>(nameof(AlarmHigh));
+
+    // Single-pen (faceplate) compat properties: axis + unit + line style for Samples.
     public static readonly StyledProperty<double> YMinProperty =
         AvaloniaProperty.Register<TrendChartControl, double>(nameof(YMin));
 
@@ -70,28 +63,24 @@ public sealed class TrendChartControl : Control
     public static readonly StyledProperty<double> YStepProperty =
         AvaloniaProperty.Register<TrendChartControl, double>(nameof(YStep));
 
-    public static readonly StyledProperty<bool> EnableRangeZoomProperty =
-        AvaloniaProperty.Register<TrendChartControl, bool>(nameof(EnableRangeZoom), false);
-
     public static readonly StyledProperty<string?> UnitProperty =
         AvaloniaProperty.Register<TrendChartControl, string?>(nameof(Unit));
 
     public static readonly StyledProperty<string?> TrendStyleProperty =
         AvaloniaProperty.Register<TrendChartControl, string?>(nameof(TrendStyle), "Continuous");
 
-    /// <summary>Y-axis mapping: "Shared" (one scale) or "Percent" (each series 0..100%).</summary>
-    public static readonly StyledProperty<string?> YAxisModeProperty =
-        AvaloniaProperty.Register<TrendChartControl, string?>(nameof(YAxisMode), "Shared");
-
-    /// <summary>High alarm limit; the chart shades everything above it (single-tag trends).</summary>
-    public static readonly StyledProperty<double?> AlarmHighProperty =
-        AvaloniaProperty.Register<TrendChartControl, double?>(nameof(AlarmHigh));
-
-    /// <summary>Low alarm limit; the chart shades everything below it (single-tag trends).</summary>
     public static readonly StyledProperty<double?> AlarmLowProperty =
         AvaloniaProperty.Register<TrendChartControl, double?>(nameof(AlarmLow));
 
-    /// <summary>Single-series input (used by the faceplate's 1h block).</summary>
+    /// <summary>UTC timestamp of the pinned blue cursor; null = no pin.</summary>
+    public static readonly StyledProperty<DateTime?> PinnedAtUtcProperty =
+        AvaloniaProperty.Register<TrendChartControl, DateTime?>(nameof(PinnedAtUtc));
+
+    /// <summary>True while a drag-zoom selection is active (hides hover chips).</summary>
+    public static readonly StyledProperty<bool> EnableRangeZoomProperty =
+        AvaloniaProperty.Register<TrendChartControl, bool>(nameof(EnableRangeZoom), false);
+
+    /// <summary>Single-series input (faceplate mini-trend).</summary>
     public IEnumerable<TrendSample>? Samples
     {
         get => GetValue(SamplesProperty);
@@ -99,8 +88,8 @@ public sealed class TrendChartControl : Control
     }
 
     /// <summary>
-    /// Multi-series input: one entry per trace. When set and non-empty it takes
-    /// precedence over <see cref="Samples"/>/<see cref="Unit"/>/<see cref="TrendStyle"/>.
+    /// Multi-pen input: one entry per strip. When set and non-empty it takes precedence
+    /// over <see cref="Samples"/>.
     /// </summary>
     public IEnumerable<TrendSeries>? Series
     {
@@ -120,60 +109,13 @@ public sealed class TrendChartControl : Control
         set => SetValue(ToUtcProperty, value);
     }
 
-    /// <summary>Bottom of the Y axis (gridlines/labels drawn down to this value).</summary>
-    public double YMin
-    {
-        get => GetValue(YMinProperty);
-        set => SetValue(YMinProperty, value);
-    }
-
-    /// <summary>Top of the Y axis.</summary>
-    public double YMax
-    {
-        get => GetValue(YMaxProperty);
-        set => SetValue(YMaxProperty, value);
-    }
-
-    /// <summary>Value distance between horizontal gridlines.</summary>
-    public double YStep
-    {
-        get => GetValue(YStepProperty);
-        set => SetValue(YStepProperty, value);
-    }
-
-    /// <summary>
-    /// When true, right-drag selects a time range and raises <see cref="ZoomRequested"/>.
-    /// </summary>
-    public bool EnableRangeZoom
-    {
-        get => GetValue(EnableRangeZoomProperty);
-        set => SetValue(EnableRangeZoomProperty, value);
-    }
-
-    /// <summary>Tag's engineering unit (e.g. "°C"), appended to the cursor and stats readouts.</summary>
-    public string? Unit
-    {
-        get => GetValue(UnitProperty);
-        set => SetValue(UnitProperty, value);
-    }
-
-    /// <summary>
-    /// How the value trace is drawn: "Continuous" (line through the samples, default) or
-    /// "Step" (sample-and-hold — the value is held until the next sample's time, so the
-    /// trace steps vertically between samples instead of interpolating a diagonal).
-    /// </summary>
-    public string? TrendStyle
-    {
-        get => GetValue(TrendStyleProperty);
-        set => SetValue(TrendStyleProperty, value);
-    }
-
     public string? YAxisMode
     {
         get => GetValue(YAxisModeProperty);
         set => SetValue(YAxisModeProperty, value);
     }
 
+    /// <summary>Alarm limits for the single-pen (faceplate) mode; per-pen limits come on the series.</summary>
     public double? AlarmHigh
     {
         get => GetValue(AlarmHighProperty);
@@ -186,17 +128,63 @@ public sealed class TrendChartControl : Control
         set => SetValue(AlarmLowProperty, value);
     }
 
-    /// <summary>Raised when the operator right-drags a time range on the plot.</summary>
+    /// <summary>Bottom of the single-pen Y axis (faceplate mode).</summary>
+    public double YMin
+    {
+        get => GetValue(YMinProperty);
+        set => SetValue(YMinProperty, value);
+    }
+
+    /// <summary>Top of the single-pen Y axis (faceplate mode).</summary>
+    public double YMax
+    {
+        get => GetValue(YMaxProperty);
+        set => SetValue(YMaxProperty, value);
+    }
+
+    /// <summary>Gridline step of the single-pen Y axis (faceplate mode).</summary>
+    public double YStep
+    {
+        get => GetValue(YStepProperty);
+        set => SetValue(YStepProperty, value);
+    }
+
+    /// <summary>Tag's engineering unit appended to chips (faceplate mode).</summary>
+    public string? Unit
+    {
+        get => GetValue(UnitProperty);
+        set => SetValue(UnitProperty, value);
+    }
+
+    /// <summary>"Continuous" or "Step" trace rendering (faceplate mode).</summary>
+    public string? TrendStyle
+    {
+        get => GetValue(TrendStyleProperty);
+        set => SetValue(TrendStyleProperty, value);
+    }
+
+    /// <summary>UTC timestamp of the pinned blue cursor; null = no pin.</summary>
+    public DateTime? PinnedAtUtc
+    {
+        get => GetValue(PinnedAtUtcProperty);
+        set => SetValue(PinnedAtUtcProperty, value);
+    }
+
+    /// <summary>When true, drag on the plot selects a time range and raises <see cref="ZoomRequested"/>.</summary>
+    public bool EnableRangeZoom
+    {
+        get => GetValue(EnableRangeZoomProperty);
+        set => SetValue(EnableRangeZoomProperty, value);
+    }
+
+    /// <summary>Raised when the operator drag-selects a time range on the plot.</summary>
     public event EventHandler<TrendZoomRequestedEventArgs>? ZoomRequested;
 
-    /// <summary>Raised when the operator double-clicks the plot (request to zoom back out).</summary>
+    /// <summary>Raised when the operator double-clicks the plot (zoom back out).</summary>
     public event EventHandler? ZoomResetRequested;
 
-    /// <summary>Raised when the operator clicks a legend row body (toggle trace visibility).</summary>
-    public event EventHandler<TrendLegendEventArgs>? LegendVisibilityRequested;
-
-    /// <summary>Raised when the operator clicks a legend color swatch (cycle the trace color).</summary>
-    public event EventHandler<TrendLegendEventArgs>? LegendColorRequested;
+    /// <summary>Raised when a pin is dropped or cleared (Ctrl+Click); carries the pinned UTC time or null.</summary>
+    public event EventHandler<DateTime?>? PinChanged;
 
     static TrendChartControl()
     {
@@ -205,20 +193,20 @@ public sealed class TrendChartControl : Control
             SeriesProperty,
             FromUtcProperty,
             ToUtcProperty,
+            YAxisModeProperty,
+            AlarmHighProperty,
+            AlarmLowProperty,
+            PinnedAtUtcProperty,
             YMinProperty,
             YMaxProperty,
             YStepProperty,
             UnitProperty,
-            TrendStyleProperty,
-            YAxisModeProperty,
-            AlarmHighProperty,
-            AlarmLowProperty);
+            TrendStyleProperty);
     }
 
     public TrendChartControl()
     {
-        // Painting an opaque background makes the whole chart a hit region so pointer
-        // events (hover cursor, legend clicks, right-drag zoom) are handled right here.
+        // Opaque background makes the whole chart a hit region for crosshair/pin/zoom.
         Cursor = new Cursor(StandardCursorType.Cross);
         AddHandler(Gestures.DoubleTappedEvent, OnChartDoubleTapped);
     }
@@ -229,7 +217,7 @@ public sealed class TrendChartControl : Control
 
     private bool IsPercentAxisMode => string.Equals(YAxisMode, "Percent", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>The traces to draw: <see cref="Series"/> when set, else the single-series props.</summary>
+    /// <summary>The pens to draw: <see cref="Series"/> when set, else the single-series props.</summary>
     private IReadOnlyList<TrendSeries> GetSeries()
     {
         if (Series is not null)
@@ -244,6 +232,7 @@ public sealed class TrendChartControl : Control
         IReadOnlyList<TrendSample> samples = Samples is null
             ? Array.Empty<TrendSample>()
             : Samples as IReadOnlyList<TrendSample> ?? Samples.ToArray();
+        (double, double, double)? fixedAxis = YStep > 0 && YMax > YMin ? (YMin, YMax, YStep) : null;
         return new[]
         {
             new TrendSeries(
@@ -251,7 +240,8 @@ public sealed class TrendChartControl : Control
                 Unit ?? string.Empty,
                 TrendStyle ?? "Continuous",
                 TrendSeriesPalette.ColorFor(0),
-                samples)
+                samples,
+                FixedAxis: fixedAxis)
         };
     }
 
@@ -260,16 +250,11 @@ public sealed class TrendChartControl : Control
     private double zoomAnchorX_;
     private double zoomCurrentX_;
 
-    // Geometry + window captured at the last successful render, used by the zoom mapping.
+    // Geometry + window captured at the last successful render, used by hit mapping.
     private double layoutPlotLeft_;
     private double layoutPlotWidth_;
     private DateTime layoutFromUtc_;
     private DateTime layoutToUtc_;
-
-    // Legend hit regions captured at the last render, used for pointer clicks.
-    private readonly List<LegendHitRect> legendHitRects_ = new();
-
-    private readonly record struct LegendHitRect(Rect SwatchRect, Rect RowRect, string Name);
 
     protected override void OnPointerMoved(PointerEventArgs e)
     {
@@ -295,28 +280,24 @@ public sealed class TrendChartControl : Control
         Point position = e.GetPosition(this);
         PointerPointProperties props = e.GetCurrentPoint(this).Properties;
 
-        // Left click on the legend: swatch cycles the trace color, row toggles visibility.
-        if (props.IsLeftButtonPressed && legendHitRects_.Count > 0)
+        // Ctrl+Click drops/clears the blue time cursor (like the VTScada pin).
+        if (props.IsLeftButtonPressed && (e.KeyModifiers & KeyModifiers.Control) != 0)
         {
-            foreach (LegendHitRect hit in legendHitRects_)
+            if (layoutPlotWidth_ > 0 && position.X >= layoutPlotLeft_ && position.X <= layoutPlotLeft_ + layoutPlotWidth_)
             {
-                if (hit.SwatchRect.Contains(position))
-                {
-                    LegendColorRequested?.Invoke(this, new TrendLegendEventArgs(hit.Name));
-                    e.Handled = true;
-                    return;
-                }
-
-                if (hit.RowRect.Contains(position))
-                {
-                    LegendVisibilityRequested?.Invoke(this, new TrendLegendEventArgs(hit.Name));
-                    e.Handled = true;
-                    return;
-                }
+                double ticks = (layoutToUtc_ - layoutFromUtc_).Ticks;
+                DateTime pinned = layoutFromUtc_ + TimeSpan.FromTicks((long)(ticks * (position.X - layoutPlotLeft_) / layoutPlotWidth_));
+                DateTime? next = PinnedAtUtc is { } current && Math.Abs((current - pinned).TotalMilliseconds) < 1 ? null : pinned;
+                PinnedAtUtc = next;
+                PinChanged?.Invoke(this, next);
+                InvalidateVisual();
+                e.Handled = true;
             }
+
+            return;
         }
 
-        if (!EnableRangeZoom || !props.IsRightButtonPressed)
+        if (!EnableRangeZoom || !props.IsLeftButtonPressed)
         {
             return;
         }
@@ -417,18 +398,19 @@ public sealed class TrendChartControl : Control
 
     // Palette matches Themes/SharedResources.axaml (dark theme).
     private static readonly SolidColorBrush PanelBrush = new(Color.Parse("#1B1B20"));
+    private static readonly SolidColorBrush StripBrush = new(Color.Parse("#141419"));
     private static readonly SolidColorBrush AxisLabelBrush = new(Color.Parse("#B4B4BE"));
     private static readonly SolidColorBrush GridBrush = new(Color.Parse("#3A3A44"));
     private static readonly SolidColorBrush FrameBrush = new(Color.Parse("#555560"));
     private static readonly SolidColorBrush CrosshairBrush = new(Color.Parse("#7A7A86"));
+    private static readonly SolidColorBrush PinBrush = new(Color.Parse("#4A90D9"));
     private static readonly SolidColorBrush DotFillBrush = new(Color.Parse("#FFFFFF"));
     private static readonly SolidColorBrush ReadoutBgBrush = new(Color.FromArgb(0xEC, 0x23, 0x23, 0x29));
     private static readonly SolidColorBrush ZoomFillBrush = new(Color.FromArgb(0x40, 0x4F, 0xC3, 0xF7));
-    private static readonly SolidColorBrush LaneBrush = new(Color.FromArgb(0x14, 0xFF, 0xFF, 0xFF));
     private static readonly SolidColorBrush AlarmBandBrush = new(Color.FromArgb(0x1F, 0xEF, 0x53, 0x50));
     private static readonly Pen AlarmPen = new(new SolidColorBrush(Color.Parse("#EF5350")), 1) { DashStyle = DashStyle.Dash };
 
-    /// <summary>Solid brush for a series color (hex string from the palette or view model).</summary>
+    /// <summary>Solid brush for a pen color (hex string from the palette or view model).</summary>
     private static SolidColorBrush BrushFor(string colorHex)
     {
         try
@@ -441,7 +423,7 @@ public sealed class TrendChartControl : Control
         }
     }
 
-    /// <summary>Translucent fill under a series trace (16% opacity of the series color).</summary>
+    /// <summary>Translucent fill under a pen trace (16% opacity of the pen color).</summary>
     private static SolidColorBrush FillFor(string colorHex)
     {
         try
@@ -455,38 +437,25 @@ public sealed class TrendChartControl : Control
         }
     }
 
-    /// <summary>Series color dimmed for hidden legend rows.</summary>
-    private static SolidColorBrush DimBrushFor(string colorHex)
-    {
-        try
-        {
-            Color color = Color.Parse(colorHex);
-            return new SolidColorBrush(Color.FromArgb(0x66, color.R, color.G, color.B));
-        }
-        catch
-        {
-            return new SolidColorBrush(Color.FromArgb(0x66, 0x4F, 0xC3, 0xF7));
-        }
-    }
-
     private const double FontSize = 11;
-    private const double TopPad = 8;
+    private const double TopPad = 6;
     private const double RightPad = 10;
     private const double BottomPad = 24;
-    private const double LaneHeight = 20;
-    private const double LaneGap = 2;
+    private const double StripGap = 6;
 
-    private readonly record struct PlottedSeries(
+    private readonly record struct StripLayout(
         TrendSeries Series,
         TrendSample[] Used,
-        Point[] Trace,
-        Func<double, double> YOf,
-        double FillBottom);
+        Rect Bounds,
+        bool IsDigital,
+        bool Percent,
+        double AxisMin,
+        double AxisMax,
+        double AxisStep);
 
     public override void Render(DrawingContext context)
     {
         base.Render(context);
-        legendHitRects_.Clear();
         double width = Bounds.Width;
         double height = Bounds.Height;
         if (width <= 1 || height <= 1)
@@ -494,17 +463,7 @@ public sealed class TrendChartControl : Control
             return;
         }
 
-        // Opaque background: identical to the hosting card, and it makes the control's
-        // whole bounds hit-testable for pointer input.
         context.DrawRectangle(PanelBrush, null, new Rect(0, 0, width, height));
-
-        double yMin = YMin;
-        double yMax = YMax;
-        double yStep = YStep;
-        if (!(yStep > 0) || !(yMax > yMin))
-        {
-            return;
-        }
 
         DateTime from = FromUtc;
         DateTime to = ToUtc;
@@ -520,218 +479,106 @@ public sealed class TrendChartControl : Control
         }
 
         IReadOnlyList<TrendSeries> series = GetSeries();
-        bool isGroup = series.Count > 1;
 
-        // Boolean signals in a group chart get their own stacked lanes below the analog plot.
-        int laneCount = 0;
-        if (isGroup)
+        // ---- Resolve each pen's strip axis ----
+        List<StripLayout> strips = BuildStrips(series, IsPercentAxisMode);
+        if (strips.Count == 0)
         {
-            foreach (TrendSeries item in series)
-            {
-                if (item.IsBoolean && item.Visible)
-                {
-                    laneCount++;
-                }
-            }
+            return;
         }
 
-        double laneArea = laneCount > 0 ? laneCount * LaneHeight + (laneCount - 1) * LaneGap : 0;
-
-        // ---- Y axis gridline values (min..max, last forced onto max) ----
-        double intervalCount = Math.Round((yMax - yMin) / yStep);
-        if (intervalCount < 1)
-        {
-            intervalCount = 1;
-        }
-
-        int gridCount = (int)intervalCount;
-        var labelTexts = new string[gridCount + 1];
-        for (int i = 0; i <= gridCount; i++)
-        {
-            labelTexts[i] = FormatNumber(i == gridCount ? yMax : yMin + i * yStep);
-        }
-
-        // Measure labels so the plot area leaves room for the widest one.
+        // ---- Measure Y labels to size the shared left axis gutter ----
         var typeface = new Typeface(FontFamily.Default);
-        var labelLayouts = new FormattedText[gridCount + 1];
         double maxLabelWidth = 0;
-        for (int i = 0; i < labelTexts.Length; i++)
+        foreach (StripLayout strip in strips)
         {
-            var layout = new FormattedText(
-                labelTexts[i],
-                CultureInfo.CurrentCulture,
-                FlowDirection.LeftToRight,
-                typeface,
-                FontSize,
-                AxisLabelBrush);
-            labelLayouts[i] = layout;
-            maxLabelWidth = Math.Max(maxLabelWidth, layout.Width);
+            if (strip.IsDigital)
+            {
+                // State text (or 0/1) is drawn inside the strip; no left labels.
+                continue;
+            }
+
+            string hi = FormatAxisLabel(strip.AxisMax, strip);
+            string lo = FormatAxisLabel(strip.AxisMin, strip);
+            maxLabelWidth = Math.Max(maxLabelWidth, MeasureText(typeface, hi).Width);
+            maxLabelWidth = Math.Max(maxLabelWidth, MeasureText(typeface, lo).Width);
         }
 
         double plotLeft = Math.Min(maxLabelWidth + 14, width * 0.45);
-        double plotTop = TopPad;
         double plotRight = width - RightPad;
-        double plotBottomMain = height - BottomPad - laneArea;
         double plotWidth = plotRight - plotLeft;
-        double plotHeightMain = plotBottomMain - plotTop;
-        if (plotWidth < 40 || plotHeightMain < 20)
+        if (plotWidth < 40)
         {
             return;
         }
 
-        double valueSpan = yMax - yMin;
-        double yOfShared(double value)
+        // ---- Stack the strips evenly over the available height ----
+        double stripHeight = Math.Max(24, (height - TopPad - BottomPad - StripGap * (strips.Count - 1)) / strips.Count);
+        double y = TopPad;
+        for (int i = 0; i < strips.Count; i++)
         {
-            double clamped = Math.Max(yMin, Math.Min(yMax, value));
-            return plotBottomMain - ((clamped - yMin) / valueSpan) * plotHeightMain;
-        }
-
-        double xOf(DateTime time)
-        {
-            double ratio = Math.Max(0.0, Math.Min(1.0, (time - from).Ticks / (double)totalTicks));
-            return plotLeft + ratio * plotWidth;
-        }
-
-        // ---- per-series trace points (only samples inside the window) ----
-        List<PlottedSeries> plots = BuildPlots(series, isGroup, from, to, xOf, yOfShared, plotBottomMain);
-        if (plots.Sum(p => p.Trace.Length) < 2)
-        {
-            return;
-        }
-
-        // ---- horizontal gridlines + labels (analog plot only) ----
-        var gridPen = new Pen(GridBrush, 1);
-        for (int i = 0; i <= gridCount; i++)
-        {
-            double y = yOfShared(i == gridCount ? yMax : yMin + i * yStep);
-            context.DrawLine(gridPen, new Point(plotLeft, y), new Point(plotRight, y));
-            FormattedText label = labelLayouts[i];
-            double textY = y - label.Height / 2;
-            textY = Math.Max(0, Math.Min(height - label.Height, textY));
-            context.DrawText(label, new Point(plotLeft - 8 - label.Width, textY));
-        }
-
-        // ---- vertical (time) gridlines + labels ----
-        TimeSpan timeStep = TrendTimeAxis.StepFor(to - from);
-        double plotBottomWithLanes = height - BottomPad;
-        if (timeStep > TimeSpan.Zero)
-        {
-            for (DateTime tick = TrendTimeAxis.Floor(from, timeStep); tick <= to; tick += timeStep)
+            Rect bounds = new(plotLeft, y, plotWidth, Math.Min(stripHeight, height - BottomPad - y));
+            if (bounds.Height < 16)
             {
-                if (tick < from)
-                {
-                    continue;
-                }
-
-                double x = xOf(tick);
-                context.DrawLine(gridPen, new Point(x, plotTop), new Point(x, plotBottomWithLanes));
-
-                string text = FormatTime(tick);
-                var layout = new FormattedText(
-                    text,
-                    CultureInfo.CurrentCulture,
-                    FlowDirection.LeftToRight,
-                    typeface,
-                    FontSize,
-                    AxisLabelBrush);
-                double labelLeft = x - layout.Width / 2;
-                if (labelLeft >= plotLeft - 2 && labelLeft + layout.Width <= width - 2)
-                {
-                    context.DrawText(layout, new Point(labelLeft, plotBottomWithLanes + 6));
-                }
+                break;
             }
+
+            strips[i] = strips[i] with { Bounds = bounds };
+            DrawStrip(context, strips[i], bounds, from, to, plotLeft, plotRight, typeface);
+            y = bounds.Bottom + StripGap;
         }
 
-        // ---- alarm threshold overlays (shaded bands, drawn behind the traces) ----
-        DrawAlarmOverlays(context, AlarmHigh, AlarmLow, yOfShared, plotLeft, plotTop, plotRight, plotBottomMain);
+        double plotBottom = y - StripGap;
 
-        // ---- digital lane backgrounds for boolean series ----
-        DrawLaneBackgrounds(context, laneCount, plotLeft, plotRight, plotBottomMain);
-
-        // ---- value traces (fill + line + last-sample marker per series) ----
-        foreach (PlottedSeries plot in plots)
+        // ---- Bottom time axis: gridline ticks + labels ----
+        var gridPen = new Pen(GridBrush, 1);
+        TimeSpan timeStep = TrendTimeAxis.StepFor(to - from);
+        for (DateTime tick = TrendTimeAxis.Floor(from, timeStep); tick <= to; tick += timeStep)
         {
-            if (plot.Trace.Length < 2)
+            if (tick < from)
             {
                 continue;
             }
 
-            SolidColorBrush color = BrushFor(plot.Series.Color);
-            var lineGeometry = new StreamGeometry();
-            using (StreamGeometryContext ctx = lineGeometry.Open())
+            double x = XOf(tick, from, totalTicks, plotLeft, plotWidth);
+            FormattedText label = MeasureText(typeface, FormatTime(tick));
+            double labelLeft = x - label.Width / 2;
+            if (labelLeft >= plotLeft - 2 && labelLeft + label.Width <= width - 2)
             {
-                ctx.BeginFigure(plot.Trace[0], false);
-                for (int i = 1; i < plot.Trace.Length; i++)
-                {
-                    ctx.LineTo(plot.Trace[i]);
-                }
-
-                ctx.EndFigure(false);
+                context.DrawText(label, new Point(labelLeft, height - BottomPad + 6));
             }
-
-            var fillGeometry = new StreamGeometry();
-            using (StreamGeometryContext ctx = fillGeometry.Open())
-            {
-                ctx.BeginFigure(new Point(plot.Trace[0].X, plot.FillBottom), true);
-                ctx.LineTo(plot.Trace[0]);
-                for (int i = 1; i < plot.Trace.Length; i++)
-                {
-                    ctx.LineTo(plot.Trace[i]);
-                }
-
-                ctx.LineTo(new Point(plot.Trace[plot.Trace.Length - 1].X, plot.FillBottom));
-                ctx.EndFigure(true);
-            }
-
-            context.DrawGeometry(FillFor(plot.Series.Color), null, fillGeometry);
-            context.DrawGeometry(null, new Pen(color, 1.6), lineGeometry);
-
-            // Last sample marker (current value)
-            Point last = plot.Trace[plot.Trace.Length - 1];
-            context.DrawEllipse(color, null, last, 2.6, 2.6);
         }
 
-        // ---- lane label chips (on top of the traces so they stay readable) ----
-        DrawLaneLabels(context, plots, plotRight, plotBottomMain, typeface);
-
-        // ---- pinned readout: interactive legend for groups, max/min/avg/delta for single ----
-        if (isGroup)
+        // ---- Pinned blue time cursor (drawn after strips, before the frame) ----
+        if (PinnedAtUtc is { } pin && pin >= from && pin <= to)
         {
-            DrawSeriesLegend(context, series, from, to, plotLeft, plotTop, width, height, typeface);
-        }
-        else
-        {
-            DrawStatsReadout(context, plots[0].Used, plots[0].Series.Unit ?? string.Empty, plotLeft, plotTop, width, height, typeface);
+            double pinX = XOf(pin, from, totalTicks, plotLeft, plotWidth);
+            var pinPen = new Pen(PinBrush, 1.5);
+            context.DrawLine(pinPen, new Point(pinX, TopPad), new Point(pinX, plotBottom));
+            var head = MeasureText(typeface, "▼");
+            context.DrawText(
+                new FormattedText("▼", CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeface, FontSize, PinBrush),
+                new Point(pinX - head.Width / 2, plotBottom + 2));
         }
 
-        // ---- right-drag zoom selection band ----
+        // ---- Hover crosshair: one line across all strips + per-strip value chips ----
+        if (!zoomDragging_ && cursorPoint_ is { } cursor)
+        {
+            DrawHoverCrosshair(context, strips, cursor, from, totalTicks, plotLeft, plotRight, plotBottom, width, typeface);
+        }
+
+        // ---- drag-zoom selection band ----
         if (zoomDragging_)
         {
             double x0 = Math.Max(plotLeft, Math.Min(zoomAnchorX_, zoomCurrentX_));
             double x1 = Math.Min(plotRight, Math.Max(zoomAnchorX_, zoomCurrentX_));
             if (x1 > x0)
             {
-                var band = new Rect(x0, plotTop, x1 - x0, plotHeightMain);
-                context.DrawRectangle(ZoomFillBrush, new Pen(BrushFor(plots[0].Series.Color), 1), band);
+                context.DrawRectangle(ZoomFillBrush, new Pen(BrushFor(strips[0].Series.Color), 1), new Rect(x0, TopPad, x1 - x0, plotBottom - TopPad));
             }
         }
 
-        // ---- hover cursor: snap to the nearest sample and read out value + time ----
-        if (!zoomDragging_
-            && cursorPoint_ is { } cursor
-            && cursor.X >= plotLeft
-            && cursor.X <= plotRight
-            && cursor.Y >= plotTop
-            && cursor.Y <= plotBottomWithLanes)
-        {
-            DrawHoverReadout(context, plots, cursor, xOf, plotLeft, plotTop, plotRight, plotBottomMain, width, height, typeface);
-        }
-
-        // ---- plot frame ----
-        var framePen = new Pen(FrameBrush, 1);
-        context.DrawRectangle(null, framePen, new Rect(plotLeft, plotTop, plotWidth, plotHeightMain));
-
-        // Capture the geometry + window for the zoom mapping on pointer input.
+        // Capture geometry + window for pointer hit mapping.
         layoutPlotLeft_ = plotLeft;
         layoutPlotWidth_ = plotWidth;
         layoutFromUtc_ = from;
@@ -739,82 +586,172 @@ public sealed class TrendChartControl : Control
     }
 
     /// <summary>
-    /// Filters each visible series to the window, maps samples to pixel points (using the
-    /// shared/percent axis for analog series and the lane band for boolean series) and
-    /// applies the series' line style (step transform) where configured.
+    /// Resolves each visible pen into a strip: digital pens get a fixed 0..1 band,
+    /// percent mode maps every analog pen to a 0..100 band, and the default gives each
+    /// strip its own auto-fitted scale (VTScada-style independent vertical axes).
     /// </summary>
-    private List<PlottedSeries> BuildPlots(
-        IReadOnlyList<TrendSeries> series,
-        bool isGroup,
-        DateTime from,
-        DateTime to,
-        Func<DateTime, double> xOf,
-        Func<double, double> yOfShared,
-        double plotBottomMain)
+    private static List<StripLayout> BuildStrips(IReadOnlyList<TrendSeries> series, bool percentMode)
     {
-        var plots = new List<PlottedSeries>(series.Count);
-        int laneIndex = 0;
-        foreach (TrendSeries item in series)
+        var strips = new List<StripLayout>(series.Count);
+        foreach (TrendSeries pen in series)
         {
-            if (!item.Visible)
+            if (!pen.Visible)
             {
                 continue;
             }
 
-            IReadOnlyList<TrendSample> samples = item.Samples ?? Array.Empty<TrendSample>();
-            var used = new List<TrendSample>(samples.Count);
-            for (int i = 0; i < samples.Count; i++)
+            TrendSample[] used = pen.Samples?
+                .Where(s => double.IsFinite(s.V))
+                .ToArray() ?? Array.Empty<TrendSample>();
+
+            if (pen.IsBoolean)
             {
-                TrendSample sample = samples[i];
-                if (sample.T < from || sample.T > to || !double.IsFinite(sample.V))
+                // Digital strip: square wave between the bottom and top of the band.
+                strips.Add(new StripLayout(pen, used, default, IsDigital: true, Percent: false, 0, 1, 1));
+                continue;
+            }
+
+            if (pen.UsePercentAxis || (percentMode && pen.FixedAxis is null))
+            {
+                strips.Add(new StripLayout(pen, used, default, IsDigital: false, Percent: true, 0, 100, 20));
+                continue;
+            }
+
+            if (pen.FixedAxis is { } fixedAxis && fixedAxis.Value.Max > fixedAxis.Value.Min)
+            {
+                strips.Add(new StripLayout(pen, used, default, IsDigital: false, Percent: false, fixedAxis.Value.Min, fixedAxis.Value.Max, fixedAxis.Value.Step));
+                continue;
+            }
+
+            // Independent per-pen scale: fit this strip's own data with nice ticks.
+            double lo = used.Length == 0 ? 0 : used.Min(s => s.V);
+            double hi = used.Length == 0 ? 1 : used.Max(s => s.V);
+            TrendAxis resolved = TrendScale.Resolve(autoRange: true, typeRange: null, lo, hi);
+            double min = resolved.IsValid ? resolved.Min : 0;
+            double max = resolved.IsValid ? resolved.Max : 1;
+            double step = resolved.IsValid ? resolved.Step : 1;
+            strips.Add(new StripLayout(pen, used, default, IsDigital: false, Percent: false, min, max, step));
+        }
+
+        return strips;
+    }
+
+    private static double XOf(DateTime time, DateTime from, double totalTicks, double plotLeft, double plotWidth)
+    {
+        double ratio = Math.Max(0.0, Math.Min(1.0, (time - from).Ticks / totalTicks));
+        return plotLeft + ratio * plotWidth;
+    }
+
+    private static double YOf(double value, Rect bounds, double axisMin, double axisMax)
+    {
+        double span = axisMax - axisMin;
+        if (!(span > 0))
+        {
+            return bounds.Bottom;
+        }
+
+        double clamped = Math.Max(axisMin, Math.Min(axisMax, value));
+        return bounds.Bottom - (clamped - axisMin) / span * bounds.Height;
+    }
+
+    /// <summary>Draws one strip: frame, gridlines, Y labels (or state text), alarm bands, trace.</summary>
+    private void DrawStrip(
+        DrawingContext context,
+        StripLayout strip,
+        Rect bounds,
+        DateTime from,
+        DateTime to,
+        double plotLeft,
+        double plotRight,
+        Typeface typeface)
+    {
+        double totalTicks = (to - from).Ticks;
+        double frameTop = bounds.Top - 1;
+        var frameRect = new Rect(bounds.Left, frameTop, bounds.Width, bounds.Height + 2);
+
+        // Strip background + frame.
+        context.DrawRectangle(StripBrush, null, frameRect);
+
+        // Horizontal gridlines + Y labels (analog strips only).
+        var gridPen = new Pen(GridBrush, 1);
+        if (!strip.IsDigital)
+        {
+            double intervalCount = Math.Round((strip.AxisMax - strip.AxisMin) / strip.AxisStep);
+            int gridCount = (int)Math.Max(1, intervalCount);
+            for (int i = 0; i <= gridCount; i++)
+            {
+                double value = i == gridCount ? strip.AxisMax : strip.AxisMin + i * strip.AxisStep;
+                double yPos = YOf(value, bounds, strip.AxisMin, strip.AxisMax);
+                context.DrawLine(gridPen, new Point(bounds.Left, yPos), new Point(bounds.Right, yPos));
+                FormattedText label = MeasureText(typeface, FormatAxisLabel(value, strip));
+                double textY = yPos - label.Height / 2;
+                textY = Math.Max(frameTop + 1, Math.Min(frameRect.Bottom - label.Height - 1, textY));
+                context.DrawText(label, new Point(bounds.Left - 8 - label.Width, textY));
+            }
+        }
+
+        // Vertical (time) gridlines — no labels here, labels go on the shared bottom axis.
+        TimeSpan timeStep = TrendTimeAxis.StepFor(to - from);
+        for (DateTime tick = TrendTimeAxis.Floor(from, timeStep); tick <= to; tick += timeStep)
+        {
+            if (tick < from)
+            {
+                continue;
+            }
+
+            double x = XOf(tick, from, totalTicks, plotLeft, plotWidth);
+            context.DrawLine(gridPen, new Point(x, frameTop), new Point(x, frameRect.Bottom));
+        }
+
+        // Alarm threshold overlays (per-pen limits, single-pen mode also honors the window-level props).
+        double? alarmHigh = strip.Series.AlarmLimits?.High ?? AlarmHigh;
+        double? alarmLow = strip.Series.AlarmLimits?.Low ?? AlarmLow;
+        if (alarmHigh is { } h && double.IsFinite(h) && h >= strip.AxisMin && h <= strip.AxisMax)
+        {
+            double yPos = YOf(h, bounds, strip.AxisMin, strip.AxisMax);
+            context.DrawRectangle(AlarmBandBrush, null, new Rect(bounds.Left, frameTop, bounds.Width, Math.Max(0, yPos - frameTop)));
+            context.DrawLine(AlarmPen, new Point(bounds.Left, yPos), new Point(bounds.Right, yPos));
+        }
+
+        if (alarmLow is { } l && double.IsFinite(l) && l >= strip.AxisMin && l <= strip.AxisMax)
+        {
+            double yPos = YOf(l, bounds, strip.AxisMin, strip.AxisMax);
+            context.DrawRectangle(AlarmBandBrush, null, new Rect(bounds.Left, yPos, bounds.Width, Math.Max(0, frameRect.Bottom - yPos)));
+            context.DrawLine(AlarmPen, new Point(bounds.Left, yPos), new Point(bounds.Right, yPos));
+        }
+
+        // Trace (fill + line or square wave) + last-sample marker.
+        if (strip.Used.Length > 0)
+        {
+            var trace = new List<Point>(strip.Used.Length);
+            foreach (TrendSample sample in strip.Used)
+            {
+                if (sample.T < from || sample.T > to)
                 {
                     continue;
                 }
 
-                used.Add(sample);
+                double x = XOf(sample.T, from, totalTicks, plotLeft, plotWidth);
+                double yPos = strip.IsDigital
+                    ? bounds.Bottom - Math.Clamp(sample.V, 0, 1) * bounds.Height
+                    : YOf(sample.V, bounds, strip.AxisMin, strip.AxisMax);
+                trace.Add(new Point(x, yPos));
             }
 
-            // Boolean signals become stacked lanes only in group charts; a single boolean
-            // tag keeps its natural 0..1 band on the regular axis.
-            bool isLane = isGroup && item.IsBoolean;
-            double fillBottom;
-            Func<double, double> yFor;
-            if (isLane)
+            if (strip.IsDigital && trace.Count > 1)
             {
-                // Boolean lane: value 1 at the top of the band, 0 at the bottom.
-                double laneTop = plotBottomMain + laneIndex * (LaneHeight + LaneGap);
-                fillBottom = laneTop;
-                yFor = v => laneTop + LaneHeight - Math.Clamp(v, 0, 1) * LaneHeight;
-            }
-            else if (IsPercentAxisMode)
-            {
-                double min = double.MaxValue;
-                double max = double.MinValue;
-                foreach (TrendSample sample in used)
+                // Square wave: hold each level until the next sample.
+                var stepped = new List<Point>(trace.Count * 2);
+                stepped.Add(trace[0]);
+                for (int i = 1; i < trace.Count; i++)
                 {
-                    min = Math.Min(min, sample.V);
-                    max = Math.Max(max, sample.V);
+                    stepped.Add(new Point(trace[i].X, trace[i - 1].Y));
+                    stepped.Add(trace[i]);
                 }
 
-                double lo = min == double.MaxValue ? 0 : min;
-                double hi = max == double.MinValue ? 100 : max;
-                fillBottom = plotBottomMain;
-                yFor = v => yOfShared(TrendPercentAxis.PercentFor(v, lo, hi));
+                trace = stepped;
             }
-            else
-            {
-                fillBottom = plotBottomMain;
-                yFor = v => yOfShared(v);
-            }
-
-            // Map to points, then apply the step (sample-and-hold) transform.
-            var trace = new List<Point>(used.Count);
-            for (int i = 0; i < used.Count; i++)
-            {
-                trace.Add(new Point(xOf(used[i].T), yFor(used[i].V)));
-            }
-
-            if ((IsStepStyle(item.TrendStyle) || isLane) && trace.Count > 1)
+            else if (!strip.IsDigital && ShouldStep(strip.Series.TrendStyle) && trace.Count > 1)
             {
                 var stepped = new List<Point>(trace.Count * 2);
                 stepped.Add(trace[0]);
@@ -827,166 +764,102 @@ public sealed class TrendChartControl : Control
                 trace = stepped;
             }
 
-            plots.Add(new PlottedSeries(item, used.ToArray(), trace.ToArray(), yFor, fillBottom));
-            if (isLane)
+            if (trace.Count > 1)
             {
-                laneIndex++;
+                SolidColorBrush color = BrushFor(strip.Series.Color);
+                if (!strip.IsDigital)
+                {
+                    var fillGeometry = new StreamGeometry();
+                    using (StreamGeometryContext ctx = fillGeometry.Open())
+                    {
+                        ctx.BeginFigure(new Point(trace[0].X, bounds.Bottom), true);
+                        ctx.LineTo(trace[0]);
+                        for (int i = 1; i < trace.Count; i++)
+                        {
+                            ctx.LineTo(trace[i]);
+                        }
+
+                        ctx.LineTo(new Point(trace[trace.Count - 1].X, bounds.Bottom));
+                        ctx.EndFigure(true);
+                    }
+
+                    context.DrawGeometry(FillFor(strip.Series.Color), null, fillGeometry);
+                }
+
+                var lineGeometry = new StreamGeometry();
+                using (StreamGeometryContext ctx = lineGeometry.Open())
+                {
+                    ctx.BeginFigure(trace[0], false);
+                    for (int i = 1; i < trace.Count; i++)
+                    {
+                        ctx.LineTo(trace[i]);
+                    }
+
+                    ctx.EndFigure(false);
+                }
+
+                context.DrawGeometry(null, new Pen(color, 1.6), lineGeometry);
+
+                // Last sample marker.
+                Point last = trace[trace.Count - 1];
+                context.DrawEllipse(color, null, last, 2.6, 2.6);
+            }
+
+            // Digital strip: state labels ("Stopped"/"Running") instead of numbers.
+            if (strip.IsDigital)
+            {
+                string? offLabel = strip.Series.StateLabels is { } labels && labels.Length > 0 ? labels[0] : null;
+                string? onLabel = strip.Series.StateLabels is { } labels2 && labels2.Length > 1 ? labels2[1] : null;
+                DrawStateText(context, typeface, offLabel ?? "0", bounds.Left + 6, bounds.Bottom - 14);
+                DrawStateText(context, typeface, onLabel ?? "1", bounds.Left + 6, bounds.Top + 2);
             }
         }
 
-        return plots;
+        // Strip frame drawn last so the trace is clipped visually by the border.
+        context.DrawRectangle(null, new Pen(FrameBrush, 1), frameRect);
     }
 
-    /// <summary>Draws the digital lane bands (boolean series) below the analog plot.</summary>
-    private static void DrawLaneBackgrounds(
-        DrawingContext context,
-        int laneCount,
-        double plotLeft,
-        double plotRight,
-        double plotBottomMain)
-    {
-        if (laneCount == 0)
-        {
-            return;
-        }
+    private static bool ShouldStep(string? trendStyle) => IsStepStyle(trendStyle);
 
-        var framePen = new Pen(FrameBrush, 1);
-        for (int lane = 0; lane < laneCount; lane++)
-        {
-            double laneTop = plotBottomMain + lane * (LaneHeight + LaneGap);
-            var laneRect = new Rect(plotLeft, laneTop, plotRight - plotLeft, LaneHeight);
-            context.DrawRectangle(LaneBrush, framePen, laneRect);
-        }
+    private static void DrawStateText(DrawingContext context, Typeface typeface, string text, double x, double y)
+    {
+        var layout = new FormattedText(
+            text,
+            CultureInfo.CurrentCulture,
+            FlowDirection.LeftToRight,
+            typeface,
+            FontSize - 1,
+            AxisLabelBrush);
+        context.DrawText(layout, new Point(x, y));
     }
 
     /// <summary>
-    /// Label chips at the right edge of each boolean lane so the tag name sits above its
-    /// own track. Drawn after the traces so the chip stays readable.
+    /// Crosshair: one vertical line spanning all strips, a value chip on each strip at
+    /// the crosshair time, and a floating time chip near the mouse.
     /// </summary>
-    private static void DrawLaneLabels(
+    private void DrawHoverCrosshair(
         DrawingContext context,
-        IReadOnlyList<PlottedSeries> plots,
-        double plotRight,
-        double plotBottomMain,
-        Typeface typeface)
-    {
-        foreach (PlottedSeries plot in plots)
-        {
-            if (!plot.Series.IsBoolean || plot.Trace.Length == 0)
-            {
-                continue;
-            }
-
-            string name = string.IsNullOrWhiteSpace(plot.Series.Name) ? "Tag" : plot.Series.Name!;
-            var label = new FormattedText(
-                name,
-                CultureInfo.CurrentCulture,
-                FlowDirection.LeftToRight,
-                typeface,
-                FontSize - 1,
-                DimBrushFor(plot.Series.Color));
-            double chipX = plotRight - 4 - label.Width;
-            double chipY = plot.FillBottom + (LaneHeight - label.Height) / 2;
-            context.DrawRectangle(ReadoutBgBrush, null, new Rect(chipX - 4, chipY - 2, label.Width + 8, label.Height + 4));
-            context.DrawText(label, new Point(chipX, chipY));
-        }
-    }
-
-    /// <summary>Shaded horizontal bands + dashed lines for configured alarm thresholds.</summary>
-    private static void DrawAlarmOverlays(
-        DrawingContext context,
-        double? high,
-        double? low,
-        Func<double, double> yOf,
-        double plotLeft,
-        double plotTop,
-        double plotRight,
-        double plotBottom)
-    {
-        if (high is { } h && double.IsFinite(h))
-        {
-            double y = Math.Max(plotTop, Math.Min(plotBottom, yOf(h)));
-            context.DrawRectangle(AlarmBandBrush, null, new Rect(plotLeft, plotTop, plotRight - plotLeft, Math.Max(0, y - plotTop)));
-            context.DrawLine(AlarmPen, new Point(plotLeft, y), new Point(plotRight, y));
-        }
-
-        if (low is { } l && double.IsFinite(l))
-        {
-            double y = Math.Max(plotTop, Math.Min(plotBottom, yOf(l)));
-            context.DrawRectangle(AlarmBandBrush, null, new Rect(plotLeft, y, plotRight - plotLeft, Math.Max(0, plotBottom - y)));
-            context.DrawLine(AlarmPen, new Point(plotLeft, y), new Point(plotRight, y));
-        }
-    }
-
-    /// <summary>
-    /// Hover cursor: vertical crosshair follows the mouse; the dot marks the nearest real
-    /// sample and the horizontal hairline lets the value be read against the Y axis. The
-    /// readout box (tag name for groups, value + timestamp) is kept under the mouse.
-    /// </summary>
-    private void DrawHoverReadout(
-        DrawingContext context,
-        IReadOnlyList<PlottedSeries> plots,
+        IReadOnlyList<StripLayout> strips,
         Point cursor,
-        Func<DateTime, double> xOf,
+        DateTime from,
+        double totalTicks,
         double plotLeft,
-        double plotTop,
         double plotRight,
         double plotBottom,
         double width,
-        double height,
         Typeface typeface)
     {
-        // Nearest sample across all series (snap to real samples, not stepped points).
-        TrendSample? bestSample = null;
-        double bestDistance = double.MaxValue;
-        double bestX = 0;
-        PlottedSeries? bestPlot = null;
-        foreach (PlottedSeries plot in plots)
-        {
-            for (int i = 0; i < plot.Used.Length; i++)
-            {
-                double x = xOf(plot.Used[i].T);
-                double distance = Math.Abs(x - cursor.X);
-                if (distance < bestDistance)
-                {
-                    bestDistance = distance;
-                    bestSample = plot.Used[i];
-                    bestX = x;
-                    bestPlot = plot;
-                }
-            }
-        }
-
-        if (bestSample is not { } sample || bestPlot is not { } hit)
+        if (cursor.X < plotLeft || cursor.X > plotRight || cursor.Y > plotBottom + 4)
         {
             return;
         }
 
-        Point snapped = new(bestX, hit.YOf(sample.V));
-
-        // Vertical crosshair follows the mouse; the dot marks the nearest real sample
-        // and the horizontal hairline lets the value be read against the Y axis.
         var crosshairPen = new Pen(CrosshairBrush, 1);
-        context.DrawLine(crosshairPen, new Point(cursor.X, plotTop), new Point(cursor.X, plotBottom));
-        context.DrawLine(crosshairPen, new Point(plotLeft, snapped.Y), new Point(plotRight, snapped.Y));
-        context.DrawEllipse(DotFillBrush, new Pen(BrushFor(hit.Series.Color), 1.6), snapped, 3.4, 3.4);
+        context.DrawLine(crosshairPen, new Point(cursor.X, TopPad), new Point(cursor.X, plotBottom));
 
-        // Readout box (tag name for groups, value + timestamp) kept under the mouse,
-        // next to the crosshair.
-        string unit = hit.Series.Unit ?? string.Empty;
-        string valueText = AppendUnit(FormatCursorValue(sample.V), unit);
-        string timeText = sample.T.ToLocalTime().ToString("MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
-        bool showName = plots.Count > 1 && !string.IsNullOrWhiteSpace(hit.Series.Name);
-        string nameText = showName ? hit.Series.Name! : string.Empty;
-
-        var valueTypeface = new Typeface(FontFamily.Default, FontStyle.Normal, FontWeight.SemiBold);
-        var valueLayout = new FormattedText(
-            valueText,
-            CultureInfo.CurrentCulture,
-            FlowDirection.LeftToRight,
-            valueTypeface,
-            FontSize,
-            BrushFor(hit.Series.Color));
+        // Time chip under the bottom axis (or above it when near the bottom).
+        DateTime time = from + TimeSpan.FromTicks((long)(totalTicks * (cursor.X - plotLeft) / Math.Max(1, plotWidth)));
+        string timeText = time.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture);
         var timeLayout = new FormattedText(
             timeText,
             CultureInfo.CurrentCulture,
@@ -994,330 +867,87 @@ public sealed class TrendChartControl : Control
             typeface,
             FontSize,
             AxisLabelBrush);
-        FormattedText? nameLayout = null;
-        if (showName)
+        const double chipPadX = 6;
+        double timeChipWidth = timeLayout.Width + chipPadX * 2;
+        double timeChipX = Math.Max(plotLeft, Math.Min(cursor.X - timeChipWidth / 2, width - RightPad - timeChipWidth));
+        double timeChipY = plotBottom + 4;
+        context.DrawRectangle(ReadoutBgBrush, new Pen(FrameBrush, 1), new RoundedRect(new Rect(timeChipX, timeChipY, timeChipWidth, timeLayout.Height + 4), 3, 3));
+        context.DrawText(timeLayout, new Point(timeChipX + chipPadX, timeChipY + 2));
+
+        // Value chip per strip: chip shows the value interpolated at the crosshair time.
+        foreach (StripLayout strip in strips)
         {
-            nameLayout = new FormattedText(
-                nameText,
-                CultureInfo.CurrentCulture,
-                FlowDirection.LeftToRight,
-                typeface,
-                FontSize,
-                DotFillBrush);
-        }
-
-        const double padX = 8;
-        const double padTop = 5;
-        double boxWidth = Math.Max(valueLayout.Width, timeLayout.Width) + padX * 2;
-        if (nameLayout is not null)
-        {
-            boxWidth = Math.Max(boxWidth, nameLayout.Width + padX * 2);
-        }
-
-        double boxHeight = valueLayout.Height + timeLayout.Height + padTop * 2 + 2;
-        if (nameLayout is not null)
-        {
-            boxHeight += nameLayout.Height + 2;
-        }
-
-        double boxX = cursor.X + 12;
-        if (boxX + boxWidth > width - 4)
-        {
-            boxX = cursor.X - 12 - boxWidth;
-        }
-
-        boxX = Math.Max(4, boxX);
-        double boxY = Math.Max(4, Math.Min(cursor.Y - boxHeight / 2, height - boxHeight - 4));
-        var boxRect = new Rect(boxX, boxY, boxWidth, boxHeight);
-        context.DrawRectangle(ReadoutBgBrush, new Pen(FrameBrush, 1), new RoundedRect(boxRect, 4, 4));
-        double lineY = boxY + padTop;
-        if (nameLayout is not null)
-        {
-            context.DrawText(nameLayout, new Point(boxX + padX, lineY));
-            lineY += nameLayout.Height + 2;
-        }
-
-        context.DrawText(valueLayout, new Point(boxX + padX, lineY));
-        lineY += valueLayout.Height + 2;
-        context.DrawText(timeLayout, new Point(boxX + padX, lineY));
-    }
-
-    /// <summary>
-    /// Interactive legend drawn inside the chart when several series are plotted: one row
-    /// per tag with its color swatch, name, current value and (when space allows) a
-    /// min/max/avg stats line. Clicking a swatch cycles the trace color; clicking the row
-    /// toggles the trace on/off (hidden rows are dimmed).
-    /// </summary>
-    private void DrawSeriesLegend(
-        DrawingContext context,
-        IReadOnlyList<TrendSeries> series,
-        DateTime from,
-        DateTime to,
-        double plotLeft,
-        double plotTop,
-        double width,
-        double height,
-        Typeface typeface)
-    {
-        var rows = new List<LegendRow>(series.Count);
-        foreach (TrendSeries item in series)
-        {
-            TrendSample[] used = UsedInWindow(item.Samples, from, to);
-            string name = string.IsNullOrWhiteSpace(item.Name) ? "Tag" : item.Name!;
-            string unit = item.Unit ?? string.Empty;
-            string value = used.Length == 0 ? "—" : AppendUnit(FormatCursorValue(used[used.Length - 1].V), unit);
-            string? stats = null;
-            if (used.Length > 0)
-            {
-                double min = used.Min(s => s.V);
-                double max = used.Max(s => s.V);
-                double avg = used.Average(s => s.V);
-                stats = $"min {FormatCursorValue(min)} · max {FormatCursorValue(max)} · avg {FormatCursorValue(avg)}";
-            }
-
-            rows.Add(new LegendRow(item, name, value, stats, item.Visible));
-        }
-
-        if (rows.Count == 0)
-        {
-            return;
-        }
-
-        var valueTypeface = new Typeface(FontFamily.Default, FontStyle.Normal, FontWeight.SemiBold);
-        var statsTypeface = new Typeface(FontFamily.Default, FontStyle.Normal, FontWeight.Normal);
-        var nameLayouts = new FormattedText[rows.Count];
-        var valueLayouts = new FormattedText[rows.Count];
-        FormattedText?[] statsLayouts = new FormattedText?[rows.Count];
-        double maxNameWidth = 0;
-        double maxValueWidth = 0;
-        double maxStatsWidth = 0;
-        double baseRowHeight = 0;
-        double statsExtra = 0;
-        for (int i = 0; i < rows.Count; i++)
-        {
-            LegendRow row = rows[i];
-            IBrush nameBrush = row.Visible ? DotFillBrush : DimBrushFor(row.Series.Color);
-            IBrush valueBrush = row.Visible ? BrushFor(row.Series.Color) : DimBrushFor(row.Series.Color);
-            nameLayouts[i] = new FormattedText(
-                row.Name,
-                CultureInfo.CurrentCulture,
-                FlowDirection.LeftToRight,
-                typeface,
-                FontSize,
-                nameBrush);
-            valueLayouts[i] = new FormattedText(
-                row.Value,
-                CultureInfo.CurrentCulture,
-                FlowDirection.LeftToRight,
-                valueTypeface,
-                FontSize,
-                valueBrush);
-            if (row.Stats is { } statsText)
-            {
-                statsLayouts[i] = new FormattedText(
-                    statsText,
-                    CultureInfo.CurrentCulture,
-                    FlowDirection.LeftToRight,
-                    statsTypeface,
-                    FontSize - 1,
-                    AxisLabelBrush);
-                maxStatsWidth = Math.Max(maxStatsWidth, statsLayouts[i]!.Width);
-                statsExtra = Math.Max(statsExtra, statsLayouts[i]!.Height + 1);
-            }
-
-            maxNameWidth = Math.Max(maxNameWidth, nameLayouts[i].Width);
-            maxValueWidth = Math.Max(maxValueWidth, valueLayouts[i].Width);
-            baseRowHeight = Math.Max(baseRowHeight, Math.Max(nameLayouts[i].Height, valueLayouts[i].Height));
-        }
-
-        const double padX = 8;
-        const double padTop = 6;
-        const double padBottom = 6;
-        const double dotGap = 8;
-        const double nameValueGap = 10;
-        const double rowGap = 2;
-        const double dotSize = 9;
-
-        double statsWidth = padX * 2 + maxStatsWidth;
-        double boxWidth = Math.Max(
-            padX * 2 + dotSize + dotGap + maxNameWidth + nameValueGap + maxValueWidth,
-            statsWidth);
-
-        // Prefer two-line rows (name+value, then min/max/avg); fall back to single-line
-        // rows when the chart is too short, and give up entirely if nothing fits.
-        double twoLineHeight = padTop + padBottom + rowGap * (rows.Count - 1)
-            + rows.Count * (baseRowHeight + statsExtra);
-        double singleLineHeight = padTop + padBottom + rowGap * (rows.Count - 1)
-            + rows.Count * baseRowHeight;
-        bool withStats = twoLineHeight <= height - 8 && boxWidth <= width - 8;
-        if (!withStats && singleLineHeight > height - 8)
-        {
-            legendHitRects_.Clear();
-            return;
-        }
-
-        double boxHeight = withStats ? twoLineHeight : singleLineHeight;
-        double boxX = Math.Min(plotLeft + 8, Math.Max(4, width - boxWidth - 4));
-        double boxY = Math.Min(plotTop + 8, Math.Max(4, height - boxHeight - 4));
-
-        var boxRect = new Rect(boxX, boxY, boxWidth, boxHeight);
-        context.DrawRectangle(ReadoutBgBrush, new Pen(FrameBrush, 1), new RoundedRect(boxRect, 4, 4));
-        double rowY = boxY + padTop;
-        double dotX = boxX + padX;
-        double nameX = dotX + dotSize + dotGap;
-        double valueX = nameX + maxNameWidth + nameValueGap;
-        for (int i = 0; i < rows.Count; i++)
-        {
-            LegendRow row = rows[i];
-            double rowHeight = withStats ? baseRowHeight + statsExtra : baseRowHeight;
-            double swatchY = rowY + (rowHeight - dotSize) / 2;
-            if (row.Visible)
-            {
-                context.DrawEllipse(BrushFor(row.Series.Color), null, new Point(dotX + dotSize / 2, swatchY + dotSize / 2), dotSize / 2, dotSize / 2);
-            }
-            else
-            {
-                context.DrawEllipse(null, new Pen(DimBrushFor(row.Series.Color), 1), new Rect(dotX, swatchY, dotSize, dotSize));
-            }
-
-            context.DrawText(nameLayouts[i], new Point(nameX, rowY));
-            context.DrawText(valueLayouts[i], new Point(valueX, rowY));
-            if (withStats && statsLayouts[i] is { } statsLayout)
-            {
-                context.DrawText(statsLayout, new Point(nameX, rowY + nameLayouts[i].Height + 1));
-            }
-
-            var swatchRect = new Rect(dotX - 3, swatchY - 3, dotSize + 6, dotSize + 6);
-            var rowRect = new Rect(boxX, rowY, boxWidth, rowHeight);
-            legendHitRects_.Add(new LegendHitRect(swatchRect, rowRect, row.Series.Name ?? string.Empty));
-            rowY += rowHeight + rowGap;
-        }
-    }
-
-    private readonly record struct LegendRow(TrendSeries Series, string Name, string Value, string? Stats, bool Visible);
-
-    private static TrendSample[] UsedInWindow(IReadOnlyList<TrendSample>? samples, DateTime from, DateTime to)
-    {
-        if (samples is null)
-        {
-            return Array.Empty<TrendSample>();
-        }
-
-        return samples
-            .Where(s => s.T >= from && s.T <= to && double.IsFinite(s.V))
-            .ToArray();
-    }
-
-    /// <summary>
-    /// Always-visible readout pinned in the chart corner showing the data min, max,
-    /// average, delta and sample count over the displayed window (single-series charts only).
-    /// </summary>
-    private static void DrawStatsReadout(
-        DrawingContext context,
-        IReadOnlyList<TrendSample> samples,
-        string unit,
-        double plotLeft,
-        double plotTop,
-        double width,
-        double height,
-        Typeface typeface)
-    {
-        if (samples.Count == 0)
-        {
-            return;
-        }
-
-        double min = double.MaxValue;
-        double max = double.MinValue;
-        double sum = 0;
-        int count = 0;
-        foreach (TrendSample sample in samples)
-        {
-            if (!double.IsFinite(sample.V))
+            if (strip.Used.Length == 0)
             {
                 continue;
             }
 
-            min = Math.Min(min, sample.V);
-            max = Math.Max(max, sample.V);
-            sum += sample.V;
-            count++;
-        }
+            double? valueAt = ValueAt(strip.Used, time);
+            if (valueAt is not { } value)
+            {
+                continue;
+            }
 
-        if (count == 0)
-        {
-            return;
-        }
-
-        double avg = sum / count;
-        string[] labels = { "Max", "Min", "Avg", "Δ", "Pts" };
-        string[] values =
-        {
-            AppendUnit(FormatCursorValue(max), unit),
-            AppendUnit(FormatCursorValue(min), unit),
-            AppendUnit(FormatCursorValue(avg), unit),
-            AppendUnit(FormatCursorValue(max - min), unit),
-            count.ToString("N0", CultureInfo.InvariantCulture)
-        };
-
-        var valueTypeface = new Typeface(FontFamily.Default, FontStyle.Normal, FontWeight.SemiBold);
-        var labelLayouts = new FormattedText[labels.Length];
-        var valueLayouts = new FormattedText[values.Length];
-        double[] rowHeights = new double[labels.Length];
-        double maxLabelWidth = 0;
-        double maxValueWidth = 0;
-        for (int i = 0; i < labels.Length; i++)
-        {
-            labelLayouts[i] = new FormattedText(
-                labels[i],
+            double yPos = strip.IsDigital
+                ? strip.Bounds.Top + strip.Bounds.Height / 2
+                : YOf(value, strip.Bounds, strip.AxisMin, strip.AxisMax);
+            string text = FormatValueChip(value, strip);
+            var layout = new FormattedText(
+                text,
                 CultureInfo.CurrentCulture,
                 FlowDirection.LeftToRight,
-                typeface,
+                new Typeface(FontFamily.Default, FontStyle.Normal, FontWeight.SemiBold),
                 FontSize,
-                AxisLabelBrush);
-            valueLayouts[i] = new FormattedText(
-                values[i],
-                CultureInfo.CurrentCulture,
-                FlowDirection.LeftToRight,
-                valueTypeface,
-                FontSize,
-                DotFillBrush);
-            maxLabelWidth = Math.Max(maxLabelWidth, labelLayouts[i].Width);
-            maxValueWidth = Math.Max(maxValueWidth, valueLayouts[i].Width);
-            rowHeights[i] = Math.Max(labelLayouts[i].Height, valueLayouts[i].Height);
+                BrushFor(strip.Series.Color));
+            double chipWidth = layout.Width + chipPadX * 2;
+            double chipHeight = layout.Height + 4;
+            // Chip sits right of the crosshair, vertically at the value; flip left near the right edge.
+            double chipX = cursor.X + 8 + chipWidth > plotRight ? cursor.X - 8 - chipWidth : cursor.X + 8;
+            double chipY = Math.Max(strip.Bounds.Top + 1, Math.Min(yPos - chipHeight / 2, strip.Bounds.Bottom - chipHeight - 1));
+            context.DrawRectangle(ReadoutBgBrush, new Pen(BrushFor(strip.Series.Color), 1), new RoundedRect(new Rect(chipX, chipY, chipWidth, chipHeight), 3, 3));
+            context.DrawText(layout, new Point(chipX + chipPadX, chipY + 2));
         }
+    }
 
-        const double padX = 8;
-        const double padTop = 6;
-        const double padBottom = 6;
-        const double valueGap = 8;
-        const double rowGap = 1;
-
-        double boxWidth = padX * 2 + maxLabelWidth + valueGap + maxValueWidth;
-        double boxHeight = padTop + padBottom + rowGap * (labels.Length - 1);
-        for (int i = 0; i < rowHeights.Length; i++)
+    /// <summary>
+    /// Value at the crosshair time: the sample at or just before it (sample-and-hold),
+    /// or null when the strip has no data before that point.
+    /// </summary>
+    private static double? ValueAt(TrendSample[] used, DateTime time)
+    {
+        TrendSample? best = null;
+        foreach (TrendSample sample in used)
         {
-            boxHeight += rowHeights[i];
+            if (sample.T > time)
+            {
+                break;
+            }
+
+            best = sample;
         }
 
-        if (boxWidth > width - 8 || boxHeight > height - 8)
+        return best is { } hit ? hit.V : null;
+    }
+
+    private static string FormatValueChip(double value, StripLayout strip)
+    {
+        string text = FormatNumber(value);
+        if (strip.Percent)
         {
-            return;
+            return text + " %";
         }
 
-        double boxX = Math.Min(plotLeft + 8, Math.Max(4, width - boxWidth - 4));
-        double boxY = Math.Min(plotTop + 8, Math.Max(4, height - boxHeight - 4));
+        return string.IsNullOrWhiteSpace(strip.Series.Unit) ? text : text + " " + strip.Series.Unit.Trim();
+    }
 
-        var boxRect = new Rect(boxX, boxY, boxWidth, boxHeight);
-        context.DrawRectangle(ReadoutBgBrush, new Pen(FrameBrush, 1), new RoundedRect(boxRect, 4, 4));
-        double rowY = boxY + padTop;
-        double valueX = boxX + padX + maxLabelWidth + valueGap;
-        for (int i = 0; i < labels.Length; i++)
+    private static string FormatAxisLabel(double value, StripLayout strip)
+    {
+        if (strip.Percent)
         {
-            context.DrawText(labelLayouts[i], new Point(boxX + padX, rowY));
-            context.DrawText(valueLayouts[i], new Point(valueX, rowY));
-            rowY += rowHeights[i] + rowGap;
+            return Math.Round(value) + "%";
         }
+
+        return FormatNumber(value);
     }
 
     private static string FormatNumber(double value)
@@ -1344,41 +974,20 @@ public sealed class TrendChartControl : Control
             .TrimEnd('.');
     }
 
-    private static string AppendUnit(string value, string unit) =>
-        string.IsNullOrWhiteSpace(unit) ? value : value + " " + unit.Trim();
-
-    private static string FormatCursorValue(double value)
+    private static string FormatTime(DateTime tick)
     {
-        double rounded = Math.Round(value, 6);
-        if (rounded == 0)
-        {
-            return "0";
-        }
-
-        double magnitude = Math.Abs(rounded);
-        if (magnitude >= 1e15)
-        {
-            return rounded.ToString("0.###E+0", CultureInfo.InvariantCulture);
-        }
-
-        if (rounded == Math.Truncate(rounded))
-        {
-            return rounded.ToString("0", CultureInfo.InvariantCulture);
-        }
-
-        return rounded.ToString("0.######", CultureInfo.InvariantCulture)
-            .TrimEnd('0')
-            .TrimEnd('.');
+        // 24h window: show dates; shorter windows: plain clock time.
+        return tick.ToLocalTime().ToString("HH:mm", CultureInfo.InvariantCulture);
     }
 
-    private static string FormatTime(DateTime time)
+    private static FormattedText MeasureText(Typeface typeface, string text)
     {
-        // Mark midnight so a 24h trace that crosses a day boundary stays readable.
-        if (time.Hour == 0 && time.Minute == 0)
-        {
-            return time.ToString("MM-dd HH:mm", CultureInfo.InvariantCulture);
-        }
-
-        return time.ToString("HH:mm", CultureInfo.InvariantCulture);
+        return new FormattedText(
+            text,
+            CultureInfo.CurrentCulture,
+            FlowDirection.LeftToRight,
+            typeface,
+            FontSize,
+            AxisLabelBrush);
     }
 }

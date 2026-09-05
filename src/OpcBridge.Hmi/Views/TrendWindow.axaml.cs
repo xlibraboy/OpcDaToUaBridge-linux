@@ -1,6 +1,9 @@
+using System;
 using System.IO;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Avalonia.Input;
+using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using OpcBridge.Hmi.ViewModels;
 
@@ -24,7 +27,8 @@ public partial class TrendWindow : Window
         : this()
     {
         DataContext = viewModel;
-        // Right-drag on the plot selects a time range → reload history for that window.
+
+        // Drag on the plot selects a time range → reload history for that window.
         TrendChart.ZoomRequested += (_, e) =>
         {
             _ = viewModel.ZoomToAsync(e.FromUtc, e.ToUtc);
@@ -36,12 +40,41 @@ public partial class TrendWindow : Window
             viewModel.ResetZoomCommand.Execute(null);
         };
 
-        // Legend interaction (group trends): swatch click cycles color, row click toggles visibility.
-        if (viewModel is TrendGroupViewModel group)
+        // Keep the pinned blue cursor in sync both ways (Ctrl+Click on the plot,
+        // "Clear pin" button on the toolbar).
+        TrendChart.PinnedAtUtc = viewModel.PinnedAtUtc;
+        viewModel.PropertyChanged += (_, e) =>
         {
-            TrendChart.LegendColorRequested += (_, e) => group.CycleSeriesColor(e.SeriesName);
-            TrendChart.LegendVisibilityRequested += (_, e) => group.ToggleSeriesVisibility(e.SeriesName);
+            if (e.PropertyName is nameof(TrendWindowViewModelBase.PinnedAtUtc))
+            {
+                TrendChart.PinnedAtUtc = viewModel.PinnedAtUtc;
+            }
+        };
+        TrendChart.PinChanged += (_, pinned) =>
+        {
+            viewModel.PinnedAtUtc = pinned;
+        };
+    }
+
+    /// <summary>Pen-table swatch click: cycle that pen's trace color.</summary>
+    public void OnPenSwatchClick(object? sender, PointerPressedEventArgs e)
+    {
+        if (DataContext is not TrendWindowViewModelBase viewModel || sender is not Border { Tag: string penName })
+        {
+            return;
         }
+
+        switch (viewModel)
+        {
+            case TrendGroupViewModel group:
+                group.CyclePenColor(penName);
+                break;
+            case TrendViewModel single:
+                single.Pen.CycleColor();
+                break;
+        }
+
+        e.Handled = true;
     }
 
     private async void OnExportClick(object? sender, RoutedEventArgs e)

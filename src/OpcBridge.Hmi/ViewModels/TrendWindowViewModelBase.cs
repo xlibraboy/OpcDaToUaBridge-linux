@@ -6,10 +6,9 @@ using OpcBridge.Hmi.Core;
 namespace OpcBridge.Hmi.ViewModels;
 
 /// <summary>
-/// Shared shell for trend windows: the time range (15m/1h/8h/24h), right-drag time zoom,
-/// timeline panning, live play/pause, CSV export, the shared Y-axis plumbing and alarm
-/// limit overlays. Subclasses load the actual samples for the requested window
-/// (<see cref="ReloadDataAsync"/>) and compute the chart axis (<see cref="RecomputeAxis"/>).
+/// Shared shell for trend windows: the time range (15m/1h/8h/24h), drag time zoom,
+/// timeline panning, live play/pause, CSV export and alarm limit overlays. Subclasses
+/// load the actual samples for the requested window (<see cref="ReloadDataAsync"/>).
 /// A single-tag trend and a multi-tag group trend both derive from this, so
 /// <see cref="Views.TrendWindow"/> hosts either.
 /// </summary>
@@ -75,18 +74,25 @@ public abstract partial class TrendWindowViewModelBase : ObservableObject, IAsyn
     [ObservableProperty]
     private bool _hasFixedRange;
 
+    partial void OnAutoRangeChanged(bool value) => OnPropertyChanged(nameof(Series));
+
+    /// <summary>UTC timestamp of the pinned blue time cursor; null = no pin.</summary>
     [ObservableProperty]
-    private double _axisMin;
+    private DateTime? _pinnedAtUtc;
 
-    [ObservableProperty]
-    private double _axisMax = 1;
+    /// <summary>True while a pin is set (enables the "Clear pin" button).</summary>
+    public bool HasPin => PinnedAtUtc is not null;
 
-    [ObservableProperty]
-    private double _axisStep = 0.2;
+    partial void OnPinnedAtUtcChanged(DateTime? value) => OnPropertyChanged(nameof(HasPin));
 
-    partial void OnAutoRangeChanged(bool value) => RecomputeAxis();
+    /// <summary>Clears the pinned time cursor.</summary>
+    [RelayCommand]
+    private void ClearPin()
+    {
+        PinnedAtUtc = null;
+    }
 
-    /// <summary>True while a right-drag time-range zoom is active instead of the base range.</summary>
+    /// <summary>True while a drag time-range zoom is active instead of the base range.</summary>
     [ObservableProperty]
     private bool _isZoomed;
 
@@ -120,17 +126,9 @@ public abstract partial class TrendWindowViewModelBase : ObservableObject, IAsyn
     {
         OnPropertyChanged(nameof(IsSharedAxis));
         OnPropertyChanged(nameof(IsPercentAxis));
-        if (value == "Percent")
-        {
-            // Percentage axis is always a fixed 0..100 band.
-            AxisMin = 0;
-            AxisMax = 100;
-            AxisStep = 20;
-        }
-        else
-        {
-            RecomputeAxis();
-        }
+        // The chart maps every pen to its own scale (shared mode) or a 0..100 band
+        // (percent mode); the series list just needs to re-read the mode.
+        OnPropertyChanged(nameof(Series));
     }
 
     /// <summary>High alarm limit; when set, the chart shades everything above it.</summary>
@@ -169,10 +167,13 @@ public abstract partial class TrendWindowViewModelBase : ObservableObject, IAsyn
     /// <summary>True when this trend type can configure alarm limit overlays (single tags only).</summary>
     public virtual bool SupportsAlarmLimits => false;
 
+    /// <summary>Pen rows for the pen configuration table (name, color, value, min/max/avg).</summary>
+    public abstract IReadOnlyList<TrendPenViewModel> Pens { get; }
+
     /// <summary>True when this trend type offers the shared/percent Y-axis choice (groups only).</summary>
     public virtual bool SupportsPercentAxis => false;
 
-    /// <summary>Series the chart should draw; one entry per trace.</summary>
+    /// <summary>Pens the chart should draw; one entry per strip.</summary>
     public abstract IReadOnlyList<TrendSeries> Series { get; }
 
     /// <summary>Bridge id shown in the window hints; empty for group trends.</summary>
@@ -322,9 +323,6 @@ public abstract partial class TrendWindowViewModelBase : ObservableObject, IAsyn
 
     /// <summary>Subclasses load their samples for the window and update their own state.</summary>
     protected abstract Task ReloadDataAsync(DateTime from, DateTime to, CancellationToken ct);
-
-    /// <summary>Subclasses recompute the shared Y axis from their loaded samples.</summary>
-    protected abstract void RecomputeAxis();
 
     protected async Task ReloadAsync(string? rangeLabel = null)
     {

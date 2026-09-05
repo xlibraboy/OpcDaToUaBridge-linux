@@ -5,6 +5,10 @@ public sealed class HmiTagDto
     public string SourceId { get; set; } = string.Empty;
     public string ItemId { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
+
+    /// <summary>Tag description shown in the trend pen table (from the mapping).</summary>
+    public string? Description { get; set; }
+
     public string DataType { get; set; } = "Double";
     public object? Value { get; set; }
     public DateTime? TimestampUtc { get; set; }

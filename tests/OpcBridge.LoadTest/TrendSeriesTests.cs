@@ -39,12 +39,13 @@ public sealed class TrendSeriesTests
     public void TrendSeries_KeepsRenderingSettings()
     {
         TrendSample[] samples = { new(new DateTime(2026, 8, 5, 12, 0, 0, DateTimeKind.Utc), 1), new(new DateTime(2026, 8, 5, 12, 1, 0, DateTimeKind.Utc), 2) };
-        var series = new TrendSeries("Tank.Level", "m", "Step", "#F48FB1", samples);
+        var series = new TrendSeries("Tank.Level", "m", "Step", "#F48FB1", samples, Description: "Level of Tank 1");
 
         Assert.Equal("Tank.Level", series.Name);
         Assert.Equal("m", series.Unit);
         Assert.Equal("Step", series.TrendStyle);
         Assert.Equal("#F48FB1", series.Color);
+        Assert.Equal("Level of Tank 1", series.Description);
         Assert.Equal(2, series.Samples.Count);
         Assert.True(series.Visible);
         Assert.False(series.IsBoolean);
@@ -83,6 +84,109 @@ public sealed class TrendRangeTests
     public void Normalize_RoundTripsLabels(double hours, string expected)
     {
         Assert.Equal(expected, TrendRange.Normalize(hours));
+    }
+}
+
+public sealed class TrendPenStatsTests
+{
+    private static readonly DateTime Base = new(2026, 8, 5, 12, 0, 0, DateTimeKind.Utc);
+
+    [Fact]
+    public void Compute_MinsMaxAvgDeltaOverWindow()
+    {
+        TrendSample[] samples =
+        {
+            new(Base, 10),
+            new(Base.AddMinutes(1), 20),
+            new(Base.AddMinutes(2), 30)
+        };
+
+        TrendPenStats.Result? stats = TrendPenStats.Compute(samples, Base, Base.AddMinutes(5));
+
+        Assert.NotNull(stats);
+        Assert.Equal(30, stats!.Value.Value); // last sample
+        Assert.Equal(10, stats.Value.Minimum);
+        Assert.Equal(30, stats.Value.Maximum);
+        Assert.Equal(20, stats.Value.Average, 6);
+        Assert.Equal(20, stats.Value.Delta, 6);
+        Assert.Equal(3, stats.Value.Count);
+    }
+
+    [Fact]
+    public void Compute_ExcludesSamplesOutsideWindow()
+    {
+        TrendSample[] samples =
+        {
+            new(Base.AddMinutes(-10), 100), // before the window
+            new(Base, 10),
+            new(Base.AddMinutes(1), 20)
+        };
+
+        TrendPenStats.Result? stats = TrendPenStats.Compute(samples, Base, Base.AddMinutes(5));
+
+        Assert.NotNull(stats);
+        Assert.Equal(10, stats!.Value.Minimum);
+        Assert.Equal(20, stats.Value.Maximum);
+        Assert.Equal(2, stats.Value.Count);
+    }
+
+    [Fact]
+    public void Compute_NoWindowSamples_FallsBackToLastOverall()
+    {
+        TrendSample[] samples = { new(Base.AddMinutes(-10), 42) };
+
+        TrendPenStats.Result? stats = TrendPenStats.Compute(samples, Base, Base.AddMinutes(5));
+
+        Assert.NotNull(stats);
+        Assert.Equal(42, stats!.Value.Value);
+        Assert.Equal(42, stats.Value.Minimum);
+        Assert.Equal(0, stats.Value.Count);
+    }
+
+    [Fact]
+    public void Compute_NoSamplesAtAll_ReturnsNull()
+    {
+        Assert.Null(TrendPenStats.Compute(Array.Empty<TrendSample>(), Base, Base.AddMinutes(5)));
+    }
+
+    [Fact]
+    public void Compute_IgnoresNonFiniteSamples()
+    {
+        TrendSample[] samples =
+        {
+            new(Base, double.NaN),
+            new(Base.AddMinutes(1), 15)
+        };
+
+        TrendPenStats.Result? stats = TrendPenStats.Compute(samples, Base, Base.AddMinutes(5));
+
+        Assert.NotNull(stats);
+        Assert.Equal(15, stats!.Value.Minimum);
+        Assert.Equal(15, stats.Value.Maximum);
+        Assert.Equal(1, stats.Value.Count);
+    }
+
+    [Fact]
+    public void Compute_StdDevOfConstantSeries_IsZero()
+    {
+        TrendSample[] samples = { new(Base, 5), new(Base.AddMinutes(1), 5), new(Base.AddMinutes(2), 5) };
+
+        TrendPenStats.Result? stats = TrendPenStats.Compute(samples, Base, Base.AddMinutes(5));
+
+        Assert.NotNull(stats);
+        Assert.Equal(0, stats!.Value.StdDev, 6);
+    }
+
+    [Fact]
+    public void Compute_StdDevOfKnownSpread()
+    {
+        // Values 2 and 4: mean 3, population variance 1, stddev 1.
+        TrendSample[] samples = { new(Base, 2), new(Base.AddMinutes(1), 4) };
+
+        TrendPenStats.Result? stats = TrendPenStats.Compute(samples, Base, Base.AddMinutes(5));
+
+        Assert.NotNull(stats);
+        Assert.Equal(1, stats!.Value.StdDev, 6);
     }
 }
 
