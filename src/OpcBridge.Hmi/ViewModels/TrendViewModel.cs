@@ -1,21 +1,19 @@
 using CommunityToolkit.Mvvm.ComponentModel;
-using CommunityToolkit.Mvvm.Input;
 using OpcBridge.Client;
 using OpcBridge.Hmi.Core;
 using OpcBridge.Hmi.Services;
 
 namespace OpcBridge.Hmi.ViewModels;
 
-public partial class TrendViewModel : ObservableObject, IAsyncDisposable
+/// <summary>
+/// Single-tag trend window: one tag's history plotted as one trace, with the Y axis
+/// pinned to the tag's data-type range when available (or auto-fitted).
+/// </summary>
+public partial class TrendViewModel : TrendWindowViewModelBase
 {
     private readonly BridgeApiClient api_;
     private readonly bool ownsApi_;
     private readonly (double Min, double Max)? fixedRange_;
-    private DateTime? zoomFromUtc_;
-    private DateTime? zoomToUtc_;
-    private CancellationTokenSource? cts_;
-    private readonly PeriodicTimer? refreshTimer_;
-    private readonly Task? refreshLoop_;
 
     public TrendViewModel(TagBindingKey key, BridgeApiClient api, bool ownsApi = false, string? dataType = null, string? unit = null, string? trendStyle = null)
     {
@@ -35,13 +33,17 @@ public partial class TrendViewModel : ObservableObject, IAsyncDisposable
         HasFixedRange = fixedRange_.HasValue;
         RecomputeAxis();
         _ = ReloadAsync();
-        refreshTimer_ = new PeriodicTimer(TimeSpan.FromSeconds(30));
-        refreshLoop_ = RefreshLoopAsync();
     }
 
     public TagBindingKey Key { get; }
 
     public string DataType { get; }
+
+    public override string BridgeId { get; }
+
+    public string SourceId { get; }
+
+    public override string DaItemId { get; }
 
     /// <summary>Tag's engineering unit (e.g. "°C"), shown on the pinned readout and hover cursor.</summary>
     [ObservableProperty]
@@ -54,6 +56,36 @@ public partial class TrendViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty]
     private string _trendStyle = "Continuous";
 
+    /// <summary>Numeric samples with timestamps, newest last.</summary>
+    [ObservableProperty]
+    private IReadOnlyList<TrendSample> _samples = Array.Empty<TrendSample>();
+
+    /// <summary>True when at least two numeric samples are available to draw.</summary>
+    [ObservableProperty]
+    private bool _hasData;
+
+    /// <summary>Single-tag trends can configure alarm threshold overlays.</summary>
+    public override bool SupportsAlarmLimits => true;
+
+    /// <summary>Chart input: this tag as a single series, using the palette's default color.</summary>
+    public override IReadOnlyList<TrendSeries> Series =>
+        new[] { new TrendSeries(Title, Unit, TrendStyle, TrendSeriesPalette.ColorFor(0), Samples, IsBoolean: IsBooleanLike(DataType)) };
+
+    partial void OnSamplesChanged(IReadOnlyList<TrendSample> value)
+    {
+        OnPropertyChanged(nameof(Series));
+    }
+
+    partial void OnUnitChanged(string value)
+    {
+        OnPropertyChanged(nameof(Series));
+    }
+
+    partial void OnTrendStyleChanged(string value)
+    {
+        OnPropertyChanged(nameof(Series));
+    }
+
     private static string NormalizeTrendStyle(string? value)
     {
         return !string.IsNullOrWhiteSpace(value)
@@ -62,226 +94,50 @@ public partial class TrendViewModel : ObservableObject, IAsyncDisposable
             : "Continuous";
     }
 
-    [ObservableProperty]
-    private string _title = "Trend";
-
-    [ObservableProperty]
-    private string _bridgeId = string.Empty;
-
-    [ObservableProperty]
-    private string _sourceId = string.Empty;
-
-    [ObservableProperty]
-    private string _daItemId = string.Empty;
-
-    [ObservableProperty]
-    private string _rangeLabel = "1h";
-
-    public bool IsRange1h => RangeLabel == "1h";
-    public bool IsRange8h => RangeLabel == "8h";
-    public bool IsRange24h => RangeLabel == "24h";
-
-    partial void OnRangeLabelChanged(string value)
+    protected override async Task ReloadDataAsync(DateTime from, DateTime to, CancellationToken ct)
     {
-        OnPropertyChanged(nameof(IsRange1h));
-        OnPropertyChanged(nameof(IsRange8h));
-        OnPropertyChanged(nameof(IsRange24h));
-    }
-
-    [ObservableProperty]
-    private string _statusMessage = string.Empty;
-
-    [ObservableProperty]
-    private bool _isLoading;
-
-    /// <summary>Numeric samples with timestamps, newest last.</summary>
-    [ObservableProperty]
-    private IReadOnlyList<TrendSample> _samples = Array.Empty<TrendSample>();
-
-    /// <summary>Start of the displayed window (UTC).</summary>
-    [ObservableProperty]
-    private DateTime _fromUtc = DateTime.UtcNow.AddHours(-1);
-
-    /// <summary>End of the displayed window (UTC).</summary>
-    [ObservableProperty]
-    private DateTime _toUtc = DateTime.UtcNow;
-
-    /// <summary>
-    /// Fit the Y axis to the data when true; pin it to the tag's data-type range when false.
-    /// Disabled (and effectively true) for floating types, which have no natural range.
-    /// </summary>
-    [ObservableProperty]
-    private bool _autoRange = true;
-
-    /// <summary>True when the tag's data type has a natural min/max range to pin to.</summary>
-    [ObservableProperty]
-    private bool _hasFixedRange;
-
-    /// <summary>True when at least two numeric samples are available to draw.</summary>
-    [ObservableProperty]
-    private bool _hasData;
-
-    [ObservableProperty]
-    private double _axisMin;
-
-    [ObservableProperty]
-    private double _axisMax = 1;
-
-    [ObservableProperty]
-    private double _axisStep = 0.2;
-
-    partial void OnAutoRangeChanged(bool value) => RecomputeAxis();
-
-    /// <summary>True while a right-drag time-range zoom is active instead of the base range.</summary>
-    [ObservableProperty]
-    private bool _isZoomed;
-
-    [RelayCommand]
-    private async Task SetRangeAsync(string hoursText)
-    {
-        if (!int.TryParse(hoursText, out int hours) || hours <= 0)
-        {
-            hours = 1;
-        }
-
-        RangeLabel = hours + "h";
-        if (IsZoomed)
-        {
-            zoomFromUtc_ = null;
-            zoomToUtc_ = null;
-            IsZoomed = false;
-        }
-
-        await ReloadAsync(hours).ConfigureAwait(true);
-    }
-
-    [RelayCommand]
-    private async Task RefreshAsync() => await ReloadAsync().ConfigureAwait(true);
-
-    /// <summary>Returns to the base time range (1h/8h/24h).</summary>
-    [RelayCommand]
-    private async Task ResetZoomAsync()
-    {
-        if (!IsZoomed)
+        HmiTrendResponse response = await api_.GetTrendsAsync(SourceId, DaItemId, from, to, 1000, ct)
+            .ConfigureAwait(true);
+        if (ct.IsCancellationRequested)
         {
             return;
         }
 
-        zoomFromUtc_ = null;
-        zoomToUtc_ = null;
-        IsZoomed = false;
-        await ReloadAsync().ConfigureAwait(true);
-    }
-
-    /// <summary>Zooms the trend to a fixed UTC window, requested by a right-drag on the chart.</summary>
-    public async Task ZoomToAsync(DateTime fromUtc, DateTime toUtc)
-    {
-        if (toUtc <= fromUtc || toUtc - fromUtc < TimeSpan.FromSeconds(1))
+        List<TrendSample> samples = new();
+        foreach (HmiTrendPoint point in response.Points ?? Array.Empty<HmiTrendPoint>())
         {
-            return;
-        }
-
-        zoomFromUtc_ = fromUtc;
-        zoomToUtc_ = toUtc;
-        IsZoomed = true;
-        await ReloadAsync().ConfigureAwait(true);
-    }
-
-    private async Task RefreshLoopAsync()
-    {
-        if (refreshTimer_ is null)
-        {
-            return;
-        }
-
-        try
-        {
-            while (await refreshTimer_.WaitForNextTickAsync().ConfigureAwait(true))
+            if (TryToDouble(point.V, out double y))
             {
-                await ReloadAsync().ConfigureAwait(true);
+                samples.Add(new TrendSample(point.T, y));
             }
         }
-        catch (OperationCanceledException)
-        {
-        }
-    }
 
-    private async Task ReloadAsync(int? hours = null)
-    {
-        int rangeHours = hours ?? ParseRangeHours(RangeLabel);
-        DateTime to = DateTime.UtcNow;
-        DateTime from = to.AddHours(-rangeHours);
-        if (zoomFromUtc_ is { } zoomFrom && zoomToUtc_ is { } zoomTo && zoomTo > zoomFrom)
+        samples.Sort((a, b) => a.T.CompareTo(b.T));
+        Samples = samples;
+
+        DateTime fromUtc = response.FromUtc == default ? from : response.FromUtc;
+        DateTime toUtc = response.ToUtc == default ? to : response.ToUtc;
+        if (toUtc <= fromUtc)
         {
-            from = zoomFrom;
-            to = zoomTo;
+            fromUtc = from;
+            toUtc = to;
         }
 
-        cts_?.Cancel();
-        cts_?.Dispose();
-        cts_ = new CancellationTokenSource();
-        CancellationToken ct = cts_.Token;
-        IsLoading = true;
-        try
-        {
-            HmiTrendResponse response = await api_.GetTrendsAsync(SourceId, DaItemId, from, to, 1000, ct)
-                .ConfigureAwait(true);
-            if (ct.IsCancellationRequested)
-            {
-                return;
-            }
+        FromUtc = fromUtc;
+        ToUtc = toUtc;
+        RecomputeAxis();
 
-            List<TrendSample> samples = new();
-            foreach (HmiTrendPoint point in response.Points ?? Array.Empty<HmiTrendPoint>())
-            {
-                if (TryToDouble(point.V, out double y))
-                {
-                    samples.Add(new TrendSample(point.T, y));
-                }
-            }
-
-            samples.Sort((a, b) => a.T.CompareTo(b.T));
-            Samples = samples;
-
-            DateTime fromUtc = response.FromUtc == default ? from : response.FromUtc;
-            DateTime toUtc = response.ToUtc == default ? to : response.ToUtc;
-            if (toUtc <= fromUtc)
-            {
-                fromUtc = from;
-                toUtc = to;
-            }
-
-            FromUtc = fromUtc;
-            ToUtc = toUtc;
-            RecomputeAxis();
-
-            string windowLabel = IsZoomed && zoomFromUtc_ is { } wf && zoomToUtc_ is { } wt
-                ? FormatDuration(wt - wf)
-                : RangeLabel;
-            StatusMessage = string.IsNullOrWhiteSpace(response.Error)
-                ? (samples.Count == 0 ? "No history" : $"{samples.Count} points ({windowLabel})")
-                : response.Error!;
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        catch (Exception ex)
-        {
-            StatusMessage = "Trend error: " + ex.Message;
-            Samples = Array.Empty<TrendSample>();
-            HasData = false;
-        }
-        finally
-        {
-            IsLoading = false;
-        }
+        string windowLabel = IsZoomed ? FormatDuration(ToUtc - FromUtc) : RangeLabel;
+        StatusMessage = string.IsNullOrWhiteSpace(response.Error)
+            ? (samples.Count == 0 ? "No history" : $"{samples.Count} points ({windowLabel})")
+            : response.Error!;
     }
 
     /// <summary>
     /// Resolves the min/max/step the chart should draw for the current window,
     /// honoring the auto/fixed range toggle.
     /// </summary>
-    private void RecomputeAxis()
+    protected override void RecomputeAxis()
     {
         bool hasNumeric = false;
         double dataMin = double.MaxValue;
@@ -309,37 +165,6 @@ public partial class TrendViewModel : ObservableObject, IAsyncDisposable
         AxisMin = axis.IsValid ? axis.Min : fallback.IsValid ? fallback.Min : 0;
         AxisMax = axis.IsValid ? axis.Max : fallback.IsValid ? fallback.Max : 1;
         AxisStep = axis.IsValid ? axis.Step : fallback.IsValid ? fallback.Step : 1;
-    }
-
-    private static string FormatDuration(TimeSpan span)
-    {
-        if (span <= TimeSpan.Zero)
-        {
-            return "0s";
-        }
-
-        if (span.TotalMinutes < 1)
-        {
-            return $"{(int)Math.Ceiling(span.TotalSeconds)}s";
-        }
-
-        if (span.TotalHours >= 1 && span.TotalMinutes % 60 == 0)
-        {
-            return $"{(int)span.TotalHours}h";
-        }
-
-        return $"{(int)Math.Ceiling(span.TotalMinutes)}m";
-    }
-
-    private static int ParseRangeHours(string label)
-    {
-        if (string.IsNullOrWhiteSpace(label))
-        {
-            return 1;
-        }
-
-        string digits = new string(label.Where(char.IsDigit).ToArray());
-        return int.TryParse(digits, out int h) && h > 0 ? h : 1;
     }
 
     private static bool IsBooleanLike(string? dataType) =>
@@ -379,16 +204,9 @@ public partial class TrendViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    public async ValueTask DisposeAsync()
+    public override async ValueTask DisposeAsync()
     {
-        cts_?.Cancel();
-        cts_?.Dispose();
-        refreshTimer_?.Dispose();
-        if (refreshLoop_ is not null)
-        {
-            try { await refreshLoop_.ConfigureAwait(false); } catch { }
-        }
-
+        await base.DisposeAsync().ConfigureAwait(false);
         if (ownsApi_)
         {
             api_.Dispose();

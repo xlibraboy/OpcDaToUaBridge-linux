@@ -3,35 +3,61 @@
         xmlns:vm="using:OpcBridge.Hmi.ViewModels"
         xmlns:controls="using:OpcBridge.Hmi.Controls"
         x:Class="OpcBridge.Hmi.Views.TrendWindow"
-        x:DataType="vm:TrendViewModel"
+        x:DataType="vm:TrendWindowViewModelBase"
         Title="{Binding Title}"
-        Width="640"
-        Height="420"
-        MinWidth="480"
-        MinHeight="320"
+        Width="720"
+        Height="460"
+        MinWidth="560"
+        MinHeight="340"
         WindowStartupLocation="CenterOwner">
   <DockPanel Margin="12">
-    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+    <!-- Row 1: range, auto-range, live controls, pan, export, refresh -->
+    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6">
+      <Button DockPanel.Dock="Right"
+              Content="Export CSV"
+              Click="OnExportClick"
+              MinWidth="90" />
       <Button DockPanel.Dock="Right"
               Content="Refresh"
               Command="{Binding RefreshCommand}"
-              MinWidth="80" />
+              MinWidth="80"
+              Margin="0,0,8,0" />
       <Button DockPanel.Dock="Right"
               Content="Reset zoom"
               Command="{Binding ResetZoomCommand}"
               IsVisible="{Binding IsZoomed}"
               MinWidth="90"
               Margin="0,0,8,0" />
+      <Button DockPanel.Dock="Right"
+              Content="▶"
+              ToolTip.Tip="Pan forward"
+              Command="{Binding PanForwardCommand}"
+              MinWidth="30"
+              Margin="0,0,8,0" />
+      <Button DockPanel.Dock="Right"
+              Content="◀"
+              ToolTip.Tip="Pan back"
+              Command="{Binding PanBackCommand}"
+              MinWidth="30"
+              Margin="0,0,8,0" />
+      <Button DockPanel.Dock="Right"
+              Content="{Binding PauseLabel}"
+              Command="{Binding TogglePauseCommand}"
+              MinWidth="70"
+              Margin="0,0,8,0" />
       <StackPanel Orientation="Horizontal" Spacing="4">
+        <RadioButton Classes="seg" GroupName="range" Content="15m"
+                     IsChecked="{Binding IsRange15m, Mode=OneWay}"
+                     Command="{Binding SetRangeCommand}" CommandParameter="15m" />
         <RadioButton Classes="seg" GroupName="range" Content="1h"
                      IsChecked="{Binding IsRange1h, Mode=OneWay}"
-                     Command="{Binding SetRangeCommand}" CommandParameter="1" />
+                     Command="{Binding SetRangeCommand}" CommandParameter="1h" />
         <RadioButton Classes="seg" GroupName="range" Content="8h"
                      IsChecked="{Binding IsRange8h, Mode=OneWay}"
-                     Command="{Binding SetRangeCommand}" CommandParameter="8" />
+                     Command="{Binding SetRangeCommand}" CommandParameter="8h" />
         <RadioButton Classes="seg" GroupName="range" Content="24h"
                      IsChecked="{Binding IsRange24h, Mode=OneWay}"
-                     Command="{Binding SetRangeCommand}" CommandParameter="24" />
+                     Command="{Binding SetRangeCommand}" CommandParameter="24h" />
       </StackPanel>
       <CheckBox VerticalAlignment="Center"
                 Margin="16,0,0,0"
@@ -39,11 +65,41 @@
                 IsChecked="{Binding AutoRange}"
                 IsEnabled="{Binding HasFixedRange}"
                 ToolTip.Tip="Fit the Y axis to the data. Turn off to pin the axis to the tag's data-type range (not available for floating-point types)." />
-      <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+      <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center"
+                  IsVisible="{Binding HasBridgeHint}">
         <TextBlock Classes="hint" Text="{Binding BridgeId, StringFormat=Bridge: {0}}" />
         <TextBlock Classes="hint" Text="{Binding DaItemId, StringFormat=Item: {0}}" />
       </StackPanel>
     </DockPanel>
+
+    <!-- Row 2: custom range, alarm limits (single), Y-axis mode (group) -->
+    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+      <StackPanel Orientation="Horizontal" Spacing="12">
+        <Button Content="Custom range…" Click="OnCustomRangeClick" MinWidth="110" />
+        <StackPanel Orientation="Horizontal" Spacing="6"
+                    IsVisible="{Binding SupportsAlarmLimits}">
+          <TextBlock Classes="hint" VerticalAlignment="Center" Text="Alarm" />
+          <TextBox Width="72"
+                   VerticalAlignment="Center"
+                   Watermark="HI"
+                   Text="{Binding AlarmHighText, UpdateSourceTrigger=PropertyChanged}" />
+          <TextBox Width="72"
+                   VerticalAlignment="Center"
+                   Watermark="LO"
+                   Text="{Binding AlarmLowText, UpdateSourceTrigger=PropertyChanged}" />
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" Spacing="4"
+                    IsVisible="{Binding SupportsPercentAxis}">
+          <RadioButton Classes="seg" GroupName="axis" Content="Shared scale"
+                       IsChecked="{Binding IsSharedAxis, Mode=OneWay}"
+                       Command="{Binding SetAxisModeCommand}" CommandParameter="Shared" />
+          <RadioButton Classes="seg" GroupName="axis" Content="0–100 %"
+                       IsChecked="{Binding IsPercentAxis, Mode=OneWay}"
+                       Command="{Binding SetAxisModeCommand}" CommandParameter="Percent" />
+        </StackPanel>
+      </StackPanel>
+    </DockPanel>
+
     <TextBlock DockPanel.Dock="Bottom"
                Margin="0,8,0,0"
                Classes="hint"
@@ -52,14 +108,15 @@
     <Border Classes="cardDark" Padding="8">
       <controls:TrendChartControl x:Name="TrendChart"
                                   EnableRangeZoom="True"
-                                  Samples="{Binding Samples}"
+                                  Series="{Binding Series}"
                                   FromUtc="{Binding FromUtc}"
                                   ToUtc="{Binding ToUtc}"
                                   YMin="{Binding AxisMin}"
                                   YMax="{Binding AxisMax}"
                                   YStep="{Binding AxisStep}"
-                                  Unit="{Binding Unit}"
-                                  TrendStyle="{Binding TrendStyle}" />
+                                  YAxisMode="{Binding YAxisMode}"
+                                  AlarmHigh="{Binding AlarmHigh}"
+                                  AlarmLow="{Binding AlarmLow}" />
     </Border>
   </DockPanel>
 </Window>

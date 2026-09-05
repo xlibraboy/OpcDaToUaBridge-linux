@@ -186,6 +186,8 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         ConnectCommand.NotifyCanExecuteChanged();
         DisconnectCommand.NotifyCanExecuteChanged();
         OpenFaceplateCommand.NotifyCanExecuteChanged();
+        OpenTrendCommand.NotifyCanExecuteChanged();
+        OpenGroupTrendCommand.NotifyCanExecuteChanged();
         RefreshDisplaysCommand.NotifyCanExecuteChanged();
         LoadSelectedDisplayCommand.NotifyCanExecuteChanged();
     }
@@ -193,6 +195,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     partial void OnSelectedTagChanged(TagItemViewModel? value)
     {
         OpenFaceplateCommand.NotifyCanExecuteChanged();
+        OpenTrendCommand.NotifyCanExecuteChanged();
     }
 
     [RelayCommand]
@@ -296,6 +299,85 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     }
 
     private bool CanOpenFaceplate() => IsConnected && SelectedTag is not null;
+
+    /// <summary>Opens the single-tag trend for the selected tag.</summary>
+    [RelayCommand(CanExecute = nameof(CanOpenTrend))]
+    private void OpenTrend()
+    {
+        if (SelectedTag is null)
+        {
+            return;
+        }
+
+        OpenTrendFor(SelectedTag.BindingKey);
+    }
+
+    private bool CanOpenTrend() => IsConnected && SelectedTag is not null;
+
+    /// <summary>Opens the tag picker used to compose a multi-tag group trend.</summary>
+    [RelayCommand(CanExecute = nameof(CanOpenGroupTrend))]
+    private void OpenGroupTrend()
+    {
+        var picker = new TrendGroupPickerWindow { DataContext = this };
+        if (ownerWindow_ is { } owner)
+        {
+            picker.ShowDialog(owner);
+        }
+        else
+        {
+            picker.Show();
+        }
+    }
+
+    private bool CanOpenGroupTrend() => IsConnected && Tags.Count > 0;
+
+    /// <summary>
+    /// Opens a group trend window plotting the given tags on one chart. Tags whose bridge
+    /// is not connected are skipped.
+    /// </summary>
+    public void OpenTrendGroup(IReadOnlyList<TagItemViewModel> tags)
+    {
+        var series = new List<TrendSeriesViewModel>();
+        foreach (TagItemViewModel tag in tags)
+        {
+            TagBindingKey key = tag.BindingKey;
+            if (!connections_.TryGetSession(key.BridgeId, out BridgeConnectionManager.BridgeSession? session)
+                || session is null)
+            {
+                continue;
+            }
+
+            var entry = connections_.Cache.TryGet(key, out MultiBridgeTagEntry? cached) ? cached : null;
+            series.Add(new TrendSeriesViewModel(
+                key,
+                session.Api,
+                dataType: entry?.DataType,
+                unit: entry?.Unit,
+                trendStyle: entry?.TrendStyle));
+        }
+
+        if (series.Count == 0)
+        {
+            StatusMessage = "Group trend: no selected tags on a connected bridge";
+            return;
+        }
+
+        if (series.Count < tags.Count)
+        {
+            StatusMessage = $"Group trend opened with {series.Count} of {tags.Count} tags (skipped unconnected bridges)";
+        }
+
+        TrendGroupViewModel vm = new(series);
+        TrendWindow window = new(vm);
+        if (ownerWindow_ is { } owner)
+        {
+            window.Show(owner);
+        }
+        else
+        {
+            window.Show();
+        }
+    }
 
     [RelayCommand(CanExecute = nameof(CanRefreshDisplays))]
     private async Task RefreshDisplaysAsync()
