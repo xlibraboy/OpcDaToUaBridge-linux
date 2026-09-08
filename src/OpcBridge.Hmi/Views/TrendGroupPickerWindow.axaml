@@ -4,6 +4,7 @@
         x:Class="OpcBridge.Hmi.Views.TrendGroupPickerWindow"
         x:DataType="vm:MainViewModel"
         Title="Group trend"
+        FontSize="11"
         Width="560"
         Height="520"
         MinWidth="420"

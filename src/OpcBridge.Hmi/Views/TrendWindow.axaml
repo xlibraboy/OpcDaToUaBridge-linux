@@ -5,8 +5,9 @@
         x:Class="OpcBridge.Hmi.Views.TrendWindow"
         x:DataType="vm:TrendWindowViewModelBase"
         Title="{Binding Title}"
+        FontSize="11"
         Width="900"
-        Height="640"
+        Height="680"
         MinWidth="640"
         MinHeight="420"
         WindowStartupLocation="CenterOwner">
@@ -20,8 +21,9 @@
       <Button DockPanel.Dock="Right"
               Content="Refresh"
               Command="{Binding RefreshCommand}"
-              MinWidth="80"
-              Margin="0,0,8,0" />
+              IsEnabled="{Binding !IsLoading}"
+              ToolTip.Tip="Reload history for the current window"
+              MinWidth="80" />
       <Button DockPanel.Dock="Right"
               Content="Reset zoom"
               Command="{Binding ResetZoomCommand}"
@@ -45,19 +47,17 @@
               Command="{Binding TogglePauseCommand}"
               MinWidth="70"
               Margin="0,0,8,0" />
-      <StackPanel Orientation="Horizontal" Spacing="4">
-        <RadioButton Classes="seg" GroupName="range" Content="15m"
-                     IsChecked="{Binding IsRange15m, Mode=OneWay}"
-                     Command="{Binding SetRangeCommand}" CommandParameter="15m" />
-        <RadioButton Classes="seg" GroupName="range" Content="1h"
-                     IsChecked="{Binding IsRange1h, Mode=OneWay}"
-                     Command="{Binding SetRangeCommand}" CommandParameter="1h" />
-        <RadioButton Classes="seg" GroupName="range" Content="8h"
-                     IsChecked="{Binding IsRange8h, Mode=OneWay}"
-                     Command="{Binding SetRangeCommand}" CommandParameter="8h" />
-        <RadioButton Classes="seg" GroupName="range" Content="24h"
-                     IsChecked="{Binding IsRange24h, Mode=OneWay}"
-                     Command="{Binding SetRangeCommand}" CommandParameter="24h" />
+      <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+        <TextBlock Classes="hint" VerticalAlignment="Center" Text="Period" />
+        <ComboBox MinWidth="84"
+                  ItemsSource="{Binding RangeChoices}"
+                  SelectedItem="{Binding RangeSelection, Mode=TwoWay}"
+                  ToolTip.Tip="Time window loaded into the trend; shows Custom while zoomed" />
+        <TextBlock Classes="hint" VerticalAlignment="Center" Margin="12,0,0,0" Text="Interval" />
+        <ComboBox MinWidth="84"
+                  ItemsSource="{Binding IntervalChoices}"
+                  SelectedItem="{Binding IntervalLabel, Mode=TwoWay}"
+                  ToolTip.Tip="History sampling interval — Auto keeps up to 1000 points per pen; a fixed interval keeps one point per step (capped at 2000)" />
       </StackPanel>
       <CheckBox VerticalAlignment="Center"
                 Margin="16,0,0,0"
@@ -75,7 +75,13 @@
     <!-- Row 2: custom range, alarm limits (single), Y-axis mode (group) -->
     <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
       <StackPanel Orientation="Horizontal" Spacing="12">
-        <Button Content="Custom range…" Click="OnCustomRangeClick" MinWidth="110" />
+        <Button Content="Time range…" Click="OnCustomRangeClick" MinWidth="100"
+                ToolTip.Tip="Pick an exact from/to window (defaults to now)" />
+        <Button Content="Clear ranges"
+                Command="{Binding ClearCustomRangesCommand}"
+                IsVisible="{Binding HasCustomRanges}"
+                ToolTip.Tip="Reset every pen's Y axis back to auto-fit"
+                MinWidth="95" />
         <Button Content="Clear pin"
                 Command="{Binding ClearPinCommand}"
                 IsVisible="{Binding HasPin}"
@@ -101,6 +107,17 @@
                        IsChecked="{Binding IsPercentAxis, Mode=OneWay}"
                        Command="{Binding SetAxisModeCommand}" CommandParameter="Percent" />
         </StackPanel>
+        <StackPanel Orientation="Horizontal" Spacing="4"
+                    IsVisible="{Binding SupportsLayoutToggle}">
+          <RadioButton Classes="seg" GroupName="layout" Content="Mixed"
+                       IsChecked="{Binding IsMixedLayout, Mode=OneWay}"
+                       Command="{Binding SetLayoutModeCommand}" CommandParameter="Mixed"
+                       ToolTip.Tip="Overlay all pens on one plot, with each pen's min–max scale in the legend" />
+          <RadioButton Classes="seg" GroupName="layout" Content="Strips"
+                       IsChecked="{Binding !IsMixedLayout, Mode=OneWay}"
+                       Command="{Binding SetLayoutModeCommand}" CommandParameter="Stacked"
+                       ToolTip.Tip="One strip per pen, each with its own axis" />
+        </StackPanel>
       </StackPanel>
     </DockPanel>
 
@@ -110,12 +127,92 @@
                Text="{Binding StatusMessage}"
                TextWrapping="Wrap" />
 
-    <!-- Strip chart: one strip per pen with its own Y axis -->
+    <!-- Chart fills the remaining height; the scrollable pen table docks below -->
     <DockPanel>
-      <Border DockPanel.Dock="Top" Classes="cardDark" Padding="8">
+      <!-- Pen configuration table: visibility, color, name, description, live + windowed stats -->
+      <Border DockPanel.Dock="Bottom" Classes="cardDark" Padding="8" Margin="0,8,0,0">
+        <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                      VerticalScrollBarVisibility="Auto"
+                      MaxHeight="200">
+          <Grid RowDefinitions="Auto,*" Margin="0">
+            <!-- Header row: bottom rule + column separators (definitions mirror the data rows) -->
+            <Border Grid.Row="0" BorderBrush="#2EFFFFFF" BorderThickness="0,0,0,1">
+              <Grid ColumnDefinitions="22,22,1.3*,1,1.1*,1,1.6*,1,0.9*,1,0.8*,1,0.8*,1,0.8*" MinHeight="24">
+                <TextBlock Grid.Column="2" Classes="listHeader" Text="Name" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="4" Classes="listHeader" Text="Description" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="6" Classes="listHeader" Text="Range (min–max)" VerticalAlignment="Center"
+                           ToolTip.Tip="Actual data range shown as watermarks; type values to set a custom Y-axis scale (leave empty to auto-fit)" />
+                <TextBlock Grid.Column="8" Classes="listHeader" Text="Value" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="10" Classes="listHeader" Text="Minimum" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="12" Classes="listHeader" Text="Maximum" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="14" Classes="listHeader" Text="Average" VerticalAlignment="Center" />
+                <Rectangle Grid.Column="3" Width="1" Fill="#24FFFFFF" />
+                <Rectangle Grid.Column="5" Width="1" Fill="#24FFFFFF" />
+                <Rectangle Grid.Column="7" Width="1" Fill="#24FFFFFF" />
+                <Rectangle Grid.Column="9" Width="1" Fill="#24FFFFFF" />
+                <Rectangle Grid.Column="11" Width="1" Fill="#24FFFFFF" />
+                <Rectangle Grid.Column="13" Width="1" Fill="#24FFFFFF" />
+              </Grid>
+            </Border>
+            <ItemsControl Grid.Row="1" ItemsSource="{Binding Pens}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:TrendPenViewModel">
+                  <Border BorderBrush="#1AFFFFFF" BorderThickness="0,0,0,1">
+                    <Grid ColumnDefinitions="22,22,1.3*,1,1.1*,1,1.6*,1,0.9*,1,0.8*,1,0.8*,1,0.8*" MinHeight="24">
+                      <CheckBox Grid.Column="0"
+                                IsChecked="{Binding IsVisible}"
+                                VerticalAlignment="Center" HorizontalAlignment="Center" />
+                      <Border Grid.Column="1"
+                              Width="18" Height="10"
+                              CornerRadius="2"
+                              Tag="{Binding Name}"
+                              Background="{Binding Color, Converter={x:Static vm:HexToBrushConverter.Instance}}"
+                              VerticalAlignment="Center"
+                              Cursor="Hand"
+                              ToolTip.Tip="Click to cycle color"
+                              PointerPressed="OnPenSwatchClick" />
+                      <TextBlock Grid.Column="2" Text="{Binding Name}" TextTrimming="CharacterEllipsis"
+                                 VerticalAlignment="Center" />
+                      <TextBlock Grid.Column="4" Text="{Binding Description}" TextTrimming="CharacterEllipsis"
+                                 Classes="hint" VerticalAlignment="Center" />
+                      <StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="3" VerticalAlignment="Center">
+                        <TextBox Width="52" Height="20" Padding="4,1" VerticalContentAlignment="Center"
+                                 Text="{Binding RangeMinText, UpdateSourceTrigger=PropertyChanged}"
+                                 Watermark="{Binding RangeMinWatermark}"
+                                 ToolTip.Tip="Custom Y-axis minimum (empty = auto)" />
+                        <TextBlock Classes="hint" Text="–" VerticalAlignment="Center" />
+                        <TextBox Width="52" Height="20" Padding="4,1" VerticalContentAlignment="Center"
+                                 Text="{Binding RangeMaxText, UpdateSourceTrigger=PropertyChanged}"
+                                 Watermark="{Binding RangeMaxWatermark}"
+                                 ToolTip.Tip="Custom Y-axis maximum (empty = auto)" />
+                      </StackPanel>
+                      <TextBlock Grid.Column="8" Text="{Binding ValueText}" Classes="valueText"
+                                 VerticalAlignment="Center" />
+                      <TextBlock Grid.Column="10" Text="{Binding MinimumText}" Classes="hint"
+                                 VerticalAlignment="Center" />
+                      <TextBlock Grid.Column="12" Text="{Binding MaximumText}" Classes="hint"
+                                 VerticalAlignment="Center" />
+                      <TextBlock Grid.Column="14" Text="{Binding AverageText}" Classes="hint"
+                                 VerticalAlignment="Center" />
+                      <Rectangle Grid.Column="3" Width="1" Fill="#24FFFFFF" />
+                      <Rectangle Grid.Column="5" Width="1" Fill="#24FFFFFF" />
+                      <Rectangle Grid.Column="7" Width="1" Fill="#24FFFFFF" />
+                      <Rectangle Grid.Column="9" Width="1" Fill="#24FFFFFF" />
+                      <Rectangle Grid.Column="11" Width="1" Fill="#24FFFFFF" />
+                      <Rectangle Grid.Column="13" Width="1" Fill="#24FFFFFF" />
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </Grid>
+        </ScrollViewer>
+      </Border>
+
+      <Border Classes="cardDark" Padding="8">
         <controls:TrendChartControl x:Name="TrendChart"
-                                    Height="320"
                                     EnableRangeZoom="True"
+                                    LayoutMode="{Binding LayoutMode}"
                                     Series="{Binding Series}"
                                     FromUtc="{Binding FromUtc}"
                                     ToUtc="{Binding ToUtc}"
@@ -123,58 +220,6 @@
                                     PinnedAtUtc="{Binding PinnedAtUtc}"
                                     AlarmHigh="{Binding AlarmHigh}"
                                     AlarmLow="{Binding AlarmLow}" />
-      </Border>
-
-      <!-- Pen configuration table: visibility, color, name, description, live + windowed stats -->
-      <Border DockPanel.Dock="Bottom" Classes="cardDark" Padding="8" Margin="0,8,0,0">
-        <ScrollViewer HorizontalScrollBarVisibility="Auto"
-                      VerticalScrollBarVisibility="Hidden"
-                      MaxHeight="170">
-          <Grid RowDefinitions="Auto,*" Margin="0">
-            <Grid Grid.Row="0" ColumnDefinitions="32,32,2*,2*,1.2*,1.2*,1.2*,1.2*">
-              <TextBlock Grid.Column="0" Classes="listHeader" Text="" />
-              <TextBlock Grid.Column="1" Classes="listHeader" Text="Pen" />
-              <TextBlock Grid.Column="2" Classes="listHeader" Text="Name" />
-              <TextBlock Grid.Column="3" Classes="listHeader" Text="Description" />
-              <TextBlock Grid.Column="4" Classes="listHeader" Text="Value" />
-              <TextBlock Grid.Column="5" Classes="listHeader" Text="Minimum" />
-              <TextBlock Grid.Column="6" Classes="listHeader" Text="Maximum" />
-              <TextBlock Grid.Column="7" Classes="listHeader" Text="Average" />
-            </Grid>
-            <ItemsControl Grid.Row="1" ItemsSource="{Binding Pens}">
-              <ItemsControl.ItemTemplate>
-                <DataTemplate x:DataType="vm:TrendPenViewModel">
-                  <Grid ColumnDefinitions="32,32,2*,2*,1.2*,1.2*,1.2*,1.2*" Margin="0,2">
-                    <CheckBox Grid.Column="0"
-                              IsChecked="{Binding IsVisible}"
-                              VerticalAlignment="Center" />
-                    <Border Grid.Column="1"
-                            Width="22" Height="12"
-                            CornerRadius="2"
-                            Tag="{Binding Name}"
-                            Background="{Binding Color, Converter={x:Static vm:HexToBrushConverter.Instance}}"
-                            VerticalAlignment="Center"
-                            Cursor="Hand"
-                            ToolTip.Tip="Click to cycle color"
-                            PointerPressed="OnPenSwatchClick" />
-                    <TextBlock Grid.Column="2" Text="{Binding Name}" TextTrimming="CharacterEllipsis"
-                               VerticalAlignment="Center" />
-                    <TextBlock Grid.Column="3" Text="{Binding Description}" TextTrimming="CharacterEllipsis"
-                               Classes="hint" VerticalAlignment="Center" />
-                    <TextBlock Grid.Column="4" Text="{Binding ValueText}" Classes="valueText"
-                               VerticalAlignment="Center" />
-                    <TextBlock Grid.Column="5" Text="{Binding MinimumText}" Classes="hint"
-                               VerticalAlignment="Center" />
-                    <TextBlock Grid.Column="6" Text="{Binding MaximumText}" Classes="hint"
-                               VerticalAlignment="Center" />
-                    <TextBlock Grid.Column="7" Text="{Binding AverageText}" Classes="hint"
-                               VerticalAlignment="Center" />
-                  </Grid>
-                </DataTemplate>
-              </ItemsControl.ItemTemplate>
-            </ItemsControl>
-          </Grid>
-        </ScrollViewer>
       </Border>
     </DockPanel>
   </DockPanel>

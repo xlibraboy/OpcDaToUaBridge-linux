@@ -33,20 +33,75 @@ public abstract partial class TrendWindowViewModelBase : ObservableObject, IAsyn
     [ObservableProperty]
     private string _rangeLabel = "1h";
 
-    public bool IsRange15m => RangeLabel == "15m";
+    /// <summary>Fixed period choices for the toolbar dropdown; "Custom" is a display state while zoomed.</summary>
+    public string[] RangeChoices { get; } = { "15m", "1h", "8h", "24h", "Custom" };
 
-    public bool IsRange1h => RangeLabel == "1h";
-
-    public bool IsRange8h => RangeLabel == "8h";
-
-    public bool IsRange24h => RangeLabel == "24h";
-
-    partial void OnRangeLabelChanged(string value)
+    /// <summary>
+    /// Period dropdown selection: the base range label, or "Custom" while a zoomed/
+    /// custom time window is active. Picking a period applies it and drops the zoom.
+    /// </summary>
+    public string RangeSelection
     {
-        OnPropertyChanged(nameof(IsRange15m));
-        OnPropertyChanged(nameof(IsRange1h));
-        OnPropertyChanged(nameof(IsRange8h));
-        OnPropertyChanged(nameof(IsRange24h));
+        get => IsZoomed ? "Custom" : RangeLabel;
+        set
+        {
+            if (value == "Custom" || (value == RangeLabel && !IsZoomed))
+            {
+                return;
+            }
+
+            _ = ApplyRangeAsync(value);
+        }
+    }
+
+    partial void OnRangeLabelChanged(string value) => OnPropertyChanged(nameof(RangeSelection));
+
+    /// <summary>Applies a period from the dropdown: resets any zoom, then reloads.</summary>
+    private async Task ApplyRangeAsync(string label)
+    {
+        RangeLabel = TrendRange.Normalize(TrendRange.ParseHours(label));
+        if (IsZoomed)
+        {
+            zoomFromUtc_ = null;
+            zoomToUtc_ = null;
+            IsZoomed = false;
+        }
+
+        await ReloadAsync(RangeLabel).ConfigureAwait(true);
+    }
+
+    [ObservableProperty]
+    private string _intervalLabel = "Auto";
+
+    /// <summary>Sampling-interval choices for the toolbar dropdown (Auto = up to 1000 points per pen).</summary>
+    public string[] IntervalChoices { get; } = { "Auto", "1s", "5s", "10s", "30s", "1m" };
+
+    /// <summary>Selected sampling interval; null = Auto (bridge default point budget).</summary>
+    public TimeSpan? TrendInterval => IntervalLabel switch
+    {
+        "1s" => TimeSpan.FromSeconds(1),
+        "5s" => TimeSpan.FromSeconds(5),
+        "10s" => TimeSpan.FromSeconds(10),
+        "30s" => TimeSpan.FromSeconds(30),
+        "1m" => TimeSpan.FromMinutes(1),
+        _ => null
+    };
+
+    partial void OnIntervalLabelChanged(string value) => _ = ReloadAsync();
+
+    /// <summary>
+    /// Point budget for the window: one sample per interval (e.g. 1h at 30s = 120),
+    /// clamped to the bridge's 10..2000 limit; Auto keeps the 1000-point default.
+    /// </summary>
+    protected static int MaxPointsFor(TimeSpan span, TimeSpan? interval)
+    {
+        if (interval is not { } step || step <= TimeSpan.Zero || span <= TimeSpan.Zero)
+        {
+            return 1000;
+        }
+
+        double points = span.Ticks / (double)step.Ticks;
+        return (int)Math.Clamp(Math.Round(points), 10, 2000);
     }
 
     [ObservableProperty]
@@ -96,6 +151,8 @@ public abstract partial class TrendWindowViewModelBase : ObservableObject, IAsyn
     [ObservableProperty]
     private bool _isZoomed;
 
+    partial void OnIsZoomedChanged(bool value) => OnPropertyChanged(nameof(RangeSelection));
+
     /// <summary>True when the live auto-refresh is frozen (stream paused).</summary>
     [ObservableProperty]
     private bool _isPaused;
@@ -129,6 +186,32 @@ public abstract partial class TrendWindowViewModelBase : ObservableObject, IAsyn
         // The chart maps every pen to its own scale (shared mode) or a 0..100 band
         // (percent mode); the series list just needs to re-read the mode.
         OnPropertyChanged(nameof(Series));
+    }
+
+    /// <summary>
+    /// How multiple pens are laid out: "Stacked" (one strip per pen, each with its own
+    /// Y axis) or "Mixed" (all pens overlaid on one plot, with a color-coded legend of
+    /// each pen's min-max scale). Single-tag trends always stay stacked; group trends
+    /// default to mixed and can switch.
+    /// </summary>
+    [ObservableProperty]
+    private string _layoutMode = "Stacked";
+
+    public bool IsMixedLayout => LayoutMode == "Mixed";
+
+    partial void OnLayoutModeChanged(string value) => OnPropertyChanged(nameof(IsMixedLayout));
+
+    /// <summary>True when this trend type offers the mixed/stacked layout choice (groups only).</summary>
+    public virtual bool SupportsLayoutToggle => false;
+
+    /// <summary>Switches between the mixed overlay and the stacked strip layout.</summary>
+    [RelayCommand]
+    private void SetLayoutMode(string mode)
+    {
+        if (SupportsLayoutToggle && mode is "Mixed" or "Stacked")
+        {
+            LayoutMode = mode;
+        }
     }
 
     /// <summary>High alarm limit; when set, the chart shades everything above it.</summary>
@@ -175,6 +258,21 @@ public abstract partial class TrendWindowViewModelBase : ObservableObject, IAsyn
     /// <summary>Pen rows for the pen configuration table (name, color, value, min/max/avg).</summary>
     public abstract IReadOnlyList<TrendPenViewModel> Pens { get; }
 
+    /// <summary>True when any pen has a typed custom Y-axis range (shows the reset button).</summary>
+    public bool HasCustomRanges => Pens.Any(p => p.HasCustomAxis);
+
+    /// <summary>Resets every pen's Y axis back to auto-fit (clears all typed ranges).</summary>
+    [RelayCommand]
+    private void ClearCustomRanges()
+    {
+        foreach (TrendPenViewModel pen in Pens)
+        {
+            pen.ClearCustomRange();
+        }
+
+        OnPropertyChanged(nameof(HasCustomRanges));
+    }
+
     /// <summary>True when this trend type offers the shared/percent Y-axis choice (groups only).</summary>
     public virtual bool SupportsPercentAxis => false;
 
@@ -189,20 +287,6 @@ public abstract partial class TrendWindowViewModelBase : ObservableObject, IAsyn
 
     /// <summary>True when this trend belongs to a single tag with a bridge id to show.</summary>
     public bool HasBridgeHint => !string.IsNullOrWhiteSpace(BridgeId);
-
-    [RelayCommand]
-    private async Task SetRangeAsync(string label)
-    {
-        RangeLabel = TrendRange.Normalize(TrendRange.ParseHours(label));
-        if (IsZoomed)
-        {
-            zoomFromUtc_ = null;
-            zoomToUtc_ = null;
-            IsZoomed = false;
-        }
-
-        await ReloadAsync(RangeLabel).ConfigureAwait(true);
-    }
 
     [RelayCommand]
     private async Task RefreshAsync() => await ReloadAsync().ConfigureAwait(true);
@@ -327,7 +411,7 @@ public abstract partial class TrendWindowViewModelBase : ObservableObject, IAsyn
     }
 
     /// <summary>Subclasses load their samples for the window and update their own state.</summary>
-    protected abstract Task ReloadDataAsync(DateTime from, DateTime to, CancellationToken ct);
+    protected abstract Task ReloadDataAsync(DateTime from, DateTime to, int maxPoints, CancellationToken ct);
 
     protected async Task ReloadAsync(string? rangeLabel = null)
     {
@@ -347,7 +431,7 @@ public abstract partial class TrendWindowViewModelBase : ObservableObject, IAsyn
         IsLoading = true;
         try
         {
-            await ReloadDataAsync(from, to, ct).ConfigureAwait(true);
+            await ReloadDataAsync(from, to, MaxPointsFor(to - from, TrendInterval), ct).ConfigureAwait(true);
         }
         catch (OperationCanceledException)
         {

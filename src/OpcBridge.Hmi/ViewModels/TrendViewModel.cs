@@ -38,14 +38,30 @@ public partial class TrendViewModel : TrendWindowViewModelBase
         };
         Pen.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName is nameof(TrendPenViewModel.Samples) or nameof(TrendPenViewModel.IsVisible))
+            if (e.PropertyName is nameof(TrendPenViewModel.Samples)
+                or nameof(TrendPenViewModel.IsVisible)
+                or nameof(TrendPenViewModel.Series))
             {
                 OnPropertyChanged(nameof(Series));
+            }
+
+            if (e.PropertyName is nameof(TrendPenViewModel.HasCustomAxis))
+            {
+                OnPropertyChanged(nameof(HasCustomRanges));
             }
         };
 
         Title = DisplayName;
         HasFixedRange = fixedRange_.HasValue;
+        // Keep the pen's Range column in step with the Auto-range toggle (it decides
+        // between auto-fit and the pinned data-type scale).
+        PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(AutoRange))
+            {
+                Pen.AxisAutoRange = AutoRange;
+            }
+        };
         _ = ReloadAsync();
     }
 
@@ -86,10 +102,10 @@ public partial class TrendViewModel : TrendWindowViewModelBase
                 ? (AlarmLow ?? double.NegativeInfinity, AlarmHigh ?? double.PositiveInfinity)
                 : null;
 
-            // Fixed data-type axis only when the operator turned Auto range off
-            // (booleans always ride the digital 0..1 band instead).
-            (double Min, double Max, double Step)? fixedAxis = null;
-            if (!AutoRange && fixedRange_ is { } range)
+            // A typed custom range wins; otherwise pin to the tag's data-type range when
+            // the operator turned Auto range off (booleans always ride the digital 0..1 band).
+            (double Min, double Max, double Step)? fixedAxis = Pen.CustomAxis;
+            if (fixedAxis is null && !AutoRange && fixedRange_ is { } range)
             {
                 TrendAxis fromRange = TrendScale.FromTypeRange(range);
                 if (fromRange.IsValid)
@@ -123,9 +139,9 @@ public partial class TrendViewModel : TrendWindowViewModelBase
             : "Continuous";
     }
 
-    protected override async Task ReloadDataAsync(DateTime from, DateTime to, CancellationToken ct)
+    protected override async Task ReloadDataAsync(DateTime from, DateTime to, int maxPoints, CancellationToken ct)
     {
-        await Pen.LoadAsync(from, to, ct).ConfigureAwait(true);
+        await Pen.LoadAsync(from, to, maxPoints, ct).ConfigureAwait(true);
         if (ct.IsCancellationRequested)
         {
             return;

@@ -25,12 +25,15 @@ public sealed class TrendZoomRequestedEventArgs : EventArgs
 }
 
 /// <summary>
-/// VTScada-style historical trend: one strip per pen stacked vertically, each with its
-/// own Y axis on the left (digital pens get a square-wave strip with optional state
-/// text instead of numbers). A crosshair follows the mouse with a per-strip value chip
-/// plus a floating time chip; a pin command drops a blue cursor line that stays put
-/// while the data keeps scrolling. Layout (strips, axes, chips, pen table in the host
-/// window) follows the classic SCADA data viewer; colors/fonts stay the app theme.
+/// VTScada-style historical trend with two pen layouts: "Stacked" (one strip per pen,
+/// each with its own Y axis on the left; digital pens get a square-wave strip with
+/// optional state text instead of numbers) and "Mixed" (all pens overlaid on one
+/// plot, each analog pen mapped to the full plot height with a color-coded legend
+/// listing every pen's min-max scale; digital pens share a bottom band). A crosshair
+/// follows the mouse with a per-strip value chip plus a floating time chip; a pin
+/// command drops a blue cursor line that stays put while the data keeps scrolling.
+/// Layout (strips, axes, chips, pen table in the host window) follows the classic
+/// SCADA data viewer; colors/fonts stay the app theme.
 /// </summary>
 public sealed class TrendChartControl : Control
 {
@@ -49,6 +52,10 @@ public sealed class TrendChartControl : Control
     /// <summary>Y-axis mapping for analog pens: "Shared" (one scale) or "Percent" (each strip 0..100%).</summary>
     public static readonly StyledProperty<string?> YAxisModeProperty =
         AvaloniaProperty.Register<TrendChartControl, string?>(nameof(YAxisMode), "Shared");
+
+    /// <summary>Pen layout: "Stacked" (one strip per pen) or "Mixed" (all pens overlaid on one plot).</summary>
+    public static readonly StyledProperty<string?> LayoutModeProperty =
+        AvaloniaProperty.Register<TrendChartControl, string?>(nameof(LayoutMode), "Stacked");
 
     public static readonly StyledProperty<double?> AlarmHighProperty =
         AvaloniaProperty.Register<TrendChartControl, double?>(nameof(AlarmHigh));
@@ -113,6 +120,13 @@ public sealed class TrendChartControl : Control
     {
         get => GetValue(YAxisModeProperty);
         set => SetValue(YAxisModeProperty, value);
+    }
+
+    /// <summary>"Stacked" (one strip per pen, each with its own axis) or "Mixed" (all pens on one plot).</summary>
+    public string? LayoutMode
+    {
+        get => GetValue(LayoutModeProperty);
+        set => SetValue(LayoutModeProperty, value);
     }
 
     /// <summary>Alarm limits for the single-pen (faceplate) mode; per-pen limits come on the series.</summary>
@@ -194,6 +208,7 @@ public sealed class TrendChartControl : Control
             FromUtcProperty,
             ToUtcProperty,
             YAxisModeProperty,
+            LayoutModeProperty,
             AlarmHighProperty,
             AlarmLowProperty,
             PinnedAtUtcProperty,
@@ -216,6 +231,8 @@ public sealed class TrendChartControl : Control
         && string.Equals(trendStyle.Trim(), "Step", StringComparison.OrdinalIgnoreCase);
 
     private bool IsPercentAxisMode => string.Equals(YAxisMode, "Percent", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsMixedLayout => string.Equals(LayoutMode, "Mixed", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>The pens to draw: <see cref="Series"/> when set, else the single-series props.</summary>
     private IReadOnlyList<TrendSeries> GetSeries()
@@ -437,7 +454,7 @@ public sealed class TrendChartControl : Control
         }
     }
 
-    private const double FontSize = 11;
+    private const double FontSize = 10;
     private const double TopPad = 6;
     private const double RightPad = 10;
     private const double BottomPad = 24;
@@ -487,8 +504,31 @@ public sealed class TrendChartControl : Control
             return;
         }
 
-        // ---- Measure Y labels to size the shared left axis gutter ----
         var typeface = new Typeface(FontFamily.Default);
+        if (IsMixedLayout)
+        {
+            RenderMixed(context, strips, from, to, totalTicks, width, height, typeface);
+            return;
+        }
+
+        RenderStacked(context, strips, from, to, totalTicks, width, height, typeface);
+    }
+
+    /// <summary>
+    /// Stacked renderer: one strip per pen stacked vertically, each with its own Y axis
+    /// labels in the shared left gutter and one shared time axis at the bottom.
+    /// </summary>
+    private void RenderStacked(
+        DrawingContext context,
+        List<StripLayout> strips,
+        DateTime from,
+        DateTime to,
+        double totalTicks,
+        double width,
+        double height,
+        Typeface typeface)
+    {
+        // ---- Measure Y labels to size the shared left axis gutter ----
         double maxLabelWidth = 0;
         foreach (StripLayout strip in strips)
         {
@@ -586,6 +626,161 @@ public sealed class TrendChartControl : Control
     }
 
     /// <summary>
+    /// Mixed (overlay) renderer: all pens share one plot. Each analog pen maps its own
+    /// scale to the full plot height (or to 0..100 % in percent mode); digital pens
+    /// share a square-wave band along the bottom. A color-coded legend lists every
+    /// pen's visible min-max scale so per-pen ranges stay readable.
+    /// </summary>
+    private void RenderMixed(
+        DrawingContext context,
+        List<StripLayout> strips,
+        DateTime from,
+        DateTime to,
+        double totalTicks,
+        double width,
+        double height,
+        Typeface typeface)
+    {
+        bool percent = IsPercentAxisMode;
+
+        double maxLabelWidth = percent ? MeasureText(typeface, "100%").Width : 0;
+        double plotLeft = Math.Min(maxLabelWidth + 14, width * 0.45);
+        double plotRight = width - RightPad;
+        double plotWidth = plotRight - plotLeft;
+        if (plotWidth < 40)
+        {
+            return;
+        }
+
+        double plotTop = TopPad;
+        double plotBottom = height - BottomPad;
+        double plotHeight = plotBottom - plotTop;
+        if (plotHeight < 40)
+        {
+            return;
+        }
+
+        Rect plot = new(plotLeft, plotTop, plotWidth, plotHeight);
+        double bandHeight = Math.Max(28, plotHeight * 0.25);
+        Rect digitalBand = new(plotLeft, plotBottom - bandHeight, plotWidth, bandHeight);
+
+        context.DrawRectangle(StripBrush, null, plot);
+
+        var gridPen = new Pen(GridBrush, 1);
+
+        // Horizontal gridlines: labeled 0..100 % in percent mode; unlabeled quarters when
+        // each pen carries its own scale (the legend lists those ranges instead).
+        if (percent)
+        {
+            for (int i = 0; i <= 5; i++)
+            {
+                double yPos = plotBottom - plotHeight * i / 5.0;
+                context.DrawLine(gridPen, new Point(plotLeft, yPos), new Point(plotRight, yPos));
+                FormattedText label = MeasureText(typeface, i * 20 + "%");
+                double textY = Math.Max(plotTop + 1, Math.Min(plotBottom - label.Height - 1, yPos - label.Height / 2));
+                context.DrawText(label, new Point(plotLeft - 8 - label.Width, textY));
+            }
+        }
+        else
+        {
+            for (int i = 1; i < 4; i++)
+            {
+                double yPos = plotTop + plotHeight * i / 4.0;
+                context.DrawLine(gridPen, new Point(plotLeft, yPos), new Point(plotRight, yPos));
+            }
+        }
+
+        // Shared vertical (time) gridlines — labels go on the shared bottom axis.
+        TimeSpan timeStep = TrendTimeAxis.StepFor(to - from);
+        for (DateTime tick = TrendTimeAxis.Floor(from, timeStep); tick <= to; tick += timeStep)
+        {
+            if (tick < from)
+            {
+                continue;
+            }
+
+            double x = XOf(tick, from, totalTicks, plotLeft, plotWidth);
+            context.DrawLine(gridPen, new Point(x, plotTop), new Point(x, plotBottom));
+        }
+
+        // Overlay every pen on the plot; digital pens share the bottom band.
+        for (int i = 0; i < strips.Count; i++)
+        {
+            Rect bounds = strips[i].IsDigital ? digitalBand : plot;
+            strips[i] = strips[i] with { Bounds = bounds };
+            DrawStrip(context, strips[i], bounds, from, to, plotLeft, plotRight, typeface, compact: true);
+        }
+
+        context.DrawRectangle(null, new Pen(FrameBrush, 1), plot);
+
+        // Pen scale legend: min-max of each pen's visible scale, color-coded.
+        DrawScaleLegend(context, strips, plot, typeface);
+
+        // Pinned blue time cursor (drawn after the legend so it stays on top of it).
+        if (PinnedAtUtc is { } pin && pin >= from && pin <= to)
+        {
+            double pinX = XOf(pin, from, totalTicks, plotLeft, plotWidth);
+            var pinPen = new Pen(PinBrush, 1.5);
+            context.DrawLine(pinPen, new Point(pinX, plotTop), new Point(pinX, plotBottom));
+            var head = MeasureText(typeface, "▼");
+            context.DrawText(
+                new FormattedText("▼", CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeface, FontSize, PinBrush),
+                new Point(pinX - head.Width / 2, plotBottom + 2));
+        }
+
+        // Hover crosshair: one line across the plot + a value chip per pen.
+        if (!zoomDragging_ && cursorPoint_ is { } cursor)
+        {
+            DrawHoverCrosshair(context, strips, cursor, from, totalTicks, plotLeft, plotRight, plotBottom, width, typeface);
+        }
+
+        // drag-zoom selection band
+        if (zoomDragging_)
+        {
+            double x0 = Math.Max(plotLeft, Math.Min(zoomAnchorX_, zoomCurrentX_));
+            double x1 = Math.Min(plotRight, Math.Max(zoomAnchorX_, zoomCurrentX_));
+            if (x1 > x0)
+            {
+                context.DrawRectangle(ZoomFillBrush, new Pen(BrushFor(strips[0].Series.Color), 1), new Rect(x0, plotTop, x1 - x0, plotBottom - plotTop));
+            }
+        }
+
+        // Capture geometry + window for pointer hit mapping.
+        layoutPlotLeft_ = plotLeft;
+        layoutPlotWidth_ = plotWidth;
+        layoutFromUtc_ = from;
+        layoutToUtc_ = to;
+    }
+
+    /// <summary>
+    /// Draws the color-coded legend of each visible pen's scale range (min-max with
+    /// unit) in the top-left of the mixed plot, so per-pen ranges stay visible.
+    /// </summary>
+    private static void DrawScaleLegend(DrawingContext context, IReadOnlyList<StripLayout> strips, Rect plot, Typeface typeface)
+    {
+        double x = plot.Left + 6;
+        double y = plot.Top + 4;
+        double lineHeight = FontSize + 5;
+        foreach (StripLayout strip in strips)
+        {
+            if (y + lineHeight > plot.Bottom - 2)
+            {
+                break; // legend must not outgrow the plot
+            }
+
+            string range = FormatAxisLabel(strip.AxisMin, strip) + " – " + FormatAxisLabel(strip.AxisMax, strip);
+            string suffix = strip.IsDigital
+                ? string.Empty
+                : strip.Percent
+                    ? " %"
+                    : string.IsNullOrWhiteSpace(strip.Series.Unit) ? string.Empty : " " + strip.Series.Unit.Trim();
+            context.DrawRectangle(BrushFor(strip.Series.Color), null, new Rect(x, y + 3, 8, 8));
+            context.DrawText(MeasureText(typeface, range + suffix), new Point(x + 12, y));
+            y += lineHeight;
+        }
+    }
+
+    /// <summary>
     /// Resolves each visible pen into a strip: digital pens get a fixed 0..1 band,
     /// percent mode maps every analog pen to a 0..100 band, and the default gives each
     /// strip its own auto-fitted scale (VTScada-style independent vertical axes).
@@ -654,7 +849,9 @@ public sealed class TrendChartControl : Control
         return bounds.Bottom - (clamped - axisMin) / span * bounds.Height;
     }
 
-    /// <summary>Draws one strip: frame, gridlines, Y labels (or state text), alarm bands, trace.</summary>
+    /// <summary>Draws one strip: frame, gridlines, Y labels (or state text), alarm bands, trace.
+    /// In compact (mixed layout) mode the shared plot already provides background,
+    /// frame, gridlines and time lines, so only the trace, alarms and state text draw.</summary>
     private void DrawStrip(
         DrawingContext context,
         StripLayout strip,
@@ -663,19 +860,23 @@ public sealed class TrendChartControl : Control
         DateTime to,
         double plotLeft,
         double plotRight,
-        Typeface typeface)
+        Typeface typeface,
+        bool compact = false)
     {
         double totalTicks = (to - from).Ticks;
         double plotWidth = plotRight - plotLeft;
         double frameTop = bounds.Top - 1;
         var frameRect = new Rect(bounds.Left, frameTop, bounds.Width, bounds.Height + 2);
 
-        // Strip background + frame.
-        context.DrawRectangle(StripBrush, null, frameRect);
+        // Strip background + frame (the mixed renderer draws the shared plot frame).
+        if (!compact)
+        {
+            context.DrawRectangle(StripBrush, null, frameRect);
+        }
 
         // Horizontal gridlines + Y labels (analog strips only).
         var gridPen = new Pen(GridBrush, 1);
-        if (!strip.IsDigital)
+        if (!compact && !strip.IsDigital)
         {
             double intervalCount = Math.Round((strip.AxisMax - strip.AxisMin) / strip.AxisStep);
             int gridCount = (int)Math.Max(1, intervalCount);
@@ -692,16 +893,20 @@ public sealed class TrendChartControl : Control
         }
 
         // Vertical (time) gridlines — no labels here, labels go on the shared bottom axis.
-        TimeSpan timeStep = TrendTimeAxis.StepFor(to - from);
-        for (DateTime tick = TrendTimeAxis.Floor(from, timeStep); tick <= to; tick += timeStep)
+        // (Mixed layout draws one shared set across the plot instead.)
+        if (!compact)
         {
-            if (tick < from)
+            TimeSpan timeStep = TrendTimeAxis.StepFor(to - from);
+            for (DateTime tick = TrendTimeAxis.Floor(from, timeStep); tick <= to; tick += timeStep)
             {
-                continue;
-            }
+                if (tick < from)
+                {
+                    continue;
+                }
 
-            double x = XOf(tick, from, totalTicks, plotLeft, plotWidth);
-            context.DrawLine(gridPen, new Point(x, frameTop), new Point(x, frameRect.Bottom));
+                double x = XOf(tick, from, totalTicks, plotLeft, plotWidth);
+                context.DrawLine(gridPen, new Point(x, frameTop), new Point(x, frameRect.Bottom));
+            }
         }
 
         // Alarm threshold overlays (per-pen limits, single-pen mode also honors the window-level props).
@@ -710,14 +915,22 @@ public sealed class TrendChartControl : Control
         if (alarmHigh is { } h && double.IsFinite(h) && h >= strip.AxisMin && h <= strip.AxisMax)
         {
             double yPos = YOf(h, bounds, strip.AxisMin, strip.AxisMax);
-            context.DrawRectangle(AlarmBandBrush, null, new Rect(bounds.Left, frameTop, bounds.Width, Math.Max(0, yPos - frameTop)));
+            if (!compact)
+            {
+                context.DrawRectangle(AlarmBandBrush, null, new Rect(bounds.Left, frameTop, bounds.Width, Math.Max(0, yPos - frameTop)));
+            }
+
             context.DrawLine(AlarmPen, new Point(bounds.Left, yPos), new Point(bounds.Right, yPos));
         }
 
         if (alarmLow is { } l && double.IsFinite(l) && l >= strip.AxisMin && l <= strip.AxisMax)
         {
             double yPos = YOf(l, bounds, strip.AxisMin, strip.AxisMax);
-            context.DrawRectangle(AlarmBandBrush, null, new Rect(bounds.Left, yPos, bounds.Width, Math.Max(0, frameRect.Bottom - yPos)));
+            if (!compact)
+            {
+                context.DrawRectangle(AlarmBandBrush, null, new Rect(bounds.Left, yPos, bounds.Width, Math.Max(0, frameRect.Bottom - yPos)));
+            }
+
             context.DrawLine(AlarmPen, new Point(bounds.Left, yPos), new Point(bounds.Right, yPos));
         }
 
@@ -768,7 +981,8 @@ public sealed class TrendChartControl : Control
             if (trace.Count > 1)
             {
                 SolidColorBrush color = BrushFor(strip.Series.Color);
-                if (!strip.IsDigital)
+                // Area fill only in stacked layout: several overlaid fills turn to mud.
+                if (!strip.IsDigital && !compact)
                 {
                     var fillGeometry = new StreamGeometry();
                     using (StreamGeometryContext ctx = fillGeometry.Open())
@@ -817,7 +1031,10 @@ public sealed class TrendChartControl : Control
         }
 
         // Strip frame drawn last so the trace is clipped visually by the border.
-        context.DrawRectangle(null, new Pen(FrameBrush, 1), frameRect);
+        if (!compact)
+        {
+            context.DrawRectangle(null, new Pen(FrameBrush, 1), frameRect);
+        }
     }
 
     private static bool ShouldStep(string? trendStyle) => IsStepStyle(trendStyle);

@@ -38,11 +38,18 @@ public partial class TrendGroupViewModel : TrendWindowViewModelBase
             _ => $"Group trend · {PenRows.Count} tags"
         };
 
+        // Group trends open in the mixed overlay layout (one plot, per-pen scale legend);
+        // the toolbar lets the operator switch back to stacked strips.
+        LayoutMode = "Mixed";
+
         _ = ReloadAsync();
     }
 
     /// <summary>Group trends offer the per-pen/percent Y-axis choice for mixed units.</summary>
     public override bool SupportsPercentAxis => true;
+
+    /// <summary>Group trends can switch between the mixed overlay and stacked strips.</summary>
+    public override bool SupportsLayoutToggle => true;
 
     /// <summary>Chart input: one pen per strip, in stable order.</summary>
     public override IReadOnlyList<TrendSeries> Series => PenRows.Select(p => p.Series).ToArray();
@@ -51,9 +58,15 @@ public partial class TrendGroupViewModel : TrendWindowViewModelBase
     {
         if (e.PropertyName is nameof(TrendPenViewModel.Samples)
             or nameof(TrendPenViewModel.IsVisible)
-            or nameof(TrendPenViewModel.Color))
+            or nameof(TrendPenViewModel.Color)
+            or nameof(TrendPenViewModel.Series))
         {
             OnPropertyChanged(nameof(Series));
+        }
+
+        if (e.PropertyName is nameof(TrendPenViewModel.HasCustomAxis))
+        {
+            OnPropertyChanged(nameof(HasCustomRanges));
         }
     }
 
@@ -86,9 +99,9 @@ public partial class TrendGroupViewModel : TrendWindowViewModelBase
         return null;
     }
 
-    protected override async Task ReloadDataAsync(DateTime from, DateTime to, CancellationToken ct)
+    protected override async Task ReloadDataAsync(DateTime from, DateTime to, int maxPoints, CancellationToken ct)
     {
-        Task[] loads = PenRows.Select(p => p.LoadAsync(from, to, ct)).ToArray();
+        Task[] loads = PenRows.Select(p => p.LoadAsync(from, to, maxPoints, ct)).ToArray();
         await Task.WhenAll(loads).ConfigureAwait(true);
         if (ct.IsCancellationRequested)
         {

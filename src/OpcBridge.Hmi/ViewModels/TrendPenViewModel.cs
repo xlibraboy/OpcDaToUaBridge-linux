@@ -97,7 +97,8 @@ public partial class TrendPenViewModel : ObservableObject
         Samples,
         Description,
         Visible: IsVisible,
-        IsBoolean: IsBoolean);
+        IsBoolean: IsBoolean,
+        FixedAxis: CustomAxis);
 
     partial void OnSamplesChanged(IReadOnlyList<TrendSample> value) => OnPropertyChanged(nameof(Series));
 
@@ -111,7 +112,190 @@ public partial class TrendPenViewModel : ObservableObject
     /// <summary>Value column text (last sample, with unit or %/state formatting).</summary>
     public string ValueText => FormatValue(LastValue);
 
-    /// <summary>Minimum column text over the visible window.</summary>
+    /// <summary>
+    /// Actual data range of the loaded window ("min – max"), shown as the Range column
+    /// readout and as the editing watermarks. Booleans report their 0..1 band.
+    /// </summary>
+    public string ActualRangeText
+    {
+        get
+        {
+            if (IsBoolean)
+            {
+                return "0 – 1";
+            }
+
+            return Stats is { } stats
+                && double.IsFinite(stats.Minimum)
+                && double.IsFinite(stats.Maximum)
+                ? FormatValue(stats.Minimum) + " – " + FormatValue(stats.Maximum)
+                : "—";
+        }
+    }
+
+    /// <summary>Watermark for the min box: the pen's actual data minimum.</summary>
+    public string RangeMinWatermark
+    {
+        get
+        {
+            if (IsBoolean)
+            {
+                return "0";
+            }
+
+            return Stats is { } stats && double.IsFinite(stats.Minimum)
+                ? Math.Round(stats.Minimum, 3).ToString("0.###", CultureInfo.InvariantCulture)
+                : "min";
+        }
+    }
+
+    /// <summary>Watermark for the max box: the pen's actual data maximum.</summary>
+    public string RangeMaxWatermark
+    {
+        get
+        {
+            if (IsBoolean)
+            {
+                return "1";
+            }
+
+            return Stats is { } stats && double.IsFinite(stats.Maximum)
+                ? Math.Round(stats.Maximum, 3).ToString("0.###", CultureInfo.InvariantCulture)
+                : "max";
+        }
+    }
+
+    /// <summary>Editable custom minimum for this pen's Y axis; empty = auto.</summary>
+    [ObservableProperty]
+    private string _rangeMinText = string.Empty;
+
+    /// <summary>Editable custom maximum for this pen's Y axis; empty = auto.</summary>
+    [ObservableProperty]
+    private string _rangeMaxText = string.Empty;
+
+    /// <summary>True when the operator typed a custom min and/or max for this pen.</summary>
+    public bool HasCustomAxis => ParsedMin is not null || ParsedMax is not null;
+
+    /// <summary>Resets this pen's Y axis to auto-fit (clears the typed min/max).</summary>
+    public void ClearCustomRange()
+    {
+        RangeMinText = string.Empty;
+        RangeMaxText = string.Empty;
+    }
+
+    private double? ParsedMin => TryParse(RangeMinText);
+
+    private double? ParsedMax => TryParse(RangeMaxText);
+
+    /// <summary>
+    /// Custom Y axis for the chart when a min and/or max is typed: missing bounds fall
+    /// back to the pen's actual data extremes so a one-sided limit still plots well.
+    /// Null when no custom range is set (chart auto-fits).
+    /// </summary>
+    public (double Min, double Max, double Step)? CustomAxis
+    {
+        get
+        {
+            double? lo = ParsedMin;
+            double? hi = ParsedMax;
+            if (lo is null && hi is null)
+            {
+                return null;
+            }
+
+            double dataLo = Stats is { } s && double.IsFinite(s.Minimum) ? s.Minimum : 0;
+            double dataHi = Stats is { } s2 && double.IsFinite(s2.Maximum) ? s2.Maximum : lo is { } l ? l + 1 : hi!.Value;
+            if (dataHi <= dataLo)
+            {
+                dataHi = dataLo + 1;
+            }
+
+            double min = Math.Min(lo ?? dataLo, hi ?? dataHi);
+            double max = Math.Max(lo ?? dataLo, hi ?? dataHi);
+            if (max <= min)
+            {
+                max = min + 1;
+            }
+
+            TrendAxis nice = TrendScale.FromBounds(min, max);
+            return nice.IsValid ? (nice.Min, nice.Max, nice.Step) : (min, max, (max - min) / 5);
+        }
+    }
+
+    partial void OnRangeMinTextChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasCustomAxis));
+        OnPropertyChanged(nameof(Series));
+        OnPropertyChanged(nameof(RangeText));
+    }
+
+    partial void OnRangeMaxTextChanged(string value)
+    {
+        OnPropertyChanged(nameof(HasCustomAxis));
+        OnPropertyChanged(nameof(Series));
+        OnPropertyChanged(nameof(RangeText));
+    }
+
+    private static double? TryParse(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return null;
+        }
+
+        return double.TryParse(text.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out double value)
+            && double.IsFinite(value)
+            ? value
+            : null;
+    }
+
+    /// <summary>
+    /// The scale this pen is currently plotted at: the custom range when set, otherwise
+    /// the auto-fit axis the chart computes (same policy). Shown in the Range column.
+    /// </summary>
+    public string RangeText
+    {
+        get
+        {
+            if (CustomAxis is { } custom)
+            {
+                return FormatValue(custom.Min) + " – " + FormatValue(custom.Max);
+            }
+
+            if (IsBoolean)
+            {
+                return "0 – 1";
+            }
+
+            if (Stats is not { } stats
+                || !double.IsFinite(stats.Minimum)
+                || !double.IsFinite(stats.Maximum))
+            {
+                return "—";
+            }
+
+            TrendAxis axis = TrendScale.Resolve(
+                AxisAutoRange,
+                DataTypeRanges.GetRange(DataType),
+                stats.Minimum,
+                stats.Maximum);
+            return axis.IsValid
+                ? FormatValue(axis.Min) + " – " + FormatValue(axis.Max)
+                : "—";
+        }
+    }
+
+    /// <summary>
+    /// True when this pen's axis auto-fits its data; the owning trend pins it to the
+    /// tag's data-type range when the operator turns Auto range off (single tags).
+    /// </summary>
+    [ObservableProperty]
+    private bool _axisAutoRange = true;
+
+    partial void OnAxisAutoRangeChanged(bool value) => OnPropertyChanged(nameof(RangeText));
+
+    /// <summary>
+    /// Minimum column text over the visible window.</summary>
     public string MinimumText => FormatValue(Stats?.Minimum);
 
     /// <summary>Maximum column text over the visible window.</summary>
@@ -160,6 +344,10 @@ public partial class TrendPenViewModel : ObservableObject
         Stats = TrendPenStats.Compute(Samples, statsFrom_, statsTo_);
         LastValue = Stats?.Value;
         OnPropertyChanged(nameof(ValueText));
+        OnPropertyChanged(nameof(RangeText));
+        OnPropertyChanged(nameof(ActualRangeText));
+        OnPropertyChanged(nameof(RangeMinWatermark));
+        OnPropertyChanged(nameof(RangeMaxWatermark));
         OnPropertyChanged(nameof(MinimumText));
         OnPropertyChanged(nameof(MaximumText));
         OnPropertyChanged(nameof(AverageText));
@@ -168,12 +356,15 @@ public partial class TrendPenViewModel : ObservableObject
         OnPropertyChanged(nameof(PointsText));
     }
 
-    /// <summary>Loads history for this pen over the window; failures are recorded, not thrown.</summary>
-    public async Task LoadAsync(DateTime from, DateTime to, CancellationToken ct)
+    /// <summary>
+    /// Loads history for this pen over the window (thinned to <paramref name="maxPoints"/>
+    /// by the bridge); failures are recorded, not thrown.
+    /// </summary>
+    public async Task LoadAsync(DateTime from, DateTime to, int maxPoints, CancellationToken ct)
     {
         try
         {
-            HmiTrendResponse response = await api_.GetTrendsAsync(Key.SourceId, Key.DaItemId, from, to, 1000, ct)
+            HmiTrendResponse response = await api_.GetTrendsAsync(Key.SourceId, Key.DaItemId, from, to, maxPoints, ct)
                 .ConfigureAwait(true);
             if (ct.IsCancellationRequested)
             {
