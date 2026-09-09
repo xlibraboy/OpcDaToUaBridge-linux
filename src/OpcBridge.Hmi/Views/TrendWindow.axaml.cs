@@ -77,6 +77,35 @@ public partial class TrendWindow : Window
         e.Handled = true;
     }
 
+    /// <summary>
+    /// Pen-table row click: emphasize that pen's trace (thick line, others thin).
+    /// Ctrl+click toggles pens additively so several traces stay thick at once.
+    /// </summary>
+    public void OnPenRowClick(object? sender, PointerPressedEventArgs e)
+    {
+        // Let inner controls (checkbox, textboxes, swatch) keep their own clicks.
+        if (e.Handled ||
+            DataContext is not TrendWindowViewModelBase viewModel ||
+            sender is not Border { Tag: string penName })
+        {
+            return;
+        }
+
+        viewModel.SelectPen(penName, additive: e.KeyModifiers.HasFlag(Avalonia.Input.KeyModifiers.Control));
+        e.Handled = true;
+    }
+
+    /// <summary>Click on the table's empty area (header/whitespace): clear the emphasis.</summary>
+    public void OnPenTableBackgroundClick(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.Handled || DataContext is not TrendWindowViewModelBase viewModel)
+        {
+            return;
+        }
+
+        viewModel.ClearPenSelection();
+    }
+
     private async void OnExportClick(object? sender, RoutedEventArgs e)
     {
         if (DataContext is not TrendWindowViewModelBase viewModel)

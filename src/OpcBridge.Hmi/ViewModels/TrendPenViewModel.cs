@@ -55,6 +55,16 @@ public partial class TrendPenViewModel : ObservableObject
     /// <summary>True when this pen plots a discrete on/off signal (square-wave strip).</summary>
     public bool IsBoolean => IsBooleanLike(DataType);
 
+    /// <summary>
+    /// Row selection for click-to-emphasize: the selected pen's trace draws thick and
+    /// the others thin. Null (no selection) leaves every line at normal width.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isSelected;
+
+    /// <summary>Row background brush for the pen table: highlighted when selected.</summary>
+    public string RowBackground => IsSelected ? "#22017BFF" : "#00000000";
+
     /// <summary>Pen color; assigned by the owning trend from the shared palette.</summary>
     private string color_ = TrendSeriesPalette.ColorFor(0);
 
@@ -98,7 +108,32 @@ public partial class TrendPenViewModel : ObservableObject
         Description,
         Visible: IsVisible,
         IsBoolean: IsBoolean,
-        FixedAxis: CustomAxis);
+        FixedAxis: CustomAxis,
+        StrokeWidth: StrokeWidthFor());
+
+    /// <summary>
+    /// Trace thickness for this pen: thick when selected (plain click = one pen,
+    /// Ctrl+click = several at once), thin when some other pen is selected, normal
+    /// (0 = chart default) when nothing is selected.
+    /// </summary>
+    public double StrokeWidthFor()
+    {
+        if (!HasSelectionContext)
+        {
+            return 0;
+        }
+
+        return IsSelected ? 3.2 : 1.0;
+    }
+
+    /// <summary>Set by the owning trend so unselected pens thin out only while a selection exists.</summary>
+    public bool HasSelectionContext { get; set; }
+
+    partial void OnIsSelectedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(RowBackground));
+        OnPropertyChanged(nameof(Series));
+    }
 
     partial void OnSamplesChanged(IReadOnlyList<TrendSample> value) => OnPropertyChanged(nameof(Series));
 
@@ -109,8 +144,8 @@ public partial class TrendPenViewModel : ObservableObject
 
     partial void OnErrorChanged(string value) => OnPropertyChanged(nameof(HasError));
 
-    /// <summary>Value column text (last sample, with unit or %/state formatting).</summary>
-    public string ValueText => FormatValue(LastValue);
+    /// <summary>Value column text (last sample; unit lives in its own table column).</summary>
+    public string ValueText => FormatValue(LastValue, includeUnit: false);
 
     /// <summary>
     /// Actual data range of the loaded window ("min – max"), shown as the Range column
@@ -295,20 +330,20 @@ public partial class TrendPenViewModel : ObservableObject
     partial void OnAxisAutoRangeChanged(bool value) => OnPropertyChanged(nameof(RangeText));
 
     /// <summary>
-    /// Minimum column text over the visible window.</summary>
-    public string MinimumText => FormatValue(Stats?.Minimum);
+    /// Minimum column text over the visible window (no unit; the Unit column carries it).</summary>
+    public string MinimumText => FormatValue(Stats?.Minimum, includeUnit: false);
 
-    /// <summary>Maximum column text over the visible window.</summary>
-    public string MaximumText => FormatValue(Stats?.Maximum);
+    /// <summary>Maximum column text over the visible window (no unit).</summary>
+    public string MaximumText => FormatValue(Stats?.Maximum, includeUnit: false);
 
-    /// <summary>Average column text over the visible window.</summary>
-    public string AverageText => FormatValue(Stats?.Average);
+    /// <summary>Average column text over the visible window (no unit).</summary>
+    public string AverageText => FormatValue(Stats?.Average, includeUnit: false);
 
     /// <summary>Delta (max−min) text, shown in the table's summary group.</summary>
-    public string DeltaText => FormatValue(Stats?.Delta);
+    public string DeltaText => FormatValue(Stats?.Delta, includeUnit: false);
 
     /// <summary>Standard deviation text (statistical analytics panel column).</summary>
-    public string StdDevText => FormatValue(Stats?.StdDev);
+    public string StdDevText => FormatValue(Stats?.StdDev, includeUnit: false);
 
     /// <summary>Sample count in the window (diagnostic column).</summary>
     public string PointsText => Stats is { } stats ? stats.Count.ToString("N0", CultureInfo.InvariantCulture) : "0";
@@ -322,7 +357,7 @@ public partial class TrendPenViewModel : ObservableObject
 
     private DateTime statsTo_ = DateTime.UtcNow;
 
-    private string FormatValue(double? value)
+    private string FormatValue(double? value, bool includeUnit = true)
     {
         if (value is not { } v)
         {
@@ -330,7 +365,7 @@ public partial class TrendPenViewModel : ObservableObject
         }
 
         string text = Math.Round(v, 3).ToString("0.###", CultureInfo.InvariantCulture);
-        if (IsBoolean)
+        if (IsBoolean || !includeUnit)
         {
             return text;
         }

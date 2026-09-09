@@ -86,6 +86,77 @@ public partial class TrendGroupViewModel : TrendWindowViewModelBase
         FindPen(penName)?.CycleColor();
     }
 
+    /// <summary>
+    /// Row click: emphasize the clicked pen — its trace draws thick while every other
+    /// pen thins out. With Ctrl held the click is additive: it toggles the clicked pen
+    /// without touching the others, so several traces can stay thick at once.
+    /// Clicking the only selected row again clears the emphasis entirely.
+    /// </summary>
+    public override void SelectPen(string penName, bool additive = false)
+    {
+        TrendPenViewModel? target = FindPen(penName);
+        if (target is null)
+        {
+            return;
+        }
+
+        if (additive)
+        {
+            // Ctrl+click: flip just this pen; existing picks keep their thick traces.
+            target.IsSelected = !target.IsSelected;
+            bool anySelected = PenRows.Any(p => p.IsSelected);
+            foreach (TrendPenViewModel pen in PenRows)
+            {
+                pen.HasSelectionContext = anySelected;
+            }
+
+            OnPropertyChanged(nameof(Series));
+            return;
+        }
+
+        bool wasOnlySelection = target.IsSelected && PenRows.Count(p => p.IsSelected) == 1;
+        foreach (TrendPenViewModel pen in PenRows)
+        {
+            pen.IsSelected = false;
+        }
+
+        if (!wasOnlySelection)
+        {
+            target.IsSelected = true;
+        }
+
+        // While a selection exists every pen renders with an explicit width (thick for
+        // the selection, thin otherwise); with no selection the chart default returns.
+        bool hasSelection = PenRows.Any(p => p.IsSelected);
+        foreach (TrendPenViewModel pen in PenRows)
+        {
+            pen.HasSelectionContext = hasSelection;
+        }
+
+        // Pens raise Series on IsSelected; this catches the HasSelectionContext flip.
+        OnPropertyChanged(nameof(Series));
+    }
+
+    /// <summary>Click on the pen table's empty area: clears the trace emphasis.</summary>
+    public override void ClearPenSelection()
+    {
+        bool changed = false;
+        foreach (TrendPenViewModel pen in PenRows)
+        {
+            if (pen.IsSelected || pen.HasSelectionContext)
+            {
+                pen.IsSelected = false;
+                pen.HasSelectionContext = false;
+                changed = true;
+            }
+        }
+
+        if (changed)
+        {
+            OnPropertyChanged(nameof(Series));
+        }
+    }
+
     private TrendPenViewModel? FindPen(string penName)
     {
         foreach (TrendPenViewModel pen in PenRows)

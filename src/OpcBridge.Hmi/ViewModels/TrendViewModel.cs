@@ -40,7 +40,8 @@ public partial class TrendViewModel : TrendWindowViewModelBase
         {
             if (e.PropertyName is nameof(TrendPenViewModel.Samples)
                 or nameof(TrendPenViewModel.IsVisible)
-                or nameof(TrendPenViewModel.Series))
+                or nameof(TrendPenViewModel.Series)
+                or nameof(TrendPenViewModel.IsSelected))
             {
                 OnPropertyChanged(nameof(Series));
             }
@@ -93,6 +94,28 @@ public partial class TrendViewModel : TrendWindowViewModelBase
     /// <summary>Single-tag trends can configure alarm threshold overlays.</summary>
     public override bool SupportsAlarmLimits => true;
 
+    /// <summary>
+    /// Row click on the single pen row: toggles the thick-line emphasis. (Ctrl+click
+    /// behaves the same — there is only one pen to emphasize.)
+    /// </summary>
+    public override void SelectPen(string penName, bool additive = false)
+    {
+        Pen.HasSelectionContext = !Pen.IsSelected;
+        Pen.IsSelected = !Pen.IsSelected;
+        OnPropertyChanged(nameof(Series));
+    }
+
+    /// <summary>Click on the row's empty area: clears the thick-line emphasis.</summary>
+    public override void ClearPenSelection()
+    {
+        if (Pen.IsSelected || Pen.HasSelectionContext)
+        {
+            Pen.HasSelectionContext = false;
+            Pen.IsSelected = false;
+            OnPropertyChanged(nameof(Series));
+        }
+    }
+
     /// <summary>Chart input: this tag as a single pen in its own strip.</summary>
     public override IReadOnlyList<TrendSeries> Series
     {
@@ -126,7 +149,8 @@ public partial class TrendViewModel : TrendWindowViewModelBase
                     Visible: Pen.IsVisible,
                     IsBoolean: IsBooleanLike(DataType),
                     AlarmLimits: alarms,
-                    FixedAxis: fixedAxis)
+                    FixedAxis: fixedAxis,
+                    StrokeWidth: Pen.StrokeWidthFor())
             };
         }
     }

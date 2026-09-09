@@ -423,6 +423,8 @@ public sealed class TrendChartControl : Control
     private static readonly SolidColorBrush PinBrush = new(Color.Parse("#4A90D9"));
     private static readonly SolidColorBrush DotFillBrush = new(Color.Parse("#FFFFFF"));
     private static readonly SolidColorBrush ReadoutBgBrush = new(Color.FromArgb(0xEC, 0x23, 0x23, 0x29));
+    private static readonly SolidColorBrush LegendBackdropBrush = new(Color.FromArgb(0xC8, 0x17, 0x17, 0x1D));
+    private static readonly SolidColorBrush LegendBorderBrush = new(Color.FromArgb(0x50, 0xFF, 0xFF, 0xFF));
     private static readonly SolidColorBrush ZoomFillBrush = new(Color.FromArgb(0x40, 0x4F, 0xC3, 0xF7));
     private static readonly SolidColorBrush AlarmBandBrush = new(Color.FromArgb(0x1F, 0xEF, 0x53, 0x50));
     private static readonly Pen AlarmPen = new(new SolidColorBrush(Color.Parse("#EF5350")), 1) { DashStyle = DashStyle.Dash };
@@ -701,6 +703,12 @@ public sealed class TrendChartControl : Control
 
             double x = XOf(tick, from, totalTicks, plotLeft, plotWidth);
             context.DrawLine(gridPen, new Point(x, plotTop), new Point(x, plotBottom));
+            FormattedText timeLabel = MeasureText(typeface, FormatTime(tick));
+            double labelLeft = x - timeLabel.Width / 2;
+            if (labelLeft >= plotLeft - 2 && labelLeft + timeLabel.Width <= width - 2)
+            {
+                context.DrawText(timeLabel, new Point(labelLeft, plotBottom + 6));
+            }
         }
 
         // Overlay every pen on the plot; digital pens share the bottom band.
@@ -758,24 +766,42 @@ public sealed class TrendChartControl : Control
     /// </summary>
     private static void DrawScaleLegend(DrawingContext context, IReadOnlyList<StripLayout> strips, Rect plot, Typeface typeface)
     {
-        double x = plot.Left + 6;
-        double y = plot.Top + 4;
+        // Measure every row first so the backdrop fits exactly behind the legend.
         double lineHeight = FontSize + 5;
+        var rows = new List<(string Text, string Color)>();
+        double maxTextWidth = 0;
         foreach (StripLayout strip in strips)
         {
-            if (y + lineHeight > plot.Bottom - 2)
-            {
-                break; // legend must not outgrow the plot
-            }
-
             string range = FormatAxisLabel(strip.AxisMin, strip) + " – " + FormatAxisLabel(strip.AxisMax, strip);
             string suffix = strip.IsDigital
                 ? string.Empty
                 : strip.Percent
                     ? " %"
                     : string.IsNullOrWhiteSpace(strip.Series.Unit) ? string.Empty : " " + strip.Series.Unit.Trim();
-            context.DrawRectangle(BrushFor(strip.Series.Color), null, new Rect(x, y + 3, 8, 8));
-            context.DrawText(MeasureText(typeface, range + suffix), new Point(x + 12, y));
+            maxTextWidth = Math.Max(maxTextWidth, MeasureText(typeface, range + suffix).Width);
+            rows.Add((range + suffix, strip.Series.Color));
+        }
+
+        if (rows.Count == 0)
+        {
+            return;
+        }
+
+        double backdropHeight = Math.Min(rows.Count * lineHeight + 8, plot.Height - 8);
+        var backdrop = new Rect(plot.Left + 6, plot.Top + 4, maxTextWidth + 32, backdropHeight);
+        context.DrawRectangle(LegendBackdropBrush, new Pen(LegendBorderBrush, 1), backdrop);
+
+        double x = backdrop.Left + 6;
+        double y = backdrop.Top + 4;
+        foreach ((string text, string color) in rows)
+        {
+            if (y + lineHeight > backdrop.Bottom)
+            {
+                break; // legend must not outgrow the plot
+            }
+
+            context.DrawRectangle(BrushFor(color), null, new Rect(x, y + 3, 8, 8));
+            context.DrawText(MeasureText(typeface, text), new Point(x + 12, y));
             y += lineHeight;
         }
     }
@@ -1013,7 +1039,7 @@ public sealed class TrendChartControl : Control
                     ctx.EndFigure(false);
                 }
 
-                context.DrawGeometry(null, new Pen(color, 1.6), lineGeometry);
+                context.DrawGeometry(null, new Pen(color, strip.Series.StrokeWidth > 0 ? strip.Series.StrokeWidth : 1.6), lineGeometry);
 
                 // Last sample marker.
                 Point last = trace[trace.Count - 1];

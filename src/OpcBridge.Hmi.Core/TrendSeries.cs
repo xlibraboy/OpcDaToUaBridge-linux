@@ -10,6 +10,8 @@ namespace OpcBridge.Hmi.Core;
 /// several, each drawn in its own strip. <see cref="IsBoolean"/> marks discrete on/off
 /// signals, which render as square-wave strips with optional
 /// <see cref="StateLabels"/> (index 0 = false state text, 1 = true state text).
+/// <see cref="StrokeWidth"/> overrides the trace line thickness (0 = chart default);
+/// the pen table uses it to emphasize the selected pen's line over the others.
 /// </summary>
 public readonly record struct TrendSeries(
     string Name,
@@ -23,7 +25,8 @@ public readonly record struct TrendSeries(
     (double Low, double High)? AlarmLimits = null,
     string?[]? StateLabels = null,
     bool UsePercentAxis = false,
-    (double Min, double Max, double Step)? FixedAxis = null);
+    (double Min, double Max, double Step)? FixedAxis = null,
+    double StrokeWidth = 0);
 
 /// <summary>
 /// Stable per-trace colors used across the HMI trend charts. Single-tag trends always

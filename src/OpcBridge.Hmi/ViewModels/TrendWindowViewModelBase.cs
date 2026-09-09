@@ -258,6 +258,19 @@ public abstract partial class TrendWindowViewModelBase : ObservableObject, IAsyn
     /// <summary>Pen rows for the pen configuration table (name, color, value, min/max/avg).</summary>
     public abstract IReadOnlyList<TrendPenViewModel> Pens { get; }
 
+    /// <summary>
+    /// Pen-table row click: emphasize that pen's trace. A plain click selects one pen;
+    /// Ctrl+click toggles additional pens so several traces stay thick at once.
+    /// </summary>
+    public virtual void SelectPen(string penName, bool additive = false)
+    {
+    }
+
+    /// <summary>Click on the pen table's empty area: clears the trace emphasis.</summary>
+    public virtual void ClearPenSelection()
+    {
+    }
+
     /// <summary>True when any pen has a typed custom Y-axis range (shows the reset button).</summary>
     public bool HasCustomRanges => Pens.Any(p => p.HasCustomAxis);
 

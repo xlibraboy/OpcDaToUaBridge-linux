@@ -136,31 +136,41 @@
                       MaxHeight="200">
           <Grid RowDefinitions="Auto,*" Margin="0">
             <!-- Header row: bottom rule + column separators (definitions mirror the data rows) -->
-            <Border Grid.Row="0" BorderBrush="#2EFFFFFF" BorderThickness="0,0,0,1">
-              <Grid ColumnDefinitions="22,22,1.3*,1,1.1*,1,1.6*,1,0.9*,1,0.8*,1,0.8*,1,0.8*" MinHeight="24">
+            <Border Grid.Row="0" BorderBrush="#2EFFFFFF" BorderThickness="0,0,0,1"
+                    ToolTip.Tip="Click an empty area to clear pen emphasis"
+                    PointerPressed="OnPenTableBackgroundClick">
+              <Grid ColumnDefinitions="22,22,1.3*,1,1.1*,1,0.5*,1,0.9*,1,0.9*,1,0.8*,1,0.8*,1,0.8*" MinHeight="24">
                 <TextBlock Grid.Column="2" Classes="listHeader" Text="Name" VerticalAlignment="Center" />
                 <TextBlock Grid.Column="4" Classes="listHeader" Text="Description" VerticalAlignment="Center" />
-                <TextBlock Grid.Column="6" Classes="listHeader" Text="Range (min–max)" VerticalAlignment="Center"
+                <TextBlock Grid.Column="6" Classes="listHeader" Text="Unit" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="8" Classes="listHeader" Text="Range (min–max)" VerticalAlignment="Center"
                            ToolTip.Tip="Actual data range shown as watermarks; type values to set a custom Y-axis scale (leave empty to auto-fit)" />
-                <TextBlock Grid.Column="8" Classes="listHeader" Text="Value" VerticalAlignment="Center" />
-                <TextBlock Grid.Column="10" Classes="listHeader" Text="Minimum" VerticalAlignment="Center" />
-                <TextBlock Grid.Column="12" Classes="listHeader" Text="Maximum" VerticalAlignment="Center" />
-                <TextBlock Grid.Column="14" Classes="listHeader" Text="Average" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="10" Classes="listHeader" Text="Value" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="12" Classes="listHeader" Text="Minimum" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="14" Classes="listHeader" Text="Maximum" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="16" Classes="listHeader" Text="Average" VerticalAlignment="Center" />
                 <Rectangle Grid.Column="3" Width="1" Fill="#24FFFFFF" />
                 <Rectangle Grid.Column="5" Width="1" Fill="#24FFFFFF" />
                 <Rectangle Grid.Column="7" Width="1" Fill="#24FFFFFF" />
                 <Rectangle Grid.Column="9" Width="1" Fill="#24FFFFFF" />
                 <Rectangle Grid.Column="11" Width="1" Fill="#24FFFFFF" />
                 <Rectangle Grid.Column="13" Width="1" Fill="#24FFFFFF" />
+                <Rectangle Grid.Column="15" Width="1" Fill="#24FFFFFF" />
               </Grid>
             </Border>
             <ItemsControl Grid.Row="1" ItemsSource="{Binding Pens}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:TrendPenViewModel">
-                  <Border BorderBrush="#1AFFFFFF" BorderThickness="0,0,0,1">
-                    <Grid ColumnDefinitions="22,22,1.3*,1,1.1*,1,1.6*,1,0.9*,1,0.8*,1,0.8*,1,0.8*" MinHeight="24">
+                  <Border BorderBrush="#1AFFFFFF" BorderThickness="0,0,0,1"
+                          Background="{Binding RowBackground, Converter={x:Static vm:HexToBrushConverter.Instance}}"
+                          Tag="{Binding Name}"
+                          Cursor="Hand"
+                          ToolTip.Tip="Click to emphasize this pen (thick line); click again to clear · Ctrl+click toggles several pens"
+                          PointerPressed="OnPenRowClick">
+                    <Grid ColumnDefinitions="22,22,1.3*,1,1.1*,1,0.5*,1,0.9*,1,0.9*,1,0.8*,1,0.8*,1,0.8*" MinHeight="24">
                       <CheckBox Grid.Column="0"
                                 IsChecked="{Binding IsVisible}"
+                                Height="16" Padding="0"
                                 VerticalAlignment="Center" HorizontalAlignment="Center" />
                       <Border Grid.Column="1"
                               Width="18" Height="10"
@@ -175,24 +185,28 @@
                                  VerticalAlignment="Center" />
                       <TextBlock Grid.Column="4" Text="{Binding Description}" TextTrimming="CharacterEllipsis"
                                  Classes="hint" VerticalAlignment="Center" />
-                      <StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="3" VerticalAlignment="Center">
-                        <TextBox Width="52" Height="20" Padding="4,1" VerticalContentAlignment="Center"
+                      <TextBlock Grid.Column="6" Text="{Binding Unit}" Classes="hint"
+                                 VerticalAlignment="Center" />
+                      <Grid Grid.Column="8" ColumnDefinitions="*,10,*" Margin="0,0,8,0" VerticalAlignment="Center">
+                        <TextBox Grid.Column="0" Height="20" Padding="4,1" HorizontalContentAlignment="Right" VerticalContentAlignment="Center"
+                                 IsEnabled="{Binding !IsBoolean}"
                                  Text="{Binding RangeMinText, UpdateSourceTrigger=PropertyChanged}"
                                  Watermark="{Binding RangeMinWatermark}"
-                                 ToolTip.Tip="Custom Y-axis minimum (empty = auto)" />
-                        <TextBlock Classes="hint" Text="–" VerticalAlignment="Center" />
-                        <TextBox Width="52" Height="20" Padding="4,1" VerticalContentAlignment="Center"
+                                 ToolTip.Tip="Custom Y-axis minimum (empty = auto); fixed for on/off tags" />
+                        <TextBlock Grid.Column="1" Classes="hint" Text="–" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        <TextBox Grid.Column="2" Height="20" Padding="4,1" HorizontalContentAlignment="Right" VerticalContentAlignment="Center"
+                                 IsEnabled="{Binding !IsBoolean}"
                                  Text="{Binding RangeMaxText, UpdateSourceTrigger=PropertyChanged}"
                                  Watermark="{Binding RangeMaxWatermark}"
-                                 ToolTip.Tip="Custom Y-axis maximum (empty = auto)" />
-                      </StackPanel>
-                      <TextBlock Grid.Column="8" Text="{Binding ValueText}" Classes="valueText"
+                                 ToolTip.Tip="Custom Y-axis maximum (empty = auto); fixed for on/off tags" />
+                      </Grid>
+                      <TextBlock Grid.Column="10" Text="{Binding ValueText}" Classes="valueText"
                                  VerticalAlignment="Center" />
-                      <TextBlock Grid.Column="10" Text="{Binding MinimumText}" Classes="hint"
+                      <TextBlock Grid.Column="12" Text="{Binding MinimumText}" Classes="hint"
                                  VerticalAlignment="Center" />
-                      <TextBlock Grid.Column="12" Text="{Binding MaximumText}" Classes="hint"
+                      <TextBlock Grid.Column="14" Text="{Binding MaximumText}" Classes="hint"
                                  VerticalAlignment="Center" />
-                      <TextBlock Grid.Column="14" Text="{Binding AverageText}" Classes="hint"
+                      <TextBlock Grid.Column="16" Text="{Binding AverageText}" Classes="hint"
                                  VerticalAlignment="Center" />
                       <Rectangle Grid.Column="3" Width="1" Fill="#24FFFFFF" />
                       <Rectangle Grid.Column="5" Width="1" Fill="#24FFFFFF" />
@@ -200,6 +214,7 @@
                       <Rectangle Grid.Column="9" Width="1" Fill="#24FFFFFF" />
                       <Rectangle Grid.Column="11" Width="1" Fill="#24FFFFFF" />
                       <Rectangle Grid.Column="13" Width="1" Fill="#24FFFFFF" />
+                      <Rectangle Grid.Column="15" Width="1" Fill="#24FFFFFF" />
                     </Grid>
                   </Border>
                 </DataTemplate>
