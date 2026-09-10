@@ -154,13 +154,31 @@
                Text="{Binding StatusMessage}"
                TextWrapping="Wrap" />
 
-    <!-- Chart fills the remaining height; the scrollable pen table docks below -->
-    <DockPanel>
+    <!-- Chart and pen table share the window height; drag the splitter between them -->
+    <Grid RowDefinitions="*,4,232">
+      <GridSplitter Grid.Row="1" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                    Background="#22FFFFFF" CornerRadius="2"
+                    ToolTip.Tip="Drag to resize the pen table" />
+      <!-- Drag-grip dots: non-hit-testable, purely an affordance (must sit above the splitter) -->
+      <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="3"
+                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                  IsHitTestVisible="False" Opacity="0.75">
+        <StackPanel Orientation="Vertical" Spacing="2">
+          <Ellipse Width="2.5" Height="2.5" Fill="#B3FFFFFF" />
+          <Ellipse Width="2.5" Height="2.5" Fill="#B3FFFFFF" />
+          <Ellipse Width="2.5" Height="2.5" Fill="#B3FFFFFF" />
+        </StackPanel>
+        <StackPanel Orientation="Vertical" Spacing="2">
+          <Ellipse Width="2.5" Height="2.5" Fill="#B3FFFFFF" />
+          <Ellipse Width="2.5" Height="2.5" Fill="#B3FFFFFF" />
+          <Ellipse Width="2.5" Height="2.5" Fill="#B3FFFFFF" />
+        </StackPanel>
+      </StackPanel>
+
       <!-- Pen configuration table: visibility, color, name, description, live + windowed stats -->
-      <Border DockPanel.Dock="Bottom" Classes="cardDark" Padding="8" Margin="0,8,0,0">
+      <Border Grid.Row="2" Classes="cardDark" Padding="8" Margin="0,4,0,0">
         <ScrollViewer HorizontalScrollBarVisibility="Auto"
-                      VerticalScrollBarVisibility="Auto"
-                      MaxHeight="207">
+                      VerticalScrollBarVisibility="Auto">
           <Grid RowDefinitions="Auto,*" Margin="0">
             <!-- Header row: bottom rule + column separators (definitions mirror the data rows) -->
             <Border Grid.Row="0" BorderBrush="#2EFFFFFF" BorderThickness="0,0,0,1"
@@ -251,7 +269,7 @@
         </ScrollViewer>
       </Border>
 
-      <Border Classes="cardDark" Padding="8">
+      <Border Grid.Row="0" Classes="cardDark" Padding="8">
         <controls:TrendChartControl x:Name="TrendChart"
                                     EnableRangeZoom="True"
                                     LayoutMode="{Binding LayoutMode}"
@@ -263,6 +281,6 @@
                                     AlarmHigh="{Binding AlarmHigh}"
                                     AlarmLow="{Binding AlarmLow}" />
       </Border>
-    </DockPanel>
+    </Grid>
   </DockPanel>
 </Window>
