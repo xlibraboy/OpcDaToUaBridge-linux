@@ -37,6 +37,42 @@
     <Style Selector="CheckBox.PenCheck:pointerover /template/ Border#Box">
       <Setter Property="BorderBrush" Value="#E6FFFFFF" />
     </Style>
+    <!-- Flat grip button on the splitter bar; hover/focus lights up a wide pill. -->
+    <Style Selector="Button.SplitterGrip">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border x:Name="GripPill" Width="44" Height="10" CornerRadius="5" Background="Transparent">
+            <StackPanel Orientation="Horizontal" Spacing="2" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False">
+              <StackPanel Orientation="Vertical" Spacing="1.5">
+                <Ellipse Width="1.8" Height="1.8" Fill="#99FFFFFF" />
+                <Ellipse Width="1.8" Height="1.8" Fill="#99FFFFFF" />
+                <Ellipse Width="1.8" Height="1.8" Fill="#99FFFFFF" />
+              </StackPanel>
+              <StackPanel Orientation="Vertical" Spacing="1.5">
+                <Ellipse Width="1.8" Height="1.8" Fill="#99FFFFFF" />
+                <Ellipse Width="1.8" Height="1.8" Fill="#99FFFFFF" />
+                <Ellipse Width="1.8" Height="1.8" Fill="#99FFFFFF" />
+              </StackPanel>
+            </StackPanel>
+          </Border>
+        </ControlTemplate>
+      </Setter>
+    </Style>
+    <Style Selector="Button.SplitterGrip:pointerover /template/ Border#GripPill">
+      <Setter Property="Background" Value="#38FFFFFF" />
+    </Style>
+    <Style Selector="Button.SplitterGrip:pointerover /template/ Ellipse">
+      <Setter Property="Fill" Value="#E6FFFFFF" />
+    </Style>
+    <!-- The whole bar highlights when the pointer is anywhere over the splitter. -->
+    <Style Selector="GridSplitter:pointerover">
+      <Setter Property="Background" Value="#3CFFFFFF" />
+    </Style>
   </Window.Styles>
   <DockPanel Margin="12">
     <!-- Row 1: range, auto-range, live controls, pan, zoom reset, export, refresh -->
@@ -155,28 +191,39 @@
                TextWrapping="Wrap" />
 
     <!-- Chart and pen table share the window height; drag the splitter between them -->
-    <Grid RowDefinitions="*,4,232">
+    <Grid>
+      <Grid.RowDefinitions>
+        <RowDefinition Height="*" />
+        <RowDefinition Height="8" />
+        <RowDefinition Height="232" />
+      </Grid.RowDefinitions>
       <GridSplitter Grid.Row="1" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                     Background="#22FFFFFF" CornerRadius="2"
-                    ToolTip.Tip="Drag to resize the pen table" />
-      <!-- Drag-grip dots: non-hit-testable, purely an affordance (must sit above the splitter) -->
-      <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="3"
-                  HorizontalAlignment="Center" VerticalAlignment="Center"
-                  IsHitTestVisible="False" Opacity="0.75">
-        <StackPanel Orientation="Vertical" Spacing="2">
-          <Ellipse Width="2.5" Height="2.5" Fill="#B3FFFFFF" />
-          <Ellipse Width="2.5" Height="2.5" Fill="#B3FFFFFF" />
-          <Ellipse Width="2.5" Height="2.5" Fill="#B3FFFFFF" />
+                    ToolTip.Tip="Drag to resize · double-click the bar (or click the grip) to collapse/expand the pen table"
+                    DoubleTapped="OnSplitterToggle" />
+      <!-- Grip button: a real click target (GridSplitter swallows DoubleTapped while dragging).
+           Clicking toggles the table; drag still works on the bar around it. -->
+      <Button Grid.Row="1" Classes="SplitterGrip" Focusable="False"
+              HorizontalAlignment="Center" VerticalAlignment="Center"
+              Click="OnSplitterToggle"
+              ToolTip.Tip="Collapse/expand pen table">
+        <StackPanel Orientation="Horizontal" Spacing="2" IsHitTestVisible="False">
+          <StackPanel Orientation="Vertical" Spacing="1.5">
+            <Ellipse Width="1.8" Height="1.8" Fill="#99FFFFFF" />
+            <Ellipse Width="1.8" Height="1.8" Fill="#99FFFFFF" />
+            <Ellipse Width="1.8" Height="1.8" Fill="#99FFFFFF" />
+          </StackPanel>
+          <StackPanel Orientation="Vertical" Spacing="1.5">
+            <Ellipse Width="1.8" Height="1.8" Fill="#99FFFFFF" />
+            <Ellipse Width="1.8" Height="1.8" Fill="#99FFFFFF" />
+            <Ellipse Width="1.8" Height="1.8" Fill="#99FFFFFF" />
+          </StackPanel>
         </StackPanel>
-        <StackPanel Orientation="Vertical" Spacing="2">
-          <Ellipse Width="2.5" Height="2.5" Fill="#B3FFFFFF" />
-          <Ellipse Width="2.5" Height="2.5" Fill="#B3FFFFFF" />
-          <Ellipse Width="2.5" Height="2.5" Fill="#B3FFFFFF" />
-        </StackPanel>
-      </StackPanel>
+      </Button>
 
       <!-- Pen configuration table: visibility, color, name, description, live + windowed stats -->
-      <Border Grid.Row="2" Classes="cardDark" Padding="8" Margin="0,4,0,0">
+      <Border Grid.Row="2" Classes="cardDark" Padding="8" Margin="0,4,0,0"
+              IsVisible="{Binding !IsPenTableCollapsed}">
         <ScrollViewer HorizontalScrollBarVisibility="Auto"
                       VerticalScrollBarVisibility="Auto">
           <Grid RowDefinitions="Auto,*" Margin="0">
@@ -279,7 +326,8 @@
                                     YAxisMode="{Binding YAxisMode}"
                                     PinnedAtUtc="{Binding PinnedAtUtc}"
                                     AlarmHigh="{Binding AlarmHigh}"
-                                    AlarmLow="{Binding AlarmLow}" />
+                                    AlarmLow="{Binding AlarmLow}"
+                                    ShowNamesInHover="{Binding IsPenTableCollapsed}" />
       </Border>
     </Grid>
   </DockPanel>

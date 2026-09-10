@@ -95,6 +95,24 @@ public partial class TrendWindow : Window
         e.Handled = true;
     }
 
+    /// <summary>Grip click or splitter double-click: collapse/expand the pen table.</summary>
+    public void OnSplitterToggle(object? sender, RoutedEventArgs e)
+    {
+        // Both the grip button and the splitter are direct children of the layout grid.
+        if (DataContext is not TrendWindowViewModelBase viewModel
+            || sender is not Avalonia.Visual { Parent: Grid layout })
+        {
+            return;
+        }
+
+        viewModel.IsPenTableCollapsed = !viewModel.IsPenTableCollapsed;
+        // A collapsed child still leaves its fixed row empty, so the row goes to 0 too.
+        layout.RowDefinitions[2].Height = viewModel.IsPenTableCollapsed
+            ? new GridLength(0)
+            : new GridLength(232);
+        e.Handled = true;
+    }
+
     /// <summary>Click on the table's empty area (header/whitespace): clear the emphasis.</summary>
     public void OnPenTableBackgroundClick(object? sender, PointerPressedEventArgs e)
     {

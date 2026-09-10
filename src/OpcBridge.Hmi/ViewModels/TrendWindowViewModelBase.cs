@@ -151,6 +151,13 @@ public abstract partial class TrendWindowViewModelBase : ObservableObject, IAsyn
     [ObservableProperty]
     private bool _isZoomed;
 
+    /// <summary>
+    /// True while the pen table below the chart is collapsed (double-click the splitter
+    /// grip to toggle). While collapsed, the chart's hover chips carry the pen names.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isPenTableCollapsed;
+
     partial void OnIsZoomedChanged(bool value) => OnPropertyChanged(nameof(RangeSelection));
 
     /// <summary>True when the live auto-refresh is frozen (stream paused).</summary>

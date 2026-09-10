@@ -87,6 +87,17 @@ public sealed class TrendChartControl : Control
     public static readonly StyledProperty<bool> EnableRangeZoomProperty =
         AvaloniaProperty.Register<TrendChartControl, bool>(nameof(EnableRangeZoom), false);
 
+    /// <summary>Prefixes each hover value chip with its pen name (used while the pen table is collapsed).</summary>
+    public static readonly StyledProperty<bool> ShowNamesInHoverProperty =
+        AvaloniaProperty.Register<TrendChartControl, bool>(nameof(ShowNamesInHover));
+
+    /// <summary>Prefixes each hover value chip with its pen name (used while the pen table is collapsed).</summary>
+    public bool ShowNamesInHover
+    {
+        get => GetValue(ShowNamesInHoverProperty);
+        set => SetValue(ShowNamesInHoverProperty, value);
+    }
+
     /// <summary>Single-series input (faceplate mini-trend).</summary>
     public IEnumerable<TrendSample>? Samples
     {
@@ -216,7 +227,8 @@ public sealed class TrendChartControl : Control
             YMaxProperty,
             YStepProperty,
             UnitProperty,
-            TrendStyleProperty);
+            TrendStyleProperty,
+            ShowNamesInHoverProperty);
     }
 
     public TrendChartControl()
@@ -1174,15 +1186,21 @@ public sealed class TrendChartControl : Control
         return best is { } hit ? hit.V : null;
     }
 
-    private static string FormatValueChip(double value, StripLayout strip)
+    private string FormatValueChip(double value, StripLayout strip)
     {
         string text = FormatNumber(value);
         if (strip.Percent)
         {
-            return text + " %";
+            text += " %";
+        }
+        else if (!string.IsNullOrWhiteSpace(strip.Series.Unit))
+        {
+            text += " " + strip.Series.Unit.Trim();
         }
 
-        return string.IsNullOrWhiteSpace(strip.Series.Unit) ? text : text + " " + strip.Series.Unit.Trim();
+        // With the pen table collapsed the chips are the only place a trace is
+        // identified, so each one carries its pen name.
+        return ShowNamesInHover ? strip.Series.Name + " " + text : text;
     }
 
     private static string FormatAxisLabel(double value, StripLayout strip)
