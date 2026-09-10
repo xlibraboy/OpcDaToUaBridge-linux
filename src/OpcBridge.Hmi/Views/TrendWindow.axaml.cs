@@ -1,4 +1,10 @@
+using System;
+using System.IO;
 using Avalonia.Controls;
+using Avalonia.Interactivity;
+using Avalonia.Input;
+using Avalonia.Media;
+using Avalonia.Platform.Storage;
 using OpcBridge.Hmi.ViewModels;
 
 namespace OpcBridge.Hmi.Views;
@@ -17,11 +23,12 @@ public partial class TrendWindow : Window
         };
     }
 
-    public TrendWindow(TrendViewModel viewModel)
+    public TrendWindow(TrendWindowViewModelBase viewModel)
         : this()
     {
         DataContext = viewModel;
-        // Right-drag on the plot selects a time range → reload history for that window.
+
+        // Drag on the plot selects a time range → reload history for that window.
         TrendChart.ZoomRequested += (_, e) =>
         {
             _ = viewModel.ZoomToAsync(e.FromUtc, e.ToUtc);
@@ -32,5 +39,135 @@ public partial class TrendWindow : Window
         {
             viewModel.ResetZoomCommand.Execute(null);
         };
+
+        // Keep the pinned blue cursors in sync both ways (Ctrl+Click on the plot to
+        // add/remove, drag to move, "Clear pins" button on the toolbar).
+        TrendChart.Pins = viewModel.Pins;
+        viewModel.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(TrendWindowViewModelBase.Pins))
+            {
+                TrendChart.Pins = viewModel.Pins;
+            }
+        };
+        TrendChart.PinsChanged += (_, _) =>
+        {
+            viewModel.Pins = TrendChart.Pins;
+        };
+    }
+
+    /// <summary>Pen-table swatch click: cycle that pen's trace color.</summary>
+    public void OnPenSwatchClick(object? sender, PointerPressedEventArgs e)
+    {
+        if (DataContext is not TrendWindowViewModelBase viewModel || sender is not Border { Tag: string penName })
+        {
+            return;
+        }
+
+        switch (viewModel)
+        {
+            case TrendGroupViewModel group:
+                group.CyclePenColor(penName);
+                break;
+            case TrendViewModel single:
+                single.Pen.CycleColor();
+                break;
+        }
+
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// Pen-table row click: emphasize that pen's trace (thick line, others thin).
+    /// Ctrl+click toggles pens additively so several traces stay thick at once.
+    /// </summary>
+    public void OnPenRowClick(object? sender, PointerPressedEventArgs e)
+    {
+        // Let inner controls (checkbox, textboxes, swatch) keep their own clicks.
+        if (e.Handled ||
+            DataContext is not TrendWindowViewModelBase viewModel ||
+            sender is not Border { Tag: string penName })
+        {
+            return;
+        }
+
+        viewModel.SelectPen(penName, additive: e.KeyModifiers.HasFlag(Avalonia.Input.KeyModifiers.Control));
+        e.Handled = true;
+    }
+
+    /// <summary>Grip click or splitter double-click: collapse/expand the pen table.</summary>
+    public void OnSplitterToggle(object? sender, RoutedEventArgs e)
+    {
+        // Both the grip button and the splitter are direct children of the layout grid.
+        if (DataContext is not TrendWindowViewModelBase viewModel
+            || sender is not Avalonia.Visual { Parent: Grid layout })
+        {
+            return;
+        }
+
+        viewModel.IsPenTableCollapsed = !viewModel.IsPenTableCollapsed;
+        // A collapsed child still leaves its fixed row empty, so the row goes to 0 too.
+        layout.RowDefinitions[2].Height = viewModel.IsPenTableCollapsed
+            ? new GridLength(0)
+            : new GridLength(232);
+        e.Handled = true;
+    }
+
+    /// <summary>Click on the table's empty area (header/whitespace): clear the emphasis.</summary>
+    public void OnPenTableBackgroundClick(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.Handled || DataContext is not TrendWindowViewModelBase viewModel)
+        {
+            return;
+        }
+
+        viewModel.ClearPenSelection();
+    }
+
+    private async void OnExportClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not TrendWindowViewModelBase viewModel)
+        {
+            return;
+        }
+
+        var options = new FilePickerSaveOptions
+        {
+            Title = "Export trend",
+            SuggestedFileName = "trend.csv",
+            DefaultExtension = "csv",
+            FileTypeChoices = new[]
+            {
+                new FilePickerFileType("CSV files") { Patterns = new[] { "*.csv" } }
+            }
+        };
+        IStorageFile? file = await StorageProvider.SaveFilePickerAsync(options).ConfigureAwait(true);
+        if (file is null)
+        {
+            return;
+        }
+
+        string? localPath = file.TryGetLocalPath();
+        if (!string.IsNullOrWhiteSpace(localPath))
+        {
+            await viewModel.ExportCsvAsync(localPath).ConfigureAwait(true);
+            return;
+        }
+
+        // Non-local storage (e.g. web): write the CSV text straight to the picked file.
+        await using Stream stream = await file.OpenWriteAsync().ConfigureAwait(true);
+        await using var writer = new StreamWriter(stream);
+        await writer.WriteAsync(viewModel.BuildCsv()).ConfigureAwait(true);
+        viewModel.StatusMessage = "Exported trend CSV";
+    }
+
+    private void OnCustomRangeClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not TrendWindowViewModelBase viewModel)
+        {
+            return;
+        }
+
+        new TrendTimeRangeWindow(viewModel).ShowDialog(this);
     }
 }

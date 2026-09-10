@@ -38,6 +38,7 @@ public static class HmiTagSnapshot
                 SourceId = m.SourceId,
                 ItemId = m.ItemId,
                 DisplayName = string.IsNullOrWhiteSpace(m.DisplayName) ? m.ItemId : m.DisplayName,
+                Description = m.Description,
                 DataType = m.DataType,
                 Value = snap?.Value,
                 TimestampUtc = snap?.TimestampUtc,

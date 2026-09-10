@@ -81,6 +81,26 @@ public static class TrendScale
     }
 
     /// <summary>
+    /// Axis pinned exactly to the given bounds (no padding), with a nice grid step
+    /// inside — used when the operator types a custom min/max range for a pen.
+    /// </summary>
+    public static TrendAxis FromBounds(double min, double max)
+    {
+        if (!double.IsFinite(min) || !double.IsFinite(max) || max <= min)
+        {
+            return default;
+        }
+
+        double step = NiceStep((max - min) / TargetIntervals);
+        if (!(step > 0) || !double.IsFinite(step))
+        {
+            return default;
+        }
+
+        return new TrendAxis(min, max, step);
+    }
+
+    /// <summary>
     /// Axis pinned exactly to a tag's type range, with a nice grid step inside it.
     /// </summary>
     public static TrendAxis FromTypeRange((double Min, double Max) typeRange)
