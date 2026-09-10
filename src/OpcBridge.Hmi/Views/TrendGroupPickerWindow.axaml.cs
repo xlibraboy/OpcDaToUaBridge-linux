@@ -17,6 +17,7 @@ public partial class TrendGroupPickerWindow : Window
         {
             List<TagItemViewModel> tags = (TagList.SelectedItems ?? Array.Empty<object>())
                 .OfType<TagItemViewModel>()
+                .Where(tag => tag.InfluxEnabled)
                 .ToList();
             if (tags.Count > 0)
             {

@@ -16,7 +16,7 @@
       <Button Content="Cancel" Click="OnCancelClick" MinWidth="90" />
       <TextBlock Classes="hint"
                  VerticalAlignment="Center"
-                 Text="Select two or more tags to plot on one chart." />
+                 Text="Select two or more tags to plot on one chart. Tags without InfluxDB history are disabled." />
     </StackPanel>
 
     <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,8">
@@ -31,12 +31,20 @@
     <ListBox x:Name="TagList"
              ItemsSource="{Binding FilteredTags}"
              SelectionMode="Multiple">
+      <ListBox.Styles>
+        <Style Selector="ListBoxItem">
+          <Setter Property="IsEnabled" Value="{Binding CanTrend, x:DataType=vm:TagItemViewModel}" />
+        </Style>
+      </ListBox.Styles>
       <ListBox.ItemTemplate>
         <DataTemplate x:DataType="vm:TagItemViewModel">
-          <Grid ColumnDefinitions="*,2*,*">
+          <Grid ColumnDefinitions="*,2*,*,Auto">
             <TextBlock Grid.Column="0" Text="{Binding BridgeId}" TextTrimming="CharacterEllipsis" />
             <TextBlock Grid.Column="1" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
             <TextBlock Grid.Column="2" Classes="valueText" Text="{Binding ValueText}" TextTrimming="CharacterEllipsis" />
+            <TextBlock Grid.Column="3" Classes="hint" Margin="8,0,0,0"
+                       IsVisible="{Binding !CanTrend}"
+                       Text="{Binding AvailabilityMarker}" />
           </Grid>
         </DataTemplate>
       </ListBox.ItemTemplate>

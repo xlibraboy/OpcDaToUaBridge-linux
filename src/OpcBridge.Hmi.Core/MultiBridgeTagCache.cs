@@ -22,6 +22,12 @@ public sealed class MultiBridgeTagEntry
     /// or "Step" (sample-and-hold). Set per-tag in the dashboard Maps faceplate.
     /// </summary>
     public string TrendStyle { get; set; } = "Continuous";
+
+    /// <summary>
+    /// Whether this tag's values are written to InfluxDB. Only tags with history enabled
+    /// can display trends — the HMI disables trend actions for the rest.
+    /// </summary>
+    public bool InfluxEnabled { get; set; }
 }
 
 /// <summary>
@@ -135,7 +141,8 @@ public sealed class MultiBridgeTagCache
         IsGood = dto.IsGood,
         Writeable = dto.Writeable,
         Unit = string.IsNullOrWhiteSpace(dto.Unit) ? null : dto.Unit,
-        TrendStyle = NormalizeTrendStyle(dto.TrendStyle)
+        TrendStyle = NormalizeTrendStyle(dto.TrendStyle),
+        InfluxEnabled = dto.InfluxEnabled
     };
 
     private static string NormalizeTrendStyle(string? value)

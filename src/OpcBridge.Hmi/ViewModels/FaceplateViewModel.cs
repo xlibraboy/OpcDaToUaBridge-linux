@@ -13,6 +13,7 @@ public partial class FaceplateViewModel : ObservableObject, IAsyncDisposable
     private readonly BridgeApiClient api_;
     private readonly MultiBridgeTagCache cache_;
     private readonly Action<TagBindingKey> openTrend_;
+    private readonly Func<bool>? isInfluxAvailable_;
     private readonly bool ownsApi_;
     private CancellationTokenSource? trendCts_;
 
@@ -21,12 +22,14 @@ public partial class FaceplateViewModel : ObservableObject, IAsyncDisposable
         BridgeApiClient api,
         MultiBridgeTagCache cache,
         Action<TagBindingKey> openTrend,
+        Func<bool>? isInfluxAvailable = null,
         bool ownsApi = false)
     {
         Key = key;
         api_ = api;
         cache_ = cache;
         openTrend_ = openTrend;
+        isInfluxAvailable_ = isInfluxAvailable;
         ownsApi_ = ownsApi;
         RefreshFromCache();
         _ = LoadHistoryAsync();
@@ -79,6 +82,13 @@ public partial class FaceplateViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty]
     private bool _writeable;
 
+    /// <summary>
+    /// Whether this tag's values are written to InfluxDB. Without history the trend button
+    /// and the 1h history chart are disabled.
+    /// </summary>
+    [ObservableProperty]
+    private bool _influxEnabled;
+
     [ObservableProperty]
     private string _writeValue = string.Empty;
 
@@ -120,6 +130,7 @@ public partial class FaceplateViewModel : ObservableObject, IAsyncDisposable
             Unit = entry.Unit ?? string.Empty;
             TrendStyle = NormalizeTrendStyle(entry.TrendStyle);
             Writeable = entry.Writeable;
+            InfluxEnabled = entry.InfluxEnabled;
             ValueText = FormatValue(entry.Value);
             QualityText = FormatQuality(entry.DaQuality, entry.IsGood);
             TimestampText = entry.TimestampUtc is null
@@ -141,6 +152,7 @@ public partial class FaceplateViewModel : ObservableObject, IAsyncDisposable
 
         Title = string.IsNullOrWhiteSpace(DisplayName) ? Key.DaItemId : DisplayName;
         WriteCommand.NotifyCanExecuteChanged();
+        OpenTrendCommand.NotifyCanExecuteChanged();
     }
 
     private static string NormalizeTrendStyle(string? value)
@@ -189,11 +201,43 @@ public partial class FaceplateViewModel : ObservableObject, IAsyncDisposable
 
     private bool CanWrite() => Writeable;
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanOpenTrend))]
     private void OpenTrend() => openTrend_(Key);
+
+    private bool CanOpenTrend() => InfluxEnabled && (isInfluxAvailable_?.Invoke() ?? true);
+
+    /// <summary>True when the 1h history chart can render (history enabled and influx connected).</summary>
+    public bool HistoryAvailable => InfluxEnabled && (isInfluxAvailable_?.Invoke() ?? true);
+
+    /// <summary>Re-evaluates trend availability after the bridge's live InfluxDB state changed.</summary>
+    public void NotifyInfluxAvailabilityChanged()
+    {
+        OnPropertyChanged(nameof(HistoryAvailable));
+        OpenTrendCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnInfluxEnabledChanged(bool value)
+    {
+        OnPropertyChanged(nameof(HistoryAvailable));
+        OpenTrendCommand.NotifyCanExecuteChanged();
+    }
 
     private async Task LoadHistoryAsync()
     {
+        if (!InfluxEnabled)
+        {
+            TrendSamples = Array.Empty<TrendSample>();
+            TrendStatus = "No InfluxDB history — enable \"Influx log\" on this tag in the bridge dashboard.";
+            return;
+        }
+
+        if (isInfluxAvailable_?.Invoke() == false)
+        {
+            TrendSamples = Array.Empty<TrendSample>();
+            TrendStatus = "No history — the bridge is not connected to InfluxDB.";
+            return;
+        }
+
         trendCts_?.Cancel();
         trendCts_?.Dispose();
         trendCts_ = new CancellationTokenSource();

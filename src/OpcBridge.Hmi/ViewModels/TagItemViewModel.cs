@@ -36,6 +36,42 @@ public partial class TagItemViewModel : ObservableObject
     [ObservableProperty]
     private string _unit = string.Empty;
 
+    /// <summary>
+    /// Whether this tag's values are written to InfluxDB. Trends are only available for
+    /// tags with history enabled.
+    /// </summary>
+    [ObservableProperty]
+    private bool _influxEnabled;
+
+    /// <summary>
+    /// Whether the tag's bridge is currently connected to InfluxDB. Set by the main view
+    /// model as the bridge's live influx state changes.
+    /// </summary>
+    [ObservableProperty]
+    private bool _influxConnected;
+
+    /// <summary>True when the tag can actually be trended: history enabled AND its bridge is connected to InfluxDB.</summary>
+    public bool CanTrend => InfluxEnabled && InfluxConnected;
+
+    partial void OnInfluxEnabledChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanTrend));
+        OnPropertyChanged(nameof(AvailabilityMarker));
+    }
+
+    partial void OnInfluxConnectedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanTrend));
+        OnPropertyChanged(nameof(AvailabilityMarker));
+    }
+
+    /// <summary>Short reason shown in the group picker when a tag cannot be trended.</summary>
+    public string AvailabilityMarker => !InfluxEnabled
+        ? "no history"
+        : !InfluxConnected
+            ? "influx offline"
+            : string.Empty;
+
     public TagBindingKey BindingKey => TagBindingKey.Create(BridgeId, SourceId, DaItemId);
 
     public string Key => BindingKey.CacheKey;
@@ -66,6 +102,7 @@ public partial class TagItemViewModel : ObservableObject
         DataType = entry.DataType;
         Writeable = entry.Writeable;
         Unit = entry.Unit ?? string.Empty;
+        InfluxEnabled = entry.InfluxEnabled;
         ApplyValue(entry.Value, entry.TimestampUtc, entry.DaQuality, entry.IsGood);
     }
 
@@ -78,6 +115,7 @@ public partial class TagItemViewModel : ObservableObject
         DataType = dto.DataType;
         Writeable = dto.Writeable;
         Unit = dto.Unit ?? string.Empty;
+        InfluxEnabled = dto.InfluxEnabled;
         ApplyValue(dto.Value, dto.TimestampUtc, dto.DaQuality, dto.IsGood);
     }
 

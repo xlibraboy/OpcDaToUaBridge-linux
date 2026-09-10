@@ -27,4 +27,10 @@ public sealed class HmiTagDto
     /// samples, default) or "Step" (sample-and-hold). Set per-tag in the dashboard Maps faceplate.
     /// </summary>
     public string TrendStyle { get; set; } = "Continuous";
+
+    /// <summary>
+    /// Whether this tag's values are written to InfluxDB (the "Influx log" checkbox on the
+    /// dashboard Maps faceplate). Only tags with history enabled can display trends.
+    /// </summary>
+    public bool InfluxEnabled { get; set; }
 }

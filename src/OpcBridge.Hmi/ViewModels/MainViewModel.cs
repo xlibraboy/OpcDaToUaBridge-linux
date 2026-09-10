@@ -22,6 +22,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     private readonly Dictionary<string, DisplayStoreClient> storeClients_ = new(StringComparer.OrdinalIgnoreCase);
     private readonly PopupWindowService popups_;
     private readonly Dictionary<string, TagItemViewModel> tagIndex_ = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, bool> bridgeInfluxConnected_ = new(StringComparer.OrdinalIgnoreCase);
     private readonly bool ownsServices_;
     private CancellationTokenSource? connectCts_;
     private Window? ownerWindow_;
@@ -54,6 +55,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             WriteForBindingAsync);
         connections_.CacheChanged += OnCacheChanged;
         connections_.MappingsChanged += OnMappingsChangedAsync;
+        connections_.InfluxStatusChanged += OnInfluxStatusChanged;
         DisplaySurface.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(DisplaySurfaceViewModel.HasDocument) or nameof(DisplaySurfaceViewModel.DisplayName))
@@ -190,12 +192,80 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         OpenGroupTrendCommand.NotifyCanExecuteChanged();
         RefreshDisplaysCommand.NotifyCanExecuteChanged();
         LoadSelectedDisplayCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(InfluxUnavailableHint));
     }
 
     partial void OnSelectedTagChanged(TagItemViewModel? value)
     {
         OpenFaceplateCommand.NotifyCanExecuteChanged();
         OpenTrendCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(TrendDisabledHint));
+    }
+
+    /// <summary>
+    /// Shown next to the tag browser when the selected tag has no InfluxDB history, so the
+    /// operator understands why the Trend button is disabled.
+    /// </summary>
+    public string TrendDisabledHint => SelectedTag is { InfluxEnabled: false }
+        ? "Trend disabled: this tag has no InfluxDB history (enable \"Influx log\" on the tag in the bridge dashboard)."
+        : string.Empty;
+
+    /// <summary>
+    /// Global hint shown while no connected bridge is currently writing to InfluxDB.
+    /// </summary>
+    public string InfluxUnavailableHint => IsConnected && !IsInfluxAvailable
+        ? "Trends disabled: no connected bridge is currently writing to InfluxDB."
+        : string.Empty;
+
+    /// <summary>True while at least one connected bridge is currently connected to InfluxDB.</summary>
+    public bool IsInfluxAvailable
+    {
+        get
+        {
+            lock (bridgeInfluxConnected_)
+            {
+                return bridgeInfluxConnected_.Values.Any(v => v);
+            }
+        }
+    }
+
+    /// <summary>True when the given bridge's live InfluxDB writer is connected.</summary>
+    public bool IsBridgeInfluxConnected(string bridgeId)
+    {
+        lock (bridgeInfluxConnected_)
+        {
+            return bridgeInfluxConnected_.TryGetValue(bridgeId, out bool connected) && connected;
+        }
+    }
+
+    private void OnInfluxStatusChanged(string bridgeId, bool connected)
+    {
+        _ = PostToUiAsync(() =>
+        {
+            lock (bridgeInfluxConnected_)
+            {
+                bridgeInfluxConnected_[bridgeId] = connected;
+            }
+
+            foreach (TagItemViewModel tag in Tags)
+            {
+                tag.InfluxConnected = connected && string.Equals(tag.BridgeId, bridgeId, StringComparison.OrdinalIgnoreCase);
+            }
+
+            OnPropertyChanged(nameof(IsInfluxAvailable));
+            OnPropertyChanged(nameof(InfluxUnavailableHint));
+            OnPropertyChanged(nameof(TrendDisabledHint));
+            OpenTrendCommand.NotifyCanExecuteChanged();
+            OpenGroupTrendCommand.NotifyCanExecuteChanged();
+            foreach (FaceplateViewModel faceplate in openFaceplates_)
+            {
+                faceplate.NotifyInfluxAvailabilityChanged();
+            }
+
+            StatusMessage = connected
+                ? $"InfluxDB connected on {bridgeId} — trends available"
+                : $"InfluxDB connection lost on {bridgeId} — trends disabled";
+        });
     }
 
     [RelayCommand]
@@ -312,7 +382,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         OpenTrendFor(SelectedTag.BindingKey);
     }
 
-    private bool CanOpenTrend() => IsConnected && SelectedTag is not null;
+    private bool CanOpenTrend() => IsConnected && SelectedTag is { CanTrend: true };
 
     /// <summary>Opens the tag picker used to compose a multi-tag group trend.</summary>
     [RelayCommand(CanExecute = nameof(CanOpenGroupTrend))]
@@ -329,17 +399,24 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    private bool CanOpenGroupTrend() => IsConnected && Tags.Count > 0;
+    private bool CanOpenGroupTrend() => IsConnected && Tags.Count > 0 && IsInfluxAvailable;
 
     /// <summary>
     /// Opens a group trend window plotting the given tags on one chart. Tags whose bridge
-    /// is not connected are skipped.
+    /// is not connected, or that have no InfluxDB history, are skipped.
     /// </summary>
     public void OpenTrendGroup(IReadOnlyList<TagItemViewModel> tags)
     {
         var series = new List<TrendPenViewModel>();
+        int skippedNoHistory = 0;
         foreach (TagItemViewModel tag in tags)
         {
+            if (!tag.CanTrend)
+            {
+                skippedNoHistory++;
+                continue;
+            }
+
             TagBindingKey key = tag.BindingKey;
             if (!connections_.TryGetSession(key.BridgeId, out BridgeConnectionManager.BridgeSession? session)
                 || session is null)
@@ -364,9 +441,12 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
-        if (series.Count < tags.Count)
+        if (skippedNoHistory > 0 || series.Count < tags.Count)
         {
-            StatusMessage = $"Group trend opened with {series.Count} of {tags.Count} tags (skipped unconnected bridges)";
+            string reason = skippedNoHistory > 0
+                ? $"skipped {skippedNoHistory} tag(s) without InfluxDB history"
+                : "skipped unconnected bridges";
+            StatusMessage = $"Group trend opened with {series.Count} of {tags.Count} tags ({reason})";
         }
 
         TrendGroupViewModel vm = new(series);
@@ -499,7 +579,8 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
                     key,
                     session.Api,
                     connections_.Cache,
-                    openTrend: OpenTrendFor);
+                    openTrend: OpenTrendFor,
+                    isInfluxAvailable: () => IsBridgeInfluxConnected(key.BridgeId));
                 openFaceplates_.Add(vm);
                 FaceplateWindow window = new(vm);
                 window.Closed += (_, _) => openFaceplates_.Remove(vm);
@@ -510,6 +591,12 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     public void OpenTrendFor(TagBindingKey key)
     {
+        if (!IsBridgeInfluxConnected(key.BridgeId))
+        {
+            StatusMessage = "Trend unavailable: the bridge is not connected to InfluxDB.";
+            return;
+        }
+
         popups_.OpenOrFocus(
             key,
             trend: true,
@@ -573,6 +660,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
                      .ThenBy(t => t.DisplayName, StringComparer.OrdinalIgnoreCase))
         {
             TagItemViewModel item = TagItemViewModel.FromEntry(entry);
+            item.InfluxConnected = IsBridgeInfluxConnected(item.BridgeId);
             tagIndex_[item.Key] = item;
             Tags.Add(item);
         }
@@ -598,6 +686,13 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         IsConnected = false;
         Tags.Clear();
         tagIndex_.Clear();
+        lock (bridgeInfluxConnected_)
+        {
+            bridgeInfluxConnected_.Clear();
+        }
+
+        OnPropertyChanged(nameof(IsInfluxAvailable));
+        OnPropertyChanged(nameof(InfluxUnavailableHint));
         Displays.Clear();
         SelectedTag = null;
         SelectedDisplay = null;
@@ -762,6 +857,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         connectCts_?.Dispose();
         connections_.CacheChanged -= OnCacheChanged;
         connections_.MappingsChanged -= OnMappingsChangedAsync;
+        connections_.InfluxStatusChanged -= OnInfluxStatusChanged;
         foreach (DisplayStoreClient client in storeClients_.Values)
         {
             client.Dispose();

@@ -43,6 +43,12 @@
     <Setter Property="Opacity" Value="0.75" />
   </Style>
 
+  <!-- Warning text (e.g. trend disabled because a tag has no InfluxDB history) -->
+  <Style Selector="TextBlock.hint.warn">
+    <Setter Property="Opacity" Value="1" />
+    <Setter Property="Foreground" Value="#E8A33D" />
+  </Style>
+
   <Style Selector="TextBlock.listHeader">
     <Setter Property="FontSize" Value="11" />
     <Setter Property="FontWeight" Value="SemiBold" />

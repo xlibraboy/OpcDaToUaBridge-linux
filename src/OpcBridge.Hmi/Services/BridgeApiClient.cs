@@ -14,6 +14,17 @@ public sealed record HmiPortInfo(
     bool UaAutoAssigned,
     string? UaEndpointClient);
 
+/// <summary>Live InfluxDB writer state from GET /api/influx/status.</summary>
+public sealed record HmiInfluxStatus(
+    string State,
+    string? LastError,
+    long WrittenCount,
+    double WrittenRate,
+    bool Enabled)
+{
+    public bool IsConnected => string.Equals(State, "Connected", StringComparison.OrdinalIgnoreCase);
+}
+
 public sealed class BridgeApiClient : IDisposable
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -52,6 +63,23 @@ public sealed class BridgeApiClient : IDisposable
             HmiPortInfo? info = await client_.GetFromJsonAsync<HmiPortInfo>(
                 "api/status/ports", JsonOptions, ct).ConfigureAwait(false);
             return info;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Queries the bridge's live InfluxDB writer state. Returns null when the endpoint
+    /// is unavailable (older bridge) so callers can fall back to per-tag history gating.
+    /// </summary>
+    public async Task<HmiInfluxStatus?> GetInfluxStatusAsync(CancellationToken ct)
+    {
+        try
+        {
+            return await client_.GetFromJsonAsync<HmiInfluxStatus>(
+                "api/influx/status", JsonOptions, ct).ConfigureAwait(false);
         }
         catch
         {

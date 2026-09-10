@@ -7,6 +7,10 @@ public sealed class BridgeConnectionManager : IAsyncDisposable
 {
     private readonly Dictionary<string, BridgeSession> sessions_ = new(StringComparer.OrdinalIgnoreCase);
     private readonly object sync_ = new();
+    private System.Threading.Timer? influxTimer_;
+
+    /// <summary>How often each bridge's InfluxDB writer state is re-polled.</summary>
+    private static readonly TimeSpan InfluxPollInterval = TimeSpan.FromSeconds(5);
 
     public MultiBridgeTagCache Cache { get; } = new();
 
@@ -25,6 +29,9 @@ public sealed class BridgeConnectionManager : IAsyncDisposable
     public event Func<string, HmiMappingsChanged, Task>? MappingsChanged;
     public event Action? CacheChanged;
 
+    /// <summary>Raised when a bridge's live InfluxDB connection state changes (bridgeId, connected).</summary>
+    public event Action<string, bool>? InfluxStatusChanged;
+
     public async Task ConnectAllAsync(HmiClientConfig config, CancellationToken ct)
     {
         await DisconnectAllAsync().ConfigureAwait(false);
@@ -36,6 +43,41 @@ public sealed class BridgeConnectionManager : IAsyncDisposable
         }
 
         CacheChanged?.Invoke();
+        StartInfluxPolling();
+    }
+
+    private void StartInfluxPolling()
+    {
+        lock (sync_)
+        {
+            influxTimer_?.Dispose();
+            influxTimer_ = new System.Threading.Timer(
+                _ => PollInfluxStatusAsync(),
+                null,
+                TimeSpan.FromSeconds(1),
+                InfluxPollInterval);
+        }
+    }
+
+    private async void PollInfluxStatusAsync()
+    {
+        string[] bridgeIds;
+        lock (sync_)
+        {
+            bridgeIds = sessions_.Keys.ToArray();
+        }
+
+        foreach (string bridgeId in bridgeIds)
+        {
+            try
+            {
+                await RefreshInfluxStatusAsync(bridgeId, CancellationToken.None).ConfigureAwait(false);
+            }
+            catch
+            {
+                // transient poll failure: leave the last known state as-is
+            }
+        }
     }
 
     public async Task ConnectBridgeAsync(HmiBridgeEndpoint bridge, CancellationToken ct)
@@ -70,6 +112,7 @@ public sealed class BridgeConnectionManager : IAsyncDisposable
                 HmiTagsResponse refresh = await api.GetTagsAsync(CancellationToken.None).ConfigureAwait(false);
                 Cache.ReplaceBridge(id, refresh.Tags);
                 CacheChanged?.Invoke();
+                await RefreshInfluxStatusAsync(id, CancellationToken.None).ConfigureAwait(false);
                 Func<string, Task>? reconnected = BridgeReconnected;
                 if (reconnected is not null)
                 {
@@ -122,8 +165,46 @@ public sealed class BridgeConnectionManager : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Re-queries a bridge's InfluxDB writer state and raises <see cref="InfluxStatusChanged"/>
+    /// only when the connected state actually changed.
+    /// </summary>
+    public async Task RefreshInfluxStatusAsync(string bridgeId, CancellationToken ct)
+    {
+        BridgeSession? session;
+        lock (sync_)
+        {
+            sessions_.TryGetValue(bridgeId, out session);
+        }
+
+        if (session is null)
+        {
+            return;
+        }
+
+        HmiInfluxStatus? status = await session.Api.GetInfluxStatusAsync(ct).ConfigureAwait(false);
+        bool connected = status?.IsConnected == true;
+        bool changed;
+        lock (sync_)
+        {
+            changed = session.InfluxConnected != connected;
+            session.InfluxConnected = connected;
+        }
+
+        if (changed)
+        {
+            InfluxStatusChanged?.Invoke(session.BridgeId, connected);
+        }
+    }
+
     public async Task DisconnectAllAsync()
     {
+        lock (sync_)
+        {
+            influxTimer_?.Dispose();
+            influxTimer_ = null;
+        }
+
         BridgeSession[] copy;
         lock (sync_)
         {
@@ -158,6 +239,9 @@ public sealed class BridgeConnectionManager : IAsyncDisposable
         public BridgeApiClient Api { get; }
         public HmiHubClient Hub { get; }
         public long MappingVersion { get; set; }
+
+        /// <summary>Last known live InfluxDB writer connection state for this bridge.</summary>
+        public bool InfluxConnected { get; set; }
 
         public async ValueTask DisposeAsync()
         {

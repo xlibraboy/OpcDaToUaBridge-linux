@@ -19,7 +19,8 @@
           <Button Classes="primary" Content="Write" Command="{Binding WriteCommand}" MinWidth="80" />
         </StackPanel>
       </Border>
-      <Button Content="Open trend" Command="{Binding OpenTrendCommand}" HorizontalAlignment="Left" MinWidth="120" />
+      <Button Content="Open trend" Command="{Binding OpenTrendCommand}" HorizontalAlignment="Left" MinWidth="120"
+              ToolTip.Tip="Open a trend of this tag (requires InfluxDB logging enabled for the tag)" />
       <TextBlock Classes="hint" Text="{Binding StatusMessage}" TextWrapping="Wrap" />
     </StackPanel>
 
@@ -40,8 +41,8 @@
           </StackPanel>
         </Border>
 
-        <TextBlock Classes="sectionLabel" Margin="0,6,0,0" Text="HISTORY (1H)" />
-        <Border Classes="cardDark" Padding="8">
+        <TextBlock Classes="sectionLabel" Margin="0,6,0,0" Text="HISTORY (1H)" IsVisible="{Binding InfluxEnabled}" />
+        <Border Classes="cardDark" Padding="8" IsVisible="{Binding InfluxEnabled}">
           <controls:TrendChartControl Height="150"
                                       Samples="{Binding TrendSamples}"
                                       FromUtc="{Binding TrendFromUtc}"
