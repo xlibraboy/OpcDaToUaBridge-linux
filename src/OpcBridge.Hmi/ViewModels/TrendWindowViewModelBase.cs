@@ -131,20 +131,20 @@ public abstract partial class TrendWindowViewModelBase : ObservableObject, IAsyn
 
     partial void OnAutoRangeChanged(bool value) => OnPropertyChanged(nameof(Series));
 
-    /// <summary>UTC timestamp of the pinned blue time cursor; null = no pin.</summary>
+    /// <summary>UTC timestamps of the pinned blue time cursors (Ctrl+Click to add/remove, drag to move).</summary>
     [ObservableProperty]
-    private DateTime? _pinnedAtUtc;
+    private System.Collections.Immutable.ImmutableList<DateTime> _pins = System.Collections.Immutable.ImmutableList<DateTime>.Empty;
 
-    /// <summary>True while a pin is set (enables the "Clear pin" button).</summary>
-    public bool HasPin => PinnedAtUtc is not null;
+    /// <summary>True while any pin is set (enables the "Clear pins" button).</summary>
+    public bool HasPin => Pins.Count > 0;
 
-    partial void OnPinnedAtUtcChanged(DateTime? value) => OnPropertyChanged(nameof(HasPin));
+    partial void OnPinsChanged(System.Collections.Immutable.ImmutableList<DateTime> value) => OnPropertyChanged(nameof(HasPin));
 
-    /// <summary>Clears the pinned time cursor.</summary>
+    /// <summary>Clears every pinned time cursor.</summary>
     [RelayCommand]
     private void ClearPin()
     {
-        PinnedAtUtc = null;
+        Pins = System.Collections.Immutable.ImmutableList<DateTime>.Empty;
     }
 
     /// <summary>True while a drag time-range zoom is active instead of the base range.</summary>

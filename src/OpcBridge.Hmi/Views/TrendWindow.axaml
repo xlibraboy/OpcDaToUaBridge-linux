@@ -324,7 +324,7 @@
                                     FromUtc="{Binding FromUtc}"
                                     ToUtc="{Binding ToUtc}"
                                     YAxisMode="{Binding YAxisMode}"
-                                    PinnedAtUtc="{Binding PinnedAtUtc}"
+                                    Pins="{Binding Pins}"
                                     AlarmHigh="{Binding AlarmHigh}"
                                     AlarmLow="{Binding AlarmLow}"
                                     ShowNamesInHover="{Binding IsPenTableCollapsed}" />

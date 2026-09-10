@@ -40,19 +40,19 @@ public partial class TrendWindow : Window
             viewModel.ResetZoomCommand.Execute(null);
         };
 
-        // Keep the pinned blue cursor in sync both ways (Ctrl+Click on the plot,
-        // "Clear pin" button on the toolbar).
-        TrendChart.PinnedAtUtc = viewModel.PinnedAtUtc;
+        // Keep the pinned blue cursors in sync both ways (Ctrl+Click on the plot to
+        // add/remove, drag to move, "Clear pins" button on the toolbar).
+        TrendChart.Pins = viewModel.Pins;
         viewModel.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName is nameof(TrendWindowViewModelBase.PinnedAtUtc))
+            if (e.PropertyName is nameof(TrendWindowViewModelBase.Pins))
             {
-                TrendChart.PinnedAtUtc = viewModel.PinnedAtUtc;
+                TrendChart.Pins = viewModel.Pins;
             }
         };
-        TrendChart.PinChanged += (_, pinned) =>
+        TrendChart.PinsChanged += (_, _) =>
         {
-            viewModel.PinnedAtUtc = pinned;
+            viewModel.Pins = TrendChart.Pins;
         };
     }
 

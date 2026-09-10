@@ -79,9 +79,10 @@ public sealed class TrendChartControl : Control
     public static readonly StyledProperty<double?> AlarmLowProperty =
         AvaloniaProperty.Register<TrendChartControl, double?>(nameof(AlarmLow));
 
-    /// <summary>UTC timestamp of the pinned blue cursor; null = no pin.</summary>
-    public static readonly StyledProperty<DateTime?> PinnedAtUtcProperty =
-        AvaloniaProperty.Register<TrendChartControl, DateTime?>(nameof(PinnedAtUtc));
+    /// <summary>UTC timestamps of the pinned blue time cursors; multiple lines allowed.</summary>
+    public static readonly StyledProperty<System.Collections.Immutable.ImmutableList<DateTime>> PinsProperty =
+        AvaloniaProperty.Register<TrendChartControl, System.Collections.Immutable.ImmutableList<DateTime>>(
+            nameof(Pins), System.Collections.Immutable.ImmutableList<DateTime>.Empty);
 
     /// <summary>True while a drag-zoom selection is active (hides hover chips).</summary>
     public static readonly StyledProperty<bool> EnableRangeZoomProperty =
@@ -188,11 +189,11 @@ public sealed class TrendChartControl : Control
         set => SetValue(TrendStyleProperty, value);
     }
 
-    /// <summary>UTC timestamp of the pinned blue cursor; null = no pin.</summary>
-    public DateTime? PinnedAtUtc
+    /// <summary>UTC timestamps of the pinned blue time cursors; multiple lines allowed.</summary>
+    public System.Collections.Immutable.ImmutableList<DateTime> Pins
     {
-        get => GetValue(PinnedAtUtcProperty);
-        set => SetValue(PinnedAtUtcProperty, value);
+        get => GetValue(PinsProperty);
+        set => SetValue(PinsProperty, value);
     }
 
     /// <summary>When true, drag on the plot selects a time range and raises <see cref="ZoomRequested"/>.</summary>
@@ -208,8 +209,8 @@ public sealed class TrendChartControl : Control
     /// <summary>Raised when the operator double-clicks the plot (zoom back out).</summary>
     public event EventHandler? ZoomResetRequested;
 
-    /// <summary>Raised when a pin is dropped or cleared (Ctrl+Click); carries the pinned UTC time or null.</summary>
-    public event EventHandler<DateTime?>? PinChanged;
+    /// <summary>Raised when the pin set changes (add, remove or drag); after any pin mutation.</summary>
+    public event EventHandler? PinsChanged;
 
     static TrendChartControl()
     {
@@ -222,7 +223,7 @@ public sealed class TrendChartControl : Control
             LayoutModeProperty,
             AlarmHighProperty,
             AlarmLowProperty,
-            PinnedAtUtcProperty,
+            PinsProperty,
             YMinProperty,
             YMaxProperty,
             YStepProperty,
@@ -278,6 +279,11 @@ public sealed class TrendChartControl : Control
     private bool zoomDragging_;
     private double zoomAnchorX_;
     private double zoomCurrentX_;
+    private int draggedPin_ = -1;
+    private bool pinDragMoved_;
+
+    /// <summary>Horizontal tolerance (px) for grabbing a pin line with the pointer.</summary>
+    private const double PinGrabTolerance = 6;
 
     // Geometry + window captured at the last successful render, used by hit mapping.
     private double layoutPlotLeft_;
@@ -296,6 +302,20 @@ public sealed class TrendChartControl : Control
             return;
         }
 
+        if (draggedPin_ >= 0)
+        {
+            MovePinTo(draggedPin_, position.X);
+            pinDragMoved_ = true;
+            InvalidateVisual();
+            return;
+        }
+
+        // Show the grab cursor when hovering a pin line.
+        bool overPin = FindPinNear(position.X) >= 0;
+        Cursor = overPin
+            ? new Cursor(StandardCursorType.SizeWestEast)
+            : new Cursor(StandardCursorType.Cross);
+
         if (cursorPoint_ != position)
         {
             cursorPoint_ = position;
@@ -309,21 +329,42 @@ public sealed class TrendChartControl : Control
         Point position = e.GetPosition(this);
         PointerPointProperties props = e.GetCurrentPoint(this).Properties;
 
-        // Ctrl+Click drops/clears the blue time cursor (like the VTScada pin).
-        if (props.IsLeftButtonPressed && (e.KeyModifiers & KeyModifiers.Control) != 0)
+        // Ctrl+Click adds/removes a blue time cursor at the pointer; plain press near an
+        // existing cursor grabs it for dragging.
+        if (props.IsLeftButtonPressed && layoutPlotWidth_ > 0
+            && position.X >= layoutPlotLeft_ && position.X <= layoutPlotLeft_ + layoutPlotWidth_)
         {
-            if (layoutPlotWidth_ > 0 && position.X >= layoutPlotLeft_ && position.X <= layoutPlotLeft_ + layoutPlotWidth_)
+            bool ctrl = (e.KeyModifiers & KeyModifiers.Control) != 0;
+            int hit = FindPinNear(position.X);
+            if (ctrl)
             {
                 double ticks = (layoutToUtc_ - layoutFromUtc_).Ticks;
                 DateTime pinned = layoutFromUtc_ + TimeSpan.FromTicks((long)(ticks * (position.X - layoutPlotLeft_) / layoutPlotWidth_));
-                DateTime? next = PinnedAtUtc is { } current && Math.Abs((current - pinned).TotalMilliseconds) < 1 ? null : pinned;
-                PinnedAtUtc = next;
-                PinChanged?.Invoke(this, next);
+                var pins = Pins.ToList();
+                if (hit >= 0)
+                {
+                    pins.RemoveAt(hit); // Ctrl+Click on a line removes it
+                }
+                else
+                {
+                    pins.Add(pinned);
+                }
+
+                Pins = System.Collections.Immutable.ImmutableList.ToImmutableList(pins);
+                PinsChanged?.Invoke(this, EventArgs.Empty);
                 InvalidateVisual();
                 e.Handled = true;
+                return;
             }
 
-            return;
+            if (hit >= 0)
+            {
+                draggedPin_ = hit;
+                pinDragMoved_ = false;
+                e.Pointer.Capture(this);
+                e.Handled = true;
+                return;
+            }
         }
 
         if (!EnableRangeZoom || !props.IsLeftButtonPressed)
@@ -347,6 +388,20 @@ public sealed class TrendChartControl : Control
 
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
+        if (draggedPin_ >= 0)
+        {
+            if (pinDragMoved_)
+            {
+                PinsChanged?.Invoke(this, EventArgs.Empty);
+            }
+
+            draggedPin_ = -1;
+            pinDragMoved_ = false;
+            e.Pointer.Capture(null);
+            e.Handled = true;
+            return;
+        }
+
         if (zoomDragging_)
         {
             zoomDragging_ = false;
@@ -368,6 +423,8 @@ public sealed class TrendChartControl : Control
             InvalidateVisual();
         }
 
+        draggedPin_ = -1;
+        pinDragMoved_ = false;
         base.OnPointerCaptureLost(e);
     }
 
@@ -379,6 +436,40 @@ public sealed class TrendChartControl : Control
             cursorPoint_ = null;
             InvalidateVisual();
         }
+    }
+
+    /// <summary>Index of the pin line under the pointer X, or -1.</summary>
+    private int FindPinNear(double x)
+    {
+        if (layoutPlotWidth_ <= 0)
+        {
+            return -1;
+        }
+
+        long ticks = (layoutToUtc_ - layoutFromUtc_).Ticks;
+        for (int i = 0; i < Pins.Count; i++)
+        {
+            double pinX = layoutPlotLeft_ + layoutPlotWidth_ * (Pins[i] - layoutFromUtc_).Ticks / (double)ticks;
+            if (Math.Abs(pinX - x) <= PinGrabTolerance)
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    /// <summary>Moves the pin at <paramref name="index"/> to the pointer X (clamped to the plot).</summary>
+    private void MovePinTo(int index, double x)
+    {
+        if (layoutPlotWidth_ <= 0)
+        {
+            return;
+        }
+
+        double frac = Math.Clamp((x - layoutPlotLeft_) / layoutPlotWidth_, 0, 1);
+        DateTime pinned = layoutFromUtc_ + TimeSpan.FromTicks((long)((layoutToUtc_ - layoutFromUtc_).Ticks * frac));
+        Pins = Pins.SetItem(index, pinned);
     }
 
     private void CommitZoomSelection(double endX)
@@ -603,9 +694,14 @@ public sealed class TrendChartControl : Control
             }
         }
 
-        // ---- Pinned blue time cursor (drawn after strips, before the frame) ----
-        if (PinnedAtUtc is { } pin && pin >= from && pin <= to)
+        // ---- Pinned blue time cursors (drawn after strips, before the frame) ----
+        foreach (DateTime pin in Pins)
         {
+            if (pin < from || pin > to)
+            {
+                continue;
+            }
+
             double pinX = XOf(pin, from, totalTicks, plotLeft, plotWidth);
             var pinPen = new Pen(PinBrush, 1.5);
             context.DrawLine(pinPen, new Point(pinX, TopPad), new Point(pinX, plotBottom));
@@ -613,6 +709,10 @@ public sealed class TrendChartControl : Control
             context.DrawText(
                 new FormattedText("▼", CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeface, FontSize, PinBrush),
                 new Point(pinX - head.Width / 2, plotBottom + 2));
+
+            // Stationary readout at each pin: time chip under the axis + value chip per pen.
+            DrawPinTimeChip(context, pin, pinX, plotLeft, plotRight, plotBottom, width, typeface);
+            DrawValueChips(context, strips, pin, pinX, plotRight, typeface);
         }
 
         // ---- Hover crosshair: one line across all strips + per-strip value chips ----
@@ -736,9 +836,14 @@ public sealed class TrendChartControl : Control
         // Pen scale legend: min-max of each pen's visible scale, color-coded.
         DrawScaleLegend(context, strips, plot, typeface);
 
-        // Pinned blue time cursor (drawn after the legend so it stays on top of it).
-        if (PinnedAtUtc is { } pin && pin >= from && pin <= to)
+        // Pinned blue time cursors (drawn after the legend so they stay on top of it).
+        foreach (DateTime pin in Pins)
         {
+            if (pin < from || pin > to)
+            {
+                continue;
+            }
+
             double pinX = XOf(pin, from, totalTicks, plotLeft, plotWidth);
             var pinPen = new Pen(PinBrush, 1.5);
             context.DrawLine(pinPen, new Point(pinX, plotTop), new Point(pinX, plotBottom));
@@ -746,6 +851,10 @@ public sealed class TrendChartControl : Control
             context.DrawText(
                 new FormattedText("▼", CultureInfo.CurrentCulture, FlowDirection.LeftToRight, typeface, FontSize, PinBrush),
                 new Point(pinX - head.Width / 2, plotBottom + 2));
+
+            // Stationary readout at each pin: time chip under the axis + value chip per pen.
+            DrawPinTimeChip(context, pin, pinX, plotLeft, plotRight, plotBottom, width, typeface);
+            DrawValueChips(context, strips, pin, pinX, plotRight, typeface);
         }
 
         // Hover crosshair: one line across the plot + a value chip per pen.
@@ -1132,6 +1241,24 @@ public sealed class TrendChartControl : Control
         context.DrawText(timeLayout, new Point(timeChipX + chipPadX, timeChipY + 2));
 
         // Value chip per strip: chip shows the value interpolated at the crosshair time.
+        DrawValueChips(context, strips, time, cursor.X, plotRight, typeface);
+    }
+
+    /// <summary>
+    /// Draws one value chip per visible strip at the given time, anchored right of
+    /// <paramref name="anchorX"/> (flipped left near the right edge). Shared by the
+    /// hover crosshair and the pinned-cursor readout, so a pin shows the same numbers
+    /// the mouse does — but stationary, without needing the pointer on the chart.
+    /// </summary>
+    private void DrawValueChips(
+        DrawingContext context,
+        IReadOnlyList<StripLayout> strips,
+        DateTime time,
+        double anchorX,
+        double plotRight,
+        Typeface typeface)
+    {
+        const double chipPadX = 6;
         foreach (StripLayout strip in strips)
         {
             if (strip.Used.Length == 0)
@@ -1158,12 +1285,38 @@ public sealed class TrendChartControl : Control
                 BrushFor(strip.Series.Color));
             double chipWidth = layout.Width + chipPadX * 2;
             double chipHeight = layout.Height + 4;
-            // Chip sits right of the crosshair, vertically at the value; flip left near the right edge.
-            double chipX = cursor.X + 8 + chipWidth > plotRight ? cursor.X - 8 - chipWidth : cursor.X + 8;
+            // Chip sits right of the anchor, vertically at the value; flip left near the right edge.
+            double chipX = anchorX + 8 + chipWidth > plotRight ? anchorX - 8 - chipWidth : anchorX + 8;
             double chipY = Math.Max(strip.Bounds.Top + 1, Math.Min(yPos - chipHeight / 2, strip.Bounds.Bottom - chipHeight - 1));
             context.DrawRectangle(ReadoutBgBrush, new Pen(BrushFor(strip.Series.Color), 1), new RoundedRect(new Rect(chipX, chipY, chipWidth, chipHeight), 3, 3));
             context.DrawText(layout, new Point(chipX + chipPadX, chipY + 2));
         }
+    }
+
+    /// <summary>Time chip under the axis for the pinned cursor (pin-brushed, like the hover one).</summary>
+    private void DrawPinTimeChip(
+        DrawingContext context,
+        DateTime pin,
+        double pinX,
+        double plotLeft,
+        double plotRight,
+        double plotBottom,
+        double width,
+        Typeface typeface)
+    {
+        string timeText = pin.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture);
+        var timeLayout = new FormattedText(
+            timeText,
+            CultureInfo.CurrentCulture,
+            FlowDirection.LeftToRight,
+            typeface,
+            FontSize,
+            PinBrush);
+        const double chipPadX = 6;
+        double timeChipWidth = timeLayout.Width + chipPadX * 2;
+        double timeChipX = Math.Max(plotLeft, Math.Min(pinX - timeChipWidth / 2, width - RightPad - timeChipWidth));
+        context.DrawRectangle(ReadoutBgBrush, new Pen(PinBrush, 1), new RoundedRect(new Rect(timeChipX, plotBottom + 4, timeChipWidth, timeLayout.Height + 4), 3, 3));
+        context.DrawText(timeLayout, new Point(timeChipX + chipPadX, plotBottom + 6));
     }
 
     /// <summary>
