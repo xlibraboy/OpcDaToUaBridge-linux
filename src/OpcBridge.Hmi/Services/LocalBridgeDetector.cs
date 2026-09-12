@@ -14,13 +14,24 @@ public static class LocalBridgeDetector
         "http://localhost:8080"
     ];
 
+    /// <summary>
+    /// Host ports the bridge is commonly published on when it runs in a container
+    /// (e.g. <c>docker run -p 18080:8080</c>). A published host port differs from the
+    /// bridge's self-reported one, so these can never be found by scanning the bridge's
+    /// own 8080-8180 range.
+    /// </summary>
+    public static readonly int[] KnownHostPorts =
+    [
+        18080
+    ];
+
     /// <summary>Returns the first candidate URL that answers, or null.</summary>
     public static async Task<string?> DetectAsync(
         string[]? candidates = null,
         int timeoutMs = 1500,
         CancellationToken ct = default)
     {
-        candidates ??= DefaultCandidates;
+        candidates ??= BuildDefaultCandidates();
         using var http = new HttpClient { Timeout = TimeSpan.FromMilliseconds(timeoutMs) };
         foreach (string url in candidates)
         {
@@ -41,5 +52,37 @@ public static class LocalBridgeDetector
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// Default probe list: the standard local URLs, then the documented container publish
+    /// ports, then the bridge's own HTTP scan range. Known ports come before the range
+    /// because a published bridge is not on 8080-8180, and the range can contain ports that
+    /// accept a connection but never answer (each costing a full timeout).
+    /// </summary>
+    public static string[] BuildDefaultCandidates()
+    {
+        List<string> candidates = new(DefaultCandidates);
+        HashSet<string> seen = new(candidates, StringComparer.OrdinalIgnoreCase);
+
+        foreach (int port in KnownHostPorts)
+        {
+            string url = $"http://127.0.0.1:{port}";
+            if (seen.Add(url))
+            {
+                candidates.Add(url);
+            }
+        }
+
+        for (int port = BridgePortDiscovery.ScanStart; port <= BridgePortDiscovery.ScanEnd; port++)
+        {
+            string url = $"http://127.0.0.1:{port}";
+            if (seen.Add(url))
+            {
+                candidates.Add(url);
+            }
+        }
+
+        return candidates.ToArray();
     }
 }

@@ -110,6 +110,25 @@ public sealed class BridgeRowTests
     }
 
     [Fact]
+    public void Detector_Defaults_CoverScanRangeAndContainerHostPorts()
+    {
+        string[] candidates = LocalBridgeDetector.BuildDefaultCandidates();
+
+        Assert.Contains("http://127.0.0.1:8080", candidates);
+        Assert.Contains("http://127.0.0.1:8180", candidates);
+        // A bridge published to a container host port is invisible to the bridge's own
+        // 8080-8180 range, so the documented publish port must be probed explicitly.
+        Assert.Contains("http://127.0.0.1:18080", candidates);
+        // The seeded 8080 must not be probed twice by the scan range.
+        Assert.Equal(candidates.Length, candidates.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        // Known publish ports are probed before the wide scan, so a port-published bridge
+        // is found immediately instead of after ~100 probes.
+        Assert.True(
+            Array.IndexOf(candidates, "http://127.0.0.1:18080") < Array.IndexOf(candidates, "http://127.0.0.1:8081"),
+            "container publish ports should be probed before the scan range");
+    }
+
+    [Fact]
     public async Task Detector_FindsLocalListener()
     {
         // Minimal HTTP listener standing in for a local OpcBridge.
