@@ -33,4 +33,17 @@ public sealed class HmiTagDto
     /// dashboard Maps faceplate). Only tags with history enabled can display trends.
     /// </summary>
     public bool InfluxEnabled { get; set; }
+
+    /// <summary>
+    /// True when the faceplate should render this tag as a two-state on/off signal.
+    /// Resolved from the mapping: Boolean tags are digital automatically, others only when
+    /// explicitly marked (a Byte tag carrying 0/1).
+    /// </summary>
+    public bool Digital { get; set; }
+
+    /// <summary>Faceplate label for the on state. null/blank = render the raw value.</summary>
+    public string? OnText { get; set; }
+
+    /// <summary>Faceplate label for the off state. null/blank = render the raw value.</summary>
+    public string? OffText { get; set; }
 }

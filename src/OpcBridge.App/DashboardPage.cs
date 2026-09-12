@@ -1381,6 +1381,9 @@ internal static class DashboardPage
                 <div class="field"><label class="fl">Decimals</label><input type="number" id="fpDecimals" min="0" max="15" step="1" value="" placeholder="off (full precision)" style="width:150px"><span class="msg">digits after comma for Float/Double (blank = off, 0 = no decimals)</span></div>
                 <div class="field"><label class="fl">Unit</label><input type="text" id="fpUnit" placeholder="°C, bar, RPM…" style="flex:1"><span class="msg">engineering unit label (shown on HMI widgets)</span></div>
                 <div class="field"><label class="fl">Trend Plot</label><select id="fpTrendStyle"><option value="Continuous">Continuous (line)</option><option value="Step">Step (hold last)</option></select><span class="msg">HMI history/trend drawing: line between samples, or hold each value until the next sample (classic SCADA step)</span></div>
+                <div class="field"><label class="fl">Digital</label><select id="fpDigital"><option value="">Auto (Boolean = on/off)</option><option value="true">Digital — show on/off text</option><option value="false">Analog — show raw value</option></select><span class="msg" id="fpDigitalHint"></span></div>
+                <div class="field"><label class="fl">On text</label><input type="text" id="fpOnText" placeholder="1 / true" style="width:150px"><span class="msg">HMI faceplate status text for the on state (blank = raw value)</span></div>
+                <div class="field"><label class="fl">Off text</label><input type="text" id="fpOffText" placeholder="0 / false" style="width:150px"><span class="msg">HMI faceplate status text for the off state (blank = raw value)</span></div>
                 <div class="hint" style="margin-top:4px">Update Rate = source poll/publish interval. With subscriptions on, the source pushes changes at this rate when supported. With subscriptions off, the bridge polls at this rate.</div>
             </div>
             <div class="fp-tabpane" id="fp-pane-sim" style="display:none">
@@ -1751,6 +1754,8 @@ const state = {
     sessionBannerDismissed: false,
     mqttValFilter: { direction: '', topic: '' },
     valuesByKey: new Map(),
+    // key -> { seen, onlyBits }: session-scoped 0/1 observation used to suggest Digital.
+    digitalObservations: new Map(),
     disconnectedKeys: new Set(),
     badQualityKeys: new Set(),
     disconnectedSources: new Set(),
@@ -2852,6 +2857,36 @@ function currentValue(sourceId, itemId) {
     return state.valuesByKey.get(valueKey(sourceId, itemId)) || null;
 }
 
+function isBooleanDataType(dataType) {
+    const t = String(dataType || '').toLowerCase();
+    return t === 'boolean' || t === 'bool';
+}
+
+// Session-scoped 0/1 observation used to suggest marking a byte/int tag as Digital.
+// A tag that has only ever reported 0 or 1 looks like a flag; any other number
+// disqualifies it. Never applied automatically — the operator confirms in the faceplate.
+function updateDigitalObservations() {
+    for (const [key, value] of state.valuesByKey) {
+        const raw = get(value, 'value');
+        if (raw === null || raw === undefined || raw === '') continue;
+        const num = Number(raw);
+        if (!Number.isFinite(num)) continue;
+        let obs = state.digitalObservations.get(key);
+        if (!obs) { obs = { seen: false, onlyBits: true }; state.digitalObservations.set(key, obs); }
+        obs.seen = true;
+        if (num !== 0 && num !== 1) obs.onlyBits = false;
+    }
+}
+
+function looksLikeDigital(mapping, sourceId, itemId) {
+    const explicit = mapping ? (mapping.digital ?? mapping.Digital) : undefined;
+    if (explicit === true) return false; // already digital
+    const type = (mapping && (mapping.dataType || mapping.DataType)) || '';
+    if (isBooleanDataType(type)) return false; // Boolean is digital automatically
+    const obs = state.digitalObservations.get(valueKey(sourceId, itemId));
+    return !!(obs && obs.seen && obs.onlyBits);
+}
+
 function renderLiveValue(value, fallbackType) {
     if (!value) return '<span class="msg">No live value</span>';
     const text = String(get(value, 'value') ?? '');
@@ -3266,6 +3301,10 @@ function renderMappingRow(mapping) {
     const live = currentValue(sourceId, item);
     const mappedType = (live && get(live, 'dataType')) || mapping.dataType || mapping.DataType || '—';
     const typeBadge = `<span class="pill" style="padding:1px 6px;font-size:10px" title="Data type">${esc(mappedType)}</span>`;
+    const digitalExplicit = mapping.digital ?? mapping.Digital;
+    const digitalOn = digitalExplicit === true || ((digitalExplicit === undefined || digitalExplicit === null) && isBooleanDataType(mappedType));
+    const digitalBadge = digitalOn ? `<span class="pill" style="padding:1px 6px;font-size:10px" title="Rendered as on/off status text in the HMI faceplate">Digital</span>` : '';
+    const digitalSuggest = (!digitalOn && looksLikeDigital(mapping, sourceId, item)) ? `<span class="pill" style="padding:1px 6px;font-size:10px" title="Observed values are only 0/1 — open the faceplate and set Digital to show on/off text.">0/1?</span>` : '';
     // Connection state comes from server-side signals, never from absence in the capped
     // value window: the bridge reports tags whose monitored item failed (auto-retrying),
     // tags whose last value is bad quality, and the per-source connection state.
@@ -3278,12 +3317,12 @@ function renderMappingRow(mapping) {
     else if (failedItem) { discBadge = badge('Disc', 'bad'); discTitle = 'Disconnected — no value received (auto-retrying)'; }
     else if (badQuality) { discBadge = badge('Bad', 'bad'); discTitle = 'Bad quality from source'; }
     // Full status summary — clipped badges stay discoverable via the row tooltip.
-    const statusSummary = [mappedType + ' type', tagUnit ? 'unit ' + tagUnit : null, deadband > 0 ? 'db ' + deadband + '%' : null, (tagDecimals !== null && tagDecimals !== undefined) ? 'dec ' + tagDecimals : null, pollRate > 0 ? pollRate + 'ms' : null, subName ? 'sub ' + subName : null, mqttOn ? 'MQTT' : null, influxOn ? 'Influx' : null, sourceDown ? 'Source disconnected' : null, failedItem ? 'Disconnected (auto-retrying)' : null, badQuality ? 'Bad quality' : null, access + (simulated && access !== 'Write' ? ' / Sim' : '')].filter(Boolean).join(' · ');
+    const statusSummary = [mappedType + ' type', tagUnit ? 'unit ' + tagUnit : null, deadband > 0 ? 'db ' + deadband + '%' : null, (tagDecimals !== null && tagDecimals !== undefined) ? 'dec ' + tagDecimals : null, pollRate > 0 ? pollRate + 'ms' : null, subName ? 'sub ' + subName : null, mqttOn ? 'MQTT' : null, influxOn ? 'Influx' : null, digitalOn ? 'Digital' : null, sourceDown ? 'Source disconnected' : null, failedItem ? 'Disconnected (auto-retrying)' : null, badQuality ? 'Bad quality' : null, access + (simulated && access !== 'Write' ? ' / Sim' : '')].filter(Boolean).join(' · ');
     const desc = (mapping.description || mapping.Description || '').trim();
     const descIcon = desc ? `<span class="li-desc" title="${attr(desc)}" data-action="open-faceplate" data-source-id="${attr(sourceId)}" data-item-id="${attr(item)}">&#8505;</span>` : '';
     // Config badges clip/fade first; the colored access status is pinned at the far
     // right and never gets cut off.
-    return `<div class="li clickable" data-action="open-faceplate" data-source-id="${attr(sourceId)}" data-item-id="${attr(item)}">${descIcon}<div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="n">${esc(name)}</span> <span class="p">${esc(sourceId)} · ${esc(item)} · UA: ${esc(node)}</span></div><div class="li-badge" title="${attr(statusSummary)}"><span class="li-badge-clip">${typeBadge}${unitBadge}${deadbandBadge}${decimalsBadge}${rateBadge}${subBadge}${mqttBadge}${influxBadge}</span><span class="li-badge-status">${discBadge ? `<span title="${attr(discTitle)}">${discBadge}</span>` : ''}${accessBadge}</span></div></div>`;
+    return `<div class="li clickable" data-action="open-faceplate" data-source-id="${attr(sourceId)}" data-item-id="${attr(item)}">${descIcon}<div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="n">${esc(name)}</span> <span class="p">${esc(sourceId)} · ${esc(item)} · UA: ${esc(node)}</span></div><div class="li-badge" title="${attr(statusSummary)}"><span class="li-badge-clip">${typeBadge}${digitalBadge}${digitalSuggest}${unitBadge}${deadbandBadge}${decimalsBadge}${rateBadge}${subBadge}${mqttBadge}${influxBadge}</span><span class="li-badge-status">${discBadge ? `<span title="${attr(discTitle)}">${discBadge}</span>` : ''}${accessBadge}</span></div></div>`;
 }
 
 const MAPPING_ROWS_CAP = 1000;
@@ -3380,6 +3419,13 @@ function openFaceplate(sourceId, itemId) {
     el('fpInfluxEnabled').checked = (mapping.influxEnabled ?? mapping.InfluxEnabled) === true;
     el('fpUnit').value = String(mapping.unit ?? mapping.Unit ?? '');
     el('fpTrendStyle').value = String(mapping.trendStyle || mapping.TrendStyle || 'Continuous');
+    const digitalExplicit = mapping.digital ?? mapping.Digital;
+    el('fpDigital').value = digitalExplicit === true ? 'true' : digitalExplicit === false ? 'false' : '';
+    el('fpOnText').value = String(mapping.onText ?? mapping.OnText ?? '');
+    el('fpOffText').value = String(mapping.offText ?? mapping.OffText ?? '');
+    el('fpDigitalHint').textContent = looksLikeDigital(mapping, sourceId, itemId)
+        ? 'Observed values are only 0/1 — pick Digital to show on/off text.'
+        : '';
     updateManualInputState();
     el('fpApply').dataset.sourceId = sourceId;
     el('fpApply').dataset.itemId = itemId;
@@ -4647,6 +4693,7 @@ async function refresh() {
         const pollUtilization = formatPollUtilization(get(b, 'lastPollDurationMs'), updateRateMs);
         state.updateRateMs = updateRateMs;
         state.valuesByKey = new Map(vs.map(v => [valueKey(get(v, 'sourceId') || 'default', get(v, 'itemId') || get(v, 'daItemId')), v]));
+        updateDigitalObservations();
         state.disconnectedKeys = new Set((p.disconnected || []).map(d => valueKey(get(d, 'sourceId') || '', get(d, 'itemId') || '')));
         state.badQualityKeys = new Set((p.badQuality || []).map(d => valueKey(get(d, 'sourceId') || '', get(d, 'itemId') || '')));
         state.disconnectedSources = new Set((sources || []).filter(s => String(get(s, 'connectionState') || '').toLowerCase() !== 'connected').map(s => String(get(s, 'sourceId') || '')));
@@ -5303,7 +5350,10 @@ async function updateMapping(sourceId, itemId, mutate) {
         mqttTopic: el('fpMqttTopic').value.trim() || null,
         influxEnabled: el('fpInfluxEnabled').checked,
         unit: el('fpUnit').value.trim() || null,
-        trendStyle: mapping.trendStyle || mapping.TrendStyle || 'Continuous'
+        trendStyle: mapping.trendStyle || mapping.TrendStyle || 'Continuous',
+        digital: (mapping.digital ?? mapping.Digital) ?? null,
+        onText: (mapping.onText ?? mapping.OnText) ?? null,
+        offText: (mapping.offText ?? mapping.OffText) ?? null
     };
     mutate(payload);
     const r = await fetch('/api/mappings/update', {
@@ -7168,6 +7218,9 @@ function bindDynamicButtons() {
                 }
                 payload.description = el('fpDescription').value.trim() || null;
                 payload.trendStyle = el('fpTrendStyle').value || 'Continuous';
+                payload.digital = el('fpDigital').value === '' ? null : el('fpDigital').value === 'true';
+                payload.onText = el('fpOnText').value.trim() || null;
+                payload.offText = el('fpOffText').value.trim() || null;
                 if (simulated) {
                     payload.mode = 'Manual';
                     const manualField = el('fpManualInput');

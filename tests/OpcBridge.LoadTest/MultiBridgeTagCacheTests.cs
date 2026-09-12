@@ -105,6 +105,30 @@ public sealed class MultiBridgeTagCacheTests
     }
 
     [Fact]
+    public void ReplaceBridge_CarriesDigitalSettings()
+    {
+        var cache = new MultiBridgeTagCache();
+        cache.ReplaceBridge("line1",
+        [
+            new HmiTagDto
+            {
+                SourceId = "default",
+                ItemId = "RunCmd",
+                DataType = "Byte",
+                Value = 1,
+                Digital = true,
+                OnText = "Running",
+                OffText = "Stopped"
+            }
+        ]);
+
+        Assert.True(cache.TryGet(TagBindingKey.Create("line1", "default", "RunCmd"), out MultiBridgeTagEntry? t));
+        Assert.True(t!.Digital);
+        Assert.Equal("Running", t.OnText);
+        Assert.Equal("Stopped", t.OffText);
+    }
+
+    [Fact]
     public void TagBindingKey_CaseInsensitiveEquality()
     {
         var a = TagBindingKey.Create("Line1", "Default", "Tank.Level");

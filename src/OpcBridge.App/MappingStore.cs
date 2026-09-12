@@ -415,6 +415,9 @@ public sealed class MappingStore
             MqttTopic = string.IsNullOrWhiteSpace(tag.MqttTopic) ? null : tag.MqttTopic.Trim(),
             InfluxEnabled = tag.InfluxEnabled,
             Unit = string.IsNullOrWhiteSpace(tag.Unit) ? null : tag.Unit.Trim(),
+            Digital = tag.Digital,
+            OnText = string.IsNullOrWhiteSpace(tag.OnText) ? null : tag.OnText.Trim(),
+            OffText = string.IsNullOrWhiteSpace(tag.OffText) ? null : tag.OffText.Trim(),
             Subscription = (tag.Subscription ?? string.Empty).Trim(),
             // Preserve PLC group membership through normalization exactly like
             // Subscription: empty stays empty (= source default bucket), else trimmed.

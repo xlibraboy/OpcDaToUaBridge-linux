@@ -21,7 +21,10 @@ public sealed record MappingTagDto(
     string? Unit = null,
     string? Subscription = null,
     string? PlcGroup = null,
-    string? TrendStyle = null);
+    string? TrendStyle = null,
+    bool? Digital = null,
+    string? OnText = null,
+    string? OffText = null);
 
 public sealed record MappingAddRequest(List<MappingTagDto>? Tags);
 

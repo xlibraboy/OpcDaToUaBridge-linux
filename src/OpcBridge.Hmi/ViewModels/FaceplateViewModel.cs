@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using OpcBridge.Client;
+using OpcBridge.Core;
 using OpcBridge.Hmi.Core;
 using OpcBridge.Hmi.Services;
 
@@ -131,14 +132,16 @@ public partial class FaceplateViewModel : ObservableObject, IAsyncDisposable
             TrendStyle = NormalizeTrendStyle(entry.TrendStyle);
             Writeable = entry.Writeable;
             InfluxEnabled = entry.InfluxEnabled;
-            ValueText = FormatValue(entry.Value);
+            ValueText = entry.Digital
+                ? FormatDigital(entry.Value, entry.OnText, entry.OffText)
+                : FormatValue(entry.Value);
             QualityText = FormatQuality(entry.DaQuality, entry.IsGood);
             TimestampText = entry.TimestampUtc is null
                 ? string.Empty
                 : entry.TimestampUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss.fff");
             if (string.IsNullOrWhiteSpace(WriteValue))
             {
-                WriteValue = ValueText;
+                WriteValue = FormatValue(entry.Value);
             }
         }
         else
@@ -374,6 +377,17 @@ public partial class FaceplateViewModel : ObservableObject, IAsyncDisposable
         IFormattable f => f.ToString(null, System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty,
         _ => value.ToString() ?? string.Empty
     };
+
+    /// <summary>
+    /// Digital tag status text: the configured on/off label for the coerced state, falling
+    /// back to the raw value rendering when no label was configured.
+    /// </summary>
+    private static string FormatDigital(object? value, string? onText, string? offText)
+    {
+        bool isOn = TagDigital.CoerceBool(value);
+        string? label = isOn ? onText : offText;
+        return string.IsNullOrWhiteSpace(label) ? FormatValue(value) : label!;
+    }
 
     private static string FormatQuality(int? daQuality, bool? isGood)
     {

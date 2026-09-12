@@ -120,6 +120,61 @@ public sealed class HmiApiTests
     }
 
     [Fact]
+    public async Task HmiTags_ResolvesDigitalFromDataTypeAndExplicitMark()
+    {
+        object[] mappings =
+        [
+            new
+            {
+                SourceId = "default", ItemId = "Bool.Auto", DisplayName = "Bool Auto",
+                DataType = "Boolean", UaNodeId = "", Enabled = true, Mode = "Source",
+                Writeable = false, AccessRights = "Read"
+            },
+            new
+            {
+                SourceId = "default", ItemId = "Byte.Marked", DisplayName = "Byte Marked",
+                DataType = "Byte", UaNodeId = "", Enabled = true, Mode = "Source",
+                Writeable = false, AccessRights = "Read",
+                Digital = true, OnText = "Running", OffText = "Stopped"
+            },
+            new
+            {
+                SourceId = "default", ItemId = "Byte.Plain", DisplayName = "Byte Plain",
+                DataType = "Byte", UaNodeId = "", Enabled = true, Mode = "Source",
+                Writeable = false, AccessRights = "Read"
+            },
+            new
+            {
+                SourceId = "default", ItemId = "Bool.ForcedAnalog", DisplayName = "Bool Forced Analog",
+                DataType = "Boolean", UaNodeId = "", Enabled = true, Mode = "Source",
+                Writeable = false, AccessRights = "Read", Digital = false
+            }
+        ];
+
+        await using var handle = await TestAppHandle.StartAsync(dir => WriteAppsettings(dir, mappings));
+
+        using var doc = await handle.GetJsonAsync("/api/hmi/tags");
+        var list = doc.RootElement.GetProperty("tags").EnumerateArray().ToList();
+
+        // Boolean is digital automatically.
+        var boolAuto = list.Single(t => t.GetProperty("itemId").GetString() == "Bool.Auto");
+        Assert.True(boolAuto.GetProperty("digital").GetBoolean());
+
+        // Byte is analog unless explicitly marked, and labels travel with it.
+        var byteMarked = list.Single(t => t.GetProperty("itemId").GetString() == "Byte.Marked");
+        Assert.True(byteMarked.GetProperty("digital").GetBoolean());
+        Assert.Equal("Running", byteMarked.GetProperty("onText").GetString());
+        Assert.Equal("Stopped", byteMarked.GetProperty("offText").GetString());
+
+        var bytePlain = list.Single(t => t.GetProperty("itemId").GetString() == "Byte.Plain");
+        Assert.False(bytePlain.GetProperty("digital").GetBoolean());
+
+        // Explicit false overrides the Boolean default.
+        var forcedAnalog = list.Single(t => t.GetProperty("itemId").GetString() == "Bool.ForcedAnalog");
+        Assert.False(forcedAnalog.GetProperty("digital").GetBoolean());
+    }
+
+    [Fact]
     public async Task HmiWrite_RejectsDisabledTag()
     {
         await using var handle = await TestAppHandle.StartAsync(dir => WriteAppsettings(dir));

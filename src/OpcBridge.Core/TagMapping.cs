@@ -49,6 +49,27 @@ public sealed class TagMapping
     public string? Unit { get; set; }
 
     /// <summary>
+    /// Renders this tag as a two-state (on/off) signal in the HMI faceplate, so status shows
+    /// as <see cref="OnText"/>/<see cref="OffText"/> instead of the raw value.
+    /// null = auto (Boolean/Bool tags are digital, everything else is analog),
+    /// true = force digital (e.g. a Byte tag that only ever carries 0/1),
+    /// false = force analog.
+    /// </summary>
+    public bool? Digital { get; set; }
+
+    /// <summary>
+    /// Faceplate label for the on (non-zero / true) state when the tag resolves digital
+    /// (e.g. "Running"). null/blank = render the raw value instead.
+    /// </summary>
+    public string? OnText { get; set; }
+
+    /// <summary>
+    /// Faceplate label for the off (zero / false) state when the tag resolves digital
+    /// (e.g. "Stopped"). null/blank = render the raw value instead.
+    /// </summary>
+    public string? OffText { get; set; }
+
+    /// <summary>
     /// How this tag's history renders in the HMI trend charts: <see cref="TrendStyleTypes.Continuous"/>
     /// (line through the samples, default) or <see cref="TrendStyleTypes.Step"/> (sample-and-hold
     /// steps — the value is held constant until the next sample arrives). Set per-tag in the
@@ -102,6 +123,64 @@ public static class TrendStyleTypes
             ? Step
             : Continuous;
     }
+}
+
+/// <summary>
+/// Resolves a tag's on/off ("digital") semantics and coerces raw values to a boolean.
+/// Booleans are digital automatically; byte and other numeric tags are analog unless
+/// <see cref="TagMapping.Digital"/> is explicitly set, because a 0-255 value cannot be
+/// told apart from a genuine two-state flag by type alone.
+/// </summary>
+public static class TagDigital
+{
+    public static bool Resolve(TagMapping? mapping)
+    {
+        if (mapping is null)
+        {
+            return false;
+        }
+
+        return mapping.Digital ?? IsBooleanType(mapping.DataType);
+    }
+
+    public static bool IsBooleanType(string? dataType) =>
+        string.Equals(dataType, "Boolean", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(dataType, "Bool", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Any non-zero / true value is on. Handles CLR primitives plus <see cref="System.Text.Json.JsonElement"/>
+    /// (live HMI values arrive as JSON elements after wire deserialization).
+    /// </summary>
+    public static bool CoerceBool(object? value) => value switch
+    {
+        null => false,
+        bool b => b,
+        byte by => by != 0,
+        sbyte sb => sb != 0,
+        short s => s != 0,
+        ushort us => us != 0,
+        int i => i != 0,
+        uint ui => ui != 0,
+        long l => l != 0,
+        ulong ul => ul != 0,
+        float f => Math.Abs(f) > float.Epsilon,
+        double d => Math.Abs(d) > double.Epsilon,
+        decimal m => m != 0,
+        string s when bool.TryParse(s, out bool b) => b,
+        string s when s == "1" => true,
+        string s when s == "0" => false,
+        System.Text.Json.JsonElement je => CoerceJsonElement(je),
+        _ => false
+    };
+
+    private static bool CoerceJsonElement(System.Text.Json.JsonElement element) => element.ValueKind switch
+    {
+        System.Text.Json.JsonValueKind.True => true,
+        System.Text.Json.JsonValueKind.False => false,
+        System.Text.Json.JsonValueKind.Number => element.TryGetDouble(out double n) && Math.Abs(n) > double.Epsilon,
+        System.Text.Json.JsonValueKind.String => CoerceBool(element.GetString()),
+        _ => false
+    };
 }
 
 public static class TagDecimals

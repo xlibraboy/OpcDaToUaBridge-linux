@@ -89,6 +89,14 @@ When `TagMapping.Mode == "Manual"`, `BridgeWorker.ApplyManualMappings` synthesiz
 - `DashboardValues` (`src/OpcBridge.App/DashboardValues.cs`, internal static): `BuildDataTypeLookup` (mapping-config types keyed by `NormalizeKey`), `InferDataType(object?)` (CLR → UA names: bool→Boolean, int→Int32, double→Double, string→String, DateTime→DateTime, byte[]→ByteString, etc.), `ResolveDataType(value, lookup, sourceId, itemId)`.
 - **Runtime type wins**: the value object's CLR type IS the external source's real type (UA Variant/DA VARTYPE arrive typed; the bridge stores raw). Mapping `DataType` is the fallback when the value is absent/null. `/api/dashboard` projects `dataType` per value via `ResolveDataType`; the frontend shows it in Live Values, the Maps type pill, and the faceplate. The read-path hot loop (`BridgeState.SetValue`/`UpdateValue`) is untouched — inference happens only in the dashboard projection.
 
+### Digital (two-state) tags
+
+- `TagMapping.Digital` is **tri-state**: `null` = auto (Boolean/Bool tags are digital, everything else analog), `true` = force digital, `false` = force analog. `TagMapping.OnText`/`OffText` are the optional status labels. Resolution lives in `TagDigital.Resolve` (`OpcBridge.Core`).
+- **Why manual for bytes:** a `Byte` (0-255) flag and a real analog counter are indistinguishable by type, and a value-based guess would flip at runtime — so non-Boolean tags are analog until marked. The dashboard Maps row shows a `0/1?` hint (session observation that the tag only ever reported 0 or 1) and the faceplate shows a matching suggestion, but nothing is ever marked automatically.
+- Coercion is "non-zero = on" (`TagDigital.CoerceBool`), covering CLR primitives, strings (`"true"`/`"1"`), and `JsonElement` (live HMI values arrive as JSON after wire deserialization).
+- Flow: `TagMapping` → `MappingTagDto`/`ToTagMapping` → `HmiTagSnapshot.Build` (resolves to the non-nullable `HmiTagDto.Digital`) → `MultiBridgeTagEntry` → `FaceplateViewModel.FormatDigital`. Rendering is **faceplate-only** by design; trends, widgets and the tag browser keep raw values.
+- Because `POST /api/mappings/update` is a full replace, `DashboardPage.updateMapping` echoes `digital`/`onText`/`offText` or they silently reset (same trap as the other per-tag fields).
+
 ### Failure resilience
 
 - A failed source read enqueues the source id to `failedSourceQueue`; the coordinator loop tears down all pollers + sessions and rebuilds on the next tick. The app stays alive. The subscription watchdog (`ScanWatchdog`) detects dead subscriptions and reconnects the source.

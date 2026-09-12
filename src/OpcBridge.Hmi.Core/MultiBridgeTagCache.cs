@@ -28,6 +28,18 @@ public sealed class MultiBridgeTagEntry
     /// can display trends — the HMI disables trend actions for the rest.
     /// </summary>
     public bool InfluxEnabled { get; set; }
+
+    /// <summary>
+    /// True when the faceplate renders this tag as a two-state on/off signal (Boolean tags
+    /// automatically, others only when explicitly marked in the dashboard).
+    /// </summary>
+    public bool Digital { get; set; }
+
+    /// <summary>Faceplate label for the on state. null = render the raw value.</summary>
+    public string? OnText { get; set; }
+
+    /// <summary>Faceplate label for the off state. null = render the raw value.</summary>
+    public string? OffText { get; set; }
 }
 
 /// <summary>
@@ -142,7 +154,10 @@ public sealed class MultiBridgeTagCache
         Writeable = dto.Writeable,
         Unit = string.IsNullOrWhiteSpace(dto.Unit) ? null : dto.Unit,
         TrendStyle = NormalizeTrendStyle(dto.TrendStyle),
-        InfluxEnabled = dto.InfluxEnabled
+        InfluxEnabled = dto.InfluxEnabled,
+        Digital = dto.Digital,
+        OnText = string.IsNullOrWhiteSpace(dto.OnText) ? null : dto.OnText,
+        OffText = string.IsNullOrWhiteSpace(dto.OffText) ? null : dto.OffText
     };
 
     private static string NormalizeTrendStyle(string? value)

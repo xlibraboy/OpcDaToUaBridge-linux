@@ -1586,7 +1586,12 @@ app.MapPost("/api/config/import", async (HttpContext context, DaRuntimeSettings 
                     ManualValue = m.TryGetProperty("manualValue", out JsonElement mv) ? mv.GetString() : null,
                     PollRateMs = m.TryGetProperty("pollRateMs", out JsonElement pr) ? pr.GetInt32() : 0,
                     DeadbandPct = m.TryGetProperty("deadbandPct", out JsonElement db) ? (float)db.GetDouble() : 0f,
-                    Writeable = m.TryGetProperty("writeable", out JsonElement wr) ? wr.GetBoolean() : false
+                    Writeable = m.TryGetProperty("writeable", out JsonElement wr) ? wr.GetBoolean() : false,
+                    Digital = m.TryGetProperty("digital", out JsonElement dg)
+                        && dg.ValueKind is JsonValueKind.True or JsonValueKind.False
+                        ? dg.GetBoolean() : null,
+                    OnText = m.TryGetProperty("onText", out JsonElement ot) ? ot.GetString() : null,
+                    OffText = m.TryGetProperty("offText", out JsonElement oft) ? oft.GetString() : null
                 });
             }
             mappingStore.SetAll(tags);
@@ -2981,6 +2986,9 @@ static TagMapping ToTagMapping(MappingTagDto tag) => new()
     MqttTopic = string.IsNullOrWhiteSpace(tag.MqttTopic) ? null : tag.MqttTopic,
     InfluxEnabled = tag.InfluxEnabled ?? false,
     Unit = string.IsNullOrWhiteSpace(tag.Unit) ? null : tag.Unit.Trim(),
+    Digital = tag.Digital,
+    OnText = string.IsNullOrWhiteSpace(tag.OnText) ? null : tag.OnText.Trim(),
+    OffText = string.IsNullOrWhiteSpace(tag.OffText) ? null : tag.OffText.Trim(),
     Subscription = tag.Subscription ?? string.Empty,
     PlcGroup = tag.PlcGroup ?? string.Empty,
     TrendStyle = TrendStyleTypes.Normalize(tag.TrendStyle)

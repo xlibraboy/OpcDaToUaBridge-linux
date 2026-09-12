@@ -390,7 +390,7 @@ public sealed class DashboardPageTests
         // it can never be cut off.
         Assert.Contains(".li .li-badge-clip { display: flex;", DashboardPage.Html);
         Assert.Contains(".li .li-badge-status { flex-shrink: 0; margin-left: 2px;", DashboardPage.Html);
-        Assert.Contains("<span class=\"li-badge-clip\">${typeBadge}${unitBadge}${deadbandBadge}${decimalsBadge}${rateBadge}${subBadge}${mqttBadge}${influxBadge}</span><span class=\"li-badge-status\">${discBadge ? `<span title=\"${attr(discTitle)}\">${discBadge}</span>` : ''}${accessBadge}</span>", DashboardPage.Script);
+        Assert.Contains("<span class=\"li-badge-clip\">${typeBadge}${digitalBadge}${digitalSuggest}${unitBadge}${deadbandBadge}${decimalsBadge}${rateBadge}${subBadge}${mqttBadge}${influxBadge}</span><span class=\"li-badge-status\">${discBadge ? `<span title=\"${attr(discTitle)}\">${discBadge}</span>` : ''}${accessBadge}</span>", DashboardPage.Script);
     }
 
     [Fact]
@@ -1104,5 +1104,35 @@ public sealed class DashboardPageTests
         Assert.Contains("el('fpTrendStyle').value = String(mapping.trendStyle || mapping.TrendStyle || 'Continuous')", DashboardPage.Script);
         Assert.Contains("trendStyle: mapping.trendStyle || mapping.TrendStyle || 'Continuous'", DashboardPage.Script);
         Assert.Contains("payload.trendStyle = el('fpTrendStyle').value || 'Continuous'", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Html_FaceplateSetup_HasDigitalControls()
+    {
+        // Tri-state Digital picker plus the on/off status text inputs.
+        Assert.Contains("id=\"fpDigital\"", DashboardPage.Html);
+        Assert.Contains("<option value=\"\">Auto (Boolean = on/off)</option>", DashboardPage.Html);
+        Assert.Contains("<option value=\"true\">Digital — show on/off text</option>", DashboardPage.Html);
+        Assert.Contains("<option value=\"false\">Analog — show raw value</option>", DashboardPage.Html);
+        Assert.Contains("id=\"fpOnText\"", DashboardPage.Html);
+        Assert.Contains("id=\"fpOffText\"", DashboardPage.Html);
+        // Faceplate loads the current tri-state and saves it back in the update payload.
+        Assert.Contains("el('fpDigital').value = digitalExplicit === true ? 'true' : digitalExplicit === false ? 'false' : ''", DashboardPage.Script);
+        Assert.Contains("payload.digital = el('fpDigital').value === '' ? null : el('fpDigital').value === 'true'", DashboardPage.Script);
+        Assert.Contains("payload.onText = el('fpOnText').value.trim() || null", DashboardPage.Script);
+        Assert.Contains("payload.offText = el('fpOffText').value.trim() || null", DashboardPage.Script);
+        // Update payload echoes the fields so /api/mappings/update never resets them.
+        Assert.Contains("digital: (mapping.digital ?? mapping.Digital) ?? null", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Html_DigitalSuggestion_IsValueBasedAndNeverAutomatic()
+    {
+        // A tag that has only ever reported 0/1 is suggested, but only Boolean is automatic.
+        Assert.Contains("function updateDigitalObservations(", DashboardPage.Script);
+        Assert.Contains("function looksLikeDigital(", DashboardPage.Script);
+        Assert.Contains("if (num !== 0 && num !== 1) obs.onlyBits = false;", DashboardPage.Script);
+        Assert.Contains("if (isBooleanDataType(type)) return false;", DashboardPage.Script);
+        Assert.Contains("Observed values are only 0/1 — pick Digital to show on/off text.", DashboardPage.Script);
     }
 }
