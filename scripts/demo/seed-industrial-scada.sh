@@ -3,11 +3,13 @@
 # HMI and Designer have something plant-like to connect to.
 #
 # Analog process values come from an OPC UA simulation source (each sim node is
-# re-labelled with an engineering name/unit). On/off and mode status tags are
-# bridge-side Manual mappings, because the simulator only exposes Double nodes.
+# re-labelled with an engineering name/unit). On/off and mode status tags are read from
+# the simulator's self-toggling Boolean nodes under Objects/Status, so the simulator must
+# run with SIM_STATUS_TAGS="Name:PeriodMs,..." (see tests/loadtest/OpcUaSimServer).
 #
 # The script is idempotent: it bulk-adds (insert-only) then updates every tag, so
-# re-running it only refreshes the existing mappings.
+# re-running it only refreshes the existing mappings. Status tags seeded by an older
+# version of this script as static Manual values are removed.
 #
 # Usage:
 #   scripts/demo/seed-industrial-scada.sh [API_BASE_URL] [options]
@@ -135,17 +137,17 @@ ns=2;s=Tag00017|Reactor 01 Pressure|Double|bar|2||Source||||true|Reactor 01 head
 ns=2;s=Tag00018|Cooler 01 Outlet Temperature|Double|°C|1||Source||||true|Cooler 01 outlet temperature
 ns=2;s=Tag00019|Filter 01 Differential Pressure|Double|kPa|1||Source||||true|Filter 01 differential pressure
 ns=2;s=Tag00020|Power 01 Total Demand|Double|kW|1||Source||||true|Plant total power demand
-# ---- on/off and mode status (bridge-side Manual values) ----
-Pump01.Run|Pump 01 Running|Boolean|||true|Manual|true|Running|Stopped|false|Pump 01 run status
-Pump02.Run|Pump 02 Running|Boolean|||true|Manual|false|Running|Stopped|false|Pump 02 run status
-Motor02.Run|Motor 02 Running|Boolean|||true|Manual|true|Running|Stopped|false|Motor 02 run status
-Compressor01.Run|Compressor 01 Running|Boolean|||true|Manual|true|Running|Stopped|false|Compressor 01 run status
-Agitator01.Run|Reactor 01 Agitator Running|Boolean|||true|Manual|true|Running|Stopped|false|Reactor 01 agitator run status
-Valve01.Open|Valve 01 Position|Byte|||true|Manual|1|Open|Closed|false|Valve 01 open/closed
-Valve02.Open|Valve 02 Position|Byte|||true|Manual|0|Open|Closed|false|Valve 02 open/closed
-Alarm01.HighLevel|Tank 01 High Level Alarm|Boolean|||true|Manual|false|ALARM|Normal|false|Tank 01 high level alarm
-Mode01.Auto|Plant Control Mode|Boolean|||true|Manual|true|Auto|Manual|false|Plant control mode select
-Line01.Permit|Line 01 Start Permit|Boolean|||true|Manual|true|Permit|Blocked|false|Line 01 start interlock permit
+# ---- on/off and mode status (read from the sim's self-toggling Boolean nodes) ----
+ns=2;s=Status/Pump01.Run|Pump 01 Running|Boolean|||true|Source||Running|Stopped|false|Pump 01 run status
+ns=2;s=Status/Pump02.Run|Pump 02 Running|Boolean|||true|Source||Running|Stopped|false|Pump 02 run status
+ns=2;s=Status/Motor02.Run|Motor 02 Running|Boolean|||true|Source||Running|Stopped|false|Motor 02 run status
+ns=2;s=Status/Compressor01.Run|Compressor 01 Running|Boolean|||true|Source||Running|Stopped|false|Compressor 01 run status
+ns=2;s=Status/Agitator01.Run|Reactor 01 Agitator Running|Boolean|||true|Source||Running|Stopped|false|Reactor 01 agitator run status
+ns=2;s=Status/Valve01.Open|Valve 01 Position|Boolean|||true|Source||Open|Closed|false|Valve 01 open/closed
+ns=2;s=Status/Valve02.Open|Valve 02 Position|Boolean|||true|Source||Open|Closed|false|Valve 02 open/closed
+ns=2;s=Status/Alarm01.HighLevel|Tank 01 High Level Alarm|Boolean|||true|Source||ALARM|Normal|false|Tank 01 high level alarm
+ns=2;s=Status/Mode01.Auto|Plant Control Mode|Boolean|||true|Source||Auto|Manual|false|Plant control mode select
+ns=2;s=Status/Line01.Permit|Line 01 Start Permit|Boolean|||true|Source||Permit|Blocked|false|Line 01 start interlock permit
 ROWS
 
 tag_count="$(TAG_SOURCE_ID="$SOURCE_ID" ENABLE_INFLUX="$ENABLE_INFLUX" python3 - "$TMP" <<'PY'
@@ -197,6 +199,15 @@ with open(os.path.join(tmp, "update.ndjson"), "w", encoding="utf-8") as handle:
     for tag in tags:
         handle.write(json.dumps({"tag": tag}) + "\n")
 
+# Status tags were once seeded as static Manual values keyed by the bare name; collect
+# those names so the shell can drop them.
+legacy_prefix = "ns=2;s=Status/"
+legacy = [t["itemId"][len(legacy_prefix):] for t in tags if t["itemId"].startswith(legacy_prefix)]
+with open(os.path.join(tmp, "legacy.txt"), "w", encoding="utf-8") as handle:
+    if legacy:
+        # Trailing newline matters: `while read` drops a final line that has none.
+        handle.write("\n".join(legacy) + "\n")
+
 print(len(tags))
 PY
 )"
@@ -215,6 +226,18 @@ while IFS= read -r payload; do
   updated=$((updated + 1))
 done <"$TMP/update.ndjson"
 echo "[seed] refreshed $updated tags"
+
+# Drop status mappings from an older seed that used static Manual values.
+if [ -s "$TMP/legacy.txt" ]; then
+  legacy_pruned=0
+  while IFS= read -r legacy_item; do
+    [ -z "$legacy_item" ] && continue
+    curl -s -X POST "$API/api/mappings/remove" -H 'Content-Type: application/json' \
+      -d "{\"sourceId\":\"$SOURCE_ID\",\"itemId\":\"$legacy_item\"}" >/dev/null || true
+    legacy_pruned=$((legacy_pruned + 1))
+  done <"$TMP/legacy.txt"
+  echo "[seed] dropped $legacy_pruned legacy manual status mappings (if any)"
+fi
 
 # ---- 3. Optionally drop the leftover demo mappings on the dead DA source ------
 if [ "$PRUNE_STALE" = "1" ]; then
