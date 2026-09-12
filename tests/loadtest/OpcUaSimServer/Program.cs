@@ -18,10 +18,16 @@ namespace OpcUaSimServer;
 /// SIM_EXTRA_TAGS="99999" adds Tag99999 to the address space at runtime
 /// (SIM_EXTRA_AFTER_MS ms after start; 0 = first tick) — simulates a tag appearing at
 /// the source later; a bridge retries its failed monitored item automatically.
+/// SIM_STATUS_TAGS="Pump01.Run:4000,Valve01.Open:7000" adds read-only Boolean nodes
+/// under Objects/Status (ns=2) that toggle themselves every :PeriodMs (the half-period),
+/// so a bridge reads a genuinely changing on/off signal without anything writing to it.
 /// Env: SIM_NODES (default 20000), SIM_UPDATE_MS (default 1000), SIM_PORT (default 4840),
 ///      SIM_WRITEABLE (default 10), SIM_BAD_TAGS (default none), SIM_BAD_AFTER_MS (default 0),
-///      SIM_EXTRA_TAGS (default none), SIM_EXTRA_AFTER_MS (default 0).
+///      SIM_EXTRA_TAGS (default none), SIM_EXTRA_AFTER_MS (default 0),
+///      SIM_STATUS_TAGS (default none),
+///      SIM_CTRL_PORT (default 49331) — embedded HTTP control API + dashboard.
 /// Endpoint: opc.tcp://0.0.0.0:{SIM_PORT}/opcuasim/  (SecurityMode None, anonymous).
+/// Control:  http://0.0.0.0:{SIM_CTRL_PORT}/  (tag dashboard, per-tag rate changes).
 /// </summary>
 internal static class Program
 {
@@ -30,6 +36,7 @@ internal static class Program
         int nodeCount = ParseEnv("SIM_NODES", 20000);
         int updateMs = ParseEnv("SIM_UPDATE_MS", 1000);
         int port = ParseEnv("SIM_PORT", 4840);
+        int ctrlPort = ParseEnv("SIM_CTRL_PORT", 49331);
         int writeableCount = ParseEnv("SIM_WRITEABLE", 10);
         if (writeableCount > nodeCount)
         {
@@ -40,10 +47,11 @@ internal static class Program
         int badAfterMs = ParseEnv("SIM_BAD_AFTER_MS", 0);
         HashSet<int> extraTags = ParseTagList("SIM_EXTRA_TAGS");
         int extraAfterMs = ParseEnv("SIM_EXTRA_AFTER_MS", 0);
+        List<StatusTagSpec> statusTags = ParseStatusTags("SIM_STATUS_TAGS");
 
         try
         {
-            return RunAsync(nodeCount, updateMs, port, writeableCount, badTags, badAfterMs, extraTags, extraAfterMs).GetAwaiter().GetResult();
+            return RunAsync(nodeCount, updateMs, port, ctrlPort, writeableCount, badTags, badAfterMs, extraTags, extraAfterMs, statusTags).GetAwaiter().GetResult();
         }
         catch (Exception ex)
         {
@@ -87,25 +95,61 @@ internal static class Program
         return result;
     }
 
+    /// <summary>
+    /// "Name:PeriodMs,Name:PeriodMs" from SIM_STATUS_TAGS. A missing or invalid period
+    /// defaults to 5000 ms.
+    /// </summary>
+    private static List<StatusTagSpec> ParseStatusTags(string envName)
+    {
+        List<StatusTagSpec> result = new();
+        string? raw = Environment.GetEnvironmentVariable(envName);
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return result;
+        }
+
+        foreach (string part in raw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            string[] halves = part.Split(':', 2);
+            string name = halves[0].Trim();
+            if (name.Length == 0)
+            {
+                continue;
+            }
+
+            int periodMs = halves.Length > 1 && int.TryParse(halves[1].Trim(), out int parsed) && parsed > 0
+                ? parsed
+                : 5000;
+            result.Add(new StatusTagSpec(name, periodMs));
+        }
+
+        return result;
+    }
+
     private static async Task<int> RunAsync(
         int nodeCount,
         int updateMs,
         int port,
+        int ctrlPort,
         int writeableCount,
         HashSet<int> badTags,
         int badAfterMs,
         HashSet<int> extraTags,
-        int extraAfterMs)
+        int extraAfterMs,
+        List<StatusTagSpec> statusTags)
     {
         string endpoint = $"opc.tcp://0.0.0.0:{port}/opcuasim/";
         string badInfo = badTags.Count == 0 ? "none" : string.Join(",", badTags.OrderBy(n => n)) + (badAfterMs > 0 ? $" after {badAfterMs}ms" : " at start");
         string extraInfo = extraTags.Count == 0 ? "none" : string.Join(",", extraTags.OrderBy(n => n)) + (extraAfterMs > 0 ? $" after {extraAfterMs}ms" : " at start");
-        Console.WriteLine($"Starting sim: {nodeCount} nodes ({writeableCount} writeable), bad tags: {badInfo}, extra tags: {extraInfo}, {updateMs} ms update, {endpoint}");
+        string statusInfo = statusTags.Count == 0
+            ? "none"
+            : string.Join(",", statusTags.Select(s => $"{s.Name}:{s.PeriodMs}ms"));
+        Console.WriteLine($"Starting sim: {nodeCount} nodes ({writeableCount} writeable), bad tags: {badInfo}, extra tags: {extraInfo}, status tags: {statusInfo}, default {updateMs} ms update, {endpoint}");
 
         ApplicationConfiguration configuration = BuildConfiguration(endpoint);
         await configuration.ValidateAsync(ApplicationType.Server).ConfigureAwait(false);
 
-        SimServer server = new(nodeCount, writeableCount, badTags, badAfterMs, extraTags, extraAfterMs, endpoint);
+        SimServer server = new(nodeCount, writeableCount, badTags, badAfterMs, extraTags, extraAfterMs, updateMs, endpoint, statusTags);
         ApplicationInstance application = new()
         {
             ApplicationName = "OpcUaSimServer",
@@ -124,25 +168,24 @@ internal static class Program
         Console.WriteLine($"ENDPOINT {endpoint}");
         Console.WriteLine($"NODES {nodeCount}");
 
-        using PeriodicTimer timer = new(TimeSpan.FromMilliseconds(updateMs));
+        // Embedded HTTP control API + dashboard. Ticks independently of the UA server.
+        using CancellationTokenSource cts = new();
+        Task controlTask = SimControlServer.RunAsync(server, ctrlPort, cts.Token);
+
         Stopwatch sw = Stopwatch.StartNew();
         long tick = 0;
         while (true)
         {
-            try
-            {
-                await timer.WaitForNextTickAsync().ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                break;
-            }
+            // Tick at the smallest tag rate so fast tags update promptly; the per-tag
+            // gating in UpdateAll decides which tags actually get a new value.
+            int periodMs = server.GetMinRateMs();
+            await Task.Delay(periodMs).ConfigureAwait(false);
 
             tick++;
-            server.UpdateAll(tick, sw.ElapsedMilliseconds);
-            if (tick % 10 == 0)
+            int updated = server.UpdateAll(tick, sw.ElapsedMilliseconds);
+            if (tick % 20 == 0)
             {
-                Console.WriteLine($"tick {tick}: {nodeCount} nodes updated");
+                Console.WriteLine($"tick {tick}: {updated}/{nodeCount} nodes updated @ {periodMs}ms (global {server.GlobalRateMs}ms)");
             }
         }
 
@@ -220,308 +263,4 @@ internal static class Program
         };
     }
 
-    private sealed class SimServer : StandardServer
-    {
-        private readonly int node_count_;
-        private readonly int writeable_count_;
-        private readonly HashSet<int> bad_tags_;
-        private readonly int bad_after_ms_;
-        private readonly HashSet<int> extra_tags_;
-        private readonly int extra_after_ms_;
-        private SimNodeManager? node_manager_;
-
-        public SimServer(
-            int nodeCount,
-            int writeableCount,
-            HashSet<int> badTags,
-            int badAfterMs,
-            HashSet<int> extraTags,
-            int extraAfterMs,
-            string endpoint)
-        {
-            node_count_ = nodeCount;
-            writeable_count_ = writeableCount;
-            bad_tags_ = badTags;
-            bad_after_ms_ = badAfterMs;
-            extra_tags_ = extraTags;
-            extra_after_ms_ = extraAfterMs;
-            _ = endpoint;
-        }
-
-        public void UpdateAll(long tick, long elapsedMs)
-        {
-            node_manager_?.UpdateAll(tick, elapsedMs);
-        }
-
-        protected override MasterNodeManager CreateMasterNodeManager(
-            IServerInternal server,
-            ApplicationConfiguration configuration)
-        {
-            node_manager_ = new SimNodeManager(
-                server,
-                configuration,
-                node_count_,
-                writeable_count_,
-                bad_tags_,
-                bad_after_ms_,
-                extra_tags_,
-                extra_after_ms_);
-            return new MasterNodeManager(server, configuration, null, new INodeManager[] { node_manager_ });
-        }
-
-        protected override ServerProperties LoadServerProperties()
-        {
-            return new ServerProperties
-            {
-                ManufacturerName = "Oh My Pi",
-                ProductName = "OpcUaSimServer (load test)",
-                ProductUri = "urn:opcuasim:loadtest",
-                SoftwareVersion = "1.0.0",
-                BuildNumber = "0",
-                BuildDate = DateTime.UtcNow
-            };
-        }
-    }
-
-    private sealed class SimNodeManager : CustomNodeManager2
-    {
-        private const string NamespaceUri = "urn:opcuasim:server";
-        private readonly BaseDataVariableState[] nodes_;
-        private readonly List<BaseDataVariableState> extra_nodes_ = new();
-        private readonly bool[] written_;
-        private readonly bool[] bad_;
-        private readonly HashSet<int> bad_numbers_;
-        private readonly HashSet<int> extra_numbers_;
-        private readonly int writeable_count_;
-        private readonly int bad_after_ms_;
-        private readonly int extra_after_ms_;
-        private bool bad_activated_;
-        private bool extra_activated_;
-        private FolderState? root_;
-        private ushort namespace_index_;
-
-        public SimNodeManager(
-            IServerInternal server,
-            ApplicationConfiguration configuration,
-            int nodeCount,
-            int writeableCount,
-            HashSet<int> badTags,
-            int badAfterMs,
-            HashSet<int> extraTags,
-            int extraAfterMs)
-            : base(server, configuration, NamespaceUri)
-        {
-            nodes_ = new BaseDataVariableState[nodeCount];
-            written_ = new bool[nodeCount];
-            bad_ = new bool[nodeCount];
-            bad_numbers_ = badTags;
-            extra_numbers_ = extraTags;
-            bad_after_ms_ = badAfterMs;
-            extra_after_ms_ = extraAfterMs;
-            writeable_count_ = writeableCount;
-        }
-
-        public override void CreateAddressSpace(IDictionary<NodeId, IList<IReference>> externalReferences)
-        {
-            lock (Lock)
-            {
-                namespace_index_ = Server.NamespaceUris.GetIndexOrAppend(NamespaceUri);
-
-                if (!externalReferences.TryGetValue(ObjectIds.ObjectsFolder, out IList<IReference>? references))
-                {
-                    references = new List<IReference>();
-                    externalReferences[ObjectIds.ObjectsFolder] = references;
-                }
-
-                FolderState root = new(null)
-                {
-                    SymbolicName = "Tags",
-                    ReferenceTypeId = ReferenceTypeIds.Organizes,
-                    TypeDefinitionId = ObjectTypeIds.FolderType,
-                    NodeId = new NodeId("Tags", namespace_index_),
-                    BrowseName = new QualifiedName("Tags", namespace_index_),
-                    DisplayName = new LocalizedText("Tags"),
-                    WriteMask = AttributeWriteMask.None,
-                    UserWriteMask = AttributeWriteMask.None,
-                    EventNotifier = EventNotifiers.None
-                };
-                root.AddReference(ReferenceTypeIds.Organizes, true, ObjectIds.ObjectsFolder);
-                references.Add(new NodeStateReference(ReferenceTypeIds.Organizes, false, root.NodeId));
-                AddPredefinedNode(SystemContext, root);
-                root_ = root;
-
-                for (int i = 0; i < nodes_.Length; i++)
-                {
-                    string name = $"Tag{i + 1:00000}";
-                    bool writeable = i < writeable_count_;
-                    byte accessLevel = writeable
-                        ? (byte)(AccessLevels.CurrentRead | AccessLevels.CurrentWrite)
-                        : AccessLevels.CurrentRead;
-                    BaseDataVariableState variable = new(root)
-                    {
-                        SymbolicName = name,
-                        ReferenceTypeId = ReferenceTypeIds.Organizes,
-                        TypeDefinitionId = VariableTypeIds.BaseDataVariableType,
-                        NodeId = new NodeId(name, namespace_index_),
-                        BrowseName = new QualifiedName(name, namespace_index_),
-                        DisplayName = new LocalizedText(name),
-                        WriteMask = AttributeWriteMask.None,
-                        UserWriteMask = AttributeWriteMask.None,
-                        DataType = DataTypeIds.Double,
-                        ValueRank = ValueRanks.Scalar,
-                        AccessLevel = accessLevel,
-                        UserAccessLevel = accessLevel,
-                        Historizing = false,
-                        Value = new DataValue(new Variant(0.0)),
-                        StatusCode = StatusCodes.Good,
-                        Timestamp = DateTime.UtcNow
-                    };
-                    if (writeable)
-                    {
-                        variable.OnWriteValue = HandleWriteValue;
-                    }
-
-                    root.AddChild(variable);
-                    AddPredefinedNode(SystemContext, variable);
-                    nodes_[i] = variable;
-                }
-            }
-        }
-
-        public void UpdateAll(long tick, long elapsedMs)
-        {
-            if (!bad_activated_ && bad_numbers_.Count > 0
-                && (bad_after_ms_ == 0 || elapsedMs >= bad_after_ms_))
-            {
-                ActivateBadTags();
-            }
-
-            if (!extra_activated_ && extra_numbers_.Count > 0
-                && (extra_after_ms_ == 0 || elapsedMs >= extra_after_ms_))
-            {
-                ActivateExtraTags();
-            }
-
-            double t = elapsedMs / 1000.0;
-            DateTime ts = DateTime.UtcNow;
-            for (int i = 0; i < nodes_.Length; i++)
-            {
-                if (written_[i] || bad_[i])
-                {
-                    // UA client wrote this node, or it is fault-injected bad: keep the
-                    // current state frozen so a bridge can observe it.
-                    continue;
-                }
-
-                double value = 100.0 + 10.0 * Math.Sin(t + (i * 0.001));
-                BaseDataVariableState variable = nodes_[i];
-                variable.Value = new Variant(value);
-                variable.Timestamp = ts;
-                variable.StatusCode = StatusCodes.Good;
-                variable.ClearChangeMasks(SystemContext, false);
-            }
-
-            for (int i = 0; i < extra_nodes_.Count; i++)
-            {
-                double value = 100.0 + 10.0 * Math.Sin(t + ((nodes_.Length + i) * 0.001));
-                BaseDataVariableState variable = extra_nodes_[i];
-                variable.Value = new Variant(value);
-                variable.Timestamp = ts;
-                variable.StatusCode = StatusCodes.Good;
-                variable.ClearChangeMasks(SystemContext, false);
-            }
-        }
-
-        /// <summary>
-        /// Add SIM_EXTRA_TAGS nodes to the address space at runtime (after SIM_EXTRA_AFTER_MS),
-        /// simulating a tag that appears at the source later. A bridge whose monitored-item
-        /// create failed earlier picks it up via its retry timer.
-        /// </summary>
-        private void ActivateExtraTags()
-        {
-            extra_activated_ = true;
-            if (root_ is null)
-            {
-                return;
-            }
-
-            foreach (int number in extra_numbers_)
-            {
-                int index = number - 1;
-                if (index >= 0 && index < nodes_.Length)
-                {
-                    continue; // already part of the base address space
-                }
-
-                string name = $"Tag{number:00000}";
-                BaseDataVariableState variable = new(root_)
-                {
-                    SymbolicName = name,
-                    ReferenceTypeId = ReferenceTypeIds.Organizes,
-                    TypeDefinitionId = VariableTypeIds.BaseDataVariableType,
-                    NodeId = new NodeId(name, namespace_index_),
-                    BrowseName = new QualifiedName(name, namespace_index_),
-                    DisplayName = new LocalizedText(name),
-                    WriteMask = AttributeWriteMask.None,
-                    UserWriteMask = AttributeWriteMask.None,
-                    DataType = DataTypeIds.Double,
-                    ValueRank = ValueRanks.Scalar,
-                    AccessLevel = AccessLevels.CurrentRead,
-                    UserAccessLevel = AccessLevels.CurrentRead,
-                    Historizing = false,
-                    Value = new DataValue(new Variant(100.0)),
-                    StatusCode = StatusCodes.Good,
-                    Timestamp = DateTime.UtcNow
-                };
-                root_.AddChild(variable);
-                AddPredefinedNode(SystemContext, variable);
-                extra_nodes_.Add(variable);
-            }
-        }
-
-        /// <summary>Flip fault-injected tags to BadOutOfService (frozen) so a bridge sees the quality transition.</summary>
-        private void ActivateBadTags()
-        {
-            bad_activated_ = true;
-            foreach (int number in bad_numbers_)
-            {
-                int index = number - 1;
-                if (index < 0 || index >= nodes_.Length)
-                {
-                    continue;
-                }
-
-                bad_[index] = true;
-                BaseDataVariableState variable = nodes_[index];
-                variable.StatusCode = StatusCodes.BadOutOfService;
-                variable.ClearChangeMasks(SystemContext, false);
-            }
-        }
-
-        private ServiceResult HandleWriteValue(
-            ISystemContext context,
-            NodeState node,
-            NumericRange range,
-            QualifiedName componentName,
-            ref object value,
-            ref StatusCode statusCode,
-            ref DateTime timestamp)
-        {
-            for (int i = 0; i < nodes_.Length; i++)
-            {
-                if (ReferenceEquals(nodes_[i], node))
-                {
-                    written_[i] = true;
-                    break;
-                }
-            }
-
-            if (node is BaseDataVariableState variable)
-            {
-                variable.Value = new DataValue(new Variant(value), statusCode, timestamp);
-            }
-
-            return ServiceResult.Good;
-        }
-    }
 }

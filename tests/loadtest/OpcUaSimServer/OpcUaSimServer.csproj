@@ -13,4 +13,9 @@
     <PackageReference Include="OPCFoundation.NetStandard.Opc.Ua.Server" Version="1.5.378.145" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Embedded HTTP control API + dashboard (aspnet:8.0 is already the runtime image). -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
 </Project>
