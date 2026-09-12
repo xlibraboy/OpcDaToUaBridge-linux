@@ -58,3 +58,7 @@ worktrees/
 .agents/
 .pi/
 .nuget-cache/
+
+# Command Code — personal project settings for this repo.
+# Shared rules live in .commandcode/settings.json (committed); keep per-developer overrides out of git.
+.commandcode/settings.local.json
