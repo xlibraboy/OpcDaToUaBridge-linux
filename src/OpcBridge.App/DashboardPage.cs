@@ -655,6 +655,29 @@ internal static class DashboardPage
             .nav-group { flex: 0 0 auto; }
             .nav-group .tabbtn { white-space: nowrap; }
         }
+        /* iOS Safari zooms the viewport on focus below 16px, which shifts the layout
+           sideways mid-entry. Same selectors as the base rule so the size actually wins. */
+        @media (max-width: 640px) {
+            select, input[type=text], input[type=password], input[type=number], textarea { font-size: 16px; }
+        }
+        /* Touch is physical: finger-sized hit areas wherever the pointer is coarse.
+           The visible box may stay small, so small controls expand with a pseudo-element. */
+        .btn, .tabbtn, .pill, .help-toc-item, .help-subtab, .map-type-tab, .values-subtab, .fp-subtab, .diag-tab, .li.clickable { touch-action: manipulation; }
+        @media (pointer: coarse) {
+            .btn { min-height: 44px; min-width: 44px; padding: 0 14px; }
+            input[type=checkbox] { min-width: 24px; min-height: 24px; }
+            .tabbtn { min-height: 44px; }
+            .nav-group .tabbtn { padding-top: 12px; padding-bottom: 12px; }
+            .pill { min-height: 44px; }
+            select, input[type=text], input[type=password], input[type=number] { min-height: 44px; }
+            .modal-close { min-width: 44px; min-height: 44px; }
+            .diag-zoom-btn { min-width: 44px; height: 44px; }
+            .help-toc-item, .help-subtab, .map-type-tab, .values-subtab, .fp-subtab, .diag-tab { min-height: 44px; }
+            .li { min-height: 44px; }
+            .dag-actions .btn, .tbl .btn, .fp-subtab { min-height: 44px; }
+            .info { position: relative; }
+            .info::after { content: ''; position: absolute; inset: -7px; }
+        }
     </style>
 </head>
 <body>
@@ -839,11 +862,11 @@ internal static class DashboardPage
     <div class="grid2" style="margin-bottom:14px">
         <div class="box">
             <div class="box-h">Disconnected Tags <span class="info" data-tip="UA monitored items whose creation failed and are being retried automatically. Common causes: the item disappeared from the source, or the source connection dropped.">i</span><span class="msg" id="diagDiscCount" style="margin-left:auto"></span></div>
-            <div class="box-b"><div class="list" id="diagDisconnected" style="max-height:220px"><span class="msg">Loading…</span></div></div>
+            <div class="box-b"><div class="list" id="diagDisconnected" style="max-height:220px"><span class="msg">Loading disconnected tags…</span></div></div>
         </div>
         <div class="box">
             <div class="box-h">Bad Quality Tags <span class="info" data-tip="Mapped tags currently delivering a non-good quality from their source. The count reflects all affected tags; the list shows up to 50.">i</span><span class="msg" id="diagBadCount" style="margin-left:auto"></span></div>
-            <div class="box-b"><div class="list" id="diagBadQuality" style="max-height:220px"><span class="msg">Loading…</span></div></div>
+            <div class="box-b"><div class="list" id="diagBadQuality" style="max-height:220px"><span class="msg">Loading bad-quality tags…</span></div></div>
         </div>
     </div>
     <div class="grid2">
@@ -858,27 +881,27 @@ internal static class DashboardPage
         </div>
         <div class="box">
             <div class="box-h">STA Thread Health <span class="info" data-tip="Each OPC DA source has a dedicated Single-Threaded Apartment (STA) thread. All COM calls for that source serialize through it. 'Queued' shows pending COM operations; 'Last action' shows the most recent COM call time.">i</span></div>
-            <div class="box-b"><div class="list" id="diagStaThreads" style="max-height:280px"><span class="msg">Loading…</span></div></div>
+            <div class="box-b"><div class="list" id="diagStaThreads" style="max-height:280px"><span class="msg">Loading STA thread health…</span></div></div>
         </div>
     </div>
 </div>
 <div class="view" id="view-sessions">
     <div class="box" style="margin-bottom:14px">
         <div class="box-h">Source Diagnostics <span class="info" data-tip="Health of every configured source — OPC DA, OPC UA, and driver sources (Melsec, S7, MX Component). Shows connection state, read latency, rate-group budget for polled sources, the last fault reason, and data freshness.">i</span><span class="msg" id="diagDaSummary" style="margin-left:auto"></span></div>
-        <div class="box-b" id="diagDaSources"><span class="msg">Loading…</span></div>
+        <div class="box-b" id="diagDaSources"><span class="msg">Loading source diagnostics…</span></div>
     </div>
     <div class="box" style="margin-bottom:14px">
         <div class="box-h">Time Sync <span class="info" data-tip="OPC DA sources only: compares the DA server's clock to the bridge machine's clock. A large offset (>500ms) indicates the DA server or bridge needs NTP time sync. UA clients receive both SourceTimestamp (DA server time) and ServerTimestamp (bridge time) for each value. UA and driver sources have no DA clock and show —.">i</span></div>
-        <div class="box-b"><div class="list" id="diagTimeSync"><span class="msg">Loading…</span></div></div>
+        <div class="box-b"><div class="list" id="diagTimeSync"><span class="msg">Loading time sync status…</span></div></div>
     </div>
     <div class="grid2" style="margin-bottom:14px">
         <div class="box">
             <div class="box-h">UA Sessions <span class="msg" id="diagUaSessionCount" style="margin-left:auto"></span></div>
-            <div class="box-b"><div class="list" id="diagUaSessions" style="max-height:300px"><span class="msg">Loading…</span></div></div>
+            <div class="box-b"><div class="list" id="diagUaSessions" style="max-height:300px"><span class="msg">Loading UA sessions…</span></div></div>
         </div>
         <div class="box">
             <div class="box-h">UA Subscriptions <span class="msg" id="diagUaSubCount" style="margin-left:auto"></span></div>
-            <div class="box-b"><div class="list" id="diagUaSubscriptions" style="max-height:300px"><span class="msg">Loading…</span></div></div>
+            <div class="box-b"><div class="list" id="diagUaSubscriptions" style="max-height:300px"><span class="msg">Loading UA subscriptions…</span></div></div>
         </div>
     </div>
     <div class="box">
@@ -942,7 +965,7 @@ internal static class DashboardPage
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">DA Subscriptions <span class="info" data-tip="Global master switch: when OFF, AutoDetect sources never attempt push. When ON, AutoDetect sources use IOPCDataCallback when the server supports it (faster, supports deadband). Sources forced to Async I/O 2.0 always attempt push regardless. Applies on reconnect.">i</span></div>
-                        <div class="field"><label class="fl">Global</label><input type="checkbox" id="cfgUseSubscriptions" checked><span class="msg" id="subMessage">Applies on reconnect</span></div>
+                        <div class="field"><label class="fl" for="cfgUseSubscriptions">Global</label><input type="checkbox" id="cfgUseSubscriptions" checked><span class="msg" id="subMessage">Applies on reconnect</span></div>
                     </div>
                     <div class="toolbar" style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
                         <button class="btn" id="cfgApply" type="button" style="display:none">Save</button>
@@ -1394,8 +1417,10 @@ internal static class DashboardPage
         <div class="box-b">
             <div class="add-mapping-box">
                 <div class="field">
-                    <input id="manualItem" type="text" placeholder="Item ID (e.g. Random.Real8, ns=2;s=Tag, D100)" style="flex:1">
-                    <input id="manualUaNodeId" type="text" placeholder="UA NodeId (optional)" style="flex:1">
+                    <label class="fl" for="manualItem">Item ID</label>
+                    <input id="manualItem" type="text" placeholder="e.g. Random.Real8, ns=2;s=Tag, D100" style="flex:1">
+                    <label class="fl" for="manualUaNodeId">UA node</label>
+                    <input id="manualUaNodeId" type="text" placeholder="optional, e.g. ns=2;s=Tag" style="flex:1">
                 </div>
                 <div class="field" style="margin-bottom:0">
                     <button class="btn" type="button" id="manualAdd">Add Mapping</button>
@@ -1404,7 +1429,8 @@ internal static class DashboardPage
             </div>
             <div class="hint" id="mappingMessage" style="margin-bottom:10px">Click a tag to open its faceplate. Disable a tag to stop publishing it, or set a manual value to override the source.</div>
             <div class="mapping-toolbar">
-                <input id="mappingFilter" type="text" placeholder="Filter by name, item ID, UA node, source…" style="flex:1;min-width:120px">
+                <label class="fl" style="width:auto" for="mappingFilter">Filter</label>
+                <input id="mappingFilter" type="text" placeholder="name, item ID, UA node or source" style="flex:1;min-width:120px">
                 <label class="fl" style="width:auto">Sort</label>
                 <select id="mappingSort">
                     <option value="name">Name</option>
@@ -5024,24 +5050,116 @@ async function refresh() {
         }
         state.lastValueCount = get(p, 'valuesTotal') ?? vs.length;
         updateLiveValuesUi();
-        if (state.liveValuesEnabled) {
-            el('values').innerHTML = vs.length ? vs.map(it => {
-                const g = get(it, 'isGood');
-                const q = get(it, 'daQuality');
-                const sourceId = get(it, 'sourceId');
-                const itemId = get(it, 'itemId') || get(it, 'daItemId');
-                const value = String(get(it, 'value') ?? '');
-                const timestamp = locTime(get(it, 'timestampUtc'));
-                const timestampShort = shortTime(get(it, 'timestampUtc'));
-                return `<tr><td><code title="${attr(sourceId)}">${esc(sourceId)}</code></td><td><code title="${attr(itemId)}">${esc(itemId)}</code></td><td class="mono" title="${attr(value)}">${esc(value)}</td><td class="msg" title="${attr(get(it, 'dataType') || '')}">${esc(get(it, 'dataType') || '—')}</td><td class="msg" title="Update rate">${formatMs(get(it, 'updateRate'))}</td><td title="${attr(String(q ?? ''))}"><span class="quality">${badge(g ? 'Good' : 'Bad', g ? 'good' : 'bad')} <span class="${g ? 'good' : 'bad'}">(${q})</span></span></td><td class="msg timestamp" title="${attr(timestamp)}">${esc(timestampShort)}</td></tr>`;
-            }).join('') : '<tr><td colspan="7" class="msg">No values yet.</td></tr>';
-        }
+        if (state.liveValuesEnabled) renderValuesRows(vs);
     } catch (e) {
         el('dot').className = 'dot off';
         el('clock').textContent = 'offline';
         if (state.liveValuesEnabled) {
-            el('values').innerHTML = `<tr><td colspan="7" class="bad">${esc(e.message)}</td></tr>`;
+            setValuesMessage('bad', e.message);
         }
+    }
+}
+
+// Values rows are reconciled in place. Replacing the whole tbody on every 1s poll
+// destroyed the user's text selection exactly when they were copying a reading.
+function valuesRowKey(it) {
+    return valueKey(get(it, 'sourceId') || '', get(it, 'itemId') || get(it, 'daItemId') || '');
+}
+// A cell whose text lives in one stable text node, so writing a new reading does
+// not detach the node a selection is anchored to.
+function gridTextCell(node) {
+    const text = document.createTextNode('');
+    node.textContent = '';
+    node.appendChild(text);
+    return v => { if (text.data !== v) text.data = v; };
+}
+function buildValuesRow() {
+    const tr = document.createElement('tr');
+    tr.setAttribute('data-vrow', '1');
+    tr.innerHTML = '<td><code></code></td><td><code></code></td><td class="mono"></td><td class="msg"></td><td class="msg"></td><td></td><td class="msg timestamp"></td>';
+    const td = tr.children;
+    return {
+        tr,
+        td,
+        set: {
+            source: gridTextCell(td[0].firstChild),
+            item: gridTextCell(td[1].firstChild),
+            value: gridTextCell(td[2]),
+            type: gridTextCell(td[3]),
+            rate: gridTextCell(td[4]),
+            stamp: gridTextCell(td[6])
+        },
+        quality: ''
+    };
+}
+function updateValuesRow(rec, it) {
+    const good = !!get(it, 'isGood');
+    const quality = String(get(it, 'daQuality') ?? '');
+    const sourceId = String(get(it, 'sourceId') ?? '');
+    const itemId = String(get(it, 'itemId') || get(it, 'daItemId') || '');
+    const value = String(get(it, 'value') ?? '');
+    const dataType = String(get(it, 'dataType') || '\u2014');
+    rec.td[0].title = sourceId;
+    rec.td[1].title = itemId;
+    rec.td[2].title = value;
+    rec.td[3].title = dataType;
+    rec.td[5].title = quality;
+    rec.td[6].title = locTime(get(it, 'timestampUtc'));
+    rec.set.source(sourceId);
+    rec.set.item(itemId);
+    rec.set.value(value);
+    rec.set.type(dataType);
+    rec.set.rate(formatMs(get(it, 'updateRate')));
+    rec.set.stamp(shortTime(get(it, 'timestampUtc')));
+    // The quality stamp only rewrites its cell when the state actually flips.
+    const qKey = (good ? 'good' : 'bad') + '|' + quality;
+    if (rec.quality !== qKey) {
+        rec.quality = qKey;
+        rec.td[5].innerHTML = '<span class="quality">' + badge(good ? 'Good' : 'Bad', good ? 'good' : 'bad') + ' <span class="' + (good ? 'good' : 'bad') + '">(' + esc(quality) + ')</span></span>';
+    }
+}
+function setValuesMessage(cls, text) {
+    const stamp = cls + '|' + text;
+    if (state.valuesMessage === stamp) return;
+    state.valuesMessage = stamp;
+    state.valuesRows = new Map();
+    state.valuesOrder = [];
+    const body = el('values');
+    if (body) body.innerHTML = '<tr><td colspan="7" class="' + cls + '">' + esc(text) + '</td></tr>';
+}
+function renderValuesRows(vs) {
+    const body = el('values');
+    if (!body) return;
+    if (!state.valuesRows) { state.valuesRows = new Map(); state.valuesOrder = []; }
+    if (!vs.length) {
+        if (!state.valuesOrder.length) setValuesMessage('msg', 'No values yet.');
+        return;
+    }
+    state.valuesMessage = '';
+    // Clear a placeholder or error row only when real rows are about to land.
+    if (!state.valuesOrder.length && body.firstChild && !body.firstChild.hasAttribute('data-vrow')) body.innerHTML = '';
+    const seen = new Set();
+    vs.forEach(it => {
+        const key = valuesRowKey(it);
+        seen.add(key);
+        let rec = state.valuesRows.get(key);
+        if (!rec) {
+            rec = buildValuesRow();
+            state.valuesRows.set(key, rec);
+            body.appendChild(rec.tr);
+        }
+        updateValuesRow(rec, it);
+    });
+    if (state.valuesRows.size !== seen.size) {
+        state.valuesRows.forEach((rec, key) => {
+            if (!seen.has(key)) { rec.tr.remove(); state.valuesRows.delete(key); }
+        });
+    }
+    // Follow the payload order, but only move nodes when the order actually changed.
+    const desired = vs.map(valuesRowKey);
+    if (state.valuesOrder.join('|') !== desired.join('|')) {
+        desired.forEach(key => { const rec = state.valuesRows.get(key); if (rec) body.appendChild(rec.tr); });
+        state.valuesOrder = desired;
     }
 }
 async function loadInterlinks() {
@@ -5628,7 +5746,7 @@ async function loadDaGroupsTab() {
     const container = el('daGroupsContainer');
     const msg = el('daGroupsMsg');
     if (!container) return;
-    container.innerHTML = '<div class="hint">Loading…</div>';
+    container.innerHTML = '<div class="hint">Loading DA groups…</div>';
     if (msg) msg.textContent = '';
     try {
         const opcDaSrcs = state.sources.filter(s => !isUaSource(s) && !isDriverSource(s) && !isMxSource(s));
@@ -5968,7 +6086,7 @@ async function loadUaSubs() {
                 '<button class="btn ghost" type="button" style="height:20px;padding:0 8px;font-size:11px;margin-left:auto" onclick="event.stopPropagation();openUaSubAdd(\'' + sidA + '\')">+ Add Subscription</button>' +
             '</div>' +
             '<div class="box-b" id="uaSubsBody-' + attr(s.sourceId) + '" style="padding:8px 10px' + (collapsed ? ';display:none' : '') + '">' +
-                '<div class="hint" id="uaSubsHint-' + attr(s.sourceId) + '" style="font-size:11px;margin-bottom:6px">Loading…</div>' +
+                '<div class="hint" id="uaSubsHint-' + attr(s.sourceId) + '" style="font-size:11px;margin-bottom:6px">Loading subscriptions…</div>' +
                 '<div class="dag-grid" id="uaSubsGrid-' + attr(s.sourceId) + '"></div>' +
             '</div>' +
         '</div>';
@@ -7221,7 +7339,7 @@ function toggleLiveValues() {
         refresh().catch(e => {
             el('dot').className = 'dot off';
             el('clock').textContent = 'offline';
-            el('values').innerHTML = `<tr><td colspan="7" class="bad">${esc(e.message)}</td></tr>`;
+            setValuesMessage('bad', e.message);
         });
     }
 }
@@ -7326,6 +7444,8 @@ function bindDynamicButtons() {
         const sourceId = button.dataset.sourceId || '';
         const itemId = button.dataset.itemId || '';
         if (button.dataset.action === 'remove-mapping') {
+            const label = el('fpDisplayName') ? (el('fpDisplayName').value.trim() || itemId) : itemId;
+            if (!confirm('Remove mapping "' + label + '"? Its unit, deadband, update rate and MQTT/Influx settings are lost.')) return;
             removeMapping(sourceId, itemId).then(() => closeFaceplate()).catch(e => alert('Remove failed: ' + e.message));
             return;
         }
@@ -7452,6 +7572,30 @@ function bindKeyboardActivation() {
     });
 }
 
+// A dialog is only modal if nothing behind it can be reached. aria-modal alone leaves
+// the rest of the page in the accessibility tree, so inert everything else.
+function inertSiblingsOf(node, boundary) {
+    let current = node;
+    while (current && current !== boundary && current.parentElement) {
+        const parent = current.parentElement;
+        Array.from(parent.children).forEach(sib => { if (sib !== current) sib.setAttribute('inert', ''); });
+        current = parent;
+    }
+}
+function applyDialogInert(openOverlay) {
+    document.querySelectorAll('[inert]').forEach(n => n.removeAttribute('inert'));
+    if (!openOverlay) return;
+    const topbar = document.querySelector('.topbar');
+    const tabbar = document.querySelector('.tabbar');
+    if (topbar) topbar.setAttribute('inert', '');
+    if (tabbar) tabbar.setAttribute('inert', '');
+    document.querySelectorAll('.view').forEach(view => {
+        const dialog = view.querySelector('.modal-overlay.open');
+        if (!dialog) { view.setAttribute('inert', ''); return; }
+        inertSiblingsOf(dialog, view);
+    });
+}
+
 // Overlays behave like dialogs: named, modal, Escape closes, focus enters, leaves and returns.
 function bindOverlayA11y() {
     const overlays = Array.from(document.querySelectorAll('.modal-overlay'));
@@ -7473,6 +7617,7 @@ function bindOverlayA11y() {
     let lastOpen = null;
     const sync = () => {
         const current = openOverlay();
+        if (current !== lastOpen) applyDialogInert(current);
         if (current && current !== lastOpen) {
             lastOpen = current;
             overlayRestoreFocus = lastTriggerRef || restoreRefFor(document.activeElement);
