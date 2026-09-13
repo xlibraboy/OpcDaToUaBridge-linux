@@ -1135,4 +1135,33 @@ public sealed class DashboardPageTests
         Assert.Contains("if (isBooleanDataType(type)) return false;", DashboardPage.Script);
         Assert.Contains("Observed values are only 0/1 — pick Digital to show on/off text.", DashboardPage.Script);
     }
+
+    [Fact]
+    public void Html_ThemeSwitcherOffersLightDarkAndSystem()
+    {
+        // Three preferences, visible labels; "system" follows the operating system.
+        Assert.Contains("role=\"group\" aria-label=\"Color theme\"", DashboardPage.Html);
+        Assert.Contains("name=\"theme\" value=\"light\"", DashboardPage.Html);
+        Assert.Contains("name=\"theme\" value=\"dark\"", DashboardPage.Html);
+        Assert.Contains("name=\"theme\" value=\"system\"", DashboardPage.Html);
+        // Dark is a second token set, selected by the attribute on <html>.
+        Assert.Contains(":root[data-theme=\"dark\"]", DashboardPage.Html);
+        Assert.Contains("color-scheme: dark;", DashboardPage.Html);
+        // The head resolves the stored choice before first paint, so no light flash.
+        Assert.Contains("opcbridge.theme", DashboardPage.Html);
+        Assert.Contains("prefers-color-scheme: dark", DashboardPage.Html);
+        Assert.Contains("opcbridge.theme", DashboardPage.Script);
+        Assert.Contains("function applyTheme(", DashboardPage.Script);
+        Assert.Contains("function initTheme(", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Script_DiagramColorsReadTheThemeTokens()
+    {
+        // The schematic draws from live tokens, so a theme switch repaints it.
+        Assert.Contains("getComputedStyle(document.documentElement)", DashboardPage.Script);
+        Assert.Contains("cs.getPropertyValue('--good')", DashboardPage.Script);
+        Assert.DoesNotContain("'#0f6b3d'", DashboardPage.Script);
+        Assert.DoesNotContain("fill=\"#ffffff\"", DashboardPage.Script);
+    }
 }

@@ -40,6 +40,17 @@ internal static class DashboardPage
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>OPC Bridge</title>
+    <script>
+    /* Resolve the theme before first paint: a stored choice wins, otherwise the
+       operating system decides. The rest of the engine lives in Script. */
+    (function () {
+        var pref = null;
+        try { pref = localStorage.getItem('opcbridge.theme'); } catch (e) { }
+        var dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.documentElement.setAttribute('data-theme',
+            pref === 'light' || pref === 'dark' ? pref : (dark ? 'dark' : 'light'));
+    })();
+    </script>
     <style>
         /* ============================================================
            INSTRUMENT LEDGER
@@ -66,6 +77,15 @@ internal static class DashboardPage
             --info: #1f4e79;
             --accent: #14181a;
             --focus: #1d4ed8;
+            /* Status grounds: tinted surfaces for badges and banners. State text
+               always pairs with its own ground, never with the page surface. */
+            --good-bg: #eaf2ec; --good-border: #bcd3c4; --good-text: #0b4d2c;
+            --warn-bg: #f8f1e2; --warn-border: #ddc9a0; --warn-text: #6b4500;
+            --bad-bg: #f7e9e8; --bad-border: #e0b6b2; --bad-text: #8a1c14;
+            --info-bg: #ebf0f6; --info-border: #c3d0de;
+            --fed-bg: #e8f0fe; --fed-text: #1859b8;
+            --overlay: rgba(20,24,26,.45);
+            --btn-hover: #000;
             --font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
             --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', 'Segoe UI Mono', Consolas, 'Liberation Mono', monospace;
             /* Five steps, each with one job. Nothing else in this sheet sets a
@@ -79,6 +99,35 @@ internal static class DashboardPage
             --fs-value: 20px;
             --fs-read: 26px;
             font-family: var(--font-ui);
+        }
+        /* Night shift: the same ledger under a lamp. Depth comes from surface
+           lightness, rules become faint light, and every state hue brightens to
+           lamp intensity so the signal survives on a dark ground. */
+        :root[data-theme="dark"] {
+            color-scheme: dark;
+            --paper: #0f1312;
+            --bg: #0f1312;
+            --panel: #171c1a;
+            --panel2: #1f2523;
+            --border: #262d2b;
+            --border2: #3b4441;
+            --text: #e8ebe7;
+            --ink2: #c2c9c4;
+            --muted: #99a49f;
+            --muted-strong: #b3bcb7;
+            --good: #55c98a;
+            --bad: #f0736a;
+            --warn: #d9a441;
+            --info: #6fb0e0;
+            --accent: #e8ebe7;
+            --focus: #7aa2ff;
+            --good-bg: #16291e; --good-border: #2c5138; --good-text: #8ed7ac;
+            --warn-bg: #2a2114; --warn-border: #5c4a24; --warn-text: #e3b563;
+            --bad-bg: #2b1917; --bad-border: #5e322d; --bad-text: #f2938a;
+            --info-bg: #16232e; --info-border: #2f4a5e;
+            --fed-bg: #16233a; --fed-text: #8ab4f8;
+            --overlay: rgba(0,0,0,.62);
+            --btn-hover: #fff;
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { background: var(--bg); color: var(--text); font-size: var(--fs-body); line-height: 1.5; display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden; }
@@ -98,8 +147,18 @@ internal static class DashboardPage
         .pill b { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 600; font-size: var(--fs-body); }
         .pill .k { color: var(--muted); text-transform: uppercase; font-size: var(--fs-micro); letter-spacing: .08em; font-family: var(--font-mono); }
         .pill .badge, .pill .good, .pill .bad, .pill .warn { font-size: var(--fs-micro); }
+        .pill.fed { background: var(--fed-bg); color: var(--fed-text); }
         .topbar .clock { margin-left: auto; display: flex; align-items: center; color: var(--ink2); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--fs-body); white-space: nowrap; padding-left: 14px; border-left: 1px solid var(--border); }
         .topbar .clock.off { color: var(--bad); font-weight: 600; }
+        /* Theme picker: three settings with visible labels; ink marks the active one. */
+        .theme-switch { display: flex; align-items: center; border-left: 1px solid var(--border); padding-left: 14px; }
+        .theme-opt { position: relative; display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; border: 1px solid transparent; color: var(--muted); font-family: var(--font-mono); font-size: var(--fs-micro); font-weight: 600; text-transform: uppercase; letter-spacing: .07em; cursor: pointer; }
+        .theme-opt + .theme-opt { margin-left: 2px; }
+        .theme-opt:hover { color: var(--text); background: var(--panel2); }
+        .theme-opt input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+        .theme-opt:has(input:checked) { color: var(--panel); background: var(--text); border-color: var(--text); }
+        .theme-opt:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 1px; }
+        .theme-ico { width: 12px; height: 12px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .app-shell { display: flex; flex: 1; min-height: 0; overflow: hidden; }
 .tabbar { display: flex; flex-direction: column; background: var(--panel); border-right: 1px solid var(--border2); padding: 6px 0 14px; width: 208px; min-width: 0; flex-shrink: 0; overflow-y: auto; }
 .tabbtn { background: none; border: none; color: var(--ink2); padding: 9px 16px; font-size: var(--fs-body); font-weight: 500; cursor: pointer; border-left: 3px solid transparent; display: flex; align-items: center; gap: 8px; text-align: left; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-ui); }
@@ -164,13 +223,13 @@ internal static class DashboardPage
         /* The lead row gives every column one prominent token: a state stamp or a reading. */
         .stat { background: none; border: none; border-bottom: 1px solid var(--border); border-radius: 0; padding: 10px 0 9px; }
         .alarm-bar { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 0; margin-bottom: 14px; font-size: var(--fs-body); font-weight: 600; border-left-width: 3px; border-left-style: solid; }
-        .alarm-bar.ok { background: #eef4ef; border: 1px solid #bcd3c4; border-left: 3px solid var(--good); color: #0b4d2c; }
-        .alarm-bar.warning { background: #f8f2e4; border: 1px solid #ddc9a0; border-left: 3px solid var(--warn); color: #6b4500; }
-        .alarm-bar.bad { background: #f9eceb; border: 1px solid #e0b6b2; border-left: 3px solid var(--bad); color: #8a1c14; }
-        .first-run-banner { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: 0; margin-bottom: 12px; font-size: var(--fs-body); background: #eef2f7; border: 1px solid #c3d0de; border-left: 3px solid var(--info); color: var(--text); }
-        .session-warn-banner { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: 0; margin-bottom: 12px; font-size: var(--fs-body); font-weight: 600; background: #f8f2e4; border: 1px solid #ddc9a0; border-left: 3px solid var(--warn); color: #6b4500; }
+        .alarm-bar.ok { background: var(--good-bg); border: 1px solid var(--good-border); border-left: 3px solid var(--good); color: var(--good-text); }
+        .alarm-bar.warning { background: var(--warn-bg); border: 1px solid var(--warn-border); border-left: 3px solid var(--warn); color: var(--warn-text); }
+        .alarm-bar.bad { background: var(--bad-bg); border: 1px solid var(--bad-border); border-left: 3px solid var(--bad); color: var(--bad-text); }
+        .first-run-banner { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: 0; margin-bottom: 12px; font-size: var(--fs-body); background: var(--info-bg); border: 1px solid var(--info-border); border-left: 3px solid var(--info); color: var(--text); }
+        .session-warn-banner { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: 0; margin-bottom: 12px; font-size: var(--fs-body); font-weight: 600; background: var(--warn-bg); border: 1px solid var(--warn-border); border-left: 3px solid var(--warn); color: var(--warn-text); }
         .first-run-banner button { margin-left: auto; }
-        .port-banner { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: 0; margin-bottom: 12px; font-size: var(--fs-body); font-weight: 600; background: #f8f2e4; border: 1px solid #ddc9a0; border-left: 3px solid var(--warn); color: #6b4500; }
+        .port-banner { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: 0; margin-bottom: 12px; font-size: var(--fs-body); font-weight: 600; background: var(--warn-bg); border: 1px solid var(--warn-border); border-left: 3px solid var(--warn); color: var(--warn-text); }
         .port-banner button { margin-left: auto; }
         .session-warn-banner button { margin-left: auto; }
         .stat .k { color: var(--muted); font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .09em; font-family: var(--font-mono); font-weight: 600; }
@@ -184,10 +243,10 @@ internal static class DashboardPage
         /* Stamps: square swatch + name, never color alone. */
         .badge { display: inline-flex; align-items: center; gap: 5px; padding: 0 6px; border-radius: 2px; font-size: var(--fs-micro); font-weight: 700; font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-transform: uppercase; letter-spacing: .04em; border: 1px solid currentColor; }
         .badge::before { content:''; width:5px; height:5px; border-radius:0; background:currentColor; }
-        .badge.good { color: var(--good); background: #eaf2ec; }
-        .badge.bad { color: var(--bad); background: #f7e9e8; }
-        .badge.warn { color: var(--warn); background: #f8f1e2; }
-        .badge.partial { color: var(--info); background: #ebf0f6; }
+        .badge.good { color: var(--good); background: var(--good-bg); }
+        .badge.bad { color: var(--bad); background: var(--bad-bg); }
+        .badge.warn { color: var(--warn); background: var(--warn-bg); }
+        .badge.partial { color: var(--info); background: var(--info-bg); }
         table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
         .values-wrap { overflow-x: auto; }
         .values-table { table-layout: fixed; min-width: 720px; }
@@ -205,7 +264,7 @@ internal static class DashboardPage
         input:disabled, select:disabled { background: var(--panel2); color: var(--muted); cursor: not-allowed; }
         select:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; border-color: var(--text); }
         .btn { display: inline-flex; align-items: center; gap: 6px; background: var(--text); color: var(--panel); border: 1px solid var(--text); border-radius: 2px; padding: 5px 12px; font-size: var(--fs-body); font-weight: 600; cursor: pointer; white-space: nowrap; font-family: var(--font-ui); }
-        .btn:hover { background: #000; }
+        .btn:hover { background: var(--btn-hover); }
         .btn.ghost { background: transparent; color: var(--text); border: 1px solid var(--border2); }
         .btn.ghost:hover { background: var(--panel2); border-color: var(--text); }
         .btn:disabled, .btn[disabled] { opacity: .45; cursor: not-allowed; }
@@ -224,7 +283,7 @@ internal static class DashboardPage
         .li .icon.tag { color: var(--ink2); }
         .li .icon.mapped { color: var(--good); }
         .li .li-actions { margin-left: auto; display: flex; gap: 6px; align-items: center; }
-        .li .mapped-badge { font-size: var(--fs-micro); color: var(--good); border: 1px solid var(--good); background: #eaf2ec; padding: 0 5px; border-radius: 2px; font-weight: 700; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: .04em; }
+        .li .mapped-badge { font-size: var(--fs-micro); color: var(--good); border: 1px solid var(--good); background: var(--good-bg); padding: 0 5px; border-radius: 2px; font-weight: 700; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: .04em; }
         .add-mapping-box { background: var(--panel2); border: 1px solid var(--border2); border-left: 3px solid var(--text); border-radius: 0; padding: 10px 12px; margin-bottom: 10px; }
         .add-mapping-box .field { margin-bottom: 8px; }
         .add-mapping-box .field:last-child { margin-bottom: 0; }
@@ -239,7 +298,7 @@ internal static class DashboardPage
         .li .li-badge { margin-left: auto; display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; overflow: hidden; min-width: 0; }
         .li .li-badge-clip { display: flex; align-items: center; gap: 6px; overflow: hidden; min-width: 0; mask-image: linear-gradient(to right, black calc(100% - 14px), transparent); -webkit-mask-image: linear-gradient(to right, black calc(100% - 14px), transparent); }
         .li .li-badge-status { flex-shrink: 0; margin-left: 2px; display: flex; align-items: center; }
-        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(20,24,26,.45); z-index: 1000; justify-content: center; align-items: center; padding: 16px; }
+        .modal-overlay { display: none; position: fixed; inset: 0; background: var(--overlay); z-index: 1000; justify-content: center; align-items: center; padding: 16px; }
         .modal-overlay.open { display: flex; }
         .modal { background: var(--panel); border: 1px solid var(--text); border-top: 3px solid var(--text); border-radius: 0; width: min(560px, 92vw); max-height: 90vh; overflow-y: auto; box-shadow: none; }
         .modal-h { display: flex; align-items: start; justify-content: space-between; gap: 12px; padding: 13px 16px; border-bottom: 1px solid var(--border2); }
@@ -576,6 +635,15 @@ internal static class DashboardPage
             transform-origin: 0 0;
         }
         .diag-empty rect { fill: var(--panel); }
+        /* Diagram primitives take their color from classes, not presentation
+           attributes, so the schematic follows the same tokens as the page. */
+        .dg-surface { fill: var(--panel); }
+        .dg-ink { fill: var(--text); }
+        .dg-muted { fill: var(--muted); }
+        .dg-rule { stroke: var(--border2); }
+        .dg-stop-a { stop-color: var(--panel); }
+        .dg-stop-b { stop-color: var(--panel2); }
+        .dg-drop { flood-color: var(--text); flood-opacity: .08; }
         .diag-node {
             cursor: pointer;
         }
@@ -676,6 +744,7 @@ internal static class DashboardPage
             .pill { padding: 5px 10px; }
             .pill .k { font-size: var(--fs-micro); }
             .topbar .clock { margin-left: 0; border-left: none; padding-left: 0; padding-bottom: 8px; }
+            .theme-switch { margin-left: auto; border-left: none; padding-left: 10px; }
             .view { padding: 14px 12px 48px; }
             .box-b { padding: 10px; }
             .mon-stat-group { border-right: none; border-bottom: 1px solid var(--border); }
@@ -695,13 +764,14 @@ internal static class DashboardPage
         }
         /* Touch is physical: finger-sized hit areas wherever the pointer is coarse.
            The visible box may stay small, so small controls expand with a pseudo-element. */
-        .btn, .tabbtn, .pill, .help-toc-item, .help-subtab, .map-type-tab, .values-subtab, .fp-subtab, .diag-tab, .li.clickable { touch-action: manipulation; }
+        .btn, .tabbtn, .pill, .theme-opt, .help-toc-item, .help-subtab, .map-type-tab, .values-subtab, .fp-subtab, .diag-tab, .li.clickable { touch-action: manipulation; }
         @media (pointer: coarse) {
             .btn { min-height: 44px; min-width: 44px; padding: 0 14px; }
             input[type=checkbox] { min-width: 24px; min-height: 24px; }
             .tabbtn { min-height: 44px; }
             .nav-group .tabbtn { padding-top: 12px; padding-bottom: 12px; }
             .pill { min-height: 44px; }
+            .theme-opt { min-height: 44px; min-width: 44px; }
             select, input[type=text], input[type=password], input[type=number] { min-height: 44px; }
             .modal-close { min-width: 44px; min-height: 44px; }
             .diag-zoom-btn { min-width: 44px; height: 44px; }
@@ -724,6 +794,11 @@ internal static class DashboardPage
         <div class="pill"><span class="k">Tags</span><b id="pTags">0</b></div>
          <div class="pill"><span class="k">Sources</span><b id="pSources">0</b></div>
          <div class="pill"><span class="k">Apps</span><b id="pApps">1</b></div>
+    </div>
+    <div class="theme-switch" role="group" aria-label="Color theme">
+        <label class="theme-opt"><input type="radio" name="theme" value="light"><svg class="theme-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>Light</label>
+        <label class="theme-opt"><input type="radio" name="theme" value="dark"><svg class="theme-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z"/></svg>Dark</label>
+        <label class="theme-opt"><input type="radio" name="theme" value="system"><svg class="theme-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/></svg>System</label>
     </div>
     <div class="clock" id="clock">&#8212;</div>
 </div>
@@ -1902,6 +1977,44 @@ document.addEventListener('mouseover', e => {
 });
 document.addEventListener('mouseout', e => { if (e.target.closest('.info, [data-tip]') && tipEl) tipEl.classList.remove('show'); });
 const el = id => document.getElementById(id);
+const THEME_KEY = 'opcbridge.theme';
+const THEME_PREFS = ['light', 'dark', 'system'];
+const systemTheme = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+let themePaletteCache = null;
+let themePref = (() => {
+    try {
+        const stored = localStorage.getItem(THEME_KEY);
+        if (THEME_PREFS.indexOf(stored) >= 0) return stored;
+    } catch (e) { }
+    return 'system';
+})();
+
+function resolvedTheme(pref) {
+    if (pref !== 'system') return pref;
+    return systemTheme && systemTheme.matches ? 'dark' : 'light';
+}
+
+/* One place decides the appearance: the attribute on <html>. Everything else,
+   including the diagram's status colors, reads back from the CSS tokens. */
+function applyTheme(pref, persist) {
+    themePref = THEME_PREFS.indexOf(pref) >= 0 ? pref : 'system';
+    document.documentElement.setAttribute('data-theme', resolvedTheme(themePref));
+    themePaletteCache = null;
+    if (persist) { try { localStorage.setItem(THEME_KEY, themePref); } catch (e) { } }
+    document.querySelectorAll('input[name="theme"]').forEach(input => { input.checked = input.value === themePref; });
+    if (document.querySelector('#view-diagram.active')) renderDiagram();
+}
+
+function initTheme() {
+    applyTheme(themePref, false);
+    document.querySelectorAll('input[name="theme"]').forEach(input => {
+        input.addEventListener('change', () => { if (input.checked) applyTheme(input.value, true); });
+    });
+    if (!systemTheme) return;
+    const followSystem = () => { if (themePref === 'system') applyTheme('system', false); };
+    if (systemTheme.addEventListener) systemTheme.addEventListener('change', followSystem);
+    else if (systemTheme.addListener) systemTheme.addListener(followSystem);
+}
 const state = {
     tagPath: '',
     uaBrowseTrail: [],
@@ -2103,17 +2216,17 @@ window.addEventListener('resize', syncSegPill);
 function diagEmptyState(title, hint, w = 1100, h = 600) {
     const cx = Math.round(w / 2), cy = Math.round(h / 2);
     return `<g class="diag-empty" transform="translate(${cx} ${cy})">` +
-        `<rect x="-240" y="-62" width="480" height="124" rx="0" fill="#ffffff" stroke="#c6cac3" stroke-dasharray="5 5"/>` +
-        `<text y="-8" text-anchor="middle" fill="#14181a" style="font-size:var(--fs-title)" font-weight="600">${escapeHtml(title)}</text>` +
-        `<text y="16" text-anchor="middle" fill="#55605f" style="font-size:var(--fs-micro)">${escapeHtml(hint)}</text></g>`;
+        `<rect x="-240" y="-62" width="480" height="124" rx="0" class="dg-surface dg-rule" stroke-dasharray="5 5"/>` +
+        `<text y="-8" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-title)" font-weight="600">${escapeHtml(title)}</text>` +
+        `<text y="16" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">${escapeHtml(hint)}</text></g>`;
 }
 
 const DIAG_DEFS = '<defs>' +
     '<linearGradient id="diagCardGrad" x1="0" y1="0" x2="0" y2="1">' +
-    '<stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#f6f7f4"/>' +
+    '<stop offset="0" class="dg-stop-a"/><stop offset="1" class="dg-stop-b"/>' +
     '</linearGradient>' +
     '<filter id="diagDrop" x="-20%" y="-20%" width="140%" height="140%">' +
-    '<feDropShadow dx="0" dy="1" stdDeviation="0" flood-color="#14181a" flood-opacity="0.08"/>' +
+    '<feDropShadow dx="0" dy="1" stdDeviation="0" class="dg-drop"/>' +
     '</filter></defs>';
 
 function showDiagTab(tab) {
@@ -2292,8 +2405,8 @@ function renderAllDiagram() {
     });
 
     let svg = '';
-    svg += `<text x="40" y="30" fill="#55605f" style="font-size:var(--fs-micro)" font-weight="600">PLANT OVERVIEW (aggregated)</text>`;
-    svg += `<text x="40" y="48" fill="#55605f" style="font-size:var(--fs-micro)">Sources → tag groups → UA / MQTT · trunks colored by live status · detail on DA→UA / Interlinks / MQTT tabs</text>`;
+    svg += `<text x="40" y="30" class="dg-muted" style="font-size:var(--fs-micro)" font-weight="600">PLANT OVERVIEW (aggregated)</text>`;
+    svg += `<text x="40" y="48" class="dg-muted" style="font-size:var(--fs-micro)">Sources → tag groups → UA / MQTT · trunks colored by live status · detail on DA→UA / Interlinks / MQTT tabs</text>`;
 
     const sourcePositions = new Map();
     const groupPositions = new Map();
@@ -2321,9 +2434,9 @@ function renderAllDiagram() {
         groupPositions.set(sourceId, { x: groupX, y: sourceY, cy, left: groupX, right: groupX + colW.group, cx: groupX + colW.group / 2 });
 
         svg += `<g class="diag-node" data-source="${escapeHtml(sourceId)}">`;
-        svg += `<rect x="${sourceX}" y="${sourceY}" width="${colW.source}" height="64" rx="0" fill="#ffffff" stroke="${sourceColor}" stroke-width="2"/>`;
-        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 24}" text-anchor="middle" fill="#14181a" style="font-size:var(--fs-micro)" font-weight="600">${escapeHtml(sourceName)}</text>`;
-        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 44}" text-anchor="middle" fill="#55605f" style="font-size:var(--fs-micro)">${escapeHtml(sourceSubtitle(sourceInfo))}</text>`;
+        svg += `<rect x="${sourceX}" y="${sourceY}" width="${colW.source}" height="64" rx="0" class="dg-surface" stroke="${sourceColor}" stroke-width="2"/>`;
+        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 24}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)" font-weight="600">${escapeHtml(sourceName)}</text>`;
+        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 44}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">${escapeHtml(sourceSubtitle(sourceInfo))}</text>`;
         svg += `</g>`;
 
         const groupStatus = summary.total === 0 ? 'off' : summary.flow;
@@ -2336,10 +2449,10 @@ function renderAllDiagram() {
         svg += drawEdge(sourceX + colW.source, cy, groupX, cy, groupStatus, groupColor);
 
         svg += `<g class="diag-node" data-source-group="${escapeHtml(sourceId)}">`;
-        svg += `<rect x="${groupX}" y="${sourceY}" width="${colW.group}" height="64" rx="0" fill="#ffffff" stroke="${groupColor}" stroke-width="1.5"/>`;
-        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 20}" text-anchor="middle" fill="#14181a" style="font-size:var(--fs-micro)" font-weight="600">${summary.total} tags</text>`;
-        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 38}" text-anchor="middle" fill="#55605f" style="font-size:var(--fs-micro)">${escapeHtml(line2)}</text>`;
-        if (line3) svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 54}" text-anchor="middle" fill="#55605f" style="font-size:var(--fs-micro)">${escapeHtml(line3)}</text>`;
+        svg += `<rect x="${groupX}" y="${sourceY}" width="${colW.group}" height="64" rx="0" class="dg-surface" stroke="${groupColor}" stroke-width="1.5"/>`;
+        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 20}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)" font-weight="600">${summary.total} tags</text>`;
+        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 38}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">${escapeHtml(line2)}</text>`;
+        if (line3) svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 54}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">${escapeHtml(line3)}</text>`;
         svg += `</g>`;
 
         maxY = Math.max(maxY, sourceY + 64);
@@ -2366,7 +2479,7 @@ function renderAllDiagram() {
             const g = groupPositions.get(pair.fromSid);
             if (!g) return;
             const color = getStatusColor(pair.status);
-            svg += `<circle cx="${g.cx}" cy="${g.y - 6}" r="8" fill="#ffffff" stroke="${color}" stroke-width="1.5"/>`;
+            svg += `<circle cx="${g.cx}" cy="${g.y - 6}" r="8" class="dg-surface" stroke="${color}" stroke-width="1.5"/>`;
             svg += `<text x="${g.cx}" y="${g.y - 2}" text-anchor="middle" fill="${color}" style="font-size:var(--fs-micro)">${pair.count}</text>`;
             return;
         }
@@ -2379,7 +2492,7 @@ function renderAllDiagram() {
         svg += drawCurve(from.cx, from.cy, to.cx, to.cy, pair.status, color, lift);
         const midX = (from.cx + to.cx) / 2;
         const midY = Math.min(from.cy, to.cy) - lift + 8;
-        svg += `<rect x="${midX - 12}" y="${midY - 9}" width="24" height="14" rx="0" fill="#ffffff" stroke="${color}" stroke-width="1"/>`;
+        svg += `<rect x="${midX - 12}" y="${midY - 9}" width="24" height="14" rx="0" class="dg-surface" stroke="${color}" stroke-width="1"/>`;
         svg += `<text x="${midX}" y="${midY + 2}" text-anchor="middle" fill="${color}" style="font-size:var(--fs-micro)">${pair.count}</text>`;
     });
 
@@ -2388,9 +2501,9 @@ function renderAllDiagram() {
     const uaColor = getStatusColor(uaStatus);
     const uaY = Math.max(startY, (maxY + startY) / 2 - 28);
     svg += `<g class="diag-node">`;
-    svg += `<rect x="${uaX}" y="${uaY}" width="${colW.hub}" height="56" rx="0" fill="#ffffff" stroke="${uaColor}" stroke-width="2"/>`;
-    svg += `<text x="${uaX + colW.hub / 2}" y="${uaY + 22}" text-anchor="middle" fill="#14181a" style="font-size:var(--fs-micro)" font-weight="600">OPC UA Server</text>`;
-    svg += `<text x="${uaX + colW.hub / 2}" y="${uaY + 40}" text-anchor="middle" fill="#55605f" style="font-size:var(--fs-micro)">${totalTags} mapped</text>`;
+    svg += `<rect x="${uaX}" y="${uaY}" width="${colW.hub}" height="56" rx="0" class="dg-surface" stroke="${uaColor}" stroke-width="2"/>`;
+    svg += `<text x="${uaX + colW.hub / 2}" y="${uaY + 22}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)" font-weight="600">OPC UA Server</text>`;
+    svg += `<text x="${uaX + colW.hub / 2}" y="${uaY + 40}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">${totalTags} mapped</text>`;
     svg += `</g>`;
 
     groupPositions.forEach((pos, sourceId) => {
@@ -2404,9 +2517,9 @@ function renderAllDiagram() {
     const brokerColor = getStatusColor(brokerStatus);
     const mqttY = uaY + 100;
     svg += `<g class="diag-node">`;
-    svg += `<rect x="${mqttX}" y="${mqttY}" width="${colW.hub}" height="56" rx="0" fill="#ffffff" stroke="${brokerColor}" stroke-width="2"/>`;
-    svg += `<text x="${mqttX + colW.hub / 2}" y="${mqttY + 22}" text-anchor="middle" fill="#14181a" style="font-size:var(--fs-micro)" font-weight="600">MQTT Broker</text>`;
-    svg += `<text x="${mqttX + colW.hub / 2}" y="${mqttY + 40}" text-anchor="middle" fill="#55605f" style="font-size:var(--fs-micro)">${totalMqtt}/${totalTags} enabled</text>`;
+    svg += `<rect x="${mqttX}" y="${mqttY}" width="${colW.hub}" height="56" rx="0" class="dg-surface" stroke="${brokerColor}" stroke-width="2"/>`;
+    svg += `<text x="${mqttX + colW.hub / 2}" y="${mqttY + 22}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)" font-weight="600">MQTT Broker</text>`;
+    svg += `<text x="${mqttX + colW.hub / 2}" y="${mqttY + 40}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">${totalMqtt}/${totalTags} enabled</text>`;
     svg += `</g>`;
 
     groupPositions.forEach((pos, sourceId) => {
@@ -2420,7 +2533,7 @@ function renderAllDiagram() {
         svg += drawEdge(pos.right, pos.cy, mqttX, mqttY + 28, edgeStatus, getStatusColor(edgeStatus));
     });
 
-    svg += `<text x="${sourceX}" y="${Math.max(maxY, mqttY + 56) + 36}" fill="#55605f" style="font-size:var(--fs-micro)">Aggregated trunks · Grey = inactive · Color = live · Curves = DA→DA between sources (count badge)</text>`;
+    svg += `<text x="${sourceX}" y="${Math.max(maxY, mqttY + 56) + 36}" class="dg-muted" style="font-size:var(--fs-micro)">Aggregated trunks · Grey = inactive · Color = live · Curves = DA→DA between sources (count badge)</text>`;
 
     return { svg, maxHeight: Math.max(maxY, mqttY + 56) + 60, maxWidth: 1240 };
 }
@@ -2460,8 +2573,8 @@ function renderDaUaDiagram() {
     let svg = '';
     const totalTags = mappings.length;
     const sourceCount = bySource.size;
-    svg += `<text x="50" y="28" fill="#55605f" style="font-size:var(--fs-micro)" font-weight="600">Source → UA (aggregated)</text>`;
-    svg += `<text x="50" y="46" fill="#55605f" style="font-size:var(--fs-micro)">${sourceCount} sources · ${totalTags} tags · click a tag-group to expand (page ${pageSize}) · Fit/pan for overview</text>`;
+    svg += `<text x="50" y="28" class="dg-muted" style="font-size:var(--fs-micro)" font-weight="600">Source → UA (aggregated)</text>`;
+    svg += `<text x="50" y="46" class="dg-muted" style="font-size:var(--fs-micro)">${sourceCount} sources · ${totalTags} tags · click a tag-group to expand (page ${pageSize}) · Fit/pan for overview</text>`;
 
     const groupPositions = new Map();
     const summaries = new Map();
@@ -2493,9 +2606,9 @@ function renderDaUaDiagram() {
 
         // Source box
         svg += `<g class="diag-node" data-source="${escapeHtml(sourceId)}">`;
-        svg += `<rect x="${sourceX}" y="${sourceY}" width="${colW.source}" height="64" rx="0" fill="#ffffff" stroke="${sourceColor}" stroke-width="2"/>`;
-        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 24}" text-anchor="middle" fill="#14181a" style="font-size:var(--fs-micro)" font-weight="600">${escapeHtml(sourceName)}</text>`;
-        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 44}" text-anchor="middle" fill="#55605f" style="font-size:var(--fs-micro)">${escapeHtml(sourceSubtitle(sourceInfo))}</text>`;
+        svg += `<rect x="${sourceX}" y="${sourceY}" width="${colW.source}" height="64" rx="0" class="dg-surface" stroke="${sourceColor}" stroke-width="2"/>`;
+        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 24}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)" font-weight="600">${escapeHtml(sourceName)}</text>`;
+        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 44}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">${escapeHtml(sourceSubtitle(sourceInfo))}</text>`;
         svg += `</g>`;
 
         // Tag-group summary (click to expand/collapse)
@@ -2507,10 +2620,10 @@ function renderDaUaDiagram() {
         svg += drawEdge(sourceX + colW.source, groupCy, groupX, groupCy, groupStatus, groupColor);
 
         svg += `<g class="diag-node" data-diag-action="toggle-expand" data-source-id="${attr(sourceId)}" style="cursor:pointer">`;
-        svg += `<rect x="${groupX}" y="${sourceY}" width="${colW.group}" height="64" rx="0" fill="#ffffff" stroke="${groupColor}" stroke-width="1.5"/>`;
-        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 20}" text-anchor="middle" fill="#14181a" style="font-size:var(--fs-micro)" font-weight="600">${summary.total} tags ${expanded ? '▾' : '▸'}</text>`;
-        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 38}" text-anchor="middle" fill="#55605f" style="font-size:var(--fs-micro)">${escapeHtml(line2)}</text>`;
-        if (line3) svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 54}" text-anchor="middle" fill="#55605f" style="font-size:var(--fs-micro)">${escapeHtml(line3)}</text>`;
+        svg += `<rect x="${groupX}" y="${sourceY}" width="${colW.group}" height="64" rx="0" class="dg-surface" stroke="${groupColor}" stroke-width="1.5"/>`;
+        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 20}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)" font-weight="600">${summary.total} tags ${expanded ? '▾' : '▸'}</text>`;
+        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 38}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">${escapeHtml(line2)}</text>`;
+        if (line3) svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 54}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">${escapeHtml(line3)}</text>`;
         svg += `</g>`;
 
         groupPositions.set(sourceId, {
@@ -2533,8 +2646,8 @@ function renderDaUaDiagram() {
 
                 svg += drawEdge(groupX + colW.group, groupCy, tagX, cy, tagStatus, tagColor);
                 svg += `<g class="diag-node" data-tag="${escapeHtml(tKey)}">`;
-                svg += `<rect x="${tagX}" y="${tagY}" width="${colW.tag}" height="28" rx="0" fill="#ffffff" stroke="${tagColor}" stroke-width="1.5"/>`;
-                svg += `<text x="${tagX + colW.tag / 2}" y="${tagY + 18}" text-anchor="middle" fill="#14181a" style="font-size:var(--fs-micro)">${escapeHtml(tagName)}</text>`;
+                svg += `<rect x="${tagX}" y="${tagY}" width="${colW.tag}" height="28" rx="0" class="dg-surface" stroke="${tagColor}" stroke-width="1.5"/>`;
+                svg += `<text x="${tagX + colW.tag / 2}" y="${tagY + 18}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)">${escapeHtml(tagName)}</text>`;
                 svg += `</g>`;
                 detailPositions.push({ right: tagX + colW.tag, cy, status: tagStatus, color: tagColor });
                 maxY = Math.max(maxY, tagY + 28);
@@ -2546,15 +2659,15 @@ function renderDaUaDiagram() {
                 const canNext = safePage < pageCount - 1;
                 if (canPrev) {
                     svg += `<g class="diag-node" data-diag-action="expand-page" data-source-id="${attr(sourceId)}" data-dir="-1" style="cursor:pointer">`;
-                    svg += `<rect x="${tagX}" y="${navY}" width="70" height="22" rx="0" fill="#ffffff" stroke="#c6cac3"/>`;
-                    svg += `<text x="${tagX + 35}" y="${navY + 15}" text-anchor="middle" fill="#14181a" style="font-size:var(--fs-micro)">← Prev</text></g>`;
+                    svg += `<rect x="${tagX}" y="${navY}" width="70" height="22" rx="0" class="dg-surface dg-rule"/>`;
+                    svg += `<text x="${tagX + 35}" y="${navY + 15}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)">← Prev</text></g>`;
                 }
                 if (canNext) {
                     svg += `<g class="diag-node" data-diag-action="expand-page" data-source-id="${attr(sourceId)}" data-dir="1" style="cursor:pointer">`;
-                    svg += `<rect x="${tagX + 80}" y="${navY}" width="70" height="22" rx="0" fill="#ffffff" stroke="#c6cac3"/>`;
-                    svg += `<text x="${tagX + 115}" y="${navY + 15}" text-anchor="middle" fill="#14181a" style="font-size:var(--fs-micro)">Next →</text></g>`;
+                    svg += `<rect x="${tagX + 80}" y="${navY}" width="70" height="22" rx="0" class="dg-surface dg-rule"/>`;
+                    svg += `<text x="${tagX + 115}" y="${navY + 15}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)">Next →</text></g>`;
                 }
-                svg += `<text x="${tagX + 170}" y="${navY + 15}" fill="#55605f" style="font-size:var(--fs-micro)">${sliceStart + 1}–${sliceStart + slice.length} / ${tags.length}</text>`;
+                svg += `<text x="${tagX + 170}" y="${navY + 15}" class="dg-muted" style="font-size:var(--fs-micro)">${sliceStart + 1}–${sliceStart + slice.length} / ${tags.length}</text>`;
                 maxY = Math.max(maxY, navY + 22);
             }
         }
@@ -2570,9 +2683,9 @@ function renderDaUaDiagram() {
     const uaColor = getStatusColor(uaStatus);
     const uaY = Math.max(startY, (maxY + startY) / 2 - 28);
     svg += `<g class="diag-node">`;
-    svg += `<rect x="${uaX}" y="${uaY}" width="${colW.hub}" height="56" rx="0" fill="#ffffff" stroke="${uaColor}" stroke-width="2"/>`;
-    svg += `<text x="${uaX + colW.hub / 2}" y="${uaY + 22}" text-anchor="middle" fill="#14181a" style="font-size:var(--fs-micro)" font-weight="600">OPC UA Server</text>`;
-    svg += `<text x="${uaX + colW.hub / 2}" y="${uaY + 40}" text-anchor="middle" fill="#55605f" style="font-size:var(--fs-micro)">${totalTags} mapped</text>`;
+    svg += `<rect x="${uaX}" y="${uaY}" width="${colW.hub}" height="56" rx="0" class="dg-surface" stroke="${uaColor}" stroke-width="2"/>`;
+    svg += `<text x="${uaX + colW.hub / 2}" y="${uaY + 22}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)" font-weight="600">OPC UA Server</text>`;
+    svg += `<text x="${uaX + colW.hub / 2}" y="${uaY + 40}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">${totalTags} mapped</text>`;
     svg += `</g>`;
 
     // Trunks: collapsed group → UA; expanded visible tags → UA
@@ -2594,7 +2707,7 @@ function renderDaUaDiagram() {
         }
     });
 
-    svg += `<text x="${sourceX}" y="${maxY + 36}" fill="#55605f" style="font-size:var(--fs-micro)">Collapsed = 1 trunk/source (safe at 10k+ tags) · Expanded = paged tag detail · Grey = inactive · Color = live</text>`;
+    svg += `<text x="${sourceX}" y="${maxY + 36}" class="dg-muted" style="font-size:var(--fs-micro)">Collapsed = 1 trunk/source (safe at 10k+ tags) · Expanded = paged tag detail · Grey = inactive · Color = live</text>`;
 
     return { svg, maxHeight: maxY + 60, maxWidth: 1120 };
 }
@@ -2648,8 +2761,8 @@ function renderInterlinksDiagram() {
     }
 
     let svg = '';
-    svg += `<text x="50" y="28" fill="#55605f" style="font-size:var(--fs-micro)" font-weight="600">DA TO DA (aggregated)</text>`;
-    svg += `<text x="50" y="46" fill="#55605f" style="font-size:var(--fs-micro)">${links.length} link(s) · ${pairMap.size} source-pair(s) · click a pair badge to expand (page ${pageSize})</text>`;
+    svg += `<text x="50" y="28" class="dg-muted" style="font-size:var(--fs-micro)" font-weight="600">DA TO DA (aggregated)</text>`;
+    svg += `<text x="50" y="46" class="dg-muted" style="font-size:var(--fs-micro)">${links.length} link(s) · ${pairMap.size} source-pair(s) · click a pair badge to expand (page ${pageSize})</text>`;
 
     // Layout provider sources on left, consumer sources on right
     const providers = new Set();
@@ -2670,9 +2783,9 @@ function renderInterlinksDiagram() {
         const color = getStatusColor(st);
         const count = links.filter(l => (l.providerSourceId || 'default') === sid).length;
         svg += `<g class="diag-node" data-source="${escapeHtml(sid)}">`;
-        svg += `<rect x="${leftX}" y="${y}" width="${colW.source}" height="64" rx="0" fill="#ffffff" stroke="${color}" stroke-width="2"/>`;
-        svg += `<text x="${leftX + colW.source / 2}" y="${y + 24}" text-anchor="middle" fill="#14181a" style="font-size:var(--fs-micro)" font-weight="600">${escapeHtml(sourceName(sid))}</text>`;
-        svg += `<text x="${leftX + colW.source / 2}" y="${y + 44}" text-anchor="middle" fill="#55605f" style="font-size:var(--fs-micro)">provider · ${count} out</text>`;
+        svg += `<rect x="${leftX}" y="${y}" width="${colW.source}" height="64" rx="0" class="dg-surface" stroke="${color}" stroke-width="2"/>`;
+        svg += `<text x="${leftX + colW.source / 2}" y="${y + 24}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)" font-weight="600">${escapeHtml(sourceName(sid))}</text>`;
+        svg += `<text x="${leftX + colW.source / 2}" y="${y + 44}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">provider · ${count} out</text>`;
         svg += `</g>`;
         y += rowH + sourceGap;
     });
@@ -2684,16 +2797,16 @@ function renderInterlinksDiagram() {
         const color = getStatusColor(st);
         const count = links.filter(l => (l.consumerSourceId || 'default') === sid).length;
         svg += `<g class="diag-node" data-source="${escapeHtml(sid)}">`;
-        svg += `<rect x="${rightX}" y="${y}" width="${colW.source}" height="64" rx="0" fill="#ffffff" stroke="${color}" stroke-width="2"/>`;
-        svg += `<text x="${rightX + colW.source / 2}" y="${y + 24}" text-anchor="middle" fill="#14181a" style="font-size:var(--fs-micro)" font-weight="600">${escapeHtml(sourceName(sid))}</text>`;
-        svg += `<text x="${rightX + colW.source / 2}" y="${y + 44}" text-anchor="middle" fill="#55605f" style="font-size:var(--fs-micro)">consumer · ${count} in</text>`;
+        svg += `<rect x="${rightX}" y="${y}" width="${colW.source}" height="64" rx="0" class="dg-surface" stroke="${color}" stroke-width="2"/>`;
+        svg += `<text x="${rightX + colW.source / 2}" y="${y + 24}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)" font-weight="600">${escapeHtml(sourceName(sid))}</text>`;
+        svg += `<text x="${rightX + colW.source / 2}" y="${y + 44}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">consumer · ${count} in</text>`;
         svg += `</g>`;
         y += rowH + sourceGap;
         maxY = Math.max(maxY, y);
     });
 
     if (pairMap.size === 0) {
-        svg += `<text x="50" y="${maxY + 20}" fill="#55605f" style="font-size:var(--fs-micro)">No DA links yet — create provider→consumer links on the Links tab. Sources shown grey until linked/live.</text>`;
+        svg += `<text x="50" y="${maxY + 20}" class="dg-muted" style="font-size:var(--fs-micro)">No DA links yet — create provider→consumer links on the Links tab. Sources shown grey until linked/live.</text>`;
         return { svg, maxHeight: maxY + 50, maxWidth: 920 };
     }
 
@@ -2717,7 +2830,7 @@ function renderInterlinksDiagram() {
             // same-source links: badge on left source
             if (from) {
                 svg += `<g class="diag-node" data-diag-action="toggle-expand" data-source-id="${attr(expandKey)}" style="cursor:pointer">`;
-                svg += `<circle cx="${from.x + colW.source / 2}" cy="${from.y - 8}" r="12" fill="#ffffff" stroke="${color}" stroke-width="1.5"/>`;
+                svg += `<circle cx="${from.x + colW.source / 2}" cy="${from.y - 8}" r="12" class="dg-surface" stroke="${color}" stroke-width="1.5"/>`;
                 svg += `<text x="${from.x + colW.source / 2}" y="${from.y - 4}" text-anchor="middle" fill="${color}" style="font-size:var(--fs-micro)">${pair.links.length}</text>`;
                 svg += `</g>`;
             }
@@ -2728,13 +2841,13 @@ function renderInterlinksDiagram() {
             const badgeX = (from.right + to.left) / 2;
             const badgeY = Math.min(from.cy, to.cy) - lift + 6;
             svg += `<g class="diag-node" data-diag-action="toggle-expand" data-source-id="${attr(expandKey)}" style="cursor:pointer">`;
-            svg += `<rect x="${badgeX - 28}" y="${badgeY - 12}" width="56" height="22" rx="0" fill="#ffffff" stroke="${color}" stroke-width="1.5"/>`;
+            svg += `<rect x="${badgeX - 28}" y="${badgeY - 12}" width="56" height="22" rx="0" class="dg-surface" stroke="${color}" stroke-width="1.5"/>`;
             svg += `<text x="${badgeX}" y="${badgeY + 4}" text-anchor="middle" fill="${color}" style="font-size:var(--fs-micro)">${pair.links.length}${expanded ? ' ▾' : ' ▸'}</text>`;
             svg += `</g>`;
         }
 
         if (expanded && slice.length) {
-            svg += `<text x="50" y="${detailY + 14}" fill="#55605f" style="font-size:var(--fs-micro)" font-weight="600">${escapeHtml(sourceName(pair.fromSid))} → ${escapeHtml(sourceName(pair.toSid))} · ${sliceStart + 1}–${sliceStart + slice.length} / ${pair.links.length}</text>`;
+            svg += `<text x="50" y="${detailY + 14}" class="dg-muted" style="font-size:var(--fs-micro)" font-weight="600">${escapeHtml(sourceName(pair.fromSid))} → ${escapeHtml(sourceName(pair.toSid))} · ${sliceStart + 1}–${sliceStart + slice.length} / ${pair.links.length}</text>`;
             detailY += 24;
             slice.forEach((link, i) => {
                 const st = (link.enabled === false || (link.enabled ?? link.Enabled) === false) ? 'off' : getLinkStatus(link);
@@ -2744,15 +2857,15 @@ function renderInterlinksDiagram() {
                 const kind = link._kind === 'legacy' ? 'legacy' : 'link';
                 const rowY = detailY + i * tagSpacing;
                 svg += `<g class="diag-node">`;
-                svg += `<rect x="50" y="${rowY}" width="${colW.detail}" height="28" rx="0" fill="#ffffff" stroke="${c}" stroke-width="1.5"/>`;
-                svg += `<text x="${50 + colW.detail / 2}" y="${rowY + 18}" text-anchor="middle" fill="#14181a" style="font-size:var(--fs-micro)">${escapeHtml(pLabel)} · P</text>`;
+                svg += `<rect x="50" y="${rowY}" width="${colW.detail}" height="28" rx="0" class="dg-surface" stroke="${c}" stroke-width="1.5"/>`;
+                svg += `<text x="${50 + colW.detail / 2}" y="${rowY + 18}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)">${escapeHtml(pLabel)} · P</text>`;
                 svg += `</g>`;
                 svg += drawEdge(50 + colW.detail, rowY + 14, midX + 40, rowY + 14, st, c);
                 svg += `<g class="diag-node">`;
-                svg += `<rect x="${midX + 40}" y="${rowY}" width="${colW.detail}" height="28" rx="0" fill="#ffffff" stroke="${c}" stroke-width="1.5"/>`;
-                svg += `<text x="${midX + 40 + colW.detail / 2}" y="${rowY + 18}" text-anchor="middle" fill="#14181a" style="font-size:var(--fs-micro)">${escapeHtml(cLabel)} · C</text>`;
+                svg += `<rect x="${midX + 40}" y="${rowY}" width="${colW.detail}" height="28" rx="0" class="dg-surface" stroke="${c}" stroke-width="1.5"/>`;
+                svg += `<text x="${midX + 40 + colW.detail / 2}" y="${rowY + 18}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)">${escapeHtml(cLabel)} · C</text>`;
                 svg += `</g>`;
-                svg += `<text x="${midX + 40 + colW.detail + 12}" y="${rowY + 18}" fill="#55605f" style="font-size:var(--fs-micro)">${escapeHtml(kind)}</text>`;
+                svg += `<text x="${midX + 40 + colW.detail + 12}" y="${rowY + 18}" class="dg-muted" style="font-size:var(--fs-micro)">${escapeHtml(kind)}</text>`;
             });
             detailY += slice.length * tagSpacing + 8;
             if (pair.links.length > pageSize) {
@@ -2760,13 +2873,13 @@ function renderInterlinksDiagram() {
                 const canNext = safePage < pageCount - 1;
                 if (canPrev) {
                     svg += `<g class="diag-node" data-diag-action="expand-page" data-source-id="${attr(expandKey)}" data-dir="-1" style="cursor:pointer">`;
-                    svg += `<rect x="50" y="${detailY}" width="70" height="22" rx="0" fill="#ffffff" stroke="#c6cac3"/>`;
-                    svg += `<text x="85" y="${detailY + 15}" text-anchor="middle" fill="#14181a" style="font-size:var(--fs-micro)">← Prev</text></g>`;
+                    svg += `<rect x="50" y="${detailY}" width="70" height="22" rx="0" class="dg-surface dg-rule"/>`;
+                    svg += `<text x="85" y="${detailY + 15}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)">← Prev</text></g>`;
                 }
                 if (canNext) {
                     svg += `<g class="diag-node" data-diag-action="expand-page" data-source-id="${attr(expandKey)}" data-dir="1" style="cursor:pointer">`;
-                    svg += `<rect x="130" y="${detailY}" width="70" height="22" rx="0" fill="#ffffff" stroke="#c6cac3"/>`;
-                    svg += `<text x="165" y="${detailY + 15}" text-anchor="middle" fill="#14181a" style="font-size:var(--fs-micro)">Next →</text></g>`;
+                    svg += `<rect x="130" y="${detailY}" width="70" height="22" rx="0" class="dg-surface dg-rule"/>`;
+                    svg += `<text x="165" y="${detailY + 15}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)">Next →</text></g>`;
                 }
                 detailY += 30;
             }
@@ -2775,7 +2888,7 @@ function renderInterlinksDiagram() {
         }
     });
 
-    svg += `<text x="50" y="${maxY + 28}" fill="#55605f" style="font-size:var(--fs-micro)">Pair trunks = aggregated links · click badge to expand paged endpoints · grey = inactive · color = live</text>`;
+    svg += `<text x="50" y="${maxY + 28}" class="dg-muted" style="font-size:var(--fs-micro)">Pair trunks = aggregated links · click badge to expand paged endpoints · grey = inactive · color = live</text>`;
     return { svg, maxHeight: maxY + 50, maxWidth: 920 };
 }
 
@@ -2814,8 +2927,8 @@ function renderMqttDiagram() {
     const enabledCount = mappings.filter(isMqttEnabled).length;
 
     let svg = '';
-    svg += `<text x="50" y="28" fill="#55605f" style="font-size:var(--fs-micro)" font-weight="600">MQTT (aggregated)</text>`;
-    svg += `<text x="50" y="46" fill="#55605f" style="font-size:var(--fs-micro)">${enabledCount}/${totalTags} MQTT-enabled · ${bySource.size} sources · click group to expand (page ${pageSize}) · broker ${escapeHtml(state.mqttConnectionState || el('mqttState')?.textContent || 'unknown')}</text>`;
+    svg += `<text x="50" y="28" class="dg-muted" style="font-size:var(--fs-micro)" font-weight="600">MQTT (aggregated)</text>`;
+    svg += `<text x="50" y="46" class="dg-muted" style="font-size:var(--fs-micro)">${enabledCount}/${totalTags} MQTT-enabled · ${bySource.size} sources · click group to expand (page ${pageSize}) · broker ${escapeHtml(state.mqttConnectionState || el('mqttState')?.textContent || 'unknown')}</text>`;
 
     const groupPositions = new Map();
     const summaries = new Map();
@@ -2860,9 +2973,9 @@ function renderMqttDiagram() {
         const groupCy = sourceY + 32;
 
         svg += `<g class="diag-node" data-source="${escapeHtml(sourceId)}">`;
-        svg += `<rect x="${sourceX}" y="${sourceY}" width="${colW.source}" height="64" rx="0" fill="#ffffff" stroke="${sourceColor}" stroke-width="2"/>`;
-        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 24}" text-anchor="middle" fill="#14181a" style="font-size:var(--fs-micro)" font-weight="600">${escapeHtml(sourceName)}</text>`;
-        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 44}" text-anchor="middle" fill="#55605f" style="font-size:var(--fs-micro)">${escapeHtml(sourceSubtitle(sourceInfo))}</text>`;
+        svg += `<rect x="${sourceX}" y="${sourceY}" width="${colW.source}" height="64" rx="0" class="dg-surface" stroke="${sourceColor}" stroke-width="2"/>`;
+        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 24}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)" font-weight="600">${escapeHtml(sourceName)}</text>`;
+        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 44}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">${escapeHtml(sourceSubtitle(sourceInfo))}</text>`;
         svg += `</g>`;
 
         const groupColor = getStatusColor(mqttFlow);
@@ -2872,10 +2985,10 @@ function renderMqttDiagram() {
         svg += drawEdge(sourceX + colW.source, groupCy, groupX, groupCy, mqttFlow, groupColor);
 
         svg += `<g class="diag-node" data-diag-action="toggle-expand" data-source-id="${attr(expandKey)}" style="cursor:pointer">`;
-        svg += `<rect x="${groupX}" y="${sourceY}" width="${colW.group}" height="64" rx="0" fill="#ffffff" stroke="${groupColor}" stroke-width="1.5"/>`;
-        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 20}" text-anchor="middle" fill="#14181a" style="font-size:var(--fs-micro)" font-weight="600">${summary.mqtt}/${summary.total} MQTT ${expanded ? '▾' : '▸'}</text>`;
-        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 38}" text-anchor="middle" fill="#55605f" style="font-size:var(--fs-micro)">${escapeHtml(line2)}</text>`;
-        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 54}" text-anchor="middle" fill="#55605f" style="font-size:var(--fs-micro)">${escapeHtml(line3)}</text>`;
+        svg += `<rect x="${groupX}" y="${sourceY}" width="${colW.group}" height="64" rx="0" class="dg-surface" stroke="${groupColor}" stroke-width="1.5"/>`;
+        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 20}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)" font-weight="600">${summary.mqtt}/${summary.total} MQTT ${expanded ? '▾' : '▸'}</text>`;
+        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 38}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">${escapeHtml(line2)}</text>`;
+        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 54}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">${escapeHtml(line3)}</text>`;
         svg += `</g>`;
 
         const detailPositions = [];
@@ -2894,9 +3007,9 @@ function renderMqttDiagram() {
 
                 svg += drawEdge(groupX + colW.group, groupCy, tagX, cy, nodeStatus, nodeColor);
                 svg += `<g class="diag-node" data-tag="${escapeHtml(tKey)}">`;
-                svg += `<rect x="${tagX}" y="${tagY}" width="${colW.tag}" height="28" rx="0" fill="#ffffff" stroke="${nodeColor}" stroke-width="1.5"/>`;
-                svg += `<text x="${tagX + colW.tag / 2}" y="${tagY + 12}" text-anchor="middle" fill="#14181a" style="font-size:var(--fs-micro)">${escapeHtml(tagName)}</text>`;
-                svg += `<text x="${tagX + colW.tag / 2}" y="${tagY + 23}" text-anchor="middle" fill="#55605f" style="font-size:var(--fs-micro)">${mqttOn ? ('ON' + (topic ? ' · ' + escapeHtml(String(topic).slice(0, 18)) : '')) : 'off'}</text>`;
+                svg += `<rect x="${tagX}" y="${tagY}" width="${colW.tag}" height="28" rx="0" class="dg-surface" stroke="${nodeColor}" stroke-width="1.5"/>`;
+                svg += `<text x="${tagX + colW.tag / 2}" y="${tagY + 12}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)">${escapeHtml(tagName)}</text>`;
+                svg += `<text x="${tagX + colW.tag / 2}" y="${tagY + 23}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">${mqttOn ? ('ON' + (topic ? ' · ' + escapeHtml(String(topic).slice(0, 18)) : '')) : 'off'}</text>`;
                 svg += `</g>`;
 
                 let edgeStatus = 'off';
@@ -2915,15 +3028,15 @@ function renderMqttDiagram() {
                 const canNext = safePage < pageCount - 1;
                 if (canPrev) {
                     svg += `<g class="diag-node" data-diag-action="expand-page" data-source-id="${attr(expandKey)}" data-dir="-1" style="cursor:pointer">`;
-                    svg += `<rect x="${tagX}" y="${navY}" width="70" height="22" rx="0" fill="#ffffff" stroke="#c6cac3"/>`;
-                    svg += `<text x="${tagX + 35}" y="${navY + 15}" text-anchor="middle" fill="#14181a" style="font-size:var(--fs-micro)">← Prev</text></g>`;
+                    svg += `<rect x="${tagX}" y="${navY}" width="70" height="22" rx="0" class="dg-surface dg-rule"/>`;
+                    svg += `<text x="${tagX + 35}" y="${navY + 15}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)">← Prev</text></g>`;
                 }
                 if (canNext) {
                     svg += `<g class="diag-node" data-diag-action="expand-page" data-source-id="${attr(expandKey)}" data-dir="1" style="cursor:pointer">`;
-                    svg += `<rect x="${tagX + 80}" y="${navY}" width="70" height="22" rx="0" fill="#ffffff" stroke="#c6cac3"/>`;
-                    svg += `<text x="${tagX + 115}" y="${navY + 15}" text-anchor="middle" fill="#14181a" style="font-size:var(--fs-micro)">Next →</text></g>`;
+                    svg += `<rect x="${tagX + 80}" y="${navY}" width="70" height="22" rx="0" class="dg-surface dg-rule"/>`;
+                    svg += `<text x="${tagX + 115}" y="${navY + 15}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)">Next →</text></g>`;
                 }
-                svg += `<text x="${tagX + 170}" y="${navY + 15}" fill="#55605f" style="font-size:var(--fs-micro)">${sliceStart + 1}–${sliceStart + slice.length} / ${tags.length}</text>`;
+                svg += `<text x="${tagX + 170}" y="${navY + 15}" class="dg-muted" style="font-size:var(--fs-micro)">${sliceStart + 1}–${sliceStart + slice.length} / ${tags.length}</text>`;
                 maxY = Math.max(maxY, navY + 22);
             }
         }
@@ -2944,9 +3057,9 @@ function renderMqttDiagram() {
 
     const brokerY = Math.max(startY, (maxY + startY) / 2 - 32);
     svg += `<g class="diag-node">`;
-    svg += `<rect x="${brokerX}" y="${brokerY}" width="${colW.hub}" height="64" rx="0" fill="#ffffff" stroke="${brokerColor}" stroke-width="2"/>`;
-    svg += `<text x="${brokerX + colW.hub / 2}" y="${brokerY + 24}" text-anchor="middle" fill="#14181a" style="font-size:var(--fs-micro)" font-weight="600">MQTT Broker</text>`;
-    svg += `<text x="${brokerX + colW.hub / 2}" y="${brokerY + 44}" text-anchor="middle" fill="#55605f" style="font-size:var(--fs-micro)">${enabledCount}/${totalTags} enabled</text>`;
+    svg += `<rect x="${brokerX}" y="${brokerY}" width="${colW.hub}" height="64" rx="0" class="dg-surface" stroke="${brokerColor}" stroke-width="2"/>`;
+    svg += `<text x="${brokerX + colW.hub / 2}" y="${brokerY + 24}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)" font-weight="600">MQTT Broker</text>`;
+    svg += `<text x="${brokerX + colW.hub / 2}" y="${brokerY + 44}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">${enabledCount}/${totalTags} enabled</text>`;
     svg += `</g>`;
 
     groupPositions.forEach(pos => {
@@ -2965,7 +3078,7 @@ function renderMqttDiagram() {
         }
     });
 
-    svg += `<text x="${sourceX}" y="${Math.max(maxY, brokerY + 64) + 32}" fill="#55605f" style="font-size:var(--fs-micro)">Collapsed = 1 trunk/source · Expanded = paged tags · grey = MQTT off/inactive · color = enabled + live</text>`;
+    svg += `<text x="${sourceX}" y="${Math.max(maxY, brokerY + 64) + 32}" class="dg-muted" style="font-size:var(--fs-micro)">Collapsed = 1 trunk/source · Expanded = paged tags · grey = MQTT off/inactive · color = enabled + live</text>`;
     return { svg, maxHeight: Math.max(maxY, brokerY + 64) + 50, maxWidth: 1140 };
 }
 
@@ -3008,14 +3121,24 @@ function getLinkStatus(link) {
     return getTagStatus(provider);
 }
 
+/* Status colors come from the theme tokens, so a diagram drawn before a theme
+   change is rebuilt with the new values instead of keeping the old palette. */
+function themePalette() {
+    if (!themePaletteCache) {
+        const cs = getComputedStyle(document.documentElement);
+        themePaletteCache = {
+            good: cs.getPropertyValue('--good').trim(),
+            warn: cs.getPropertyValue('--warn').trim(),
+            bad: cs.getPropertyValue('--bad').trim(),
+            off: cs.getPropertyValue('--muted').trim()
+        };
+    }
+    return themePaletteCache;
+}
+
 function getStatusColor(status) {
-    const colors = {
-        good: '#0f6b3d',
-        warn: '#8a5a00',
-        bad: '#a52118',
-        off: '#55605f'
-    };
-    return colors[status] || colors.off;
+    const palette = themePalette();
+    return palette[status] || palette.off;
 }
 
 // Diagram subtitle for a source node: what this source actually is, never a guess.
@@ -3333,7 +3456,7 @@ function renderInterlinksView() {
         const providerItemId = link.providerItemId || link.ProviderItemId || '';
         const linkId = link.id || link.Id || '';
         const stats = state.linkStatsById[String(linkId)];
-        return `<div class="li"><div style="flex:1;min-width:0"><span class="n">${esc(linkTagLabel(consumerSourceId, consumerItemId))} <span class="msg" style="font-size:var(--fs-micro)">(write)</span></span></div><span class="pill" style="padding:1px 6px;font-size:var(--fs-micro);background:#e8f0fe;color:#1a73e8">⇠ fed by</span><div style="flex:1;min-width:0"><span class="n">${esc(linkTagLabel(providerSourceId, providerItemId))} <span class="msg" style="font-size:var(--fs-micro)">(read)</span></span></div>${renderInterlinkStatusPill(stats)}<div style="min-width:150px;text-align:right">${renderInterlinkCounters(stats)}</div><button class="btn ghost" type="button" data-action="unlink" data-link-id="${attr(linkId)}">Delete</button></div>`;
+        return `<div class="li"><div style="flex:1;min-width:0"><span class="n">${esc(linkTagLabel(consumerSourceId, consumerItemId))} <span class="msg" style="font-size:var(--fs-micro)">(write)</span></span></div><span class="pill fed" style="padding:1px 6px;font-size:var(--fs-micro)">⇠ fed by</span><div style="flex:1;min-width:0"><span class="n">${esc(linkTagLabel(providerSourceId, providerItemId))} <span class="msg" style="font-size:var(--fs-micro)">(read)</span></span></div>${renderInterlinkStatusPill(stats)}<div style="min-width:150px;text-align:right">${renderInterlinkCounters(stats)}</div><button class="btn ghost" type="button" data-action="unlink" data-link-id="${attr(linkId)}">Delete</button></div>`;
     }).join('') : '<span class="msg">No interlinks yet. Pick a consumer and a provider above, then Save Link.</span>';
 }
 function findInterlinkByConsumer(consumerKey) {
@@ -7775,6 +7898,7 @@ function bindOverlayA11y() {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+    initTheme();
     bindKeyboardActivation();
     bindOverlayA11y();
     // The skip link must not overwrite the route hash, which is where this app keeps state.
