@@ -40,343 +40,483 @@ internal static class DashboardPage
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>OPC Bridge</title>
+    <script>
+    /* Resolve the theme before first paint: a stored choice wins, otherwise the
+       operating system decides. The rest of the engine lives in Script. */
+    (function () {
+        var pref = null;
+        try { pref = localStorage.getItem('opcbridge.theme'); } catch (e) { }
+        var dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        document.documentElement.setAttribute('data-theme',
+            pref === 'light' || pref === 'dark' ? pref : (dark ? 'dark' : 'light'));
+    })();
+    </script>
     <style>
+        /* ============================================================
+           INSTRUMENT LEDGER
+           Paper canvas, ink type, hairline rules. No floating cards,
+           no shadows, no decorative color: hue is reserved for machine
+           state, and the only non-state chroma is the keyboard focus
+           ring. Data rides a monospace spine with tabular figures.
+           ============================================================ */
         :root {
+            color-scheme: light;
+            --paper: #f1f2ef;
+            --bg: #f1f2ef;
+            --panel: #ffffff;
+            --panel2: #f6f7f4;
+            --border: #e2e4df;
+            --border2: #c6cac3;
+            --text: #14181a;
+            --ink2: #3b4544;
+            --muted: #55605f;
+            --muted-strong: #39443f;
+            --good: #0f6b3d;
+            --bad: #a52118;
+            --warn: #8a5a00;
+            --info: #1f4e79;
+            --accent: #14181a;
+            --focus: #1d4ed8;
+            /* Status grounds: tinted surfaces for badges and banners. State text
+               always pairs with its own ground, never with the page surface. */
+            --good-bg: #eaf2ec; --good-border: #bcd3c4; --good-text: #0b4d2c;
+            --warn-bg: #f8f1e2; --warn-border: #ddc9a0; --warn-text: #6b4500;
+            --bad-bg: #f7e9e8; --bad-border: #e0b6b2; --bad-text: #8a1c14;
+            --info-bg: #ebf0f6; --info-border: #c3d0de;
+            --fed-bg: #e8f0fe; --fed-text: #1859b8;
+            --overlay: rgba(20,24,26,.45);
+            --btn-hover: #000;
+            --font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', 'Segoe UI Mono', Consolas, 'Liberation Mono', monospace;
+            /* Five steps, each with one job. Nothing else in this sheet sets a
+               font-size. micro: labels, stamps, table heads, timestamps, metadata.
+               body: UI text, controls, table data, buttons, hints. title: headings,
+               names, readings. value: primary readings and the state stamps.
+               read: the single hero figure in a focused dialog. */
+            --fs-micro: 11px;
+            --fs-body: 13px;
+            --fs-title: 16px;
+            --fs-value: 20px;
+            --fs-read: 26px;
+            font-family: var(--font-ui);
+        }
+        /* Night shift: the same ledger under a lamp. Depth comes from surface
+           lightness, rules become faint light, and every state hue brightens to
+           lamp intensity so the signal survives on a dark ground. */
+        :root[data-theme="dark"] {
             color-scheme: dark;
-            --bg: #0a0e14;
-            --panel: #11161f;
-            --panel2: #161c27;
-            --border: #232b38;
-            --border2: #2e3848;
-            --text: #d8e0ea;
-            --muted: #6b7689;
-            --muted-strong: #93a0b4;
-            --good: #34d399;
-            --bad: #f87171;
-            --warn: #fbbf24;
-            --accent: #38bdf8;
-            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            --paper: #0f1312;
+            --bg: #0f1312;
+            --panel: #171c1a;
+            --panel2: #1f2523;
+            --border: #262d2b;
+            --border2: #3b4441;
+            --text: #e8ebe7;
+            --ink2: #c2c9c4;
+            --muted: #99a49f;
+            --muted-strong: #b3bcb7;
+            --good: #55c98a;
+            --bad: #f0736a;
+            --warn: #d9a441;
+            --info: #6fb0e0;
+            --accent: #e8ebe7;
+            --focus: #7aa2ff;
+            --good-bg: #16291e; --good-border: #2c5138; --good-text: #8ed7ac;
+            --warn-bg: #2a2114; --warn-border: #5c4a24; --warn-text: #e3b563;
+            --bad-bg: #2b1917; --bad-border: #5e322d; --bad-text: #f2938a;
+            --info-bg: #16232e; --info-border: #2f4a5e;
+            --fed-bg: #16233a; --fed-text: #8ab4f8;
+            --overlay: rgba(0,0,0,.62);
+            --btn-hover: #fff;
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { background: var(--bg); color: var(--text); font-size: 13px; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
-        .mono { font-family: 'Consolas', 'SF Mono', monospace; }
-        .topbar { display: flex; align-items: center; gap: 14px; padding: 0 18px; height: 46px; background: var(--panel); border-bottom: 1px solid var(--border2); }
-        .brand { display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: 14px; white-space: nowrap; }
-        .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--good); }
-        .ver { font-size: 10px; font-weight: 400; color: var(--muted); background: var(--panel2); border: 1px solid var(--border2); border-radius: 3px; padding: 1px 6px; margin-left: 4px; }
+        body { background: var(--bg); color: var(--text); font-size: var(--fs-body); line-height: 1.5; display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden; }
+        .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+        /* Headings break evenly; short descriptions avoid a dangling last word.
+           Article prose is left alone: browsers ignore balance past a few lines. */
+        .view-title, .help-article-title, .help-body h2, .help-body h3, .modal-h .n { text-wrap: balance; }
+        .hint, .msg, .alarm-bar, .first-run-banner, .session-warn-banner, .port-banner, .help-noresults { text-wrap: pretty; }
+        /* Status rail. Auto height on purpose: it wraps instead of clipping. */
+        .topbar { display: flex; align-items: stretch; gap: 0; min-height: 53px; padding: 0 14px; background: var(--panel); border-bottom: 2px solid var(--text); flex-wrap: wrap; }
+        .brand { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: var(--fs-title); letter-spacing: -.01em; white-space: nowrap; padding-right: 14px; }
+        .dot { width: 9px; height: 9px; border-radius: 1px; background: var(--good); flex: none; }
+        .ver { font-family: var(--font-mono); font-size: var(--fs-micro); font-weight: 400; color: var(--muted); border: 1px solid var(--border2); border-radius: 2px; padding: 0 5px; margin-left: 2px; }
         .dot.off { background: var(--bad); }
-        .pills { display: flex; gap: 7px; margin-left: 8px; flex-wrap: wrap; }
-        .pill { display: flex; align-items: center; gap: 6px; background: var(--panel2); border: 1px solid var(--border); border-radius: 5px; padding: 3px 9px; font-size: 12px; white-space: nowrap; }
-        .pill b { font-weight: 600; }
-        .pill .k { color: var(--muted); text-transform: uppercase; font-size: 10px; letter-spacing: .05em; }
-        .topbar .clock { margin-left: auto; color: var(--muted); font-size: 11px; white-space: nowrap; }
+        .pills { display: flex; align-items: stretch; gap: 0; margin-left: 0; flex-wrap: wrap; }
+        .pill { display: flex; align-items: center; gap: 7px; background: none; border: none; border-left: 1px solid var(--border); border-radius: 0; padding: 6px 13px; font-size: var(--fs-body); white-space: nowrap; }
+        .pill b { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 600; font-size: var(--fs-body); }
+        .pill .k { color: var(--muted); text-transform: uppercase; font-size: var(--fs-micro); letter-spacing: .08em; font-family: var(--font-mono); }
+        .pill .badge, .pill .good, .pill .bad, .pill .warn { font-size: var(--fs-micro); }
+        .pill.fed { background: var(--fed-bg); color: var(--fed-text); }
+        .topbar .clock { margin-left: auto; display: flex; align-items: center; color: var(--ink2); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--fs-body); white-space: nowrap; padding-left: 14px; border-left: 1px solid var(--border); }
+        .topbar .clock.off { color: var(--bad); font-weight: 600; }
+        /* Theme picker: three settings with visible labels; ink marks the active one. */
+        .theme-switch { display: flex; align-items: center; border-left: 1px solid var(--border); padding-left: 14px; }
+        .theme-opt { position: relative; display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; border: 1px solid transparent; color: var(--muted); font-family: var(--font-mono); font-size: var(--fs-micro); font-weight: 600; text-transform: uppercase; letter-spacing: .07em; cursor: pointer; }
+        .theme-opt + .theme-opt { margin-left: 2px; }
+        .theme-opt:hover { color: var(--text); background: var(--panel2); }
+        .theme-opt input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+        .theme-opt:has(input:checked) { color: var(--panel); background: var(--text); border-color: var(--text); }
+        .theme-opt:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 1px; }
+        .theme-ico { width: 12px; height: 12px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .app-shell { display: flex; flex: 1; min-height: 0; overflow: hidden; }
-.tabbar { display: flex; flex-direction: column; background: var(--panel); border-right: 1px solid var(--border2); padding: 10px 0; width: 200px; min-width: 0; flex-shrink: 0; overflow-y: auto; }
-.tabbtn { background: none; border: none; color: var(--muted); padding: 11px 16px; font-size: 13px; font-weight: 500; cursor: pointer; border-left: 3px solid transparent; display: flex; align-items: center; gap: 8px; text-align: left; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tabbar { display: flex; flex-direction: column; background: var(--panel); border-right: 1px solid var(--border2); padding: 6px 0 14px; width: 208px; min-width: 0; flex-shrink: 0; overflow-y: auto; }
+.tabbtn { background: none; border: none; color: var(--ink2); padding: 9px 16px; font-size: var(--fs-body); font-weight: 500; cursor: pointer; border-left: 3px solid transparent; display: flex; align-items: center; gap: 8px; text-align: left; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-ui); }
 .tabbtn:hover { color: var(--text); background: var(--panel2); }
-.tabbtn.active { color: var(--accent); border-left-color: var(--accent); background: var(--panel2); }
-.nav-group { padding: 10px 0 8px; border-bottom: 1px solid var(--border); min-width: 0; }
+.tabbtn.active { color: var(--accent); border-left-color: var(--accent); background: var(--panel2); font-weight: 700; }
+.tabbtn:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.nav-group { padding: 6px 0; border-bottom: 1px solid var(--border); min-width: 0; }
 .nav-group:last-child { border-bottom: none; }
-.nav-group-h { display: flex; align-items: center; gap: 7px; padding: 2px 16px 8px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .09em; color: var(--muted-strong); transition: color .15s ease; min-width: 0; }
-.nav-group-h .nav-ico { width: 13px; height: 13px; flex-shrink: 0; opacity: .95; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.nav-group-h { display: flex; align-items: center; gap: 7px; padding: 8px 16px 6px; font-size: var(--fs-micro); font-weight: 700; text-transform: uppercase; letter-spacing: .11em; color: var(--muted); transition: color .15s ease; min-width: 0; font-family: var(--font-mono); }
+.nav-group-h .nav-ico { width: 13px; height: 13px; flex-shrink: 0; opacity: .85; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .nav-group:has(.tabbtn.active) .nav-group-h { color: var(--accent); }
 .nav-group .tabbtn { position: relative; padding-top: 8px; padding-bottom: 8px; padding-left: 44px; }
 .nav-group .tabbtn::before { content: ''; position: absolute; left: 24px; top: 0; bottom: 0; width: 2px; background: var(--border); }
 .nav-group .tabbtn:hover::before { background: var(--border2); }
 .nav-group .tabbtn.active::before { background: var(--accent); opacity: .5; }
+.nav-group .tabbtn.active::before { opacity: 1; }
 .nav-group .tabbtn:last-child:not(.active)::before { bottom: auto; height: 55%; }
-.content { flex: 1; min-width: 0; overflow: auto; }
-.view { display: none; padding: 16px 18px; }
+.content { flex: 1; min-width: 0; overflow: auto; background: var(--paper); }
+.view { display: none; padding: 16px 20px 56px; max-width: 1600px; margin-inline: auto; }
 .view.active { display: block; }
+        /* Skip link: first focusable thing on the page, hidden until a keyboard user asks. */
+        .skip-link { position: absolute; inset-inline-start: -9999px; top: 8px; z-index: 2000; background: var(--panel); color: var(--text); border: 2px solid var(--text); padding: 8px 14px; font-size: var(--fs-body); font-weight: 700; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: .08em; }
+        .skip-link:focus { inset-inline-start: 8px; }
+        /* The view heading is structure first: it names the page for assistive tech and
+           tells anyone arriving from the rail where they just landed. */
+        .view-title { font-family: var(--font-mono); font-size: var(--fs-title); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text); padding-bottom: 8px; border-bottom: 1px solid var(--border2); margin-bottom: 14px; }
+        .view-title:focus { outline: none; }
+        .view-title:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 @media (max-width: 600px) { .app-shell { flex-direction: column; } .tabbar { flex-direction: row; width: 100%; min-width: 0; border-right: none; border-bottom: 1px solid var(--border2); padding: 0 8px; overflow-x: auto; } .tabbtn { border-left: none; border-bottom: 3px solid transparent; padding: 10px 14px; white-space: nowrap; overflow: visible; text-overflow: clip; flex-shrink: 0; } .tabbtn.active { border-left: none; border-bottom-color: var(--accent); } .nav-group { border-bottom: none; } .nav-group-h { display: none; } .nav-group .tabbtn { padding: 10px 14px; } .nav-group .tabbtn::before { display: none; } }
-        .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        /* Tablet: a fixed 208px rail eats 27% of a 768px screen and squeezes the tables into
+           horizontal scroll. Below 900px the rail becomes the same horizontal strip the phone
+           uses, so the content column keeps its columns. */
+        @media (max-width: 900px) {
+            .app-shell { flex-direction: column; }
+            .tabbar { flex-direction: row; width: 100%; min-width: 0; border-right: none; border-bottom: 1px solid var(--border2); padding: 0 10px; overflow-x: auto; overflow-y: hidden; }
+            .tabbtn { border-left: none; border-bottom: 3px solid transparent; padding: 10px 14px; white-space: nowrap; overflow: visible; text-overflow: clip; flex-shrink: 0; }
+            .tabbtn.active { border-left: none; border-bottom-color: var(--accent); }
+            .nav-group { border-bottom: none; flex: 0 0 auto; }
+            .nav-group-h { display: none; }
+            .nav-group .tabbtn { padding: 10px 14px; }
+            .nav-group .tabbtn::before { display: none; }
+        }
+        .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
         @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
-        .box { background: var(--panel); border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
-        .box-h { padding: 9px 14px; background: var(--panel2); border-bottom: 1px solid var(--border); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); display: flex; align-items: center; gap: 8px; }
-        .box-b { padding: 12px 14px; }
-        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
-        .mon-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 14px; }
-        .mon-stat-group { background: var(--panel); border: 1px solid var(--border); border-radius: 7px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
-        .mon-stat-group-h { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); padding-bottom: 6px; border-bottom: 1px solid var(--border); }
-        .mon-stat-group .stat { padding: 4px 0; border: none; background: none; }
-        .mon-stat-group .stat .v { font-size: 15px; }
-        .mon-stat-group .stat .v .badge { font-size: 13px; }
-        .stat { background: var(--panel); border: 1px solid var(--border); border-radius: 7px; padding: 11px 13px; }
-        .alarm-bar { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-radius: 7px; margin-bottom: 14px; font-size: 12px; font-weight: 600; }
-        .alarm-bar.ok { background: rgba(52,211,153,.1); border: 1px solid rgba(52,211,153,.3); color: var(--good); }
-        .alarm-bar.warning { background: rgba(251,191,36,.1); border: 1px solid rgba(251,191,36,.3); color: var(--warn); }
-        .alarm-bar.bad { background: rgba(248,113,113,.1); border: 1px solid rgba(248,113,113,.3); color: var(--bad); }
-        .first-run-banner { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 7px; margin-bottom: 12px; font-size: 12px; background: rgba(56,189,248,.08); border: 1px solid rgba(56,189,248,.3); color: var(--text); }
-        .session-warn-banner { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 7px; margin-bottom: 12px; font-size: 12px; font-weight: 600; background: rgba(245,158,11,.12); border: 1px solid rgba(245,158,11,.45); color: var(--text); }
+        /* A section is a ruled block of paper, not a floating card. */
+        .box { background: var(--panel); border: 1px solid var(--border); border-top: 2px solid var(--text); border-radius: 0; overflow: hidden; }
+        .box-h { padding: 8px 12px; background: none; border-bottom: 1px solid var(--border2); font-size: var(--fs-micro); font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: var(--muted-strong); display: flex; align-items: center; gap: 8px; font-family: var(--font-mono); }
+        .box-b { padding: 12px; }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0 16px; margin-bottom: 16px; }
+        .mon-stats { display: block; gap: 0; margin-bottom: 16px; background: var(--panel); border: 1px solid var(--border); border-top: 2px solid var(--text); }
+        .mon-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+        .mon-row + .mon-row { border-top: 1px solid var(--border2); }
+        /* A lead cell's state stamp is its largest object; the static update rate
+           is a secondary value, not the headline. */
+        .mon-lead .stat .v { font-size: var(--fs-title); }
+        .mon-lead .stat .v .badge { font-size: var(--fs-value); padding: 1px 6px; letter-spacing: -.02em; }
+        .mon-stat-group { background: none; border: none; border-right: 1px solid var(--border); border-radius: 0; padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 0; }
+        .mon-stat-group:last-child { border-right: none; }
+        .mon-stat-group-h { font-size: var(--fs-micro); font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); padding-bottom: 7px; margin-bottom: 2px; border-bottom: 1px solid var(--border2); font-family: var(--font-mono); }
+        .mon-stat-group .stat { padding: 9px 0 8px; border: none; border-bottom: 1px solid var(--border); background: none; }
+        .mon-stat-group .stat:last-child { border-bottom: none; padding-bottom: 0; }
+        /* The lead row gives every column one prominent token: a state stamp or a reading. */
+        .stat { background: none; border: none; border-bottom: 1px solid var(--border); border-radius: 0; padding: 10px 0 9px; }
+        .alarm-bar { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 0; margin-bottom: 14px; font-size: var(--fs-body); font-weight: 600; border-left-width: 3px; border-left-style: solid; }
+        .alarm-bar.ok { background: var(--good-bg); border: 1px solid var(--good-border); border-left: 3px solid var(--good); color: var(--good-text); }
+        .alarm-bar.warning { background: var(--warn-bg); border: 1px solid var(--warn-border); border-left: 3px solid var(--warn); color: var(--warn-text); }
+        .alarm-bar.bad { background: var(--bad-bg); border: 1px solid var(--bad-border); border-left: 3px solid var(--bad); color: var(--bad-text); }
+        .first-run-banner { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: 0; margin-bottom: 12px; font-size: var(--fs-body); background: var(--info-bg); border: 1px solid var(--info-border); border-left: 3px solid var(--info); color: var(--text); }
+        .session-warn-banner { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: 0; margin-bottom: 12px; font-size: var(--fs-body); font-weight: 600; background: var(--warn-bg); border: 1px solid var(--warn-border); border-left: 3px solid var(--warn); color: var(--warn-text); }
         .first-run-banner button { margin-left: auto; }
-        .port-banner { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 7px; margin-bottom: 12px; font-size: 12px; font-weight: 600; background: rgba(251,191,36,.1); border: 1px solid rgba(251,191,36,.3); color: var(--warn); }
+        .port-banner { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: 0; margin-bottom: 12px; font-size: var(--fs-body); font-weight: 600; background: var(--warn-bg); border: 1px solid var(--warn-border); border-left: 3px solid var(--warn); color: var(--warn-text); }
         .port-banner button { margin-left: auto; }
         .session-warn-banner button { margin-left: auto; }
-        .stat .k { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
-        .stat .v { margin-top: 6px; font-size: 16px; font-weight: 700; line-height: 1.1; }
-        .stat .s { margin-top: 4px; color: var(--muted); font-size: 11px; }
-        .mini-meter { margin-top: 7px; }
-        .mini-meter-track { height: 6px; border-radius: 999px; background: var(--panel2); border: 1px solid var(--border); overflow: hidden; }
+        .stat .k { color: var(--muted); font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .09em; font-family: var(--font-mono); font-weight: 600; }
+        .stat .v { margin-top: 5px; font-size: var(--fs-title); font-weight: 700; line-height: 1.15; font-family: var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+        .stat .s { margin-top: 5px; color: var(--muted); font-size: var(--fs-micro); overflow-wrap: break-word; }
+        .mini-meter { margin-top: 8px; }
+        .mini-meter-track { height: 8px; border-radius: 0; background: var(--paper); border: 1px solid var(--border2); overflow: hidden; }
         .mini-meter-fill { height: 100%; width: 0%; background: var(--good); transition: width .2s ease, background-color .2s ease; }
         .mini-meter-fill.warn { background: var(--warn); }
         .mini-meter-fill.bad { background: var(--bad); }
-        .badge { display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; }
-        .badge::before { content:''; width:6px; height:6px; border-radius:50%; background:currentColor; }
-        .badge.good { color: var(--good); background: rgba(52,211,153,.12); }
-        .badge.bad { color: var(--bad); background: rgba(248,113,113,.12); }
-        .badge.warn { color: var(--warn); background: rgba(251,191,36,.12); }
-        .badge.partial { color: var(--accent); background: rgba(56,189,248,.12); }
-        table { width: 100%; border-collapse: collapse; }
+        /* Stamps: square swatch + name, never color alone. */
+        .badge { display: inline-flex; align-items: center; gap: 5px; padding: 0 6px; border-radius: 2px; font-size: var(--fs-micro); font-weight: 700; font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-transform: uppercase; letter-spacing: .04em; border: 1px solid currentColor; }
+        .badge::before { content:''; width:5px; height:5px; border-radius:0; background:currentColor; }
+        .badge.good { color: var(--good); background: var(--good-bg); }
+        .badge.bad { color: var(--bad); background: var(--bad-bg); }
+        .badge.warn { color: var(--warn); background: var(--warn-bg); }
+        .badge.partial { color: var(--info); background: var(--info-bg); }
+        table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
         .values-wrap { overflow-x: auto; }
-        .values-table { table-layout: fixed; }
-        .values-table th { padding: 7px 10px; font-size: 10px; }
-        .values-table td { padding: 7px 10px; font-size: 12px; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
-        .values-table code, .values-table .mono { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+        .values-table { table-layout: fixed; min-width: 720px; }
+        .values-table th { padding: 7px 10px; font-size: var(--fs-micro); position: sticky; top: 0; background: var(--panel); z-index: 1; }
+        .values-table td { padding: 6px 10px; font-size: var(--fs-body); line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
+        .values-table code, .values-table .mono { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-body); }
         .values-table .quality { display: inline-flex; align-items: center; gap: 6px; }
-        .values-table .timestamp { color: var(--muted); font-size: 11px; }
+        .values-table .timestamp { color: var(--muted); font-size: var(--fs-micro); }
         .field { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
         .field:last-child { margin-bottom: 0; }
-        label.fl { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; width: 86px; flex-shrink: 0; }
-        select, input[type=text], input[type=password] { background: var(--bg); color: var(--text); border: 1px solid var(--border2); border-radius: 5px; padding: 6px 9px; font-size: 13px; }
+        label.fl { color: var(--muted); font-size: var(--fs-micro); font-weight: 600; text-transform: uppercase; letter-spacing: .08em; width: 92px; flex-shrink: 0; font-family: var(--font-mono); }
+        select, input[type=text], input[type=password] { background: var(--panel); color: var(--text); border: 1px solid var(--border2); border-radius: 2px; padding: 5px 8px; font-size: var(--fs-body); font-family: var(--font-ui); }
+        input[type=number] { background: var(--panel); color: var(--text); border: 1px solid var(--border2); border-radius: 2px; padding: 5px 8px; font-size: var(--fs-body); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
         input[type=text], input[type=password], select { min-width: 140px; }
-        input:disabled, select:disabled { opacity: .72; cursor: not-allowed; }
-        .btn { display: inline-flex; align-items: center; gap: 6px; background: var(--accent); color: #07121a; border: none; border-radius: 5px; padding: 6px 13px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
-        .btn.ghost { background: var(--panel2); color: var(--text); border: 1px solid var(--border2); }
-        .hint, .msg { font-size: 12px; color: var(--muted); }
-        .list { display: flex; flex-direction: column; gap: 4px; max-height: 380px; overflow-y: auto; }
-        .breadcrumb { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; padding: 6px 10px; background: var(--bg); border: 1px solid var(--border2); border-radius: 5px; font-size: 12px; min-height: 32px; }
-        .breadcrumb a { color: var(--accent); cursor: pointer; text-decoration: none; }
-        .breadcrumb a:hover { text-decoration: underline; }
+        input:disabled, select:disabled { background: var(--panel2); color: var(--muted); cursor: not-allowed; }
+        select:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; border-color: var(--text); }
+        .btn { display: inline-flex; align-items: center; gap: 6px; background: var(--text); color: var(--panel); border: 1px solid var(--text); border-radius: 2px; padding: 5px 12px; font-size: var(--fs-body); font-weight: 600; cursor: pointer; white-space: nowrap; font-family: var(--font-ui); }
+        .btn:hover { background: var(--btn-hover); }
+        .btn.ghost { background: transparent; color: var(--text); border: 1px solid var(--border2); }
+        .btn.ghost:hover { background: var(--panel2); border-color: var(--text); }
+        .btn:disabled, .btn[disabled] { opacity: .45; cursor: not-allowed; }
+        .btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+        .hint, .msg { font-size: var(--fs-body); color: var(--muted); }
+        .list { display: flex; flex-direction: column; gap: 0; max-height: 380px; overflow-y: auto; }
+        .breadcrumb { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; padding: 5px 10px; background: var(--panel2); border: 1px solid var(--border2); border-radius: 0; font-size: var(--fs-body); min-height: 32px; font-family: var(--font-mono); }
+        .breadcrumb a { color: var(--text); cursor: pointer; text-decoration: underline; text-underline-position: from-font; text-decoration-thickness: from-font; text-underline-offset: 2px; }
+        .breadcrumb a:hover { background: var(--text); color: var(--panel); text-decoration: none; }
         .breadcrumb .sep { color: var(--muted); }
         .breadcrumb .current { color: var(--text); font-weight: 600; }
         .tag-browser-toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; align-items: center; }
         .tag-browser-toolbar .msg { flex: 1; }
-        .li .icon { font-size: 14px; flex-shrink: 0; width: 18px; text-align: center; }
+        .li .icon { font-size: var(--fs-title); flex-shrink: 0; width: 20px; text-align: center; }
         .li .icon.folder { color: var(--warn); }
-        .li .icon.tag { color: var(--accent); }
+        .li .icon.tag { color: var(--ink2); }
         .li .icon.mapped { color: var(--good); }
         .li .li-actions { margin-left: auto; display: flex; gap: 6px; align-items: center; }
-        .li .mapped-badge { font-size: 10px; color: var(--good); background: rgba(52,211,153,.12); padding: 1px 7px; border-radius: 10px; font-weight: 600; }
-        .add-mapping-box { background: var(--bg); border: 1px solid var(--border2); border-radius: 5px; padding: 10px 12px; margin-bottom: 10px; }
+        .li .mapped-badge { font-size: var(--fs-micro); color: var(--good); border: 1px solid var(--good); background: var(--good-bg); padding: 0 5px; border-radius: 2px; font-weight: 700; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: .04em; }
+        .add-mapping-box { background: var(--panel2); border: 1px solid var(--border2); border-left: 3px solid var(--text); border-radius: 0; padding: 10px 12px; margin-bottom: 10px; }
         .add-mapping-box .field { margin-bottom: 8px; }
         .add-mapping-box .field:last-child { margin-bottom: 0; }
-        .li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 5px; border: 1px solid var(--border); background: var(--panel2); }
-        .li .n { font-size: 13px; font-weight: 600; }
-        .li .p { font-size: 11px; color: var(--muted); font-family: 'Consolas', monospace; }
-        .li .li-desc { color: var(--muted); font-size: 13px; cursor: help; flex-shrink: 0; }
-        .li .li-desc:hover { color: var(--accent); }
+        .li { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 0; border: none; border-bottom: 1px solid var(--border); background: none; }
+        .li .n { font-size: var(--fs-body); font-weight: 600; }
+        .li .p { font-size: var(--fs-micro); color: var(--muted); font-family: var(--font-mono); }
+        .li .li-desc { color: var(--muted); font-size: var(--fs-body); cursor: help; flex-shrink: 0; }
+        .li .li-desc:hover { color: var(--text); }
         .li.clickable { cursor: pointer; }
-        .li.clickable:hover { border-color: var(--accent); }
+        .li.clickable:hover { background: var(--panel2); box-shadow: inset 3px 0 0 var(--text); }
+        .li:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; background: var(--panel2); }
         .li .li-badge { margin-left: auto; display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; overflow: hidden; min-width: 0; }
         .li .li-badge-clip { display: flex; align-items: center; gap: 6px; overflow: hidden; min-width: 0; mask-image: linear-gradient(to right, black calc(100% - 14px), transparent); -webkit-mask-image: linear-gradient(to right, black calc(100% - 14px), transparent); }
         .li .li-badge-status { flex-shrink: 0; margin-left: 2px; display: flex; align-items: center; }
-        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 1000; justify-content: center; align-items: center; }
+        .modal-overlay { display: none; position: fixed; inset: 0; background: var(--overlay); z-index: 1000; justify-content: center; align-items: center; padding: 16px; }
         .modal-overlay.open { display: flex; }
-        .modal { background: var(--panel); border: 1px solid var(--border2); border-radius: 8px; width: min(560px, 92vw); max-height: 90vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,.4); }
-        .modal-h { display: flex; align-items: start; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
-        .modal-h .n { font-size: 15px; font-weight: 700; }
-        .modal-h .p { font-size: 11px; color: var(--muted); font-family: 'Consolas', monospace; margin-top: 4px; }
-        .modal-close { background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer; padding: 0 4px; line-height: 1; }
-        .modal-close:hover { color: var(--text); }
+        .modal { background: var(--panel); border: 1px solid var(--text); border-top: 3px solid var(--text); border-radius: 0; width: min(560px, 92vw); max-height: 90vh; overflow-y: auto; box-shadow: none; }
+        .modal-h { display: flex; align-items: start; justify-content: space-between; gap: 12px; padding: 13px 16px; border-bottom: 1px solid var(--border2); }
+        .modal-h .n { font-size: var(--fs-title); font-weight: 700; letter-spacing: -.01em; }
+        .modal-h .p { font-size: var(--fs-micro); color: var(--muted); font-family: var(--font-mono); margin-top: 4px; }
+        .modal-close { background: none; border: 1px solid transparent; color: var(--muted); font-size: var(--fs-value); cursor: pointer; padding: 0 6px; line-height: 1.3; border-radius: 2px; font-family: var(--font-mono); }
+        .modal-close:hover { color: var(--text); border-color: var(--border2); }
+        .modal-close:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
         .modal-b { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
-        .fp-subtabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
-        .fp-subtab { background: none; border: none; border-bottom: 2px solid transparent; color: var(--muted); padding: 8px 14px; font-size: 12px; font-weight: 600; cursor: pointer; }
-        .fp-subtab:hover { color: var(--text); }
-        .fp-subtab.active { color: var(--accent); border-bottom-color: var(--accent); }
+        .fp-subtabs { display: flex; gap: 0; border-bottom: 1px solid var(--border2); margin-bottom: 12px; }
+        .fp-subtab { background: none; border: none; border-bottom: 2px solid transparent; color: var(--muted); padding: 7px 13px; font-size: var(--fs-body); font-weight: 600; cursor: pointer; font-family: var(--font-ui); }
+        .fp-subtab:hover { color: var(--text); background: var(--panel2); }
+        .fp-subtab.active { color: var(--text); border-bottom-color: var(--text); }
+        .fp-subtab:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
         .fp-tabpane { display: flex; flex-direction: column; gap: 10px; }
         .fp-tabpane .field { margin-bottom: 0; }
         .fp-body { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
         .fp-body.with-flow { grid-template-columns: 1fr auto 1fr; align-items: stretch; }
         .il-flow { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; cursor: help; user-select: none; padding: 0 2px; }
-        .il-flow .il-arrow { font-size: 22px; line-height: 1; color: var(--accent); }
-        .il-flow .il-flow-hint { font-size: 8px; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+        .il-flow .il-arrow { font-size: var(--fs-value); line-height: 1; color: var(--text); }
+        .il-flow .il-flow-hint { font-size: var(--fs-micro); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); font-family: var(--font-mono); }
         .mapping-toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; align-items: center; }
         @media (max-width: 520px) { .fp-body { grid-template-columns: 1fr; } .fp-body.with-flow { grid-template-columns: 1fr; } .il-flow .il-arrow { transform: rotate(90deg); } }
-        .fp-panel { background: var(--bg); border: 1px solid var(--border2); border-radius: 6px; padding: 12px 13px; }
-        .fp-k { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 7px; }
-        .fp-v { font-size: 22px; font-weight: 700; line-height: 1.1; word-break: break-word; }
-        .fp-meta { margin-top: 10px; color: var(--muted); font-size: 11px; display: flex; flex-direction: column; gap: 5px; }
-        .fp-input { width: 100%; min-width: 0; font-size: 16px; }
-        .fp-hint { margin-top: 7px; color: var(--muted); font-size: 11px; }
-        .modal-f { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 12px 16px; border-top: 1px solid var(--border); }
+        .fp-panel { background: var(--panel2); border: 1px solid var(--border2); border-radius: 0; padding: 12px; }
+        .fp-k { color: var(--muted); font-size: var(--fs-micro); font-weight: 700; text-transform: uppercase; letter-spacing: .09em; margin-bottom: 7px; font-family: var(--font-mono); }
+        .fp-v { font-size: var(--fs-read); font-weight: 700; line-height: 1.15; word-break: break-word; font-family: var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+        .fp-meta { margin-top: 10px; color: var(--muted); font-size: var(--fs-micro); display: flex; flex-direction: column; gap: 5px; }
+        .fp-input { width: 100%; min-width: 0; font-size: var(--fs-title); }
+        .fp-hint { margin-top: 7px; color: var(--muted); font-size: var(--fs-micro); }
+        .modal-f { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 12px 16px; border-top: 1px solid var(--border2); background: var(--panel2); }
         .modal-f .field { margin-bottom: 0; flex: 1; min-width: 200px; }
+        /* A footer status shares the row and wraps inside itself, so a long error
+           never pushes a button onto a line of its own. */
+        .modal-f .msg { flex: 1 1 0; min-width: 0; }
         .modal-f .btn { margin-left: auto; }
         .modal-f .btn + .btn { margin-left: 0; }
         .modal.wizard { width: 480px; max-width: 94vw; }
-        .wizard-steps { display: flex; gap: 6px; padding: 10px 14px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
-        .wizard-step, .wzdrv-step { font-size: 11px; color: var(--muted); padding: 3px 8px; border-radius: 4px; }
-        .wizard-step.active, .wzdrv-step.active { color: var(--accent); background: rgba(56,189,248,.12); }
+        .wizard-steps { display: flex; gap: 0; padding: 0; border-bottom: 1px solid var(--border2); flex-wrap: wrap; }
+        .wizard-step, .wzdrv-step { font-size: var(--fs-micro); color: var(--muted); padding: 8px 12px; border-radius: 0; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: .07em; border-right: 1px solid var(--border); }
+        .wizard-step.active, .wzdrv-step.active { color: var(--panel); background: var(--text); }
         .wizard-step.done, .wzdrv-step.done { color: var(--good); }
-        .wizard-body { padding: 14px; max-height: 60vh; overflow-y: auto; }
+        .wizard-body { padding: 15px; max-height: 60vh; overflow-y: auto; }
         .wizard-pane, .wzdrv-pane { display: none; }
         .wizard-pane.active, .wzdrv-pane.active { display: block; }
-        .wizard-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--border); }
-        .wizard-summary { font-size: 12px; line-height: 1.6; }
+        .wizard-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 11px 15px; border-top: 1px solid var(--border2); background: var(--panel2); }
+        .wizard-summary { font-size: var(--fs-body); line-height: 1.7; }
         .wizard-summary b { color: var(--text); }
-        .endpoint { background: var(--bg); border: 1px solid var(--border2); border-radius: 5px; padding: 7px 11px; font-family: 'Consolas', monospace; font-size: 12px; color: var(--accent); word-break: break-all; }
-        .split { display: grid; grid-template-columns: 1.2fr 1fr; gap: 12px; }
+        .endpoint { background: var(--panel2); border: 1px solid var(--border2); border-left: 3px solid var(--text); border-radius: 0; padding: 7px 11px; font-family: var(--font-mono); font-size: var(--fs-body); color: var(--text); word-break: break-all; }
+        .split { display: grid; grid-template-columns: 1.2fr 1fr; gap: 16px; }
         .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
         .warn { color: var(--warn); }
         .good { color: var(--good); }
         .bad { color: var(--bad); }
         .source-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
         .log-panel { display: flex; flex-direction: column; gap: 10px; }
-        .log-view { background: var(--bg); border: 1px solid var(--border2); border-radius: 6px; padding: 10px 12px; max-height: 520px; overflow: auto; font-family: 'Consolas', 'SF Mono', monospace; font-size: 12px; line-height: 1.45; }
+        .log-view { background: var(--panel); border: 1px solid var(--border2); border-radius: 0; padding: 10px 12px; max-height: 520px; overflow: auto; font-family: var(--font-mono); font-size: var(--fs-body); line-height: 1.5; }
         .log-entry { padding: 8px 0; border-bottom: 1px solid var(--border); }
         .log-entry:last-child { border-bottom: none; }
-        .log-entry .meta { color: var(--muted); font-size: 11px; margin-bottom: 4px; }
-        .rate-limit-table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 12px; }
-        .address-ranges-table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 12px; }
+        .log-entry .meta { color: var(--muted); font-size: var(--fs-micro); margin-bottom: 4px; }
+        .rate-limit-table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: var(--fs-body); }
+        .address-ranges-table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: var(--fs-body); }
         .address-ranges-table th { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
         .address-ranges-table td { padding: 4px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
-        .rate-limit-table th { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border2); color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
+        .rate-limit-table th { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border2); color: var(--muted); font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .05em; font-family: var(--font-mono); }
         .rate-limit-table td { padding: 5px 8px; border-bottom: 1px solid var(--border); }
-        .rate-limit-table td:first-child { font-weight: 600; white-space: nowrap; }
+        .rate-limit-table td:first-child { font-weight: 600; white-space: nowrap; font-family: var(--font-mono); }
         .rate-limit-table td:nth-child(2) { text-align: center; white-space: nowrap; }
 
         /* Shared data table (DA Groups etc.) */
-        .tbl { width: 100%; border-collapse: collapse; }
-        .tbl th { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border2); color: var(--muted); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; white-space: nowrap; }
-        .tbl td { padding: 6px 8px; border-bottom: 1px solid var(--border); font-size: 12px; vertical-align: middle; }
-        .tbl tbody tr:hover { background: rgba(56,189,248,.04); }
+        .tbl { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+        .tbl th { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border2); color: var(--muted); font-size: var(--fs-micro); font-weight: 700; text-transform: uppercase; letter-spacing: .08em; white-space: nowrap; font-family: var(--font-mono); }
+        .tbl td { padding: 6px 8px; border-bottom: 1px solid var(--border); font-size: var(--fs-body); vertical-align: middle; }
+        .tbl tbody tr:hover { background: var(--panel2); }
         .tbl th.num, .tbl td.num { text-align: right; }
         .tbl tfoot td { border-bottom: none; border-top: 1px solid var(--border2); padding-top: 9px; }
-        .tbl input[type=text], .tbl select { min-width: 0; height: 24px; padding: 2px 6px; font-size: 12px; }
+        .tbl input[type=text], .tbl select { min-width: 0; height: 24px; padding: 2px 6px; font-size: var(--fs-body); }
         .tbl input[type=text] { width: 130px; }
         .tbl select { width: auto; }
-        .tbl .btn { height: 24px; padding: 0 10px; font-size: 11px; }
+        .tbl .btn { height: 24px; padding: 0 10px; font-size: var(--fs-micro); }
 
         /* DA Groups source-card header */
-        .dag-src-name { font-weight: 600; font-size: 12.5px; color: var(--text); text-transform: none; letter-spacing: 0; }
-        .dag-src-meta { font-family: 'Consolas', monospace; text-transform: none; letter-spacing: 0; margin-left: 2px; }
-        .dag-src-host { margin-left: auto; font-family: 'Consolas', monospace; text-transform: none; letter-spacing: 0; }
+        .dag-src-name { font-weight: 700; font-size: var(--fs-body); color: var(--text); text-transform: none; letter-spacing: 0; }
+        .dag-src-meta { font-family: var(--font-mono); text-transform: none; letter-spacing: 0; margin-left: 2px; }
+        .dag-src-host { margin-left: auto; font-family: var(--font-mono); text-transform: none; letter-spacing: 0; }
 
         /* DA Groups v3 — card grid */
         .dag-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; }
-        .dag-card { background: var(--bg); border: 1px solid var(--border2); border-radius: 6px; padding: 9px 11px; display: flex; flex-direction: column; gap: 6px; transition: opacity .15s ease; }
-        .dag-card.default { border-color: rgba(56,189,248,.45); }
-        .dag-card .n { font-size: 12.5px; font-weight: 600; word-break: break-all; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+        .dag-card { background: var(--panel); border: 1px solid var(--border2); border-radius: 0; padding: 9px 11px; display: flex; flex-direction: column; gap: 6px; transition: opacity .15s ease; }
+        .dag-card.default { border-left: 3px solid var(--text); }
+        .dag-card .n { font-size: var(--fs-body); font-weight: 700; word-break: break-all; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-family: var(--font-mono); }
         .dag-badges { display: flex; gap: 5px; flex-wrap: wrap; }
-        .dag-badge { font-size: 10px; padding: 1px 7px; border-radius: 9px; background: var(--panel2); border: 1px solid var(--border2); color: var(--muted); white-space: nowrap; }
-        .dag-badge.accent { color: var(--accent); border-color: rgba(56,189,248,.35); }
-        .dag-meta { font-size: 11px; color: var(--muted); }
+        .dag-badge { font-size: var(--fs-micro); padding: 0 6px; border-radius: 2px; background: var(--panel2); border: 1px solid var(--border2); color: var(--muted); white-space: nowrap; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: .04em; }
+        .dag-badge.accent { color: var(--text); border-color: var(--border2); background: var(--panel2); font-weight: 700; }
+        .dag-meta { font-size: var(--fs-micro); color: var(--muted); }
         .dag-actions { display: flex; gap: 6px; margin-top: auto; align-items: center; }
-        .dag-actions .btn { height: 22px; padding: 0 9px; font-size: 11px; }
+        .dag-actions .btn { height: 22px; padding: 0 9px; font-size: var(--fs-micro); }
 
         .log-entry .message { white-space: pre-wrap; word-break: break-word; }
         .log-entry .exception { white-space: pre-wrap; word-break: break-word; margin-top: 6px; color: var(--bad); }
-        .log-entry .meta .lvl { font-weight: 600; }
+        .log-entry .meta .lvl { font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
         .log-entry .meta .lvl.trace, .log-entry .meta .lvl.debug { color: var(--muted); }
-        .log-entry .meta .lvl.information { color: var(--accent); }
+        .log-entry .meta .lvl.information { color: var(--info); }
         .log-entry .meta .lvl.warning { color: var(--warn); }
         .log-entry .meta .lvl.error, .log-entry .meta .lvl.critical { color: var(--bad); }
         .log-entry .message.error, .log-entry .message.critical { color: var(--bad); }
-        .help-subtabs, .map-type-tabs { display: flex; gap: 2px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 4px; margin-bottom: 12px; }
-        .values-subtabs { display: flex; gap: 2px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 4px; margin-bottom: 12px; width: fit-content; }
-        .values-subtab { background: none; border: none; color: var(--muted); padding: 8px 18px; font-size: 12px; font-weight: 600; cursor: pointer; border-radius: 4px; transition: all .15s ease; display: inline-flex; align-items: center; gap: 7px; }
+        /* Tab strips read as ledger tabs: square, ruled, ink when active. */
+        .help-subtabs, .map-type-tabs { display: flex; gap: 0; background: var(--panel); border: 1px solid var(--border2); border-radius: 0; padding: 0; margin-bottom: 14px; }
+        .values-subtabs { display: flex; gap: 0; background: var(--panel); border: 1px solid var(--border2); border-radius: 0; padding: 0; margin-bottom: 14px; width: fit-content; }
+        .values-subtab { background: none; border: none; border-right: 1px solid var(--border); color: var(--muted); padding: 8px 18px; font-size: var(--fs-body); font-weight: 600; cursor: pointer; border-radius: 0; transition: background-color .12s ease, color .12s ease; display: inline-flex; align-items: center; gap: 7px; font-family: var(--font-ui); }
         .values-subtab:hover { color: var(--text); background: var(--panel2); }
-        .values-subtab.active { color: var(--text); background: var(--panel2); box-shadow: 0 1px 3px rgba(0,0,0,.2); }
-        .values-subtab-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 17px; height: 15px; padding: 0 5px; border-radius: 999px; font-size: 9px; font-weight: 700; background: var(--accent); color: #07121a; }
+        .values-subtab.active { color: var(--panel); background: var(--text); }
+        .values-subtab:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+        .values-subtab-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 17px; height: 15px; padding: 0 5px; border-radius: 2px; font-size: var(--fs-micro); font-weight: 700; background: var(--text); color: var(--panel); font-family: var(--font-mono); }
+        .values-subtab.active .values-subtab-badge { background: var(--panel); color: var(--text); }
         .values-subpane { display: none; }
         .values-subpane.active { display: block; }
-        .ilf-group { background: var(--panel2); border: 1px solid var(--border); border-radius: 7px; padding: 10px 12px 8px; }
+        .ilf-group { background: var(--panel); border: 1px solid var(--border2); border-radius: 0; padding: 10px 12px 8px; }
         .ilf-prov { display: flex; align-items: center; gap: 12px; }
         .ilf-prov-val { display: flex; align-items: baseline; gap: 7px; margin-left: auto; }
         .ilf-cons { margin: 8px 0 2px 15px; padding-left: 16px; border-left: 2px solid var(--border2); display: flex; flex-direction: column; gap: 5px; }
-        .ilf-cons-row { position: relative; display: flex; align-items: center; gap: 10px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; }
+        .ilf-cons-row { position: relative; display: flex; align-items: center; gap: 10px; background: var(--panel2); border: 1px solid var(--border); border-radius: 0; padding: 6px 10px; }
         .ilf-cons-row::before { content: ''; position: absolute; left: -16px; top: 50%; width: 14px; height: 2px; background: var(--border2); }
-        .ilf-fanout { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 15px; padding: 0 6px; border-radius: 999px; font-size: 9px; font-weight: 700; background: rgba(56,189,248,.15); border: 1px solid rgba(56,189,248,.4); color: var(--accent); }
-        .help-subtab, .map-type-tab { flex: 1; background: none; border: none; color: var(--muted); padding: 8px 16px; font-size: 12px; font-weight: 600; cursor: pointer; border-radius: 4px; transition: all .15s ease; }
+        .ilf-fanout { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 15px; padding: 0 6px; border-radius: 2px; font-size: var(--fs-micro); font-weight: 700; background: var(--panel2); border: 1px solid var(--border2); color: var(--text); font-family: var(--font-mono); }
+        .help-subtab, .map-type-tab { flex: 1; background: none; border: none; border-right: 1px solid var(--border); color: var(--muted); padding: 9px 16px; font-size: var(--fs-body); font-weight: 600; cursor: pointer; border-radius: 0; transition: background-color .12s ease, color .12s ease; font-family: var(--font-ui); }
         .help-subtab:hover, .map-type-tab:hover { color: var(--text); background: var(--panel2); }
-        .help-subtab.active, .map-type-tab.active { color: var(--text); background: var(--panel2); box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+        .help-subtab.active, .map-type-tab.active { color: var(--panel); background: var(--text); }
+        .help-subtab:focus-visible, .map-type-tab:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
         .help-subtab-content { display: none; }
         .help-subtab-content.active { display: block; }
-        .help-layout { display: flex; align-items: flex-start; gap: 14px; }
-        .help-searchbar { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; }
-        .help-search { flex: 1; background: var(--panel); border: 1px solid var(--border); color: var(--text); padding: 8px 12px; border-radius: 6px; font-size: 13px; outline: none; }
-        .help-search:focus { border-color: var(--accent); }
-        .help-search-clear { background: var(--panel2); border: 1px solid var(--border); color: var(--muted); width: 32px; height: 32px; border-radius: 6px; cursor: pointer; font-size: 15px; line-height: 1; flex: none; }
-        .help-search-clear:hover { color: var(--text); background: var(--border); }
-        .help-search-loc { display: block; font-size: 9px; text-transform: uppercase; letter-spacing: .06em; opacity: .75; margin-bottom: 2px; }
-        .help-search-snippet { display: block; font-size: 10px; font-weight: 400; opacity: .8; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .help-noresults { padding: 14px; color: var(--muted); font-size: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; }
-        .help-toc { flex: 0 0 230px; display: flex; flex-direction: column; gap: 4px; position: sticky; top: 12px; }
-        .help-toc-item { text-align: left; background: var(--panel); border: 1px solid var(--border); color: var(--muted); padding: 9px 12px; font-size: 12px; font-weight: 600; cursor: pointer; border-radius: 6px; transition: all .15s ease; line-height: 1.35; }
+        .help-layout { display: flex; align-items: flex-start; gap: 16px; }
+        .help-searchbar { display: flex; align-items: center; gap: 6px; margin-bottom: 14px; }
+        .help-search { flex: 1; background: var(--panel); border: 1px solid var(--border2); color: var(--text); padding: 8px 12px; border-radius: 2px; font-size: var(--fs-body); outline: none; font-family: var(--font-ui); }
+        .help-search:focus { border-color: var(--text); }
+        .help-search:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+        .help-search-clear { background: var(--panel); border: 1px solid var(--border2); color: var(--muted); width: 34px; height: 34px; border-radius: 2px; cursor: pointer; font-size: var(--fs-title); line-height: 1; flex: none; }
+        .help-search-clear:hover { color: var(--text); background: var(--panel2); }
+        .help-search-loc { display: block; font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .08em; opacity: .8; margin-bottom: 2px; font-family: var(--font-mono); }
+        .help-search-snippet { display: block; font-size: var(--fs-micro); font-weight: 400; opacity: .85; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .help-noresults { padding: 14px; color: var(--muted); font-size: var(--fs-body); background: var(--panel); border: 1px solid var(--border2); border-radius: 0; }
+        .help-toc { flex: 0 0 230px; display: flex; flex-direction: column; gap: 0; position: sticky; top: 12px; border: 1px solid var(--border2); background: var(--panel); }
+        .help-toc-item { text-align: left; background: none; border: none; border-bottom: 1px solid var(--border); color: var(--ink2); padding: 9px 12px; font-size: var(--fs-body); font-weight: 600; cursor: pointer; border-radius: 0; transition: background-color .12s ease, color .12s ease; line-height: 1.35; font-family: var(--font-ui); }
+        .help-toc-item:last-child { border-bottom: none; }
         .help-toc-item:hover { color: var(--text); background: var(--panel2); }
-        .help-toc-item.active { color: var(--bg); background: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 75%, #000)); border-color: transparent; box-shadow: 0 2px 10px rgba(0,0,0,.35); }
-        .help-pane { flex: 1; min-width: 0; background: var(--panel); border: 1px solid var(--border); border-radius: 7px; }
+        .help-toc-item.active { color: var(--panel); background: var(--text); font-weight: 700; }
+        .help-toc-item:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+        .help-pane { flex: 1; min-width: 0; background: var(--panel); border: 1px solid var(--border2); border-top: 2px solid var(--text); border-radius: 0; }
         .help-article { display: none; }
         .help-article.active { display: block; }
-        .help-article-title { font-size: 16px; font-weight: 700; padding: 14px 16px 0; margin: 0; }
+        .help-article-title { font-size: var(--fs-value); font-weight: 700; padding: 16px 18px 0; margin: 0; letter-spacing: -.015em; }
         .help-article .help-body { padding-top: 6px; }
         @media (max-width: 800px) {
             .help-layout { flex-direction: column; }
-            .help-toc { flex-direction: row; overflow-x: auto; position: static; flex: none; width: 100%; padding-bottom: 4px; }
-            .help-toc-item { white-space: nowrap; flex: none; }
+            .help-toc { flex-direction: row; overflow-x: auto; position: static; flex: none; width: 100%; padding-bottom: 4px; border: none; background: none; }
+            .help-toc-item { white-space: nowrap; flex: none; border: 1px solid var(--border2); border-right: none; }
+            .help-toc-item:last-child { border-right: 1px solid var(--border2); }
             .help-toc-item.active { flex: none; }
         }
-        .help-body { padding: 12px 14px; }
-        .help-body ul, .help-body ol { padding-left: 18px; color: var(--muted); }
+        .help-body { padding: 12px 18px 18px; max-width: 68ch; font-size: var(--fs-body); line-height: 1.65; }
+        .help-body ul, .help-body ol { padding-left: 20px; color: var(--ink2); }
         .help-body li + li { margin-top: 6px; }
-        .help-body h4 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 12px 0 6px; }
+        .help-body h4 { font-size: var(--fs-micro); font-weight: 700; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); margin: 16px 0 6px; font-family: var(--font-mono); }
         .help-body h4:first-child { margin-top: 0; }
-        .help-body code { background: var(--bg); padding: 1px 5px; border-radius: 3px; font-size: 12px; }
-        .help-body pre { background: var(--bg); border: 1px solid var(--border2); border-radius: 6px; padding: 12px 14px; overflow-x: auto; margin: 10px 0; }
-        .help-body pre code { background: none; padding: 0; font-size: 12px; line-height: 1.5; font-family: 'Consolas', 'SF Mono', monospace; white-space: pre; color: var(--text); }
+        .help-body code { background: var(--panel2); border: 1px solid var(--border); padding: 0 4px; border-radius: 2px; font-size: var(--fs-body); font-family: var(--font-mono); }
+        .help-body pre { background: var(--panel2); border: 1px solid var(--border2); border-left: 3px solid var(--text); border-radius: 0; padding: 12px 14px; overflow-x: auto; margin: 12px 0; }
+        .help-body pre code { background: none; border: none; padding: 0; font-size: var(--fs-body); line-height: 1.55; font-family: var(--font-mono); white-space: pre; color: var(--text); }
         .help-body h1 { display: none; }
-        .help-body h2 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 14px 0 6px; }
-        .help-body h3 { font-size: 13px; margin: 14px 0 6px; }
-        .help-body p { color: var(--muted); margin: 6px 0; }
-        .help-body em { color: var(--muted); font-size: 11px; }
-        .help-body table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 12px; }
-        .help-body th { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border2); color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
+        .help-body h2 { font-size: var(--fs-title); font-weight: 700; color: var(--text); margin: 18px 0 6px; }
+        .help-body h3 { font-size: var(--fs-body); margin: 16px 0 6px; }
+        .help-body p { color: var(--ink2); margin: 8px 0; }
+        .help-body em { color: var(--muted); }
+        .help-body table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: var(--fs-body); }
+        .help-body th { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border2); color: var(--muted); font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .07em; font-family: var(--font-mono); }
         .help-body td { padding: 5px 8px; border-bottom: 1px solid var(--border); }
         .help-body td:first-child { font-weight: 600; white-space: nowrap; }
-        .kv { display: grid; grid-template-columns: 140px 1fr; gap: 8px 12px; align-items: start; }
-        .kv .k { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
-        .kv .v { word-break: break-word; }
-        @media (max-width: 1100px) { .split { grid-template-columns: 1fr; } }
-        .conn-layout { display: grid; grid-template-columns: 1.4fr 1fr; gap: 14px; align-items: start; }
+        .kv { display: grid; grid-template-columns: 150px 1fr; gap: 8px 12px; align-items: start; }
+        .kv .k { color: var(--muted); font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .08em; font-family: var(--font-mono); padding-top: 2px; }
+        .kv .v { word-break: break-word; font-family: var(--font-mono); font-size: var(--fs-body); }
+        .conn-layout { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; align-items: start; }
         @media (max-width: 1000px) { .conn-layout { grid-template-columns: 1fr; } }
-        .conn-section { padding: 10px 0; border-top: 1px solid var(--border); }
+        .conn-section { padding: 12px 0; border-top: 1px solid var(--border); }
         .conn-section:first-of-type { border-top: none; padding-top: 4px; }
-        .conn-section-h { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
-        .conn-section-h .msg { font-size: 10px; text-transform: none; letter-spacing: 0; }
-        .info { display: inline-flex; align-items: center; justify-content: center; width: 11px; height: 11px; border-radius: 50%; background: var(--panel2); border: 1px solid var(--border2); color: var(--muted); font-size: 8px; font-weight: 700; font-style: italic; cursor: help; margin-left: 3px; user-select: none; vertical-align: middle; }
-        .info:hover { color: var(--accent); border-color: var(--accent); }
-        .tip { position: fixed; z-index: 9999; background: var(--panel2); color: var(--text); border: 1px solid var(--border2); border-radius: 5px; padding: 7px 11px; font-size: 11px; font-weight: 400; line-height: 1.5; max-width: 280px; box-shadow: 0 6px 16px rgba(0,0,0,.4); pointer-events: none; opacity: 0; transition: opacity .1s ease; }
+        .conn-section-h { font-size: var(--fs-micro); font-weight: 700; text-transform: uppercase; letter-spacing: .09em; color: var(--muted-strong); margin-bottom: 9px; display: flex; align-items: center; gap: 8px; font-family: var(--font-mono); }
+        .conn-section-h .msg { font-size: var(--fs-micro); text-transform: none; letter-spacing: 0; font-family: var(--font-ui); font-weight: 400; }
+        .info { display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; border-radius: 50%; background: var(--panel); border: 1px solid var(--border2); color: var(--muted); font-size: var(--fs-micro); font-weight: 700; font-style: italic; cursor: help; margin-left: 3px; user-select: none; vertical-align: middle; font-family: var(--font-ui); }
+        .info:hover { color: var(--panel); background: var(--text); border-color: var(--text); }
+        .tip { position: fixed; z-index: 9999; background: var(--panel); color: var(--text); border: 1px solid var(--text); border-radius: 0; padding: 8px 11px; font-size: var(--fs-body); font-weight: 400; line-height: 1.55; max-width: 300px; box-shadow: none; pointer-events: none; opacity: 0; transition: opacity .1s ease; }
         .tip.show { opacity: 1; }
 
-        /* Diagram Tab Styles */
+        /* Diagram Tab Styles — a schematic drawn in ink on paper */
         .diag-toolbar {
             display: flex;
             align-items: center;
             gap: 16px;
-            padding: 12px 20px;
-            border-bottom: 1px solid var(--border);
+            padding: 10px 20px;
+            border-bottom: 1px solid var(--border2);
             background: var(--panel);
+            flex-wrap: wrap;
         }
         .diag-seg {
             position: relative;
             display: inline-flex;
             align-items: center;
-            gap: 2px;
-            padding: 3px;
-            background: var(--panel2);
-            border: 1px solid var(--border);
-            border-radius: 8px;
+            gap: 0;
+            padding: 0;
+            background: var(--panel);
+            border: 1px solid var(--border2);
+            border-radius: 0;
         }
         .seg-pill {
             position: absolute;
-            top: 3px;
-            bottom: 3px;
+            top: 0;
+            bottom: 0;
             left: 0;
             width: 0;
-            border-radius: 6px;
-            background: var(--accent);
-            background: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 75%, #000));
-            box-shadow: 0 2px 10px rgba(0,0,0,.35);
-            transition: transform .28s cubic-bezier(.22,.9,.34,1), width .28s cubic-bezier(.22,.9,.34,1);
+            border-radius: 0;
+            background: var(--text);
+            box-shadow: none;
+            transition: transform .18s ease-out, width .18s ease-out;
             pointer-events: none;
         }
         .diag-tab {
@@ -384,76 +524,90 @@ internal static class DashboardPage
             z-index: 1;
             background: transparent;
             border: none;
+            border-right: 1px solid var(--border);
             color: var(--muted);
-            padding: 6px 14px;
-            border-radius: 6px;
+            padding: 7px 14px;
+            border-radius: 0;
             cursor: pointer;
-            font-size: 12px;
+            font-size: var(--fs-body);
             font-weight: 600;
-            transition: color 0.18s;
+            transition: color 0.15s;
+            font-family: var(--font-ui);
         }
         .diag-tab:hover {
             color: var(--text);
+            background: var(--panel2);
         }
         .diag-tab.active {
-            color: var(--bg);
+            color: var(--panel);
+        }
+        .diag-tab:focus-visible {
+            outline: 2px solid var(--focus);
+            outline-offset: -2px;
         }
         .diag-zoom {
             display: flex;
             align-items: center;
-            gap: 2px;
+            gap: 0;
             margin-left: 8px;
-            padding: 3px;
-            background: var(--panel2);
-            border: 1px solid var(--border);
-            border-radius: 8px;
+            padding: 0;
+            background: var(--panel);
+            border: 1px solid var(--border2);
+            border-radius: 0;
         }
         .diag-zoom-btn {
             background: transparent;
             border: none;
-            color: var(--muted);
+            border-right: 1px solid var(--border);
+            color: var(--ink2);
             min-width: 28px;
-            height: 26px;
+            height: 30px;
             padding: 0 8px;
-            border-radius: 6px;
+            border-radius: 0;
             cursor: pointer;
-            font-size: 13px;
+            font-size: var(--fs-body);
             font-weight: 600;
             line-height: 1;
             transition: color 0.15s, background 0.15s;
+            font-family: var(--font-mono);
         }
-        .diag-zoom-btn:hover { color: var(--text); background: var(--border); }
+        .diag-zoom-btn:hover { color: var(--text); background: var(--panel2); }
+        .diag-zoom-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
         .diag-zoom-btn:disabled { opacity: 0.4; cursor: default; }
         .diag-zoom-label {
-            min-width: 44px;
+            min-width: 48px;
             text-align: center;
-            font-size: 11px;
+            font-size: var(--fs-micro);
             color: var(--muted);
             font-variant-numeric: tabular-nums;
+            font-family: var(--font-mono);
         }
         .diag-legend {
             margin-left: auto;
             display: flex;
-            gap: 16px;
-            font-size: 11px;
+            gap: 14px;
+            font-size: var(--fs-micro);
             color: var(--muted);
+            font-family: var(--font-mono);
+            text-transform: uppercase;
+            letter-spacing: .05em;
         }
         .legend-chip {
             display: inline-flex;
             align-items: center;
             gap: 6px;
-            padding: 3px 10px;
-            border-radius: 999px;
-            background: var(--panel2);
-            border: 1px solid var(--border);
+            padding: 0;
+            border-radius: 0;
+            background: none;
+            border: none;
         }
-        .legend-chip .legend-dot.good { box-shadow: 0 0 6px var(--good); }
-        .legend-chip .legend-dot.warn { box-shadow: 0 0 6px var(--warn); }
-        .legend-chip .legend-dot.bad { box-shadow: 0 0 6px var(--bad); }
+        .legend-chip .legend-dot.good { box-shadow: none; }
+        .legend-chip .legend-dot.warn { box-shadow: none; }
+        .legend-chip .legend-dot.bad { box-shadow: none; }
         .legend-dot {
             width: 8px;
             height: 8px;
-            border-radius: 50%;
+            border-radius: 0;
         }
         .legend-dot.good { background: var(--good); }
         .legend-dot.warn { background: var(--warn); }
@@ -462,10 +616,14 @@ internal static class DashboardPage
         .diag-canvas {
             flex: 1;
             overflow: auto;
-            background: var(--bg);
+            background: var(--paper);
             position: relative;
             cursor: grab;
             user-select: none;
+            border: 1px solid var(--border);
+            background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+            background-size: 24px 24px;
+            background-position: -1px -1px;
         }
         .diag-canvas.panning { cursor: grabbing; }
         .diag-zoom-host {
@@ -476,59 +634,71 @@ internal static class DashboardPage
             display: block;
             transform-origin: 0 0;
         }
+        .diag-empty rect { fill: var(--panel); }
+        /* Diagram primitives take their color from classes, not presentation
+           attributes, so the schematic follows the same tokens as the page. */
+        .dg-surface { fill: var(--panel); }
+        .dg-ink { fill: var(--text); }
+        .dg-muted { fill: var(--muted); }
+        .dg-rule { stroke: var(--border2); }
+        .dg-stop-a { stop-color: var(--panel); }
+        .dg-stop-b { stop-color: var(--panel2); }
+        .dg-drop { flood-color: var(--text); flood-opacity: .08; }
         .diag-node {
             cursor: pointer;
         }
         .diag-node > rect {
-            fill: url(#diagCardGrad);
-            filter: url(#diagDrop);
+            fill: var(--panel);
+            filter: none;
         }
         .diag-node rect {
             transition: all 0.15s;
         }
         .diag-node:hover rect {
             stroke-width: 2.5;
+            fill: var(--panel2);
         }
         .diag-node:hover text {
-            fill: #ffffff;
+            fill: var(--text);
         }
+        .diag-node:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
         .diag-node text {
             fill: var(--text);
-            font-size: 11px;
+            font-size: var(--fs-micro);
             font-family: var(--font-mono);
             pointer-events: none;
         }
         .diag-edge {
             fill: none;
-            stroke-width: 2;
-            stroke-opacity: 0.9;
+            stroke-width: 1.5;
+            stroke-opacity: 0.85;
             transition: stroke 0.3s;
         }
         .diag-edge.good { stroke: var(--good); }
         .diag-edge.warn { stroke: var(--warn); }
         .diag-edge.bad { stroke: var(--bad); }
-        .diag-edge.off { stroke: var(--muted); opacity: 0.4; }
+        .diag-edge.off { stroke: var(--border2); opacity: 0.9; }
         .diag-flow {
             fill: none;
             stroke-width: 3;
             stroke-dasharray: 8 8;
-            stroke-linecap: round;
+            stroke-linecap: butt;
             animation: flow 1s linear infinite;
         }
         .diag-flow.good { stroke: var(--good); }
         .diag-flow.warn { stroke: var(--warn); }
         .diag-flow.bad { stroke: var(--bad); }
-        .diag-flow.off { stroke: var(--muted); opacity: 0.3; animation: none; }
+        .diag-flow.off { stroke: var(--border2); opacity: 0.3; animation: none; }
         @keyframes flow {
             to { stroke-dashoffset: -16; }
         }
         .diag-tooltip {
             position: absolute;
-            background: var(--panel2);
-            border: 1px solid var(--border);
-            border-radius: 4px;
+            background: var(--panel);
+            border: 1px solid var(--text);
+            border-radius: 0;
             padding: 8px 12px;
-            font-size: 11px;
+            font-size: var(--fs-body);
             color: var(--text);
             pointer-events: none;
             opacity: 0;
@@ -550,7 +720,7 @@ internal static class DashboardPage
         }
         .diag-tooltip-value {
             font-family: var(--font-mono);
-            font-weight: 500;
+            font-weight: 600;
         }
         @media (prefers-reduced-motion: reduce) {
             .diag-node, .diag-edge, .diag-flow, .seg-pill, .diag-tooltip {
@@ -558,11 +728,65 @@ internal static class DashboardPage
                 transition: none !important;
             }
         }
+        /* One system-wide answer to reduced motion: nothing in this surface animates. */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: .001ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: .001ms !important;
+                scroll-behavior: auto !important;
+            }
+        }
+        /* Narrow screens: the rail wraps, table rows keep their own scroll. */
+        @media (max-width: 700px) {
+            .topbar { padding: 0 10px; }
+            .brand { padding-right: 10px; }
+            .pill { padding: 5px 10px; }
+            .pill .k { font-size: var(--fs-micro); }
+            .topbar .clock { margin-left: 0; border-left: none; padding-left: 0; padding-bottom: 8px; }
+            .theme-switch { margin-left: auto; border-left: none; padding-left: 10px; }
+            .view { padding: 14px 12px 48px; }
+            .box-b { padding: 10px; }
+            .mon-stat-group { border-right: none; border-bottom: 1px solid var(--border); }
+            .mon-stat-group:last-child { border-bottom: none; }
+            .modal-overlay { padding: 0; align-items: flex-start; }
+            .modal { width: 100% !important; max-width: 100%; max-height: 100vh; border-left: none; border-right: none; }
+            /* The horizontal rail must scroll, not squeeze: shrinking groups overlap their
+               own buttons and the labels collide. */
+            .tabbar { flex-wrap: nowrap; }
+            .nav-group { flex: 0 0 auto; }
+            .nav-group .tabbtn { white-space: nowrap; }
+        }
+        /* iOS Safari zooms the viewport on focus below 16px, which shifts the layout
+           sideways mid-entry. Same selectors as the base rule so the size actually wins. */
+        @media (max-width: 640px) {
+            select, input[type=text], input[type=password], input[type=number], textarea { font-size: 16px; }
+        }
+        /* Touch is physical: finger-sized hit areas wherever the pointer is coarse.
+           The visible box may stay small, so small controls expand with a pseudo-element. */
+        .btn, .tabbtn, .pill, .theme-opt, .help-toc-item, .help-subtab, .map-type-tab, .values-subtab, .fp-subtab, .diag-tab, .li.clickable { touch-action: manipulation; }
+        @media (pointer: coarse) {
+            .btn { min-height: 44px; min-width: 44px; padding: 0 14px; }
+            input[type=checkbox] { min-width: 24px; min-height: 24px; }
+            .tabbtn { min-height: 44px; }
+            .nav-group .tabbtn { padding-top: 12px; padding-bottom: 12px; }
+            .pill { min-height: 44px; }
+            .theme-opt { min-height: 44px; min-width: 44px; }
+            select, input[type=text], input[type=password], input[type=number] { min-height: 44px; }
+            .modal-close { min-width: 44px; min-height: 44px; }
+            .diag-zoom-btn { min-width: 44px; height: 44px; }
+            .help-toc-item, .help-subtab, .map-type-tab, .values-subtab, .fp-subtab, .diag-tab { min-height: 44px; }
+            .li { min-height: 44px; }
+            .dag-actions .btn, .tbl .btn, .fp-subtab { min-height: 44px; }
+            .info { position: relative; }
+            .info::after { content: ''; position: absolute; inset: -7px; }
+        }
     </style>
 </head>
 <body>
-<div class="topbar">
-    <div class="brand"><span class="dot" id="dot"></span>OPC Bridge <span class="ver" id="appVersion"></span></div>
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="topbar" role="banner">
+    <div class="brand"><span class="dot" id="dot" aria-hidden="true"></span>OPC Bridge <span class="ver" id="appVersion"></span></div>
     <div class="pills">
         <div class="pill"><span class="k">Bridge</span><span id="pBridge">&#8212;</span></div>
         <div class="pill"><span class="k">DA</span><span id="pDa">&#8212;</span></div>
@@ -571,10 +795,15 @@ internal static class DashboardPage
          <div class="pill"><span class="k">Sources</span><b id="pSources">0</b></div>
          <div class="pill"><span class="k">Apps</span><b id="pApps">1</b></div>
     </div>
+    <div class="theme-switch" role="group" aria-label="Color theme">
+        <label class="theme-opt"><input type="radio" name="theme" value="light"><svg class="theme-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>Light</label>
+        <label class="theme-opt"><input type="radio" name="theme" value="dark"><svg class="theme-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z"/></svg>Dark</label>
+        <label class="theme-opt"><input type="radio" name="theme" value="system"><svg class="theme-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/></svg>System</label>
+    </div>
     <div class="clock" id="clock">&#8212;</div>
 </div>
 <div class="app-shell">
-<div class="tabbar">
+<div class="tabbar" role="navigation" aria-label="Sections">
   <div class="nav-group">
     <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><circle cx="7" cy="7" r="1" fill="currentColor" stroke="none"/><circle cx="7" cy="17" r="1" fill="currentColor" stroke="none"/></svg>Sources</div>
     <button class="tabbtn" data-tab="connection" data-route="connectivity/sources" onclick="navigate('connectivity/sources')">Sources</button>
@@ -615,43 +844,48 @@ internal static class DashboardPage
     <button class="tabbtn" data-tab="about" data-route="help/about" onclick="navigate('help/about')">About</button>
   </div>
 </div>
-<div class="content">
+<div class="content" id="main" role="main" tabindex="-1">
 <div class="view active" id="view-monitor">
-    <div class="port-banner" id="portBanner" style="display:none"></div>
-    <div class="first-run-banner" id="bannerNoSources" style="display:none"></div>
-    <div class="first-run-banner" id="bannerNoMappings" style="display:none"></div>
-    <div class="alarm-bar" id="rateAlarmBar" style="display:none"></div>
-    <div class="session-warn-banner" id="sessionBanner" style="display:none"></div>
+    <h1 class="view-title" tabindex="-1">Monitor</h1>
+    <div class="port-banner" id="portBanner" role="status" style="display:none"></div>
+    <div class="first-run-banner" id="bannerNoSources" role="status" style="display:none"></div>
+    <div class="first-run-banner" id="bannerNoMappings" role="status" style="display:none"></div>
+    <div class="alarm-bar" id="rateAlarmBar" role="alert" style="display:none"></div>
+    <div class="session-warn-banner" id="sessionBanner" role="alert" style="display:none"></div>
     <div class="mon-stats">
+        <div class="mon-row mon-lead">
         <div class="mon-stat-group">
             <div class="mon-stat-group-h">Bridge</div>
-            <div class="stat"><div class="k">Runtime</div><div class="v" id="bridgeState">&#8212;</div><div class="s" id="lastError">No errors</div></div>
+                <div class="stat prime"><div class="k">Runtime</div><div class="v" id="bridgeState">&#8212;</div><div class="s" id="lastError">No errors</div></div>
         </div>
+        <div class="mon-stat-group">
+            <div class="mon-stat-group-h">OPC DA</div>
+                <div class="stat prime"><div class="k">Connection</div><div class="v" id="daState">&#8212;</div></div>
+            <div class="stat"><div class="k">Last Read</div><div class="v" id="lastDaRead">&#8212;</div><div class="s" id="lastDaReadCount">0 values</div></div>
+        </div>
+        <div class="mon-stat-group">
+            <div class="mon-stat-group-h">OPC UA</div>
+                <div class="stat prime"><div class="k">Server</div><div class="v" id="uaState">&#8212;</div><div class="s" id="uaClients">0 clients</div></div>
+            <div class="stat"><div class="k">Last Write</div><div class="v" id="lastUaWrite">&#8212;</div><div class="s" id="lastUaWriteCount">0 values</div></div>
+        </div>
+        <div class="mon-stat-group">
+            <div class="mon-stat-group-h">Update Rate</div>
+                <div class="stat prime"><div class="k">Default Rate</div><div class="v" id="updateRate">&#8212;</div><div class="s" id="mappingCount">0 tags</div></div>
+            <div class="stat"><div class="k">Cycle Budget</div><div class="mini-meter" aria-hidden="true"><div class="mini-meter-track"><div class="mini-meter-fill" id="pollUtilizationFill"></div></div></div><div class="s" id="pollUtilizationText">—</div><div class="s" id="pollSaturation">—</div></div>
+        </div>
+        </div>
+        <div class="mon-row mon-support">
         <div class="mon-stat-group">
             <div class="mon-stat-group-h">Ports <span class="info" data-tip="Listening ports for this bridge. When the default port is already in use by another application, the bridge auto-assigns the next free port and saves it to appsettings.json (Bridge:HttpPort / Bridge:OpcUaPort).">i</span></div>
             <div class="stat"><div class="k">HTTP</div><div class="v" id="httpPortVal">&#8212;</div><div class="s" id="httpPortNote">Dashboard + API</div></div>
             <div class="stat"><div class="k">OPC UA</div><div class="v" id="uaPortVal">&#8212;</div><div class="s" id="uaPortNote">UA server endpoint</div></div>
         </div>
         <div class="mon-stat-group">
-            <div class="mon-stat-group-h">OPC DA</div>
-            <div class="stat"><div class="k">Connection</div><div class="v" id="daState">&#8212;</div></div>
-            <div class="stat"><div class="k">Last Read</div><div class="v" id="lastDaRead">&#8212;</div><div class="s" id="lastDaReadCount">0 values</div></div>
-        </div>
-        <div class="mon-stat-group">
-            <div class="mon-stat-group-h">OPC UA</div>
-            <div class="stat"><div class="k">Server</div><div class="v" id="uaState">&#8212;</div><div class="s" id="uaClients">0 clients</div></div>
-            <div class="stat"><div class="k">Last Write</div><div class="v" id="lastUaWrite">&#8212;</div><div class="s" id="lastUaWriteCount">0 values</div></div>
-        </div>
-        <div class="mon-stat-group">
-            <div class="mon-stat-group-h">Update Rate</div>
-            <div class="stat"><div class="k">Default Rate</div><div class="v" id="updateRate">&#8212;</div><div class="s" id="mappingCount">0 tags</div></div>
-            <div class="stat"><div class="k">Cycle Budget</div><div class="mini-meter" aria-hidden="true"><div class="mini-meter-track"><div class="mini-meter-fill" id="pollUtilizationFill"></div></div></div><div class="s" id="pollUtilizationText">—</div><div class="s" id="pollSaturation">—</div></div>
-        </div>
-        <div class="mon-stat-group">
             <div class="mon-stat-group-h">Resources <span class="info" data-tip="Native Windows process counters sampled every 5s. A steady or slowly growing count is normal; a steady upward trend signals a handle or COM object leak.">i</span></div>
             <div class="stat"><div class="k">Handles <span class="info" data-tip="Total OS handles (files, registry keys, threads, events, COM objects) held by the process via GetProcessHandleCount. Typical idle: 300-800; investigate if it grows unbounded over time.">i</span></div><div class="v" id="resHandles">&#8212;</div></div>
             <div class="stat"><div class="k">GDI / USER <span class="info" data-tip="GDI objects (pens, brushes, fonts, bitmaps) and USER objects (windows, menus, hooks) via GetGuiResources. Each has a per-process limit of 10,000; approaching it indicates a GDI/USER leak.">i</span></div><div class="v" id="resGdiUser">&#8212;</div></div>
             <div class="stat"><div class="k">Assessment</div><div class="v" id="resAssessment">&#8212;</div><div class="s" id="resAssessmentDetail">Awaiting data…</div></div>
+        </div>
         </div>
     </div>
     <div class="grid2" style="margin-bottom:14px">
@@ -664,9 +898,9 @@ internal static class DashboardPage
             <div class="box-b">
                 <div class="endpoint" id="uaEndpoint">&#8212;</div>
                 <div class="msg" style="margin-top:6px;color:var(--muted)">Server bind address (0.0.0.0 = all interfaces)</div>
-                <div style="margin-top:10px"><div class="k" style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Connect from client</div><div class="endpoint" id="uaConnectUrl" style="margin-top:3px">&#8212;</div></div>
+                <div style="margin-top:10px"><div class="k" style="font-size:var(--fs-micro);text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Connect from client</div><div class="endpoint" id="uaConnectUrl" style="margin-top:3px">&#8212;</div></div>
                 <div class="msg" style="margin-top:6px;color:var(--muted)">Use this URL in your OPC UA client to connect from another machine</div>
-                <div class="msg" id="uaDiagnostics" style="margin-top:8px">0 nodes · no updates yet</div>
+                <div class="msg" id="uaDiagnostics" role="status" style="margin-top:8px">0 nodes · no updates yet</div>
             </div>
         </div>
     </div>
@@ -676,6 +910,7 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="view" id="view-values">
+    <h1 class="view-title" tabindex="-1">Live Values</h1>
     <div class="values-subtabs" role="tablist">
         <button type="button" class="values-subtab active" id="valuesSubTabLive" onclick="switchValuesSubTab('live')">Live Values</button>
         <button type="button" class="values-subtab" id="valuesSubTabFlow" onclick="switchValuesSubTab('flow')">Interlink Flow <span class="values-subtab-badge" id="ilFlowBadge" style="display:none"></span></button>
@@ -702,6 +937,7 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="view" id="view-diagnostics">
+    <h1 class="view-title" tabindex="-1">Diagnostics</h1>
     <div class="box" style="margin-bottom:14px">
         <div class="box-h">Bridge Vitals <span class="info" data-tip="Process-level metrics shown nowhere else: uptime, aggregate values/sec through the bridge, duration of the most recent DA poll cycle, and the Windows session hosting the DA servers. Connection states, counters and last-error live on ops/monitor.">i</span><span class="msg" id="diagHealthUpdated" style="margin-left:auto"></span></div>
         <div class="box-b">
@@ -738,11 +974,11 @@ internal static class DashboardPage
     <div class="grid2" style="margin-bottom:14px">
         <div class="box">
             <div class="box-h">Disconnected Tags <span class="info" data-tip="UA monitored items whose creation failed and are being retried automatically. Common causes: the item disappeared from the source, or the source connection dropped.">i</span><span class="msg" id="diagDiscCount" style="margin-left:auto"></span></div>
-            <div class="box-b"><div class="list" id="diagDisconnected" style="max-height:220px"><span class="msg">Loading…</span></div></div>
+            <div class="box-b"><div class="list" id="diagDisconnected" style="max-height:220px"><span class="msg">Loading disconnected tags…</span></div></div>
         </div>
         <div class="box">
             <div class="box-h">Bad Quality Tags <span class="info" data-tip="Mapped tags currently delivering a non-good quality from their source. The count reflects all affected tags; the list shows up to 50.">i</span><span class="msg" id="diagBadCount" style="margin-left:auto"></span></div>
-            <div class="box-b"><div class="list" id="diagBadQuality" style="max-height:220px"><span class="msg">Loading…</span></div></div>
+            <div class="box-b"><div class="list" id="diagBadQuality" style="max-height:220px"><span class="msg">Loading bad-quality tags…</span></div></div>
         </div>
     </div>
     <div class="grid2">
@@ -757,27 +993,28 @@ internal static class DashboardPage
         </div>
         <div class="box">
             <div class="box-h">STA Thread Health <span class="info" data-tip="Each OPC DA source has a dedicated Single-Threaded Apartment (STA) thread. All COM calls for that source serialize through it. 'Queued' shows pending COM operations; 'Last action' shows the most recent COM call time.">i</span></div>
-            <div class="box-b"><div class="list" id="diagStaThreads" style="max-height:280px"><span class="msg">Loading…</span></div></div>
+            <div class="box-b"><div class="list" id="diagStaThreads" style="max-height:280px"><span class="msg">Loading STA thread health…</span></div></div>
         </div>
     </div>
 </div>
 <div class="view" id="view-sessions">
+    <h1 class="view-title" tabindex="-1">Sessions</h1>
     <div class="box" style="margin-bottom:14px">
         <div class="box-h">Source Diagnostics <span class="info" data-tip="Health of every configured source — OPC DA, OPC UA, and driver sources (Melsec, S7, MX Component). Shows connection state, read latency, rate-group budget for polled sources, the last fault reason, and data freshness.">i</span><span class="msg" id="diagDaSummary" style="margin-left:auto"></span></div>
-        <div class="box-b" id="diagDaSources"><span class="msg">Loading…</span></div>
+        <div class="box-b" id="diagDaSources"><span class="msg">Loading source diagnostics…</span></div>
     </div>
     <div class="box" style="margin-bottom:14px">
         <div class="box-h">Time Sync <span class="info" data-tip="OPC DA sources only: compares the DA server's clock to the bridge machine's clock. A large offset (>500ms) indicates the DA server or bridge needs NTP time sync. UA clients receive both SourceTimestamp (DA server time) and ServerTimestamp (bridge time) for each value. UA and driver sources have no DA clock and show —.">i</span></div>
-        <div class="box-b"><div class="list" id="diagTimeSync"><span class="msg">Loading…</span></div></div>
+        <div class="box-b"><div class="list" id="diagTimeSync"><span class="msg">Loading time sync status…</span></div></div>
     </div>
     <div class="grid2" style="margin-bottom:14px">
         <div class="box">
             <div class="box-h">UA Sessions <span class="msg" id="diagUaSessionCount" style="margin-left:auto"></span></div>
-            <div class="box-b"><div class="list" id="diagUaSessions" style="max-height:300px"><span class="msg">Loading…</span></div></div>
+            <div class="box-b"><div class="list" id="diagUaSessions" style="max-height:300px"><span class="msg">Loading UA sessions…</span></div></div>
         </div>
         <div class="box">
             <div class="box-h">UA Subscriptions <span class="msg" id="diagUaSubCount" style="margin-left:auto"></span></div>
-            <div class="box-b"><div class="list" id="diagUaSubscriptions" style="max-height:300px"><span class="msg">Loading…</span></div></div>
+            <div class="box-b"><div class="list" id="diagUaSubscriptions" style="max-height:300px"><span class="msg">Loading UA subscriptions…</span></div></div>
         </div>
     </div>
     <div class="box">
@@ -791,6 +1028,7 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="view" id="view-connection">
+    <h1 class="view-title" tabindex="-1">Sources</h1>
     <div class="box">
         <div class="box-h">Sources <button class="btn" type="button" onclick="openAddSourceWizard()" style="margin-left:auto">+ Add Source</button></div>
         <div class="box-b">
@@ -800,21 +1038,22 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="view" id="view-opc-da">
+    <h1 class="view-title" tabindex="-1">OPC DA</h1>
     <div class="conn-layout">
         <div class="conn-main">
             <div class="box">
-                <div class="box-h">OPC DA Configuration <button class="btn" type="button" onclick="openAddSourceWizard()" style="margin-left:auto">+ Add Source</button><span class="msg" id="cfgMessage" style="font-weight:400;text-transform:none;letter-spacing:0">Select a saved connection or click New.</span></div>
+                <div class="box-h">OPC DA Configuration <button class="btn" type="button" onclick="openAddSourceWizard()" style="margin-left:auto">+ Add Source</button><span class="msg" id="cfgMessage" role="status" style="font-weight:400;text-transform:none;letter-spacing:0">Select a saved connection or click New.</span></div>
                 <div class="box-b">
-                    <div class="field"><label class="fl">Selected</label><select id="selectedSource"></select></div>
+                    <div class="field"><label class="fl" for="selectedSource">Selected</label><select id="selectedSource"></select></div>
                     <div class="conn-section">
                         <div class="conn-section-h">Identity</div>
-                        <div class="field"><label class="fl">Source ID <span class="info" data-tip="Unique key with no spaces. Used internally and in UA Node IDs (ns=2;s={sourceId}/...).">i</span></label><input id="cfgSourceId" type="text" placeholder="server-a" style="flex:1"></div>
-                        <div class="field"><label class="fl">Name <span class="info" data-tip="Friendly label shown in lists and the Tags tab.">i</span></label><input id="cfgDisplayName" type="text" placeholder="Production Line A" style="flex:1"></div>
+                        <div class="field"><label class="fl" for="cfgSourceId">Source ID <span class="info" data-tip="Unique key with no spaces. Used internally and in UA Node IDs (ns=2;s={sourceId}/...).">i</span></label><input id="cfgSourceId" type="text" placeholder="server-a" style="flex:1"></div>
+                        <div class="field"><label class="fl" for="cfgDisplayName">Name <span class="info" data-tip="Friendly label shown in lists and the Tags tab.">i</span></label><input id="cfgDisplayName" type="text" placeholder="Production Line A" style="flex:1"></div>
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">Server Address</div>
-                        <div class="field"><label class="fl">ProgID <span class="info" data-tip="Programmatic ID of the OPC DA server (e.g. Matrikon.OPC.Simulation.1). Pick from the Discover panel on the right.">i</span></label><input id="cfgProgId" type="text" placeholder="Matrikon.OPC.Simulation.1" style="flex:1"></div>
-                        <div class="field"><label class="fl">Host <span class="info" data-tip="Machine where the OPC DA server runs. Use 'localhost' for this PC, or an IP/hostname for remote.">i</span></label><input id="cfgHost" type="text" placeholder="localhost" style="flex:1"></div>
+                        <div class="field"><label class="fl" for="cfgProgId">ProgID <span class="info" data-tip="Programmatic ID of the OPC DA server (e.g. Matrikon.OPC.Simulation.1). Pick from the Discover panel on the right.">i</span></label><input id="cfgProgId" type="text" placeholder="Matrikon.OPC.Simulation.1" style="flex:1"></div>
+                        <div class="field"><label class="fl" for="cfgHost">Host <span class="info" data-tip="Machine where the OPC DA server runs. Use 'localhost' for this PC, or an IP/hostname for remote.">i</span></label><input id="cfgHost" type="text" placeholder="localhost" style="flex:1"></div>
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">Detected Server <span class="info" data-tip="Identified on connect: OPC DA spec level (1.0/2.0/3.0, probed from the server-object marker interfaces) plus the server's own version and vendor string (IOPCServer.GetStatus).">i</span></div>
@@ -824,24 +1063,24 @@ internal static class DashboardPage
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">Credentials <span class="info" data-tip="Only required for remote DCOM with specific user accounts, or to access OPC DA servers registered in another user's profile.">i</span></div>
-                        <div class="field"><label class="fl">User</label><input id="cfgUser" type="text" placeholder="username" style="flex:1"><input id="cfgPass" type="password" placeholder="password" style="flex:1"><input id="cfgDomain" type="text" placeholder="domain" style="flex:1"></div>
+                        <div class="field"><label class="fl" for="cfgUser">User</label><input id="cfgUser" type="text" placeholder="username" aria-label="User name" style="flex:1"><input id="cfgPass" type="password" placeholder="password" aria-label="Password" style="flex:1"><input id="cfgDomain" type="text" placeholder="domain" aria-label="Domain" style="flex:1"></div>
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">Default Update Rate <span class="info" data-tip="Fixed at 1000 ms. This is the fallback rate for tags set to 'Source Default'. For other cadences use Sources → PLC Groups (named groups per rate) or a specific per-tag Update Rate.">i</span></div>
-                        <div class="field"><label class="fl">Rate</label><select id="cfgUpdateRate" disabled><option value="1000">1 s (fixed)</option></select><span class="msg" id="rateMessage">Fixed at 1 s — use Sources → PLC Groups for other rates.</span></div>
+                        <div class="field"><label class="fl" for="cfgUpdateRate">Rate</label><select id="cfgUpdateRate" disabled><option value="1000">1 s (fixed)</option></select><span class="msg" id="rateMessage" role="status">Fixed at 1 s — use Sources → PLC Groups for other rates.</span></div>
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">I/O Mode <span class="info" data-tip="Client-side value-delivery mode for this source, like Matrikon OPC Explorer's per-group I/O selector. AutoDetect I/O: try IOPCDataCallback push, fall back to polling when the server can't. Synchronous I/O: always poll with IOPCSyncIO.Read. Async I/O 2.0: force the push path (even if the global switch is off); falls back to polling with a warning if the server can't provide it. Applied live — no restart.">i</span></div>
-                        <div class="field"><label class="fl">Mode</label><select id="cfgIoMode"><option value="AutoDetect">AutoDetect I/O</option><option value="Sync">Synchronous I/O</option><option value="Async20">Async I/O 2.0</option></select><span class="msg" id="ioModeHint" style="font-weight:400;text-transform:none;letter-spacing:0"></span></div>
+                        <div class="field"><label class="fl" for="cfgIoMode">Mode</label><select id="cfgIoMode"><option value="AutoDetect">AutoDetect I/O</option><option value="Sync">Synchronous I/O</option><option value="Async20">Async I/O 2.0</option></select><span class="msg" id="ioModeHint" style="font-weight:400;text-transform:none;letter-spacing:0"></span></div>
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">Groups <span class="info" data-tip="Read-only summary of this source's OPC DA groups. Add, edit, rename or delete groups in the DA Groups panel (Manage groups) — changes apply live, no restart.">i</span></div>
                         <div id="cfgGroups" style="display:flex;flex-direction:column;gap:6px"></div>
-                        <div class="msg" id="cfgGroupsMsg" style="margin-top:4px"></div>
+                        <div class="msg" id="cfgGroupsMsg" role="status" style="margin-top:4px"></div>
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">DA Subscriptions <span class="info" data-tip="Global master switch: when OFF, AutoDetect sources never attempt push. When ON, AutoDetect sources use IOPCDataCallback when the server supports it (faster, supports deadband). Sources forced to Async I/O 2.0 always attempt push regardless. Applies on reconnect.">i</span></div>
-                        <div class="field"><label class="fl">Global</label><input type="checkbox" id="cfgUseSubscriptions" checked><span class="msg" id="subMessage">Applies on reconnect</span></div>
+                        <div class="field"><label class="fl" for="cfgUseSubscriptions">Global</label><input type="checkbox" id="cfgUseSubscriptions" checked><span class="msg" id="subMessage" role="status">Applies on reconnect</span></div>
                     </div>
                     <div class="toolbar" style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
                         <button class="btn" id="cfgApply" type="button" style="display:none">Save</button>
@@ -858,7 +1097,7 @@ internal static class DashboardPage
                 <div class="box-b">
                     <div class="toolbar">
                         <button class="btn ghost" id="btnReloadServers" type="button">Scan</button>
-                        <span class="msg" id="msgServers">Click Use to fill in ProgID + Host.</span>
+                        <span class="msg" id="msgServers" role="status">Click Use to fill in ProgID + Host.</span>
                     </div>
                     <div class="list" id="listServers" style="max-height:200px"></div>
                 </div>
@@ -875,50 +1114,52 @@ internal static class DashboardPage
                     <div class="toolbar">
                         <button class="btn ghost" id="btnExportConfig" type="button">Export Config</button>
                         <button class="btn ghost" id="btnImportConfig" type="button">Import Config</button>
-                        <input type="file" id="importConfigFile" accept=".json" style="display:none">
+                        <input type="file" id="importConfigFile" aria-label="Configuration file to import" accept=".json" style="display:none">
                     </div>
-                    <div class="hint" id="configMessage">Export saves all sources, settings, and tag mappings to a JSON file. Passwords are not included — re-enter after import.</div>
+                    <div class="hint" id="configMessage" role="status">Export saves all sources, settings, and tag mappings to a JSON file. Passwords are not included — re-enter after import.</div>
                 </div>
             </div>
         </div>
     </div>
 </div>
 <div class="view" id="view-opc-da-groups">
+    <h1 class="view-title" tabindex="-1">DA Groups</h1>
     <div class="box" style="max-width:720px">
-        <div class="box-h" style="padding:8px 12px;font-size:13px">OPC DA Groups <span class="msg" id="daGroupsMsg" style="margin-left:12px;font-size:11px"></span><span style="margin-left:auto;display:flex;gap:4px"><button class="btn ghost" type="button" style="height:20px;padding:0 6px;font-size:11px" onclick="expandAllDaGroups()">Expand All</button><button class="btn ghost" type="button" style="height:20px;padding:0 6px;font-size:11px" onclick="collapseAllDaGroups()">Collapse All</button></span></div>
+        <div class="box-h">OPC DA Groups <span class="msg" id="daGroupsMsg" role="status" style="margin-left:12px;font-size:var(--fs-micro)"></span><span style="margin-left:auto;display:flex;gap:4px"><button class="btn ghost" type="button" style="height:20px;padding:0 6px;font-size:var(--fs-micro)" onclick="expandAllDaGroups()">Expand All</button><button class="btn ghost" type="button" style="height:20px;padding:0 6px;font-size:var(--fs-micro)" onclick="collapseAllDaGroups()">Collapse All</button></span></div>
         <div class="box-b" style="padding:10px 12px">
             <div id="daGroupsContainer" style="display:flex;flex-direction:column;gap:8px"></div>
-            <div class="hint" style="font-size:11px;margin-top:8px">Each rate is a COM group OpcBridge_&lt;rate&gt; — add/delete per source, set I/O per group. Live apply.</div>
+            <div class="hint" style="margin-top:8px">Each rate is a COM group OpcBridge_&lt;rate&gt; — add/delete per source, set I/O per group. Live apply.</div>
         </div>
     </div>
 </div>
 <div class="view" id="view-opc-ua">
+    <h1 class="view-title" tabindex="-1">OPC UA</h1>
     <div class="conn-layout">
         <div class="conn-main">
             <div class="box">
-                <div class="box-h">OPC UA Configuration <button class="btn" type="button" onclick="openAddSourceWizard()" style="margin-left:auto">+ Add Source</button><span class="msg" id="uaCfgMessage" style="font-weight:400;text-transform:none;letter-spacing:0">Select a saved connection or click New.</span></div>
+                <div class="box-h">OPC UA Configuration <button class="btn" type="button" onclick="openAddSourceWizard()" style="margin-left:auto">+ Add Source</button><span class="msg" id="uaCfgMessage" role="status" style="font-weight:400;text-transform:none;letter-spacing:0">Select a saved connection or click New.</span></div>
                 <div class="box-b">
-                    <div class="field"><label class="fl">Selected</label><select id="uaSelectedSource"></select></div>
+                    <div class="field"><label class="fl" for="uaSelectedSource">Selected</label><select id="uaSelectedSource"></select></div>
                     <div class="conn-section">
                         <div class="conn-section-h">Identity</div>
-                        <div class="field"><label class="fl">Source ID <span class="info" data-tip="Unique key with no spaces. Used internally and in UA Node IDs (ns=2;s={sourceId}/...).">i</span></label><input id="uaCfgSourceId" type="text" placeholder="ua-plant-a" style="flex:1"></div>
-                        <div class="field"><label class="fl">Name <span class="info" data-tip="Friendly label shown in lists and the Tags tab.">i</span></label><input id="uaCfgDisplayName" type="text" placeholder="Plant UA Server" style="flex:1"></div>
+                        <div class="field"><label class="fl" for="uaCfgSourceId">Source ID <span class="info" data-tip="Unique key with no spaces. Used internally and in UA Node IDs (ns=2;s={sourceId}/...).">i</span></label><input id="uaCfgSourceId" type="text" placeholder="ua-plant-a" style="flex:1"></div>
+                        <div class="field"><label class="fl" for="uaCfgDisplayName">Name <span class="info" data-tip="Friendly label shown in lists and the Tags tab.">i</span></label><input id="uaCfgDisplayName" type="text" placeholder="Plant UA Server" style="flex:1"></div>
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">Endpoint</div>
-                        <div class="field"><label class="fl">Endpoint URL <span class="info" data-tip="opc.tcp URL of the external OPC UA server the bridge connects to as a client (not this bridge's own endpoint).">i</span></label><input id="uaCfgEndpointUrl" type="text" placeholder="opc.tcp://192.168.1.10:4840" style="flex:1"></div>
-                        <div class="field"><label class="fl">Security Mode</label><select id="uaCfgSecurityMode"><option value="None">None</option><option value="Sign">Sign</option><option value="SignAndEncrypt">SignAndEncrypt</option></select></div>
-                        <div class="field"><label class="fl">Security Policy</label><select id="uaCfgSecurityPolicy"><option value="None">None</option><option value="Basic256Sha256">Basic256Sha256</option></select></div>
+                        <div class="field"><label class="fl" for="uaCfgEndpointUrl">Endpoint URL <span class="info" data-tip="opc.tcp URL of the external OPC UA server the bridge connects to as a client (not this bridge's own endpoint).">i</span></label><input id="uaCfgEndpointUrl" type="text" placeholder="opc.tcp://192.168.1.10:4840" style="flex:1"></div>
+                        <div class="field"><label class="fl" for="uaCfgSecurityMode">Security Mode</label><select id="uaCfgSecurityMode"><option value="None">None</option><option value="Sign">Sign</option><option value="SignAndEncrypt">SignAndEncrypt</option></select></div>
+                        <div class="field"><label class="fl" for="uaCfgSecurityPolicy">Security Policy</label><select id="uaCfgSecurityPolicy"><option value="None">None</option><option value="Basic256Sha256">Basic256Sha256</option></select></div>
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">Credentials <span class="info" data-tip="Optional UserName token. Leave blank for anonymous.">i</span></div>
-                        <div class="field"><label class="fl">User</label><input id="uaCfgUser" type="text" placeholder="username" style="flex:1"><input id="uaCfgPass" type="password" placeholder="password" style="flex:1"></div>
+                        <div class="field"><label class="fl" for="uaCfgUser">User</label><input id="uaCfgUser" type="text" placeholder="username" aria-label="User name" style="flex:1"><input id="uaCfgPass" type="password" placeholder="password" aria-label="Password" style="flex:1"></div>
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">Update &amp; Scale</div>
-                        <div class="field"><label class="fl">Update Rate</label><select id="uaCfgUpdateRate" disabled><option value="1000">1 s (fixed)</option></select><span class="msg">Fixed — use UA Subscriptions for other rates.</span></div>
-                        <div class="field"><label class="fl">Max Mapped Tags <span class="info" data-tip="Hard cap on mappings for this UA source. Only mapped NodeIds are subscribed.">i</span></label><input id="uaCfgMaxMappedTags" type="number" min="1" value="50000" style="flex:1"></div>
-                        <div class="field"><label class="fl">Subscriptions</label><input type="checkbox" id="uaCfgUseSubscriptions" checked><span class="msg" id="uaSubMessage">MonitoredItems for mapped tags</span></div>
+                        <div class="field"><label class="fl" for="uaCfgUpdateRate">Update Rate</label><select id="uaCfgUpdateRate" disabled><option value="1000">1 s (fixed)</option></select><span class="msg">Fixed — use UA Subscriptions for other rates.</span></div>
+                        <div class="field"><label class="fl" for="uaCfgMaxMappedTags">Max Mapped Tags <span class="info" data-tip="Hard cap on mappings for this UA source. Only mapped NodeIds are subscribed.">i</span></label><input id="uaCfgMaxMappedTags" type="number" min="1" value="50000" style="flex:1"></div>
+                        <div class="field"><label class="fl" for="uaCfgUseSubscriptions">Subscriptions</label><input type="checkbox" id="uaCfgUseSubscriptions" checked><span class="msg" id="uaSubMessage" role="status">MonitoredItems for mapped tags</span></div>
                         <div class="field"><label class="fl">Read Mode <span class="info" data-tip="How values are delivered right now: async (subscription) = MonitoredItems push; sync (polling) = polling. Follows the Subscriptions checkbox on reconnect.">i</span></label><span class="msg" id="uaCfgReadMode" style="font-weight:400;text-transform:none;letter-spacing:0">—</span></div>
                         <div class="field"><label class="fl">Write Mode <span class="info" data-tip="How writes are sent: always a synchronous request/response via the UA Write service.">i</span></label><span class="msg" id="uaCfgWriteMode" style="font-weight:400;text-transform:none;letter-spacing:0">—</span></div>
                     </div>
@@ -936,10 +1177,10 @@ internal static class DashboardPage
             <div class="box">
                 <div class="box-h">Discover UA Servers</div>
                 <div class="box-b">
-                    <div class="field"><label class="fl">Discovery URL <span class="info" data-tip="opc.tcp URL of a Local Discovery Server (LDS) or any known UA server to probe. Leave blank to use the Endpoint URL field, or opc.tcp://localhost:4840.">i</span></label><input id="uaDiscoverUrl" type="text" placeholder="opc.tcp://localhost:4840" style="flex:1"></div>
+                    <div class="field"><label class="fl" for="uaDiscoverUrl">Discovery URL <span class="info" data-tip="opc.tcp URL of a Local Discovery Server (LDS) or any known UA server to probe. Leave blank to use the Endpoint URL field, or opc.tcp://localhost:4840.">i</span></label><input id="uaDiscoverUrl" type="text" placeholder="opc.tcp://localhost:4840" style="flex:1"></div>
                     <div class="toolbar">
                         <button class="btn ghost" id="btnUaDiscover" type="button">Scan</button>
-                        <span class="msg" id="msgUaDiscover">Click Scan to find servers. Use fills Endpoint URL.</span>
+                        <span class="msg" id="msgUaDiscover" role="status">Click Scan to find servers. Use fills Endpoint URL.</span>
                     </div>
                     <div class="list" id="listUaDiscover" style="max-height:200px"></div>
                 </div>
@@ -960,25 +1201,28 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="view" id="view-ua-subs">
+    <h1 class="view-title" tabindex="-1">UA Subs</h1>
     <div class="box" style="max-width:720px">
-        <div class="box-h" style="padding:8px 12px;font-size:13px">UA Subscriptions <span class="msg" id="subsMsg" style="margin-left:12px;font-size:11px"></span><span style="margin-left:auto;display:flex;gap:4px"><button class="btn ghost" type="button" style="height:20px;padding:0 6px;font-size:11px" onclick="expandAllUaSubs()">Expand All</button><button class="btn ghost" type="button" style="height:20px;padding:0 6px;font-size:11px" onclick="collapseAllUaSubs()">Collapse All</button></span></div>
+        <div class="box-h">UA Subscriptions <span class="msg" id="subsMsg" role="status" style="margin-left:12px;font-size:var(--fs-micro)"></span><span style="margin-left:auto;display:flex;gap:4px"><button class="btn ghost" type="button" style="height:20px;padding:0 6px;font-size:var(--fs-micro)" onclick="expandAllUaSubs()">Expand All</button><button class="btn ghost" type="button" style="height:20px;padding:0 6px;font-size:var(--fs-micro)" onclick="collapseAllUaSubs()">Collapse All</button></span></div>
         <div class="box-b" style="padding:10px 12px">
             <div id="uaSubsContainer" style="display:flex;flex-direction:column;gap:8px"></div>
-            <div class="hint" style="font-size:11px;margin-top:8px">Tags assigned to a named subscription publish at that rate; unassigned tags ride the read-only Default tile (source Update Rate). Removing a subscription moves its tags back to default.</div>
+            <div class="hint" style="margin-top:8px">Tags assigned to a named subscription publish at that rate; unassigned tags ride the read-only Default tile (source Update Rate). Removing a subscription moves its tags back to default.</div>
         </div>
     </div>
 </div>
 <div class="view" id="view-plc-groups">
+    <h1 class="view-title" tabindex="-1">PLC Groups</h1>
     <div class="box" style="max-width:720px">
-        <div class="box-h" style="padding:8px 12px;font-size:13px">PLC Groups</div>
+        <div class="box-h">PLC Groups</div>
         <div class="box-b" style="padding:10px 12px">
             <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+                <label class="fl" style="width:auto" for="plcGroupSourcePicker">Source</label>
                 <select id="plcGroupSourcePicker" onchange="renderPlcGroupsAll()" style="max-width:280px;flex:1"></select>
-                <span id="plcMsg" class="msg"></span>
+                <span id="plcMsg" role="status" class="msg"></span>
                 <button class="btn ghost" type="button" style="margin-left:auto" onclick="openPlcGroupAdd(document.getElementById('plcGroupSourcePicker').value)">+ Add Group</button>
             </div>
             <div id="plcGroupsList" class="dag-grid"></div>
-            <div class="hint" style="font-size:11px;margin-top:8px">Named polling groups for MX Component sources. Each group polls its member tags at its own update rate; tags without a group ride the source default rate. MX Component has no push model — groups are bridge-side timers sharing the PLC link (Programming Manual sh081085 §5.2).</div>
+            <div class="hint" style="margin-top:8px">Named polling groups for MX Component sources. Each group polls its member tags at its own update rate; tags without a group ride the source default rate. MX Component has no push model — groups are bridge-side timers sharing the PLC link (Programming Manual sh081085 §5.2).</div>
         </div>
     </div>
 </div>
@@ -987,8 +1231,8 @@ internal static class DashboardPage
         <div class="modal-h"><div class="n" id="plcGroupModalTitle">Add PLC Group</div><button class="modal-close" type="button" onclick="closePlcGroupModal()">×</button></div>
         <div class="modal-b">
             <div class="field"><label class="fl">Source</label><span class="msg" id="plcGroupModalSource" style="font-family:'Consolas',monospace"></span></div>
-            <div class="field"><label class="fl">Name</label><input id="plcGroupName" type="text" maxlength="64" placeholder="Fast" style="flex:1"></div>
-            <div class="field"><label class="fl">Update Rate (ms)</label><select id="plcGroupRate" style="flex:1"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
+            <div class="field"><label class="fl" for="plcGroupName">Name</label><input id="plcGroupName" type="text" maxlength="64" placeholder="Fast" style="flex:1"></div>
+            <div class="field"><label class="fl" for="plcGroupRate">Update Rate (ms)</label><select id="plcGroupRate" style="flex:1"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
         </div>
         <div class="modal-f"><button class="btn ghost" type="button" onclick="closePlcGroupModal()">Cancel</button><button class="btn" type="button" id="plcGroupModalSaveBtn" onclick="plcGroupModalSave()">Save</button></div>
     </div>
@@ -998,10 +1242,10 @@ internal static class DashboardPage
         <div class="modal-h"><div class="n" id="dagModalTitle">Add Group</div><button class="modal-close" type="button" onclick="closeDagModal()">×</button></div>
         <div class="modal-b">
             <div class="field"><label class="fl">Source</label><span class="msg" id="dagModalSource" style="font-family:'Consolas',monospace"></span></div>
-            <div class="field"><label class="fl">Name</label><input id="dagModalName" type="text" placeholder="OpcBridge_1000" style="flex:1"></div>
-            <div class="field"><label class="fl">Rate</label><select id="dagModalRate" style="flex:1"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
-            <div class="field"><label class="fl">I/O Mode</label><select id="dagModalIo" style="flex:1"><option value="AutoDetect">AutoDetect</option><option value="Sync">Sync</option><option value="Async20">Async20</option></select></div>
-            <div class="msg" id="dagModalMsg"></div>
+            <div class="field"><label class="fl" for="dagModalName">Name</label><input id="dagModalName" type="text" placeholder="OpcBridge_1000" style="flex:1"></div>
+            <div class="field"><label class="fl" for="dagModalRate">Rate</label><select id="dagModalRate" style="flex:1"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
+            <div class="field"><label class="fl" for="dagModalIo">I/O Mode</label><select id="dagModalIo" style="flex:1"><option value="AutoDetect">AutoDetect</option><option value="Sync">Sync</option><option value="Async20">Async20</option></select></div>
+            <div class="msg" id="dagModalMsg" role="status"></div>
         </div>
         <div class="modal-f"><button class="btn ghost" type="button" onclick="closeDagModal()">Cancel</button><button class="btn" type="button" id="dagModalSaveBtn" onclick="dagModalSave()">Save</button></div>
     </div>
@@ -1011,9 +1255,9 @@ internal static class DashboardPage
         <div class="modal-h"><div class="n" id="uaSubModalTitle">Add Subscription</div><button class="modal-close" type="button" onclick="closeUaSubModal()">×</button></div>
         <div class="modal-b">
             <div class="field"><label class="fl">Source</label><span class="msg" id="uaSubModalSource" style="font-family:'Consolas',monospace"></span></div>
-            <div class="field"><label class="fl">Name</label><input id="uaSubModalName" type="text" placeholder="fast" style="flex:1"></div>
-            <div class="field"><label class="fl">Rate</label><select id="uaSubModalRate" style="flex:1"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
-            <div class="msg" id="uaSubModalMsg"></div>
+            <div class="field"><label class="fl" for="uaSubModalName">Name</label><input id="uaSubModalName" type="text" placeholder="fast" style="flex:1"></div>
+            <div class="field"><label class="fl" for="uaSubModalRate">Rate</label><select id="uaSubModalRate" style="flex:1"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
+            <div class="msg" id="uaSubModalMsg" role="status"></div>
         </div>
         <div class="modal-f"><button class="btn ghost" type="button" onclick="closeUaSubModal()">Cancel</button><button class="btn" type="button" id="uaSubModalSaveBtn" onclick="uaSubModalSave()">Save</button></div>
     </div>
@@ -1034,7 +1278,7 @@ internal static class DashboardPage
         </div>
         <div class="wizard-body">
             <div class="wizard-pane active" data-pane="1">
-                <div class="field"><label class="fl">Source Type</label>
+                <div class="field"><label class="fl" for="wzSourceType">Source Type</label>
                     <select id="wzSourceType" onchange="wzOnTypeChange()">
                         <option value="OpcDa">OPC DA</option>
                         <option value="OpcUa">OPC UA</option>
@@ -1043,41 +1287,41 @@ internal static class DashboardPage
                 <div class="hint">OPC DA uses ProgID/Host (Windows COM). OPC UA uses an opc.tcp endpoint (cross-platform client).</div>
             </div>
             <div class="wizard-pane" data-pane="2">
-                <div class="field"><label class="fl">Source ID</label><input type="text" id="wzSourceId" placeholder="server-a"></div>
-                <div class="field"><label class="fl">Display Name</label><input type="text" id="wzDisplayName" placeholder="(optional)"></div>
+                <div class="field"><label class="fl" for="wzSourceId">Source ID</label><input type="text" id="wzSourceId" placeholder="server-a"></div>
+                <div class="field"><label class="fl" for="wzDisplayName">Display Name</label><input type="text" id="wzDisplayName" placeholder="(optional)"></div>
                 <div class="hint">Unique key with no spaces. Used in UA Node IDs (ns=2;s={sourceId}/...).</div>
             </div>
             <div class="wizard-pane" data-pane="3">
                 <div id="wzDaServerFields">
-                    <div class="field"><label class="fl">Host</label><input type="text" id="wzHost" placeholder="localhost"></div>
-                    <div class="field"><label class="fl">ProgID / CLSID</label><input type="text" id="wzProgId" placeholder="Kepware.KEPServerEX.V6"></div>
+                    <div class="field"><label class="fl" for="wzHost">Host</label><input type="text" id="wzHost" placeholder="localhost"></div>
+                    <div class="field"><label class="fl" for="wzProgId">ProgID / CLSID</label><input type="text" id="wzProgId" placeholder="Kepware.KEPServerEX.V6"></div>
                     <button class="btn ghost" type="button" onclick="wzBrowseServers()">Browse Servers</button>
-                    <span class="msg" id="wzMsgServers"></span>
+                    <span class="msg" id="wzMsgServers" role="status"></span>
                     <div class="list" id="wzListServers" style="max-height:180px"></div>
                 </div>
                 <div id="wzUaServerFields" style="display:none">
-                    <div class="field"><label class="fl">Endpoint URL</label><input type="text" id="wzEndpointUrl" placeholder="opc.tcp://host:4840"></div>
-                    <div class="field"><label class="fl">Security Mode</label><select id="wzSecurityMode"><option value="None">None</option><option value="Sign">Sign</option><option value="SignAndEncrypt">SignAndEncrypt</option></select></div>
-                    <div class="field"><label class="fl">Security Policy</label><select id="wzSecurityPolicy"><option value="None">None</option><option value="Basic256Sha256">Basic256Sha256</option></select></div>
+                    <div class="field"><label class="fl" for="wzEndpointUrl">Endpoint URL</label><input type="text" id="wzEndpointUrl" placeholder="opc.tcp://host:4840"></div>
+                    <div class="field"><label class="fl" for="wzSecurityMode">Security Mode</label><select id="wzSecurityMode"><option value="None">None</option><option value="Sign">Sign</option><option value="SignAndEncrypt">SignAndEncrypt</option></select></div>
+                    <div class="field"><label class="fl" for="wzSecurityPolicy">Security Policy</label><select id="wzSecurityPolicy"><option value="None">None</option><option value="Basic256Sha256">Basic256Sha256</option></select></div>
                 </div>
             </div>
             <div class="wizard-pane" data-pane="4">
                 <div id="wzDaAuthFields">
-                    <div class="field"><label class="fl">Domain</label><input type="text" id="wzDomain" placeholder="(optional)"></div>
-                    <div class="field"><label class="fl">Username</label><input type="text" id="wzUser" placeholder="(optional)"></div>
-                    <div class="field"><label class="fl">Password</label><input type="password" id="wzPass"></div>
+                    <div class="field"><label class="fl" for="wzDomain">Domain</label><input type="text" id="wzDomain" placeholder="(optional)"></div>
+                    <div class="field"><label class="fl" for="wzUser">Username</label><input type="text" id="wzUser" placeholder="(optional)"></div>
+                    <div class="field"><label class="fl" for="wzPass">Password</label><input type="password" id="wzPass"></div>
                     <div class="hint">Only required for remote DCOM or servers in another user's profile.</div>
                 </div>
                 <div id="wzUaAuthFields" style="display:none">
-                    <div class="field"><label class="fl">UA Username</label><input type="text" id="wzUaUser" placeholder="(optional, anonymous if empty)"></div>
-                    <div class="field"><label class="fl">UA Password</label><input type="password" id="wzUaPass"></div>
+                    <div class="field"><label class="fl" for="wzUaUser">UA Username</label><input type="text" id="wzUaUser" placeholder="(optional, anonymous if empty)"></div>
+                    <div class="field"><label class="fl" for="wzUaPass">UA Password</label><input type="password" id="wzUaPass"></div>
                     <div class="hint">UserName token credentials for the external OPC UA server.</div>
                 </div>
             </div>
             <div class="wizard-pane" data-pane="5">
-                <div class="field"><label class="fl">Update Rate</label><select id="wzUpdateRate" disabled><option value="1000">1 s (fixed)</option></select></div>
-                <div class="field"><label class="fl">Subscriptions</label><input type="checkbox" id="wzSubs" checked> <span class="msg" id="wzSubsHint">Use IOPCDataCallback (recommended)</span></div>
-                <div class="field" id="wzMaxTagsField" style="display:none"><label class="fl">Max Mapped Tags</label><input type="number" id="wzMaxMappedTags" min="1" value="50000"></div>
+                <div class="field"><label class="fl" for="wzUpdateRate">Update Rate</label><select id="wzUpdateRate" disabled><option value="1000">1 s (fixed)</option></select></div>
+                <div class="field"><label class="fl" for="wzSubs">Subscriptions</label><input type="checkbox" id="wzSubs" checked> <span class="msg" id="wzSubsHint">Use IOPCDataCallback (recommended)</span></div>
+                <div class="field" id="wzMaxTagsField" style="display:none"><label class="fl" for="wzMaxMappedTags">Max Mapped Tags</label><input type="number" id="wzMaxMappedTags" min="1" value="50000"></div>
             </div>
             <div class="wizard-pane" data-pane="6">
                 <div class="wizard-summary" id="wzSummary"></div>
@@ -1093,27 +1337,28 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="view" id="view-mx-component">
+    <h1 class="view-title" tabindex="-1">MX Component</h1>
     <div class="conn-layout">
         <div class="conn-main">
             <div class="box">
-                <div class="box-h">MELSOFT MX Component 4 <button class="btn" type="button" onclick="newMxSource()" style="margin-left:auto">+ Add Connection</button><span class="msg" id="mxMessage" style="font-weight:400;text-transform:none;letter-spacing:0">Select an MX Component connection or click New.</span></div>
+                <div class="box-h">MELSOFT MX Component 4 <button class="btn" type="button" onclick="newMxSource()" style="margin-left:auto">+ Add Connection</button><span class="msg" id="mxMessage" role="status" style="font-weight:400;text-transform:none;letter-spacing:0">Select an MX Component connection or click New.</span></div>
                 <div class="box-b">
                     <div class="conn-section">
                         <div class="conn-section-h">Connection <span class="info" data-tip="MX Component is a local COM driver that owns the physical link to the PLC. Configure that link (serial, Ethernet, or GX Simulator) once in MX Component's own Communication Settings Utility — it assigns a logical station number that this app references. GX Simulator note: it uses session-bound shared memory, so the bridge must run in the same logged-in interactive Windows session (Interactive task logon — S4U/service mode cannot reach it).">i</span></div>
                         <div class="field" style="display:block;background:var(--bg);border:1px solid var(--border2);border-radius:5px;padding:9px 11px;color:var(--muted)">The physical link (serial RS-422/RS-232C, Ethernet, or <b>GX Simulator</b>) is configured <b>once in MX Component's own Communication Settings Utility</b> — this app only needs the <b>logical station number</b> (0–1023) that the utility assigned. For an <b>A3NCPU</b>: pick <b>A series → A3N</b> in the utility's wizard (1C frame); if "A series" is missing, an <b>FX-series CPU type</b> usually still talks to it. <b>GX Simulator</b> is session-bound — the bridge must run in the same logged-in desktop session, so the Windows scheduled task needs <b>Interactive</b> logon (register with <span class="mono">-LogonType Interactive</span>).</div>
-                        <div class="field"><label class="fl">Logical Station</label><input id="mxStation" type="number" min="0" max="1023" value="0" style="width:90px"><span class="msg">Assigned in the MX Component Communication Settings Utility.</span></div>
+                        <div class="field"><label class="fl" for="mxStation">Logical Station</label><input id="mxStation" type="number" min="0" max="1023" value="0" style="width:90px"><span class="msg">Assigned in the MX Component Communication Settings Utility.</span></div>
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">Identity</div>
-                        <div class="field"><label class="fl">Source ID <span class="info" data-tip="Unique key with no spaces. Used internally and in UA Node IDs (ns=2;s={sourceId}/...).">i</span></label><input id="mxSourceId" type="text" placeholder="plc-mx-1" style="flex:1"></div>
-                        <div class="field"><label class="fl">Name <span class="info" data-tip="Friendly label shown in lists and the Tags tab.">i</span></label><input id="mxName" type="text" placeholder="Line 1 PLC" style="flex:1"></div>
+                        <div class="field"><label class="fl" for="mxSourceId">Source ID <span class="info" data-tip="Unique key with no spaces. Used internally and in UA Node IDs (ns=2;s={sourceId}/...).">i</span></label><input id="mxSourceId" type="text" placeholder="plc-mx-1" style="flex:1"></div>
+                        <div class="field"><label class="fl" for="mxName">Name <span class="info" data-tip="Friendly label shown in lists and the Tags tab.">i</span></label><input id="mxName" type="text" placeholder="Line 1 PLC" style="flex:1"></div>
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">Defaults</div>
-                        <div class="field"><label class="fl">Timeout ms</label><input id="mxTimeout" type="number" min="100" step="100" value="3000" style="width:100px">
-                        <label class="fl" style="width:auto">Retries</label><input id="mxRetry" type="number" min="0" max="10" value="2" style="width:70px"></div>
-                        <div class="field"><label class="fl">Update Rate</label><select id="mxRate" disabled><option value="1000">1 s (fixed)</option></select><span class="msg">Fixed — use Sources → PLC Groups for other rates.</span>
-                        <label class="fl" style="width:auto">Max tags <span class="info" data-tip="Safety limit on mapped tags for this source; adding mappings beyond it is rejected.">i</span></label><input id="mxMaxTags" type="number" min="1" step="1" value="2000" style="width:90px"></div>
+                        <div class="field"><label class="fl" for="mxTimeout">Timeout ms</label><input id="mxTimeout" type="number" min="100" step="100" value="3000" style="width:100px">
+                        <label class="fl" for="mxRetry" style="width:auto">Retries</label><input id="mxRetry" type="number" min="0" max="10" value="2" style="width:70px"></div>
+                        <div class="field"><label class="fl" for="mxRate">Update Rate</label><select id="mxRate" disabled><option value="1000">1 s (fixed)</option></select><span class="msg">Fixed — use Sources → PLC Groups for other rates.</span>
+                        <label class="fl" for="mxMaxTags" style="width:auto">Max tags <span class="info" data-tip="Safety limit on mapped tags for this source; adding mappings beyond it is rejected.">i</span></label><input id="mxMaxTags" type="number" min="1" step="1" value="2000" style="width:90px"></div>
                     </div>
                     <div class="toolbar" style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
                         <button class="btn" id="mxSave" type="button">Save</button>
@@ -1144,39 +1389,40 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="view" id="view-drivers">
+    <h1 class="view-title" tabindex="-1">Drivers</h1>
     <div class="conn-layout">
         <div class="conn-main">
             <div class="box">
-                <div class="box-h">PLC Driver <button class="btn" type="button" onclick="openDriverWizard()" style="margin-left:auto">+ Add Driver</button><span class="msg" id="drvA3nMessage" style="font-weight:400;text-transform:none;letter-spacing:0">Select a driver source or click New.</span></div>
+                <div class="box-h">PLC Driver <button class="btn" type="button" onclick="openDriverWizard()" style="margin-left:auto">+ Add Driver</button><span class="msg" id="drvA3nMessage" role="status" style="font-weight:400;text-transform:none;letter-spacing:0">Select a driver source or click New.</span></div>
                 <div class="box-b">
                     <div class="conn-section">
                         <div class="conn-section-h">Identity</div>
-                        <div class="field"><label class="fl">Source ID <span class="info" data-tip="Unique key with no spaces. Used internally and in UA Node IDs (ns=2;s={sourceId}/...).">i</span></label><input id="drvA3nSourceId" type="text" placeholder="plc-a3n-1" style="flex:1"></div>
-                        <div class="field"><label class="fl">Name <span class="info" data-tip="Friendly label shown in lists and the Tags tab.">i</span></label><input id="drvA3nName" type="text" placeholder="Line 1 PLC" style="flex:1"></div>
+                        <div class="field"><label class="fl" for="drvA3nSourceId">Source ID <span class="info" data-tip="Unique key with no spaces. Used internally and in UA Node IDs (ns=2;s={sourceId}/...).">i</span></label><input id="drvA3nSourceId" type="text" placeholder="plc-a3n-1" style="flex:1"></div>
+                        <div class="field"><label class="fl" for="drvA3nName">Name <span class="info" data-tip="Friendly label shown in lists and the Tags tab.">i</span></label><input id="drvA3nName" type="text" placeholder="Line 1 PLC" style="flex:1"></div>
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">Serial Port <span class="info" data-tip="RS-422/RS-232C link to the A3N CPU (1C protocol, Format 1). Defaults: 9600 baud, 8 data bits, odd parity, 1 stop bit.">i</span></div>
-                        <div class="field"><label class="fl">Port</label><input id="drvA3nPort" type="text" placeholder="COM3 or /dev/ttyUSB0" style="flex:1"><button class="btn ghost" id="btnDrvScanPorts" type="button">Scan</button></div>
+                        <div class="field"><label class="fl" for="drvA3nPort">Port</label><input id="drvA3nPort" type="text" placeholder="COM3 or /dev/ttyUSB0" style="flex:1"><button class="btn ghost" id="btnDrvScanPorts" type="button">Scan</button></div>
                         <div class="list" id="listDrvPorts" style="max-height:120px;margin:0 0 8px 0"></div>
-                        <span class="msg" id="msgDrvPorts">Click Scan to list host serial ports.</span>
-                        <div class="field"><label class="fl">Baud</label><select id="drvA3nBaud"><option value="1200">1200</option><option value="2400">2400</option><option value="4800">4800</option><option value="9600" selected>9600</option><option value="19200">19200</option></select>
-                        <label class="fl" style="width:auto">Data bits</label><select id="drvA3nDataBits"><option value="7">7</option><option value="8" selected>8</option></select></div>
-                        <div class="field"><label class="fl">Parity</label><select id="drvA3nParity"><option value="None">None</option><option value="Odd" selected>Odd</option><option value="Even">Even</option></select>
-                        <label class="fl" style="width:auto">Stop bits</label><select id="drvA3nStopBits"><option value="One" selected>1</option><option value="Two">2</option></select></div>
+                        <span class="msg" id="msgDrvPorts" role="status">Click Scan to list host serial ports.</span>
+                        <div class="field"><label class="fl" for="drvA3nBaud">Baud</label><select id="drvA3nBaud"><option value="1200">1200</option><option value="2400">2400</option><option value="4800">4800</option><option value="9600" selected>9600</option><option value="19200">19200</option></select>
+                        <label class="fl" for="drvA3nDataBits" style="width:auto">Data bits</label><select id="drvA3nDataBits"><option value="7">7</option><option value="8" selected>8</option></select></div>
+                        <div class="field"><label class="fl" for="drvA3nParity">Parity</label><select id="drvA3nParity"><option value="None">None</option><option value="Odd" selected>Odd</option><option value="Even">Even</option></select>
+                        <label class="fl" for="drvA3nStopBits" style="width:auto">Stop bits</label><select id="drvA3nStopBits"><option value="One" selected>1</option><option value="Two">2</option></select></div>
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">PLC Addressing <span class="info" data-tip="Station 00 = directly attached CPU. PC number FF = own station (1C protocol).">i</span></div>
-                        <div class="field" id="drvA3nStationRow"><label class="fl">Station</label><input id="drvA3nStation" type="text" placeholder="00" maxlength="2" style="width:70px">
-                        <label class="fl" style="width:auto">PC No</label><input id="drvA3nPc" type="text" placeholder="FF" maxlength="2" style="width:70px"></div>
-                        <div class="field" id="drvS7PpiRow" style="display:none"><label class="fl">Local PPI</label><input id="drvS7LocalPpi" type="number" min="0" max="126" value="0" style="width:70px">
-                        <label class="fl" style="width:auto">Remote PPI</label><input id="drvS7RemotePpi" type="number" min="0" max="126" value="2" style="width:70px"></div>
+                        <div class="field" id="drvA3nStationRow"><label class="fl" for="drvA3nStation">Station</label><input id="drvA3nStation" type="text" placeholder="00" maxlength="2" style="width:70px">
+                        <label class="fl" for="drvA3nPc" style="width:auto">PC No</label><input id="drvA3nPc" type="text" placeholder="FF" maxlength="2" style="width:70px"></div>
+                        <div class="field" id="drvS7PpiRow" style="display:none"><label class="fl" for="drvS7LocalPpi">Local PPI</label><input id="drvS7LocalPpi" type="number" min="0" max="126" value="0" style="width:70px">
+                        <label class="fl" for="drvS7RemotePpi" style="width:auto">Remote PPI</label><input id="drvS7RemotePpi" type="number" min="0" max="126" value="2" style="width:70px"></div>
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">Defaults</div>
-                        <div class="field"><label class="fl">Timeout ms</label><input id="drvA3nTimeout" type="number" min="100" step="100" value="3000" style="width:100px">
-                        <label class="fl" style="width:auto">Retries</label><input id="drvA3nRetry" type="number" min="0" max="10" value="2" style="width:70px"></div>
-                        <div class="field"><label class="fl">Update Rate</label><select id="drvA3nRate" disabled><option value="1000">1 s (fixed)</option></select><span class="msg">Fixed — use Sources → PLC Groups for other rates.</span></div>
-                        <label class="fl" style="width:auto">Max tags <span class="info" data-tip="Safety limit on mapped tags for this serial link; adding mappings beyond it is rejected.">i</span></label><input id="drvA3nMaxTags" type="number" min="1" step="1" value="2000" style="width:90px"></div>
+                        <div class="field"><label class="fl" for="drvA3nTimeout">Timeout ms</label><input id="drvA3nTimeout" type="number" min="100" step="100" value="3000" style="width:100px">
+                        <label class="fl" for="drvA3nRetry" style="width:auto">Retries</label><input id="drvA3nRetry" type="number" min="0" max="10" value="2" style="width:70px"></div>
+                        <div class="field"><label class="fl" for="drvA3nRate">Update Rate</label><select id="drvA3nRate" disabled><option value="1000">1 s (fixed)</option></select><span class="msg">Fixed — use Sources → PLC Groups for other rates.</span></div>
+                        <label class="fl" for="drvA3nMaxTags" style="width:auto">Max tags <span class="info" data-tip="Safety limit on mapped tags for this serial link; adding mappings beyond it is rejected.">i</span></label><input id="drvA3nMaxTags" type="number" min="1" step="1" value="2000" style="width:90px"></div>
                     </div>
                     <div class="toolbar" style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
                         <button class="btn" id="drvA3nSave" type="button">Save</button>
@@ -1218,32 +1464,32 @@ internal static class DashboardPage
         </div>
         <div class="wizard-body">
             <div class="wzdrv-pane active" data-pane="1">
-                <div class="field"><label class="fl">Driver Type</label><select id="wzDrvType" onchange="wzDrvOnTypeChange()"><option value="MelsecA3n">Mitsubishi Melsec A3N (serial 1C)</option><option value="S7200Ppi">Siemens S7-200 (PPI serial)</option></select></div>
+                <div class="field"><label class="fl" for="wzDrvType">Driver Type</label><select id="wzDrvType" onchange="wzDrvOnTypeChange()"><option value="MelsecA3n">Mitsubishi Melsec A3N (serial 1C)</option><option value="S7200Ppi">Siemens S7-200 (PPI serial)</option></select></div>
                 <div class="hint">Serial link to the PLC CPU (RS-422/RS-232C, 1C protocol). For MELSOFT MX Component 4, use the MX Component tab — its link is configured in MX Component's own Communication Settings Utility.</div>
             </div>
             <div class="wzdrv-pane" data-pane="2">
-                <div class="field"><label class="fl">Source ID</label><input type="text" id="wzDrvSourceId" placeholder="plc-a3n-1"></div>
-                <div class="field"><label class="fl">Display Name</label><input type="text" id="wzDrvName" placeholder="(optional)"></div>
+                <div class="field"><label class="fl" for="wzDrvSourceId">Source ID</label><input type="text" id="wzDrvSourceId" placeholder="plc-a3n-1"></div>
+                <div class="field"><label class="fl" for="wzDrvName">Display Name</label><input type="text" id="wzDrvName" placeholder="(optional)"></div>
                 <div class="hint">Unique key with no spaces. Used in UA Node IDs (ns=2;s={sourceId}/...).</div>
             </div>
             <div class="wzdrv-pane" data-pane="3">
-                <div class="field"><label class="fl">Serial Port</label><input type="text" id="wzDrvPort" placeholder="COM3 or /dev/ttyUSB0" style="flex:1"><button class="btn ghost" id="btnWzDrvScanPorts" type="button">Scan</button></div>
+                <div class="field"><label class="fl" for="wzDrvPort">Serial Port</label><input type="text" id="wzDrvPort" placeholder="COM3 or /dev/ttyUSB0" style="flex:1"><button class="btn ghost" id="btnWzDrvScanPorts" type="button">Scan</button></div>
                 <div class="list" id="listWzDrvPorts" style="max-height:120px;margin:0 0 8px 0"></div>
-                <span class="msg" id="msgWzDrvPorts">Click Scan to list host serial ports.</span>
-                <div class="field"><label class="fl">Baud</label><select id="wzDrvBaud"><option value="1200">1200</option><option value="2400">2400</option><option value="4800">4800</option><option value="9600" selected>9600</option><option value="19200">19200</option></select>
-                <label class="fl" style="width:auto">Data bits</label><select id="wzDrvDataBits"><option value="7">7</option><option value="8" selected>8</option></select></div>
-                <div class="field"><label class="fl">Parity</label><select id="wzDrvParity"><option value="None">None</option><option value="Odd" selected>Odd</option><option value="Even">Even</option></select>
-                <label class="fl" style="width:auto">Stop bits</label><select id="wzDrvStopBits"><option value="One" selected>1</option><option value="Two">2</option></select></div>
-                <div class="field" id="wzDrvStationRow"><label class="fl">Station</label><input type="text" id="wzDrvStation" placeholder="00" maxlength="2" style="width:70px">
-                <label class="fl" style="width:auto">PC No</label><input type="text" id="wzDrvPc" placeholder="FF" maxlength="2" style="width:70px"></div>
-                <div class="field" id="wzDrvS7PpiRow" style="display:none"><label class="fl">Local PPI</label><input type="number" id="wzDrvLocalPpi" min="0" max="126" value="0" style="width:70px">
-                <label class="fl" style="width:auto">Remote PPI</label><input type="number" id="wzDrvRemotePpi" min="0" max="126" value="2" style="width:70px"></div>
+                <span class="msg" id="msgWzDrvPorts" role="status">Click Scan to list host serial ports.</span>
+                <div class="field"><label class="fl" for="wzDrvBaud">Baud</label><select id="wzDrvBaud"><option value="1200">1200</option><option value="2400">2400</option><option value="4800">4800</option><option value="9600" selected>9600</option><option value="19200">19200</option></select>
+                <label class="fl" for="wzDrvDataBits" style="width:auto">Data bits</label><select id="wzDrvDataBits"><option value="7">7</option><option value="8" selected>8</option></select></div>
+                <div class="field"><label class="fl" for="wzDrvParity">Parity</label><select id="wzDrvParity"><option value="None">None</option><option value="Odd" selected>Odd</option><option value="Even">Even</option></select>
+                <label class="fl" for="wzDrvStopBits" style="width:auto">Stop bits</label><select id="wzDrvStopBits"><option value="One" selected>1</option><option value="Two">2</option></select></div>
+                <div class="field" id="wzDrvStationRow"><label class="fl" for="wzDrvStation">Station</label><input type="text" id="wzDrvStation" placeholder="00" maxlength="2" style="width:70px">
+                <label class="fl" for="wzDrvPc" style="width:auto">PC No</label><input type="text" id="wzDrvPc" placeholder="FF" maxlength="2" style="width:70px"></div>
+                <div class="field" id="wzDrvS7PpiRow" style="display:none"><label class="fl" for="wzDrvLocalPpi">Local PPI</label><input type="number" id="wzDrvLocalPpi" min="0" max="126" value="0" style="width:70px">
+                <label class="fl" for="wzDrvRemotePpi" style="width:auto">Remote PPI</label><input type="number" id="wzDrvRemotePpi" min="0" max="126" value="2" style="width:70px"></div>
             </div>
             <div class="wzdrv-pane" data-pane="4">
-                <div class="field"><label class="fl">Timeout ms</label><input type="number" id="wzDrvTimeout" min="100" step="100" value="3000" style="width:100px">
-                <label class="fl" style="width:auto">Retries</label><input type="number" id="wzDrvRetry" min="0" max="10" value="2" style="width:70px"></div>
-                <div class="field"><label class="fl">Update Rate</label><select id="wzDrvRate" disabled><option value="1000">1 s (fixed)</option></select>
-                <label class="fl" style="width:auto">Max tags</label><input type="number" id="wzDrvMaxTags" min="1" step="1" value="2000" style="width:90px"></div>
+                <div class="field"><label class="fl" for="wzDrvTimeout">Timeout ms</label><input type="number" id="wzDrvTimeout" min="100" step="100" value="3000" style="width:100px">
+                <label class="fl" for="wzDrvRetry" style="width:auto">Retries</label><input type="number" id="wzDrvRetry" min="0" max="10" value="2" style="width:70px"></div>
+                <div class="field"><label class="fl" for="wzDrvRate">Update Rate</label><select id="wzDrvRate" disabled><option value="1000">1 s (fixed)</option></select>
+                <label class="fl" for="wzDrvMaxTags" style="width:auto">Max tags</label><input type="number" id="wzDrvMaxTags" min="1" step="1" value="2000" style="width:90px"></div>
             </div>
             <div class="wzdrv-pane" data-pane="5">
                 <div class="wizard-summary" id="wzDrvSummary"></div>
@@ -1259,6 +1505,7 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="view" id="view-tags">
+    <h1 class="view-title" tabindex="-1">Maps</h1>
     <div class="first-run-banner" id="bannerTagsNoSources" style="display:none"></div>
     <div class="map-type-tabs" id="mapTypeTabs">
         <button class="map-type-tab active" type="button" data-map-type="opc-da" onclick="setMapType('opc-da')">OPC DA</button>
@@ -1270,19 +1517,19 @@ internal static class DashboardPage
         <div class="box-h">Tag Browser</div>
         <div class="box-b">
             <div class="field" style="margin-bottom:10px">
-                <label class="fl">Source</label>
+                <label class="fl" for="mapSourceSelect">Source</label>
                 <select id="mapSourceSelect"></select>
                 <span class="msg" id="tagSourceStatus"></span>
                 <span class="msg" id="mapSourceHint"></span>
             </div>
             <div style="margin:-6px 0 8px 0">
-                <button class="btn ghost" type="button" id="mapAddressRangesToggle" style="display:none;padding:3px 9px;font-size:11px" onclick="toggleAddressRanges('mapAddressRanges', this)">Show accepted addresses ▾</button>
+                <button class="btn ghost" type="button" id="mapAddressRangesToggle" style="display:none;padding:3px 9px;font-size:var(--fs-micro)" onclick="toggleAddressRanges('mapAddressRanges', this)">Show accepted addresses ▾</button>
                 <div id="mapAddressRanges" style="display:none"></div>
             </div>
             <div class="tag-browser-toolbar" id="mapBrowseToolbar">
                 <button class="btn" id="btnBrowseAllTags" type="button">Browse All Tags</button>
                 <button class="btn ghost" id="btnBrowseTags" type="button">Browse Folders</button>
-                <span class="msg" id="tagStatus">Browse all tags, or open folders one level at a time.</span>
+                <span class="msg" id="tagStatus" role="status">Browse all tags, or open folders one level at a time.</span>
             </div>
             <div class="breadcrumb" id="tagBreadcrumb"></div>
             <div class="list" id="tagTree"></div>
@@ -1293,18 +1540,21 @@ internal static class DashboardPage
         <div class="box-b">
             <div class="add-mapping-box">
                 <div class="field">
-                    <input id="manualItem" type="text" placeholder="Item ID (e.g. Random.Real8, ns=2;s=Tag, D100)" style="flex:1">
-                    <input id="manualUaNodeId" type="text" placeholder="UA NodeId (optional)" style="flex:1">
+                    <label class="fl" for="manualItem">Item ID</label>
+                    <input id="manualItem" type="text" placeholder="e.g. Random.Real8, ns=2;s=Tag, D100" style="flex:1">
+                    <label class="fl" for="manualUaNodeId">UA node</label>
+                    <input id="manualUaNodeId" type="text" placeholder="optional, e.g. ns=2;s=Tag" style="flex:1">
                 </div>
                 <div class="field" style="margin-bottom:0">
                     <button class="btn" type="button" id="manualAdd">Add Mapping</button>
                     <span class="msg">Or browse tags above and click Add.</span>
                 </div>
             </div>
-            <div class="hint" id="mappingMessage" style="margin-bottom:10px">Click a tag to open its faceplate. Disable a tag to stop publishing it, or set a manual value to override the source.</div>
+            <div class="hint" id="mappingMessage" role="status" style="margin-bottom:10px">Click a tag to open its faceplate. Disable a tag to stop publishing it, or set a manual value to override the source.</div>
             <div class="mapping-toolbar">
-                <input id="mappingFilter" type="text" placeholder="Filter by name, item ID, UA node, source…" style="flex:1;min-width:120px">
-                <label class="fl" style="width:auto">Sort</label>
+                <label class="fl" style="width:auto" for="mappingFilter">Filter</label>
+                <input id="mappingFilter" type="text" placeholder="name, item ID, UA node or source" style="flex:1;min-width:120px">
+                <label class="fl" for="mappingSort" style="width:auto">Sort</label>
                 <select id="mappingSort">
                     <option value="name">Name</option>
                     <option value="source">Server (Source)</option>
@@ -1323,20 +1573,21 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="view" id="view-interlinks">
+    <h1 class="view-title" tabindex="-1">Interlinks</h1>
     <div class="box">
         <div class="box-h">Interlinks <span class="msg" id="linksCount" style="margin-left:auto"></span></div>
         <div class="box-b">
-            <div class="hint" id="linksMessage" style="margin-bottom:10px">Create tag-to-tag rules between sources here. Interlinks are a separate subsystem from OPC UA tag mappings.</div>
+            <div class="hint" id="linksMessage" role="status" style="margin-bottom:10px">Create tag-to-tag rules between sources here. Interlinks are a separate subsystem from OPC UA tag mappings.</div>
             <div class="fp-body with-flow" style="margin-bottom:10px">
                 <div class="fp-panel">
-                    <div class="fp-k">Consumer <span class="info" data-tip="Receives the value. When the provider tag changes, the bridge writes that value into this tag. Each consumer has exactly one provider - delete the saved link first to attach a different provider.">i</span></div>
-                    <select id="interlinkConsumerSource" style="width:100%;margin-bottom:8px" onchange="onInterlinkSourceChange('consumer')"></select>
+                    <div class="fp-k" id="interlinkConsumerSourceLabel">Consumer <span class="info" data-tip="Receives the value. When the provider tag changes, the bridge writes that value into this tag. Each consumer has exactly one provider - delete the saved link first to attach a different provider.">i</span></div>
+                    <select id="interlinkConsumerSource" aria-labelledby="interlinkConsumerSourceLabel" style="width:100%;margin-bottom:8px" onchange="onInterlinkSourceChange('consumer')"></select>
                     <div class="list" id="interlinkConsumerList" style="max-height:220px"><span class="msg">Select a source to list its Maps tags.</span></div>
                 </div>
                 <div class="il-flow" data-tip="Values flow from the Provider into the Consumer: each provider change is written into every consumer linked to it."><span class="il-arrow">⇐</span><span class="il-flow-hint">value flow</span></div>
                 <div class="fp-panel">
-                    <div class="fp-k">Provider <span class="info" data-tip="Sends the value. Its changes are copied into every consumer linked to it - one provider can feed many consumers across any OPC DA / OPC UA / MX Component source.">i</span></div>
-                    <select id="interlinkProviderSource" style="width:100%;margin-bottom:8px" onchange="onInterlinkSourceChange('provider')"></select>
+                    <div class="fp-k" id="interlinkProviderSourceLabel">Provider <span class="info" data-tip="Sends the value. Its changes are copied into every consumer linked to it - one provider can feed many consumers across any OPC DA / OPC UA / MX Component source.">i</span></div>
+                    <select id="interlinkProviderSource" aria-labelledby="interlinkProviderSourceLabel" style="width:100%;margin-bottom:8px" onchange="onInterlinkSourceChange('provider')"></select>
                     <div class="list" id="interlinkProviderList" style="max-height:220px"><span class="msg">Select a source to list its Maps tags.</span></div>
                 </div>
             </div>
@@ -1344,7 +1595,7 @@ internal static class DashboardPage
                 <button class="btn" type="button" id="btnSetLink">Save Link</button>
                 <button class="btn ghost" type="button" id="btnClearLink">Delete Saved Link</button>
                 <button class="btn ghost" type="button" id="btnClearLinkSelection">Clear Selection</button>
-                <span class="msg" id="interlinkStatus">Pick both endpoints from Maps tags — OPC DA, OPC UA or MX Component — so every saved interlink can carry values.</span>
+                <span class="msg" id="interlinkStatus" role="status">Pick both endpoints from Maps tags — OPC DA, OPC UA or MX Component — so every saved interlink can carry values.</span>
             </div>
             <div class="list" id="linksList" style="margin-top:10px"></div>
         </div>
@@ -1366,51 +1617,53 @@ internal static class DashboardPage
                 <button class="fp-subtab" type="button" data-fptab="influx" onclick="showFpTab('influx')">Influx</button>
             </div>
             <div class="fp-tabpane" id="fp-pane-basic">
-                <div class="field"><label class="fl">Tag Name</label><input type="text" id="fpDisplayName" style="flex:1"></div>
-                <div class="field"><label class="fl">Item ID</label><input type="text" id="fpDaItemId" readonly style="flex:1;opacity:.72"></div>
-                <div class="field"><label class="fl">UA Node</label><input type="text" id="fpUaNodeId" readonly style="flex:1;opacity:.72"></div>
-                <div class="field"><label class="fl">Description</label><input type="text" id="fpDescription" placeholder="Operator notes / tag description (optional)" style="flex:1"></div>
+                <div class="field"><label class="fl" for="fpDisplayName">Tag Name</label><input type="text" id="fpDisplayName" style="flex:1"></div>
+                <div class="field"><label class="fl" for="fpDaItemId">Item ID</label><input type="text" id="fpDaItemId" readonly style="flex:1;opacity:.72"></div>
+                <div class="field"><label class="fl" for="fpUaNodeId">UA Node</label><input type="text" id="fpUaNodeId" readonly style="flex:1;opacity:.72"></div>
+                <div class="field"><label class="fl" for="fpDescription">Description</label><input type="text" id="fpDescription" placeholder="Operator notes / tag description (optional)" style="flex:1"></div>
             </div>
             <div class="fp-tabpane" id="fp-pane-setup" style="display:none">
-                <div class="field"><label class="fl">Access Rights</label><select id="fpAccess" data-action="tag-access"><option value="Read">Read (Source → UA)</option><option value="Read-Write">Read-Write (Source ↔ UA)</option><option value="Write">Write (UA → Source)</option></select></div>
-                <div class="field"><label class="fl">Enabled</label><input type="checkbox" id="fpEnabled" data-action="toggle-tag-enabled"></div>
-                <div class="field" id="fpSubscriptionField" style="display:none"><label class="fl">Subscription</label><select id="fpSubscription"></select><span class="msg" id="fpSubscriptionHint"></span></div>
-                <div class="field" id="fpPlcGroupField" style="display:none"><label class="fl">PLC Group</label><select id="fpPlcGroup"></select><span class="msg" id="fpPlcGroupHint"></span></div>
-                <div class="field"><label class="fl">Update Rate</label><select id="fpPollRate" data-action="tag-poll-rate"><option value="0">Source Default</option><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
-                <div class="field"><label class="fl">Deadband %</label><input type="number" id="fpDeadband" min="0" max="100" step="0.1" value="0" style="width:80px"></div>
-                <div class="field"><label class="fl">Decimals</label><input type="number" id="fpDecimals" min="0" max="15" step="1" value="" placeholder="off (full precision)" style="width:150px"><span class="msg">digits after comma for Float/Double (blank = off, 0 = no decimals)</span></div>
-                <div class="field"><label class="fl">Unit</label><input type="text" id="fpUnit" placeholder="°C, bar, RPM…" style="flex:1"><span class="msg">engineering unit label (shown on HMI widgets)</span></div>
-                <div class="field"><label class="fl">Trend Plot</label><select id="fpTrendStyle"><option value="Continuous">Continuous (line)</option><option value="Step">Step (hold last)</option></select><span class="msg">HMI history/trend drawing: line between samples, or hold each value until the next sample (classic SCADA step)</span></div>
-                <div class="field"><label class="fl">Digital</label><select id="fpDigital"><option value="">Auto (Boolean = on/off)</option><option value="true">Digital — show on/off text</option><option value="false">Analog — show raw value</option></select><span class="msg" id="fpDigitalHint"></span></div>
-                <div class="field"><label class="fl">On text</label><input type="text" id="fpOnText" placeholder="1 / true" style="width:150px"><span class="msg">HMI faceplate status text for the on state (blank = raw value)</span></div>
-                <div class="field"><label class="fl">Off text</label><input type="text" id="fpOffText" placeholder="0 / false" style="width:150px"><span class="msg">HMI faceplate status text for the off state (blank = raw value)</span></div>
+                <div class="field"><label class="fl" for="fpAccess">Access Rights</label><select id="fpAccess" data-action="tag-access"><option value="Read">Read (Source → UA)</option><option value="Read-Write">Read-Write (Source ↔ UA)</option><option value="Write">Write (UA → Source)</option></select></div>
+                <div class="field"><label class="fl" for="fpEnabled">Enabled</label><input type="checkbox" id="fpEnabled" data-action="toggle-tag-enabled"></div>
+                <div class="field" id="fpSubscriptionField" style="display:none"><label class="fl" for="fpSubscription">Subscription</label><select id="fpSubscription"></select><span class="msg" id="fpSubscriptionHint"></span></div>
+                <div class="field" id="fpPlcGroupField" style="display:none"><label class="fl" for="fpPlcGroup">PLC Group</label><select id="fpPlcGroup"></select><span class="msg" id="fpPlcGroupHint"></span></div>
+                <div class="field"><label class="fl" for="fpPollRate">Update Rate</label><select id="fpPollRate" data-action="tag-poll-rate"><option value="0">Source Default</option><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
+                <div class="field"><label class="fl" for="fpDeadband">Deadband %</label><input type="number" id="fpDeadband" min="0" max="100" step="0.1" value="0" style="width:80px"></div>
+                <div class="field"><label class="fl" for="fpDecimals">Decimals</label><input type="number" id="fpDecimals" min="0" max="15" step="1" value="" placeholder="off (full precision)" style="width:150px"><span class="msg">digits after comma for Float/Double (blank = off, 0 = no decimals)</span></div>
+                <div class="field"><label class="fl" for="fpUnit">Unit</label><input type="text" id="fpUnit" placeholder="°C, bar, RPM…" style="flex:1"><span class="msg">engineering unit label (shown on HMI widgets)</span></div>
+                <div class="field"><label class="fl" for="fpTrendStyle">Trend Plot</label><select id="fpTrendStyle"><option value="Continuous">Continuous (line)</option><option value="Step">Step (hold last)</option></select><span class="msg">HMI history/trend drawing: line between samples, or hold each value until the next sample (classic SCADA step)</span></div>
+                <div class="field"><label class="fl" for="fpDigital">Digital</label><select id="fpDigital"><option value="">Auto (Boolean = on/off)</option><option value="true">Digital — show on/off text</option><option value="false">Analog — show raw value</option></select><span class="msg" id="fpDigitalHint"></span></div>
+                <div class="field"><label class="fl" for="fpOnText">On text</label><input type="text" id="fpOnText" placeholder="1 / true" style="width:150px"><span class="msg">HMI faceplate status text for the on state (blank = raw value)</span></div>
+                <div class="field"><label class="fl" for="fpOffText">Off text</label><input type="text" id="fpOffText" placeholder="0 / false" style="width:150px"><span class="msg">HMI faceplate status text for the off state (blank = raw value)</span></div>
                 <div class="hint" style="margin-top:4px">Update Rate = source poll/publish interval. With subscriptions on, the source pushes changes at this rate when supported. With subscriptions off, the bridge polls at this rate.</div>
             </div>
             <div class="fp-tabpane" id="fp-pane-sim" style="display:none">
-                <div class="field"><label class="fl">Simulated</label><input type="checkbox" id="fpSimulated" data-action="tag-simulated"></div>
-                <div class="field"><label class="fl">Manual Value</label><input type="text" id="fpManualInput" data-action="tag-manual-value" disabled style="flex:1"></div>
+                <div class="field"><label class="fl" for="fpSimulated">Simulated</label><input type="checkbox" id="fpSimulated" data-action="tag-simulated"></div>
+                <div class="field"><label class="fl" for="fpManualInput">Manual Value</label><input type="text" id="fpManualInput" data-action="tag-manual-value" disabled style="flex:1"></div>
                 <div class="hint warn" id="fpManualParseHint" style="display:none;margin-top:4px"></div>
                 <div class="hint" id="fpModeHint" style="margin-top:4px"></div>
             </div>
             <div class="fp-tabpane" id="fp-pane-mqtt" style="display:none">
-                <div class="field"><label class="fl">MQTT</label><input type="checkbox" id="fpMqttEnabled"> <span class="msg">publish/subscribe this tag</span></div>
-                <div class="field"><label class="fl">MQTT Topic</label><input type="text" id="fpMqttTopic" placeholder="override topic (optional)"></div>
+                <div class="field"><label class="fl" for="fpMqttEnabled">MQTT</label><input type="checkbox" id="fpMqttEnabled"> <span class="msg">publish/subscribe this tag</span></div>
+                <div class="field"><label class="fl" for="fpMqttTopic">MQTT Topic</label><input type="text" id="fpMqttTopic" placeholder="override topic (optional)"></div>
                 <div class="hint" style="margin-top:4px">When enabled, the tag's value is published to the broker and inbound broker writes are applied to it. Leave the topic blank to use the default <span class="mono">{TopicPrefix}/{SourceId}/{ItemId}</span> scheme.</div>
             </div>
             <div class="fp-tabpane" id="fp-pane-influx" style="display:none">
-                <div class="field"><label class="fl">Influx log</label><input type="checkbox" id="fpInfluxEnabled"> <span class="msg">write this tag to InfluxDB</span></div>
+                <div class="field"><label class="fl" for="fpInfluxEnabled">Influx log</label><input type="checkbox" id="fpInfluxEnabled"> <span class="msg">write this tag to InfluxDB</span></div>
                 <div class="hint" style="margin-top:4px">When enabled, each value change of this tag is written to the configured InfluxDB bucket.</div>
             </div>
         </div>
         <div class="modal-f">
+            <span class="msg" id="fpMessage" role="status"></span>
             <button class="btn ghost" type="button" id="fpRemove" data-action="remove-mapping">Remove</button>
             <button class="btn" type="button" id="fpApply" data-action="save-tag">Apply</button>
         </div>
     </div>
 </div>
 <div class="view" id="view-logs">
+    <h1 class="view-title" tabindex="-1">Logs</h1>
     <div class="box">
-        <div class="box-h">Recent Logs <span class="msg" id="logMessage" style="margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0">Showing recent in-app logs.</span></div>
+        <div class="box-h">Recent Logs <span class="msg" id="logMessage" role="status" style="margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0">Showing recent in-app logs.</span></div>
         <div class="box-b log-panel">
             <div class="toolbar">
                 <button class="btn ghost" id="btnRefreshLogs" type="button">Refresh</button>
@@ -1437,13 +1690,14 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="view" id="view-help">
+    <h1 class="view-title" tabindex="-1">Guide</h1>
     <div class="help-subtabs">
         <button class="help-subtab active" onclick="switchHelpSubTab('getting-started')">Getting Started</button>
         <button class="help-subtab" onclick="switchHelpSubTab('features')">Features</button>
         <button class="help-subtab" onclick="switchHelpSubTab('reference')">Reference</button>
     </div>
     <div class="help-searchbar">
-        <input type="search" id="helpSearch" class="help-search" placeholder="Search all topics…" autocomplete="off" oninput="helpSearch(this.value)">
+        <input type="search" id="helpSearch" class="help-search" aria-label="Search help topics" placeholder="Search all topics…" autocomplete="off" oninput="helpSearch(this.value)">
         <button type="button" class="help-search-clear" id="helpSearchClear" style="display:none" onclick="helpSearchClear()" title="Clear search">&times;</button>
     </div>
     <div class="help-layout" id="helpSearchLayout" style="display:none">
@@ -1461,6 +1715,7 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="view" id="view-about">
+    <h1 class="view-title" tabindex="-1">About</h1>
     <div class="box">
         <div class="box-h">About This App</div>
         <div class="box-b">
@@ -1479,6 +1734,7 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="view" id="view-mqtt">
+    <h1 class="view-title" tabindex="-1">MQTT</h1>
     <div class="first-run-banner" id="hintMqtt" style="display:none"></div>
     <div class="grid2">
         <div class="box">
@@ -1512,7 +1768,7 @@ internal static class DashboardPage
                         <span class="msg">applies immediately</span>
                     </div>
                 </div>
-                <div class="msg" id="mqttMessage"></div>
+                <div class="msg" id="mqttMessage" role="status"></div>
             </div>
         </div>
         <div class="box">
@@ -1537,20 +1793,20 @@ internal static class DashboardPage
     </div>
     <div class="wizard-body">
       <div class="wizard-pane active" data-pane="1">
-        <div class="field"><label class="fl">Broker URL</label><input type="text" id="wzMqttUrl" placeholder="tcp://localhost:1883"></div>
-        <div class="field"><label class="fl">Client ID</label><input type="text" id="wzMqttClientId" placeholder="OpcBridge"></div>
-        <div class="field"><label class="fl">Auto-connect</label><input type="checkbox" id="wzMqttAuto" checked></div>
+        <div class="field"><label class="fl" for="wzMqttUrl">Broker URL</label><input type="text" id="wzMqttUrl" placeholder="tcp://localhost:1883"></div>
+        <div class="field"><label class="fl" for="wzMqttClientId">Client ID</label><input type="text" id="wzMqttClientId" placeholder="OpcBridge"></div>
+        <div class="field"><label class="fl" for="wzMqttAuto">Auto-connect</label><input type="checkbox" id="wzMqttAuto" checked></div>
       </div>
       <div class="wizard-pane" data-pane="2">
-        <div class="field"><label class="fl">Username</label><input type="text" id="wzMqttUser" placeholder="(optional)"></div>
-        <div class="field"><label class="fl">Password</label><input type="password" id="wzMqttPass"></div>
-        <div class="field"><label class="fl">TLS</label><input type="checkbox" id="wzMqttTls"></div>
-        <div class="field"><label class="fl">Topic Prefix</label><input type="text" id="wzMqttPrefix" placeholder="bridge/tags"></div>
-        <div class="field"><label class="fl">Payload Fields</label><select id="wzMqttFields"><option>Value, Timestamp</option><option>Value, Timestamp, Quality</option><option>Value, Timestamp, Quality, SourceId, ItemId</option><option>Value, Timestamp, SourceId, ItemId, DisplayName, DataType</option></select></div>
+        <div class="field"><label class="fl" for="wzMqttUser">Username</label><input type="text" id="wzMqttUser" placeholder="(optional)"></div>
+        <div class="field"><label class="fl" for="wzMqttPass">Password</label><input type="password" id="wzMqttPass"></div>
+        <div class="field"><label class="fl" for="wzMqttTls">TLS</label><input type="checkbox" id="wzMqttTls"></div>
+        <div class="field"><label class="fl" for="wzMqttPrefix">Topic Prefix</label><input type="text" id="wzMqttPrefix" placeholder="bridge/tags"></div>
+        <div class="field"><label class="fl" for="wzMqttFields">Payload Fields</label><select id="wzMqttFields"><option>Value, Timestamp</option><option>Value, Timestamp, Quality</option><option>Value, Timestamp, Quality, SourceId, ItemId</option><option>Value, Timestamp, SourceId, ItemId, DisplayName, DataType</option></select></div>
       </div>
       <div class="wizard-pane" data-pane="3">
         <div class="wizard-summary" id="wzMqttSummary"></div>
-        <div class="field"><label class="fl">Connect now</label><input type="checkbox" id="wzMqttConnectNow" checked></div>
+        <div class="field"><label class="fl" for="wzMqttConnectNow">Connect now</label><input type="checkbox" id="wzMqttConnectNow" checked></div>
       </div>
     </div>
     <div class="wizard-foot">
@@ -1563,6 +1819,7 @@ internal static class DashboardPage
 </div>
 </div>
 <div class="view" id="view-iot-traffic">
+    <h1 class="view-title" tabindex="-1">Traffic</h1>
     <div class="box">
         <div class="box-h">Traffic Monitor <span class="info" data-tip="Recent publish (PUB) and subscribe (SUB) messages. PUB = value sent to broker; SUB = inbound message applied via the UA write path.">i</span> <span class="msg" style="margin-left:auto"><button class="btn ghost" onclick="loadMqttValues()">Refresh</button></span></div>
         <div class="box-b">
@@ -1583,6 +1840,7 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="view" id="view-influx">
+    <h1 class="view-title" tabindex="-1">InfluxDB</h1>
     <div class="first-run-banner" id="hintInflux" style="display:none"></div>
     <div class="grid2">
         <div class="box">
@@ -1592,9 +1850,9 @@ internal static class DashboardPage
                     <div class="conn-section-h">Configuration <span class="info" data-tip="Settings saved to influx.json. Changes take effect after Save Config and apply to the next Connect.">i</span></div>
                     <div class="field"><label class="fl" for="influxEnabled">Auto-connect</label><span class="info" data-tip="When ON, the bridge connects to InfluxDB automatically on app startup. When OFF, it starts disconnected. Use Live Connection buttons to connect or disconnect now.">i</span><input type="checkbox" id="influxEnabled"></div>
                     <div class="field"><label class="fl" for="influxUrl">URL</label><span class="info" data-tip="InfluxDB HTTP API base URL. Example: http://192.168.1.50:8086 or https://us-east-1-1.aws.cloud2.influxdata.com">i</span><input type="text" id="influxUrl" placeholder="http://localhost:8086" style="flex:1"><button class="btn ghost" type="button" id="btnInfluxScan">Scan</button></div>
-                    <div class="field" id="influxScanRow" style="display:none"><label class="fl">Host</label><input type="text" id="influxScanHost" placeholder="192.168.1.50" style="flex:1"><button class="btn ghost" type="button" id="btnInfluxProbe">Probe</button></div>
+                    <div class="field" id="influxScanRow" style="display:none"><label class="fl" for="influxScanHost">Host</label><input type="text" id="influxScanHost" placeholder="192.168.1.50" style="flex:1"><button class="btn ghost" type="button" id="btnInfluxProbe">Probe</button></div>
                     <div class="list" id="listInfluxScan" style="max-height:120px;display:none"></div>
-                    <div class="field"><span class="msg" id="msgInfluxScan"></span></div>
+                    <div class="field"><span class="msg" id="msgInfluxScan" role="status"></span></div>
                     <div class="field"><label class="fl" for="influxOrg">Org</label><span class="info" data-tip="InfluxDB organization name (required for 2.x/Cloud).">i</span><input type="text" id="influxOrg" placeholder="my-org"></div>
                     <div class="field"><label class="fl" for="influxBucket">Bucket</label><span class="info" data-tip="Target bucket for written points.">i</span><input type="text" id="influxBucket" placeholder="opc"></div>
                     <div class="field"><label class="fl" for="influxToken">Token</label><span class="info" data-tip="API token with write access to the bucket. Stored in influx.json.">i</span><input type="password" id="influxToken"></div>
@@ -1611,7 +1869,7 @@ internal static class DashboardPage
                         <span class="msg">applies immediately</span>
                     </div>
                 </div>
-                <div class="msg" id="influxMessage"></div>
+                <div class="msg" id="influxMessage" role="status"></div>
             </div>
         </div>
         <div class="box">
@@ -1635,21 +1893,21 @@ internal static class DashboardPage
     </div>
     <div class="wizard-body">
       <div class="wizard-pane active" data-pane="1">
-        <div class="field"><label class="fl">URL</label><input type="text" id="wzInfluxUrl" placeholder="http://localhost:8086" style="flex:1"><button class="btn ghost" type="button" id="wzBtnInfluxScan">Scan</button></div>
-        <div class="field" id="wzInfluxScanRow" style="display:none"><label class="fl">Host</label><input type="text" id="wzInfluxScanHost" placeholder="192.168.1.50" style="flex:1"><button class="btn ghost" type="button" id="wzBtnInfluxProbe">Probe</button></div>
+        <div class="field"><label class="fl" for="wzInfluxUrl">URL</label><input type="text" id="wzInfluxUrl" placeholder="http://localhost:8086" style="flex:1"><button class="btn ghost" type="button" id="wzBtnInfluxScan">Scan</button></div>
+        <div class="field" id="wzInfluxScanRow" style="display:none"><label class="fl" for="wzInfluxScanHost">Host</label><input type="text" id="wzInfluxScanHost" placeholder="192.168.1.50" style="flex:1"><button class="btn ghost" type="button" id="wzBtnInfluxProbe">Probe</button></div>
         <div class="list" id="wzListInfluxScan" style="max-height:120px;display:none"></div>
-        <div class="field"><span class="msg" id="wzMsgInfluxScan"></span></div>
-        <div class="field"><label class="fl">Org</label><input type="text" id="wzInfluxOrg" placeholder="my-org"></div>
-        <div class="field"><label class="fl">Bucket</label><input type="text" id="wzInfluxBucket" placeholder="opc"></div>
+        <div class="field"><span class="msg" id="wzMsgInfluxScan" role="status"></span></div>
+        <div class="field"><label class="fl" for="wzInfluxOrg">Org</label><input type="text" id="wzInfluxOrg" placeholder="my-org"></div>
+        <div class="field"><label class="fl" for="wzInfluxBucket">Bucket</label><input type="text" id="wzInfluxBucket" placeholder="opc"></div>
       </div>
       <div class="wizard-pane" data-pane="2">
-        <div class="field"><label class="fl">Token</label><input type="password" id="wzInfluxToken"></div>
+        <div class="field"><label class="fl" for="wzInfluxToken">Token</label><input type="password" id="wzInfluxToken"></div>
         <div class="hint">API token with write access to the bucket. Stored in influx.json.</div>
       </div>
       <div class="wizard-pane" data-pane="3">
         <div class="wizard-summary" id="wzInfluxSummary"></div>
-        <div class="field"><label class="fl">Auto-connect</label><input type="checkbox" id="wzInfluxAuto" checked></div>
-        <div class="field"><label class="fl">Connect now</label><input type="checkbox" id="wzInfluxConnectNow" checked></div>
+        <div class="field"><label class="fl" for="wzInfluxAuto">Auto-connect</label><input type="checkbox" id="wzInfluxAuto" checked></div>
+        <div class="field"><label class="fl" for="wzInfluxConnectNow">Connect now</label><input type="checkbox" id="wzInfluxConnectNow" checked></div>
       </div>
     </div>
     <div class="wizard-foot">
@@ -1662,6 +1920,7 @@ internal static class DashboardPage
 </div>
 </div>
 <div class="view" id="view-diagram">
+    <h1 class="view-title" tabindex="-1">Diagram</h1>
     <div class="diag-toolbar">
         <div class="diag-seg" id="diagSeg">
             <span class="seg-pill" id="segPill"></span>
@@ -1718,6 +1977,44 @@ document.addEventListener('mouseover', e => {
 });
 document.addEventListener('mouseout', e => { if (e.target.closest('.info, [data-tip]') && tipEl) tipEl.classList.remove('show'); });
 const el = id => document.getElementById(id);
+const THEME_KEY = 'opcbridge.theme';
+const THEME_PREFS = ['light', 'dark', 'system'];
+const systemTheme = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+let themePaletteCache = null;
+let themePref = (() => {
+    try {
+        const stored = localStorage.getItem(THEME_KEY);
+        if (THEME_PREFS.indexOf(stored) >= 0) return stored;
+    } catch (e) { }
+    return 'system';
+})();
+
+function resolvedTheme(pref) {
+    if (pref !== 'system') return pref;
+    return systemTheme && systemTheme.matches ? 'dark' : 'light';
+}
+
+/* One place decides the appearance: the attribute on <html>. Everything else,
+   including the diagram's status colors, reads back from the CSS tokens. */
+function applyTheme(pref, persist) {
+    themePref = THEME_PREFS.indexOf(pref) >= 0 ? pref : 'system';
+    document.documentElement.setAttribute('data-theme', resolvedTheme(themePref));
+    themePaletteCache = null;
+    if (persist) { try { localStorage.setItem(THEME_KEY, themePref); } catch (e) { } }
+    document.querySelectorAll('input[name="theme"]').forEach(input => { input.checked = input.value === themePref; });
+    if (document.querySelector('#view-diagram.active')) renderDiagram();
+}
+
+function initTheme() {
+    applyTheme(themePref, false);
+    document.querySelectorAll('input[name="theme"]').forEach(input => {
+        input.addEventListener('change', () => { if (input.checked) applyTheme(input.value, true); });
+    });
+    if (!systemTheme) return;
+    const followSystem = () => { if (themePref === 'system') applyTheme('system', false); };
+    if (systemTheme.addEventListener) systemTheme.addEventListener('change', followSystem);
+    else if (systemTheme.addListener) systemTheme.addListener(followSystem);
+}
 const state = {
     tagPath: '',
     uaBrowseTrail: [],
@@ -1746,6 +2043,7 @@ const state = {
     mappingSortDir: 1,
     mappingFilter: '',
     mapType: 'opc-da',
+    mapTypePinned: false,
     mqttConfigured: false,
     mqttState: 'Disconnected',
     mqttConnectionState: 'Disconnected',
@@ -1918,17 +2216,17 @@ window.addEventListener('resize', syncSegPill);
 function diagEmptyState(title, hint, w = 1100, h = 600) {
     const cx = Math.round(w / 2), cy = Math.round(h / 2);
     return `<g class="diag-empty" transform="translate(${cx} ${cy})">` +
-        `<rect x="-240" y="-62" width="480" height="124" rx="10" fill="url(#diagCardGrad)" stroke="#2a3547" stroke-dasharray="5 5"/>` +
-        `<text y="-8" text-anchor="middle" fill="#d8e0ea" font-size="14" font-weight="600">${escapeHtml(title)}</text>` +
-        `<text y="16" text-anchor="middle" fill="#6b7689" font-size="11">${escapeHtml(hint)}</text></g>`;
+        `<rect x="-240" y="-62" width="480" height="124" rx="0" class="dg-surface dg-rule" stroke-dasharray="5 5"/>` +
+        `<text y="-8" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-title)" font-weight="600">${escapeHtml(title)}</text>` +
+        `<text y="16" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">${escapeHtml(hint)}</text></g>`;
 }
 
 const DIAG_DEFS = '<defs>' +
     '<linearGradient id="diagCardGrad" x1="0" y1="0" x2="0" y2="1">' +
-    '<stop offset="0" stop-color="#18202e"/><stop offset="1" stop-color="#10151f"/>' +
+    '<stop offset="0" class="dg-stop-a"/><stop offset="1" class="dg-stop-b"/>' +
     '</linearGradient>' +
     '<filter id="diagDrop" x="-20%" y="-20%" width="140%" height="140%">' +
-    '<feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000000" flood-opacity="0.35"/>' +
+    '<feDropShadow dx="0" dy="1" stdDeviation="0" class="dg-drop"/>' +
     '</filter></defs>';
 
 function showDiagTab(tab) {
@@ -2045,9 +2343,11 @@ function drawCurve(x1, y1, x2, y2, status, color, lift = 40) {
 
 function mqttBrokerStatus() {
     const mqttState = (state.mqttConnectionState || el('mqttState')?.textContent || '').toLowerCase();
-    if (mqttState.includes('connected')) return 'good';
-    if (mqttState.includes('connecting') || mqttState.includes('partial')) return 'warn';
+    // "disconnected" contains "connected", so the negative cases must be tested first.
+    if (mqttState.includes('disconnected') || !mqttState) return 'off';
+    if (mqttState.includes('connecting')) return 'warn';
     if (mqttState.includes('fault') || mqttState.includes('error')) return 'bad';
+    if (mqttState.includes('connected') || mqttState.includes('partial')) return 'good';
     return 'off';
 }
 
@@ -2105,8 +2405,8 @@ function renderAllDiagram() {
     });
 
     let svg = '';
-    svg += `<text x="40" y="30" fill="#6b7689" font-size="11" font-weight="600">PLANT OVERVIEW (aggregated)</text>`;
-    svg += `<text x="40" y="48" fill="#6b7689" font-size="10">Sources → tag groups → UA / MQTT · trunks colored by live status · detail on DA→UA / Interlinks / MQTT tabs</text>`;
+    svg += `<text x="40" y="30" class="dg-muted" style="font-size:var(--fs-micro)" font-weight="600">PLANT OVERVIEW (aggregated)</text>`;
+    svg += `<text x="40" y="48" class="dg-muted" style="font-size:var(--fs-micro)">Sources → tag groups → UA / MQTT · trunks colored by live status · detail on DA→UA / Interlinks / MQTT tabs</text>`;
 
     const sourcePositions = new Map();
     const groupPositions = new Map();
@@ -2134,9 +2434,9 @@ function renderAllDiagram() {
         groupPositions.set(sourceId, { x: groupX, y: sourceY, cy, left: groupX, right: groupX + colW.group, cx: groupX + colW.group / 2 });
 
         svg += `<g class="diag-node" data-source="${escapeHtml(sourceId)}">`;
-        svg += `<rect x="${sourceX}" y="${sourceY}" width="${colW.source}" height="64" rx="6" fill="#11161f" stroke="${sourceColor}" stroke-width="2"/>`;
-        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 24}" text-anchor="middle" fill="#d8e0ea" font-size="12" font-weight="600">${escapeHtml(sourceName)}</text>`;
-        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 44}" text-anchor="middle" fill="#6b7689" font-size="10">${escapeHtml(sourceInfo?.progId || sourceInfo?.ProgId || 'DA source')}</text>`;
+        svg += `<rect x="${sourceX}" y="${sourceY}" width="${colW.source}" height="64" rx="0" class="dg-surface" stroke="${sourceColor}" stroke-width="2"/>`;
+        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 24}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)" font-weight="600">${escapeHtml(sourceName)}</text>`;
+        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 44}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">${escapeHtml(sourceSubtitle(sourceInfo))}</text>`;
         svg += `</g>`;
 
         const groupStatus = summary.total === 0 ? 'off' : summary.flow;
@@ -2149,10 +2449,10 @@ function renderAllDiagram() {
         svg += drawEdge(sourceX + colW.source, cy, groupX, cy, groupStatus, groupColor);
 
         svg += `<g class="diag-node" data-source-group="${escapeHtml(sourceId)}">`;
-        svg += `<rect x="${groupX}" y="${sourceY}" width="${colW.group}" height="64" rx="6" fill="#11161f" stroke="${groupColor}" stroke-width="1.5"/>`;
-        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 20}" text-anchor="middle" fill="#d8e0ea" font-size="12" font-weight="600">${summary.total} tags</text>`;
-        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 38}" text-anchor="middle" fill="#6b7689" font-size="10">${escapeHtml(line2)}</text>`;
-        if (line3) svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 54}" text-anchor="middle" fill="#6b7689" font-size="10">${escapeHtml(line3)}</text>`;
+        svg += `<rect x="${groupX}" y="${sourceY}" width="${colW.group}" height="64" rx="0" class="dg-surface" stroke="${groupColor}" stroke-width="1.5"/>`;
+        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 20}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)" font-weight="600">${summary.total} tags</text>`;
+        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 38}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">${escapeHtml(line2)}</text>`;
+        if (line3) svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 54}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">${escapeHtml(line3)}</text>`;
         svg += `</g>`;
 
         maxY = Math.max(maxY, sourceY + 64);
@@ -2179,8 +2479,8 @@ function renderAllDiagram() {
             const g = groupPositions.get(pair.fromSid);
             if (!g) return;
             const color = getStatusColor(pair.status);
-            svg += `<circle cx="${g.cx}" cy="${g.y - 6}" r="8" fill="#11161f" stroke="${color}" stroke-width="1.5"/>`;
-            svg += `<text x="${g.cx}" y="${g.y - 2}" text-anchor="middle" fill="${color}" font-size="9">${pair.count}</text>`;
+            svg += `<circle cx="${g.cx}" cy="${g.y - 6}" r="8" class="dg-surface" stroke="${color}" stroke-width="1.5"/>`;
+            svg += `<text x="${g.cx}" y="${g.y - 2}" text-anchor="middle" fill="${color}" style="font-size:var(--fs-micro)">${pair.count}</text>`;
             return;
         }
         const from = groupPositions.get(pair.fromSid);
@@ -2192,8 +2492,8 @@ function renderAllDiagram() {
         svg += drawCurve(from.cx, from.cy, to.cx, to.cy, pair.status, color, lift);
         const midX = (from.cx + to.cx) / 2;
         const midY = Math.min(from.cy, to.cy) - lift + 8;
-        svg += `<rect x="${midX - 12}" y="${midY - 9}" width="24" height="14" rx="3" fill="#11161f" stroke="${color}" stroke-width="1"/>`;
-        svg += `<text x="${midX}" y="${midY + 2}" text-anchor="middle" fill="${color}" font-size="9">${pair.count}</text>`;
+        svg += `<rect x="${midX - 12}" y="${midY - 9}" width="24" height="14" rx="0" class="dg-surface" stroke="${color}" stroke-width="1"/>`;
+        svg += `<text x="${midX}" y="${midY + 2}" text-anchor="middle" fill="${color}" style="font-size:var(--fs-micro)">${pair.count}</text>`;
     });
 
     // UA hub
@@ -2201,9 +2501,9 @@ function renderAllDiagram() {
     const uaColor = getStatusColor(uaStatus);
     const uaY = Math.max(startY, (maxY + startY) / 2 - 28);
     svg += `<g class="diag-node">`;
-    svg += `<rect x="${uaX}" y="${uaY}" width="${colW.hub}" height="56" rx="6" fill="#11161f" stroke="${uaColor}" stroke-width="2"/>`;
-    svg += `<text x="${uaX + colW.hub / 2}" y="${uaY + 22}" text-anchor="middle" fill="#d8e0ea" font-size="12" font-weight="600">OPC UA Server</text>`;
-    svg += `<text x="${uaX + colW.hub / 2}" y="${uaY + 40}" text-anchor="middle" fill="#6b7689" font-size="10">${totalTags} mapped</text>`;
+    svg += `<rect x="${uaX}" y="${uaY}" width="${colW.hub}" height="56" rx="0" class="dg-surface" stroke="${uaColor}" stroke-width="2"/>`;
+    svg += `<text x="${uaX + colW.hub / 2}" y="${uaY + 22}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)" font-weight="600">OPC UA Server</text>`;
+    svg += `<text x="${uaX + colW.hub / 2}" y="${uaY + 40}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">${totalTags} mapped</text>`;
     svg += `</g>`;
 
     groupPositions.forEach((pos, sourceId) => {
@@ -2217,9 +2517,9 @@ function renderAllDiagram() {
     const brokerColor = getStatusColor(brokerStatus);
     const mqttY = uaY + 100;
     svg += `<g class="diag-node">`;
-    svg += `<rect x="${mqttX}" y="${mqttY}" width="${colW.hub}" height="56" rx="6" fill="#11161f" stroke="${brokerColor}" stroke-width="2"/>`;
-    svg += `<text x="${mqttX + colW.hub / 2}" y="${mqttY + 22}" text-anchor="middle" fill="#d8e0ea" font-size="12" font-weight="600">MQTT Broker</text>`;
-    svg += `<text x="${mqttX + colW.hub / 2}" y="${mqttY + 40}" text-anchor="middle" fill="#6b7689" font-size="10">${totalMqtt}/${totalTags} enabled</text>`;
+    svg += `<rect x="${mqttX}" y="${mqttY}" width="${colW.hub}" height="56" rx="0" class="dg-surface" stroke="${brokerColor}" stroke-width="2"/>`;
+    svg += `<text x="${mqttX + colW.hub / 2}" y="${mqttY + 22}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)" font-weight="600">MQTT Broker</text>`;
+    svg += `<text x="${mqttX + colW.hub / 2}" y="${mqttY + 40}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">${totalMqtt}/${totalTags} enabled</text>`;
     svg += `</g>`;
 
     groupPositions.forEach((pos, sourceId) => {
@@ -2233,7 +2533,7 @@ function renderAllDiagram() {
         svg += drawEdge(pos.right, pos.cy, mqttX, mqttY + 28, edgeStatus, getStatusColor(edgeStatus));
     });
 
-    svg += `<text x="${sourceX}" y="${Math.max(maxY, mqttY + 56) + 36}" fill="#6b7689" font-size="10">Aggregated trunks · Grey = inactive · Color = live · Curves = DA→DA between sources (count badge)</text>`;
+    svg += `<text x="${sourceX}" y="${Math.max(maxY, mqttY + 56) + 36}" class="dg-muted" style="font-size:var(--fs-micro)">Aggregated trunks · Grey = inactive · Color = live · Curves = DA→DA between sources (count badge)</text>`;
 
     return { svg, maxHeight: Math.max(maxY, mqttY + 56) + 60, maxWidth: 1240 };
 }
@@ -2273,8 +2573,8 @@ function renderDaUaDiagram() {
     let svg = '';
     const totalTags = mappings.length;
     const sourceCount = bySource.size;
-    svg += `<text x="50" y="28" fill="#6b7689" font-size="11" font-weight="600">Source → UA (aggregated)</text>`;
-    svg += `<text x="50" y="46" fill="#6b7689" font-size="10">${sourceCount} sources · ${totalTags} tags · click a tag-group to expand (page ${pageSize}) · Fit/pan for overview</text>`;
+    svg += `<text x="50" y="28" class="dg-muted" style="font-size:var(--fs-micro)" font-weight="600">Source → UA (aggregated)</text>`;
+    svg += `<text x="50" y="46" class="dg-muted" style="font-size:var(--fs-micro)">${sourceCount} sources · ${totalTags} tags · click a tag-group to expand (page ${pageSize}) · Fit/pan for overview</text>`;
 
     const groupPositions = new Map();
     const summaries = new Map();
@@ -2306,9 +2606,9 @@ function renderDaUaDiagram() {
 
         // Source box
         svg += `<g class="diag-node" data-source="${escapeHtml(sourceId)}">`;
-        svg += `<rect x="${sourceX}" y="${sourceY}" width="${colW.source}" height="64" rx="6" fill="#11161f" stroke="${sourceColor}" stroke-width="2"/>`;
-        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 24}" text-anchor="middle" fill="#d8e0ea" font-size="12" font-weight="600">${escapeHtml(sourceName)}</text>`;
-        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 44}" text-anchor="middle" fill="#6b7689" font-size="10">${escapeHtml(sourceInfo?.progId || sourceInfo?.ProgId || 'DA source')}</text>`;
+        svg += `<rect x="${sourceX}" y="${sourceY}" width="${colW.source}" height="64" rx="0" class="dg-surface" stroke="${sourceColor}" stroke-width="2"/>`;
+        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 24}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)" font-weight="600">${escapeHtml(sourceName)}</text>`;
+        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 44}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">${escapeHtml(sourceSubtitle(sourceInfo))}</text>`;
         svg += `</g>`;
 
         // Tag-group summary (click to expand/collapse)
@@ -2320,10 +2620,10 @@ function renderDaUaDiagram() {
         svg += drawEdge(sourceX + colW.source, groupCy, groupX, groupCy, groupStatus, groupColor);
 
         svg += `<g class="diag-node" data-diag-action="toggle-expand" data-source-id="${attr(sourceId)}" style="cursor:pointer">`;
-        svg += `<rect x="${groupX}" y="${sourceY}" width="${colW.group}" height="64" rx="6" fill="#11161f" stroke="${groupColor}" stroke-width="1.5"/>`;
-        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 20}" text-anchor="middle" fill="#d8e0ea" font-size="12" font-weight="600">${summary.total} tags ${expanded ? '▾' : '▸'}</text>`;
-        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 38}" text-anchor="middle" fill="#6b7689" font-size="10">${escapeHtml(line2)}</text>`;
-        if (line3) svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 54}" text-anchor="middle" fill="#6b7689" font-size="10">${escapeHtml(line3)}</text>`;
+        svg += `<rect x="${groupX}" y="${sourceY}" width="${colW.group}" height="64" rx="0" class="dg-surface" stroke="${groupColor}" stroke-width="1.5"/>`;
+        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 20}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)" font-weight="600">${summary.total} tags ${expanded ? '▾' : '▸'}</text>`;
+        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 38}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">${escapeHtml(line2)}</text>`;
+        if (line3) svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 54}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">${escapeHtml(line3)}</text>`;
         svg += `</g>`;
 
         groupPositions.set(sourceId, {
@@ -2346,8 +2646,8 @@ function renderDaUaDiagram() {
 
                 svg += drawEdge(groupX + colW.group, groupCy, tagX, cy, tagStatus, tagColor);
                 svg += `<g class="diag-node" data-tag="${escapeHtml(tKey)}">`;
-                svg += `<rect x="${tagX}" y="${tagY}" width="${colW.tag}" height="28" rx="4" fill="#11161f" stroke="${tagColor}" stroke-width="1.5"/>`;
-                svg += `<text x="${tagX + colW.tag / 2}" y="${tagY + 18}" text-anchor="middle" fill="#d8e0ea" font-size="11">${escapeHtml(tagName)}</text>`;
+                svg += `<rect x="${tagX}" y="${tagY}" width="${colW.tag}" height="28" rx="0" class="dg-surface" stroke="${tagColor}" stroke-width="1.5"/>`;
+                svg += `<text x="${tagX + colW.tag / 2}" y="${tagY + 18}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)">${escapeHtml(tagName)}</text>`;
                 svg += `</g>`;
                 detailPositions.push({ right: tagX + colW.tag, cy, status: tagStatus, color: tagColor });
                 maxY = Math.max(maxY, tagY + 28);
@@ -2359,15 +2659,15 @@ function renderDaUaDiagram() {
                 const canNext = safePage < pageCount - 1;
                 if (canPrev) {
                     svg += `<g class="diag-node" data-diag-action="expand-page" data-source-id="${attr(sourceId)}" data-dir="-1" style="cursor:pointer">`;
-                    svg += `<rect x="${tagX}" y="${navY}" width="70" height="22" rx="4" fill="#1a2230" stroke="#6b7689"/>`;
-                    svg += `<text x="${tagX + 35}" y="${navY + 15}" text-anchor="middle" fill="#d8e0ea" font-size="10">← Prev</text></g>`;
+                    svg += `<rect x="${tagX}" y="${navY}" width="70" height="22" rx="0" class="dg-surface dg-rule"/>`;
+                    svg += `<text x="${tagX + 35}" y="${navY + 15}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)">← Prev</text></g>`;
                 }
                 if (canNext) {
                     svg += `<g class="diag-node" data-diag-action="expand-page" data-source-id="${attr(sourceId)}" data-dir="1" style="cursor:pointer">`;
-                    svg += `<rect x="${tagX + 80}" y="${navY}" width="70" height="22" rx="4" fill="#1a2230" stroke="#6b7689"/>`;
-                    svg += `<text x="${tagX + 115}" y="${navY + 15}" text-anchor="middle" fill="#d8e0ea" font-size="10">Next →</text></g>`;
+                    svg += `<rect x="${tagX + 80}" y="${navY}" width="70" height="22" rx="0" class="dg-surface dg-rule"/>`;
+                    svg += `<text x="${tagX + 115}" y="${navY + 15}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)">Next →</text></g>`;
                 }
-                svg += `<text x="${tagX + 170}" y="${navY + 15}" fill="#6b7689" font-size="10">${sliceStart + 1}–${sliceStart + slice.length} / ${tags.length}</text>`;
+                svg += `<text x="${tagX + 170}" y="${navY + 15}" class="dg-muted" style="font-size:var(--fs-micro)">${sliceStart + 1}–${sliceStart + slice.length} / ${tags.length}</text>`;
                 maxY = Math.max(maxY, navY + 22);
             }
         }
@@ -2383,9 +2683,9 @@ function renderDaUaDiagram() {
     const uaColor = getStatusColor(uaStatus);
     const uaY = Math.max(startY, (maxY + startY) / 2 - 28);
     svg += `<g class="diag-node">`;
-    svg += `<rect x="${uaX}" y="${uaY}" width="${colW.hub}" height="56" rx="6" fill="#11161f" stroke="${uaColor}" stroke-width="2"/>`;
-    svg += `<text x="${uaX + colW.hub / 2}" y="${uaY + 22}" text-anchor="middle" fill="#d8e0ea" font-size="12" font-weight="600">OPC UA Server</text>`;
-    svg += `<text x="${uaX + colW.hub / 2}" y="${uaY + 40}" text-anchor="middle" fill="#6b7689" font-size="10">${totalTags} mapped</text>`;
+    svg += `<rect x="${uaX}" y="${uaY}" width="${colW.hub}" height="56" rx="0" class="dg-surface" stroke="${uaColor}" stroke-width="2"/>`;
+    svg += `<text x="${uaX + colW.hub / 2}" y="${uaY + 22}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)" font-weight="600">OPC UA Server</text>`;
+    svg += `<text x="${uaX + colW.hub / 2}" y="${uaY + 40}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">${totalTags} mapped</text>`;
     svg += `</g>`;
 
     // Trunks: collapsed group → UA; expanded visible tags → UA
@@ -2407,7 +2707,7 @@ function renderDaUaDiagram() {
         }
     });
 
-    svg += `<text x="${sourceX}" y="${maxY + 36}" fill="#6b7689" font-size="10">Collapsed = 1 trunk/source (safe at 10k+ tags) · Expanded = paged tag detail · Grey = inactive · Color = live</text>`;
+    svg += `<text x="${sourceX}" y="${maxY + 36}" class="dg-muted" style="font-size:var(--fs-micro)">Collapsed = 1 trunk/source (safe at 10k+ tags) · Expanded = paged tag detail · Grey = inactive · Color = live</text>`;
 
     return { svg, maxHeight: maxY + 60, maxWidth: 1120 };
 }
@@ -2461,8 +2761,8 @@ function renderInterlinksDiagram() {
     }
 
     let svg = '';
-    svg += `<text x="50" y="28" fill="#6b7689" font-size="11" font-weight="600">DA TO DA (aggregated)</text>`;
-    svg += `<text x="50" y="46" fill="#6b7689" font-size="10">${links.length} link(s) · ${pairMap.size} source-pair(s) · click a pair badge to expand (page ${pageSize})</text>`;
+    svg += `<text x="50" y="28" class="dg-muted" style="font-size:var(--fs-micro)" font-weight="600">DA TO DA (aggregated)</text>`;
+    svg += `<text x="50" y="46" class="dg-muted" style="font-size:var(--fs-micro)">${links.length} link(s) · ${pairMap.size} source-pair(s) · click a pair badge to expand (page ${pageSize})</text>`;
 
     // Layout provider sources on left, consumer sources on right
     const providers = new Set();
@@ -2483,9 +2783,9 @@ function renderInterlinksDiagram() {
         const color = getStatusColor(st);
         const count = links.filter(l => (l.providerSourceId || 'default') === sid).length;
         svg += `<g class="diag-node" data-source="${escapeHtml(sid)}">`;
-        svg += `<rect x="${leftX}" y="${y}" width="${colW.source}" height="64" rx="6" fill="#11161f" stroke="${color}" stroke-width="2"/>`;
-        svg += `<text x="${leftX + colW.source / 2}" y="${y + 24}" text-anchor="middle" fill="#d8e0ea" font-size="12" font-weight="600">${escapeHtml(sourceName(sid))}</text>`;
-        svg += `<text x="${leftX + colW.source / 2}" y="${y + 44}" text-anchor="middle" fill="#6b7689" font-size="10">provider · ${count} out</text>`;
+        svg += `<rect x="${leftX}" y="${y}" width="${colW.source}" height="64" rx="0" class="dg-surface" stroke="${color}" stroke-width="2"/>`;
+        svg += `<text x="${leftX + colW.source / 2}" y="${y + 24}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)" font-weight="600">${escapeHtml(sourceName(sid))}</text>`;
+        svg += `<text x="${leftX + colW.source / 2}" y="${y + 44}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">provider · ${count} out</text>`;
         svg += `</g>`;
         y += rowH + sourceGap;
     });
@@ -2497,16 +2797,16 @@ function renderInterlinksDiagram() {
         const color = getStatusColor(st);
         const count = links.filter(l => (l.consumerSourceId || 'default') === sid).length;
         svg += `<g class="diag-node" data-source="${escapeHtml(sid)}">`;
-        svg += `<rect x="${rightX}" y="${y}" width="${colW.source}" height="64" rx="6" fill="#11161f" stroke="${color}" stroke-width="2"/>`;
-        svg += `<text x="${rightX + colW.source / 2}" y="${y + 24}" text-anchor="middle" fill="#d8e0ea" font-size="12" font-weight="600">${escapeHtml(sourceName(sid))}</text>`;
-        svg += `<text x="${rightX + colW.source / 2}" y="${y + 44}" text-anchor="middle" fill="#6b7689" font-size="10">consumer · ${count} in</text>`;
+        svg += `<rect x="${rightX}" y="${y}" width="${colW.source}" height="64" rx="0" class="dg-surface" stroke="${color}" stroke-width="2"/>`;
+        svg += `<text x="${rightX + colW.source / 2}" y="${y + 24}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)" font-weight="600">${escapeHtml(sourceName(sid))}</text>`;
+        svg += `<text x="${rightX + colW.source / 2}" y="${y + 44}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">consumer · ${count} in</text>`;
         svg += `</g>`;
         y += rowH + sourceGap;
         maxY = Math.max(maxY, y);
     });
 
     if (pairMap.size === 0) {
-        svg += `<text x="50" y="${maxY + 20}" fill="#6b7689" font-size="11">No DA links yet — create provider→consumer links on the Links tab. Sources shown grey until linked/live.</text>`;
+        svg += `<text x="50" y="${maxY + 20}" class="dg-muted" style="font-size:var(--fs-micro)">No DA links yet — create provider→consumer links on the Links tab. Sources shown grey until linked/live.</text>`;
         return { svg, maxHeight: maxY + 50, maxWidth: 920 };
     }
 
@@ -2530,8 +2830,8 @@ function renderInterlinksDiagram() {
             // same-source links: badge on left source
             if (from) {
                 svg += `<g class="diag-node" data-diag-action="toggle-expand" data-source-id="${attr(expandKey)}" style="cursor:pointer">`;
-                svg += `<circle cx="${from.x + colW.source / 2}" cy="${from.y - 8}" r="12" fill="#11161f" stroke="${color}" stroke-width="1.5"/>`;
-                svg += `<text x="${from.x + colW.source / 2}" y="${from.y - 4}" text-anchor="middle" fill="${color}" font-size="10">${pair.links.length}</text>`;
+                svg += `<circle cx="${from.x + colW.source / 2}" cy="${from.y - 8}" r="12" class="dg-surface" stroke="${color}" stroke-width="1.5"/>`;
+                svg += `<text x="${from.x + colW.source / 2}" y="${from.y - 4}" text-anchor="middle" fill="${color}" style="font-size:var(--fs-micro)">${pair.links.length}</text>`;
                 svg += `</g>`;
             }
         } else if (from && to) {
@@ -2541,13 +2841,13 @@ function renderInterlinksDiagram() {
             const badgeX = (from.right + to.left) / 2;
             const badgeY = Math.min(from.cy, to.cy) - lift + 6;
             svg += `<g class="diag-node" data-diag-action="toggle-expand" data-source-id="${attr(expandKey)}" style="cursor:pointer">`;
-            svg += `<rect x="${badgeX - 28}" y="${badgeY - 12}" width="56" height="22" rx="4" fill="#11161f" stroke="${color}" stroke-width="1.5"/>`;
-            svg += `<text x="${badgeX}" y="${badgeY + 4}" text-anchor="middle" fill="${color}" font-size="10">${pair.links.length}${expanded ? ' ▾' : ' ▸'}</text>`;
+            svg += `<rect x="${badgeX - 28}" y="${badgeY - 12}" width="56" height="22" rx="0" class="dg-surface" stroke="${color}" stroke-width="1.5"/>`;
+            svg += `<text x="${badgeX}" y="${badgeY + 4}" text-anchor="middle" fill="${color}" style="font-size:var(--fs-micro)">${pair.links.length}${expanded ? ' ▾' : ' ▸'}</text>`;
             svg += `</g>`;
         }
 
         if (expanded && slice.length) {
-            svg += `<text x="50" y="${detailY + 14}" fill="#6b7689" font-size="11" font-weight="600">${escapeHtml(sourceName(pair.fromSid))} → ${escapeHtml(sourceName(pair.toSid))} · ${sliceStart + 1}–${sliceStart + slice.length} / ${pair.links.length}</text>`;
+            svg += `<text x="50" y="${detailY + 14}" class="dg-muted" style="font-size:var(--fs-micro)" font-weight="600">${escapeHtml(sourceName(pair.fromSid))} → ${escapeHtml(sourceName(pair.toSid))} · ${sliceStart + 1}–${sliceStart + slice.length} / ${pair.links.length}</text>`;
             detailY += 24;
             slice.forEach((link, i) => {
                 const st = (link.enabled === false || (link.enabled ?? link.Enabled) === false) ? 'off' : getLinkStatus(link);
@@ -2557,15 +2857,15 @@ function renderInterlinksDiagram() {
                 const kind = link._kind === 'legacy' ? 'legacy' : 'link';
                 const rowY = detailY + i * tagSpacing;
                 svg += `<g class="diag-node">`;
-                svg += `<rect x="50" y="${rowY}" width="${colW.detail}" height="28" rx="4" fill="#11161f" stroke="${c}" stroke-width="1.5"/>`;
-                svg += `<text x="${50 + colW.detail / 2}" y="${rowY + 18}" text-anchor="middle" fill="#d8e0ea" font-size="11">${escapeHtml(pLabel)} · P</text>`;
+                svg += `<rect x="50" y="${rowY}" width="${colW.detail}" height="28" rx="0" class="dg-surface" stroke="${c}" stroke-width="1.5"/>`;
+                svg += `<text x="${50 + colW.detail / 2}" y="${rowY + 18}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)">${escapeHtml(pLabel)} · P</text>`;
                 svg += `</g>`;
                 svg += drawEdge(50 + colW.detail, rowY + 14, midX + 40, rowY + 14, st, c);
                 svg += `<g class="diag-node">`;
-                svg += `<rect x="${midX + 40}" y="${rowY}" width="${colW.detail}" height="28" rx="4" fill="#11161f" stroke="${c}" stroke-width="1.5"/>`;
-                svg += `<text x="${midX + 40 + colW.detail / 2}" y="${rowY + 18}" text-anchor="middle" fill="#d8e0ea" font-size="11">${escapeHtml(cLabel)} · C</text>`;
+                svg += `<rect x="${midX + 40}" y="${rowY}" width="${colW.detail}" height="28" rx="0" class="dg-surface" stroke="${c}" stroke-width="1.5"/>`;
+                svg += `<text x="${midX + 40 + colW.detail / 2}" y="${rowY + 18}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)">${escapeHtml(cLabel)} · C</text>`;
                 svg += `</g>`;
-                svg += `<text x="${midX + 40 + colW.detail + 12}" y="${rowY + 18}" fill="#6b7689" font-size="10">${escapeHtml(kind)}</text>`;
+                svg += `<text x="${midX + 40 + colW.detail + 12}" y="${rowY + 18}" class="dg-muted" style="font-size:var(--fs-micro)">${escapeHtml(kind)}</text>`;
             });
             detailY += slice.length * tagSpacing + 8;
             if (pair.links.length > pageSize) {
@@ -2573,13 +2873,13 @@ function renderInterlinksDiagram() {
                 const canNext = safePage < pageCount - 1;
                 if (canPrev) {
                     svg += `<g class="diag-node" data-diag-action="expand-page" data-source-id="${attr(expandKey)}" data-dir="-1" style="cursor:pointer">`;
-                    svg += `<rect x="50" y="${detailY}" width="70" height="22" rx="4" fill="#1a2230" stroke="#6b7689"/>`;
-                    svg += `<text x="85" y="${detailY + 15}" text-anchor="middle" fill="#d8e0ea" font-size="10">← Prev</text></g>`;
+                    svg += `<rect x="50" y="${detailY}" width="70" height="22" rx="0" class="dg-surface dg-rule"/>`;
+                    svg += `<text x="85" y="${detailY + 15}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)">← Prev</text></g>`;
                 }
                 if (canNext) {
                     svg += `<g class="diag-node" data-diag-action="expand-page" data-source-id="${attr(expandKey)}" data-dir="1" style="cursor:pointer">`;
-                    svg += `<rect x="130" y="${detailY}" width="70" height="22" rx="4" fill="#1a2230" stroke="#6b7689"/>`;
-                    svg += `<text x="165" y="${detailY + 15}" text-anchor="middle" fill="#d8e0ea" font-size="10">Next →</text></g>`;
+                    svg += `<rect x="130" y="${detailY}" width="70" height="22" rx="0" class="dg-surface dg-rule"/>`;
+                    svg += `<text x="165" y="${detailY + 15}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)">Next →</text></g>`;
                 }
                 detailY += 30;
             }
@@ -2588,7 +2888,7 @@ function renderInterlinksDiagram() {
         }
     });
 
-    svg += `<text x="50" y="${maxY + 28}" fill="#6b7689" font-size="10">Pair trunks = aggregated links · click badge to expand paged endpoints · grey = inactive · color = live</text>`;
+    svg += `<text x="50" y="${maxY + 28}" class="dg-muted" style="font-size:var(--fs-micro)">Pair trunks = aggregated links · click badge to expand paged endpoints · grey = inactive · color = live</text>`;
     return { svg, maxHeight: maxY + 50, maxWidth: 920 };
 }
 
@@ -2627,8 +2927,8 @@ function renderMqttDiagram() {
     const enabledCount = mappings.filter(isMqttEnabled).length;
 
     let svg = '';
-    svg += `<text x="50" y="28" fill="#6b7689" font-size="11" font-weight="600">MQTT (aggregated)</text>`;
-    svg += `<text x="50" y="46" fill="#6b7689" font-size="10">${enabledCount}/${totalTags} MQTT-enabled · ${bySource.size} sources · click group to expand (page ${pageSize}) · broker ${escapeHtml(state.mqttConnectionState || el('mqttState')?.textContent || 'unknown')}</text>`;
+    svg += `<text x="50" y="28" class="dg-muted" style="font-size:var(--fs-micro)" font-weight="600">MQTT (aggregated)</text>`;
+    svg += `<text x="50" y="46" class="dg-muted" style="font-size:var(--fs-micro)">${enabledCount}/${totalTags} MQTT-enabled · ${bySource.size} sources · click group to expand (page ${pageSize}) · broker ${escapeHtml(state.mqttConnectionState || el('mqttState')?.textContent || 'unknown')}</text>`;
 
     const groupPositions = new Map();
     const summaries = new Map();
@@ -2673,9 +2973,9 @@ function renderMqttDiagram() {
         const groupCy = sourceY + 32;
 
         svg += `<g class="diag-node" data-source="${escapeHtml(sourceId)}">`;
-        svg += `<rect x="${sourceX}" y="${sourceY}" width="${colW.source}" height="64" rx="6" fill="#11161f" stroke="${sourceColor}" stroke-width="2"/>`;
-        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 24}" text-anchor="middle" fill="#d8e0ea" font-size="12" font-weight="600">${escapeHtml(sourceName)}</text>`;
-        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 44}" text-anchor="middle" fill="#6b7689" font-size="10">${escapeHtml(sourceInfo?.progId || sourceInfo?.ProgId || 'DA source')}</text>`;
+        svg += `<rect x="${sourceX}" y="${sourceY}" width="${colW.source}" height="64" rx="0" class="dg-surface" stroke="${sourceColor}" stroke-width="2"/>`;
+        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 24}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)" font-weight="600">${escapeHtml(sourceName)}</text>`;
+        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 44}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">${escapeHtml(sourceSubtitle(sourceInfo))}</text>`;
         svg += `</g>`;
 
         const groupColor = getStatusColor(mqttFlow);
@@ -2685,10 +2985,10 @@ function renderMqttDiagram() {
         svg += drawEdge(sourceX + colW.source, groupCy, groupX, groupCy, mqttFlow, groupColor);
 
         svg += `<g class="diag-node" data-diag-action="toggle-expand" data-source-id="${attr(expandKey)}" style="cursor:pointer">`;
-        svg += `<rect x="${groupX}" y="${sourceY}" width="${colW.group}" height="64" rx="6" fill="#11161f" stroke="${groupColor}" stroke-width="1.5"/>`;
-        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 20}" text-anchor="middle" fill="#d8e0ea" font-size="12" font-weight="600">${summary.mqtt}/${summary.total} MQTT ${expanded ? '▾' : '▸'}</text>`;
-        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 38}" text-anchor="middle" fill="#6b7689" font-size="10">${escapeHtml(line2)}</text>`;
-        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 54}" text-anchor="middle" fill="#6b7689" font-size="10">${escapeHtml(line3)}</text>`;
+        svg += `<rect x="${groupX}" y="${sourceY}" width="${colW.group}" height="64" rx="0" class="dg-surface" stroke="${groupColor}" stroke-width="1.5"/>`;
+        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 20}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)" font-weight="600">${summary.mqtt}/${summary.total} MQTT ${expanded ? '▾' : '▸'}</text>`;
+        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 38}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">${escapeHtml(line2)}</text>`;
+        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 54}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">${escapeHtml(line3)}</text>`;
         svg += `</g>`;
 
         const detailPositions = [];
@@ -2707,9 +3007,9 @@ function renderMqttDiagram() {
 
                 svg += drawEdge(groupX + colW.group, groupCy, tagX, cy, nodeStatus, nodeColor);
                 svg += `<g class="diag-node" data-tag="${escapeHtml(tKey)}">`;
-                svg += `<rect x="${tagX}" y="${tagY}" width="${colW.tag}" height="28" rx="4" fill="#11161f" stroke="${nodeColor}" stroke-width="1.5"/>`;
-                svg += `<text x="${tagX + colW.tag / 2}" y="${tagY + 12}" text-anchor="middle" fill="#d8e0ea" font-size="11">${escapeHtml(tagName)}</text>`;
-                svg += `<text x="${tagX + colW.tag / 2}" y="${tagY + 23}" text-anchor="middle" fill="#6b7689" font-size="9">${mqttOn ? ('ON' + (topic ? ' · ' + escapeHtml(String(topic).slice(0, 18)) : '')) : 'off'}</text>`;
+                svg += `<rect x="${tagX}" y="${tagY}" width="${colW.tag}" height="28" rx="0" class="dg-surface" stroke="${nodeColor}" stroke-width="1.5"/>`;
+                svg += `<text x="${tagX + colW.tag / 2}" y="${tagY + 12}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)">${escapeHtml(tagName)}</text>`;
+                svg += `<text x="${tagX + colW.tag / 2}" y="${tagY + 23}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">${mqttOn ? ('ON' + (topic ? ' · ' + escapeHtml(String(topic).slice(0, 18)) : '')) : 'off'}</text>`;
                 svg += `</g>`;
 
                 let edgeStatus = 'off';
@@ -2728,15 +3028,15 @@ function renderMqttDiagram() {
                 const canNext = safePage < pageCount - 1;
                 if (canPrev) {
                     svg += `<g class="diag-node" data-diag-action="expand-page" data-source-id="${attr(expandKey)}" data-dir="-1" style="cursor:pointer">`;
-                    svg += `<rect x="${tagX}" y="${navY}" width="70" height="22" rx="4" fill="#1a2230" stroke="#6b7689"/>`;
-                    svg += `<text x="${tagX + 35}" y="${navY + 15}" text-anchor="middle" fill="#d8e0ea" font-size="10">← Prev</text></g>`;
+                    svg += `<rect x="${tagX}" y="${navY}" width="70" height="22" rx="0" class="dg-surface dg-rule"/>`;
+                    svg += `<text x="${tagX + 35}" y="${navY + 15}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)">← Prev</text></g>`;
                 }
                 if (canNext) {
                     svg += `<g class="diag-node" data-diag-action="expand-page" data-source-id="${attr(expandKey)}" data-dir="1" style="cursor:pointer">`;
-                    svg += `<rect x="${tagX + 80}" y="${navY}" width="70" height="22" rx="4" fill="#1a2230" stroke="#6b7689"/>`;
-                    svg += `<text x="${tagX + 115}" y="${navY + 15}" text-anchor="middle" fill="#d8e0ea" font-size="10">Next →</text></g>`;
+                    svg += `<rect x="${tagX + 80}" y="${navY}" width="70" height="22" rx="0" class="dg-surface dg-rule"/>`;
+                    svg += `<text x="${tagX + 115}" y="${navY + 15}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)">Next →</text></g>`;
                 }
-                svg += `<text x="${tagX + 170}" y="${navY + 15}" fill="#6b7689" font-size="10">${sliceStart + 1}–${sliceStart + slice.length} / ${tags.length}</text>`;
+                svg += `<text x="${tagX + 170}" y="${navY + 15}" class="dg-muted" style="font-size:var(--fs-micro)">${sliceStart + 1}–${sliceStart + slice.length} / ${tags.length}</text>`;
                 maxY = Math.max(maxY, navY + 22);
             }
         }
@@ -2757,9 +3057,9 @@ function renderMqttDiagram() {
 
     const brokerY = Math.max(startY, (maxY + startY) / 2 - 32);
     svg += `<g class="diag-node">`;
-    svg += `<rect x="${brokerX}" y="${brokerY}" width="${colW.hub}" height="64" rx="8" fill="#11161f" stroke="${brokerColor}" stroke-width="2"/>`;
-    svg += `<text x="${brokerX + colW.hub / 2}" y="${brokerY + 24}" text-anchor="middle" fill="#d8e0ea" font-size="13" font-weight="600">MQTT Broker</text>`;
-    svg += `<text x="${brokerX + colW.hub / 2}" y="${brokerY + 44}" text-anchor="middle" fill="#6b7689" font-size="10">${enabledCount}/${totalTags} enabled</text>`;
+    svg += `<rect x="${brokerX}" y="${brokerY}" width="${colW.hub}" height="64" rx="0" class="dg-surface" stroke="${brokerColor}" stroke-width="2"/>`;
+    svg += `<text x="${brokerX + colW.hub / 2}" y="${brokerY + 24}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)" font-weight="600">MQTT Broker</text>`;
+    svg += `<text x="${brokerX + colW.hub / 2}" y="${brokerY + 44}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">${enabledCount}/${totalTags} enabled</text>`;
     svg += `</g>`;
 
     groupPositions.forEach(pos => {
@@ -2778,7 +3078,7 @@ function renderMqttDiagram() {
         }
     });
 
-    svg += `<text x="${sourceX}" y="${Math.max(maxY, brokerY + 64) + 32}" fill="#6b7689" font-size="10">Collapsed = 1 trunk/source · Expanded = paged tags · grey = MQTT off/inactive · color = enabled + live</text>`;
+    svg += `<text x="${sourceX}" y="${Math.max(maxY, brokerY + 64) + 32}" class="dg-muted" style="font-size:var(--fs-micro)">Collapsed = 1 trunk/source · Expanded = paged tags · grey = MQTT off/inactive · color = enabled + live</text>`;
     return { svg, maxHeight: Math.max(maxY, brokerY + 64) + 50, maxWidth: 1140 };
 }
 
@@ -2821,14 +3121,39 @@ function getLinkStatus(link) {
     return getTagStatus(provider);
 }
 
+/* Status colors come from the theme tokens, so a diagram drawn before a theme
+   change is rebuilt with the new values instead of keeping the old palette. */
+function themePalette() {
+    if (!themePaletteCache) {
+        const cs = getComputedStyle(document.documentElement);
+        themePaletteCache = {
+            good: cs.getPropertyValue('--good').trim(),
+            warn: cs.getPropertyValue('--warn').trim(),
+            bad: cs.getPropertyValue('--bad').trim(),
+            off: cs.getPropertyValue('--muted').trim()
+        };
+    }
+    return themePaletteCache;
+}
+
 function getStatusColor(status) {
-    const colors = {
-        good: '#34d399',
-        warn: '#fbbf24',
-        bad: '#f87171',
-        off: '#6b7689'
-    };
-    return colors[status] || colors.off;
+    const palette = themePalette();
+    return palette[status] || palette.off;
+}
+
+// Diagram subtitle for a source node: what this source actually is, never a guess.
+function sourceSubtitle(sourceInfo) {
+    if (!sourceInfo) return 'source';
+    const progId = sourceInfo.progId || sourceInfo.ProgId || '';
+    if (progId) return progId;
+    const summary = sourceInfo.endpointSummary || sourceInfo.EndpointSummary || '';
+    if (summary) return summary;
+    const t = String(sourceInfo.sourceType || sourceInfo.SourceType || '').toLowerCase();
+    if (t.indexOf('opcua') >= 0) return 'OPC UA endpoint';
+    if (t.indexOf('melsec') >= 0) return 'Melsec serial';
+    if (t.indexOf('s7200') >= 0) return 'S7-200 PPI';
+    if (t.indexOf('mx') >= 0) return 'MX Component';
+    return 'OPC DA server';
 }
 
 function escapeHtml(text) {
@@ -2894,7 +3219,7 @@ function renderLiveValue(value, fallbackType) {
     const isGood = !!get(value, 'isGood');
     const timestamp = locTime(get(value, 'timestampUtc'));
     const type = get(value, 'dataType') || fallbackType || '—';
-    return `<div class="fp-v mono" title="${attr(text)}">${esc(text)}</div><div class="fp-meta"><span class="pill" style="padding:1px 6px;font-size:10px" title="Data type">${esc(type)}</span><span>${badge(isGood ? 'Good' : 'Bad', isGood ? 'good' : 'bad')} <span class="${isGood ? 'good' : 'bad'}">(${esc(String(quality ?? '—'))})</span></span><span class="timestamp">${esc(timestamp)}</span></div>`;
+    return `<div class="fp-v mono" title="${attr(text)}">${esc(text)}</div><div class="fp-meta"><span class="pill" style="padding:1px 6px;font-size:var(--fs-micro)" title="Data type">${esc(type)}</span><span>${badge(isGood ? 'Good' : 'Bad', isGood ? 'good' : 'bad')} <span class="${isGood ? 'good' : 'bad'}">(${esc(String(quality ?? '—'))})</span></span><span class="timestamp">${esc(timestamp)}</span></div>`;
 }
 
 function linkTagLabel(sourceId, itemId, nameOverride = null) {
@@ -3003,8 +3328,8 @@ function renderInterlinkTagList(side) {
             const usage = interlinkUsageFor(side, sid, item);
             const usageChip = usage
                 ? (usage.role === 'consumer'
-                    ? `<span class="badge partial" style="font-size:9px;padding:0 6px" title="Already linked — fed by ${attr(usage.providerLabel)}">&#8656; linked</span>`
-                    : `<span class="badge partial" style="font-size:9px;padding:0 6px" title="Already a provider for ${usage.count} consumer${usage.count > 1 ? 's' : ''}">feeds ${usage.count}</span>`)
+                    ? `<span class="badge partial" style="font-size:var(--fs-micro);padding:0 6px" title="Already linked — fed by ${attr(usage.providerLabel)}">&#8656; linked</span>`
+                    : `<span class="badge partial" style="font-size:var(--fs-micro);padding:0 6px" title="Already a provider for ${usage.count} consumer${usage.count > 1 ? 's' : ''}">feeds ${usage.count}</span>`)
                 : '';
             const pickBtn = `<button class="btn ghost" data-action="pick-interlink-${side}" data-source-id="${attr(sid)}" data-item-id="${attr(item)}" data-name="${attr(name)}"${disabled ? ' title="Tag is disabled — enable it on the Maps tab first."' : ''}>${picked ? '✓ Picked' : 'Pick'}</button>`;
             const fixBtn = !at.ok
@@ -3018,10 +3343,10 @@ function renderInterlinkTagList(side) {
                     const meaning = side === 'consumer'
                         ? `Consumer accepts writes (${r})`
                         : `Provider is readable (${r})`;
-                    return `<span class="badge good" style="font-size:9px;padding:0 6px" title="${attr(meaning)}">${short} ${label}</span>`;
+                    return `<span class="badge good" style="font-size:var(--fs-micro);padding:0 6px" title="${attr(meaning)}">${short} ${label}</span>`;
                 })()
-                : `<span class="badge warn" style="font-size:9px;padding:0 6px" title="${attr(at.text)}">${side === 'consumer' ? 'needs Write' : 'needs Read'}</span>`;
-            const disabledChip = disabled ? ' <span class="badge bad" style="font-size:9px;padding:0 6px">disabled</span>' : '';
+                : `<span class="badge warn" style="font-size:var(--fs-micro);padding:0 6px" title="${attr(at.text)}">${side === 'consumer' ? 'needs Write' : 'needs Read'}</span>`;
+            const disabledChip = disabled ? ' <span class="badge bad" style="font-size:var(--fs-micro);padding:0 6px">disabled</span>' : '';
             return `<div class="li"${disabled ? ' style="opacity:.6"' : ''}><div style="flex:1;min-width:0"><div class="n">${esc(name)} ${badge}${usageChip}${disabledChip}</div><div class="p">${esc(item)}</div></div>${pickBtn}${fixBtn}</div>`;
         });
     listEl.innerHTML = rows.length ? rows.join('') : '<span class="msg">No Maps tags for this source yet — add one by Item ID below or on the Maps tab.</span>';
@@ -3106,14 +3431,14 @@ function renderInterlinkStatusPill(stats) {
     const reason = get(stats, 'reason');
     const lastError = get(stats, 'lastError');
     const title = (status === 'write-failed' && lastError) ? lastError : reason;
-    return `<span class="pill il-status-pill${cls ? ' ' + cls : ''}" style="padding:1px 7px;font-size:10px"${title ? ` title="${attr(title)}"` : ''}>${esc(label)}</span>`;
+    return `<span class="pill il-status-pill${cls ? ' ' + cls : ''}" style="padding:1px 7px;font-size:var(--fs-micro)"${title ? ` title="${attr(title)}"` : ''}>${esc(label)}</span>`;
 }
 function renderInterlinkCounters(stats) {
-    if (!stats || !get(stats, 'attempts')) return '<span class="msg" style="font-size:10px">no writes yet</span>';
+    if (!stats || !get(stats, 'attempts')) return '<span class="msg" style="font-size:var(--fs-micro)">no writes yet</span>';
     const ok = Number(get(stats, 'ok') || 0);
     const failed = Number(get(stats, 'failed') || 0);
     const ago = formatAgo(get(stats, 'lastForwardUtc'));
-    return `<span class="mono" style="font-size:10px">${Number(get(stats, 'attempts'))} fwd · <span class="good">✓ ${ok}</span>${failed ? ' · <span class="bad">✗ ' + failed + '</span>' : ''}${ago ? ' · last write ' + esc(ago) : ''}</span>`;
+    return `<span class="mono" style="font-size:var(--fs-micro)">${Number(get(stats, 'attempts'))} fwd · <span class="good">✓ ${ok}</span>${failed ? ' · <span class="bad">✗ ' + failed + '</span>' : ''}${ago ? ' · last write ' + esc(ago) : ''}</span>`;
 }
 function renderInterlinksView() {
     const links = state.interlinks || [];
@@ -3131,7 +3456,7 @@ function renderInterlinksView() {
         const providerItemId = link.providerItemId || link.ProviderItemId || '';
         const linkId = link.id || link.Id || '';
         const stats = state.linkStatsById[String(linkId)];
-        return `<div class="li"><div style="flex:1;min-width:0"><span class="n">${esc(linkTagLabel(consumerSourceId, consumerItemId))} <span class="msg" style="font-size:10px">(write)</span></span></div><span class="pill" style="padding:1px 6px;font-size:10px;background:#e8f0fe;color:#1a73e8">⇠ fed by</span><div style="flex:1;min-width:0"><span class="n">${esc(linkTagLabel(providerSourceId, providerItemId))} <span class="msg" style="font-size:10px">(read)</span></span></div>${renderInterlinkStatusPill(stats)}<div style="min-width:150px;text-align:right">${renderInterlinkCounters(stats)}</div><button class="btn ghost" type="button" data-action="unlink" data-link-id="${attr(linkId)}">Delete</button></div>`;
+        return `<div class="li"><div style="flex:1;min-width:0"><span class="n">${esc(linkTagLabel(consumerSourceId, consumerItemId))} <span class="msg" style="font-size:var(--fs-micro)">(write)</span></span></div><span class="pill fed" style="padding:1px 6px;font-size:var(--fs-micro)">⇠ fed by</span><div style="flex:1;min-width:0"><span class="n">${esc(linkTagLabel(providerSourceId, providerItemId))} <span class="msg" style="font-size:var(--fs-micro)">(read)</span></span></div>${renderInterlinkStatusPill(stats)}<div style="min-width:150px;text-align:right">${renderInterlinkCounters(stats)}</div><button class="btn ghost" type="button" data-action="unlink" data-link-id="${attr(linkId)}">Delete</button></div>`;
     }).join('') : '<span class="msg">No interlinks yet. Pick a consumer and a provider above, then Save Link.</span>';
 }
 function findInterlinkByConsumer(consumerKey) {
@@ -3159,6 +3484,9 @@ function updateFlowBadge() {
     badgeEl.textContent = flowing + '/' + links.length;
     badgeEl.style.display = '';
     badgeEl.style.background = flowing ? 'var(--good)' : 'var(--warn)';
+    badgeEl.title = flowing === links.length
+        ? 'All ' + links.length + ' interlinks flowing'
+        : flowing + ' of ' + links.length + ' interlinks flowing, the rest idle, waiting or failed';
 }
 function renderInterlinkFlow() {
     const list = el('ilFlowList');
@@ -3181,11 +3509,12 @@ function renderInterlinkFlow() {
         const pVal = pv == null ? '&#8212;' : esc(String(get(pv, 'value') ?? ''));
         const pGood = pv ? !!get(pv, 'isGood') : false;
         const pTime = pv ? shortTime(get(pv, 'timestampUtc')) : 'no value';
+        const pBadge = pv && !pGood ? ' <span class="badge bad">bad</span>' : '';
         return `<div class="ilf-prov">
-            <span class="msg" style="font-size:10px;text-transform:uppercase;letter-spacing:.05em">provider</span>
-            <span class="n" style="font-size:13px">${esc(linkTagLabel(provSourceId, provItemId))}</span>
+            <span class="msg" style="font-size:var(--fs-micro);text-transform:uppercase;letter-spacing:.05em">provider</span>
+            <span class="n" style="font-size:var(--fs-body)">${esc(linkTagLabel(provSourceId, provItemId))}</span>
             ${count > 1 ? `<span class="ilf-fanout" title="Feeds ${count} consumers">&#8644; ${count}</span>` : ''}
-            <span class="ilf-prov-val"><span class="msg" style="font-size:10px">${esc(pTime)}</span><span class="mono" style="font-size:16px;font-weight:700;color:${pGood ? 'var(--good)' : 'var(--bad)'}">${pVal}</span></span>
+            <span class="ilf-prov-val"><span class="msg" style="font-size:var(--fs-micro)">${esc(pTime)}</span><span class="mono" style="font-size:var(--fs-title);font-weight:700;color:${pGood ? 'var(--good)' : 'var(--bad)'}">${pVal}</span>${pBadge}</span>
         </div>`;
     };
     const consHtml = (link) => {
@@ -3196,12 +3525,13 @@ function renderInterlinkFlow() {
         const cVal = cv == null ? '&#8212;' : esc(String(get(cv, 'value') ?? ''));
         const cGood = cv ? !!get(cv, 'isGood') : false;
         const cTime = cv ? shortTime(get(cv, 'timestampUtc')) : 'no value';
+        const cBadge = cv && !cGood ? ' <span class="badge bad">bad</span>' : '';
         const pill = renderInterlinkStatusPill(stats);
         return `<div class="ilf-cons-row">
             ${pill}
-            <div style="flex:1;min-width:0"><span class="n" style="font-size:12px">${esc(linkTagLabel(consumerSourceId, consumerItemId))}</span></div>
-            <span class="msg" style="font-size:10px">${esc(cTime)}</span>
-            <span class="mono" style="font-size:14px;font-weight:600;color:${cGood ? 'var(--good)' : 'var(--bad)'}">${cVal}</span>
+            <div style="flex:1;min-width:0"><span class="n" style="font-size:var(--fs-body)">${esc(linkTagLabel(consumerSourceId, consumerItemId))}</span></div>
+            <span class="msg" style="font-size:var(--fs-micro)">${esc(cTime)}</span>
+            <span class="mono" style="font-size:var(--fs-title);font-weight:600;color:${cGood ? 'var(--good)' : 'var(--bad)'}">${cVal}</span>${cBadge}
         </div>`;
     };
     const groups = Array.from(byProvider.entries()).map(([pKey, plinks]) => {
@@ -3285,26 +3615,26 @@ function renderMappingRow(mapping) {
     let accessBadge;
     if (!enabled) { accessBadge = badge('Disabled', 'bad'); }
     else { accessBadge = badge(access + (simulated && access !== 'Write' ? ' / Sim' : ''), access === 'Read' ? 'good' : access === 'Read-Write' ? 'partial' : 'warn'); }
-    const rateBadge = pollRate > 0 ? `<span class="pill" style="padding:1px 6px;font-size:10px">${pollRate}ms</span>` : '';
+    const rateBadge = pollRate > 0 ? `<span class="pill" style="padding:1px 6px;font-size:var(--fs-micro)">${pollRate}ms</span>` : '';
     const subName = String(mapping.subscription ?? mapping.Subscription ?? '').trim();
-    const subBadge = subName ? `<span class="pill" style="padding:1px 6px;font-size:10px" title="UA subscription">${esc(subName)}</span>` : '';
-    const deadbandBadge = deadband > 0 ? `<span class="pill" style="padding:1px 6px;font-size:10px">db ${deadband}%</span>` : '';
+    const subBadge = subName ? `<span class="pill" style="padding:1px 6px;font-size:var(--fs-micro)" title="UA subscription">${esc(subName)}</span>` : '';
+    const deadbandBadge = deadband > 0 ? `<span class="pill" style="padding:1px 6px;font-size:var(--fs-micro)">db ${deadband}%</span>` : '';
     const tagDecimals = mapping.decimals ?? mapping.Decimals;
-    const decimalsBadge = (tagDecimals !== null && tagDecimals !== undefined) ? `<span class="pill" style="padding:1px 6px;font-size:10px">dec ${tagDecimals}</span>` : '';
+    const decimalsBadge = (tagDecimals !== null && tagDecimals !== undefined) ? `<span class="pill" style="padding:1px 6px;font-size:var(--fs-micro)">dec ${tagDecimals}</span>` : '';
     const tagUnit = String(mapping.unit ?? mapping.Unit ?? '').trim();
-    const unitBadge = tagUnit ? `<span class="pill" style="padding:1px 6px;font-size:10px">${esc(tagUnit)}</span>` : '';
+    const unitBadge = tagUnit ? `<span class="pill" style="padding:1px 6px;font-size:var(--fs-micro)">${esc(tagUnit)}</span>` : '';
     const mqttOn = (mapping.mqttEnabled ?? mapping.MqttEnabled) === true;
-    const mqttBadge = mqttOn ? `<span class="pill" style="padding:1px 6px;font-size:10px">MQTT</span>` : '';
+    const mqttBadge = mqttOn ? `<span class="pill" style="padding:1px 6px;font-size:var(--fs-micro)">MQTT</span>` : '';
     const influxOn = (mapping.influxEnabled ?? mapping.InfluxEnabled) === true;
-    const influxBadge = influxOn ? `<span class="pill" style="padding:1px 6px;font-size:10px">Influx</span>` : '';
+    const influxBadge = influxOn ? `<span class="pill" style="padding:1px 6px;font-size:var(--fs-micro)">Influx</span>` : '';
     // Runtime type from the live value when present (matches Live Values); otherwise the configured type.
     const live = currentValue(sourceId, item);
     const mappedType = (live && get(live, 'dataType')) || mapping.dataType || mapping.DataType || '—';
-    const typeBadge = `<span class="pill" style="padding:1px 6px;font-size:10px" title="Data type">${esc(mappedType)}</span>`;
+    const typeBadge = `<span class="pill" style="padding:1px 6px;font-size:var(--fs-micro)" title="Data type">${esc(mappedType)}</span>`;
     const digitalExplicit = mapping.digital ?? mapping.Digital;
     const digitalOn = digitalExplicit === true || ((digitalExplicit === undefined || digitalExplicit === null) && isBooleanDataType(mappedType));
-    const digitalBadge = digitalOn ? `<span class="pill" style="padding:1px 6px;font-size:10px" title="Rendered as on/off status text in the HMI faceplate">Digital</span>` : '';
-    const digitalSuggest = (!digitalOn && looksLikeDigital(mapping, sourceId, item)) ? `<span class="pill" style="padding:1px 6px;font-size:10px" title="Observed values are only 0/1 — open the faceplate and set Digital to show on/off text.">0/1?</span>` : '';
+    const digitalBadge = digitalOn ? `<span class="pill" style="padding:1px 6px;font-size:var(--fs-micro)" title="Rendered as on/off status text in the HMI faceplate">Digital</span>` : '';
+    const digitalSuggest = (!digitalOn && looksLikeDigital(mapping, sourceId, item)) ? `<span class="pill" style="padding:1px 6px;font-size:var(--fs-micro)" title="Observed values are only 0/1 — open the faceplate and set Digital to show on/off text.">0/1?</span>` : '';
     // Connection state comes from server-side signals, never from absence in the capped
     // value window: the bridge reports tags whose monitored item failed (auto-retrying),
     // tags whose last value is bad quality, and the per-source connection state.
@@ -3322,7 +3652,7 @@ function renderMappingRow(mapping) {
     const descIcon = desc ? `<span class="li-desc" title="${attr(desc)}" data-action="open-faceplate" data-source-id="${attr(sourceId)}" data-item-id="${attr(item)}">&#8505;</span>` : '';
     // Config badges clip/fade first; the colored access status is pinned at the far
     // right and never gets cut off.
-    return `<div class="li clickable" data-action="open-faceplate" data-source-id="${attr(sourceId)}" data-item-id="${attr(item)}">${descIcon}<div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="n">${esc(name)}</span> <span class="p">${esc(sourceId)} · ${esc(item)} · UA: ${esc(node)}</span></div><div class="li-badge" title="${attr(statusSummary)}"><span class="li-badge-clip">${typeBadge}${digitalBadge}${digitalSuggest}${unitBadge}${deadbandBadge}${decimalsBadge}${rateBadge}${subBadge}${mqttBadge}${influxBadge}</span><span class="li-badge-status">${discBadge ? `<span title="${attr(discTitle)}">${discBadge}</span>` : ''}${accessBadge}</span></div></div>`;
+    return `<div class="li clickable" role="button" tabindex="0" aria-label="${attr(name + ' — ' + node)}" data-action="open-faceplate" data-source-id="${attr(sourceId)}" data-item-id="${attr(item)}">${descIcon}<div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="n">${esc(name)}</span> <span class="p">${esc(sourceId)} · ${esc(item)} · UA: ${esc(node)}</span></div><div class="li-badge" title="${attr(statusSummary)}"><span class="li-badge-clip">${typeBadge}${digitalBadge}${digitalSuggest}${unitBadge}${deadbandBadge}${decimalsBadge}${rateBadge}${subBadge}${mqttBadge}${influxBadge}</span><span class="li-badge-status">${discBadge ? `<span title="${attr(discTitle)}">${discBadge}</span>` : ''}${accessBadge}</span></div></div>`;
 }
 
 const MAPPING_ROWS_CAP = 1000;
@@ -3331,7 +3661,24 @@ function renderMappingRows(mappings) {
     const note = mappings.length > MAPPING_ROWS_CAP
         ? `<span class="msg">… showing first ${MAPPING_ROWS_CAP} of ${mappings.length} mappings — use the search box to filter</span>`
         : '';
-    return (rows.length ? rows.map(renderMappingRow).join('') : '<span class="msg">No source → OPC UA mappings.</span>') + note;
+    if (rows.length) return rows.map(renderMappingRow).join('') + note;
+    // Empty tab: say where the mappings actually are instead of restating the heading.
+    const tabs = [['opc-da', 'OPC DA'], ['opc-ua', 'OPC UA'], ['drivers', 'Drivers'], ['mx', 'MX']];
+    const current = state.mapType || 'opc-da';
+    const others = tabs
+        .filter(t => t[0] !== current)
+        .map(t => {
+            const ids = new Set(mapTypeSources(t[0]).map(s => s.sourceId));
+            const count = (state.mappings || []).filter(m => ids.has(m.sourceId || m.SourceId || 'default')).length;
+            return count ? { label: t[1], count } : null;
+        })
+        .filter(Boolean);
+    const hint = others.length === 1
+        ? ' ' + others[0].label + ' has ' + others[0].count + (others[0].count === 1 ? ' mapping.' : ' mappings.')
+        : others.length
+            ? ' ' + others.map(o => o.label + ' (' + o.count + ')').join(' and ') + ' already have mappings.'
+            : '';
+    return '<span class="msg">No mappings on this tab yet.' + hint + ' Browse this source\'s tags above, or switch tabs, then add one.</span>' + note;
 }
 
 let faceplateOpen = false;
@@ -3434,6 +3781,8 @@ function openFaceplate(sourceId, itemId) {
     el('fpEnabled').dataset.sourceId = sourceId;
     el('fpEnabled').dataset.itemId = itemId;
     el('fpLivePanel').innerHTML = renderLiveValue(currentValue(sourceId, itemId), mapping.dataType || mapping.DataType || null);
+    el('fpMessage').textContent = '';
+    el('fpApply').disabled = false;
     el('faceplateOverlay').classList.add('open');
 }
 function deriveAccess(mapping) {
@@ -3583,10 +3932,30 @@ async function showTab(name, route) {
   const mapsActive = activeTab === 'tags' || (route && String(route).startsWith('tags/maps'));
   document.querySelectorAll('.tabbtn').forEach(b => {
     const br = b.dataset.route || '';
-    b.classList.toggle('active', br === route || (mapsActive && br === 'tags/maps'));
+    const on = br === route || (mapsActive && br === 'tags/maps');
+    b.classList.toggle('active', on);
+    if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
   });
+  // Once the rail is a horizontal scroller (narrow screens) the active section can sit
+  // off-screen, so bring it back into view rather than making the user hunt for it.
+  const activeBtn = document.querySelector('.tabbtn.active');
+  const rail = document.querySelector('.tabbar');
+  if (activeBtn && rail && rail.scrollWidth > rail.clientWidth + 1) {
+    try { activeBtn.scrollIntoView({ block: 'nearest', inline: 'center' }); } catch (e) { activeBtn.scrollIntoView(); }
+  }
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + activeTab));
   if (location.hash !== '#/' + route) history.replaceState(null, '', '#/' + route);
+  // Client-side navigation repaints the screen and tells nobody, so retitle the
+  // document and land focus on the new view's heading. Only on a real move, not first paint.
+  const shownView = document.getElementById('view-' + activeTab);
+  const shownTitle = shownView ? shownView.querySelector('.view-title') : null;
+  if (shownTitle) document.title = 'OPC Bridge \u00b7 ' + shownTitle.textContent.trim();
+  if (shownTitle && state.lastTab && state.lastTab !== activeTab) {
+    const scroller = document.querySelector('.content');
+    if (scroller) scroller.scrollTop = 0;
+    try { shownTitle.focus({ preventScroll: true }); } catch (e) { shownTitle.focus(); }
+  }
+  state.lastTab = activeTab;
   if (activeTab === 'logs') { state.logsLoaded = false; loadLogs(true).catch(e => el('logMessage').textContent = '✗ ' + e.message); }
   if (activeTab === 'diagnostics' || activeTab === 'sessions') { diagnosticsActive = true; loadDiagnostics(); }
   else { diagnosticsActive = false; }
@@ -3616,6 +3985,7 @@ async function showTab(name, route) {
   if (activeTab === 'tags') {
     await loadSources().catch(e => console.warn(e));
     await loadMappings().catch(e => console.warn(e));
+    adoptMapTabWithMappings();
     syncMapTypeUi();
     ensureMapSourceSelection();
     renderMapSourceSelect();
@@ -3711,10 +4081,29 @@ function syncMapTypeUi() {
         btn.classList.toggle('active', btn.dataset.mapType === state.mapType);
     });
 }
+// Maps opens on the lane that holds the work. A lane with mappings beats one with only
+// a source, because a source alone still shows an empty list. A tab the user picked
+// always wins, so this only ever fires until their first click.
+function adoptMapTabWithMappings() {
+    if (state.mapTypePinned) return;
+    const order = ['opc-da', 'opc-ua', 'drivers', 'mx'];
+    const mapped = type => {
+        const ids = new Set(mapTypeSources(type).map(s => s.sourceId));
+        return (state.mappings || []).filter(m => ids.has(m.sourceId || m.SourceId || 'default')).length;
+    };
+    const withMappings = order.find(type => mapped(type));
+    if (mapped(state.mapType)) return;
+    const target = withMappings || (mapTypeSources(state.mapType).length ? null : order.find(type => mapTypeSources(type).length));
+    if (!target || target === state.mapType) return;
+    state.mapType = target;
+    const route = mapTypeRoute(target);
+    if (location.hash !== '#/' + route) history.replaceState(null, '', '#/' + route);
+}
 function setMapType(type, opts) {
     type = type || 'opc-da';
     if (type !== 'opc-da' && type !== 'opc-ua' && type !== 'drivers' && type !== 'mx') type = 'opc-da';
     const changed = state.mapType !== type;
+    state.mapTypePinned = true;
     state.mapType = type;
     syncMapTypeUi();
     if (changed || (opts && opts.force)) {
@@ -4660,7 +5049,9 @@ async function refresh() {
          el('pBridge').innerHTML = badge(get(b, 'bridgeState') || '—', stateClass(get(b, 'bridgeState')));
          el('pDa').innerHTML = badge(get(b, 'daConnectionState') || '—', stateClass(get(b, 'daConnectionState')));
          el('pUa').innerHTML = badge(get(ua, 'state') || '—', stateClass(get(ua, 'state')));
-         el('pTags').textContent = get(b, 'mappingCount') ?? 0;
+          el('pTags').textContent = get(b, 'mappingCount') ?? 0;
+          state.headerMappingCount = get(b, 'mappingCount') ?? 0;
+          updateNoMappingsBanner();
          el('pApps').textContent = get(apps, 'detectedCount') ?? 1;
          renderFleet(apps);
         el('bridgeState').innerHTML = badge(get(b, 'bridgeState') || '—', stateClass(get(b, 'bridgeState')));
@@ -4784,7 +5175,13 @@ async function refresh() {
             const readMode = get(source,'readMode') || '';
             const writeMode = get(source,'writeMode') || '';
             const ioBit = (readMode || writeMode) ? ' · <span style="font-weight:400">' + esc([readMode, writeMode].filter(Boolean).join(' · ')) + '</span>' : '';
-            return `<div class="li"><div style="flex:1"><div class="n">${esc(get(source,'displayName') || get(source,'sourceId'))} ${badge(connState, connClass)}</div><div class="p">${esc(get(source,'sourceId'))} · ${esc(get(source,'host') || '')} · ${esc(get(source,'progId') || '')}${ioBit}</div><div class="p">${formatMs(get(source,'updateRateMs'))} · ${(get(source,'lastDaReadCount') ?? 0)} values in ${formatMs(get(source,'lastDaReadDurationMs'))}${get(source,'lastError') ? ' · <span class="bad">' + esc(get(source,'lastError')) + '</span>' : ''}</div></div></div>`;
+            const sub = [get(source,'sourceId'), sourceSubtitle(source)].filter(Boolean).join(' · ');
+            const readCount = get(source,'lastDaReadCount') ?? 0;
+            const readMs = get(source,'lastDaReadDurationMs');
+            const readBit = (readCount || readMs)
+                ? readCount + ' value' + (readCount === 1 ? '' : 's') + (readMs ? ' in ' + formatMs(readMs) : '')
+                : 'no reads yet';
+            return `<div class="li"><div style="flex:1"><div class="n">${esc(get(source,'displayName') || get(source,'sourceId'))} ${badge(connState, connClass)}</div><div class="p">${esc(sub)}${ioBit}</div><div class="p">${formatMs(get(source,'updateRateMs'))} · ${readBit}${get(source,'lastError') ? ' · <span class="bad">' + esc(get(source,'lastError')) + '</span>' : ''}</div></div></div>`;
         }).join('') : '<span class="msg">No source status yet.</span>';
         const rateGroups = get(b, 'rateGroups') || [];
         const alarmBar = el('rateAlarmBar');
@@ -4880,24 +5277,116 @@ async function refresh() {
         }
         state.lastValueCount = get(p, 'valuesTotal') ?? vs.length;
         updateLiveValuesUi();
-        if (state.liveValuesEnabled) {
-            el('values').innerHTML = vs.length ? vs.map(it => {
-                const g = get(it, 'isGood');
-                const q = get(it, 'daQuality');
-                const sourceId = get(it, 'sourceId');
-                const itemId = get(it, 'itemId') || get(it, 'daItemId');
-                const value = String(get(it, 'value') ?? '');
-                const timestamp = locTime(get(it, 'timestampUtc'));
-                const timestampShort = shortTime(get(it, 'timestampUtc'));
-                return `<tr><td><code title="${attr(sourceId)}">${esc(sourceId)}</code></td><td><code title="${attr(itemId)}">${esc(itemId)}</code></td><td class="mono" title="${attr(value)}">${esc(value)}</td><td class="msg" title="${attr(get(it, 'dataType') || '')}">${esc(get(it, 'dataType') || '—')}</td><td class="msg" title="Update rate">${formatMs(get(it, 'updateRate'))}</td><td title="${attr(String(q ?? ''))}"><span class="quality">${badge(g ? 'Good' : 'Bad', g ? 'good' : 'bad')} <span class="${g ? 'good' : 'bad'}">(${q})</span></span></td><td class="msg timestamp" title="${attr(timestamp)}">${esc(timestampShort)}</td></tr>`;
-            }).join('') : '<tr><td colspan="7" class="msg">No values yet.</td></tr>';
-        }
+        if (state.liveValuesEnabled) renderValuesRows(vs);
     } catch (e) {
         el('dot').className = 'dot off';
         el('clock').textContent = 'offline';
         if (state.liveValuesEnabled) {
-            el('values').innerHTML = `<tr><td colspan="7" class="bad">${esc(e.message)}</td></tr>`;
+            setValuesMessage('bad', e.message);
         }
+    }
+}
+
+// Values rows are reconciled in place. Replacing the whole tbody on every 1s poll
+// destroyed the user's text selection exactly when they were copying a reading.
+function valuesRowKey(it) {
+    return valueKey(get(it, 'sourceId') || '', get(it, 'itemId') || get(it, 'daItemId') || '');
+}
+// A cell whose text lives in one stable text node, so writing a new reading does
+// not detach the node a selection is anchored to.
+function gridTextCell(node) {
+    const text = document.createTextNode('');
+    node.textContent = '';
+    node.appendChild(text);
+    return v => { if (text.data !== v) text.data = v; };
+}
+function buildValuesRow() {
+    const tr = document.createElement('tr');
+    tr.setAttribute('data-vrow', '1');
+    tr.innerHTML = '<td><code></code></td><td><code></code></td><td class="mono"></td><td class="msg"></td><td class="msg"></td><td></td><td class="msg timestamp"></td>';
+    const td = tr.children;
+    return {
+        tr,
+        td,
+        set: {
+            source: gridTextCell(td[0].firstChild),
+            item: gridTextCell(td[1].firstChild),
+            value: gridTextCell(td[2]),
+            type: gridTextCell(td[3]),
+            rate: gridTextCell(td[4]),
+            stamp: gridTextCell(td[6])
+        },
+        quality: ''
+    };
+}
+function updateValuesRow(rec, it) {
+    const good = !!get(it, 'isGood');
+    const quality = String(get(it, 'daQuality') ?? '');
+    const sourceId = String(get(it, 'sourceId') ?? '');
+    const itemId = String(get(it, 'itemId') || get(it, 'daItemId') || '');
+    const value = String(get(it, 'value') ?? '');
+    const dataType = String(get(it, 'dataType') || '\u2014');
+    rec.td[0].title = sourceId;
+    rec.td[1].title = itemId;
+    rec.td[2].title = value;
+    rec.td[3].title = dataType;
+    rec.td[5].title = quality;
+    rec.td[6].title = locTime(get(it, 'timestampUtc'));
+    rec.set.source(sourceId);
+    rec.set.item(itemId);
+    rec.set.value(value);
+    rec.set.type(dataType);
+    rec.set.rate(formatMs(get(it, 'updateRate')));
+    rec.set.stamp(shortTime(get(it, 'timestampUtc')));
+    // The quality stamp only rewrites its cell when the state actually flips.
+    const qKey = (good ? 'good' : 'bad') + '|' + quality;
+    if (rec.quality !== qKey) {
+        rec.quality = qKey;
+        rec.td[5].innerHTML = '<span class="quality">' + badge(good ? 'Good' : 'Bad', good ? 'good' : 'bad') + ' <span class="' + (good ? 'good' : 'bad') + '">(' + esc(quality) + ')</span></span>';
+    }
+}
+function setValuesMessage(cls, text) {
+    const stamp = cls + '|' + text;
+    if (state.valuesMessage === stamp) return;
+    state.valuesMessage = stamp;
+    state.valuesRows = new Map();
+    state.valuesOrder = [];
+    const body = el('values');
+    if (body) body.innerHTML = '<tr><td colspan="7" class="' + cls + '">' + esc(text) + '</td></tr>';
+}
+function renderValuesRows(vs) {
+    const body = el('values');
+    if (!body) return;
+    if (!state.valuesRows) { state.valuesRows = new Map(); state.valuesOrder = []; }
+    if (!vs.length) {
+        if (!state.valuesOrder.length) setValuesMessage('msg', 'No values yet.');
+        return;
+    }
+    state.valuesMessage = '';
+    // Clear a placeholder or error row only when real rows are about to land.
+    if (!state.valuesOrder.length && body.firstChild && !body.firstChild.hasAttribute('data-vrow')) body.innerHTML = '';
+    const seen = new Set();
+    vs.forEach(it => {
+        const key = valuesRowKey(it);
+        seen.add(key);
+        let rec = state.valuesRows.get(key);
+        if (!rec) {
+            rec = buildValuesRow();
+            state.valuesRows.set(key, rec);
+            body.appendChild(rec.tr);
+        }
+        updateValuesRow(rec, it);
+    });
+    if (state.valuesRows.size !== seen.size) {
+        state.valuesRows.forEach((rec, key) => {
+            if (!seen.has(key)) { rec.tr.remove(); state.valuesRows.delete(key); }
+        });
+    }
+    // Follow the payload order, but only move nodes when the order actually changed.
+    const desired = vs.map(valuesRowKey);
+    if (state.valuesOrder.join('|') !== desired.join('|')) {
+        desired.forEach(key => { const rec = state.valuesRows.get(key); if (rec) body.appendChild(rec.tr); });
+        state.valuesOrder = desired;
     }
 }
 async function loadInterlinks() {
@@ -5155,7 +5644,7 @@ async function saveInflux() {
     await loadInflux();
 }
 async function connectInflux() {
-    el('influxMessage').textContent = 'Connecting...';
+    el('influxMessage').textContent = 'Connecting to InfluxDB…';
     const r = await fetch('/api/influx/connect', { method: 'POST' });
     const p = await r.json();
     el('influxMessage').textContent = p.status === 'ok' ? 'Connected.' : ('✗ ' + (p.error || 'connect failed'));
@@ -5166,7 +5655,7 @@ async function connectInflux() {
 async function probeInflux(ids) {
     const host = el(ids.host).value.trim();
     if (!host) { el(ids.msg).textContent = 'Enter an IP or hostname, e.g. 192.168.1.50.'; return; }
-    el(ids.msg).textContent = 'Scanning…';
+    el(ids.msg).textContent = 'Probing InfluxDB…';
     el(ids.list).innerHTML = '';
     el(ids.list).style.display = '';
     try {
@@ -5301,17 +5790,26 @@ function applyMappingView(mappings) {
 function updateNoMappingsBanner() {
     const bannerNoMap = el('bannerNoMappings');
     if (bannerNoMap) {
-        const typed = mappingsForMapType(state.mappings || []);
-        const noMappings = typed.length === 0;
+        // Count every mapped tag, not just the active map type's: with UA tags live the
+        // header already reads "TAGS 30" and this banner must not contradict it. The
+        // mapping list is only fetched on the Maps tab, so fall back to the header count.
+        const noMappings = Math.max((state.mappings || []).length, state.headerMappingCount || 0) === 0;
         bannerNoMap.style.display = (noMappings && (state.sources || []).length > 0) ? '' : 'none';
-        if (noMappings && (state.sources || []).length > 0) bannerNoMap.innerHTML = 'No tags mapped yet. <button class="btn" type="button" onclick="navigate(\'tags/maps\')">Map Tags</button>';
+        if (noMappings && (state.sources || []).length > 0) bannerNoMap.innerHTML = 'No tags mapped yet. Map a source\'s tags to publish them over OPC UA. <button class="btn" type="button" onclick="navigate(\'tags/maps\')">Map Tags</button>';
     }
 }
 function rerenderMappings() {
+    // Rows are rebuilt wholesale every second; a keyboard user's place must survive it.
+    const active = document.activeElement;
+    const keepRef = active && active.classList && active.classList.contains('li') ? restoreRefFor(active) : null;
     const typed = mappingsForMapType(state.mappings || []);
     const view = applyMappingView(state.mappings || []);
     if (el('mapCount')) el('mapCount').textContent = view.length + (view.length !== typed.length ? ' / ' + typed.length + ' mappings' : ' mappings');
     if (el('mappedList')) el('mappedList').innerHTML = renderMappingRows(view);
+    if (keepRef) {
+        const node = document.querySelector(keepRef);
+        if (node) { try { node.focus(); } catch (e) { /* row scrolled out of the capped view */ } }
+    }
     updateNoMappingsBanner();
 }
 
@@ -5450,8 +5948,8 @@ function renderGroups(groups, sourceId, sourceIoMode) {
     const container = el('cfgGroups');
     if (!container) return;
     let html = '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">' +
-        '<span style="font-weight:600;font-size:12px">' + groups.length + ' group(s)</span>' +
-        '<button class="btn ghost" type="button" style="height:20px;padding:0 8px;font-size:11px" onclick="navigate(\'connectivity/opc-da-groups\')">Manage groups</button>' +
+        '<span style="font-weight:600;font-size:var(--fs-body)">' + groups.length + ' group(s)</span>' +
+        '<button class="btn ghost" type="button" style="height:20px;padding:0 8px;font-size:var(--fs-micro)" onclick="navigate(\'connectivity/opc-da-groups\')">Manage groups</button>' +
         '</div>';
     if (!groups.length) {
         html += '<span class="msg">No groups yet.</span>';
@@ -5475,7 +5973,7 @@ async function loadDaGroupsTab() {
     const container = el('daGroupsContainer');
     const msg = el('daGroupsMsg');
     if (!container) return;
-    container.innerHTML = '<div class="hint">Loading…</div>';
+    container.innerHTML = '<div class="hint">Loading DA groups…</div>';
     if (msg) msg.textContent = '';
     try {
         const opcDaSrcs = state.sources.filter(s => !isUaSource(s) && !isDriverSource(s) && !isMxSource(s));
@@ -5490,10 +5988,10 @@ async function loadDaGroupsTab() {
             card.style.cssText = 'margin-bottom:8px';
             const header = document.createElement('div');
             header.className = 'box-h';
-            header.style.cssText = 'padding:6px 10px;font-size:12px;gap:6px;cursor:pointer;user-select:none';
+            header.style.cssText = 'padding:6px 10px;font-size:var(--fs-body);gap:6px;cursor:pointer;user-select:none';
             const bodyId = 'daGroupsBody-' + src.sourceId;
             const isCollapsed = (state.collapsedDaGroups || {})[src.sourceId];
-            header.innerHTML = '<span class="toggle" style="width:14px;text-align:center;font-size:10px;opacity:.6">' + (isCollapsed ? '▶' : '▼') + '</span><span class="dag-src-name">' + esc(src.displayName || src.sourceId) + '</span> <span class="msg dag-src-meta">' + esc(src.sourceId) + ' · ' + esc(src.progId || '') + '</span><span class="msg dag-src-host">' + esc(src.host || 'localhost') + '</span><button class="btn ghost" type="button" style="height:20px;padding:0 8px;font-size:11px" onclick="event.stopPropagation();openDagAdd(\'' + esc(src.sourceId).replace(/'/g, "\'") + '\')">+ Add Group</button>';
+            header.innerHTML = '<span class="toggle" style="width:14px;text-align:center;font-size:var(--fs-micro);opacity:.6">' + (isCollapsed ? '▶' : '▼') + '</span><span class="dag-src-name">' + esc(src.displayName || src.sourceId) + '</span> <span class="msg dag-src-meta">' + esc(src.sourceId) + ' · ' + esc(src.progId || '') + '</span><span class="msg dag-src-host">' + esc(src.host || 'localhost') + '</span><button class="btn ghost" type="button" style="height:20px;padding:0 8px;font-size:var(--fs-micro)" onclick="event.stopPropagation();openDagAdd(\'' + esc(src.sourceId).replace(/'/g, "\'") + '\')">+ Add Group</button>';
             const body = document.createElement('div');
             body.className = 'box-b';
             body.id = bodyId;
@@ -5508,7 +6006,7 @@ async function loadDaGroupsTab() {
                 state.collapsedDaGroups = state.collapsedDaGroups || {};
                 state.collapsedDaGroups[src.sourceId] = !collapsed;
             };
-            body.innerHTML = '<div class="hint" id="daGroupsHint-' + esc(src.sourceId) + '" style="font-size:11px;margin-bottom:4px">Loading groups…</div><div id="daGroupsTable-' + esc(src.sourceId) + '"></div>';
+            body.innerHTML = '<div class="hint" id="daGroupsHint-' + esc(src.sourceId) + '" style="margin-bottom:4px">Loading DA groups…</div><div id="daGroupsTable-' + esc(src.sourceId) + '"></div>';
             card.appendChild(header);
             card.appendChild(body);
             container.appendChild(card);
@@ -5648,18 +6146,18 @@ function renderDaGroupsForSource(sourceId, groups, sourceIoMode) {
     const wrap = document.getElementById('daGroupsTable-' + sourceId);
     if (!wrap) return;
     if (!groups || groups.length === 0) {
-        if (hint) { hint.textContent = 'No groups — default (' + prettyIoMode(sourceIoMode) + ')'; hint.style.cssText = 'font-size:11px'; }
+        if (hint) { hint.textContent = 'No groups — default (' + prettyIoMode(sourceIoMode) + ')'; hint.style.cssText = 'font-size:var(--fs-micro)'; }
         wrap.innerHTML = '';
         return;
     }
-    if (hint) { hint.textContent = groups.length + ' group(s) — ' + prettyIoMode(sourceIoMode) + ' default'; hint.style.cssText = 'font-size:11px;margin-bottom:6px'; }
+    if (hint) { hint.textContent = groups.length + ' group(s) — ' + prettyIoMode(sourceIoMode) + ' default'; hint.style.cssText = 'font-size:var(--fs-micro);margin-bottom:6px'; }
     const sidA = esc(sourceId).replace(/'/g, "\\'");
     let html = '<div class="dag-grid">';
     for (const g of groups) {
         const isDef = !!g.isDefault;
         const tags = g.tagCount ?? 0;
         html += '<div class="dag-card' + (isDef ? ' default' : '') + '" data-name="' + esc(g.name) + '" data-rate="' + esc(String(g.rate)) + '" data-io="' + esc(g.ioMode || 'AutoDetect') + '">' +
-            '<div class="n">' + esc(g.name) + (isDef ? ' <span class="badge partial" style="font-size:10px;padding:0 7px">default</span>' : '') + '</div>' +
+            '<div class="n">' + esc(g.name) + (isDef ? ' <span class="badge partial" style="font-size:var(--fs-micro);padding:0 7px">default</span>' : '') + '</div>' +
             '<div class="dag-badges">' +
                 '<span class="dag-badge accent">' + esc(daPrettyRate(g.rate)) + '</span>' +
                 '<span class="dag-badge">' + esc(prettyIoMode(g.ioMode || 'AutoDetect')) + '</span>' +
@@ -5808,14 +6306,14 @@ async function loadUaSubs() {
         const collapsed = (state.collapsedUaSubs || {})[s.sourceId];
         const sidA = esc(s.sourceId).replace(/'/g, "\\'");
         html += '<div class="box" style="margin-bottom:8px">' +
-            '<div class="box-h" style="padding:6px 10px;font-size:12px;gap:6px;cursor:pointer;user-select:none" onclick="toggleUaSubsCard(\'' + sidA + '\')">' +
-                '<span class="toggle" style="width:14px;text-align:center;font-size:10px;opacity:.6" id="uaSubsToggle-' + attr(s.sourceId) + '">' + (collapsed ? '▶' : '▼') + '</span>' +
+            '<div class="box-h" style="padding:6px 10px;gap:6px;cursor:pointer;user-select:none" onclick="toggleUaSubsCard(\'' + sidA + '\')">' +
+                '<span class="toggle" style="width:14px;text-align:center;font-size:var(--fs-micro);opacity:.6" id="uaSubsToggle-' + attr(s.sourceId) + '">' + (collapsed ? '▶' : '▼') + '</span>' +
                 '<span class="dag-src-name">' + esc(s.displayName || s.sourceId) + '</span>' +
                 '<span class="msg dag-src-meta">' + esc(s.sourceId) + ' · default ' + esc(formatMs(s.defaultUpdateRateMs)) + '</span>' +
-                '<button class="btn ghost" type="button" style="height:20px;padding:0 8px;font-size:11px;margin-left:auto" onclick="event.stopPropagation();openUaSubAdd(\'' + sidA + '\')">+ Add Subscription</button>' +
+                '<button class="btn ghost" type="button" style="height:20px;padding:0 8px;font-size:var(--fs-micro);margin-left:auto" onclick="event.stopPropagation();openUaSubAdd(\'' + sidA + '\')">+ Add Subscription</button>' +
             '</div>' +
             '<div class="box-b" id="uaSubsBody-' + attr(s.sourceId) + '" style="padding:8px 10px' + (collapsed ? ';display:none' : '') + '">' +
-                '<div class="hint" id="uaSubsHint-' + attr(s.sourceId) + '" style="font-size:11px;margin-bottom:6px">Loading…</div>' +
+                '<div class="hint" id="uaSubsHint-' + attr(s.sourceId) + '" style="margin-bottom:6px">Loading UA subscriptions…</div>' +
                 '<div class="dag-grid" id="uaSubsGrid-' + attr(s.sourceId) + '"></div>' +
             '</div>' +
         '</div>';
@@ -5857,7 +6355,7 @@ function renderUaSubsForSource(s) {
     let html = '';
     // Read-only Default tile — mirrors DA Groups' read-only default group card.
     html += '<div class="dag-card default">' +
-        '<div class="n">default <span class="badge partial" style="font-size:10px;padding:0 7px">default</span></div>' +
+        '<div class="n">default <span class="badge partial" style="font-size:var(--fs-micro);padding:0 7px">default</span></div>' +
         '<div class="dag-badges">' +
             '<span class="dag-badge accent">' + esc(formatMs(s.defaultUpdateRateMs)) + '</span>' +
             '<span class="dag-badge">' + (d.created ? 'live' : 'idle') + '</span>' +
@@ -6354,7 +6852,7 @@ async function testDriverConnection() {
 async function scanSerialPorts(targetInputId, listId, msgId) {
     const msg = el(msgId);
     const list = el(listId);
-    if (msg) msg.textContent = 'Scanning…';
+    if (msg) msg.textContent = 'Scanning serial ports…';
     if (list) list.innerHTML = '';
     try {
         const r = await fetch('/api/serial/ports', { cache: 'no-store' });
@@ -6605,7 +7103,7 @@ async function discoverUaServers() {
     const discoveryUrl = (el('uaDiscoverUrl').value.trim()
         || el('uaCfgEndpointUrl').value.trim()
         || 'opc.tcp://localhost:4840');
-    el('msgUaDiscover').textContent = 'Scanning…';
+    el('msgUaDiscover').textContent = 'Scanning for OPC UA servers…';
     el('listUaDiscover').innerHTML = '';
     const body = {
         endpointUrl: discoveryUrl,
@@ -6774,7 +7272,7 @@ function wzValidate(step) {
 }
 async function wzBrowseServers() {
   const host = el('wzHost').value.trim() || 'localhost';
-  el('wzMsgServers').textContent = 'Scanning…';
+  el('wzMsgServers').textContent = 'Scanning for OPC DA servers…';
   const body = { host: host === 'localhost' ? null : host };
   try {
     const r = await fetch('/api/da/servers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), cache: 'no-store' });
@@ -6862,7 +7360,7 @@ async function wzFinish() {
 }
 async function browseServers() {
     const host = (el('cfgHost').value.trim() || 'localhost');
-    el('msgServers').textContent = 'Scanning…';
+    el('msgServers').textContent = 'Scanning for OPC DA servers…';
     const user = el('cfgUser').value.trim();
     const pass = el('cfgPass').value;
     const domain = el('cfgDomain').value.trim();
@@ -6927,7 +7425,7 @@ async function browseUaSource(nodeId) {
     const targetNodeId = nodeId || 'i=85';
     state.tagPath = targetNodeId;
     renderUaCrumb();
-    el('tagTree').innerHTML = '<span class="msg">Browsing…</span>';
+    el('tagTree').innerHTML = '<span class="msg">Browsing tags…</span>';
     el('tagStatus').textContent = 'Loading OPC UA nodes…';
     const body = {
         sourceId: source.sourceId,
@@ -6948,7 +7446,7 @@ async function browseUaSource(nodeId) {
         // displayed node is the previous trail entry (or '' for root).
         const parentTrail = state.uaBrowseTrail.slice(0, -1);
         const parentNodeId = parentTrail.length ? parentTrail[parentTrail.length - 1].nodeId : '';
-        rows.push(`<div class="li clickable" data-action="open-branch" data-path="${attr(parentNodeId)}" data-trail-depth="${parentTrail.length}"><span class="icon folder">&#9650;</span><div style="flex:1"><div class="n">..</div><div class="p">Up one level</div></div></div>`);
+        rows.push(`<div class="li clickable" role="button" tabindex="0" data-action="open-branch" data-path="${attr(parentNodeId)}" data-trail-depth="${parentTrail.length}"><span class="icon folder">&#9650;</span><div style="flex:1"><div class="n">..</div><div class="p">Up one level</div></div></div>`);
     }
     let folders = 0, vars = 0;
     for (const node of nodes) {
@@ -6963,7 +7461,7 @@ async function browseUaSource(nodeId) {
         } else {
             folders++;
             const childIcon = hasChildren ? '&#128193;' : '&#128196;';
-            rows.push(`<div class="li clickable" data-action="open-branch" data-path="${attr(nid)}" data-node-name="${attr(name)}"><span class="icon folder">${childIcon}</span><div style="flex:1"><div class="n">${esc(name)}</div><div class="p">${esc(nid)} · ${esc(node.nodeClass || 'folder')}${hasChildren ? '' : ' (leaf)'}</div></div></div>`);
+            rows.push(`<div class="li clickable" role="button" tabindex="0" data-action="open-branch" data-path="${attr(nid)}" data-node-name="${attr(name)}"><span class="icon folder">${childIcon}</span><div style="flex:1"><div class="n">${esc(name)}</div><div class="p">${esc(nid)} · ${esc(node.nodeClass || 'folder')}${hasChildren ? '' : ' (leaf)'}</div></div></div>`);
         }
     }
     el('tagTree').innerHTML = rows.length ? rows.join('') : '<span class="msg">No child nodes at this node.</span>';
@@ -6992,7 +7490,7 @@ async function browseTags(path, recursive = false) {
     state.uaBrowseTrail = [];
     state.tagPath = path || '';
     renderCrumb();
-    el('tagTree').innerHTML = '<span class="msg">Browsing…</span>';
+    el('tagTree').innerHTML = '<span class="msg">Browsing tags…</span>';
     el('tagStatus').textContent = recursive ? 'Loading all tags…' : 'Loading folder…';
     const body = {
         sourceId: source.sourceId,
@@ -7012,11 +7510,11 @@ async function browseTags(path, recursive = false) {
     const rows = [];
     if (state.tagPath) {
         const parent = state.tagPath.includes('.') ? state.tagPath.substring(0, state.tagPath.lastIndexOf('.')) : '';
-        rows.push(`<div class="li clickable" data-action="open-branch" data-path="${attr(parent)}"><span class="icon folder">&#9650;</span><div style="flex:1"><div class="n">..</div><div class="p">Up one level</div></div></div>`);
+        rows.push(`<div class="li clickable" role="button" tabindex="0" data-action="open-branch" data-path="${attr(parent)}"><span class="icon folder">&#9650;</span><div style="flex:1"><div class="n">..</div><div class="p">Up one level</div></div></div>`);
     }
     for (const branch of branches) {
         const child = state.tagPath ? state.tagPath + '.' + branch : branch;
-        rows.push(`<div class="li clickable" data-action="open-branch" data-path="${attr(child)}"><span class="icon folder">&#128193;</span><div style="flex:1"><div class="n">${esc(branch)}</div><div class="p">folder</div></div></div>`);
+        rows.push(`<div class="li clickable" role="button" tabindex="0" data-action="open-branch" data-path="${attr(child)}"><span class="icon folder">&#128193;</span><div style="flex:1"><div class="n">${esc(branch)}</div><div class="p">folder</div></div></div>`);
     }
     for (const tag of tags) {
         const itemId = tag.itemId || tag.ItemId || tag.daItemId || tag.DaItemId;
@@ -7068,7 +7566,7 @@ function toggleLiveValues() {
         refresh().catch(e => {
             el('dot').className = 'dot off';
             el('clock').textContent = 'offline';
-            el('values').innerHTML = `<tr><td colspan="7" class="bad">${esc(e.message)}</td></tr>`;
+            setValuesMessage('bad', e.message);
         });
     }
 }
@@ -7173,10 +7671,14 @@ function bindDynamicButtons() {
         const sourceId = button.dataset.sourceId || '';
         const itemId = button.dataset.itemId || '';
         if (button.dataset.action === 'remove-mapping') {
-            removeMapping(sourceId, itemId).then(() => closeFaceplate()).catch(e => alert('Remove failed: ' + e.message));
+            const label = el('fpDisplayName') ? (el('fpDisplayName').value.trim() || itemId) : itemId;
+            if (!confirm('Remove mapping "' + label + '"? Its unit, deadband, update rate and MQTT/Influx settings are lost.')) return;
+            removeMapping(sourceId, itemId).then(() => closeFaceplate()).catch(e => el('fpMessage').textContent = 'Remove failed: ' + e.message);
             return;
         }
         if (button.dataset.action === 'save-tag') {
+            el('fpApply').disabled = true;
+            el('fpMessage').textContent = 'Saving…';
             updateMapping(sourceId, itemId, payload => {
                 const simulated = el('fpSimulated').checked;
                 payload.displayName = el('fpDisplayName').value.trim() || itemId;
@@ -7236,7 +7738,11 @@ function bindDynamicButtons() {
             }).then(() => {
                 el('mappingMessage').textContent = 'Mapping updated.';
                 openFaceplate(sourceId, itemId);
-            }).catch(e => alert('Update failed: ' + e.message));
+                el('fpMessage').textContent = 'Saved.';
+            }).catch(e => {
+                el('fpMessage').textContent = 'Save failed: ' + e.message;
+                el('fpApply').disabled = false;
+            });
         }
     });
     el('faceplateOverlay').addEventListener('change', event => {
@@ -7246,7 +7752,7 @@ function bindDynamicButtons() {
             updateMapping(target.dataset.sourceId || '', target.dataset.itemId || '', payload => {
                 payload.enabled = target.checked;
                 if (!target.checked) { payload.mode = 'Source'; payload.manualValue = null; payload.writeable = false; }
-            }).then(() => openFaceplate(target.dataset.sourceId || '', target.dataset.itemId || '')).catch(e => alert('Update failed: ' + e.message));
+            }).then(() => openFaceplate(target.dataset.sourceId || '', target.dataset.itemId || '')).catch(e => el('fpMessage').textContent = 'Update failed: ' + e.message);
             return;
         }
         if (target.id === 'fpSimulated') {
@@ -7267,7 +7773,141 @@ function bindDynamicButtons() {
 
 
 
+// Where focus should return when an overlay closes. Stored as a selector when the
+// trigger is a list row, because those rows are rebuilt every second.
+let overlayRestoreFocus = null;
+let lastTriggerRef = null;
+function restoreRefFor(node) {
+    if (!node || !node.getAttribute) return null;
+    const action = node.getAttribute('data-action');
+    const sid = node.getAttribute('data-source-id');
+    const iid = node.getAttribute('data-item-id');
+    if (action && sid && iid && window.CSS && CSS.escape) {
+        return '[data-action="' + CSS.escape(action) + '"][data-source-id="' + CSS.escape(sid) + '"][data-item-id="' + CSS.escape(iid) + '"]';
+    }
+    return node;
+}
+
+// Keyboard parity: anything that behaves like a control answers Enter and Space.
+function bindKeyboardActivation() {
+    document.addEventListener('click', event => {
+        const target = event.target.closest ? event.target.closest('[data-action]') : null;
+        if (target) lastTriggerRef = restoreRefFor(target);
+    }, true);
+    document.addEventListener('keydown', event => {
+        if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Spacebar') return;
+        const target = event.target.closest('[data-action], [data-diag-action]');
+        if (!target) return;
+        if (['BUTTON', 'A', 'INPUT', 'SELECT', 'TEXTAREA'].indexOf(target.tagName) >= 0) return;
+        event.preventDefault();
+        lastTriggerRef = restoreRefFor(target);
+        target.click();
+    });
+}
+
+// A dialog is only modal if nothing behind it can be reached. aria-modal alone leaves
+// the rest of the page in the accessibility tree, so inert everything else.
+function inertSiblingsOf(node, boundary) {
+    let current = node;
+    while (current && current !== boundary && current.parentElement) {
+        const parent = current.parentElement;
+        Array.from(parent.children).forEach(sib => { if (sib !== current) sib.setAttribute('inert', ''); });
+        current = parent;
+    }
+}
+function applyDialogInert(openOverlay) {
+    document.querySelectorAll('[inert]').forEach(n => n.removeAttribute('inert'));
+    if (!openOverlay) return;
+    const topbar = document.querySelector('.topbar');
+    const tabbar = document.querySelector('.tabbar');
+    if (topbar) topbar.setAttribute('inert', '');
+    if (tabbar) tabbar.setAttribute('inert', '');
+    document.querySelectorAll('.view').forEach(view => {
+        const dialog = view.querySelector('.modal-overlay.open');
+        if (!dialog) { view.setAttribute('inert', ''); return; }
+        inertSiblingsOf(dialog, view);
+    });
+}
+
+// Overlays behave like dialogs: named, modal, Escape closes, focus enters, leaves and returns.
+function bindOverlayA11y() {
+    const overlays = Array.from(document.querySelectorAll('.modal-overlay'));
+    if (!overlays.length) return;
+    overlays.forEach(overlay => {
+        if (overlay.getAttribute('role')) return;
+        overlay.setAttribute('role', 'dialog');
+        overlay.setAttribute('aria-modal', 'true');
+        const title = overlay.querySelector('.modal-h .n, .modal-title');
+        if (title) {
+            if (!title.id) title.id = 'dlg-title-' + Math.random().toString(36).slice(2, 8);
+            overlay.setAttribute('aria-labelledby', title.id);
+        }
+        // The glyph-only close button would otherwise announce as "times, button".
+        overlay.querySelectorAll('.modal-close').forEach(btn => {
+            if (!btn.getAttribute('aria-label')) btn.setAttribute('aria-label', 'Close');
+        });
+    });
+    const openOverlay = () => overlays.find(o => o.classList.contains('open')) || null;
+    const focusablesIn = overlay => Array.from(overlay.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'))
+        .filter(node => node.offsetParent !== null);
+
+    let lastOpen = null;
+    const sync = () => {
+        const current = openOverlay();
+        if (current !== lastOpen) applyDialogInert(current);
+        if (current && current !== lastOpen) {
+            lastOpen = current;
+            overlayRestoreFocus = lastTriggerRef || restoreRefFor(document.activeElement);
+            lastTriggerRef = null;
+            const first = focusablesIn(current)[0];
+            if (first) setTimeout(() => first.focus(), 40);
+        } else if (!current && lastOpen) {
+            const back = overlayRestoreFocus;
+            lastOpen = null;
+            overlayRestoreFocus = null;
+            if (typeof back === 'string') {
+                const node = document.querySelector(back);
+                if (node) { try { node.focus(); } catch (e) { /* row is gone */ } }
+            } else if (back && document.contains(back)) {
+                try { back.focus(); } catch (e) { /* element is gone */ }
+            }
+        }
+    };
+    const observer = new MutationObserver(sync);
+    overlays.forEach(overlay => observer.observe(overlay, { attributes: true, attributeFilter: ['class'] }));
+
+    document.addEventListener('keydown', event => {
+        const current = openOverlay();
+        if (!current) return;
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            const closer = current.querySelector('.modal-close');
+            if (closer) closer.click();
+            return;
+        }
+        if (event.key !== 'Tab') return;
+        const items = focusablesIn(current);
+        if (!items.length) return;
+        const first = items[0];
+        const last = items[items.length - 1];
+        const active = document.activeElement;
+        if (!current.contains(active)) { event.preventDefault(); first.focus(); }
+        else if (event.shiftKey && active === first) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && active === last) { event.preventDefault(); first.focus(); }
+    });
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
+    initTheme();
+    bindKeyboardActivation();
+    bindOverlayA11y();
+    // The skip link must not overwrite the route hash, which is where this app keeps state.
+    const skipLink = document.querySelector('.skip-link');
+    if (skipLink) skipLink.addEventListener('click', event => {
+        event.preventDefault();
+        const target = el('main');
+        if (target) { target.focus(); target.scrollTop = 0; }
+    });
     bindDiagramPanZoom();
     el('selectedSource').addEventListener('change', e => pickSource(e.target.value));
     el('mapSourceSelect').addEventListener('change', e => pickSource(e.target.value));
