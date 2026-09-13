@@ -75,7 +75,7 @@ internal static class DashboardPage
             font-family: var(--font-ui);
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { background: var(--bg); color: var(--text); font-size: var(--fs-body); line-height: 1.45; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        body { background: var(--bg); color: var(--text); font-size: var(--fs-body); line-height: 1.45; display: flex; flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden; }
         .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
         /* Status rail. Auto height on purpose: it wraps instead of clipping. */
         .topbar { display: flex; align-items: stretch; gap: 0; min-height: 53px; padding: 0 14px; background: var(--panel); border-bottom: 2px solid var(--text); flex-wrap: wrap; }
@@ -108,9 +108,30 @@ internal static class DashboardPage
 .nav-group .tabbtn.active::before { opacity: 1; }
 .nav-group .tabbtn:last-child:not(.active)::before { bottom: auto; height: 55%; }
 .content { flex: 1; min-width: 0; overflow: auto; background: var(--paper); }
-.view { display: none; padding: 16px 20px 56px; }
+.view { display: none; padding: 16px 20px 56px; max-width: 1600px; margin-inline: auto; }
 .view.active { display: block; }
+        /* Skip link: first focusable thing on the page, hidden until a keyboard user asks. */
+        .skip-link { position: absolute; inset-inline-start: -9999px; top: 8px; z-index: 2000; background: var(--panel); color: var(--text); border: 2px solid var(--text); padding: 8px 14px; font-size: 12px; font-weight: 700; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: .08em; }
+        .skip-link:focus { inset-inline-start: 8px; }
+        /* The view heading is structure first: it names the page for assistive tech and
+           tells anyone arriving from the rail where they just landed. */
+        .view-title { font-family: var(--font-mono); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .12em; color: var(--muted); padding-bottom: 8px; border-bottom: 1px solid var(--border2); margin-bottom: 14px; }
+        .view-title:focus { outline: none; }
+        .view-title:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 @media (max-width: 600px) { .app-shell { flex-direction: column; } .tabbar { flex-direction: row; width: 100%; min-width: 0; border-right: none; border-bottom: 1px solid var(--border2); padding: 0 8px; overflow-x: auto; } .tabbtn { border-left: none; border-bottom: 3px solid transparent; padding: 10px 14px; white-space: nowrap; overflow: visible; text-overflow: clip; flex-shrink: 0; } .tabbtn.active { border-left: none; border-bottom-color: var(--accent); } .nav-group { border-bottom: none; } .nav-group-h { display: none; } .nav-group .tabbtn { padding: 10px 14px; } .nav-group .tabbtn::before { display: none; } }
+        /* Tablet: a fixed 208px rail eats 27% of a 768px screen and squeezes the tables into
+           horizontal scroll. Below 900px the rail becomes the same horizontal strip the phone
+           uses, so the content column keeps its columns. */
+        @media (max-width: 900px) {
+            .app-shell { flex-direction: column; }
+            .tabbar { flex-direction: row; width: 100%; min-width: 0; border-right: none; border-bottom: 1px solid var(--border2); padding: 0 10px; overflow-x: auto; overflow-y: hidden; }
+            .tabbtn { border-left: none; border-bottom: 3px solid transparent; padding: 10px 14px; white-space: nowrap; overflow: visible; text-overflow: clip; flex-shrink: 0; }
+            .tabbtn.active { border-left: none; border-bottom-color: var(--accent); }
+            .nav-group { border-bottom: none; flex: 0 0 auto; }
+            .nav-group-h { display: none; }
+            .nav-group .tabbtn { padding: 10px 14px; }
+            .nav-group .tabbtn::before { display: none; }
+        }
         .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
         @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
         /* A section is a ruled block of paper, not a floating card. */
@@ -160,7 +181,7 @@ internal static class DashboardPage
         .badge.partial { color: var(--info); background: #ebf0f6; }
         table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
         .values-wrap { overflow-x: auto; }
-        .values-table { table-layout: fixed; }
+        .values-table { table-layout: fixed; min-width: 720px; }
         .values-table th { padding: 7px 10px; font-size: 10px; position: sticky; top: 0; background: var(--panel); z-index: 1; }
         .values-table td { padding: 6px 10px; font-size: 13px; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
         .values-table code, .values-table .mono { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
@@ -681,7 +702,8 @@ internal static class DashboardPage
     </style>
 </head>
 <body>
-<div class="topbar">
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="topbar" role="banner">
     <div class="brand"><span class="dot" id="dot" aria-hidden="true"></span>OPC Bridge <span class="ver" id="appVersion"></span></div>
     <div class="pills">
         <div class="pill"><span class="k">Bridge</span><span id="pBridge">&#8212;</span></div>
@@ -694,7 +716,7 @@ internal static class DashboardPage
     <div class="clock" id="clock">&#8212;</div>
 </div>
 <div class="app-shell">
-<div class="tabbar">
+<div class="tabbar" role="navigation" aria-label="Sections">
   <div class="nav-group">
     <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><circle cx="7" cy="7" r="1" fill="currentColor" stroke="none"/><circle cx="7" cy="17" r="1" fill="currentColor" stroke="none"/></svg>Sources</div>
     <button class="tabbtn" data-tab="connection" data-route="connectivity/sources" onclick="navigate('connectivity/sources')">Sources</button>
@@ -735,8 +757,9 @@ internal static class DashboardPage
     <button class="tabbtn" data-tab="about" data-route="help/about" onclick="navigate('help/about')">About</button>
   </div>
 </div>
-<div class="content">
+<div class="content" id="main" role="main" tabindex="-1">
 <div class="view active" id="view-monitor">
+    <h1 class="view-title" tabindex="-1">Monitor</h1>
     <div class="port-banner" id="portBanner" role="status" style="display:none"></div>
     <div class="first-run-banner" id="bannerNoSources" role="status" style="display:none"></div>
     <div class="first-run-banner" id="bannerNoMappings" role="status" style="display:none"></div>
@@ -790,7 +813,7 @@ internal static class DashboardPage
                 <div class="msg" style="margin-top:6px;color:var(--muted)">Server bind address (0.0.0.0 = all interfaces)</div>
                 <div style="margin-top:10px"><div class="k" style="font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Connect from client</div><div class="endpoint" id="uaConnectUrl" style="margin-top:3px">&#8212;</div></div>
                 <div class="msg" style="margin-top:6px;color:var(--muted)">Use this URL in your OPC UA client to connect from another machine</div>
-                <div class="msg" id="uaDiagnostics" style="margin-top:8px">0 nodes · no updates yet</div>
+                <div class="msg" id="uaDiagnostics" role="status" style="margin-top:8px">0 nodes · no updates yet</div>
             </div>
         </div>
     </div>
@@ -800,6 +823,7 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="view" id="view-values">
+    <h1 class="view-title" tabindex="-1">Live Values</h1>
     <div class="values-subtabs" role="tablist">
         <button type="button" class="values-subtab active" id="valuesSubTabLive" onclick="switchValuesSubTab('live')">Live Values</button>
         <button type="button" class="values-subtab" id="valuesSubTabFlow" onclick="switchValuesSubTab('flow')">Interlink Flow <span class="values-subtab-badge" id="ilFlowBadge" style="display:none"></span></button>
@@ -826,6 +850,7 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="view" id="view-diagnostics">
+    <h1 class="view-title" tabindex="-1">Diagnostics</h1>
     <div class="box" style="margin-bottom:14px">
         <div class="box-h">Bridge Vitals <span class="info" data-tip="Process-level metrics shown nowhere else: uptime, aggregate values/sec through the bridge, duration of the most recent DA poll cycle, and the Windows session hosting the DA servers. Connection states, counters and last-error live on ops/monitor.">i</span><span class="msg" id="diagHealthUpdated" style="margin-left:auto"></span></div>
         <div class="box-b">
@@ -886,6 +911,7 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="view" id="view-sessions">
+    <h1 class="view-title" tabindex="-1">Sessions</h1>
     <div class="box" style="margin-bottom:14px">
         <div class="box-h">Source Diagnostics <span class="info" data-tip="Health of every configured source — OPC DA, OPC UA, and driver sources (Melsec, S7, MX Component). Shows connection state, read latency, rate-group budget for polled sources, the last fault reason, and data freshness.">i</span><span class="msg" id="diagDaSummary" style="margin-left:auto"></span></div>
         <div class="box-b" id="diagDaSources"><span class="msg">Loading source diagnostics…</span></div>
@@ -915,6 +941,7 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="view" id="view-connection">
+    <h1 class="view-title" tabindex="-1">Sources</h1>
     <div class="box">
         <div class="box-h">Sources <button class="btn" type="button" onclick="openAddSourceWizard()" style="margin-left:auto">+ Add Source</button></div>
         <div class="box-b">
@@ -924,21 +951,22 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="view" id="view-opc-da">
+    <h1 class="view-title" tabindex="-1">OPC DA</h1>
     <div class="conn-layout">
         <div class="conn-main">
             <div class="box">
-                <div class="box-h">OPC DA Configuration <button class="btn" type="button" onclick="openAddSourceWizard()" style="margin-left:auto">+ Add Source</button><span class="msg" id="cfgMessage" style="font-weight:400;text-transform:none;letter-spacing:0">Select a saved connection or click New.</span></div>
+                <div class="box-h">OPC DA Configuration <button class="btn" type="button" onclick="openAddSourceWizard()" style="margin-left:auto">+ Add Source</button><span class="msg" id="cfgMessage" role="status" style="font-weight:400;text-transform:none;letter-spacing:0">Select a saved connection or click New.</span></div>
                 <div class="box-b">
-                    <div class="field"><label class="fl">Selected</label><select id="selectedSource"></select></div>
+                    <div class="field"><label class="fl" for="selectedSource">Selected</label><select id="selectedSource"></select></div>
                     <div class="conn-section">
                         <div class="conn-section-h">Identity</div>
-                        <div class="field"><label class="fl">Source ID <span class="info" data-tip="Unique key with no spaces. Used internally and in UA Node IDs (ns=2;s={sourceId}/...).">i</span></label><input id="cfgSourceId" type="text" placeholder="server-a" style="flex:1"></div>
-                        <div class="field"><label class="fl">Name <span class="info" data-tip="Friendly label shown in lists and the Tags tab.">i</span></label><input id="cfgDisplayName" type="text" placeholder="Production Line A" style="flex:1"></div>
+                        <div class="field"><label class="fl" for="cfgSourceId">Source ID <span class="info" data-tip="Unique key with no spaces. Used internally and in UA Node IDs (ns=2;s={sourceId}/...).">i</span></label><input id="cfgSourceId" type="text" placeholder="server-a" style="flex:1"></div>
+                        <div class="field"><label class="fl" for="cfgDisplayName">Name <span class="info" data-tip="Friendly label shown in lists and the Tags tab.">i</span></label><input id="cfgDisplayName" type="text" placeholder="Production Line A" style="flex:1"></div>
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">Server Address</div>
-                        <div class="field"><label class="fl">ProgID <span class="info" data-tip="Programmatic ID of the OPC DA server (e.g. Matrikon.OPC.Simulation.1). Pick from the Discover panel on the right.">i</span></label><input id="cfgProgId" type="text" placeholder="Matrikon.OPC.Simulation.1" style="flex:1"></div>
-                        <div class="field"><label class="fl">Host <span class="info" data-tip="Machine where the OPC DA server runs. Use 'localhost' for this PC, or an IP/hostname for remote.">i</span></label><input id="cfgHost" type="text" placeholder="localhost" style="flex:1"></div>
+                        <div class="field"><label class="fl" for="cfgProgId">ProgID <span class="info" data-tip="Programmatic ID of the OPC DA server (e.g. Matrikon.OPC.Simulation.1). Pick from the Discover panel on the right.">i</span></label><input id="cfgProgId" type="text" placeholder="Matrikon.OPC.Simulation.1" style="flex:1"></div>
+                        <div class="field"><label class="fl" for="cfgHost">Host <span class="info" data-tip="Machine where the OPC DA server runs. Use 'localhost' for this PC, or an IP/hostname for remote.">i</span></label><input id="cfgHost" type="text" placeholder="localhost" style="flex:1"></div>
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">Detected Server <span class="info" data-tip="Identified on connect: OPC DA spec level (1.0/2.0/3.0, probed from the server-object marker interfaces) plus the server's own version and vendor string (IOPCServer.GetStatus).">i</span></div>
@@ -948,24 +976,24 @@ internal static class DashboardPage
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">Credentials <span class="info" data-tip="Only required for remote DCOM with specific user accounts, or to access OPC DA servers registered in another user's profile.">i</span></div>
-                        <div class="field"><label class="fl">User</label><input id="cfgUser" type="text" placeholder="username" aria-label="User name" style="flex:1"><input id="cfgPass" type="password" placeholder="password" aria-label="Password" style="flex:1"><input id="cfgDomain" type="text" placeholder="domain" aria-label="Domain" style="flex:1"></div>
+                        <div class="field"><label class="fl" for="cfgUser">User</label><input id="cfgUser" type="text" placeholder="username" aria-label="User name" style="flex:1"><input id="cfgPass" type="password" placeholder="password" aria-label="Password" style="flex:1"><input id="cfgDomain" type="text" placeholder="domain" aria-label="Domain" style="flex:1"></div>
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">Default Update Rate <span class="info" data-tip="Fixed at 1000 ms. This is the fallback rate for tags set to 'Source Default'. For other cadences use Sources → PLC Groups (named groups per rate) or a specific per-tag Update Rate.">i</span></div>
-                        <div class="field"><label class="fl">Rate</label><select id="cfgUpdateRate" disabled><option value="1000">1 s (fixed)</option></select><span class="msg" id="rateMessage">Fixed at 1 s — use Sources → PLC Groups for other rates.</span></div>
+                        <div class="field"><label class="fl" for="cfgUpdateRate">Rate</label><select id="cfgUpdateRate" disabled><option value="1000">1 s (fixed)</option></select><span class="msg" id="rateMessage" role="status">Fixed at 1 s — use Sources → PLC Groups for other rates.</span></div>
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">I/O Mode <span class="info" data-tip="Client-side value-delivery mode for this source, like Matrikon OPC Explorer's per-group I/O selector. AutoDetect I/O: try IOPCDataCallback push, fall back to polling when the server can't. Synchronous I/O: always poll with IOPCSyncIO.Read. Async I/O 2.0: force the push path (even if the global switch is off); falls back to polling with a warning if the server can't provide it. Applied live — no restart.">i</span></div>
-                        <div class="field"><label class="fl">Mode</label><select id="cfgIoMode"><option value="AutoDetect">AutoDetect I/O</option><option value="Sync">Synchronous I/O</option><option value="Async20">Async I/O 2.0</option></select><span class="msg" id="ioModeHint" style="font-weight:400;text-transform:none;letter-spacing:0"></span></div>
+                        <div class="field"><label class="fl" for="cfgIoMode">Mode</label><select id="cfgIoMode"><option value="AutoDetect">AutoDetect I/O</option><option value="Sync">Synchronous I/O</option><option value="Async20">Async I/O 2.0</option></select><span class="msg" id="ioModeHint" style="font-weight:400;text-transform:none;letter-spacing:0"></span></div>
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">Groups <span class="info" data-tip="Read-only summary of this source's OPC DA groups. Add, edit, rename or delete groups in the DA Groups panel (Manage groups) — changes apply live, no restart.">i</span></div>
                         <div id="cfgGroups" style="display:flex;flex-direction:column;gap:6px"></div>
-                        <div class="msg" id="cfgGroupsMsg" style="margin-top:4px"></div>
+                        <div class="msg" id="cfgGroupsMsg" role="status" style="margin-top:4px"></div>
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">DA Subscriptions <span class="info" data-tip="Global master switch: when OFF, AutoDetect sources never attempt push. When ON, AutoDetect sources use IOPCDataCallback when the server supports it (faster, supports deadband). Sources forced to Async I/O 2.0 always attempt push regardless. Applies on reconnect.">i</span></div>
-                        <div class="field"><label class="fl" for="cfgUseSubscriptions">Global</label><input type="checkbox" id="cfgUseSubscriptions" checked><span class="msg" id="subMessage">Applies on reconnect</span></div>
+                        <div class="field"><label class="fl" for="cfgUseSubscriptions">Global</label><input type="checkbox" id="cfgUseSubscriptions" checked><span class="msg" id="subMessage" role="status">Applies on reconnect</span></div>
                     </div>
                     <div class="toolbar" style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
                         <button class="btn" id="cfgApply" type="button" style="display:none">Save</button>
@@ -982,7 +1010,7 @@ internal static class DashboardPage
                 <div class="box-b">
                     <div class="toolbar">
                         <button class="btn ghost" id="btnReloadServers" type="button">Scan</button>
-                        <span class="msg" id="msgServers">Click Use to fill in ProgID + Host.</span>
+                        <span class="msg" id="msgServers" role="status">Click Use to fill in ProgID + Host.</span>
                     </div>
                     <div class="list" id="listServers" style="max-height:200px"></div>
                 </div>
@@ -999,17 +1027,18 @@ internal static class DashboardPage
                     <div class="toolbar">
                         <button class="btn ghost" id="btnExportConfig" type="button">Export Config</button>
                         <button class="btn ghost" id="btnImportConfig" type="button">Import Config</button>
-                        <input type="file" id="importConfigFile" accept=".json" style="display:none">
+                        <input type="file" id="importConfigFile" aria-label="Configuration file to import" accept=".json" style="display:none">
                     </div>
-                    <div class="hint" id="configMessage">Export saves all sources, settings, and tag mappings to a JSON file. Passwords are not included — re-enter after import.</div>
+                    <div class="hint" id="configMessage" role="status">Export saves all sources, settings, and tag mappings to a JSON file. Passwords are not included — re-enter after import.</div>
                 </div>
             </div>
         </div>
     </div>
 </div>
 <div class="view" id="view-opc-da-groups">
+    <h1 class="view-title" tabindex="-1">DA Groups</h1>
     <div class="box" style="max-width:720px">
-        <div class="box-h" style="padding:8px 12px;font-size:13px">OPC DA Groups <span class="msg" id="daGroupsMsg" style="margin-left:12px;font-size:11px"></span><span style="margin-left:auto;display:flex;gap:4px"><button class="btn ghost" type="button" style="height:20px;padding:0 6px;font-size:11px" onclick="expandAllDaGroups()">Expand All</button><button class="btn ghost" type="button" style="height:20px;padding:0 6px;font-size:11px" onclick="collapseAllDaGroups()">Collapse All</button></span></div>
+        <div class="box-h" style="padding:8px 12px;font-size:13px">OPC DA Groups <span class="msg" id="daGroupsMsg" role="status" style="margin-left:12px;font-size:11px"></span><span style="margin-left:auto;display:flex;gap:4px"><button class="btn ghost" type="button" style="height:20px;padding:0 6px;font-size:11px" onclick="expandAllDaGroups()">Expand All</button><button class="btn ghost" type="button" style="height:20px;padding:0 6px;font-size:11px" onclick="collapseAllDaGroups()">Collapse All</button></span></div>
         <div class="box-b" style="padding:10px 12px">
             <div id="daGroupsContainer" style="display:flex;flex-direction:column;gap:8px"></div>
             <div class="hint" style="font-size:11px;margin-top:8px">Each rate is a COM group OpcBridge_&lt;rate&gt; — add/delete per source, set I/O per group. Live apply.</div>
@@ -1017,32 +1046,33 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="view" id="view-opc-ua">
+    <h1 class="view-title" tabindex="-1">OPC UA</h1>
     <div class="conn-layout">
         <div class="conn-main">
             <div class="box">
-                <div class="box-h">OPC UA Configuration <button class="btn" type="button" onclick="openAddSourceWizard()" style="margin-left:auto">+ Add Source</button><span class="msg" id="uaCfgMessage" style="font-weight:400;text-transform:none;letter-spacing:0">Select a saved connection or click New.</span></div>
+                <div class="box-h">OPC UA Configuration <button class="btn" type="button" onclick="openAddSourceWizard()" style="margin-left:auto">+ Add Source</button><span class="msg" id="uaCfgMessage" role="status" style="font-weight:400;text-transform:none;letter-spacing:0">Select a saved connection or click New.</span></div>
                 <div class="box-b">
-                    <div class="field"><label class="fl">Selected</label><select id="uaSelectedSource"></select></div>
+                    <div class="field"><label class="fl" for="uaSelectedSource">Selected</label><select id="uaSelectedSource"></select></div>
                     <div class="conn-section">
                         <div class="conn-section-h">Identity</div>
-                        <div class="field"><label class="fl">Source ID <span class="info" data-tip="Unique key with no spaces. Used internally and in UA Node IDs (ns=2;s={sourceId}/...).">i</span></label><input id="uaCfgSourceId" type="text" placeholder="ua-plant-a" style="flex:1"></div>
-                        <div class="field"><label class="fl">Name <span class="info" data-tip="Friendly label shown in lists and the Tags tab.">i</span></label><input id="uaCfgDisplayName" type="text" placeholder="Plant UA Server" style="flex:1"></div>
+                        <div class="field"><label class="fl" for="uaCfgSourceId">Source ID <span class="info" data-tip="Unique key with no spaces. Used internally and in UA Node IDs (ns=2;s={sourceId}/...).">i</span></label><input id="uaCfgSourceId" type="text" placeholder="ua-plant-a" style="flex:1"></div>
+                        <div class="field"><label class="fl" for="uaCfgDisplayName">Name <span class="info" data-tip="Friendly label shown in lists and the Tags tab.">i</span></label><input id="uaCfgDisplayName" type="text" placeholder="Plant UA Server" style="flex:1"></div>
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">Endpoint</div>
-                        <div class="field"><label class="fl">Endpoint URL <span class="info" data-tip="opc.tcp URL of the external OPC UA server the bridge connects to as a client (not this bridge's own endpoint).">i</span></label><input id="uaCfgEndpointUrl" type="text" placeholder="opc.tcp://192.168.1.10:4840" style="flex:1"></div>
-                        <div class="field"><label class="fl">Security Mode</label><select id="uaCfgSecurityMode"><option value="None">None</option><option value="Sign">Sign</option><option value="SignAndEncrypt">SignAndEncrypt</option></select></div>
-                        <div class="field"><label class="fl">Security Policy</label><select id="uaCfgSecurityPolicy"><option value="None">None</option><option value="Basic256Sha256">Basic256Sha256</option></select></div>
+                        <div class="field"><label class="fl" for="uaCfgEndpointUrl">Endpoint URL <span class="info" data-tip="opc.tcp URL of the external OPC UA server the bridge connects to as a client (not this bridge's own endpoint).">i</span></label><input id="uaCfgEndpointUrl" type="text" placeholder="opc.tcp://192.168.1.10:4840" style="flex:1"></div>
+                        <div class="field"><label class="fl" for="uaCfgSecurityMode">Security Mode</label><select id="uaCfgSecurityMode"><option value="None">None</option><option value="Sign">Sign</option><option value="SignAndEncrypt">SignAndEncrypt</option></select></div>
+                        <div class="field"><label class="fl" for="uaCfgSecurityPolicy">Security Policy</label><select id="uaCfgSecurityPolicy"><option value="None">None</option><option value="Basic256Sha256">Basic256Sha256</option></select></div>
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">Credentials <span class="info" data-tip="Optional UserName token. Leave blank for anonymous.">i</span></div>
-                        <div class="field"><label class="fl">User</label><input id="uaCfgUser" type="text" placeholder="username" aria-label="User name" style="flex:1"><input id="uaCfgPass" type="password" placeholder="password" aria-label="Password" style="flex:1"></div>
+                        <div class="field"><label class="fl" for="uaCfgUser">User</label><input id="uaCfgUser" type="text" placeholder="username" aria-label="User name" style="flex:1"><input id="uaCfgPass" type="password" placeholder="password" aria-label="Password" style="flex:1"></div>
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">Update &amp; Scale</div>
-                        <div class="field"><label class="fl">Update Rate</label><select id="uaCfgUpdateRate" disabled><option value="1000">1 s (fixed)</option></select><span class="msg">Fixed — use UA Subscriptions for other rates.</span></div>
-                        <div class="field"><label class="fl">Max Mapped Tags <span class="info" data-tip="Hard cap on mappings for this UA source. Only mapped NodeIds are subscribed.">i</span></label><input id="uaCfgMaxMappedTags" type="number" min="1" value="50000" style="flex:1"></div>
-                        <div class="field"><label class="fl">Subscriptions</label><input type="checkbox" id="uaCfgUseSubscriptions" checked><span class="msg" id="uaSubMessage">MonitoredItems for mapped tags</span></div>
+                        <div class="field"><label class="fl" for="uaCfgUpdateRate">Update Rate</label><select id="uaCfgUpdateRate" disabled><option value="1000">1 s (fixed)</option></select><span class="msg">Fixed — use UA Subscriptions for other rates.</span></div>
+                        <div class="field"><label class="fl" for="uaCfgMaxMappedTags">Max Mapped Tags <span class="info" data-tip="Hard cap on mappings for this UA source. Only mapped NodeIds are subscribed.">i</span></label><input id="uaCfgMaxMappedTags" type="number" min="1" value="50000" style="flex:1"></div>
+                        <div class="field"><label class="fl" for="uaCfgUseSubscriptions">Subscriptions</label><input type="checkbox" id="uaCfgUseSubscriptions" checked><span class="msg" id="uaSubMessage" role="status">MonitoredItems for mapped tags</span></div>
                         <div class="field"><label class="fl">Read Mode <span class="info" data-tip="How values are delivered right now: async (subscription) = MonitoredItems push; sync (polling) = polling. Follows the Subscriptions checkbox on reconnect.">i</span></label><span class="msg" id="uaCfgReadMode" style="font-weight:400;text-transform:none;letter-spacing:0">—</span></div>
                         <div class="field"><label class="fl">Write Mode <span class="info" data-tip="How writes are sent: always a synchronous request/response via the UA Write service.">i</span></label><span class="msg" id="uaCfgWriteMode" style="font-weight:400;text-transform:none;letter-spacing:0">—</span></div>
                     </div>
@@ -1060,10 +1090,10 @@ internal static class DashboardPage
             <div class="box">
                 <div class="box-h">Discover UA Servers</div>
                 <div class="box-b">
-                    <div class="field"><label class="fl">Discovery URL <span class="info" data-tip="opc.tcp URL of a Local Discovery Server (LDS) or any known UA server to probe. Leave blank to use the Endpoint URL field, or opc.tcp://localhost:4840.">i</span></label><input id="uaDiscoverUrl" type="text" placeholder="opc.tcp://localhost:4840" style="flex:1"></div>
+                    <div class="field"><label class="fl" for="uaDiscoverUrl">Discovery URL <span class="info" data-tip="opc.tcp URL of a Local Discovery Server (LDS) or any known UA server to probe. Leave blank to use the Endpoint URL field, or opc.tcp://localhost:4840.">i</span></label><input id="uaDiscoverUrl" type="text" placeholder="opc.tcp://localhost:4840" style="flex:1"></div>
                     <div class="toolbar">
                         <button class="btn ghost" id="btnUaDiscover" type="button">Scan</button>
-                        <span class="msg" id="msgUaDiscover">Click Scan to find servers. Use fills Endpoint URL.</span>
+                        <span class="msg" id="msgUaDiscover" role="status">Click Scan to find servers. Use fills Endpoint URL.</span>
                     </div>
                     <div class="list" id="listUaDiscover" style="max-height:200px"></div>
                 </div>
@@ -1084,8 +1114,9 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="view" id="view-ua-subs">
+    <h1 class="view-title" tabindex="-1">UA Subs</h1>
     <div class="box" style="max-width:720px">
-        <div class="box-h" style="padding:8px 12px;font-size:13px">UA Subscriptions <span class="msg" id="subsMsg" style="margin-left:12px;font-size:11px"></span><span style="margin-left:auto;display:flex;gap:4px"><button class="btn ghost" type="button" style="height:20px;padding:0 6px;font-size:11px" onclick="expandAllUaSubs()">Expand All</button><button class="btn ghost" type="button" style="height:20px;padding:0 6px;font-size:11px" onclick="collapseAllUaSubs()">Collapse All</button></span></div>
+        <div class="box-h" style="padding:8px 12px;font-size:13px">UA Subscriptions <span class="msg" id="subsMsg" role="status" style="margin-left:12px;font-size:11px"></span><span style="margin-left:auto;display:flex;gap:4px"><button class="btn ghost" type="button" style="height:20px;padding:0 6px;font-size:11px" onclick="expandAllUaSubs()">Expand All</button><button class="btn ghost" type="button" style="height:20px;padding:0 6px;font-size:11px" onclick="collapseAllUaSubs()">Collapse All</button></span></div>
         <div class="box-b" style="padding:10px 12px">
             <div id="uaSubsContainer" style="display:flex;flex-direction:column;gap:8px"></div>
             <div class="hint" style="font-size:11px;margin-top:8px">Tags assigned to a named subscription publish at that rate; unassigned tags ride the read-only Default tile (source Update Rate). Removing a subscription moves its tags back to default.</div>
@@ -1093,12 +1124,14 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="view" id="view-plc-groups">
+    <h1 class="view-title" tabindex="-1">PLC Groups</h1>
     <div class="box" style="max-width:720px">
         <div class="box-h" style="padding:8px 12px;font-size:13px">PLC Groups</div>
         <div class="box-b" style="padding:10px 12px">
             <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+                <label class="fl" style="width:auto" for="plcGroupSourcePicker">Source</label>
                 <select id="plcGroupSourcePicker" onchange="renderPlcGroupsAll()" style="max-width:280px;flex:1"></select>
-                <span id="plcMsg" class="msg"></span>
+                <span id="plcMsg" role="status" class="msg"></span>
                 <button class="btn ghost" type="button" style="margin-left:auto" onclick="openPlcGroupAdd(document.getElementById('plcGroupSourcePicker').value)">+ Add Group</button>
             </div>
             <div id="plcGroupsList" class="dag-grid"></div>
@@ -1111,8 +1144,8 @@ internal static class DashboardPage
         <div class="modal-h"><div class="n" id="plcGroupModalTitle">Add PLC Group</div><button class="modal-close" type="button" onclick="closePlcGroupModal()">×</button></div>
         <div class="modal-b">
             <div class="field"><label class="fl">Source</label><span class="msg" id="plcGroupModalSource" style="font-family:'Consolas',monospace"></span></div>
-            <div class="field"><label class="fl">Name</label><input id="plcGroupName" type="text" maxlength="64" placeholder="Fast" style="flex:1"></div>
-            <div class="field"><label class="fl">Update Rate (ms)</label><select id="plcGroupRate" style="flex:1"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
+            <div class="field"><label class="fl" for="plcGroupName">Name</label><input id="plcGroupName" type="text" maxlength="64" placeholder="Fast" style="flex:1"></div>
+            <div class="field"><label class="fl" for="plcGroupRate">Update Rate (ms)</label><select id="plcGroupRate" style="flex:1"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
         </div>
         <div class="modal-f"><button class="btn ghost" type="button" onclick="closePlcGroupModal()">Cancel</button><button class="btn" type="button" id="plcGroupModalSaveBtn" onclick="plcGroupModalSave()">Save</button></div>
     </div>
@@ -1122,10 +1155,10 @@ internal static class DashboardPage
         <div class="modal-h"><div class="n" id="dagModalTitle">Add Group</div><button class="modal-close" type="button" onclick="closeDagModal()">×</button></div>
         <div class="modal-b">
             <div class="field"><label class="fl">Source</label><span class="msg" id="dagModalSource" style="font-family:'Consolas',monospace"></span></div>
-            <div class="field"><label class="fl">Name</label><input id="dagModalName" type="text" placeholder="OpcBridge_1000" style="flex:1"></div>
-            <div class="field"><label class="fl">Rate</label><select id="dagModalRate" style="flex:1"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
-            <div class="field"><label class="fl">I/O Mode</label><select id="dagModalIo" style="flex:1"><option value="AutoDetect">AutoDetect</option><option value="Sync">Sync</option><option value="Async20">Async20</option></select></div>
-            <div class="msg" id="dagModalMsg"></div>
+            <div class="field"><label class="fl" for="dagModalName">Name</label><input id="dagModalName" type="text" placeholder="OpcBridge_1000" style="flex:1"></div>
+            <div class="field"><label class="fl" for="dagModalRate">Rate</label><select id="dagModalRate" style="flex:1"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
+            <div class="field"><label class="fl" for="dagModalIo">I/O Mode</label><select id="dagModalIo" style="flex:1"><option value="AutoDetect">AutoDetect</option><option value="Sync">Sync</option><option value="Async20">Async20</option></select></div>
+            <div class="msg" id="dagModalMsg" role="status"></div>
         </div>
         <div class="modal-f"><button class="btn ghost" type="button" onclick="closeDagModal()">Cancel</button><button class="btn" type="button" id="dagModalSaveBtn" onclick="dagModalSave()">Save</button></div>
     </div>
@@ -1135,9 +1168,9 @@ internal static class DashboardPage
         <div class="modal-h"><div class="n" id="uaSubModalTitle">Add Subscription</div><button class="modal-close" type="button" onclick="closeUaSubModal()">×</button></div>
         <div class="modal-b">
             <div class="field"><label class="fl">Source</label><span class="msg" id="uaSubModalSource" style="font-family:'Consolas',monospace"></span></div>
-            <div class="field"><label class="fl">Name</label><input id="uaSubModalName" type="text" placeholder="fast" style="flex:1"></div>
-            <div class="field"><label class="fl">Rate</label><select id="uaSubModalRate" style="flex:1"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
-            <div class="msg" id="uaSubModalMsg"></div>
+            <div class="field"><label class="fl" for="uaSubModalName">Name</label><input id="uaSubModalName" type="text" placeholder="fast" style="flex:1"></div>
+            <div class="field"><label class="fl" for="uaSubModalRate">Rate</label><select id="uaSubModalRate" style="flex:1"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
+            <div class="msg" id="uaSubModalMsg" role="status"></div>
         </div>
         <div class="modal-f"><button class="btn ghost" type="button" onclick="closeUaSubModal()">Cancel</button><button class="btn" type="button" id="uaSubModalSaveBtn" onclick="uaSubModalSave()">Save</button></div>
     </div>
@@ -1158,7 +1191,7 @@ internal static class DashboardPage
         </div>
         <div class="wizard-body">
             <div class="wizard-pane active" data-pane="1">
-                <div class="field"><label class="fl">Source Type</label>
+                <div class="field"><label class="fl" for="wzSourceType">Source Type</label>
                     <select id="wzSourceType" onchange="wzOnTypeChange()">
                         <option value="OpcDa">OPC DA</option>
                         <option value="OpcUa">OPC UA</option>
@@ -1167,41 +1200,41 @@ internal static class DashboardPage
                 <div class="hint">OPC DA uses ProgID/Host (Windows COM). OPC UA uses an opc.tcp endpoint (cross-platform client).</div>
             </div>
             <div class="wizard-pane" data-pane="2">
-                <div class="field"><label class="fl">Source ID</label><input type="text" id="wzSourceId" placeholder="server-a"></div>
-                <div class="field"><label class="fl">Display Name</label><input type="text" id="wzDisplayName" placeholder="(optional)"></div>
+                <div class="field"><label class="fl" for="wzSourceId">Source ID</label><input type="text" id="wzSourceId" placeholder="server-a"></div>
+                <div class="field"><label class="fl" for="wzDisplayName">Display Name</label><input type="text" id="wzDisplayName" placeholder="(optional)"></div>
                 <div class="hint">Unique key with no spaces. Used in UA Node IDs (ns=2;s={sourceId}/...).</div>
             </div>
             <div class="wizard-pane" data-pane="3">
                 <div id="wzDaServerFields">
-                    <div class="field"><label class="fl">Host</label><input type="text" id="wzHost" placeholder="localhost"></div>
-                    <div class="field"><label class="fl">ProgID / CLSID</label><input type="text" id="wzProgId" placeholder="Kepware.KEPServerEX.V6"></div>
+                    <div class="field"><label class="fl" for="wzHost">Host</label><input type="text" id="wzHost" placeholder="localhost"></div>
+                    <div class="field"><label class="fl" for="wzProgId">ProgID / CLSID</label><input type="text" id="wzProgId" placeholder="Kepware.KEPServerEX.V6"></div>
                     <button class="btn ghost" type="button" onclick="wzBrowseServers()">Browse Servers</button>
-                    <span class="msg" id="wzMsgServers"></span>
+                    <span class="msg" id="wzMsgServers" role="status"></span>
                     <div class="list" id="wzListServers" style="max-height:180px"></div>
                 </div>
                 <div id="wzUaServerFields" style="display:none">
-                    <div class="field"><label class="fl">Endpoint URL</label><input type="text" id="wzEndpointUrl" placeholder="opc.tcp://host:4840"></div>
-                    <div class="field"><label class="fl">Security Mode</label><select id="wzSecurityMode"><option value="None">None</option><option value="Sign">Sign</option><option value="SignAndEncrypt">SignAndEncrypt</option></select></div>
-                    <div class="field"><label class="fl">Security Policy</label><select id="wzSecurityPolicy"><option value="None">None</option><option value="Basic256Sha256">Basic256Sha256</option></select></div>
+                    <div class="field"><label class="fl" for="wzEndpointUrl">Endpoint URL</label><input type="text" id="wzEndpointUrl" placeholder="opc.tcp://host:4840"></div>
+                    <div class="field"><label class="fl" for="wzSecurityMode">Security Mode</label><select id="wzSecurityMode"><option value="None">None</option><option value="Sign">Sign</option><option value="SignAndEncrypt">SignAndEncrypt</option></select></div>
+                    <div class="field"><label class="fl" for="wzSecurityPolicy">Security Policy</label><select id="wzSecurityPolicy"><option value="None">None</option><option value="Basic256Sha256">Basic256Sha256</option></select></div>
                 </div>
             </div>
             <div class="wizard-pane" data-pane="4">
                 <div id="wzDaAuthFields">
-                    <div class="field"><label class="fl">Domain</label><input type="text" id="wzDomain" placeholder="(optional)"></div>
-                    <div class="field"><label class="fl">Username</label><input type="text" id="wzUser" placeholder="(optional)"></div>
-                    <div class="field"><label class="fl">Password</label><input type="password" id="wzPass"></div>
+                    <div class="field"><label class="fl" for="wzDomain">Domain</label><input type="text" id="wzDomain" placeholder="(optional)"></div>
+                    <div class="field"><label class="fl" for="wzUser">Username</label><input type="text" id="wzUser" placeholder="(optional)"></div>
+                    <div class="field"><label class="fl" for="wzPass">Password</label><input type="password" id="wzPass"></div>
                     <div class="hint">Only required for remote DCOM or servers in another user's profile.</div>
                 </div>
                 <div id="wzUaAuthFields" style="display:none">
-                    <div class="field"><label class="fl">UA Username</label><input type="text" id="wzUaUser" placeholder="(optional, anonymous if empty)"></div>
-                    <div class="field"><label class="fl">UA Password</label><input type="password" id="wzUaPass"></div>
+                    <div class="field"><label class="fl" for="wzUaUser">UA Username</label><input type="text" id="wzUaUser" placeholder="(optional, anonymous if empty)"></div>
+                    <div class="field"><label class="fl" for="wzUaPass">UA Password</label><input type="password" id="wzUaPass"></div>
                     <div class="hint">UserName token credentials for the external OPC UA server.</div>
                 </div>
             </div>
             <div class="wizard-pane" data-pane="5">
-                <div class="field"><label class="fl">Update Rate</label><select id="wzUpdateRate" disabled><option value="1000">1 s (fixed)</option></select></div>
-                <div class="field"><label class="fl">Subscriptions</label><input type="checkbox" id="wzSubs" checked> <span class="msg" id="wzSubsHint">Use IOPCDataCallback (recommended)</span></div>
-                <div class="field" id="wzMaxTagsField" style="display:none"><label class="fl">Max Mapped Tags</label><input type="number" id="wzMaxMappedTags" min="1" value="50000"></div>
+                <div class="field"><label class="fl" for="wzUpdateRate">Update Rate</label><select id="wzUpdateRate" disabled><option value="1000">1 s (fixed)</option></select></div>
+                <div class="field"><label class="fl" for="wzSubs">Subscriptions</label><input type="checkbox" id="wzSubs" checked> <span class="msg" id="wzSubsHint">Use IOPCDataCallback (recommended)</span></div>
+                <div class="field" id="wzMaxTagsField" style="display:none"><label class="fl" for="wzMaxMappedTags">Max Mapped Tags</label><input type="number" id="wzMaxMappedTags" min="1" value="50000"></div>
             </div>
             <div class="wizard-pane" data-pane="6">
                 <div class="wizard-summary" id="wzSummary"></div>
@@ -1217,27 +1250,28 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="view" id="view-mx-component">
+    <h1 class="view-title" tabindex="-1">MX Component</h1>
     <div class="conn-layout">
         <div class="conn-main">
             <div class="box">
-                <div class="box-h">MELSOFT MX Component 4 <button class="btn" type="button" onclick="newMxSource()" style="margin-left:auto">+ Add Connection</button><span class="msg" id="mxMessage" style="font-weight:400;text-transform:none;letter-spacing:0">Select an MX Component connection or click New.</span></div>
+                <div class="box-h">MELSOFT MX Component 4 <button class="btn" type="button" onclick="newMxSource()" style="margin-left:auto">+ Add Connection</button><span class="msg" id="mxMessage" role="status" style="font-weight:400;text-transform:none;letter-spacing:0">Select an MX Component connection or click New.</span></div>
                 <div class="box-b">
                     <div class="conn-section">
                         <div class="conn-section-h">Connection <span class="info" data-tip="MX Component is a local COM driver that owns the physical link to the PLC. Configure that link (serial, Ethernet, or GX Simulator) once in MX Component's own Communication Settings Utility — it assigns a logical station number that this app references. GX Simulator note: it uses session-bound shared memory, so the bridge must run in the same logged-in interactive Windows session (Interactive task logon — S4U/service mode cannot reach it).">i</span></div>
                         <div class="field" style="display:block;background:var(--bg);border:1px solid var(--border2);border-radius:5px;padding:9px 11px;color:var(--muted)">The physical link (serial RS-422/RS-232C, Ethernet, or <b>GX Simulator</b>) is configured <b>once in MX Component's own Communication Settings Utility</b> — this app only needs the <b>logical station number</b> (0–1023) that the utility assigned. For an <b>A3NCPU</b>: pick <b>A series → A3N</b> in the utility's wizard (1C frame); if "A series" is missing, an <b>FX-series CPU type</b> usually still talks to it. <b>GX Simulator</b> is session-bound — the bridge must run in the same logged-in desktop session, so the Windows scheduled task needs <b>Interactive</b> logon (register with <span class="mono">-LogonType Interactive</span>).</div>
-                        <div class="field"><label class="fl">Logical Station</label><input id="mxStation" type="number" min="0" max="1023" value="0" style="width:90px"><span class="msg">Assigned in the MX Component Communication Settings Utility.</span></div>
+                        <div class="field"><label class="fl" for="mxStation">Logical Station</label><input id="mxStation" type="number" min="0" max="1023" value="0" style="width:90px"><span class="msg">Assigned in the MX Component Communication Settings Utility.</span></div>
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">Identity</div>
-                        <div class="field"><label class="fl">Source ID <span class="info" data-tip="Unique key with no spaces. Used internally and in UA Node IDs (ns=2;s={sourceId}/...).">i</span></label><input id="mxSourceId" type="text" placeholder="plc-mx-1" style="flex:1"></div>
-                        <div class="field"><label class="fl">Name <span class="info" data-tip="Friendly label shown in lists and the Tags tab.">i</span></label><input id="mxName" type="text" placeholder="Line 1 PLC" style="flex:1"></div>
+                        <div class="field"><label class="fl" for="mxSourceId">Source ID <span class="info" data-tip="Unique key with no spaces. Used internally and in UA Node IDs (ns=2;s={sourceId}/...).">i</span></label><input id="mxSourceId" type="text" placeholder="plc-mx-1" style="flex:1"></div>
+                        <div class="field"><label class="fl" for="mxName">Name <span class="info" data-tip="Friendly label shown in lists and the Tags tab.">i</span></label><input id="mxName" type="text" placeholder="Line 1 PLC" style="flex:1"></div>
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">Defaults</div>
-                        <div class="field"><label class="fl">Timeout ms</label><input id="mxTimeout" type="number" min="100" step="100" value="3000" style="width:100px">
-                        <label class="fl" style="width:auto">Retries</label><input id="mxRetry" type="number" min="0" max="10" value="2" style="width:70px"></div>
-                        <div class="field"><label class="fl">Update Rate</label><select id="mxRate" disabled><option value="1000">1 s (fixed)</option></select><span class="msg">Fixed — use Sources → PLC Groups for other rates.</span>
-                        <label class="fl" style="width:auto">Max tags <span class="info" data-tip="Safety limit on mapped tags for this source; adding mappings beyond it is rejected.">i</span></label><input id="mxMaxTags" type="number" min="1" step="1" value="2000" style="width:90px"></div>
+                        <div class="field"><label class="fl" for="mxTimeout">Timeout ms</label><input id="mxTimeout" type="number" min="100" step="100" value="3000" style="width:100px">
+                        <label class="fl" for="mxRetry" style="width:auto">Retries</label><input id="mxRetry" type="number" min="0" max="10" value="2" style="width:70px"></div>
+                        <div class="field"><label class="fl" for="mxRate">Update Rate</label><select id="mxRate" disabled><option value="1000">1 s (fixed)</option></select><span class="msg">Fixed — use Sources → PLC Groups for other rates.</span>
+                        <label class="fl" for="mxMaxTags" style="width:auto">Max tags <span class="info" data-tip="Safety limit on mapped tags for this source; adding mappings beyond it is rejected.">i</span></label><input id="mxMaxTags" type="number" min="1" step="1" value="2000" style="width:90px"></div>
                     </div>
                     <div class="toolbar" style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
                         <button class="btn" id="mxSave" type="button">Save</button>
@@ -1268,39 +1302,40 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="view" id="view-drivers">
+    <h1 class="view-title" tabindex="-1">Drivers</h1>
     <div class="conn-layout">
         <div class="conn-main">
             <div class="box">
-                <div class="box-h">PLC Driver <button class="btn" type="button" onclick="openDriverWizard()" style="margin-left:auto">+ Add Driver</button><span class="msg" id="drvA3nMessage" style="font-weight:400;text-transform:none;letter-spacing:0">Select a driver source or click New.</span></div>
+                <div class="box-h">PLC Driver <button class="btn" type="button" onclick="openDriverWizard()" style="margin-left:auto">+ Add Driver</button><span class="msg" id="drvA3nMessage" role="status" style="font-weight:400;text-transform:none;letter-spacing:0">Select a driver source or click New.</span></div>
                 <div class="box-b">
                     <div class="conn-section">
                         <div class="conn-section-h">Identity</div>
-                        <div class="field"><label class="fl">Source ID <span class="info" data-tip="Unique key with no spaces. Used internally and in UA Node IDs (ns=2;s={sourceId}/...).">i</span></label><input id="drvA3nSourceId" type="text" placeholder="plc-a3n-1" style="flex:1"></div>
-                        <div class="field"><label class="fl">Name <span class="info" data-tip="Friendly label shown in lists and the Tags tab.">i</span></label><input id="drvA3nName" type="text" placeholder="Line 1 PLC" style="flex:1"></div>
+                        <div class="field"><label class="fl" for="drvA3nSourceId">Source ID <span class="info" data-tip="Unique key with no spaces. Used internally and in UA Node IDs (ns=2;s={sourceId}/...).">i</span></label><input id="drvA3nSourceId" type="text" placeholder="plc-a3n-1" style="flex:1"></div>
+                        <div class="field"><label class="fl" for="drvA3nName">Name <span class="info" data-tip="Friendly label shown in lists and the Tags tab.">i</span></label><input id="drvA3nName" type="text" placeholder="Line 1 PLC" style="flex:1"></div>
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">Serial Port <span class="info" data-tip="RS-422/RS-232C link to the A3N CPU (1C protocol, Format 1). Defaults: 9600 baud, 8 data bits, odd parity, 1 stop bit.">i</span></div>
-                        <div class="field"><label class="fl">Port</label><input id="drvA3nPort" type="text" placeholder="COM3 or /dev/ttyUSB0" style="flex:1"><button class="btn ghost" id="btnDrvScanPorts" type="button">Scan</button></div>
+                        <div class="field"><label class="fl" for="drvA3nPort">Port</label><input id="drvA3nPort" type="text" placeholder="COM3 or /dev/ttyUSB0" style="flex:1"><button class="btn ghost" id="btnDrvScanPorts" type="button">Scan</button></div>
                         <div class="list" id="listDrvPorts" style="max-height:120px;margin:0 0 8px 0"></div>
-                        <span class="msg" id="msgDrvPorts">Click Scan to list host serial ports.</span>
-                        <div class="field"><label class="fl">Baud</label><select id="drvA3nBaud"><option value="1200">1200</option><option value="2400">2400</option><option value="4800">4800</option><option value="9600" selected>9600</option><option value="19200">19200</option></select>
-                        <label class="fl" style="width:auto">Data bits</label><select id="drvA3nDataBits"><option value="7">7</option><option value="8" selected>8</option></select></div>
-                        <div class="field"><label class="fl">Parity</label><select id="drvA3nParity"><option value="None">None</option><option value="Odd" selected>Odd</option><option value="Even">Even</option></select>
-                        <label class="fl" style="width:auto">Stop bits</label><select id="drvA3nStopBits"><option value="One" selected>1</option><option value="Two">2</option></select></div>
+                        <span class="msg" id="msgDrvPorts" role="status">Click Scan to list host serial ports.</span>
+                        <div class="field"><label class="fl" for="drvA3nBaud">Baud</label><select id="drvA3nBaud"><option value="1200">1200</option><option value="2400">2400</option><option value="4800">4800</option><option value="9600" selected>9600</option><option value="19200">19200</option></select>
+                        <label class="fl" for="drvA3nDataBits" style="width:auto">Data bits</label><select id="drvA3nDataBits"><option value="7">7</option><option value="8" selected>8</option></select></div>
+                        <div class="field"><label class="fl" for="drvA3nParity">Parity</label><select id="drvA3nParity"><option value="None">None</option><option value="Odd" selected>Odd</option><option value="Even">Even</option></select>
+                        <label class="fl" for="drvA3nStopBits" style="width:auto">Stop bits</label><select id="drvA3nStopBits"><option value="One" selected>1</option><option value="Two">2</option></select></div>
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">PLC Addressing <span class="info" data-tip="Station 00 = directly attached CPU. PC number FF = own station (1C protocol).">i</span></div>
-                        <div class="field" id="drvA3nStationRow"><label class="fl">Station</label><input id="drvA3nStation" type="text" placeholder="00" maxlength="2" style="width:70px">
-                        <label class="fl" style="width:auto">PC No</label><input id="drvA3nPc" type="text" placeholder="FF" maxlength="2" style="width:70px"></div>
-                        <div class="field" id="drvS7PpiRow" style="display:none"><label class="fl">Local PPI</label><input id="drvS7LocalPpi" type="number" min="0" max="126" value="0" style="width:70px">
-                        <label class="fl" style="width:auto">Remote PPI</label><input id="drvS7RemotePpi" type="number" min="0" max="126" value="2" style="width:70px"></div>
+                        <div class="field" id="drvA3nStationRow"><label class="fl" for="drvA3nStation">Station</label><input id="drvA3nStation" type="text" placeholder="00" maxlength="2" style="width:70px">
+                        <label class="fl" for="drvA3nPc" style="width:auto">PC No</label><input id="drvA3nPc" type="text" placeholder="FF" maxlength="2" style="width:70px"></div>
+                        <div class="field" id="drvS7PpiRow" style="display:none"><label class="fl" for="drvS7LocalPpi">Local PPI</label><input id="drvS7LocalPpi" type="number" min="0" max="126" value="0" style="width:70px">
+                        <label class="fl" for="drvS7RemotePpi" style="width:auto">Remote PPI</label><input id="drvS7RemotePpi" type="number" min="0" max="126" value="2" style="width:70px"></div>
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">Defaults</div>
-                        <div class="field"><label class="fl">Timeout ms</label><input id="drvA3nTimeout" type="number" min="100" step="100" value="3000" style="width:100px">
-                        <label class="fl" style="width:auto">Retries</label><input id="drvA3nRetry" type="number" min="0" max="10" value="2" style="width:70px"></div>
-                        <div class="field"><label class="fl">Update Rate</label><select id="drvA3nRate" disabled><option value="1000">1 s (fixed)</option></select><span class="msg">Fixed — use Sources → PLC Groups for other rates.</span></div>
-                        <label class="fl" style="width:auto">Max tags <span class="info" data-tip="Safety limit on mapped tags for this serial link; adding mappings beyond it is rejected.">i</span></label><input id="drvA3nMaxTags" type="number" min="1" step="1" value="2000" style="width:90px"></div>
+                        <div class="field"><label class="fl" for="drvA3nTimeout">Timeout ms</label><input id="drvA3nTimeout" type="number" min="100" step="100" value="3000" style="width:100px">
+                        <label class="fl" for="drvA3nRetry" style="width:auto">Retries</label><input id="drvA3nRetry" type="number" min="0" max="10" value="2" style="width:70px"></div>
+                        <div class="field"><label class="fl" for="drvA3nRate">Update Rate</label><select id="drvA3nRate" disabled><option value="1000">1 s (fixed)</option></select><span class="msg">Fixed — use Sources → PLC Groups for other rates.</span></div>
+                        <label class="fl" for="drvA3nMaxTags" style="width:auto">Max tags <span class="info" data-tip="Safety limit on mapped tags for this serial link; adding mappings beyond it is rejected.">i</span></label><input id="drvA3nMaxTags" type="number" min="1" step="1" value="2000" style="width:90px"></div>
                     </div>
                     <div class="toolbar" style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
                         <button class="btn" id="drvA3nSave" type="button">Save</button>
@@ -1342,32 +1377,32 @@ internal static class DashboardPage
         </div>
         <div class="wizard-body">
             <div class="wzdrv-pane active" data-pane="1">
-                <div class="field"><label class="fl">Driver Type</label><select id="wzDrvType" onchange="wzDrvOnTypeChange()"><option value="MelsecA3n">Mitsubishi Melsec A3N (serial 1C)</option><option value="S7200Ppi">Siemens S7-200 (PPI serial)</option></select></div>
+                <div class="field"><label class="fl" for="wzDrvType">Driver Type</label><select id="wzDrvType" onchange="wzDrvOnTypeChange()"><option value="MelsecA3n">Mitsubishi Melsec A3N (serial 1C)</option><option value="S7200Ppi">Siemens S7-200 (PPI serial)</option></select></div>
                 <div class="hint">Serial link to the PLC CPU (RS-422/RS-232C, 1C protocol). For MELSOFT MX Component 4, use the MX Component tab — its link is configured in MX Component's own Communication Settings Utility.</div>
             </div>
             <div class="wzdrv-pane" data-pane="2">
-                <div class="field"><label class="fl">Source ID</label><input type="text" id="wzDrvSourceId" placeholder="plc-a3n-1"></div>
-                <div class="field"><label class="fl">Display Name</label><input type="text" id="wzDrvName" placeholder="(optional)"></div>
+                <div class="field"><label class="fl" for="wzDrvSourceId">Source ID</label><input type="text" id="wzDrvSourceId" placeholder="plc-a3n-1"></div>
+                <div class="field"><label class="fl" for="wzDrvName">Display Name</label><input type="text" id="wzDrvName" placeholder="(optional)"></div>
                 <div class="hint">Unique key with no spaces. Used in UA Node IDs (ns=2;s={sourceId}/...).</div>
             </div>
             <div class="wzdrv-pane" data-pane="3">
-                <div class="field"><label class="fl">Serial Port</label><input type="text" id="wzDrvPort" placeholder="COM3 or /dev/ttyUSB0" style="flex:1"><button class="btn ghost" id="btnWzDrvScanPorts" type="button">Scan</button></div>
+                <div class="field"><label class="fl" for="wzDrvPort">Serial Port</label><input type="text" id="wzDrvPort" placeholder="COM3 or /dev/ttyUSB0" style="flex:1"><button class="btn ghost" id="btnWzDrvScanPorts" type="button">Scan</button></div>
                 <div class="list" id="listWzDrvPorts" style="max-height:120px;margin:0 0 8px 0"></div>
-                <span class="msg" id="msgWzDrvPorts">Click Scan to list host serial ports.</span>
-                <div class="field"><label class="fl">Baud</label><select id="wzDrvBaud"><option value="1200">1200</option><option value="2400">2400</option><option value="4800">4800</option><option value="9600" selected>9600</option><option value="19200">19200</option></select>
-                <label class="fl" style="width:auto">Data bits</label><select id="wzDrvDataBits"><option value="7">7</option><option value="8" selected>8</option></select></div>
-                <div class="field"><label class="fl">Parity</label><select id="wzDrvParity"><option value="None">None</option><option value="Odd" selected>Odd</option><option value="Even">Even</option></select>
-                <label class="fl" style="width:auto">Stop bits</label><select id="wzDrvStopBits"><option value="One" selected>1</option><option value="Two">2</option></select></div>
-                <div class="field" id="wzDrvStationRow"><label class="fl">Station</label><input type="text" id="wzDrvStation" placeholder="00" maxlength="2" style="width:70px">
-                <label class="fl" style="width:auto">PC No</label><input type="text" id="wzDrvPc" placeholder="FF" maxlength="2" style="width:70px"></div>
-                <div class="field" id="wzDrvS7PpiRow" style="display:none"><label class="fl">Local PPI</label><input type="number" id="wzDrvLocalPpi" min="0" max="126" value="0" style="width:70px">
-                <label class="fl" style="width:auto">Remote PPI</label><input type="number" id="wzDrvRemotePpi" min="0" max="126" value="2" style="width:70px"></div>
+                <span class="msg" id="msgWzDrvPorts" role="status">Click Scan to list host serial ports.</span>
+                <div class="field"><label class="fl" for="wzDrvBaud">Baud</label><select id="wzDrvBaud"><option value="1200">1200</option><option value="2400">2400</option><option value="4800">4800</option><option value="9600" selected>9600</option><option value="19200">19200</option></select>
+                <label class="fl" for="wzDrvDataBits" style="width:auto">Data bits</label><select id="wzDrvDataBits"><option value="7">7</option><option value="8" selected>8</option></select></div>
+                <div class="field"><label class="fl" for="wzDrvParity">Parity</label><select id="wzDrvParity"><option value="None">None</option><option value="Odd" selected>Odd</option><option value="Even">Even</option></select>
+                <label class="fl" for="wzDrvStopBits" style="width:auto">Stop bits</label><select id="wzDrvStopBits"><option value="One" selected>1</option><option value="Two">2</option></select></div>
+                <div class="field" id="wzDrvStationRow"><label class="fl" for="wzDrvStation">Station</label><input type="text" id="wzDrvStation" placeholder="00" maxlength="2" style="width:70px">
+                <label class="fl" for="wzDrvPc" style="width:auto">PC No</label><input type="text" id="wzDrvPc" placeholder="FF" maxlength="2" style="width:70px"></div>
+                <div class="field" id="wzDrvS7PpiRow" style="display:none"><label class="fl" for="wzDrvLocalPpi">Local PPI</label><input type="number" id="wzDrvLocalPpi" min="0" max="126" value="0" style="width:70px">
+                <label class="fl" for="wzDrvRemotePpi" style="width:auto">Remote PPI</label><input type="number" id="wzDrvRemotePpi" min="0" max="126" value="2" style="width:70px"></div>
             </div>
             <div class="wzdrv-pane" data-pane="4">
-                <div class="field"><label class="fl">Timeout ms</label><input type="number" id="wzDrvTimeout" min="100" step="100" value="3000" style="width:100px">
-                <label class="fl" style="width:auto">Retries</label><input type="number" id="wzDrvRetry" min="0" max="10" value="2" style="width:70px"></div>
-                <div class="field"><label class="fl">Update Rate</label><select id="wzDrvRate" disabled><option value="1000">1 s (fixed)</option></select>
-                <label class="fl" style="width:auto">Max tags</label><input type="number" id="wzDrvMaxTags" min="1" step="1" value="2000" style="width:90px"></div>
+                <div class="field"><label class="fl" for="wzDrvTimeout">Timeout ms</label><input type="number" id="wzDrvTimeout" min="100" step="100" value="3000" style="width:100px">
+                <label class="fl" for="wzDrvRetry" style="width:auto">Retries</label><input type="number" id="wzDrvRetry" min="0" max="10" value="2" style="width:70px"></div>
+                <div class="field"><label class="fl" for="wzDrvRate">Update Rate</label><select id="wzDrvRate" disabled><option value="1000">1 s (fixed)</option></select>
+                <label class="fl" for="wzDrvMaxTags" style="width:auto">Max tags</label><input type="number" id="wzDrvMaxTags" min="1" step="1" value="2000" style="width:90px"></div>
             </div>
             <div class="wzdrv-pane" data-pane="5">
                 <div class="wizard-summary" id="wzDrvSummary"></div>
@@ -1383,6 +1418,7 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="view" id="view-tags">
+    <h1 class="view-title" tabindex="-1">Maps</h1>
     <div class="first-run-banner" id="bannerTagsNoSources" style="display:none"></div>
     <div class="map-type-tabs" id="mapTypeTabs">
         <button class="map-type-tab active" type="button" data-map-type="opc-da" onclick="setMapType('opc-da')">OPC DA</button>
@@ -1394,7 +1430,7 @@ internal static class DashboardPage
         <div class="box-h">Tag Browser</div>
         <div class="box-b">
             <div class="field" style="margin-bottom:10px">
-                <label class="fl">Source</label>
+                <label class="fl" for="mapSourceSelect">Source</label>
                 <select id="mapSourceSelect"></select>
                 <span class="msg" id="tagSourceStatus"></span>
                 <span class="msg" id="mapSourceHint"></span>
@@ -1406,7 +1442,7 @@ internal static class DashboardPage
             <div class="tag-browser-toolbar" id="mapBrowseToolbar">
                 <button class="btn" id="btnBrowseAllTags" type="button">Browse All Tags</button>
                 <button class="btn ghost" id="btnBrowseTags" type="button">Browse Folders</button>
-                <span class="msg" id="tagStatus">Browse all tags, or open folders one level at a time.</span>
+                <span class="msg" id="tagStatus" role="status">Browse all tags, or open folders one level at a time.</span>
             </div>
             <div class="breadcrumb" id="tagBreadcrumb"></div>
             <div class="list" id="tagTree"></div>
@@ -1427,11 +1463,11 @@ internal static class DashboardPage
                     <span class="msg">Or browse tags above and click Add.</span>
                 </div>
             </div>
-            <div class="hint" id="mappingMessage" style="margin-bottom:10px">Click a tag to open its faceplate. Disable a tag to stop publishing it, or set a manual value to override the source.</div>
+            <div class="hint" id="mappingMessage" role="status" style="margin-bottom:10px">Click a tag to open its faceplate. Disable a tag to stop publishing it, or set a manual value to override the source.</div>
             <div class="mapping-toolbar">
                 <label class="fl" style="width:auto" for="mappingFilter">Filter</label>
                 <input id="mappingFilter" type="text" placeholder="name, item ID, UA node or source" style="flex:1;min-width:120px">
-                <label class="fl" style="width:auto">Sort</label>
+                <label class="fl" for="mappingSort" style="width:auto">Sort</label>
                 <select id="mappingSort">
                     <option value="name">Name</option>
                     <option value="source">Server (Source)</option>
@@ -1450,20 +1486,21 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="view" id="view-interlinks">
+    <h1 class="view-title" tabindex="-1">Interlinks</h1>
     <div class="box">
         <div class="box-h">Interlinks <span class="msg" id="linksCount" style="margin-left:auto"></span></div>
         <div class="box-b">
-            <div class="hint" id="linksMessage" style="margin-bottom:10px">Create tag-to-tag rules between sources here. Interlinks are a separate subsystem from OPC UA tag mappings.</div>
+            <div class="hint" id="linksMessage" role="status" style="margin-bottom:10px">Create tag-to-tag rules between sources here. Interlinks are a separate subsystem from OPC UA tag mappings.</div>
             <div class="fp-body with-flow" style="margin-bottom:10px">
                 <div class="fp-panel">
-                    <div class="fp-k">Consumer <span class="info" data-tip="Receives the value. When the provider tag changes, the bridge writes that value into this tag. Each consumer has exactly one provider - delete the saved link first to attach a different provider.">i</span></div>
-                    <select id="interlinkConsumerSource" style="width:100%;margin-bottom:8px" onchange="onInterlinkSourceChange('consumer')"></select>
+                    <div class="fp-k" id="interlinkConsumerSourceLabel">Consumer <span class="info" data-tip="Receives the value. When the provider tag changes, the bridge writes that value into this tag. Each consumer has exactly one provider - delete the saved link first to attach a different provider.">i</span></div>
+                    <select id="interlinkConsumerSource" aria-labelledby="interlinkConsumerSourceLabel" style="width:100%;margin-bottom:8px" onchange="onInterlinkSourceChange('consumer')"></select>
                     <div class="list" id="interlinkConsumerList" style="max-height:220px"><span class="msg">Select a source to list its Maps tags.</span></div>
                 </div>
                 <div class="il-flow" data-tip="Values flow from the Provider into the Consumer: each provider change is written into every consumer linked to it."><span class="il-arrow">⇐</span><span class="il-flow-hint">value flow</span></div>
                 <div class="fp-panel">
-                    <div class="fp-k">Provider <span class="info" data-tip="Sends the value. Its changes are copied into every consumer linked to it - one provider can feed many consumers across any OPC DA / OPC UA / MX Component source.">i</span></div>
-                    <select id="interlinkProviderSource" style="width:100%;margin-bottom:8px" onchange="onInterlinkSourceChange('provider')"></select>
+                    <div class="fp-k" id="interlinkProviderSourceLabel">Provider <span class="info" data-tip="Sends the value. Its changes are copied into every consumer linked to it - one provider can feed many consumers across any OPC DA / OPC UA / MX Component source.">i</span></div>
+                    <select id="interlinkProviderSource" aria-labelledby="interlinkProviderSourceLabel" style="width:100%;margin-bottom:8px" onchange="onInterlinkSourceChange('provider')"></select>
                     <div class="list" id="interlinkProviderList" style="max-height:220px"><span class="msg">Select a source to list its Maps tags.</span></div>
                 </div>
             </div>
@@ -1471,7 +1508,7 @@ internal static class DashboardPage
                 <button class="btn" type="button" id="btnSetLink">Save Link</button>
                 <button class="btn ghost" type="button" id="btnClearLink">Delete Saved Link</button>
                 <button class="btn ghost" type="button" id="btnClearLinkSelection">Clear Selection</button>
-                <span class="msg" id="interlinkStatus">Pick both endpoints from Maps tags — OPC DA, OPC UA or MX Component — so every saved interlink can carry values.</span>
+                <span class="msg" id="interlinkStatus" role="status">Pick both endpoints from Maps tags — OPC DA, OPC UA or MX Component — so every saved interlink can carry values.</span>
             </div>
             <div class="list" id="linksList" style="margin-top:10px"></div>
         </div>
@@ -1493,39 +1530,39 @@ internal static class DashboardPage
                 <button class="fp-subtab" type="button" data-fptab="influx" onclick="showFpTab('influx')">Influx</button>
             </div>
             <div class="fp-tabpane" id="fp-pane-basic">
-                <div class="field"><label class="fl">Tag Name</label><input type="text" id="fpDisplayName" style="flex:1"></div>
-                <div class="field"><label class="fl">Item ID</label><input type="text" id="fpDaItemId" readonly style="flex:1;opacity:.72"></div>
-                <div class="field"><label class="fl">UA Node</label><input type="text" id="fpUaNodeId" readonly style="flex:1;opacity:.72"></div>
-                <div class="field"><label class="fl">Description</label><input type="text" id="fpDescription" placeholder="Operator notes / tag description (optional)" style="flex:1"></div>
+                <div class="field"><label class="fl" for="fpDisplayName">Tag Name</label><input type="text" id="fpDisplayName" style="flex:1"></div>
+                <div class="field"><label class="fl" for="fpDaItemId">Item ID</label><input type="text" id="fpDaItemId" readonly style="flex:1;opacity:.72"></div>
+                <div class="field"><label class="fl" for="fpUaNodeId">UA Node</label><input type="text" id="fpUaNodeId" readonly style="flex:1;opacity:.72"></div>
+                <div class="field"><label class="fl" for="fpDescription">Description</label><input type="text" id="fpDescription" placeholder="Operator notes / tag description (optional)" style="flex:1"></div>
             </div>
             <div class="fp-tabpane" id="fp-pane-setup" style="display:none">
-                <div class="field"><label class="fl">Access Rights</label><select id="fpAccess" data-action="tag-access"><option value="Read">Read (Source → UA)</option><option value="Read-Write">Read-Write (Source ↔ UA)</option><option value="Write">Write (UA → Source)</option></select></div>
-                <div class="field"><label class="fl">Enabled</label><input type="checkbox" id="fpEnabled" data-action="toggle-tag-enabled"></div>
-                <div class="field" id="fpSubscriptionField" style="display:none"><label class="fl">Subscription</label><select id="fpSubscription"></select><span class="msg" id="fpSubscriptionHint"></span></div>
-                <div class="field" id="fpPlcGroupField" style="display:none"><label class="fl">PLC Group</label><select id="fpPlcGroup"></select><span class="msg" id="fpPlcGroupHint"></span></div>
-                <div class="field"><label class="fl">Update Rate</label><select id="fpPollRate" data-action="tag-poll-rate"><option value="0">Source Default</option><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
-                <div class="field"><label class="fl">Deadband %</label><input type="number" id="fpDeadband" min="0" max="100" step="0.1" value="0" style="width:80px"></div>
-                <div class="field"><label class="fl">Decimals</label><input type="number" id="fpDecimals" min="0" max="15" step="1" value="" placeholder="off (full precision)" style="width:150px"><span class="msg">digits after comma for Float/Double (blank = off, 0 = no decimals)</span></div>
-                <div class="field"><label class="fl">Unit</label><input type="text" id="fpUnit" placeholder="°C, bar, RPM…" style="flex:1"><span class="msg">engineering unit label (shown on HMI widgets)</span></div>
-                <div class="field"><label class="fl">Trend Plot</label><select id="fpTrendStyle"><option value="Continuous">Continuous (line)</option><option value="Step">Step (hold last)</option></select><span class="msg">HMI history/trend drawing: line between samples, or hold each value until the next sample (classic SCADA step)</span></div>
-                <div class="field"><label class="fl">Digital</label><select id="fpDigital"><option value="">Auto (Boolean = on/off)</option><option value="true">Digital — show on/off text</option><option value="false">Analog — show raw value</option></select><span class="msg" id="fpDigitalHint"></span></div>
-                <div class="field"><label class="fl">On text</label><input type="text" id="fpOnText" placeholder="1 / true" style="width:150px"><span class="msg">HMI faceplate status text for the on state (blank = raw value)</span></div>
-                <div class="field"><label class="fl">Off text</label><input type="text" id="fpOffText" placeholder="0 / false" style="width:150px"><span class="msg">HMI faceplate status text for the off state (blank = raw value)</span></div>
+                <div class="field"><label class="fl" for="fpAccess">Access Rights</label><select id="fpAccess" data-action="tag-access"><option value="Read">Read (Source → UA)</option><option value="Read-Write">Read-Write (Source ↔ UA)</option><option value="Write">Write (UA → Source)</option></select></div>
+                <div class="field"><label class="fl" for="fpEnabled">Enabled</label><input type="checkbox" id="fpEnabled" data-action="toggle-tag-enabled"></div>
+                <div class="field" id="fpSubscriptionField" style="display:none"><label class="fl" for="fpSubscription">Subscription</label><select id="fpSubscription"></select><span class="msg" id="fpSubscriptionHint"></span></div>
+                <div class="field" id="fpPlcGroupField" style="display:none"><label class="fl" for="fpPlcGroup">PLC Group</label><select id="fpPlcGroup"></select><span class="msg" id="fpPlcGroupHint"></span></div>
+                <div class="field"><label class="fl" for="fpPollRate">Update Rate</label><select id="fpPollRate" data-action="tag-poll-rate"><option value="0">Source Default</option><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
+                <div class="field"><label class="fl" for="fpDeadband">Deadband %</label><input type="number" id="fpDeadband" min="0" max="100" step="0.1" value="0" style="width:80px"></div>
+                <div class="field"><label class="fl" for="fpDecimals">Decimals</label><input type="number" id="fpDecimals" min="0" max="15" step="1" value="" placeholder="off (full precision)" style="width:150px"><span class="msg">digits after comma for Float/Double (blank = off, 0 = no decimals)</span></div>
+                <div class="field"><label class="fl" for="fpUnit">Unit</label><input type="text" id="fpUnit" placeholder="°C, bar, RPM…" style="flex:1"><span class="msg">engineering unit label (shown on HMI widgets)</span></div>
+                <div class="field"><label class="fl" for="fpTrendStyle">Trend Plot</label><select id="fpTrendStyle"><option value="Continuous">Continuous (line)</option><option value="Step">Step (hold last)</option></select><span class="msg">HMI history/trend drawing: line between samples, or hold each value until the next sample (classic SCADA step)</span></div>
+                <div class="field"><label class="fl" for="fpDigital">Digital</label><select id="fpDigital"><option value="">Auto (Boolean = on/off)</option><option value="true">Digital — show on/off text</option><option value="false">Analog — show raw value</option></select><span class="msg" id="fpDigitalHint"></span></div>
+                <div class="field"><label class="fl" for="fpOnText">On text</label><input type="text" id="fpOnText" placeholder="1 / true" style="width:150px"><span class="msg">HMI faceplate status text for the on state (blank = raw value)</span></div>
+                <div class="field"><label class="fl" for="fpOffText">Off text</label><input type="text" id="fpOffText" placeholder="0 / false" style="width:150px"><span class="msg">HMI faceplate status text for the off state (blank = raw value)</span></div>
                 <div class="hint" style="margin-top:4px">Update Rate = source poll/publish interval. With subscriptions on, the source pushes changes at this rate when supported. With subscriptions off, the bridge polls at this rate.</div>
             </div>
             <div class="fp-tabpane" id="fp-pane-sim" style="display:none">
-                <div class="field"><label class="fl">Simulated</label><input type="checkbox" id="fpSimulated" data-action="tag-simulated"></div>
-                <div class="field"><label class="fl">Manual Value</label><input type="text" id="fpManualInput" data-action="tag-manual-value" disabled style="flex:1"></div>
+                <div class="field"><label class="fl" for="fpSimulated">Simulated</label><input type="checkbox" id="fpSimulated" data-action="tag-simulated"></div>
+                <div class="field"><label class="fl" for="fpManualInput">Manual Value</label><input type="text" id="fpManualInput" data-action="tag-manual-value" disabled style="flex:1"></div>
                 <div class="hint warn" id="fpManualParseHint" style="display:none;margin-top:4px"></div>
                 <div class="hint" id="fpModeHint" style="margin-top:4px"></div>
             </div>
             <div class="fp-tabpane" id="fp-pane-mqtt" style="display:none">
-                <div class="field"><label class="fl">MQTT</label><input type="checkbox" id="fpMqttEnabled"> <span class="msg">publish/subscribe this tag</span></div>
-                <div class="field"><label class="fl">MQTT Topic</label><input type="text" id="fpMqttTopic" placeholder="override topic (optional)"></div>
+                <div class="field"><label class="fl" for="fpMqttEnabled">MQTT</label><input type="checkbox" id="fpMqttEnabled"> <span class="msg">publish/subscribe this tag</span></div>
+                <div class="field"><label class="fl" for="fpMqttTopic">MQTT Topic</label><input type="text" id="fpMqttTopic" placeholder="override topic (optional)"></div>
                 <div class="hint" style="margin-top:4px">When enabled, the tag's value is published to the broker and inbound broker writes are applied to it. Leave the topic blank to use the default <span class="mono">{TopicPrefix}/{SourceId}/{ItemId}</span> scheme.</div>
             </div>
             <div class="fp-tabpane" id="fp-pane-influx" style="display:none">
-                <div class="field"><label class="fl">Influx log</label><input type="checkbox" id="fpInfluxEnabled"> <span class="msg">write this tag to InfluxDB</span></div>
+                <div class="field"><label class="fl" for="fpInfluxEnabled">Influx log</label><input type="checkbox" id="fpInfluxEnabled"> <span class="msg">write this tag to InfluxDB</span></div>
                 <div class="hint" style="margin-top:4px">When enabled, each value change of this tag is written to the configured InfluxDB bucket.</div>
             </div>
         </div>
@@ -1536,8 +1573,9 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="view" id="view-logs">
+    <h1 class="view-title" tabindex="-1">Logs</h1>
     <div class="box">
-        <div class="box-h">Recent Logs <span class="msg" id="logMessage" style="margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0">Showing recent in-app logs.</span></div>
+        <div class="box-h">Recent Logs <span class="msg" id="logMessage" role="status" style="margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0">Showing recent in-app logs.</span></div>
         <div class="box-b log-panel">
             <div class="toolbar">
                 <button class="btn ghost" id="btnRefreshLogs" type="button">Refresh</button>
@@ -1564,13 +1602,14 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="view" id="view-help">
+    <h1 class="view-title" tabindex="-1">Guide</h1>
     <div class="help-subtabs">
         <button class="help-subtab active" onclick="switchHelpSubTab('getting-started')">Getting Started</button>
         <button class="help-subtab" onclick="switchHelpSubTab('features')">Features</button>
         <button class="help-subtab" onclick="switchHelpSubTab('reference')">Reference</button>
     </div>
     <div class="help-searchbar">
-        <input type="search" id="helpSearch" class="help-search" placeholder="Search all topics…" autocomplete="off" oninput="helpSearch(this.value)">
+        <input type="search" id="helpSearch" class="help-search" aria-label="Search help topics" placeholder="Search all topics…" autocomplete="off" oninput="helpSearch(this.value)">
         <button type="button" class="help-search-clear" id="helpSearchClear" style="display:none" onclick="helpSearchClear()" title="Clear search">&times;</button>
     </div>
     <div class="help-layout" id="helpSearchLayout" style="display:none">
@@ -1588,6 +1627,7 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="view" id="view-about">
+    <h1 class="view-title" tabindex="-1">About</h1>
     <div class="box">
         <div class="box-h">About This App</div>
         <div class="box-b">
@@ -1606,6 +1646,7 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="view" id="view-mqtt">
+    <h1 class="view-title" tabindex="-1">MQTT</h1>
     <div class="first-run-banner" id="hintMqtt" style="display:none"></div>
     <div class="grid2">
         <div class="box">
@@ -1639,7 +1680,7 @@ internal static class DashboardPage
                         <span class="msg">applies immediately</span>
                     </div>
                 </div>
-                <div class="msg" id="mqttMessage"></div>
+                <div class="msg" id="mqttMessage" role="status"></div>
             </div>
         </div>
         <div class="box">
@@ -1664,20 +1705,20 @@ internal static class DashboardPage
     </div>
     <div class="wizard-body">
       <div class="wizard-pane active" data-pane="1">
-        <div class="field"><label class="fl">Broker URL</label><input type="text" id="wzMqttUrl" placeholder="tcp://localhost:1883"></div>
-        <div class="field"><label class="fl">Client ID</label><input type="text" id="wzMqttClientId" placeholder="OpcBridge"></div>
-        <div class="field"><label class="fl">Auto-connect</label><input type="checkbox" id="wzMqttAuto" checked></div>
+        <div class="field"><label class="fl" for="wzMqttUrl">Broker URL</label><input type="text" id="wzMqttUrl" placeholder="tcp://localhost:1883"></div>
+        <div class="field"><label class="fl" for="wzMqttClientId">Client ID</label><input type="text" id="wzMqttClientId" placeholder="OpcBridge"></div>
+        <div class="field"><label class="fl" for="wzMqttAuto">Auto-connect</label><input type="checkbox" id="wzMqttAuto" checked></div>
       </div>
       <div class="wizard-pane" data-pane="2">
-        <div class="field"><label class="fl">Username</label><input type="text" id="wzMqttUser" placeholder="(optional)"></div>
-        <div class="field"><label class="fl">Password</label><input type="password" id="wzMqttPass"></div>
-        <div class="field"><label class="fl">TLS</label><input type="checkbox" id="wzMqttTls"></div>
-        <div class="field"><label class="fl">Topic Prefix</label><input type="text" id="wzMqttPrefix" placeholder="bridge/tags"></div>
-        <div class="field"><label class="fl">Payload Fields</label><select id="wzMqttFields"><option>Value, Timestamp</option><option>Value, Timestamp, Quality</option><option>Value, Timestamp, Quality, SourceId, ItemId</option><option>Value, Timestamp, SourceId, ItemId, DisplayName, DataType</option></select></div>
+        <div class="field"><label class="fl" for="wzMqttUser">Username</label><input type="text" id="wzMqttUser" placeholder="(optional)"></div>
+        <div class="field"><label class="fl" for="wzMqttPass">Password</label><input type="password" id="wzMqttPass"></div>
+        <div class="field"><label class="fl" for="wzMqttTls">TLS</label><input type="checkbox" id="wzMqttTls"></div>
+        <div class="field"><label class="fl" for="wzMqttPrefix">Topic Prefix</label><input type="text" id="wzMqttPrefix" placeholder="bridge/tags"></div>
+        <div class="field"><label class="fl" for="wzMqttFields">Payload Fields</label><select id="wzMqttFields"><option>Value, Timestamp</option><option>Value, Timestamp, Quality</option><option>Value, Timestamp, Quality, SourceId, ItemId</option><option>Value, Timestamp, SourceId, ItemId, DisplayName, DataType</option></select></div>
       </div>
       <div class="wizard-pane" data-pane="3">
         <div class="wizard-summary" id="wzMqttSummary"></div>
-        <div class="field"><label class="fl">Connect now</label><input type="checkbox" id="wzMqttConnectNow" checked></div>
+        <div class="field"><label class="fl" for="wzMqttConnectNow">Connect now</label><input type="checkbox" id="wzMqttConnectNow" checked></div>
       </div>
     </div>
     <div class="wizard-foot">
@@ -1690,6 +1731,7 @@ internal static class DashboardPage
 </div>
 </div>
 <div class="view" id="view-iot-traffic">
+    <h1 class="view-title" tabindex="-1">Traffic</h1>
     <div class="box">
         <div class="box-h">Traffic Monitor <span class="info" data-tip="Recent publish (PUB) and subscribe (SUB) messages. PUB = value sent to broker; SUB = inbound message applied via the UA write path.">i</span> <span class="msg" style="margin-left:auto"><button class="btn ghost" onclick="loadMqttValues()">Refresh</button></span></div>
         <div class="box-b">
@@ -1710,6 +1752,7 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="view" id="view-influx">
+    <h1 class="view-title" tabindex="-1">InfluxDB</h1>
     <div class="first-run-banner" id="hintInflux" style="display:none"></div>
     <div class="grid2">
         <div class="box">
@@ -1719,9 +1762,9 @@ internal static class DashboardPage
                     <div class="conn-section-h">Configuration <span class="info" data-tip="Settings saved to influx.json. Changes take effect after Save Config and apply to the next Connect.">i</span></div>
                     <div class="field"><label class="fl" for="influxEnabled">Auto-connect</label><span class="info" data-tip="When ON, the bridge connects to InfluxDB automatically on app startup. When OFF, it starts disconnected. Use Live Connection buttons to connect or disconnect now.">i</span><input type="checkbox" id="influxEnabled"></div>
                     <div class="field"><label class="fl" for="influxUrl">URL</label><span class="info" data-tip="InfluxDB HTTP API base URL. Example: http://192.168.1.50:8086 or https://us-east-1-1.aws.cloud2.influxdata.com">i</span><input type="text" id="influxUrl" placeholder="http://localhost:8086" style="flex:1"><button class="btn ghost" type="button" id="btnInfluxScan">Scan</button></div>
-                    <div class="field" id="influxScanRow" style="display:none"><label class="fl">Host</label><input type="text" id="influxScanHost" placeholder="192.168.1.50" style="flex:1"><button class="btn ghost" type="button" id="btnInfluxProbe">Probe</button></div>
+                    <div class="field" id="influxScanRow" style="display:none"><label class="fl" for="influxScanHost">Host</label><input type="text" id="influxScanHost" placeholder="192.168.1.50" style="flex:1"><button class="btn ghost" type="button" id="btnInfluxProbe">Probe</button></div>
                     <div class="list" id="listInfluxScan" style="max-height:120px;display:none"></div>
-                    <div class="field"><span class="msg" id="msgInfluxScan"></span></div>
+                    <div class="field"><span class="msg" id="msgInfluxScan" role="status"></span></div>
                     <div class="field"><label class="fl" for="influxOrg">Org</label><span class="info" data-tip="InfluxDB organization name (required for 2.x/Cloud).">i</span><input type="text" id="influxOrg" placeholder="my-org"></div>
                     <div class="field"><label class="fl" for="influxBucket">Bucket</label><span class="info" data-tip="Target bucket for written points.">i</span><input type="text" id="influxBucket" placeholder="opc"></div>
                     <div class="field"><label class="fl" for="influxToken">Token</label><span class="info" data-tip="API token with write access to the bucket. Stored in influx.json.">i</span><input type="password" id="influxToken"></div>
@@ -1738,7 +1781,7 @@ internal static class DashboardPage
                         <span class="msg">applies immediately</span>
                     </div>
                 </div>
-                <div class="msg" id="influxMessage"></div>
+                <div class="msg" id="influxMessage" role="status"></div>
             </div>
         </div>
         <div class="box">
@@ -1762,21 +1805,21 @@ internal static class DashboardPage
     </div>
     <div class="wizard-body">
       <div class="wizard-pane active" data-pane="1">
-        <div class="field"><label class="fl">URL</label><input type="text" id="wzInfluxUrl" placeholder="http://localhost:8086" style="flex:1"><button class="btn ghost" type="button" id="wzBtnInfluxScan">Scan</button></div>
-        <div class="field" id="wzInfluxScanRow" style="display:none"><label class="fl">Host</label><input type="text" id="wzInfluxScanHost" placeholder="192.168.1.50" style="flex:1"><button class="btn ghost" type="button" id="wzBtnInfluxProbe">Probe</button></div>
+        <div class="field"><label class="fl" for="wzInfluxUrl">URL</label><input type="text" id="wzInfluxUrl" placeholder="http://localhost:8086" style="flex:1"><button class="btn ghost" type="button" id="wzBtnInfluxScan">Scan</button></div>
+        <div class="field" id="wzInfluxScanRow" style="display:none"><label class="fl" for="wzInfluxScanHost">Host</label><input type="text" id="wzInfluxScanHost" placeholder="192.168.1.50" style="flex:1"><button class="btn ghost" type="button" id="wzBtnInfluxProbe">Probe</button></div>
         <div class="list" id="wzListInfluxScan" style="max-height:120px;display:none"></div>
-        <div class="field"><span class="msg" id="wzMsgInfluxScan"></span></div>
-        <div class="field"><label class="fl">Org</label><input type="text" id="wzInfluxOrg" placeholder="my-org"></div>
-        <div class="field"><label class="fl">Bucket</label><input type="text" id="wzInfluxBucket" placeholder="opc"></div>
+        <div class="field"><span class="msg" id="wzMsgInfluxScan" role="status"></span></div>
+        <div class="field"><label class="fl" for="wzInfluxOrg">Org</label><input type="text" id="wzInfluxOrg" placeholder="my-org"></div>
+        <div class="field"><label class="fl" for="wzInfluxBucket">Bucket</label><input type="text" id="wzInfluxBucket" placeholder="opc"></div>
       </div>
       <div class="wizard-pane" data-pane="2">
-        <div class="field"><label class="fl">Token</label><input type="password" id="wzInfluxToken"></div>
+        <div class="field"><label class="fl" for="wzInfluxToken">Token</label><input type="password" id="wzInfluxToken"></div>
         <div class="hint">API token with write access to the bucket. Stored in influx.json.</div>
       </div>
       <div class="wizard-pane" data-pane="3">
         <div class="wizard-summary" id="wzInfluxSummary"></div>
-        <div class="field"><label class="fl">Auto-connect</label><input type="checkbox" id="wzInfluxAuto" checked></div>
-        <div class="field"><label class="fl">Connect now</label><input type="checkbox" id="wzInfluxConnectNow" checked></div>
+        <div class="field"><label class="fl" for="wzInfluxAuto">Auto-connect</label><input type="checkbox" id="wzInfluxAuto" checked></div>
+        <div class="field"><label class="fl" for="wzInfluxConnectNow">Connect now</label><input type="checkbox" id="wzInfluxConnectNow" checked></div>
       </div>
     </div>
     <div class="wizard-foot">
@@ -1789,6 +1832,7 @@ internal static class DashboardPage
 </div>
 </div>
 <div class="view" id="view-diagram">
+    <h1 class="view-title" tabindex="-1">Diagram</h1>
     <div class="diag-toolbar">
         <div class="diag-seg" id="diagSeg">
             <span class="seg-pill" id="segPill"></span>
@@ -3745,10 +3789,30 @@ async function showTab(name, route) {
   const mapsActive = activeTab === 'tags' || (route && String(route).startsWith('tags/maps'));
   document.querySelectorAll('.tabbtn').forEach(b => {
     const br = b.dataset.route || '';
-    b.classList.toggle('active', br === route || (mapsActive && br === 'tags/maps'));
+    const on = br === route || (mapsActive && br === 'tags/maps');
+    b.classList.toggle('active', on);
+    if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
   });
+  // Once the rail is a horizontal scroller (narrow screens) the active section can sit
+  // off-screen, so bring it back into view rather than making the user hunt for it.
+  const activeBtn = document.querySelector('.tabbtn.active');
+  const rail = document.querySelector('.tabbar');
+  if (activeBtn && rail && rail.scrollWidth > rail.clientWidth + 1) {
+    try { activeBtn.scrollIntoView({ block: 'nearest', inline: 'center' }); } catch (e) { activeBtn.scrollIntoView(); }
+  }
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + activeTab));
   if (location.hash !== '#/' + route) history.replaceState(null, '', '#/' + route);
+  // Client-side navigation repaints the screen and tells nobody, so retitle the
+  // document and land focus on the new view's heading. Only on a real move, not first paint.
+  const shownView = document.getElementById('view-' + activeTab);
+  const shownTitle = shownView ? shownView.querySelector('.view-title') : null;
+  if (shownTitle) document.title = 'OPC Bridge \u00b7 ' + shownTitle.textContent.trim();
+  if (shownTitle && state.lastTab && state.lastTab !== activeTab) {
+    const scroller = document.querySelector('.content');
+    if (scroller) scroller.scrollTop = 0;
+    try { shownTitle.focus({ preventScroll: true }); } catch (e) { shownTitle.focus(); }
+  }
+  state.lastTab = activeTab;
   if (activeTab === 'logs') { state.logsLoaded = false; loadLogs(true).catch(e => el('logMessage').textContent = '✗ ' + e.message); }
   if (activeTab === 'diagnostics' || activeTab === 'sessions') { diagnosticsActive = true; loadDiagnostics(); }
   else { diagnosticsActive = false; }
@@ -7663,6 +7727,13 @@ function bindOverlayA11y() {
 document.addEventListener('DOMContentLoaded', async () => {
     bindKeyboardActivation();
     bindOverlayA11y();
+    // The skip link must not overwrite the route hash, which is where this app keeps state.
+    const skipLink = document.querySelector('.skip-link');
+    if (skipLink) skipLink.addEventListener('click', event => {
+        event.preventDefault();
+        const target = el('main');
+        if (target) { target.focus(); target.scrollTop = 0; }
+    });
     bindDiagramPanZoom();
     el('selectedSource').addEventListener('change', e => pickSource(e.target.value));
     el('mapSourceSelect').addEventListener('change', e => pickSource(e.target.value));
