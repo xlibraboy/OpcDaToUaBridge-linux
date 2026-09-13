@@ -41,204 +41,245 @@ internal static class DashboardPage
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>OPC Bridge</title>
     <style>
+        /* ============================================================
+           INSTRUMENT LEDGER
+           Paper canvas, ink type, hairline rules. No floating cards,
+           no shadows, no decorative color: hue is reserved for machine
+           state, and the only non-state chroma is the keyboard focus
+           ring. Data rides a monospace spine with tabular figures.
+           ============================================================ */
         :root {
-            color-scheme: dark;
-            --bg: #0a0e14;
-            --panel: #11161f;
-            --panel2: #161c27;
-            --border: #232b38;
-            --border2: #2e3848;
-            --text: #d8e0ea;
-            --muted: #6b7689;
-            --muted-strong: #93a0b4;
-            --good: #34d399;
-            --bad: #f87171;
-            --warn: #fbbf24;
-            --accent: #38bdf8;
-            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            color-scheme: light;
+            --paper: #f1f2ef;
+            --bg: #f1f2ef;
+            --panel: #ffffff;
+            --panel2: #f6f7f4;
+            --border: #e2e4df;
+            --border2: #c6cac3;
+            --text: #14181a;
+            --ink2: #3b4544;
+            --muted: #55605f;
+            --muted-strong: #39443f;
+            --good: #0f6b3d;
+            --bad: #a52118;
+            --warn: #8a5a00;
+            --info: #1f4e79;
+            --accent: #14181a;
+            --focus: #1d4ed8;
+            --font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', 'Segoe UI Mono', Consolas, 'Liberation Mono', monospace;
+            --fs-micro: 11px;
+            --fs-body: 13px;
+            --fs-title: 15px;
+            --fs-read: 26px;
+            font-family: var(--font-ui);
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { background: var(--bg); color: var(--text); font-size: 13px; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
-        .mono { font-family: 'Consolas', 'SF Mono', monospace; }
-        .topbar { display: flex; align-items: center; gap: 14px; padding: 0 18px; height: 46px; background: var(--panel); border-bottom: 1px solid var(--border2); }
-        .brand { display: flex; align-items: center; gap: 9px; font-weight: 600; font-size: 14px; white-space: nowrap; }
-        .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--good); }
-        .ver { font-size: 10px; font-weight: 400; color: var(--muted); background: var(--panel2); border: 1px solid var(--border2); border-radius: 3px; padding: 1px 6px; margin-left: 4px; }
+        body { background: var(--bg); color: var(--text); font-size: var(--fs-body); line-height: 1.45; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+        .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+        /* Status rail. Auto height on purpose: it wraps instead of clipping. */
+        .topbar { display: flex; align-items: stretch; gap: 0; min-height: 53px; padding: 0 14px; background: var(--panel); border-bottom: 2px solid var(--text); flex-wrap: wrap; }
+        .brand { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 15px; letter-spacing: -.01em; white-space: nowrap; padding-right: 14px; }
+        .dot { width: 9px; height: 9px; border-radius: 1px; background: var(--good); flex: none; }
+        .ver { font-family: var(--font-mono); font-size: 11px; font-weight: 400; color: var(--muted); border: 1px solid var(--border2); border-radius: 2px; padding: 0 5px; margin-left: 2px; }
         .dot.off { background: var(--bad); }
-        .pills { display: flex; gap: 7px; margin-left: 8px; flex-wrap: wrap; }
-        .pill { display: flex; align-items: center; gap: 6px; background: var(--panel2); border: 1px solid var(--border); border-radius: 5px; padding: 3px 9px; font-size: 12px; white-space: nowrap; }
-        .pill b { font-weight: 600; }
-        .pill .k { color: var(--muted); text-transform: uppercase; font-size: 10px; letter-spacing: .05em; }
-        .topbar .clock { margin-left: auto; color: var(--muted); font-size: 11px; white-space: nowrap; }
+        .pills { display: flex; align-items: stretch; gap: 0; margin-left: 0; flex-wrap: wrap; }
+        .pill { display: flex; align-items: center; gap: 7px; background: none; border: none; border-left: 1px solid var(--border); border-radius: 0; padding: 6px 13px; font-size: 12px; white-space: nowrap; }
+        .pill b { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-weight: 600; font-size: 13px; }
+        .pill .k { color: var(--muted); text-transform: uppercase; font-size: 10px; letter-spacing: .08em; font-family: var(--font-mono); }
+        .pill .badge, .pill .good, .pill .bad, .pill .warn { font-size: 12px; }
+        .topbar .clock { margin-left: auto; display: flex; align-items: center; color: var(--ink2); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12px; white-space: nowrap; padding-left: 14px; border-left: 1px solid var(--border); }
+        .topbar .clock.off { color: var(--bad); font-weight: 600; }
 .app-shell { display: flex; flex: 1; min-height: 0; overflow: hidden; }
-.tabbar { display: flex; flex-direction: column; background: var(--panel); border-right: 1px solid var(--border2); padding: 10px 0; width: 200px; min-width: 0; flex-shrink: 0; overflow-y: auto; }
-.tabbtn { background: none; border: none; color: var(--muted); padding: 11px 16px; font-size: 13px; font-weight: 500; cursor: pointer; border-left: 3px solid transparent; display: flex; align-items: center; gap: 8px; text-align: left; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tabbar { display: flex; flex-direction: column; background: var(--panel); border-right: 1px solid var(--border2); padding: 6px 0 14px; width: 208px; min-width: 0; flex-shrink: 0; overflow-y: auto; }
+.tabbtn { background: none; border: none; color: var(--ink2); padding: 9px 16px; font-size: 13px; font-weight: 500; cursor: pointer; border-left: 3px solid transparent; display: flex; align-items: center; gap: 8px; text-align: left; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-ui); }
 .tabbtn:hover { color: var(--text); background: var(--panel2); }
-.tabbtn.active { color: var(--accent); border-left-color: var(--accent); background: var(--panel2); }
-.nav-group { padding: 10px 0 8px; border-bottom: 1px solid var(--border); min-width: 0; }
+.tabbtn.active { color: var(--accent); border-left-color: var(--accent); background: var(--panel2); font-weight: 700; }
+.tabbtn:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.nav-group { padding: 6px 0; border-bottom: 1px solid var(--border); min-width: 0; }
 .nav-group:last-child { border-bottom: none; }
-.nav-group-h { display: flex; align-items: center; gap: 7px; padding: 2px 16px 8px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .09em; color: var(--muted-strong); transition: color .15s ease; min-width: 0; }
-.nav-group-h .nav-ico { width: 13px; height: 13px; flex-shrink: 0; opacity: .95; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.nav-group-h { display: flex; align-items: center; gap: 7px; padding: 8px 16px 6px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .11em; color: var(--muted); transition: color .15s ease; min-width: 0; font-family: var(--font-mono); }
+.nav-group-h .nav-ico { width: 13px; height: 13px; flex-shrink: 0; opacity: .85; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .nav-group:has(.tabbtn.active) .nav-group-h { color: var(--accent); }
 .nav-group .tabbtn { position: relative; padding-top: 8px; padding-bottom: 8px; padding-left: 44px; }
 .nav-group .tabbtn::before { content: ''; position: absolute; left: 24px; top: 0; bottom: 0; width: 2px; background: var(--border); }
 .nav-group .tabbtn:hover::before { background: var(--border2); }
 .nav-group .tabbtn.active::before { background: var(--accent); opacity: .5; }
+.nav-group .tabbtn.active::before { opacity: 1; }
 .nav-group .tabbtn:last-child:not(.active)::before { bottom: auto; height: 55%; }
-.content { flex: 1; min-width: 0; overflow: auto; }
-.view { display: none; padding: 16px 18px; }
+.content { flex: 1; min-width: 0; overflow: auto; background: var(--paper); }
+.view { display: none; padding: 16px 20px 56px; }
 .view.active { display: block; }
 @media (max-width: 600px) { .app-shell { flex-direction: column; } .tabbar { flex-direction: row; width: 100%; min-width: 0; border-right: none; border-bottom: 1px solid var(--border2); padding: 0 8px; overflow-x: auto; } .tabbtn { border-left: none; border-bottom: 3px solid transparent; padding: 10px 14px; white-space: nowrap; overflow: visible; text-overflow: clip; flex-shrink: 0; } .tabbtn.active { border-left: none; border-bottom-color: var(--accent); } .nav-group { border-bottom: none; } .nav-group-h { display: none; } .nav-group .tabbtn { padding: 10px 14px; } .nav-group .tabbtn::before { display: none; } }
-        .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
         @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
-        .box { background: var(--panel); border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
-        .box-h { padding: 9px 14px; background: var(--panel2); border-bottom: 1px solid var(--border); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); display: flex; align-items: center; gap: 8px; }
-        .box-b { padding: 12px 14px; }
-        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
-        .mon-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-bottom: 14px; }
-        .mon-stat-group { background: var(--panel); border: 1px solid var(--border); border-radius: 7px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; }
-        .mon-stat-group-h { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); padding-bottom: 6px; border-bottom: 1px solid var(--border); }
-        .mon-stat-group .stat { padding: 4px 0; border: none; background: none; }
-        .mon-stat-group .stat .v { font-size: 15px; }
+        /* A section is a ruled block of paper, not a floating card. */
+        .box { background: var(--panel); border: 1px solid var(--border); border-top: 2px solid var(--text); border-radius: 0; overflow: hidden; }
+        .box-h { padding: 8px 12px; background: none; border-bottom: 1px solid var(--border2); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: var(--muted-strong); display: flex; align-items: center; gap: 8px; font-family: var(--font-mono); }
+        .box-b { padding: 12px; }
+        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0 16px; margin-bottom: 16px; }
+        .mon-stats { display: block; gap: 0; margin-bottom: 16px; background: var(--panel); border: 1px solid var(--border); border-top: 2px solid var(--text); }
+        .mon-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+        .mon-row + .mon-row { border-top: 1px solid var(--border2); }
+        .mon-lead .stat.prime .v { font-size: var(--fs-read); }
+        .mon-stat-group { background: none; border: none; border-right: 1px solid var(--border); border-radius: 0; padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 0; }
+        .mon-stat-group:last-child { border-right: none; }
+        .mon-stat-group-h { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); padding-bottom: 7px; margin-bottom: 2px; border-bottom: 1px solid var(--border2); font-family: var(--font-mono); }
+        .mon-stat-group .stat { padding: 9px 0 8px; border: none; border-bottom: 1px solid var(--border); background: none; }
+        .mon-stat-group .stat:last-child { border-bottom: none; padding-bottom: 0; }
+        .mon-stat-group .stat .v { font-size: 18px; }
+        .mon-support .mon-stat-group .stat .v { font-size: 16px; }
+        /* The lead row gives every column one prominent token: a state stamp or a reading. */
         .mon-stat-group .stat .v .badge { font-size: 13px; }
-        .stat { background: var(--panel); border: 1px solid var(--border); border-radius: 7px; padding: 11px 13px; }
-        .alarm-bar { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-radius: 7px; margin-bottom: 14px; font-size: 12px; font-weight: 600; }
-        .alarm-bar.ok { background: rgba(52,211,153,.1); border: 1px solid rgba(52,211,153,.3); color: var(--good); }
-        .alarm-bar.warning { background: rgba(251,191,36,.1); border: 1px solid rgba(251,191,36,.3); color: var(--warn); }
-        .alarm-bar.bad { background: rgba(248,113,113,.1); border: 1px solid rgba(248,113,113,.3); color: var(--bad); }
-        .first-run-banner { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 7px; margin-bottom: 12px; font-size: 12px; background: rgba(56,189,248,.08); border: 1px solid rgba(56,189,248,.3); color: var(--text); }
-        .session-warn-banner { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 7px; margin-bottom: 12px; font-size: 12px; font-weight: 600; background: rgba(245,158,11,.12); border: 1px solid rgba(245,158,11,.45); color: var(--text); }
+        .mon-lead .mon-stat-group .stat .v .badge { font-size: 15px; padding: 1px 9px; }
+        .stat { background: none; border: none; border-bottom: 1px solid var(--border); border-radius: 0; padding: 10px 0 9px; }
+        .alarm-bar { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 0; margin-bottom: 14px; font-size: 12px; font-weight: 600; border-left-width: 3px; border-left-style: solid; }
+        .alarm-bar.ok { background: #eef4ef; border: 1px solid #bcd3c4; border-left: 3px solid var(--good); color: #0b4d2c; }
+        .alarm-bar.warning { background: #f8f2e4; border: 1px solid #ddc9a0; border-left: 3px solid var(--warn); color: #6b4500; }
+        .alarm-bar.bad { background: #f9eceb; border: 1px solid #e0b6b2; border-left: 3px solid var(--bad); color: #8a1c14; }
+        .first-run-banner { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: 0; margin-bottom: 12px; font-size: 12px; background: #eef2f7; border: 1px solid #c3d0de; border-left: 3px solid var(--info); color: var(--text); }
+        .session-warn-banner { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: 0; margin-bottom: 12px; font-size: 12px; font-weight: 600; background: #f8f2e4; border: 1px solid #ddc9a0; border-left: 3px solid var(--warn); color: #6b4500; }
         .first-run-banner button { margin-left: auto; }
-        .port-banner { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 7px; margin-bottom: 12px; font-size: 12px; font-weight: 600; background: rgba(251,191,36,.1); border: 1px solid rgba(251,191,36,.3); color: var(--warn); }
+        .port-banner { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: 0; margin-bottom: 12px; font-size: 12px; font-weight: 600; background: #f8f2e4; border: 1px solid #ddc9a0; border-left: 3px solid var(--warn); color: #6b4500; }
         .port-banner button { margin-left: auto; }
         .session-warn-banner button { margin-left: auto; }
-        .stat .k { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
-        .stat .v { margin-top: 6px; font-size: 16px; font-weight: 700; line-height: 1.1; }
-        .stat .s { margin-top: 4px; color: var(--muted); font-size: 11px; }
-        .mini-meter { margin-top: 7px; }
-        .mini-meter-track { height: 6px; border-radius: 999px; background: var(--panel2); border: 1px solid var(--border); overflow: hidden; }
+        .stat .k { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .09em; font-family: var(--font-mono); font-weight: 600; }
+        .stat .v { margin-top: 5px; font-size: 16px; font-weight: 700; line-height: 1.15; font-family: var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+        .stat .s { margin-top: 5px; color: var(--muted); font-size: 11.5px; }
+        .mini-meter { margin-top: 8px; }
+        .mini-meter-track { height: 8px; border-radius: 0; background: var(--paper); border: 1px solid var(--border2); overflow: hidden; }
         .mini-meter-fill { height: 100%; width: 0%; background: var(--good); transition: width .2s ease, background-color .2s ease; }
         .mini-meter-fill.warn { background: var(--warn); }
         .mini-meter-fill.bad { background: var(--bad); }
-        .badge { display: inline-flex; align-items: center; gap: 5px; padding: 1px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; }
-        .badge::before { content:''; width:6px; height:6px; border-radius:50%; background:currentColor; }
-        .badge.good { color: var(--good); background: rgba(52,211,153,.12); }
-        .badge.bad { color: var(--bad); background: rgba(248,113,113,.12); }
-        .badge.warn { color: var(--warn); background: rgba(251,191,36,.12); }
-        .badge.partial { color: var(--accent); background: rgba(56,189,248,.12); }
-        table { width: 100%; border-collapse: collapse; }
+        /* Stamps: square swatch + name, never color alone. */
+        .badge { display: inline-flex; align-items: center; gap: 5px; padding: 0 6px; border-radius: 2px; font-size: 11px; font-weight: 700; font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-transform: uppercase; letter-spacing: .04em; border: 1px solid currentColor; }
+        .badge::before { content:''; width:5px; height:5px; border-radius:0; background:currentColor; }
+        .badge.good { color: var(--good); background: #eaf2ec; }
+        .badge.bad { color: var(--bad); background: #f7e9e8; }
+        .badge.warn { color: var(--warn); background: #f8f1e2; }
+        .badge.partial { color: var(--info); background: #ebf0f6; }
+        table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
         .values-wrap { overflow-x: auto; }
         .values-table { table-layout: fixed; }
-        .values-table th { padding: 7px 10px; font-size: 10px; }
-        .values-table td { padding: 7px 10px; font-size: 12px; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
-        .values-table code, .values-table .mono { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+        .values-table th { padding: 7px 10px; font-size: 10px; position: sticky; top: 0; background: var(--panel); z-index: 1; }
+        .values-table td { padding: 6px 10px; font-size: 13px; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
+        .values-table code, .values-table .mono { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
         .values-table .quality { display: inline-flex; align-items: center; gap: 6px; }
-        .values-table .timestamp { color: var(--muted); font-size: 11px; }
+        .values-table .timestamp { color: var(--muted); font-size: 11.5px; }
         .field { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
         .field:last-child { margin-bottom: 0; }
-        label.fl { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; width: 86px; flex-shrink: 0; }
-        select, input[type=text], input[type=password] { background: var(--bg); color: var(--text); border: 1px solid var(--border2); border-radius: 5px; padding: 6px 9px; font-size: 13px; }
+        label.fl { color: var(--muted); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; width: 92px; flex-shrink: 0; font-family: var(--font-mono); }
+        select, input[type=text], input[type=password] { background: var(--panel); color: var(--text); border: 1px solid var(--border2); border-radius: 2px; padding: 5px 8px; font-size: 13px; font-family: var(--font-ui); }
+        input[type=number] { background: var(--panel); color: var(--text); border: 1px solid var(--border2); border-radius: 2px; padding: 5px 8px; font-size: 13px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
         input[type=text], input[type=password], select { min-width: 140px; }
-        input:disabled, select:disabled { opacity: .72; cursor: not-allowed; }
-        .btn { display: inline-flex; align-items: center; gap: 6px; background: var(--accent); color: #07121a; border: none; border-radius: 5px; padding: 6px 13px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; }
-        .btn.ghost { background: var(--panel2); color: var(--text); border: 1px solid var(--border2); }
+        input:disabled, select:disabled { background: var(--panel2); color: var(--muted); cursor: not-allowed; }
+        select:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; border-color: var(--text); }
+        .btn { display: inline-flex; align-items: center; gap: 6px; background: var(--text); color: var(--panel); border: 1px solid var(--text); border-radius: 2px; padding: 5px 12px; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; font-family: var(--font-ui); }
+        .btn:hover { background: #000; }
+        .btn.ghost { background: transparent; color: var(--text); border: 1px solid var(--border2); }
+        .btn.ghost:hover { background: var(--panel2); border-color: var(--text); }
+        .btn:disabled, .btn[disabled] { opacity: .45; cursor: not-allowed; }
+        .btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
         .hint, .msg { font-size: 12px; color: var(--muted); }
-        .list { display: flex; flex-direction: column; gap: 4px; max-height: 380px; overflow-y: auto; }
-        .breadcrumb { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; padding: 6px 10px; background: var(--bg); border: 1px solid var(--border2); border-radius: 5px; font-size: 12px; min-height: 32px; }
-        .breadcrumb a { color: var(--accent); cursor: pointer; text-decoration: none; }
-        .breadcrumb a:hover { text-decoration: underline; }
+        .list { display: flex; flex-direction: column; gap: 0; max-height: 380px; overflow-y: auto; }
+        .breadcrumb { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; padding: 5px 10px; background: var(--panel2); border: 1px solid var(--border2); border-radius: 0; font-size: 12px; min-height: 32px; font-family: var(--font-mono); }
+        .breadcrumb a { color: var(--text); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+        .breadcrumb a:hover { background: var(--text); color: var(--panel); text-decoration: none; }
         .breadcrumb .sep { color: var(--muted); }
         .breadcrumb .current { color: var(--text); font-weight: 600; }
         .tag-browser-toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; align-items: center; }
         .tag-browser-toolbar .msg { flex: 1; }
         .li .icon { font-size: 14px; flex-shrink: 0; width: 18px; text-align: center; }
         .li .icon.folder { color: var(--warn); }
-        .li .icon.tag { color: var(--accent); }
+        .li .icon.tag { color: var(--ink2); }
         .li .icon.mapped { color: var(--good); }
         .li .li-actions { margin-left: auto; display: flex; gap: 6px; align-items: center; }
-        .li .mapped-badge { font-size: 10px; color: var(--good); background: rgba(52,211,153,.12); padding: 1px 7px; border-radius: 10px; font-weight: 600; }
-        .add-mapping-box { background: var(--bg); border: 1px solid var(--border2); border-radius: 5px; padding: 10px 12px; margin-bottom: 10px; }
+        .li .mapped-badge { font-size: 10px; color: var(--good); border: 1px solid var(--good); background: #eaf2ec; padding: 0 5px; border-radius: 2px; font-weight: 700; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: .04em; }
+        .add-mapping-box { background: var(--panel2); border: 1px solid var(--border2); border-left: 3px solid var(--text); border-radius: 0; padding: 10px 12px; margin-bottom: 10px; }
         .add-mapping-box .field { margin-bottom: 8px; }
         .add-mapping-box .field:last-child { margin-bottom: 0; }
-        .li { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 5px; border: 1px solid var(--border); background: var(--panel2); }
+        .li { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 0; border: none; border-bottom: 1px solid var(--border); background: none; }
         .li .n { font-size: 13px; font-weight: 600; }
-        .li .p { font-size: 11px; color: var(--muted); font-family: 'Consolas', monospace; }
+        .li .p { font-size: 11.5px; color: var(--muted); font-family: var(--font-mono); }
         .li .li-desc { color: var(--muted); font-size: 13px; cursor: help; flex-shrink: 0; }
-        .li .li-desc:hover { color: var(--accent); }
+        .li .li-desc:hover { color: var(--text); }
         .li.clickable { cursor: pointer; }
-        .li.clickable:hover { border-color: var(--accent); }
+        .li.clickable:hover { background: var(--panel2); box-shadow: inset 3px 0 0 var(--text); }
+        .li:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; background: var(--panel2); }
         .li .li-badge { margin-left: auto; display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; overflow: hidden; min-width: 0; }
         .li .li-badge-clip { display: flex; align-items: center; gap: 6px; overflow: hidden; min-width: 0; mask-image: linear-gradient(to right, black calc(100% - 14px), transparent); -webkit-mask-image: linear-gradient(to right, black calc(100% - 14px), transparent); }
         .li .li-badge-status { flex-shrink: 0; margin-left: 2px; display: flex; align-items: center; }
-        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 1000; justify-content: center; align-items: center; }
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(20,24,26,.45); z-index: 1000; justify-content: center; align-items: center; padding: 16px; }
         .modal-overlay.open { display: flex; }
-        .modal { background: var(--panel); border: 1px solid var(--border2); border-radius: 8px; width: min(560px, 92vw); max-height: 90vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,.4); }
-        .modal-h { display: flex; align-items: start; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
-        .modal-h .n { font-size: 15px; font-weight: 700; }
-        .modal-h .p { font-size: 11px; color: var(--muted); font-family: 'Consolas', monospace; margin-top: 4px; }
-        .modal-close { background: none; border: none; color: var(--muted); font-size: 20px; cursor: pointer; padding: 0 4px; line-height: 1; }
-        .modal-close:hover { color: var(--text); }
+        .modal { background: var(--panel); border: 1px solid var(--text); border-top: 3px solid var(--text); border-radius: 0; width: min(560px, 92vw); max-height: 90vh; overflow-y: auto; box-shadow: none; }
+        .modal-h { display: flex; align-items: start; justify-content: space-between; gap: 12px; padding: 13px 16px; border-bottom: 1px solid var(--border2); }
+        .modal-h .n { font-size: var(--fs-title); font-weight: 700; letter-spacing: -.01em; }
+        .modal-h .p { font-size: 11.5px; color: var(--muted); font-family: var(--font-mono); margin-top: 4px; }
+        .modal-close { background: none; border: 1px solid transparent; color: var(--muted); font-size: 18px; cursor: pointer; padding: 0 6px; line-height: 1.3; border-radius: 2px; font-family: var(--font-mono); }
+        .modal-close:hover { color: var(--text); border-color: var(--border2); }
+        .modal-close:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
         .modal-b { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
-        .fp-subtabs { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
-        .fp-subtab { background: none; border: none; border-bottom: 2px solid transparent; color: var(--muted); padding: 8px 14px; font-size: 12px; font-weight: 600; cursor: pointer; }
-        .fp-subtab:hover { color: var(--text); }
-        .fp-subtab.active { color: var(--accent); border-bottom-color: var(--accent); }
+        .fp-subtabs { display: flex; gap: 0; border-bottom: 1px solid var(--border2); margin-bottom: 12px; }
+        .fp-subtab { background: none; border: none; border-bottom: 2px solid transparent; color: var(--muted); padding: 7px 13px; font-size: 12px; font-weight: 600; cursor: pointer; font-family: var(--font-ui); }
+        .fp-subtab:hover { color: var(--text); background: var(--panel2); }
+        .fp-subtab.active { color: var(--text); border-bottom-color: var(--text); }
+        .fp-subtab:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
         .fp-tabpane { display: flex; flex-direction: column; gap: 10px; }
         .fp-tabpane .field { margin-bottom: 0; }
         .fp-body { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
         .fp-body.with-flow { grid-template-columns: 1fr auto 1fr; align-items: stretch; }
         .il-flow { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; cursor: help; user-select: none; padding: 0 2px; }
-        .il-flow .il-arrow { font-size: 22px; line-height: 1; color: var(--accent); }
-        .il-flow .il-flow-hint { font-size: 8px; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+        .il-flow .il-arrow { font-size: 20px; line-height: 1; color: var(--text); }
+        .il-flow .il-flow-hint { font-size: 9px; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); font-family: var(--font-mono); }
         .mapping-toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; align-items: center; }
         @media (max-width: 520px) { .fp-body { grid-template-columns: 1fr; } .fp-body.with-flow { grid-template-columns: 1fr; } .il-flow .il-arrow { transform: rotate(90deg); } }
-        .fp-panel { background: var(--bg); border: 1px solid var(--border2); border-radius: 6px; padding: 12px 13px; }
-        .fp-k { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; margin-bottom: 7px; }
-        .fp-v { font-size: 22px; font-weight: 700; line-height: 1.1; word-break: break-word; }
-        .fp-meta { margin-top: 10px; color: var(--muted); font-size: 11px; display: flex; flex-direction: column; gap: 5px; }
+        .fp-panel { background: var(--panel2); border: 1px solid var(--border2); border-radius: 0; padding: 12px; }
+        .fp-k { color: var(--muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .09em; margin-bottom: 7px; font-family: var(--font-mono); }
+        .fp-v { font-size: 24px; font-weight: 700; line-height: 1.15; word-break: break-word; font-family: var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
+        .fp-meta { margin-top: 10px; color: var(--muted); font-size: 11.5px; display: flex; flex-direction: column; gap: 5px; }
         .fp-input { width: 100%; min-width: 0; font-size: 16px; }
-        .fp-hint { margin-top: 7px; color: var(--muted); font-size: 11px; }
-        .modal-f { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 12px 16px; border-top: 1px solid var(--border); }
+        .fp-hint { margin-top: 7px; color: var(--muted); font-size: 11.5px; }
+        .modal-f { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 12px 16px; border-top: 1px solid var(--border2); background: var(--panel2); }
         .modal-f .field { margin-bottom: 0; flex: 1; min-width: 200px; }
         .modal-f .btn { margin-left: auto; }
         .modal-f .btn + .btn { margin-left: 0; }
         .modal.wizard { width: 480px; max-width: 94vw; }
-        .wizard-steps { display: flex; gap: 6px; padding: 10px 14px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
-        .wizard-step, .wzdrv-step { font-size: 11px; color: var(--muted); padding: 3px 8px; border-radius: 4px; }
-        .wizard-step.active, .wzdrv-step.active { color: var(--accent); background: rgba(56,189,248,.12); }
+        .wizard-steps { display: flex; gap: 0; padding: 0; border-bottom: 1px solid var(--border2); flex-wrap: wrap; }
+        .wizard-step, .wzdrv-step { font-size: 10px; color: var(--muted); padding: 8px 12px; border-radius: 0; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: .07em; border-right: 1px solid var(--border); }
+        .wizard-step.active, .wzdrv-step.active { color: var(--panel); background: var(--text); }
         .wizard-step.done, .wzdrv-step.done { color: var(--good); }
-        .wizard-body { padding: 14px; max-height: 60vh; overflow-y: auto; }
+        .wizard-body { padding: 15px; max-height: 60vh; overflow-y: auto; }
         .wizard-pane, .wzdrv-pane { display: none; }
         .wizard-pane.active, .wzdrv-pane.active { display: block; }
-        .wizard-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--border); }
-        .wizard-summary { font-size: 12px; line-height: 1.6; }
+        .wizard-foot { display: flex; justify-content: flex-end; gap: 8px; padding: 11px 15px; border-top: 1px solid var(--border2); background: var(--panel2); }
+        .wizard-summary { font-size: 12.5px; line-height: 1.7; }
         .wizard-summary b { color: var(--text); }
-        .endpoint { background: var(--bg); border: 1px solid var(--border2); border-radius: 5px; padding: 7px 11px; font-family: 'Consolas', monospace; font-size: 12px; color: var(--accent); word-break: break-all; }
-        .split { display: grid; grid-template-columns: 1.2fr 1fr; gap: 12px; }
+        .endpoint { background: var(--panel2); border: 1px solid var(--border2); border-left: 3px solid var(--text); border-radius: 0; padding: 7px 11px; font-family: var(--font-mono); font-size: 12px; color: var(--text); word-break: break-all; }
+        .split { display: grid; grid-template-columns: 1.2fr 1fr; gap: 16px; }
         .toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
         .warn { color: var(--warn); }
         .good { color: var(--good); }
         .bad { color: var(--bad); }
         .source-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; }
         .log-panel { display: flex; flex-direction: column; gap: 10px; }
-        .log-view { background: var(--bg); border: 1px solid var(--border2); border-radius: 6px; padding: 10px 12px; max-height: 520px; overflow: auto; font-family: 'Consolas', 'SF Mono', monospace; font-size: 12px; line-height: 1.45; }
+        .log-view { background: var(--panel); border: 1px solid var(--border2); border-radius: 0; padding: 10px 12px; max-height: 520px; overflow: auto; font-family: var(--font-mono); font-size: 12px; line-height: 1.5; }
         .log-entry { padding: 8px 0; border-bottom: 1px solid var(--border); }
         .log-entry:last-child { border-bottom: none; }
-        .log-entry .meta { color: var(--muted); font-size: 11px; margin-bottom: 4px; }
+        .log-entry .meta { color: var(--muted); font-size: 11.5px; margin-bottom: 4px; }
         .rate-limit-table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 12px; }
         .address-ranges-table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 12px; }
         .address-ranges-table th { text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
         .address-ranges-table td { padding: 4px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
-        .rate-limit-table th { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border2); color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
+        .rate-limit-table th { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border2); color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; font-family: var(--font-mono); }
         .rate-limit-table td { padding: 5px 8px; border-bottom: 1px solid var(--border); }
-        .rate-limit-table td:first-child { font-weight: 600; white-space: nowrap; }
+        .rate-limit-table td:first-child { font-weight: 600; white-space: nowrap; font-family: var(--font-mono); }
         .rate-limit-table td:nth-child(2) { text-align: center; white-space: nowrap; }
 
         /* Shared data table (DA Groups etc.) */
-        .tbl { width: 100%; border-collapse: collapse; }
-        .tbl th { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border2); color: var(--muted); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; white-space: nowrap; }
-        .tbl td { padding: 6px 8px; border-bottom: 1px solid var(--border); font-size: 12px; vertical-align: middle; }
-        .tbl tbody tr:hover { background: rgba(56,189,248,.04); }
+        .tbl { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+        .tbl th { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border2); color: var(--muted); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; white-space: nowrap; font-family: var(--font-mono); }
+        .tbl td { padding: 6px 8px; border-bottom: 1px solid var(--border); font-size: 12.5px; vertical-align: middle; }
+        .tbl tbody tr:hover { background: var(--panel2); }
         .tbl th.num, .tbl td.num { text-align: right; }
         .tbl tfoot td { border-bottom: none; border-top: 1px solid var(--border2); padding-top: 9px; }
         .tbl input[type=text], .tbl select { min-width: 0; height: 24px; padding: 2px 6px; font-size: 12px; }
@@ -247,136 +288,143 @@ internal static class DashboardPage
         .tbl .btn { height: 24px; padding: 0 10px; font-size: 11px; }
 
         /* DA Groups source-card header */
-        .dag-src-name { font-weight: 600; font-size: 12.5px; color: var(--text); text-transform: none; letter-spacing: 0; }
-        .dag-src-meta { font-family: 'Consolas', monospace; text-transform: none; letter-spacing: 0; margin-left: 2px; }
-        .dag-src-host { margin-left: auto; font-family: 'Consolas', monospace; text-transform: none; letter-spacing: 0; }
+        .dag-src-name { font-weight: 700; font-size: 12.5px; color: var(--text); text-transform: none; letter-spacing: 0; }
+        .dag-src-meta { font-family: var(--font-mono); text-transform: none; letter-spacing: 0; margin-left: 2px; }
+        .dag-src-host { margin-left: auto; font-family: var(--font-mono); text-transform: none; letter-spacing: 0; }
 
         /* DA Groups v3 — card grid */
         .dag-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; }
-        .dag-card { background: var(--bg); border: 1px solid var(--border2); border-radius: 6px; padding: 9px 11px; display: flex; flex-direction: column; gap: 6px; transition: opacity .15s ease; }
-        .dag-card.default { border-color: rgba(56,189,248,.45); }
-        .dag-card .n { font-size: 12.5px; font-weight: 600; word-break: break-all; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+        .dag-card { background: var(--panel); border: 1px solid var(--border2); border-radius: 0; padding: 9px 11px; display: flex; flex-direction: column; gap: 6px; transition: opacity .15s ease; }
+        .dag-card.default { border-left: 3px solid var(--text); }
+        .dag-card .n { font-size: 12.5px; font-weight: 700; word-break: break-all; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-family: var(--font-mono); }
         .dag-badges { display: flex; gap: 5px; flex-wrap: wrap; }
-        .dag-badge { font-size: 10px; padding: 1px 7px; border-radius: 9px; background: var(--panel2); border: 1px solid var(--border2); color: var(--muted); white-space: nowrap; }
-        .dag-badge.accent { color: var(--accent); border-color: rgba(56,189,248,.35); }
-        .dag-meta { font-size: 11px; color: var(--muted); }
+        .dag-badge { font-size: 10px; padding: 0 6px; border-radius: 2px; background: var(--panel2); border: 1px solid var(--border2); color: var(--muted); white-space: nowrap; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: .04em; }
+        .dag-badge.accent { color: var(--text); border-color: var(--border2); background: var(--panel2); font-weight: 700; }
+        .dag-meta { font-size: 11.5px; color: var(--muted); }
         .dag-actions { display: flex; gap: 6px; margin-top: auto; align-items: center; }
         .dag-actions .btn { height: 22px; padding: 0 9px; font-size: 11px; }
 
         .log-entry .message { white-space: pre-wrap; word-break: break-word; }
         .log-entry .exception { white-space: pre-wrap; word-break: break-word; margin-top: 6px; color: var(--bad); }
-        .log-entry .meta .lvl { font-weight: 600; }
+        .log-entry .meta .lvl { font-weight: 700; text-transform: uppercase; letter-spacing: .05em; }
         .log-entry .meta .lvl.trace, .log-entry .meta .lvl.debug { color: var(--muted); }
-        .log-entry .meta .lvl.information { color: var(--accent); }
+        .log-entry .meta .lvl.information { color: var(--info); }
         .log-entry .meta .lvl.warning { color: var(--warn); }
         .log-entry .meta .lvl.error, .log-entry .meta .lvl.critical { color: var(--bad); }
         .log-entry .message.error, .log-entry .message.critical { color: var(--bad); }
-        .help-subtabs, .map-type-tabs { display: flex; gap: 2px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 4px; margin-bottom: 12px; }
-        .values-subtabs { display: flex; gap: 2px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 4px; margin-bottom: 12px; width: fit-content; }
-        .values-subtab { background: none; border: none; color: var(--muted); padding: 8px 18px; font-size: 12px; font-weight: 600; cursor: pointer; border-radius: 4px; transition: all .15s ease; display: inline-flex; align-items: center; gap: 7px; }
+        /* Tab strips read as ledger tabs: square, ruled, ink when active. */
+        .help-subtabs, .map-type-tabs { display: flex; gap: 0; background: var(--panel); border: 1px solid var(--border2); border-radius: 0; padding: 0; margin-bottom: 14px; }
+        .values-subtabs { display: flex; gap: 0; background: var(--panel); border: 1px solid var(--border2); border-radius: 0; padding: 0; margin-bottom: 14px; width: fit-content; }
+        .values-subtab { background: none; border: none; border-right: 1px solid var(--border); color: var(--muted); padding: 8px 18px; font-size: 12px; font-weight: 600; cursor: pointer; border-radius: 0; transition: background-color .12s ease, color .12s ease; display: inline-flex; align-items: center; gap: 7px; font-family: var(--font-ui); }
         .values-subtab:hover { color: var(--text); background: var(--panel2); }
-        .values-subtab.active { color: var(--text); background: var(--panel2); box-shadow: 0 1px 3px rgba(0,0,0,.2); }
-        .values-subtab-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 17px; height: 15px; padding: 0 5px; border-radius: 999px; font-size: 9px; font-weight: 700; background: var(--accent); color: #07121a; }
+        .values-subtab.active { color: var(--panel); background: var(--text); }
+        .values-subtab:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+        .values-subtab-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 17px; height: 15px; padding: 0 5px; border-radius: 2px; font-size: 10px; font-weight: 700; background: var(--text); color: var(--panel); font-family: var(--font-mono); }
+        .values-subtab.active .values-subtab-badge { background: var(--panel); color: var(--text); }
         .values-subpane { display: none; }
         .values-subpane.active { display: block; }
-        .ilf-group { background: var(--panel2); border: 1px solid var(--border); border-radius: 7px; padding: 10px 12px 8px; }
+        .ilf-group { background: var(--panel); border: 1px solid var(--border2); border-radius: 0; padding: 10px 12px 8px; }
         .ilf-prov { display: flex; align-items: center; gap: 12px; }
         .ilf-prov-val { display: flex; align-items: baseline; gap: 7px; margin-left: auto; }
         .ilf-cons { margin: 8px 0 2px 15px; padding-left: 16px; border-left: 2px solid var(--border2); display: flex; flex-direction: column; gap: 5px; }
-        .ilf-cons-row { position: relative; display: flex; align-items: center; gap: 10px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; }
+        .ilf-cons-row { position: relative; display: flex; align-items: center; gap: 10px; background: var(--panel2); border: 1px solid var(--border); border-radius: 0; padding: 6px 10px; }
         .ilf-cons-row::before { content: ''; position: absolute; left: -16px; top: 50%; width: 14px; height: 2px; background: var(--border2); }
-        .ilf-fanout { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 15px; padding: 0 6px; border-radius: 999px; font-size: 9px; font-weight: 700; background: rgba(56,189,248,.15); border: 1px solid rgba(56,189,248,.4); color: var(--accent); }
-        .help-subtab, .map-type-tab { flex: 1; background: none; border: none; color: var(--muted); padding: 8px 16px; font-size: 12px; font-weight: 600; cursor: pointer; border-radius: 4px; transition: all .15s ease; }
+        .ilf-fanout { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 15px; padding: 0 6px; border-radius: 2px; font-size: 10px; font-weight: 700; background: var(--panel2); border: 1px solid var(--border2); color: var(--text); font-family: var(--font-mono); }
+        .help-subtab, .map-type-tab { flex: 1; background: none; border: none; border-right: 1px solid var(--border); color: var(--muted); padding: 9px 16px; font-size: 12px; font-weight: 600; cursor: pointer; border-radius: 0; transition: background-color .12s ease, color .12s ease; font-family: var(--font-ui); }
         .help-subtab:hover, .map-type-tab:hover { color: var(--text); background: var(--panel2); }
-        .help-subtab.active, .map-type-tab.active { color: var(--text); background: var(--panel2); box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+        .help-subtab.active, .map-type-tab.active { color: var(--panel); background: var(--text); }
+        .help-subtab:focus-visible, .map-type-tab:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
         .help-subtab-content { display: none; }
         .help-subtab-content.active { display: block; }
-        .help-layout { display: flex; align-items: flex-start; gap: 14px; }
-        .help-searchbar { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; }
-        .help-search { flex: 1; background: var(--panel); border: 1px solid var(--border); color: var(--text); padding: 8px 12px; border-radius: 6px; font-size: 13px; outline: none; }
-        .help-search:focus { border-color: var(--accent); }
-        .help-search-clear { background: var(--panel2); border: 1px solid var(--border); color: var(--muted); width: 32px; height: 32px; border-radius: 6px; cursor: pointer; font-size: 15px; line-height: 1; flex: none; }
-        .help-search-clear:hover { color: var(--text); background: var(--border); }
-        .help-search-loc { display: block; font-size: 9px; text-transform: uppercase; letter-spacing: .06em; opacity: .75; margin-bottom: 2px; }
-        .help-search-snippet { display: block; font-size: 10px; font-weight: 400; opacity: .8; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .help-noresults { padding: 14px; color: var(--muted); font-size: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; }
-        .help-toc { flex: 0 0 230px; display: flex; flex-direction: column; gap: 4px; position: sticky; top: 12px; }
-        .help-toc-item { text-align: left; background: var(--panel); border: 1px solid var(--border); color: var(--muted); padding: 9px 12px; font-size: 12px; font-weight: 600; cursor: pointer; border-radius: 6px; transition: all .15s ease; line-height: 1.35; }
+        .help-layout { display: flex; align-items: flex-start; gap: 16px; }
+        .help-searchbar { display: flex; align-items: center; gap: 6px; margin-bottom: 14px; }
+        .help-search { flex: 1; background: var(--panel); border: 1px solid var(--border2); color: var(--text); padding: 8px 12px; border-radius: 2px; font-size: 13px; outline: none; font-family: var(--font-ui); }
+        .help-search:focus { border-color: var(--text); }
+        .help-search:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+        .help-search-clear { background: var(--panel); border: 1px solid var(--border2); color: var(--muted); width: 34px; height: 34px; border-radius: 2px; cursor: pointer; font-size: 15px; line-height: 1; flex: none; }
+        .help-search-clear:hover { color: var(--text); background: var(--panel2); }
+        .help-search-loc { display: block; font-size: 9px; text-transform: uppercase; letter-spacing: .08em; opacity: .8; margin-bottom: 2px; font-family: var(--font-mono); }
+        .help-search-snippet { display: block; font-size: 11px; font-weight: 400; opacity: .85; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .help-noresults { padding: 14px; color: var(--muted); font-size: 12.5px; background: var(--panel); border: 1px solid var(--border2); border-radius: 0; }
+        .help-toc { flex: 0 0 230px; display: flex; flex-direction: column; gap: 0; position: sticky; top: 12px; border: 1px solid var(--border2); background: var(--panel); }
+        .help-toc-item { text-align: left; background: none; border: none; border-bottom: 1px solid var(--border); color: var(--ink2); padding: 9px 12px; font-size: 12.5px; font-weight: 600; cursor: pointer; border-radius: 0; transition: background-color .12s ease, color .12s ease; line-height: 1.35; font-family: var(--font-ui); }
+        .help-toc-item:last-child { border-bottom: none; }
         .help-toc-item:hover { color: var(--text); background: var(--panel2); }
-        .help-toc-item.active { color: var(--bg); background: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 75%, #000)); border-color: transparent; box-shadow: 0 2px 10px rgba(0,0,0,.35); }
-        .help-pane { flex: 1; min-width: 0; background: var(--panel); border: 1px solid var(--border); border-radius: 7px; }
+        .help-toc-item.active { color: var(--panel); background: var(--text); font-weight: 700; }
+        .help-toc-item:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+        .help-pane { flex: 1; min-width: 0; background: var(--panel); border: 1px solid var(--border2); border-top: 2px solid var(--text); border-radius: 0; }
         .help-article { display: none; }
         .help-article.active { display: block; }
-        .help-article-title { font-size: 16px; font-weight: 700; padding: 14px 16px 0; margin: 0; }
+        .help-article-title { font-size: 19px; font-weight: 700; padding: 16px 18px 0; margin: 0; letter-spacing: -.015em; }
         .help-article .help-body { padding-top: 6px; }
         @media (max-width: 800px) {
             .help-layout { flex-direction: column; }
-            .help-toc { flex-direction: row; overflow-x: auto; position: static; flex: none; width: 100%; padding-bottom: 4px; }
-            .help-toc-item { white-space: nowrap; flex: none; }
+            .help-toc { flex-direction: row; overflow-x: auto; position: static; flex: none; width: 100%; padding-bottom: 4px; border: none; background: none; }
+            .help-toc-item { white-space: nowrap; flex: none; border: 1px solid var(--border2); border-right: none; }
+            .help-toc-item:last-child { border-right: 1px solid var(--border2); }
             .help-toc-item.active { flex: none; }
         }
-        .help-body { padding: 12px 14px; }
-        .help-body ul, .help-body ol { padding-left: 18px; color: var(--muted); }
+        .help-body { padding: 12px 18px 18px; max-width: 78ch; font-size: 13.5px; line-height: 1.65; }
+        .help-body ul, .help-body ol { padding-left: 20px; color: var(--ink2); }
         .help-body li + li { margin-top: 6px; }
-        .help-body h4 { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 12px 0 6px; }
+        .help-body h4 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); margin: 16px 0 6px; font-family: var(--font-mono); }
         .help-body h4:first-child { margin-top: 0; }
-        .help-body code { background: var(--bg); padding: 1px 5px; border-radius: 3px; font-size: 12px; }
-        .help-body pre { background: var(--bg); border: 1px solid var(--border2); border-radius: 6px; padding: 12px 14px; overflow-x: auto; margin: 10px 0; }
-        .help-body pre code { background: none; padding: 0; font-size: 12px; line-height: 1.5; font-family: 'Consolas', 'SF Mono', monospace; white-space: pre; color: var(--text); }
+        .help-body code { background: var(--panel2); border: 1px solid var(--border); padding: 0 4px; border-radius: 2px; font-size: 12.5px; font-family: var(--font-mono); }
+        .help-body pre { background: var(--panel2); border: 1px solid var(--border2); border-left: 3px solid var(--text); border-radius: 0; padding: 12px 14px; overflow-x: auto; margin: 12px 0; }
+        .help-body pre code { background: none; border: none; padding: 0; font-size: 12.5px; line-height: 1.55; font-family: var(--font-mono); white-space: pre; color: var(--text); }
         .help-body h1 { display: none; }
-        .help-body h2 { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 14px 0 6px; }
-        .help-body h3 { font-size: 13px; margin: 14px 0 6px; }
-        .help-body p { color: var(--muted); margin: 6px 0; }
-        .help-body em { color: var(--muted); font-size: 11px; }
-        .help-body table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 12px; }
-        .help-body th { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border2); color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; }
+        .help-body h2 { font-size: 13px; font-weight: 700; color: var(--text); margin: 18px 0 6px; }
+        .help-body h3 { font-size: 14px; margin: 16px 0 6px; }
+        .help-body p { color: var(--ink2); margin: 8px 0; }
+        .help-body em { color: var(--muted); font-size: 12px; }
+        .help-body table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 12.5px; }
+        .help-body th { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border2); color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .07em; font-family: var(--font-mono); }
         .help-body td { padding: 5px 8px; border-bottom: 1px solid var(--border); }
         .help-body td:first-child { font-weight: 600; white-space: nowrap; }
-        .kv { display: grid; grid-template-columns: 140px 1fr; gap: 8px 12px; align-items: start; }
-        .kv .k { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
-        .kv .v { word-break: break-word; }
-        @media (max-width: 1100px) { .split { grid-template-columns: 1fr; } }
-        .conn-layout { display: grid; grid-template-columns: 1.4fr 1fr; gap: 14px; align-items: start; }
+        .kv { display: grid; grid-template-columns: 150px 1fr; gap: 8px 12px; align-items: start; }
+        .kv .k { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; font-family: var(--font-mono); padding-top: 2px; }
+        .kv .v { word-break: break-word; font-family: var(--font-mono); font-size: 12.5px; }
+        .conn-layout { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; align-items: start; }
         @media (max-width: 1000px) { .conn-layout { grid-template-columns: 1fr; } }
-        .conn-section { padding: 10px 0; border-top: 1px solid var(--border); }
+        .conn-section { padding: 12px 0; border-top: 1px solid var(--border); }
         .conn-section:first-of-type { border-top: none; padding-top: 4px; }
-        .conn-section-h { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
-        .conn-section-h .msg { font-size: 10px; text-transform: none; letter-spacing: 0; }
-        .info { display: inline-flex; align-items: center; justify-content: center; width: 11px; height: 11px; border-radius: 50%; background: var(--panel2); border: 1px solid var(--border2); color: var(--muted); font-size: 8px; font-weight: 700; font-style: italic; cursor: help; margin-left: 3px; user-select: none; vertical-align: middle; }
-        .info:hover { color: var(--accent); border-color: var(--accent); }
-        .tip { position: fixed; z-index: 9999; background: var(--panel2); color: var(--text); border: 1px solid var(--border2); border-radius: 5px; padding: 7px 11px; font-size: 11px; font-weight: 400; line-height: 1.5; max-width: 280px; box-shadow: 0 6px 16px rgba(0,0,0,.4); pointer-events: none; opacity: 0; transition: opacity .1s ease; }
+        .conn-section-h { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .09em; color: var(--muted-strong); margin-bottom: 9px; display: flex; align-items: center; gap: 8px; font-family: var(--font-mono); }
+        .conn-section-h .msg { font-size: 11px; text-transform: none; letter-spacing: 0; font-family: var(--font-ui); font-weight: 400; }
+        .info { display: inline-flex; align-items: center; justify-content: center; width: 13px; height: 13px; border-radius: 50%; background: var(--panel); border: 1px solid var(--border2); color: var(--muted); font-size: 9px; font-weight: 700; font-style: italic; cursor: help; margin-left: 3px; user-select: none; vertical-align: middle; font-family: var(--font-ui); }
+        .info:hover { color: var(--panel); background: var(--text); border-color: var(--text); }
+        .tip { position: fixed; z-index: 9999; background: var(--panel); color: var(--text); border: 1px solid var(--text); border-radius: 0; padding: 8px 11px; font-size: 11.5px; font-weight: 400; line-height: 1.55; max-width: 300px; box-shadow: none; pointer-events: none; opacity: 0; transition: opacity .1s ease; }
         .tip.show { opacity: 1; }
 
-        /* Diagram Tab Styles */
+        /* Diagram Tab Styles — a schematic drawn in ink on paper */
         .diag-toolbar {
             display: flex;
             align-items: center;
             gap: 16px;
-            padding: 12px 20px;
-            border-bottom: 1px solid var(--border);
+            padding: 10px 20px;
+            border-bottom: 1px solid var(--border2);
             background: var(--panel);
+            flex-wrap: wrap;
         }
         .diag-seg {
             position: relative;
             display: inline-flex;
             align-items: center;
-            gap: 2px;
-            padding: 3px;
-            background: var(--panel2);
-            border: 1px solid var(--border);
-            border-radius: 8px;
+            gap: 0;
+            padding: 0;
+            background: var(--panel);
+            border: 1px solid var(--border2);
+            border-radius: 0;
         }
         .seg-pill {
             position: absolute;
-            top: 3px;
-            bottom: 3px;
+            top: 0;
+            bottom: 0;
             left: 0;
             width: 0;
-            border-radius: 6px;
-            background: var(--accent);
-            background: linear-gradient(180deg, var(--accent), color-mix(in srgb, var(--accent) 75%, #000));
-            box-shadow: 0 2px 10px rgba(0,0,0,.35);
-            transition: transform .28s cubic-bezier(.22,.9,.34,1), width .28s cubic-bezier(.22,.9,.34,1);
+            border-radius: 0;
+            background: var(--text);
+            box-shadow: none;
+            transition: transform .18s ease-out, width .18s ease-out;
             pointer-events: none;
         }
         .diag-tab {
@@ -384,76 +432,90 @@ internal static class DashboardPage
             z-index: 1;
             background: transparent;
             border: none;
+            border-right: 1px solid var(--border);
             color: var(--muted);
-            padding: 6px 14px;
-            border-radius: 6px;
+            padding: 7px 14px;
+            border-radius: 0;
             cursor: pointer;
             font-size: 12px;
             font-weight: 600;
-            transition: color 0.18s;
+            transition: color 0.15s;
+            font-family: var(--font-ui);
         }
         .diag-tab:hover {
             color: var(--text);
+            background: var(--panel2);
         }
         .diag-tab.active {
-            color: var(--bg);
+            color: var(--panel);
+        }
+        .diag-tab:focus-visible {
+            outline: 2px solid var(--focus);
+            outline-offset: -2px;
         }
         .diag-zoom {
             display: flex;
             align-items: center;
-            gap: 2px;
+            gap: 0;
             margin-left: 8px;
-            padding: 3px;
-            background: var(--panel2);
-            border: 1px solid var(--border);
-            border-radius: 8px;
+            padding: 0;
+            background: var(--panel);
+            border: 1px solid var(--border2);
+            border-radius: 0;
         }
         .diag-zoom-btn {
             background: transparent;
             border: none;
-            color: var(--muted);
+            border-right: 1px solid var(--border);
+            color: var(--ink2);
             min-width: 28px;
-            height: 26px;
+            height: 30px;
             padding: 0 8px;
-            border-radius: 6px;
+            border-radius: 0;
             cursor: pointer;
-            font-size: 13px;
+            font-size: 12px;
             font-weight: 600;
             line-height: 1;
             transition: color 0.15s, background 0.15s;
+            font-family: var(--font-mono);
         }
-        .diag-zoom-btn:hover { color: var(--text); background: var(--border); }
+        .diag-zoom-btn:hover { color: var(--text); background: var(--panel2); }
+        .diag-zoom-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
         .diag-zoom-btn:disabled { opacity: 0.4; cursor: default; }
         .diag-zoom-label {
-            min-width: 44px;
+            min-width: 48px;
             text-align: center;
             font-size: 11px;
             color: var(--muted);
             font-variant-numeric: tabular-nums;
+            font-family: var(--font-mono);
         }
         .diag-legend {
             margin-left: auto;
             display: flex;
-            gap: 16px;
+            gap: 14px;
             font-size: 11px;
             color: var(--muted);
+            font-family: var(--font-mono);
+            text-transform: uppercase;
+            letter-spacing: .05em;
         }
         .legend-chip {
             display: inline-flex;
             align-items: center;
             gap: 6px;
-            padding: 3px 10px;
-            border-radius: 999px;
-            background: var(--panel2);
-            border: 1px solid var(--border);
+            padding: 0;
+            border-radius: 0;
+            background: none;
+            border: none;
         }
-        .legend-chip .legend-dot.good { box-shadow: 0 0 6px var(--good); }
-        .legend-chip .legend-dot.warn { box-shadow: 0 0 6px var(--warn); }
-        .legend-chip .legend-dot.bad { box-shadow: 0 0 6px var(--bad); }
+        .legend-chip .legend-dot.good { box-shadow: none; }
+        .legend-chip .legend-dot.warn { box-shadow: none; }
+        .legend-chip .legend-dot.bad { box-shadow: none; }
         .legend-dot {
             width: 8px;
             height: 8px;
-            border-radius: 50%;
+            border-radius: 0;
         }
         .legend-dot.good { background: var(--good); }
         .legend-dot.warn { background: var(--warn); }
@@ -462,10 +524,14 @@ internal static class DashboardPage
         .diag-canvas {
             flex: 1;
             overflow: auto;
-            background: var(--bg);
+            background: var(--paper);
             position: relative;
             cursor: grab;
             user-select: none;
+            border: 1px solid var(--border);
+            background-image: linear-gradient(var(--border) 1px, transparent 1px), linear-gradient(90deg, var(--border) 1px, transparent 1px);
+            background-size: 24px 24px;
+            background-position: -1px -1px;
         }
         .diag-canvas.panning { cursor: grabbing; }
         .diag-zoom-host {
@@ -476,22 +542,25 @@ internal static class DashboardPage
             display: block;
             transform-origin: 0 0;
         }
+        .diag-empty rect { fill: var(--panel); }
         .diag-node {
             cursor: pointer;
         }
         .diag-node > rect {
-            fill: url(#diagCardGrad);
-            filter: url(#diagDrop);
+            fill: var(--panel);
+            filter: none;
         }
         .diag-node rect {
             transition: all 0.15s;
         }
         .diag-node:hover rect {
             stroke-width: 2.5;
+            fill: var(--panel2);
         }
         .diag-node:hover text {
-            fill: #ffffff;
+            fill: var(--text);
         }
+        .diag-node:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
         .diag-node text {
             fill: var(--text);
             font-size: 11px;
@@ -500,35 +569,35 @@ internal static class DashboardPage
         }
         .diag-edge {
             fill: none;
-            stroke-width: 2;
-            stroke-opacity: 0.9;
+            stroke-width: 1.5;
+            stroke-opacity: 0.85;
             transition: stroke 0.3s;
         }
         .diag-edge.good { stroke: var(--good); }
         .diag-edge.warn { stroke: var(--warn); }
         .diag-edge.bad { stroke: var(--bad); }
-        .diag-edge.off { stroke: var(--muted); opacity: 0.4; }
+        .diag-edge.off { stroke: var(--border2); opacity: 0.9; }
         .diag-flow {
             fill: none;
             stroke-width: 3;
             stroke-dasharray: 8 8;
-            stroke-linecap: round;
+            stroke-linecap: butt;
             animation: flow 1s linear infinite;
         }
         .diag-flow.good { stroke: var(--good); }
         .diag-flow.warn { stroke: var(--warn); }
         .diag-flow.bad { stroke: var(--bad); }
-        .diag-flow.off { stroke: var(--muted); opacity: 0.3; animation: none; }
+        .diag-flow.off { stroke: var(--border2); opacity: 0.3; animation: none; }
         @keyframes flow {
             to { stroke-dashoffset: -16; }
         }
         .diag-tooltip {
             position: absolute;
-            background: var(--panel2);
-            border: 1px solid var(--border);
-            border-radius: 4px;
+            background: var(--panel);
+            border: 1px solid var(--text);
+            border-radius: 0;
             padding: 8px 12px;
-            font-size: 11px;
+            font-size: 11.5px;
             color: var(--text);
             pointer-events: none;
             opacity: 0;
@@ -550,7 +619,7 @@ internal static class DashboardPage
         }
         .diag-tooltip-value {
             font-family: var(--font-mono);
-            font-weight: 500;
+            font-weight: 600;
         }
         @media (prefers-reduced-motion: reduce) {
             .diag-node, .diag-edge, .diag-flow, .seg-pill, .diag-tooltip {
@@ -558,11 +627,39 @@ internal static class DashboardPage
                 transition: none !important;
             }
         }
+        /* One system-wide answer to reduced motion: nothing in this surface animates. */
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after {
+                animation-duration: .001ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: .001ms !important;
+                scroll-behavior: auto !important;
+            }
+        }
+        /* Narrow screens: the rail wraps, table rows keep their own scroll. */
+        @media (max-width: 700px) {
+            .topbar { padding: 0 10px; }
+            .brand { padding-right: 10px; }
+            .pill { padding: 5px 10px; }
+            .pill .k { font-size: 9px; }
+            .topbar .clock { margin-left: 0; border-left: none; padding-left: 0; padding-bottom: 8px; }
+            .view { padding: 14px 12px 48px; }
+            .box-b { padding: 10px; }
+            .mon-stat-group { border-right: none; border-bottom: 1px solid var(--border); }
+            .mon-stat-group:last-child { border-bottom: none; }
+            .modal-overlay { padding: 0; align-items: flex-start; }
+            .modal { width: 100% !important; max-width: 100%; max-height: 100vh; border-left: none; border-right: none; }
+            /* The horizontal rail must scroll, not squeeze: shrinking groups overlap their
+               own buttons and the labels collide. */
+            .tabbar { flex-wrap: nowrap; }
+            .nav-group { flex: 0 0 auto; }
+            .nav-group .tabbtn { white-space: nowrap; }
+        }
     </style>
 </head>
 <body>
 <div class="topbar">
-    <div class="brand"><span class="dot" id="dot"></span>OPC Bridge <span class="ver" id="appVersion"></span></div>
+    <div class="brand"><span class="dot" id="dot" aria-hidden="true"></span>OPC Bridge <span class="ver" id="appVersion"></span></div>
     <div class="pills">
         <div class="pill"><span class="k">Bridge</span><span id="pBridge">&#8212;</span></div>
         <div class="pill"><span class="k">DA</span><span id="pDa">&#8212;</span></div>
@@ -617,41 +714,45 @@ internal static class DashboardPage
 </div>
 <div class="content">
 <div class="view active" id="view-monitor">
-    <div class="port-banner" id="portBanner" style="display:none"></div>
-    <div class="first-run-banner" id="bannerNoSources" style="display:none"></div>
-    <div class="first-run-banner" id="bannerNoMappings" style="display:none"></div>
-    <div class="alarm-bar" id="rateAlarmBar" style="display:none"></div>
-    <div class="session-warn-banner" id="sessionBanner" style="display:none"></div>
+    <div class="port-banner" id="portBanner" role="status" style="display:none"></div>
+    <div class="first-run-banner" id="bannerNoSources" role="status" style="display:none"></div>
+    <div class="first-run-banner" id="bannerNoMappings" role="status" style="display:none"></div>
+    <div class="alarm-bar" id="rateAlarmBar" role="alert" style="display:none"></div>
+    <div class="session-warn-banner" id="sessionBanner" role="alert" style="display:none"></div>
     <div class="mon-stats">
+        <div class="mon-row mon-lead">
         <div class="mon-stat-group">
             <div class="mon-stat-group-h">Bridge</div>
-            <div class="stat"><div class="k">Runtime</div><div class="v" id="bridgeState">&#8212;</div><div class="s" id="lastError">No errors</div></div>
+                <div class="stat prime"><div class="k">Runtime</div><div class="v" id="bridgeState">&#8212;</div><div class="s" id="lastError">No errors</div></div>
         </div>
+        <div class="mon-stat-group">
+            <div class="mon-stat-group-h">OPC DA</div>
+                <div class="stat prime"><div class="k">Connection</div><div class="v" id="daState">&#8212;</div></div>
+            <div class="stat"><div class="k">Last Read</div><div class="v" id="lastDaRead">&#8212;</div><div class="s" id="lastDaReadCount">0 values</div></div>
+        </div>
+        <div class="mon-stat-group">
+            <div class="mon-stat-group-h">OPC UA</div>
+                <div class="stat prime"><div class="k">Server</div><div class="v" id="uaState">&#8212;</div><div class="s" id="uaClients">0 clients</div></div>
+            <div class="stat"><div class="k">Last Write</div><div class="v" id="lastUaWrite">&#8212;</div><div class="s" id="lastUaWriteCount">0 values</div></div>
+        </div>
+        <div class="mon-stat-group">
+            <div class="mon-stat-group-h">Update Rate</div>
+                <div class="stat prime"><div class="k">Default Rate</div><div class="v" id="updateRate">&#8212;</div><div class="s" id="mappingCount">0 tags</div></div>
+            <div class="stat"><div class="k">Cycle Budget</div><div class="mini-meter" aria-hidden="true"><div class="mini-meter-track"><div class="mini-meter-fill" id="pollUtilizationFill"></div></div></div><div class="s" id="pollUtilizationText">—</div><div class="s" id="pollSaturation">—</div></div>
+        </div>
+        </div>
+        <div class="mon-row mon-support">
         <div class="mon-stat-group">
             <div class="mon-stat-group-h">Ports <span class="info" data-tip="Listening ports for this bridge. When the default port is already in use by another application, the bridge auto-assigns the next free port and saves it to appsettings.json (Bridge:HttpPort / Bridge:OpcUaPort).">i</span></div>
             <div class="stat"><div class="k">HTTP</div><div class="v" id="httpPortVal">&#8212;</div><div class="s" id="httpPortNote">Dashboard + API</div></div>
             <div class="stat"><div class="k">OPC UA</div><div class="v" id="uaPortVal">&#8212;</div><div class="s" id="uaPortNote">UA server endpoint</div></div>
         </div>
         <div class="mon-stat-group">
-            <div class="mon-stat-group-h">OPC DA</div>
-            <div class="stat"><div class="k">Connection</div><div class="v" id="daState">&#8212;</div></div>
-            <div class="stat"><div class="k">Last Read</div><div class="v" id="lastDaRead">&#8212;</div><div class="s" id="lastDaReadCount">0 values</div></div>
-        </div>
-        <div class="mon-stat-group">
-            <div class="mon-stat-group-h">OPC UA</div>
-            <div class="stat"><div class="k">Server</div><div class="v" id="uaState">&#8212;</div><div class="s" id="uaClients">0 clients</div></div>
-            <div class="stat"><div class="k">Last Write</div><div class="v" id="lastUaWrite">&#8212;</div><div class="s" id="lastUaWriteCount">0 values</div></div>
-        </div>
-        <div class="mon-stat-group">
-            <div class="mon-stat-group-h">Update Rate</div>
-            <div class="stat"><div class="k">Default Rate</div><div class="v" id="updateRate">&#8212;</div><div class="s" id="mappingCount">0 tags</div></div>
-            <div class="stat"><div class="k">Cycle Budget</div><div class="mini-meter" aria-hidden="true"><div class="mini-meter-track"><div class="mini-meter-fill" id="pollUtilizationFill"></div></div></div><div class="s" id="pollUtilizationText">—</div><div class="s" id="pollSaturation">—</div></div>
-        </div>
-        <div class="mon-stat-group">
             <div class="mon-stat-group-h">Resources <span class="info" data-tip="Native Windows process counters sampled every 5s. A steady or slowly growing count is normal; a steady upward trend signals a handle or COM object leak.">i</span></div>
             <div class="stat"><div class="k">Handles <span class="info" data-tip="Total OS handles (files, registry keys, threads, events, COM objects) held by the process via GetProcessHandleCount. Typical idle: 300-800; investigate if it grows unbounded over time.">i</span></div><div class="v" id="resHandles">&#8212;</div></div>
             <div class="stat"><div class="k">GDI / USER <span class="info" data-tip="GDI objects (pens, brushes, fonts, bitmaps) and USER objects (windows, menus, hooks) via GetGuiResources. Each has a per-process limit of 10,000; approaching it indicates a GDI/USER leak.">i</span></div><div class="v" id="resGdiUser">&#8212;</div></div>
             <div class="stat"><div class="k">Assessment</div><div class="v" id="resAssessment">&#8212;</div><div class="s" id="resAssessmentDetail">Awaiting data…</div></div>
+        </div>
         </div>
     </div>
     <div class="grid2" style="margin-bottom:14px">
@@ -824,7 +925,7 @@ internal static class DashboardPage
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">Credentials <span class="info" data-tip="Only required for remote DCOM with specific user accounts, or to access OPC DA servers registered in another user's profile.">i</span></div>
-                        <div class="field"><label class="fl">User</label><input id="cfgUser" type="text" placeholder="username" style="flex:1"><input id="cfgPass" type="password" placeholder="password" style="flex:1"><input id="cfgDomain" type="text" placeholder="domain" style="flex:1"></div>
+                        <div class="field"><label class="fl">User</label><input id="cfgUser" type="text" placeholder="username" aria-label="User name" style="flex:1"><input id="cfgPass" type="password" placeholder="password" aria-label="Password" style="flex:1"><input id="cfgDomain" type="text" placeholder="domain" aria-label="Domain" style="flex:1"></div>
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">Default Update Rate <span class="info" data-tip="Fixed at 1000 ms. This is the fallback rate for tags set to 'Source Default'. For other cadences use Sources → PLC Groups (named groups per rate) or a specific per-tag Update Rate.">i</span></div>
@@ -912,7 +1013,7 @@ internal static class DashboardPage
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">Credentials <span class="info" data-tip="Optional UserName token. Leave blank for anonymous.">i</span></div>
-                        <div class="field"><label class="fl">User</label><input id="uaCfgUser" type="text" placeholder="username" style="flex:1"><input id="uaCfgPass" type="password" placeholder="password" style="flex:1"></div>
+                        <div class="field"><label class="fl">User</label><input id="uaCfgUser" type="text" placeholder="username" aria-label="User name" style="flex:1"><input id="uaCfgPass" type="password" placeholder="password" aria-label="Password" style="flex:1"></div>
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">Update &amp; Scale</div>
@@ -1918,17 +2019,17 @@ window.addEventListener('resize', syncSegPill);
 function diagEmptyState(title, hint, w = 1100, h = 600) {
     const cx = Math.round(w / 2), cy = Math.round(h / 2);
     return `<g class="diag-empty" transform="translate(${cx} ${cy})">` +
-        `<rect x="-240" y="-62" width="480" height="124" rx="10" fill="url(#diagCardGrad)" stroke="#2a3547" stroke-dasharray="5 5"/>` +
-        `<text y="-8" text-anchor="middle" fill="#d8e0ea" font-size="14" font-weight="600">${escapeHtml(title)}</text>` +
-        `<text y="16" text-anchor="middle" fill="#6b7689" font-size="11">${escapeHtml(hint)}</text></g>`;
+        `<rect x="-240" y="-62" width="480" height="124" rx="0" fill="#ffffff" stroke="#c6cac3" stroke-dasharray="5 5"/>` +
+        `<text y="-8" text-anchor="middle" fill="#14181a" font-size="14" font-weight="600">${escapeHtml(title)}</text>` +
+        `<text y="16" text-anchor="middle" fill="#55605f" font-size="11">${escapeHtml(hint)}</text></g>`;
 }
 
 const DIAG_DEFS = '<defs>' +
     '<linearGradient id="diagCardGrad" x1="0" y1="0" x2="0" y2="1">' +
-    '<stop offset="0" stop-color="#18202e"/><stop offset="1" stop-color="#10151f"/>' +
+    '<stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#f6f7f4"/>' +
     '</linearGradient>' +
     '<filter id="diagDrop" x="-20%" y="-20%" width="140%" height="140%">' +
-    '<feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#000000" flood-opacity="0.35"/>' +
+    '<feDropShadow dx="0" dy="1" stdDeviation="0" flood-color="#14181a" flood-opacity="0.08"/>' +
     '</filter></defs>';
 
 function showDiagTab(tab) {
@@ -2045,9 +2146,11 @@ function drawCurve(x1, y1, x2, y2, status, color, lift = 40) {
 
 function mqttBrokerStatus() {
     const mqttState = (state.mqttConnectionState || el('mqttState')?.textContent || '').toLowerCase();
-    if (mqttState.includes('connected')) return 'good';
-    if (mqttState.includes('connecting') || mqttState.includes('partial')) return 'warn';
+    // "disconnected" contains "connected", so the negative cases must be tested first.
+    if (mqttState.includes('disconnected') || !mqttState) return 'off';
+    if (mqttState.includes('connecting')) return 'warn';
     if (mqttState.includes('fault') || mqttState.includes('error')) return 'bad';
+    if (mqttState.includes('connected') || mqttState.includes('partial')) return 'good';
     return 'off';
 }
 
@@ -2105,8 +2208,8 @@ function renderAllDiagram() {
     });
 
     let svg = '';
-    svg += `<text x="40" y="30" fill="#6b7689" font-size="11" font-weight="600">PLANT OVERVIEW (aggregated)</text>`;
-    svg += `<text x="40" y="48" fill="#6b7689" font-size="10">Sources → tag groups → UA / MQTT · trunks colored by live status · detail on DA→UA / Interlinks / MQTT tabs</text>`;
+    svg += `<text x="40" y="30" fill="#55605f" font-size="11" font-weight="600">PLANT OVERVIEW (aggregated)</text>`;
+    svg += `<text x="40" y="48" fill="#55605f" font-size="10">Sources → tag groups → UA / MQTT · trunks colored by live status · detail on DA→UA / Interlinks / MQTT tabs</text>`;
 
     const sourcePositions = new Map();
     const groupPositions = new Map();
@@ -2134,9 +2237,9 @@ function renderAllDiagram() {
         groupPositions.set(sourceId, { x: groupX, y: sourceY, cy, left: groupX, right: groupX + colW.group, cx: groupX + colW.group / 2 });
 
         svg += `<g class="diag-node" data-source="${escapeHtml(sourceId)}">`;
-        svg += `<rect x="${sourceX}" y="${sourceY}" width="${colW.source}" height="64" rx="6" fill="#11161f" stroke="${sourceColor}" stroke-width="2"/>`;
-        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 24}" text-anchor="middle" fill="#d8e0ea" font-size="12" font-weight="600">${escapeHtml(sourceName)}</text>`;
-        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 44}" text-anchor="middle" fill="#6b7689" font-size="10">${escapeHtml(sourceInfo?.progId || sourceInfo?.ProgId || 'DA source')}</text>`;
+        svg += `<rect x="${sourceX}" y="${sourceY}" width="${colW.source}" height="64" rx="0" fill="#ffffff" stroke="${sourceColor}" stroke-width="2"/>`;
+        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 24}" text-anchor="middle" fill="#14181a" font-size="12" font-weight="600">${escapeHtml(sourceName)}</text>`;
+        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 44}" text-anchor="middle" fill="#55605f" font-size="10">${escapeHtml(sourceSubtitle(sourceInfo))}</text>`;
         svg += `</g>`;
 
         const groupStatus = summary.total === 0 ? 'off' : summary.flow;
@@ -2149,10 +2252,10 @@ function renderAllDiagram() {
         svg += drawEdge(sourceX + colW.source, cy, groupX, cy, groupStatus, groupColor);
 
         svg += `<g class="diag-node" data-source-group="${escapeHtml(sourceId)}">`;
-        svg += `<rect x="${groupX}" y="${sourceY}" width="${colW.group}" height="64" rx="6" fill="#11161f" stroke="${groupColor}" stroke-width="1.5"/>`;
-        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 20}" text-anchor="middle" fill="#d8e0ea" font-size="12" font-weight="600">${summary.total} tags</text>`;
-        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 38}" text-anchor="middle" fill="#6b7689" font-size="10">${escapeHtml(line2)}</text>`;
-        if (line3) svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 54}" text-anchor="middle" fill="#6b7689" font-size="10">${escapeHtml(line3)}</text>`;
+        svg += `<rect x="${groupX}" y="${sourceY}" width="${colW.group}" height="64" rx="0" fill="#ffffff" stroke="${groupColor}" stroke-width="1.5"/>`;
+        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 20}" text-anchor="middle" fill="#14181a" font-size="12" font-weight="600">${summary.total} tags</text>`;
+        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 38}" text-anchor="middle" fill="#55605f" font-size="10">${escapeHtml(line2)}</text>`;
+        if (line3) svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 54}" text-anchor="middle" fill="#55605f" font-size="10">${escapeHtml(line3)}</text>`;
         svg += `</g>`;
 
         maxY = Math.max(maxY, sourceY + 64);
@@ -2179,7 +2282,7 @@ function renderAllDiagram() {
             const g = groupPositions.get(pair.fromSid);
             if (!g) return;
             const color = getStatusColor(pair.status);
-            svg += `<circle cx="${g.cx}" cy="${g.y - 6}" r="8" fill="#11161f" stroke="${color}" stroke-width="1.5"/>`;
+            svg += `<circle cx="${g.cx}" cy="${g.y - 6}" r="8" fill="#ffffff" stroke="${color}" stroke-width="1.5"/>`;
             svg += `<text x="${g.cx}" y="${g.y - 2}" text-anchor="middle" fill="${color}" font-size="9">${pair.count}</text>`;
             return;
         }
@@ -2192,7 +2295,7 @@ function renderAllDiagram() {
         svg += drawCurve(from.cx, from.cy, to.cx, to.cy, pair.status, color, lift);
         const midX = (from.cx + to.cx) / 2;
         const midY = Math.min(from.cy, to.cy) - lift + 8;
-        svg += `<rect x="${midX - 12}" y="${midY - 9}" width="24" height="14" rx="3" fill="#11161f" stroke="${color}" stroke-width="1"/>`;
+        svg += `<rect x="${midX - 12}" y="${midY - 9}" width="24" height="14" rx="0" fill="#ffffff" stroke="${color}" stroke-width="1"/>`;
         svg += `<text x="${midX}" y="${midY + 2}" text-anchor="middle" fill="${color}" font-size="9">${pair.count}</text>`;
     });
 
@@ -2201,9 +2304,9 @@ function renderAllDiagram() {
     const uaColor = getStatusColor(uaStatus);
     const uaY = Math.max(startY, (maxY + startY) / 2 - 28);
     svg += `<g class="diag-node">`;
-    svg += `<rect x="${uaX}" y="${uaY}" width="${colW.hub}" height="56" rx="6" fill="#11161f" stroke="${uaColor}" stroke-width="2"/>`;
-    svg += `<text x="${uaX + colW.hub / 2}" y="${uaY + 22}" text-anchor="middle" fill="#d8e0ea" font-size="12" font-weight="600">OPC UA Server</text>`;
-    svg += `<text x="${uaX + colW.hub / 2}" y="${uaY + 40}" text-anchor="middle" fill="#6b7689" font-size="10">${totalTags} mapped</text>`;
+    svg += `<rect x="${uaX}" y="${uaY}" width="${colW.hub}" height="56" rx="0" fill="#ffffff" stroke="${uaColor}" stroke-width="2"/>`;
+    svg += `<text x="${uaX + colW.hub / 2}" y="${uaY + 22}" text-anchor="middle" fill="#14181a" font-size="12" font-weight="600">OPC UA Server</text>`;
+    svg += `<text x="${uaX + colW.hub / 2}" y="${uaY + 40}" text-anchor="middle" fill="#55605f" font-size="10">${totalTags} mapped</text>`;
     svg += `</g>`;
 
     groupPositions.forEach((pos, sourceId) => {
@@ -2217,9 +2320,9 @@ function renderAllDiagram() {
     const brokerColor = getStatusColor(brokerStatus);
     const mqttY = uaY + 100;
     svg += `<g class="diag-node">`;
-    svg += `<rect x="${mqttX}" y="${mqttY}" width="${colW.hub}" height="56" rx="6" fill="#11161f" stroke="${brokerColor}" stroke-width="2"/>`;
-    svg += `<text x="${mqttX + colW.hub / 2}" y="${mqttY + 22}" text-anchor="middle" fill="#d8e0ea" font-size="12" font-weight="600">MQTT Broker</text>`;
-    svg += `<text x="${mqttX + colW.hub / 2}" y="${mqttY + 40}" text-anchor="middle" fill="#6b7689" font-size="10">${totalMqtt}/${totalTags} enabled</text>`;
+    svg += `<rect x="${mqttX}" y="${mqttY}" width="${colW.hub}" height="56" rx="0" fill="#ffffff" stroke="${brokerColor}" stroke-width="2"/>`;
+    svg += `<text x="${mqttX + colW.hub / 2}" y="${mqttY + 22}" text-anchor="middle" fill="#14181a" font-size="12" font-weight="600">MQTT Broker</text>`;
+    svg += `<text x="${mqttX + colW.hub / 2}" y="${mqttY + 40}" text-anchor="middle" fill="#55605f" font-size="10">${totalMqtt}/${totalTags} enabled</text>`;
     svg += `</g>`;
 
     groupPositions.forEach((pos, sourceId) => {
@@ -2233,7 +2336,7 @@ function renderAllDiagram() {
         svg += drawEdge(pos.right, pos.cy, mqttX, mqttY + 28, edgeStatus, getStatusColor(edgeStatus));
     });
 
-    svg += `<text x="${sourceX}" y="${Math.max(maxY, mqttY + 56) + 36}" fill="#6b7689" font-size="10">Aggregated trunks · Grey = inactive · Color = live · Curves = DA→DA between sources (count badge)</text>`;
+    svg += `<text x="${sourceX}" y="${Math.max(maxY, mqttY + 56) + 36}" fill="#55605f" font-size="10">Aggregated trunks · Grey = inactive · Color = live · Curves = DA→DA between sources (count badge)</text>`;
 
     return { svg, maxHeight: Math.max(maxY, mqttY + 56) + 60, maxWidth: 1240 };
 }
@@ -2273,8 +2376,8 @@ function renderDaUaDiagram() {
     let svg = '';
     const totalTags = mappings.length;
     const sourceCount = bySource.size;
-    svg += `<text x="50" y="28" fill="#6b7689" font-size="11" font-weight="600">Source → UA (aggregated)</text>`;
-    svg += `<text x="50" y="46" fill="#6b7689" font-size="10">${sourceCount} sources · ${totalTags} tags · click a tag-group to expand (page ${pageSize}) · Fit/pan for overview</text>`;
+    svg += `<text x="50" y="28" fill="#55605f" font-size="11" font-weight="600">Source → UA (aggregated)</text>`;
+    svg += `<text x="50" y="46" fill="#55605f" font-size="10">${sourceCount} sources · ${totalTags} tags · click a tag-group to expand (page ${pageSize}) · Fit/pan for overview</text>`;
 
     const groupPositions = new Map();
     const summaries = new Map();
@@ -2306,9 +2409,9 @@ function renderDaUaDiagram() {
 
         // Source box
         svg += `<g class="diag-node" data-source="${escapeHtml(sourceId)}">`;
-        svg += `<rect x="${sourceX}" y="${sourceY}" width="${colW.source}" height="64" rx="6" fill="#11161f" stroke="${sourceColor}" stroke-width="2"/>`;
-        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 24}" text-anchor="middle" fill="#d8e0ea" font-size="12" font-weight="600">${escapeHtml(sourceName)}</text>`;
-        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 44}" text-anchor="middle" fill="#6b7689" font-size="10">${escapeHtml(sourceInfo?.progId || sourceInfo?.ProgId || 'DA source')}</text>`;
+        svg += `<rect x="${sourceX}" y="${sourceY}" width="${colW.source}" height="64" rx="0" fill="#ffffff" stroke="${sourceColor}" stroke-width="2"/>`;
+        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 24}" text-anchor="middle" fill="#14181a" font-size="12" font-weight="600">${escapeHtml(sourceName)}</text>`;
+        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 44}" text-anchor="middle" fill="#55605f" font-size="10">${escapeHtml(sourceSubtitle(sourceInfo))}</text>`;
         svg += `</g>`;
 
         // Tag-group summary (click to expand/collapse)
@@ -2320,10 +2423,10 @@ function renderDaUaDiagram() {
         svg += drawEdge(sourceX + colW.source, groupCy, groupX, groupCy, groupStatus, groupColor);
 
         svg += `<g class="diag-node" data-diag-action="toggle-expand" data-source-id="${attr(sourceId)}" style="cursor:pointer">`;
-        svg += `<rect x="${groupX}" y="${sourceY}" width="${colW.group}" height="64" rx="6" fill="#11161f" stroke="${groupColor}" stroke-width="1.5"/>`;
-        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 20}" text-anchor="middle" fill="#d8e0ea" font-size="12" font-weight="600">${summary.total} tags ${expanded ? '▾' : '▸'}</text>`;
-        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 38}" text-anchor="middle" fill="#6b7689" font-size="10">${escapeHtml(line2)}</text>`;
-        if (line3) svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 54}" text-anchor="middle" fill="#6b7689" font-size="10">${escapeHtml(line3)}</text>`;
+        svg += `<rect x="${groupX}" y="${sourceY}" width="${colW.group}" height="64" rx="0" fill="#ffffff" stroke="${groupColor}" stroke-width="1.5"/>`;
+        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 20}" text-anchor="middle" fill="#14181a" font-size="12" font-weight="600">${summary.total} tags ${expanded ? '▾' : '▸'}</text>`;
+        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 38}" text-anchor="middle" fill="#55605f" font-size="10">${escapeHtml(line2)}</text>`;
+        if (line3) svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 54}" text-anchor="middle" fill="#55605f" font-size="10">${escapeHtml(line3)}</text>`;
         svg += `</g>`;
 
         groupPositions.set(sourceId, {
@@ -2346,8 +2449,8 @@ function renderDaUaDiagram() {
 
                 svg += drawEdge(groupX + colW.group, groupCy, tagX, cy, tagStatus, tagColor);
                 svg += `<g class="diag-node" data-tag="${escapeHtml(tKey)}">`;
-                svg += `<rect x="${tagX}" y="${tagY}" width="${colW.tag}" height="28" rx="4" fill="#11161f" stroke="${tagColor}" stroke-width="1.5"/>`;
-                svg += `<text x="${tagX + colW.tag / 2}" y="${tagY + 18}" text-anchor="middle" fill="#d8e0ea" font-size="11">${escapeHtml(tagName)}</text>`;
+                svg += `<rect x="${tagX}" y="${tagY}" width="${colW.tag}" height="28" rx="0" fill="#ffffff" stroke="${tagColor}" stroke-width="1.5"/>`;
+                svg += `<text x="${tagX + colW.tag / 2}" y="${tagY + 18}" text-anchor="middle" fill="#14181a" font-size="11">${escapeHtml(tagName)}</text>`;
                 svg += `</g>`;
                 detailPositions.push({ right: tagX + colW.tag, cy, status: tagStatus, color: tagColor });
                 maxY = Math.max(maxY, tagY + 28);
@@ -2359,15 +2462,15 @@ function renderDaUaDiagram() {
                 const canNext = safePage < pageCount - 1;
                 if (canPrev) {
                     svg += `<g class="diag-node" data-diag-action="expand-page" data-source-id="${attr(sourceId)}" data-dir="-1" style="cursor:pointer">`;
-                    svg += `<rect x="${tagX}" y="${navY}" width="70" height="22" rx="4" fill="#1a2230" stroke="#6b7689"/>`;
-                    svg += `<text x="${tagX + 35}" y="${navY + 15}" text-anchor="middle" fill="#d8e0ea" font-size="10">← Prev</text></g>`;
+                    svg += `<rect x="${tagX}" y="${navY}" width="70" height="22" rx="0" fill="#ffffff" stroke="#c6cac3"/>`;
+                    svg += `<text x="${tagX + 35}" y="${navY + 15}" text-anchor="middle" fill="#14181a" font-size="10">← Prev</text></g>`;
                 }
                 if (canNext) {
                     svg += `<g class="diag-node" data-diag-action="expand-page" data-source-id="${attr(sourceId)}" data-dir="1" style="cursor:pointer">`;
-                    svg += `<rect x="${tagX + 80}" y="${navY}" width="70" height="22" rx="4" fill="#1a2230" stroke="#6b7689"/>`;
-                    svg += `<text x="${tagX + 115}" y="${navY + 15}" text-anchor="middle" fill="#d8e0ea" font-size="10">Next →</text></g>`;
+                    svg += `<rect x="${tagX + 80}" y="${navY}" width="70" height="22" rx="0" fill="#ffffff" stroke="#c6cac3"/>`;
+                    svg += `<text x="${tagX + 115}" y="${navY + 15}" text-anchor="middle" fill="#14181a" font-size="10">Next →</text></g>`;
                 }
-                svg += `<text x="${tagX + 170}" y="${navY + 15}" fill="#6b7689" font-size="10">${sliceStart + 1}–${sliceStart + slice.length} / ${tags.length}</text>`;
+                svg += `<text x="${tagX + 170}" y="${navY + 15}" fill="#55605f" font-size="10">${sliceStart + 1}–${sliceStart + slice.length} / ${tags.length}</text>`;
                 maxY = Math.max(maxY, navY + 22);
             }
         }
@@ -2383,9 +2486,9 @@ function renderDaUaDiagram() {
     const uaColor = getStatusColor(uaStatus);
     const uaY = Math.max(startY, (maxY + startY) / 2 - 28);
     svg += `<g class="diag-node">`;
-    svg += `<rect x="${uaX}" y="${uaY}" width="${colW.hub}" height="56" rx="6" fill="#11161f" stroke="${uaColor}" stroke-width="2"/>`;
-    svg += `<text x="${uaX + colW.hub / 2}" y="${uaY + 22}" text-anchor="middle" fill="#d8e0ea" font-size="12" font-weight="600">OPC UA Server</text>`;
-    svg += `<text x="${uaX + colW.hub / 2}" y="${uaY + 40}" text-anchor="middle" fill="#6b7689" font-size="10">${totalTags} mapped</text>`;
+    svg += `<rect x="${uaX}" y="${uaY}" width="${colW.hub}" height="56" rx="0" fill="#ffffff" stroke="${uaColor}" stroke-width="2"/>`;
+    svg += `<text x="${uaX + colW.hub / 2}" y="${uaY + 22}" text-anchor="middle" fill="#14181a" font-size="12" font-weight="600">OPC UA Server</text>`;
+    svg += `<text x="${uaX + colW.hub / 2}" y="${uaY + 40}" text-anchor="middle" fill="#55605f" font-size="10">${totalTags} mapped</text>`;
     svg += `</g>`;
 
     // Trunks: collapsed group → UA; expanded visible tags → UA
@@ -2407,7 +2510,7 @@ function renderDaUaDiagram() {
         }
     });
 
-    svg += `<text x="${sourceX}" y="${maxY + 36}" fill="#6b7689" font-size="10">Collapsed = 1 trunk/source (safe at 10k+ tags) · Expanded = paged tag detail · Grey = inactive · Color = live</text>`;
+    svg += `<text x="${sourceX}" y="${maxY + 36}" fill="#55605f" font-size="10">Collapsed = 1 trunk/source (safe at 10k+ tags) · Expanded = paged tag detail · Grey = inactive · Color = live</text>`;
 
     return { svg, maxHeight: maxY + 60, maxWidth: 1120 };
 }
@@ -2461,8 +2564,8 @@ function renderInterlinksDiagram() {
     }
 
     let svg = '';
-    svg += `<text x="50" y="28" fill="#6b7689" font-size="11" font-weight="600">DA TO DA (aggregated)</text>`;
-    svg += `<text x="50" y="46" fill="#6b7689" font-size="10">${links.length} link(s) · ${pairMap.size} source-pair(s) · click a pair badge to expand (page ${pageSize})</text>`;
+    svg += `<text x="50" y="28" fill="#55605f" font-size="11" font-weight="600">DA TO DA (aggregated)</text>`;
+    svg += `<text x="50" y="46" fill="#55605f" font-size="10">${links.length} link(s) · ${pairMap.size} source-pair(s) · click a pair badge to expand (page ${pageSize})</text>`;
 
     // Layout provider sources on left, consumer sources on right
     const providers = new Set();
@@ -2483,9 +2586,9 @@ function renderInterlinksDiagram() {
         const color = getStatusColor(st);
         const count = links.filter(l => (l.providerSourceId || 'default') === sid).length;
         svg += `<g class="diag-node" data-source="${escapeHtml(sid)}">`;
-        svg += `<rect x="${leftX}" y="${y}" width="${colW.source}" height="64" rx="6" fill="#11161f" stroke="${color}" stroke-width="2"/>`;
-        svg += `<text x="${leftX + colW.source / 2}" y="${y + 24}" text-anchor="middle" fill="#d8e0ea" font-size="12" font-weight="600">${escapeHtml(sourceName(sid))}</text>`;
-        svg += `<text x="${leftX + colW.source / 2}" y="${y + 44}" text-anchor="middle" fill="#6b7689" font-size="10">provider · ${count} out</text>`;
+        svg += `<rect x="${leftX}" y="${y}" width="${colW.source}" height="64" rx="0" fill="#ffffff" stroke="${color}" stroke-width="2"/>`;
+        svg += `<text x="${leftX + colW.source / 2}" y="${y + 24}" text-anchor="middle" fill="#14181a" font-size="12" font-weight="600">${escapeHtml(sourceName(sid))}</text>`;
+        svg += `<text x="${leftX + colW.source / 2}" y="${y + 44}" text-anchor="middle" fill="#55605f" font-size="10">provider · ${count} out</text>`;
         svg += `</g>`;
         y += rowH + sourceGap;
     });
@@ -2497,16 +2600,16 @@ function renderInterlinksDiagram() {
         const color = getStatusColor(st);
         const count = links.filter(l => (l.consumerSourceId || 'default') === sid).length;
         svg += `<g class="diag-node" data-source="${escapeHtml(sid)}">`;
-        svg += `<rect x="${rightX}" y="${y}" width="${colW.source}" height="64" rx="6" fill="#11161f" stroke="${color}" stroke-width="2"/>`;
-        svg += `<text x="${rightX + colW.source / 2}" y="${y + 24}" text-anchor="middle" fill="#d8e0ea" font-size="12" font-weight="600">${escapeHtml(sourceName(sid))}</text>`;
-        svg += `<text x="${rightX + colW.source / 2}" y="${y + 44}" text-anchor="middle" fill="#6b7689" font-size="10">consumer · ${count} in</text>`;
+        svg += `<rect x="${rightX}" y="${y}" width="${colW.source}" height="64" rx="0" fill="#ffffff" stroke="${color}" stroke-width="2"/>`;
+        svg += `<text x="${rightX + colW.source / 2}" y="${y + 24}" text-anchor="middle" fill="#14181a" font-size="12" font-weight="600">${escapeHtml(sourceName(sid))}</text>`;
+        svg += `<text x="${rightX + colW.source / 2}" y="${y + 44}" text-anchor="middle" fill="#55605f" font-size="10">consumer · ${count} in</text>`;
         svg += `</g>`;
         y += rowH + sourceGap;
         maxY = Math.max(maxY, y);
     });
 
     if (pairMap.size === 0) {
-        svg += `<text x="50" y="${maxY + 20}" fill="#6b7689" font-size="11">No DA links yet — create provider→consumer links on the Links tab. Sources shown grey until linked/live.</text>`;
+        svg += `<text x="50" y="${maxY + 20}" fill="#55605f" font-size="11">No DA links yet — create provider→consumer links on the Links tab. Sources shown grey until linked/live.</text>`;
         return { svg, maxHeight: maxY + 50, maxWidth: 920 };
     }
 
@@ -2530,7 +2633,7 @@ function renderInterlinksDiagram() {
             // same-source links: badge on left source
             if (from) {
                 svg += `<g class="diag-node" data-diag-action="toggle-expand" data-source-id="${attr(expandKey)}" style="cursor:pointer">`;
-                svg += `<circle cx="${from.x + colW.source / 2}" cy="${from.y - 8}" r="12" fill="#11161f" stroke="${color}" stroke-width="1.5"/>`;
+                svg += `<circle cx="${from.x + colW.source / 2}" cy="${from.y - 8}" r="12" fill="#ffffff" stroke="${color}" stroke-width="1.5"/>`;
                 svg += `<text x="${from.x + colW.source / 2}" y="${from.y - 4}" text-anchor="middle" fill="${color}" font-size="10">${pair.links.length}</text>`;
                 svg += `</g>`;
             }
@@ -2541,13 +2644,13 @@ function renderInterlinksDiagram() {
             const badgeX = (from.right + to.left) / 2;
             const badgeY = Math.min(from.cy, to.cy) - lift + 6;
             svg += `<g class="diag-node" data-diag-action="toggle-expand" data-source-id="${attr(expandKey)}" style="cursor:pointer">`;
-            svg += `<rect x="${badgeX - 28}" y="${badgeY - 12}" width="56" height="22" rx="4" fill="#11161f" stroke="${color}" stroke-width="1.5"/>`;
+            svg += `<rect x="${badgeX - 28}" y="${badgeY - 12}" width="56" height="22" rx="0" fill="#ffffff" stroke="${color}" stroke-width="1.5"/>`;
             svg += `<text x="${badgeX}" y="${badgeY + 4}" text-anchor="middle" fill="${color}" font-size="10">${pair.links.length}${expanded ? ' ▾' : ' ▸'}</text>`;
             svg += `</g>`;
         }
 
         if (expanded && slice.length) {
-            svg += `<text x="50" y="${detailY + 14}" fill="#6b7689" font-size="11" font-weight="600">${escapeHtml(sourceName(pair.fromSid))} → ${escapeHtml(sourceName(pair.toSid))} · ${sliceStart + 1}–${sliceStart + slice.length} / ${pair.links.length}</text>`;
+            svg += `<text x="50" y="${detailY + 14}" fill="#55605f" font-size="11" font-weight="600">${escapeHtml(sourceName(pair.fromSid))} → ${escapeHtml(sourceName(pair.toSid))} · ${sliceStart + 1}–${sliceStart + slice.length} / ${pair.links.length}</text>`;
             detailY += 24;
             slice.forEach((link, i) => {
                 const st = (link.enabled === false || (link.enabled ?? link.Enabled) === false) ? 'off' : getLinkStatus(link);
@@ -2557,15 +2660,15 @@ function renderInterlinksDiagram() {
                 const kind = link._kind === 'legacy' ? 'legacy' : 'link';
                 const rowY = detailY + i * tagSpacing;
                 svg += `<g class="diag-node">`;
-                svg += `<rect x="50" y="${rowY}" width="${colW.detail}" height="28" rx="4" fill="#11161f" stroke="${c}" stroke-width="1.5"/>`;
-                svg += `<text x="${50 + colW.detail / 2}" y="${rowY + 18}" text-anchor="middle" fill="#d8e0ea" font-size="11">${escapeHtml(pLabel)} · P</text>`;
+                svg += `<rect x="50" y="${rowY}" width="${colW.detail}" height="28" rx="0" fill="#ffffff" stroke="${c}" stroke-width="1.5"/>`;
+                svg += `<text x="${50 + colW.detail / 2}" y="${rowY + 18}" text-anchor="middle" fill="#14181a" font-size="11">${escapeHtml(pLabel)} · P</text>`;
                 svg += `</g>`;
                 svg += drawEdge(50 + colW.detail, rowY + 14, midX + 40, rowY + 14, st, c);
                 svg += `<g class="diag-node">`;
-                svg += `<rect x="${midX + 40}" y="${rowY}" width="${colW.detail}" height="28" rx="4" fill="#11161f" stroke="${c}" stroke-width="1.5"/>`;
-                svg += `<text x="${midX + 40 + colW.detail / 2}" y="${rowY + 18}" text-anchor="middle" fill="#d8e0ea" font-size="11">${escapeHtml(cLabel)} · C</text>`;
+                svg += `<rect x="${midX + 40}" y="${rowY}" width="${colW.detail}" height="28" rx="0" fill="#ffffff" stroke="${c}" stroke-width="1.5"/>`;
+                svg += `<text x="${midX + 40 + colW.detail / 2}" y="${rowY + 18}" text-anchor="middle" fill="#14181a" font-size="11">${escapeHtml(cLabel)} · C</text>`;
                 svg += `</g>`;
-                svg += `<text x="${midX + 40 + colW.detail + 12}" y="${rowY + 18}" fill="#6b7689" font-size="10">${escapeHtml(kind)}</text>`;
+                svg += `<text x="${midX + 40 + colW.detail + 12}" y="${rowY + 18}" fill="#55605f" font-size="10">${escapeHtml(kind)}</text>`;
             });
             detailY += slice.length * tagSpacing + 8;
             if (pair.links.length > pageSize) {
@@ -2573,13 +2676,13 @@ function renderInterlinksDiagram() {
                 const canNext = safePage < pageCount - 1;
                 if (canPrev) {
                     svg += `<g class="diag-node" data-diag-action="expand-page" data-source-id="${attr(expandKey)}" data-dir="-1" style="cursor:pointer">`;
-                    svg += `<rect x="50" y="${detailY}" width="70" height="22" rx="4" fill="#1a2230" stroke="#6b7689"/>`;
-                    svg += `<text x="85" y="${detailY + 15}" text-anchor="middle" fill="#d8e0ea" font-size="10">← Prev</text></g>`;
+                    svg += `<rect x="50" y="${detailY}" width="70" height="22" rx="0" fill="#ffffff" stroke="#c6cac3"/>`;
+                    svg += `<text x="85" y="${detailY + 15}" text-anchor="middle" fill="#14181a" font-size="10">← Prev</text></g>`;
                 }
                 if (canNext) {
                     svg += `<g class="diag-node" data-diag-action="expand-page" data-source-id="${attr(expandKey)}" data-dir="1" style="cursor:pointer">`;
-                    svg += `<rect x="130" y="${detailY}" width="70" height="22" rx="4" fill="#1a2230" stroke="#6b7689"/>`;
-                    svg += `<text x="165" y="${detailY + 15}" text-anchor="middle" fill="#d8e0ea" font-size="10">Next →</text></g>`;
+                    svg += `<rect x="130" y="${detailY}" width="70" height="22" rx="0" fill="#ffffff" stroke="#c6cac3"/>`;
+                    svg += `<text x="165" y="${detailY + 15}" text-anchor="middle" fill="#14181a" font-size="10">Next →</text></g>`;
                 }
                 detailY += 30;
             }
@@ -2588,7 +2691,7 @@ function renderInterlinksDiagram() {
         }
     });
 
-    svg += `<text x="50" y="${maxY + 28}" fill="#6b7689" font-size="10">Pair trunks = aggregated links · click badge to expand paged endpoints · grey = inactive · color = live</text>`;
+    svg += `<text x="50" y="${maxY + 28}" fill="#55605f" font-size="10">Pair trunks = aggregated links · click badge to expand paged endpoints · grey = inactive · color = live</text>`;
     return { svg, maxHeight: maxY + 50, maxWidth: 920 };
 }
 
@@ -2627,8 +2730,8 @@ function renderMqttDiagram() {
     const enabledCount = mappings.filter(isMqttEnabled).length;
 
     let svg = '';
-    svg += `<text x="50" y="28" fill="#6b7689" font-size="11" font-weight="600">MQTT (aggregated)</text>`;
-    svg += `<text x="50" y="46" fill="#6b7689" font-size="10">${enabledCount}/${totalTags} MQTT-enabled · ${bySource.size} sources · click group to expand (page ${pageSize}) · broker ${escapeHtml(state.mqttConnectionState || el('mqttState')?.textContent || 'unknown')}</text>`;
+    svg += `<text x="50" y="28" fill="#55605f" font-size="11" font-weight="600">MQTT (aggregated)</text>`;
+    svg += `<text x="50" y="46" fill="#55605f" font-size="10">${enabledCount}/${totalTags} MQTT-enabled · ${bySource.size} sources · click group to expand (page ${pageSize}) · broker ${escapeHtml(state.mqttConnectionState || el('mqttState')?.textContent || 'unknown')}</text>`;
 
     const groupPositions = new Map();
     const summaries = new Map();
@@ -2673,9 +2776,9 @@ function renderMqttDiagram() {
         const groupCy = sourceY + 32;
 
         svg += `<g class="diag-node" data-source="${escapeHtml(sourceId)}">`;
-        svg += `<rect x="${sourceX}" y="${sourceY}" width="${colW.source}" height="64" rx="6" fill="#11161f" stroke="${sourceColor}" stroke-width="2"/>`;
-        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 24}" text-anchor="middle" fill="#d8e0ea" font-size="12" font-weight="600">${escapeHtml(sourceName)}</text>`;
-        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 44}" text-anchor="middle" fill="#6b7689" font-size="10">${escapeHtml(sourceInfo?.progId || sourceInfo?.ProgId || 'DA source')}</text>`;
+        svg += `<rect x="${sourceX}" y="${sourceY}" width="${colW.source}" height="64" rx="0" fill="#ffffff" stroke="${sourceColor}" stroke-width="2"/>`;
+        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 24}" text-anchor="middle" fill="#14181a" font-size="12" font-weight="600">${escapeHtml(sourceName)}</text>`;
+        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 44}" text-anchor="middle" fill="#55605f" font-size="10">${escapeHtml(sourceSubtitle(sourceInfo))}</text>`;
         svg += `</g>`;
 
         const groupColor = getStatusColor(mqttFlow);
@@ -2685,10 +2788,10 @@ function renderMqttDiagram() {
         svg += drawEdge(sourceX + colW.source, groupCy, groupX, groupCy, mqttFlow, groupColor);
 
         svg += `<g class="diag-node" data-diag-action="toggle-expand" data-source-id="${attr(expandKey)}" style="cursor:pointer">`;
-        svg += `<rect x="${groupX}" y="${sourceY}" width="${colW.group}" height="64" rx="6" fill="#11161f" stroke="${groupColor}" stroke-width="1.5"/>`;
-        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 20}" text-anchor="middle" fill="#d8e0ea" font-size="12" font-weight="600">${summary.mqtt}/${summary.total} MQTT ${expanded ? '▾' : '▸'}</text>`;
-        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 38}" text-anchor="middle" fill="#6b7689" font-size="10">${escapeHtml(line2)}</text>`;
-        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 54}" text-anchor="middle" fill="#6b7689" font-size="10">${escapeHtml(line3)}</text>`;
+        svg += `<rect x="${groupX}" y="${sourceY}" width="${colW.group}" height="64" rx="0" fill="#ffffff" stroke="${groupColor}" stroke-width="1.5"/>`;
+        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 20}" text-anchor="middle" fill="#14181a" font-size="12" font-weight="600">${summary.mqtt}/${summary.total} MQTT ${expanded ? '▾' : '▸'}</text>`;
+        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 38}" text-anchor="middle" fill="#55605f" font-size="10">${escapeHtml(line2)}</text>`;
+        svg += `<text x="${groupX + colW.group / 2}" y="${sourceY + 54}" text-anchor="middle" fill="#55605f" font-size="10">${escapeHtml(line3)}</text>`;
         svg += `</g>`;
 
         const detailPositions = [];
@@ -2707,9 +2810,9 @@ function renderMqttDiagram() {
 
                 svg += drawEdge(groupX + colW.group, groupCy, tagX, cy, nodeStatus, nodeColor);
                 svg += `<g class="diag-node" data-tag="${escapeHtml(tKey)}">`;
-                svg += `<rect x="${tagX}" y="${tagY}" width="${colW.tag}" height="28" rx="4" fill="#11161f" stroke="${nodeColor}" stroke-width="1.5"/>`;
-                svg += `<text x="${tagX + colW.tag / 2}" y="${tagY + 12}" text-anchor="middle" fill="#d8e0ea" font-size="11">${escapeHtml(tagName)}</text>`;
-                svg += `<text x="${tagX + colW.tag / 2}" y="${tagY + 23}" text-anchor="middle" fill="#6b7689" font-size="9">${mqttOn ? ('ON' + (topic ? ' · ' + escapeHtml(String(topic).slice(0, 18)) : '')) : 'off'}</text>`;
+                svg += `<rect x="${tagX}" y="${tagY}" width="${colW.tag}" height="28" rx="0" fill="#ffffff" stroke="${nodeColor}" stroke-width="1.5"/>`;
+                svg += `<text x="${tagX + colW.tag / 2}" y="${tagY + 12}" text-anchor="middle" fill="#14181a" font-size="11">${escapeHtml(tagName)}</text>`;
+                svg += `<text x="${tagX + colW.tag / 2}" y="${tagY + 23}" text-anchor="middle" fill="#55605f" font-size="9">${mqttOn ? ('ON' + (topic ? ' · ' + escapeHtml(String(topic).slice(0, 18)) : '')) : 'off'}</text>`;
                 svg += `</g>`;
 
                 let edgeStatus = 'off';
@@ -2728,15 +2831,15 @@ function renderMqttDiagram() {
                 const canNext = safePage < pageCount - 1;
                 if (canPrev) {
                     svg += `<g class="diag-node" data-diag-action="expand-page" data-source-id="${attr(expandKey)}" data-dir="-1" style="cursor:pointer">`;
-                    svg += `<rect x="${tagX}" y="${navY}" width="70" height="22" rx="4" fill="#1a2230" stroke="#6b7689"/>`;
-                    svg += `<text x="${tagX + 35}" y="${navY + 15}" text-anchor="middle" fill="#d8e0ea" font-size="10">← Prev</text></g>`;
+                    svg += `<rect x="${tagX}" y="${navY}" width="70" height="22" rx="0" fill="#ffffff" stroke="#c6cac3"/>`;
+                    svg += `<text x="${tagX + 35}" y="${navY + 15}" text-anchor="middle" fill="#14181a" font-size="10">← Prev</text></g>`;
                 }
                 if (canNext) {
                     svg += `<g class="diag-node" data-diag-action="expand-page" data-source-id="${attr(expandKey)}" data-dir="1" style="cursor:pointer">`;
-                    svg += `<rect x="${tagX + 80}" y="${navY}" width="70" height="22" rx="4" fill="#1a2230" stroke="#6b7689"/>`;
-                    svg += `<text x="${tagX + 115}" y="${navY + 15}" text-anchor="middle" fill="#d8e0ea" font-size="10">Next →</text></g>`;
+                    svg += `<rect x="${tagX + 80}" y="${navY}" width="70" height="22" rx="0" fill="#ffffff" stroke="#c6cac3"/>`;
+                    svg += `<text x="${tagX + 115}" y="${navY + 15}" text-anchor="middle" fill="#14181a" font-size="10">Next →</text></g>`;
                 }
-                svg += `<text x="${tagX + 170}" y="${navY + 15}" fill="#6b7689" font-size="10">${sliceStart + 1}–${sliceStart + slice.length} / ${tags.length}</text>`;
+                svg += `<text x="${tagX + 170}" y="${navY + 15}" fill="#55605f" font-size="10">${sliceStart + 1}–${sliceStart + slice.length} / ${tags.length}</text>`;
                 maxY = Math.max(maxY, navY + 22);
             }
         }
@@ -2757,9 +2860,9 @@ function renderMqttDiagram() {
 
     const brokerY = Math.max(startY, (maxY + startY) / 2 - 32);
     svg += `<g class="diag-node">`;
-    svg += `<rect x="${brokerX}" y="${brokerY}" width="${colW.hub}" height="64" rx="8" fill="#11161f" stroke="${brokerColor}" stroke-width="2"/>`;
-    svg += `<text x="${brokerX + colW.hub / 2}" y="${brokerY + 24}" text-anchor="middle" fill="#d8e0ea" font-size="13" font-weight="600">MQTT Broker</text>`;
-    svg += `<text x="${brokerX + colW.hub / 2}" y="${brokerY + 44}" text-anchor="middle" fill="#6b7689" font-size="10">${enabledCount}/${totalTags} enabled</text>`;
+    svg += `<rect x="${brokerX}" y="${brokerY}" width="${colW.hub}" height="64" rx="0" fill="#ffffff" stroke="${brokerColor}" stroke-width="2"/>`;
+    svg += `<text x="${brokerX + colW.hub / 2}" y="${brokerY + 24}" text-anchor="middle" fill="#14181a" font-size="13" font-weight="600">MQTT Broker</text>`;
+    svg += `<text x="${brokerX + colW.hub / 2}" y="${brokerY + 44}" text-anchor="middle" fill="#55605f" font-size="10">${enabledCount}/${totalTags} enabled</text>`;
     svg += `</g>`;
 
     groupPositions.forEach(pos => {
@@ -2778,7 +2881,7 @@ function renderMqttDiagram() {
         }
     });
 
-    svg += `<text x="${sourceX}" y="${Math.max(maxY, brokerY + 64) + 32}" fill="#6b7689" font-size="10">Collapsed = 1 trunk/source · Expanded = paged tags · grey = MQTT off/inactive · color = enabled + live</text>`;
+    svg += `<text x="${sourceX}" y="${Math.max(maxY, brokerY + 64) + 32}" fill="#55605f" font-size="10">Collapsed = 1 trunk/source · Expanded = paged tags · grey = MQTT off/inactive · color = enabled + live</text>`;
     return { svg, maxHeight: Math.max(maxY, brokerY + 64) + 50, maxWidth: 1140 };
 }
 
@@ -2823,12 +2926,27 @@ function getLinkStatus(link) {
 
 function getStatusColor(status) {
     const colors = {
-        good: '#34d399',
-        warn: '#fbbf24',
-        bad: '#f87171',
-        off: '#6b7689'
+        good: '#0f6b3d',
+        warn: '#8a5a00',
+        bad: '#a52118',
+        off: '#55605f'
     };
     return colors[status] || colors.off;
+}
+
+// Diagram subtitle for a source node: what this source actually is, never a guess.
+function sourceSubtitle(sourceInfo) {
+    if (!sourceInfo) return 'source';
+    const progId = sourceInfo.progId || sourceInfo.ProgId || '';
+    if (progId) return progId;
+    const summary = sourceInfo.endpointSummary || sourceInfo.EndpointSummary || '';
+    if (summary) return summary;
+    const t = String(sourceInfo.sourceType || sourceInfo.SourceType || '').toLowerCase();
+    if (t.indexOf('opcua') >= 0) return 'OPC UA endpoint';
+    if (t.indexOf('melsec') >= 0) return 'Melsec serial';
+    if (t.indexOf('s7200') >= 0) return 'S7-200 PPI';
+    if (t.indexOf('mx') >= 0) return 'MX Component';
+    return 'OPC DA server';
 }
 
 function escapeHtml(text) {
@@ -3159,6 +3277,9 @@ function updateFlowBadge() {
     badgeEl.textContent = flowing + '/' + links.length;
     badgeEl.style.display = '';
     badgeEl.style.background = flowing ? 'var(--good)' : 'var(--warn)';
+    badgeEl.title = flowing === links.length
+        ? 'All ' + links.length + ' interlinks flowing'
+        : flowing + ' of ' + links.length + ' interlinks flowing, the rest idle, waiting or failed';
 }
 function renderInterlinkFlow() {
     const list = el('ilFlowList');
@@ -3181,11 +3302,12 @@ function renderInterlinkFlow() {
         const pVal = pv == null ? '&#8212;' : esc(String(get(pv, 'value') ?? ''));
         const pGood = pv ? !!get(pv, 'isGood') : false;
         const pTime = pv ? shortTime(get(pv, 'timestampUtc')) : 'no value';
+        const pBadge = pv && !pGood ? ' <span class="badge bad">bad</span>' : '';
         return `<div class="ilf-prov">
             <span class="msg" style="font-size:10px;text-transform:uppercase;letter-spacing:.05em">provider</span>
             <span class="n" style="font-size:13px">${esc(linkTagLabel(provSourceId, provItemId))}</span>
             ${count > 1 ? `<span class="ilf-fanout" title="Feeds ${count} consumers">&#8644; ${count}</span>` : ''}
-            <span class="ilf-prov-val"><span class="msg" style="font-size:10px">${esc(pTime)}</span><span class="mono" style="font-size:16px;font-weight:700;color:${pGood ? 'var(--good)' : 'var(--bad)'}">${pVal}</span></span>
+            <span class="ilf-prov-val"><span class="msg" style="font-size:10px">${esc(pTime)}</span><span class="mono" style="font-size:16px;font-weight:700;color:${pGood ? 'var(--good)' : 'var(--bad)'}">${pVal}</span>${pBadge}</span>
         </div>`;
     };
     const consHtml = (link) => {
@@ -3196,12 +3318,13 @@ function renderInterlinkFlow() {
         const cVal = cv == null ? '&#8212;' : esc(String(get(cv, 'value') ?? ''));
         const cGood = cv ? !!get(cv, 'isGood') : false;
         const cTime = cv ? shortTime(get(cv, 'timestampUtc')) : 'no value';
+        const cBadge = cv && !cGood ? ' <span class="badge bad">bad</span>' : '';
         const pill = renderInterlinkStatusPill(stats);
         return `<div class="ilf-cons-row">
             ${pill}
             <div style="flex:1;min-width:0"><span class="n" style="font-size:12px">${esc(linkTagLabel(consumerSourceId, consumerItemId))}</span></div>
             <span class="msg" style="font-size:10px">${esc(cTime)}</span>
-            <span class="mono" style="font-size:14px;font-weight:600;color:${cGood ? 'var(--good)' : 'var(--bad)'}">${cVal}</span>
+            <span class="mono" style="font-size:14px;font-weight:600;color:${cGood ? 'var(--good)' : 'var(--bad)'}">${cVal}</span>${cBadge}
         </div>`;
     };
     const groups = Array.from(byProvider.entries()).map(([pKey, plinks]) => {
@@ -3322,7 +3445,7 @@ function renderMappingRow(mapping) {
     const descIcon = desc ? `<span class="li-desc" title="${attr(desc)}" data-action="open-faceplate" data-source-id="${attr(sourceId)}" data-item-id="${attr(item)}">&#8505;</span>` : '';
     // Config badges clip/fade first; the colored access status is pinned at the far
     // right and never gets cut off.
-    return `<div class="li clickable" data-action="open-faceplate" data-source-id="${attr(sourceId)}" data-item-id="${attr(item)}">${descIcon}<div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="n">${esc(name)}</span> <span class="p">${esc(sourceId)} · ${esc(item)} · UA: ${esc(node)}</span></div><div class="li-badge" title="${attr(statusSummary)}"><span class="li-badge-clip">${typeBadge}${digitalBadge}${digitalSuggest}${unitBadge}${deadbandBadge}${decimalsBadge}${rateBadge}${subBadge}${mqttBadge}${influxBadge}</span><span class="li-badge-status">${discBadge ? `<span title="${attr(discTitle)}">${discBadge}</span>` : ''}${accessBadge}</span></div></div>`;
+    return `<div class="li clickable" role="button" tabindex="0" aria-label="${attr(name + ' — ' + node)}" data-action="open-faceplate" data-source-id="${attr(sourceId)}" data-item-id="${attr(item)}">${descIcon}<div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="n">${esc(name)}</span> <span class="p">${esc(sourceId)} · ${esc(item)} · UA: ${esc(node)}</span></div><div class="li-badge" title="${attr(statusSummary)}"><span class="li-badge-clip">${typeBadge}${digitalBadge}${digitalSuggest}${unitBadge}${deadbandBadge}${decimalsBadge}${rateBadge}${subBadge}${mqttBadge}${influxBadge}</span><span class="li-badge-status">${discBadge ? `<span title="${attr(discTitle)}">${discBadge}</span>` : ''}${accessBadge}</span></div></div>`;
 }
 
 const MAPPING_ROWS_CAP = 1000;
@@ -3331,7 +3454,20 @@ function renderMappingRows(mappings) {
     const note = mappings.length > MAPPING_ROWS_CAP
         ? `<span class="msg">… showing first ${MAPPING_ROWS_CAP} of ${mappings.length} mappings — use the search box to filter</span>`
         : '';
-    return (rows.length ? rows.map(renderMappingRow).join('') : '<span class="msg">No source → OPC UA mappings.</span>') + note;
+    if (rows.length) return rows.map(renderMappingRow).join('') + note;
+    // Empty tab: say where the mappings actually are instead of restating the heading.
+    const tabs = [['opc-da', 'OPC DA'], ['opc-ua', 'OPC UA'], ['drivers', 'Drivers'], ['mx', 'MX']];
+    const current = state.mapType || 'opc-da';
+    const others = tabs
+        .filter(t => t[0] !== current)
+        .map(t => {
+            const ids = new Set(mapTypeSources(t[0]).map(s => s.sourceId));
+            const count = (state.mappings || []).filter(m => ids.has(m.sourceId || m.SourceId || 'default')).length;
+            return count ? t[1] + ' (' + count + ')' : null;
+        })
+        .filter(Boolean);
+    const hint = others.length ? ' ' + others.join(', ') + ' already have mappings.' : '';
+    return '<span class="msg">No mappings on this tab yet.' + hint + ' Browse this source\'s tags above, or switch tabs, then add one.</span>' + note;
 }
 
 let faceplateOpen = false;
@@ -4660,7 +4796,9 @@ async function refresh() {
          el('pBridge').innerHTML = badge(get(b, 'bridgeState') || '—', stateClass(get(b, 'bridgeState')));
          el('pDa').innerHTML = badge(get(b, 'daConnectionState') || '—', stateClass(get(b, 'daConnectionState')));
          el('pUa').innerHTML = badge(get(ua, 'state') || '—', stateClass(get(ua, 'state')));
-         el('pTags').textContent = get(b, 'mappingCount') ?? 0;
+          el('pTags').textContent = get(b, 'mappingCount') ?? 0;
+          state.headerMappingCount = get(b, 'mappingCount') ?? 0;
+          updateNoMappingsBanner();
          el('pApps').textContent = get(apps, 'detectedCount') ?? 1;
          renderFleet(apps);
         el('bridgeState').innerHTML = badge(get(b, 'bridgeState') || '—', stateClass(get(b, 'bridgeState')));
@@ -4784,7 +4922,13 @@ async function refresh() {
             const readMode = get(source,'readMode') || '';
             const writeMode = get(source,'writeMode') || '';
             const ioBit = (readMode || writeMode) ? ' · <span style="font-weight:400">' + esc([readMode, writeMode].filter(Boolean).join(' · ')) + '</span>' : '';
-            return `<div class="li"><div style="flex:1"><div class="n">${esc(get(source,'displayName') || get(source,'sourceId'))} ${badge(connState, connClass)}</div><div class="p">${esc(get(source,'sourceId'))} · ${esc(get(source,'host') || '')} · ${esc(get(source,'progId') || '')}${ioBit}</div><div class="p">${formatMs(get(source,'updateRateMs'))} · ${(get(source,'lastDaReadCount') ?? 0)} values in ${formatMs(get(source,'lastDaReadDurationMs'))}${get(source,'lastError') ? ' · <span class="bad">' + esc(get(source,'lastError')) + '</span>' : ''}</div></div></div>`;
+            const sub = [get(source,'sourceId'), sourceSubtitle(source)].filter(Boolean).join(' · ');
+            const readCount = get(source,'lastDaReadCount') ?? 0;
+            const readMs = get(source,'lastDaReadDurationMs');
+            const readBit = (readCount || readMs)
+                ? readCount + ' value' + (readCount === 1 ? '' : 's') + (readMs ? ' in ' + formatMs(readMs) : '')
+                : 'no reads yet';
+            return `<div class="li"><div style="flex:1"><div class="n">${esc(get(source,'displayName') || get(source,'sourceId'))} ${badge(connState, connClass)}</div><div class="p">${esc(sub)}${ioBit}</div><div class="p">${formatMs(get(source,'updateRateMs'))} · ${readBit}${get(source,'lastError') ? ' · <span class="bad">' + esc(get(source,'lastError')) + '</span>' : ''}</div></div></div>`;
         }).join('') : '<span class="msg">No source status yet.</span>';
         const rateGroups = get(b, 'rateGroups') || [];
         const alarmBar = el('rateAlarmBar');
@@ -5301,17 +5445,26 @@ function applyMappingView(mappings) {
 function updateNoMappingsBanner() {
     const bannerNoMap = el('bannerNoMappings');
     if (bannerNoMap) {
-        const typed = mappingsForMapType(state.mappings || []);
-        const noMappings = typed.length === 0;
+        // Count every mapped tag, not just the active map type's: with UA tags live the
+        // header already reads "TAGS 30" and this banner must not contradict it. The
+        // mapping list is only fetched on the Maps tab, so fall back to the header count.
+        const noMappings = Math.max((state.mappings || []).length, state.headerMappingCount || 0) === 0;
         bannerNoMap.style.display = (noMappings && (state.sources || []).length > 0) ? '' : 'none';
-        if (noMappings && (state.sources || []).length > 0) bannerNoMap.innerHTML = 'No tags mapped yet. <button class="btn" type="button" onclick="navigate(\'tags/maps\')">Map Tags</button>';
+        if (noMappings && (state.sources || []).length > 0) bannerNoMap.innerHTML = 'No tags mapped yet. Map a source\'s tags to publish them over OPC UA. <button class="btn" type="button" onclick="navigate(\'tags/maps\')">Map Tags</button>';
     }
 }
 function rerenderMappings() {
+    // Rows are rebuilt wholesale every second; a keyboard user's place must survive it.
+    const active = document.activeElement;
+    const keepRef = active && active.classList && active.classList.contains('li') ? restoreRefFor(active) : null;
     const typed = mappingsForMapType(state.mappings || []);
     const view = applyMappingView(state.mappings || []);
     if (el('mapCount')) el('mapCount').textContent = view.length + (view.length !== typed.length ? ' / ' + typed.length + ' mappings' : ' mappings');
     if (el('mappedList')) el('mappedList').innerHTML = renderMappingRows(view);
+    if (keepRef) {
+        const node = document.querySelector(keepRef);
+        if (node) { try { node.focus(); } catch (e) { /* row scrolled out of the capped view */ } }
+    }
     updateNoMappingsBanner();
 }
 
@@ -6948,7 +7101,7 @@ async function browseUaSource(nodeId) {
         // displayed node is the previous trail entry (or '' for root).
         const parentTrail = state.uaBrowseTrail.slice(0, -1);
         const parentNodeId = parentTrail.length ? parentTrail[parentTrail.length - 1].nodeId : '';
-        rows.push(`<div class="li clickable" data-action="open-branch" data-path="${attr(parentNodeId)}" data-trail-depth="${parentTrail.length}"><span class="icon folder">&#9650;</span><div style="flex:1"><div class="n">..</div><div class="p">Up one level</div></div></div>`);
+        rows.push(`<div class="li clickable" role="button" tabindex="0" data-action="open-branch" data-path="${attr(parentNodeId)}" data-trail-depth="${parentTrail.length}"><span class="icon folder">&#9650;</span><div style="flex:1"><div class="n">..</div><div class="p">Up one level</div></div></div>`);
     }
     let folders = 0, vars = 0;
     for (const node of nodes) {
@@ -6963,7 +7116,7 @@ async function browseUaSource(nodeId) {
         } else {
             folders++;
             const childIcon = hasChildren ? '&#128193;' : '&#128196;';
-            rows.push(`<div class="li clickable" data-action="open-branch" data-path="${attr(nid)}" data-node-name="${attr(name)}"><span class="icon folder">${childIcon}</span><div style="flex:1"><div class="n">${esc(name)}</div><div class="p">${esc(nid)} · ${esc(node.nodeClass || 'folder')}${hasChildren ? '' : ' (leaf)'}</div></div></div>`);
+            rows.push(`<div class="li clickable" role="button" tabindex="0" data-action="open-branch" data-path="${attr(nid)}" data-node-name="${attr(name)}"><span class="icon folder">${childIcon}</span><div style="flex:1"><div class="n">${esc(name)}</div><div class="p">${esc(nid)} · ${esc(node.nodeClass || 'folder')}${hasChildren ? '' : ' (leaf)'}</div></div></div>`);
         }
     }
     el('tagTree').innerHTML = rows.length ? rows.join('') : '<span class="msg">No child nodes at this node.</span>';
@@ -7012,11 +7165,11 @@ async function browseTags(path, recursive = false) {
     const rows = [];
     if (state.tagPath) {
         const parent = state.tagPath.includes('.') ? state.tagPath.substring(0, state.tagPath.lastIndexOf('.')) : '';
-        rows.push(`<div class="li clickable" data-action="open-branch" data-path="${attr(parent)}"><span class="icon folder">&#9650;</span><div style="flex:1"><div class="n">..</div><div class="p">Up one level</div></div></div>`);
+        rows.push(`<div class="li clickable" role="button" tabindex="0" data-action="open-branch" data-path="${attr(parent)}"><span class="icon folder">&#9650;</span><div style="flex:1"><div class="n">..</div><div class="p">Up one level</div></div></div>`);
     }
     for (const branch of branches) {
         const child = state.tagPath ? state.tagPath + '.' + branch : branch;
-        rows.push(`<div class="li clickable" data-action="open-branch" data-path="${attr(child)}"><span class="icon folder">&#128193;</span><div style="flex:1"><div class="n">${esc(branch)}</div><div class="p">folder</div></div></div>`);
+        rows.push(`<div class="li clickable" role="button" tabindex="0" data-action="open-branch" data-path="${attr(child)}"><span class="icon folder">&#128193;</span><div style="flex:1"><div class="n">${esc(branch)}</div><div class="p">folder</div></div></div>`);
     }
     for (const tag of tags) {
         const itemId = tag.itemId || tag.ItemId || tag.daItemId || tag.DaItemId;
@@ -7267,7 +7420,104 @@ function bindDynamicButtons() {
 
 
 
+// Where focus should return when an overlay closes. Stored as a selector when the
+// trigger is a list row, because those rows are rebuilt every second.
+let overlayRestoreFocus = null;
+let lastTriggerRef = null;
+function restoreRefFor(node) {
+    if (!node || !node.getAttribute) return null;
+    const action = node.getAttribute('data-action');
+    const sid = node.getAttribute('data-source-id');
+    const iid = node.getAttribute('data-item-id');
+    if (action && sid && iid && window.CSS && CSS.escape) {
+        return '[data-action="' + CSS.escape(action) + '"][data-source-id="' + CSS.escape(sid) + '"][data-item-id="' + CSS.escape(iid) + '"]';
+    }
+    return node;
+}
+
+// Keyboard parity: anything that behaves like a control answers Enter and Space.
+function bindKeyboardActivation() {
+    document.addEventListener('click', event => {
+        const target = event.target.closest ? event.target.closest('[data-action]') : null;
+        if (target) lastTriggerRef = restoreRefFor(target);
+    }, true);
+    document.addEventListener('keydown', event => {
+        if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Spacebar') return;
+        const target = event.target.closest('[data-action], [data-diag-action]');
+        if (!target) return;
+        if (['BUTTON', 'A', 'INPUT', 'SELECT', 'TEXTAREA'].indexOf(target.tagName) >= 0) return;
+        event.preventDefault();
+        lastTriggerRef = restoreRefFor(target);
+        target.click();
+    });
+}
+
+// Overlays behave like dialogs: named, modal, Escape closes, focus enters, leaves and returns.
+function bindOverlayA11y() {
+    const overlays = Array.from(document.querySelectorAll('.modal-overlay'));
+    if (!overlays.length) return;
+    overlays.forEach(overlay => {
+        if (overlay.getAttribute('role')) return;
+        overlay.setAttribute('role', 'dialog');
+        overlay.setAttribute('aria-modal', 'true');
+        const title = overlay.querySelector('.modal-h .n, .modal-title');
+        if (title) {
+            if (!title.id) title.id = 'dlg-title-' + Math.random().toString(36).slice(2, 8);
+            overlay.setAttribute('aria-labelledby', title.id);
+        }
+    });
+    const openOverlay = () => overlays.find(o => o.classList.contains('open')) || null;
+    const focusablesIn = overlay => Array.from(overlay.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'))
+        .filter(node => node.offsetParent !== null);
+
+    let lastOpen = null;
+    const sync = () => {
+        const current = openOverlay();
+        if (current && current !== lastOpen) {
+            lastOpen = current;
+            overlayRestoreFocus = lastTriggerRef || restoreRefFor(document.activeElement);
+            lastTriggerRef = null;
+            const first = focusablesIn(current)[0];
+            if (first) setTimeout(() => first.focus(), 40);
+        } else if (!current && lastOpen) {
+            const back = overlayRestoreFocus;
+            lastOpen = null;
+            overlayRestoreFocus = null;
+            if (typeof back === 'string') {
+                const node = document.querySelector(back);
+                if (node) { try { node.focus(); } catch (e) { /* row is gone */ } }
+            } else if (back && document.contains(back)) {
+                try { back.focus(); } catch (e) { /* element is gone */ }
+            }
+        }
+    };
+    const observer = new MutationObserver(sync);
+    overlays.forEach(overlay => observer.observe(overlay, { attributes: true, attributeFilter: ['class'] }));
+
+    document.addEventListener('keydown', event => {
+        const current = openOverlay();
+        if (!current) return;
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            const closer = current.querySelector('.modal-close');
+            if (closer) closer.click();
+            return;
+        }
+        if (event.key !== 'Tab') return;
+        const items = focusablesIn(current);
+        if (!items.length) return;
+        const first = items[0];
+        const last = items[items.length - 1];
+        const active = document.activeElement;
+        if (!current.contains(active)) { event.preventDefault(); first.focus(); }
+        else if (event.shiftKey && active === first) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && active === last) { event.preventDefault(); first.focus(); }
+    });
+}
+
 document.addEventListener('DOMContentLoaded', async () => {
+    bindKeyboardActivation();
+    bindOverlayA11y();
     bindDiagramPanZoom();
     el('selectedSource').addEventListener('change', e => pickSource(e.target.value));
     el('mapSourceSelect').addEventListener('change', e => pickSource(e.target.value));
