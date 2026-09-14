@@ -21,7 +21,9 @@ namespace OpcBridge.App;
 //   renderMx(/saveMxSource(/testMxConnection(/mxFormBody(, /api/drivers/mx-component/test-connection
 //   MX sources are separate from serial drivers: isDriverSource excludes MxComponent
 //   data-tab="opc-ua", id="view-opc-ua", data-route="connectivity/opc-ua", text "OPC UA"
-//   data-tab="connection", id="view-connection", id="sourcesStatusList", data-route="connectivity/sources", text "Sources"
+//   data-tab="connection", id="view-connection", data-route="connectivity/sources", text "Sources"
+//   id="sourcesStatusList" (Sources tab status list) survives the Monitor
+//   panel's rename to id="sourceRosterList": the tab markup and tests pin it.
 //   id="uaCfgEndpointUrl", id="uaCfgSourceId", function saveUaSource/testUaConnection
 //   data-tab="ua-subs", id="view-ua-subs", data-route="connectivity/ua-subs", text "UA Subs"
 //   per-source collapsible cards in uaSubsContainer, uaSubModal add/edit, id="subsMsg"
@@ -1011,8 +1013,8 @@ internal static class DashboardPage
     </div>
     <div class="grid2" style="margin-bottom:14px">
         <div class="box">
-            <div class="box-h">Source Status <span class="msg" id="sourceCountH" style="margin-left:auto"></span></div>
-            <div class="box-b"><div class="list" id="sourceStatusList" style="max-height:300px"></div></div>
+            <div class="box-h">Sources <span class="info" data-tip="Every configured source, read-only here: the live copies of the same details the Sources tabs edit. Click a source to open its settings.">i</span><span class="msg" id="sourceCountH" style="margin-left:auto"></span></div>
+            <div class="box-b"><div class="list" id="sourceRosterList" style="max-height:300px"><span class="msg">Loading sources…</span></div></div>
         </div>
         <div class="box">
             <div class="box-h">OPC UA Endpoint</div>
@@ -4344,24 +4346,41 @@ function sourceEndpointSummary(source) {
     }
     return `${esc(source.host || 'localhost')} · ${esc(source.progId || '')}`;
 }
-function sourceStatusRowHtml(source) {
-    const st = source.connectionState || source.ConnectionState || '';
-    const err = source.lastError || source.LastError || '';
-    const info = source.serverInfo || source.ServerInfo || '';
-    const mode = source.readMode || source.ReadMode || '';
-    const wmode = source.writeMode || source.WriteMode || '';
-    const errBit = err ? ` · <span class="bad">${esc(err)}</span>` : '';
-    const infoBit = info ? ` · ${esc(info)}` : '';
-    const modeBit = mode ? ` · <span class="msg" style="font-weight:400">${esc(mode)}</span>` : '';
-    const wmodeBit = wmode ? ` · <span class="msg" style="font-weight:400">${esc(wmode)}</span>` : '';
-    return `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)} ${sourceTypeBadge(source)} ${st ? badge(st, stateClass(st)) : ''}</div><div class="p">${esc(source.sourceId)} · ${sourceEndpointSummary(source)} · ${formatMs(source.updateRateMs)}${infoBit}${modeBit}${wmodeBit}${errBit}</div></div><button class="btn ghost" data-action="select-source-status" data-source-id="${attr(source.sourceId)}">Select</button></div>`;
+// ---------------------------------------------------------------------------
+// Monitor roster ("Sources" panel below the flow)
+// The flow nodes are live status; this roster is the configured inventory:
+// every source once, in configured order, with the settings tabs' own
+// details but read-only. One click opens the same config the tabs edit.
+// ---------------------------------------------------------------------------
+// A roster line quotes one source from the tab's own model: endpoint how the
+// tab prints it, rate as the tab's configured poll interval. Live state stays
+// out on purpose — the Data Flow above already says faulted or reconnecting.
+function sourceRosterRowHtml(source, pos) {
+    const id = source.sourceId || '';
+    const where = sourceEndpointSummary(source);
+    return `<div class="li source-row" role="listitem"><div><div class="n"><span class="msg" style="font-weight:400">${pos + 1}.</span> ${esc(source.displayName || id)} ${sourceTypeBadge(source)}</div><div class="p">${esc(id)} · ${where} · ${formatMs(source.updateRateMs)}</div></div><button class="btn ghost" type="button" data-action="roster-source" data-source-id="${attr(id)}" title="Open ${attr(source.displayName || id)} settings">Open</button></div>`;
 }
-function renderSourcesStatusList() {
-    const host = el('sourcesStatusList');
+// Configured order first so the panel reads like the tabs, not the wire:
+// a not-yet-polled source appears from config alone.
+function renderMonitorRoster(bridgeSources) {
+    const host = el('sourceRosterList');
     if (!host) return;
-    host.innerHTML = state.sources.length
-        ? state.sources.map(sourceStatusRowHtml).join('')
-        : '<span class="msg">No sources configured. Click + Add Source.</span>';
+    const seen = new Map();
+    (state.sources || []).forEach(s => seen.set(String(s.sourceId || ''), s));
+    (bridgeSources || []).forEach(s => {
+        const id = String(get(s, 'sourceId') || '');
+        if (id && !seen.has(id)) seen.set(id, Object.assign({}, s));
+    });
+    const rows = Array.from(seen.values());
+    // Only the roster's own fields gate a repaint: the signature must not move
+    // with the live status tick, or rows would rebuild (and steal scroll) on
+    // every refresh even when nothing configured changed.
+    const signature = JSON.stringify(rows.map(s => [s.sourceId, s.displayName, s.sourceType, s.SourceType, s.host, s.progId, s.endpointUrl, s.EndpointUrl, s.logicalStationNumber, s.updateRateMs]));
+    if (state.rosterSignature === signature) return;
+    state.rosterSignature = signature;
+    host.innerHTML = rows.length
+        ? rows.map((s, i) => sourceRosterRowHtml(s, i)).join('')
+        : '<span class="msg">No sources configured. Add one under Sources.</span>';
 }
 function daSources() { return state.sources.filter(s => !isUaSource(s)); }
 function uaSources() { return state.sources.filter(s => isUaSource(s)); }
@@ -4410,7 +4429,7 @@ function renderSources() {
             `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)} ${sourceTypeBadge(source)}</div><div class="p">${esc(source.sourceId)} · ${esc(source.endpointUrl || '')} · ${formatMs(source.updateRateMs)}</div></div><button class="btn ghost" data-action="select-ua-source" data-source-id="${attr(source.sourceId)}">Select</button></div>`
         ).join('') : '<span class="msg">No OPC UA sources configured.</span>';
     }
-    renderSourcesStatusList();
+    renderMonitorRoster(state.sources);
     updateMapSourceHint();
     updateMapBrowseUi();
     loadSelectedSourceForm();
@@ -5558,7 +5577,7 @@ async function refresh() {
                     source.writeMode = get(status, 'writeMode') || '';
                 }
             });
-            renderSourcesStatusList();
+            renderMonitorRoster(sources);
         }
         // Keep the config forms' Detected Server / Read Mode lines live.
         const activeView = document.querySelector('.view.active')?.id || '';
@@ -5584,20 +5603,7 @@ async function refresh() {
             }
             updateUaCfgReadMode(current);
         }
-        el('sourceStatusList').innerHTML = sources.length ? sources.map(source => {
-            const connState = get(source,'connectionState') || '—';
-            const connClass = stateClass(connState);
-            const readMode = get(source,'readMode') || '';
-            const writeMode = get(source,'writeMode') || '';
-            const ioBit = (readMode || writeMode) ? ' · <span style="font-weight:400">' + esc([readMode, writeMode].filter(Boolean).join(' · ')) + '</span>' : '';
-            const sub = [get(source,'sourceId'), sourceSubtitle(source)].filter(Boolean).join(' · ');
-            const readCount = get(source,'lastDaReadCount') ?? 0;
-            const readMs = get(source,'lastDaReadDurationMs');
-            const readBit = (readCount || readMs)
-                ? readCount + ' value' + (readCount === 1 ? '' : 's') + (readMs ? ' in ' + formatMs(readMs) : '')
-                : 'no reads yet';
-            return `<div class="li"><div style="flex:1"><div class="n">${esc(get(source,'displayName') || get(source,'sourceId'))} ${badge(connState, connClass)}</div><div class="p">${esc(sub)}${ioBit}</div><div class="p">${formatMs(get(source,'updateRateMs'))} · ${readBit}${get(source,'lastError') ? ' · <span class="bad">' + esc(get(source,'lastError')) + '</span>' : ''}</div></div></div>`;
-        }).join('') : '<span class="msg">No source status yet.</span>';
+        renderMonitorRoster(sources);
         renderMonitorFlow(b, ua, sources);
         const sourceMix = el('sourceMix');
         if (sourceMix) sourceMix.textContent = sourceMixText(sources);
@@ -7996,10 +8002,12 @@ function bindDynamicButtons() {
         if (!button) return;
         pickSource(button.dataset.sourceId || '');
     });
-    const statusList = el('sourcesStatusList');
-    if (statusList) {
-        statusList.addEventListener('click', event => {
-            const button = event.target.closest('button[data-action="select-source-status"]');
+    // The roster is rebuilt from signatures, so its clicks are delegated too:
+    // one press opens the same config the Sources tabs edit.
+    const roster = el('sourceRosterList');
+    if (roster) {
+        roster.addEventListener('click', event => {
+            const button = event.target.closest('button[data-action="roster-source"]');
             if (!button) return;
             pickSource(button.dataset.sourceId || '', { openConfig: true });
         });
