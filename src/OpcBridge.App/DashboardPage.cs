@@ -134,7 +134,7 @@ internal static class DashboardPage
         .mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
         /* Headings break evenly; short descriptions avoid a dangling last word.
            Article prose is left alone: browsers ignore balance past a few lines. */
-        .view-title, .help-article-title, .help-body h2, .help-body h3, .modal-h .n { text-wrap: balance; }
+        .view-title, .help-article-title, .help-body h3, .help-body h4, .modal-h .n { text-wrap: balance; }
         .hint, .msg, .alarm-bar, .first-run-banner, .session-warn-banner, .port-banner, .help-noresults { text-wrap: pretty; }
         /* Status rail. Auto height on purpose: it wraps instead of clipping. */
         .topbar { display: flex; align-items: stretch; gap: 0; min-height: 53px; padding: 0 14px; background: var(--panel); border-bottom: 2px solid var(--text); flex-wrap: wrap; }
@@ -182,6 +182,8 @@ internal static class DashboardPage
         /* Skip link: first focusable thing on the page, hidden until a keyboard user asks. */
         .skip-link { position: absolute; inset-inline-start: -9999px; top: 8px; z-index: 2000; background: var(--panel); color: var(--text); border: 2px solid var(--text); padding: 8px 14px; font-size: var(--fs-body); font-weight: 700; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: .08em; }
         .skip-link:focus { inset-inline-start: 8px; }
+        /* Announced but not shown: state that changes without moving focus (search result counts). */
+        .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
         /* The view heading is structure first: it names the page for assistive tech and
            tells anyone arriving from the rail where they just landed. */
         .view-title { font-family: var(--font-mono); font-size: var(--fs-title); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text); padding-bottom: 8px; border-bottom: 1px solid var(--border2); margin-bottom: 14px; }
@@ -426,6 +428,8 @@ internal static class DashboardPage
         .help-subtab:hover, .map-type-tab:hover { color: var(--text); background: var(--panel2); }
         .help-subtab.active, .map-type-tab.active { color: var(--panel); background: var(--text); }
         .help-subtab:focus-visible, .map-type-tab:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+        .help-subtab:active, .map-type-tab:active { background: var(--text); color: var(--panel); }
+        .help-subtab.active:active, .map-type-tab.active:active { background: var(--panel2); color: var(--text); }
         .help-subtab-content { display: none; }
         .help-subtab-content.active { display: block; }
         .help-layout { display: flex; align-items: flex-start; gap: 16px; }
@@ -435,41 +439,61 @@ internal static class DashboardPage
         .help-search:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
         .help-search-clear { background: var(--panel); border: 1px solid var(--border2); color: var(--muted); width: 34px; height: 34px; border-radius: 2px; cursor: pointer; font-size: var(--fs-title); line-height: 1; flex: none; }
         .help-search-clear:hover { color: var(--text); background: var(--panel2); }
+        .help-search-clear:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+        .help-search-clear:active { background: var(--text); color: var(--panel); }
         .help-search-loc { display: block; font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .08em; opacity: .8; margin-bottom: 2px; font-family: var(--font-mono); }
         .help-search-snippet { display: block; font-size: var(--fs-micro); font-weight: 400; opacity: .85; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .help-noresults { padding: 14px; color: var(--muted); font-size: var(--fs-body); background: var(--panel); border: 1px solid var(--border2); border-radius: 0; }
-        .help-toc { flex: 0 0 230px; display: flex; flex-direction: column; gap: 0; position: sticky; top: 12px; border: 1px solid var(--border2); background: var(--panel); }
+        /* Search snippets are nowrap, so without this their min-content balloons the rail
+           from 230px to 750px+ and crushes the reading pane. */
+        .help-toc { flex: 0 0 230px; min-width: 0; display: flex; flex-direction: column; gap: 0; position: sticky; top: 12px; border: 1px solid var(--border2); background: var(--panel); }
         .help-toc-item { text-align: left; background: none; border: none; border-bottom: 1px solid var(--border); color: var(--ink2); padding: 9px 12px; font-size: var(--fs-body); font-weight: 600; cursor: pointer; border-radius: 0; transition: background-color .12s ease, color .12s ease; line-height: 1.35; font-family: var(--font-ui); }
         .help-toc-item:last-child { border-bottom: none; }
         .help-toc-item:hover { color: var(--text); background: var(--panel2); }
         .help-toc-item.active { color: var(--panel); background: var(--text); font-weight: 700; }
         .help-toc-item:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+        .help-toc-item:active { background: var(--text); color: var(--panel); }
+        .help-toc-item.active:active { background: var(--panel2); color: var(--text); }
         .help-pane { flex: 1; min-width: 0; background: var(--panel); border: 1px solid var(--border2); border-top: 2px solid var(--text); border-radius: 0; }
         .help-article { display: none; }
         .help-article.active { display: block; }
         .help-article-title { font-size: var(--fs-value); font-weight: 700; padding: 16px 18px 0; margin: 0; letter-spacing: -.015em; }
         .help-article .help-body { padding-top: 6px; }
         @media (max-width: 800px) {
-            .help-layout { flex-direction: column; }
-            .help-toc { flex-direction: row; overflow-x: auto; position: static; flex: none; width: 100%; padding-bottom: 4px; border: none; background: none; }
+            /* Column mode inherits align-items: flex-start, which sizes the pane to
+               its widest content (a 532px table) instead of the viewport. Stretch
+               it and let the table wrapper do the scrolling. */
+            .help-layout { flex-direction: column; align-items: stretch; }
+            .help-toc { flex-direction: row; overflow-x: auto; position: static; flex: none; width: 100%; min-width: 0; padding-bottom: 4px; border: none; background: none; }
             .help-toc-item { white-space: nowrap; flex: none; border: 1px solid var(--border2); border-right: none; }
             .help-toc-item:last-child { border-right: 1px solid var(--border2); }
             .help-toc-item.active { flex: none; }
+            /* Search results stay a vertical list even here: as horizontal chips each
+               650px-wide card would page through a 366px rail. Titles wrap, snippets clip. */
+            #helpSearchToc { flex-direction: column; overflow-x: hidden; }
+            #helpSearchToc .help-toc-item { white-space: normal; }
         }
         .help-body { padding: 12px 18px 18px; max-width: 68ch; font-size: var(--fs-body); line-height: 1.65; }
         .help-body ul, .help-body ol { padding-left: 20px; color: var(--ink2); }
         .help-body li + li { margin-top: 6px; }
-        .help-body h4 { font-size: var(--fs-micro); font-weight: 700; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); margin: 16px 0 6px; font-family: var(--font-mono); }
-        .help-body h4:first-child { margin-top: 0; }
+        .help-body h5 { font-size: var(--fs-micro); font-weight: 700; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); margin: 16px 0 6px; font-family: var(--font-mono); }
+        .help-body h5:first-child { margin-top: 0; }
         .help-body code { background: var(--panel2); border: 1px solid var(--border); padding: 0 4px; border-radius: 2px; font-size: var(--fs-body); font-family: var(--font-mono); }
         .help-body pre { background: var(--panel2); border: 1px solid var(--border2); border-left: 3px solid var(--text); border-radius: 0; padding: 12px 14px; overflow-x: auto; margin: 12px 0; }
         .help-body pre code { background: none; border: none; padding: 0; font-size: var(--fs-body); line-height: 1.55; font-family: var(--font-mono); white-space: pre; color: var(--text); }
-        .help-body h1 { display: none; }
-        .help-body h2 { font-size: var(--fs-title); font-weight: 700; color: var(--text); margin: 18px 0 6px; }
-        .help-body h3 { font-size: var(--fs-body); margin: 16px 0 6px; }
+        /* Titles are stripped before render, so body h1 cannot occur; h2 is the
+           article title's level and belongs to .help-article-title, not the body. */
+        .help-body h1, .help-body h2 { display: none; }
+        .help-body h3 { font-size: var(--fs-title); font-weight: 700; color: var(--text); margin: 18px 0 6px; }
+        .help-body h4 { font-size: var(--fs-body); margin: 16px 0 6px; }
         .help-body p { color: var(--ink2); margin: 8px 0; }
         .help-body em { color: var(--muted); }
         .help-body table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: var(--fs-body); }
+        /* Data tables keep their columns and scroll inside their own region: without
+           this a wide table (nowrap first cells) drags the whole Guide sideways on
+           a phone. The wrapper is the scroller, so the article never is. */
+        .help-table-wrap { overflow-x: auto; margin: 10px 0; }
+        .help-table-wrap > table { margin: 0; }
         .help-body th { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border2); color: var(--muted); font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .07em; font-family: var(--font-mono); }
         .help-body td { padding: 5px 8px; border-bottom: 1px solid var(--border); }
         .help-body td:first-child { font-weight: 600; white-space: nowrap; }
@@ -760,11 +784,11 @@ internal static class DashboardPage
         /* iOS Safari zooms the viewport on focus below 16px, which shifts the layout
            sideways mid-entry. Same selectors as the base rule so the size actually wins. */
         @media (max-width: 640px) {
-            select, input[type=text], input[type=password], input[type=number], textarea { font-size: 16px; }
+            select, input[type=text], input[type=password], input[type=number], input[type=search], textarea { font-size: 16px; }
         }
         /* Touch is physical: finger-sized hit areas wherever the pointer is coarse.
            The visible box may stay small, so small controls expand with a pseudo-element. */
-        .btn, .tabbtn, .pill, .theme-opt, .help-toc-item, .help-subtab, .map-type-tab, .values-subtab, .fp-subtab, .diag-tab, .li.clickable { touch-action: manipulation; }
+        .btn, .tabbtn, .pill, .theme-opt, .help-toc-item, .help-subtab, .map-type-tab, .values-subtab, .fp-subtab, .diag-tab, .help-search-clear, .li.clickable { touch-action: manipulation; }
         @media (pointer: coarse) {
             .btn { min-height: 44px; min-width: 44px; padding: 0 14px; }
             input[type=checkbox] { min-width: 24px; min-height: 24px; }
@@ -772,7 +796,10 @@ internal static class DashboardPage
             .nav-group .tabbtn { padding-top: 12px; padding-bottom: 12px; }
             .pill { min-height: 44px; }
             .theme-opt { min-height: 44px; min-width: 44px; }
-            select, input[type=text], input[type=password], input[type=number] { min-height: 44px; }
+            select, input[type=text], input[type=password], input[type=number], input[type=search] { min-height: 44px; }
+            /* The clear box stays 34px so it matches the field beside it; the finger gets 44. */
+            .help-search-clear { position: relative; }
+            .help-search-clear::after { content: ''; position: absolute; inset: -5px; }
             .modal-close { min-width: 44px; min-height: 44px; }
             .diag-zoom-btn { min-width: 44px; height: 44px; }
             .help-toc-item, .help-subtab, .map-type-tab, .values-subtab, .fp-subtab, .diag-tab { min-height: 44px; }
@@ -1691,26 +1718,27 @@ internal static class DashboardPage
 </div>
 <div class="view" id="view-help">
     <h1 class="view-title" tabindex="-1">Guide</h1>
-    <div class="help-subtabs">
-        <button class="help-subtab active" onclick="switchHelpSubTab('getting-started')">Getting Started</button>
-        <button class="help-subtab" onclick="switchHelpSubTab('features')">Features</button>
-        <button class="help-subtab" onclick="switchHelpSubTab('reference')">Reference</button>
+    <div class="help-subtabs" role="tablist" aria-label="Guide sections" onkeydown="helpSubTabKey(event)">
+        <button class="help-subtab active" id="helpTab-getting-started" role="tab" aria-selected="true" aria-controls="help-getting-started" data-help-tab="getting-started" onclick="switchHelpSubTab('getting-started')">Getting Started</button>
+        <button class="help-subtab" id="helpTab-features" role="tab" aria-selected="false" aria-controls="help-features" data-help-tab="features" tabindex="-1" onclick="switchHelpSubTab('features')">Features</button>
+        <button class="help-subtab" id="helpTab-reference" role="tab" aria-selected="false" aria-controls="help-reference" data-help-tab="reference" tabindex="-1" onclick="switchHelpSubTab('reference')">Reference</button>
     </div>
     <div class="help-searchbar">
-        <input type="search" id="helpSearch" class="help-search" aria-label="Search help topics" placeholder="Search all topics…" autocomplete="off" oninput="helpSearch(this.value)">
-        <button type="button" class="help-search-clear" id="helpSearchClear" style="display:none" onclick="helpSearchClear()" title="Clear search">&times;</button>
+        <input type="search" id="helpSearch" class="help-search" aria-label="Search help topics" placeholder="Search all topics…" autocomplete="off" oninput="helpSearch(this.value)" onkeydown="helpSearchKey(event)">
+        <button type="button" class="help-search-clear" id="helpSearchClear" style="display:none" onclick="helpSearchClear()" aria-label="Clear search" title="Clear search">&times;</button>
+        <span class="sr-only" id="helpSearchStatus" role="status"></span>
     </div>
     <div class="help-layout" id="helpSearchLayout" style="display:none">
-        <nav class="help-toc" id="helpSearchToc"></nav>
+        <nav class="help-toc" id="helpSearchToc" aria-label="Search results"></nav>
         <div class="help-pane" id="helpSearchPane"></div>
     </div>
-    <div class="help-subtab-content active" id="help-getting-started">
+    <div class="help-subtab-content active" id="help-getting-started" role="tabpanel" aria-labelledby="helpTab-getting-started">
         <div class="help-layout" id="helpLayout1"><span class="msg">Loading help…</span></div>
     </div>
-    <div class="help-subtab-content" id="help-features">
+    <div class="help-subtab-content" id="help-features" role="tabpanel" aria-labelledby="helpTab-features">
         <div class="help-layout" id="helpLayout2"></div>
     </div>
-    <div class="help-subtab-content" id="help-reference">
+    <div class="help-subtab-content" id="help-reference" role="tabpanel" aria-labelledby="helpTab-reference">
         <div class="help-layout" id="helpLayout3"></div>
     </div>
 </div>
@@ -3936,11 +3964,12 @@ async function showTab(name, route) {
     b.classList.toggle('active', on);
     if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
   });
-  // Once the rail is a horizontal scroller (narrow screens) the active section can sit
-  // off-screen, so bring it back into view rather than making the user hunt for it.
+  // The rail scrolls in both directions (taller than the window on desktop, a
+  // horizontal strip on narrow screens), so an off-screen active section scrolls
+  // back into view rather than making the user hunt for it. 'nearest' moves least.
   const activeBtn = document.querySelector('.tabbtn.active');
   const rail = document.querySelector('.tabbar');
-  if (activeBtn && rail && rail.scrollWidth > rail.clientWidth + 1) {
+  if (activeBtn && rail && (rail.scrollHeight > rail.clientHeight + 1 || rail.scrollWidth > rail.clientWidth + 1)) {
     try { activeBtn.scrollIntoView({ block: 'nearest', inline: 'center' }); } catch (e) { activeBtn.scrollIntoView(); }
   }
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + activeTab));
@@ -3960,7 +3989,7 @@ async function showTab(name, route) {
   if (activeTab === 'diagnostics' || activeTab === 'sessions') { diagnosticsActive = true; loadDiagnostics(); }
   else { diagnosticsActive = false; }
   if (activeTab === 'about') loadAppInfo().catch(e => el('aboutName').textContent = '✗ ' + e.message);
-  if (activeTab === 'help') loadHelp().catch(e => { const c = el('helpLayout1'); if (c) c.innerHTML = '<span class="msg bad">✗ ' + esc(e.message) + '</span>'; });
+  if (activeTab === 'help') loadHelp().catch(e => { const c = el('helpLayout1'); if (c) c.innerHTML = '<span class="msg bad" role="alert">✗ ' + esc(e.message) + '</span>'; });
   if (activeTab === 'mx-component') { renderMx(); }
   if (activeTab === 'mqtt') { await loadMqtt(); }
   if (activeTab === 'iot-traffic') { await loadMqttValues(); }
@@ -4853,13 +4882,17 @@ async function loadAppInfo(force = false) {
 }
 
 let helpLoaded = false;
+const HELP_GROUPS = ['Getting Started', 'Features', 'Reference'];
 const inlineFmt = (s) => s.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>');
 function renderMarkdown(md) {
+    // Headings arrive one level too high: the author's `#` became the article's
+    // <h2> title before this runs, so body `##` is really an <h3> beneath it.
+    // Demote each level to keep the outline H1 Guide > H2 article > H3 section.
     const lines = md.replace(/\r\n/g, '\n').split('\n');
     let html = '', listType = null, inTable = false, inCode = false, tableHeader = false;
     const closeList = () => { if (listType) { html += listType === 'ol' ? '</ol>' : '</ul>'; listType = null; } };
     const openList = (t) => { if (listType !== t) { closeList(); html += t === 'ol' ? '<ol>' : '<ul>'; listType = t; } };
-    const closeTable = () => { if (inTable) { html += '</tbody></table>'; inTable = false; } };
+    const closeTable = () => { if (inTable) { html += '</tbody></table></div>'; inTable = false; } };
     for (let i = 0; i < lines.length; i++) {
         let line = lines[i];
         if (/^```/.test(line)) {
@@ -4869,10 +4902,10 @@ function renderMarkdown(md) {
         }
         if (inCode) { html += line + '\n'; continue; }
         if (/^---\s*$/.test(line)) { closeList(); closeTable(); html += '<hr>'; continue; }
-        if (/^#\s+/.test(line)) { closeList(); closeTable(); html += `<h1>${inlineFmt(line.replace(/^#\s+/, ''))}</h1>`; continue; }
-        if (/^##\s+/.test(line)) { closeList(); closeTable(); html += `<h2>${inlineFmt(line.replace(/^##\s+/, ''))}</h2>`; continue; }
-        if (/^###\s+/.test(line)) { closeList(); closeTable(); html += `<h3>${inlineFmt(line.replace(/^###\s+/, ''))}</h3>`; continue; }
-        if (/^####\s+/.test(line)) { closeList(); closeTable(); html += `<h4>${inlineFmt(line.replace(/^####\s+/, ''))}</h4>`; continue; }
+        if (/^#\s+/.test(line)) { closeList(); closeTable(); html += `<h2>${inlineFmt(line.replace(/^#\s+/, ''))}</h2>`; continue; }
+        if (/^##\s+/.test(line)) { closeList(); closeTable(); html += `<h3>${inlineFmt(line.replace(/^##\s+/, ''))}</h3>`; continue; }
+        if (/^###\s+/.test(line)) { closeList(); closeTable(); html += `<h4>${inlineFmt(line.replace(/^###\s+/, ''))}</h4>`; continue; }
+        if (/^####\s+/.test(line)) { closeList(); closeTable(); html += `<h5>${inlineFmt(line.replace(/^####\s+/, ''))}</h5>`; continue; }
         const olItem = line.match(/^\d+\.\s+(.*)$/);
         if (olItem) { closeTable(); openList('ol'); html += `<li>${inlineFmt(olItem[1])}</li>`; continue; }
         if (/^\*\s+|^-\s+/.test(line)) { closeTable(); openList('ul'); html += `<li>${inlineFmt(line.replace(/^\*\s+|^-\s+/, ''))}</li>`; continue; }
@@ -4880,9 +4913,9 @@ function renderMarkdown(md) {
         if (/^\|/.test(line)) {
             if (line.replace(/\s/g, '').match(/^\|[-:|]+\|$/)) { tableHeader = true; continue; }
             const cells = line.split('|').filter((_, j, a) => j > 0 && j < a.length - 1).map(c => c.trim());
-            if (!inTable) { html += '<table><thead><tr>'; html += cells.map(c => `<th>${inlineFmt(c)}</th>`).join(''); html += '</tr></thead><tbody>'; inTable = true; tableHeader = false; }
-            else if (tableHeader) { tableHeader = false; continue; }
-            else { html += '<tr>' + cells.map(c => `<td>${inlineFmt(c)}</td>`).join('') + '</tr>'; }
+            if (!inTable) { html += '<div class="help-table-wrap"><table><thead><tr>'; html += cells.map(c => `<th scope="col">${inlineFmt(c)}</th>`).join(''); html += '</tr></thead><tbody>'; inTable = true; tableHeader = false; }
+            // The row after the separator is the first body row, not a second header.
+            else { tableHeader = false; html += '<tr>' + cells.map(c => `<td>${inlineFmt(c)}</td>`).join('') + '</tr>'; }
             continue;
         }
         closeTable();
@@ -4911,17 +4944,19 @@ async function loadHelp() {
             return { title, body };
         });
         items.forEach((it, i) => {
+            // Snippets show in display case; only the match key is lowered.
+            const plain = (it.title + ' ' + it.body).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
             window.helpSearchIndex.push({
                 group: groupIdx, index: i, title: it.title, raw: it.body,
-                text: (it.title + ' ' + it.body).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').toLowerCase()
+                text: plain, match: plain.toLowerCase()
             });
         });
         container.innerHTML =
-            '<nav class="help-toc">' +
-            items.map((it, i) => `<button class="help-toc-item${i === 0 ? ' active' : ''}" data-help-topic="${i}" onclick="switchHelpTopic(this)">${esc(it.title)}</button>`).join('') +
+            '<nav class="help-toc" aria-label="' + esc(HELP_GROUPS[groupIdx] || 'Guide') + ' topics">' +
+            items.map((it, i) => `<button class="help-toc-item${i === 0 ? ' active' : ''}" data-help-topic="${i}"${i === 0 ? ' aria-current="true"' : ''} onclick="switchHelpTopic(this)">${esc(it.title)}</button>`).join('') +
             '</nav>' +
             '<div class="help-pane">' +
-            items.map((it, i) => `<article class="help-article${i === 0 ? ' active' : ''}" data-help-article="${i}"><h3 class="help-article-title">${esc(it.title)}</h3><div class="help-body">${it.body}</div></article>`).join('') +
+            items.map((it, i) => `<article class="help-article${i === 0 ? ' active' : ''}" data-help-article="${i}"><h2 class="help-article-title">${esc(it.title)}</h2><div class="help-body">${it.body}</div></article>`).join('') +
             '</div>';
     };
 
@@ -4932,15 +4967,33 @@ async function loadHelp() {
     helpLoaded = true;
 }
 
+// The Guide reads as a manual, so a topic switch has to hand the reader the top of
+// the new article. The page scrolls inside .content (body is overflow: hidden) and
+// the pane never scrolls at all, so the scroll container is the only thing to move.
+function helpScrollToLayout(layout) {
+    const scroller = document.querySelector('.content');
+    if (!layout || !scroller) return;
+    const top = layout.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
+    const behavior = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+    scroller.scrollTo({ top: Math.max(0, top - 12), behavior: behavior });
+}
+
+// Selection is state, not only ink: the marked topic is announced as current.
+function helpMarkCurrent(items, btn) {
+    items.forEach(b => {
+        const on = b === btn;
+        b.classList.toggle('active', on);
+        if (on) b.setAttribute('aria-current', 'true'); else b.removeAttribute('aria-current');
+    });
+}
+
 function switchHelpTopic(btn) {
     const layout = btn.closest('.help-layout');
     if (!layout) return;
     const idx = btn.getAttribute('data-help-topic');
-    layout.querySelectorAll('.help-toc-item').forEach(b => b.classList.toggle('active', b === btn));
+    helpMarkCurrent(layout.querySelectorAll('.help-toc-item'), btn);
     layout.querySelectorAll('.help-article').forEach(a => a.classList.toggle('active', a.getAttribute('data-help-article') === idx));
-    const pane = layout.querySelector('.help-pane');
-    if (pane) pane.scrollTop = 0;
-    window.scrollTo({ top: layout.getBoundingClientRect().top + window.scrollY - 12, behavior: 'smooth' });
+    helpScrollToLayout(layout);
 }
 
 function setHelpSearchMode(on) {
@@ -4963,37 +5016,42 @@ function helpSearch(v) {
 function helpSearchRun(raw) {
     const q = (raw || '').trim().toLowerCase();
     setHelpSearchMode(q !== '');
-    if (!q) return;
-    const hits = (window.helpSearchIndex || []).filter(it => it.text.includes(q));
+    const status = el('helpSearchStatus');
+    if (!q) { if (status) status.textContent = ''; return; }
+    const hits = (window.helpSearchIndex || []).filter(it => (it.match || it.text).includes(q));
     const toc = el('helpSearchToc'), pane = el('helpSearchPane');
     if (!toc || !pane) return;
     if (!hits.length) {
-        toc.innerHTML = '<div class="help-noresults">No topics match &quot;' + esc(raw.trim()) + '&quot;</div>';
+        toc.innerHTML = '<div class="help-noresults">No topics match &quot;' + esc(raw.trim()) + '&quot;. Try a shorter term, or clear the search to browse all topics.</div>';
         pane.innerHTML = '';
+        if (status) status.textContent = 'No topics match';
         return;
     }
-    const GROUPS = ['Getting Started', 'Features', 'Reference'];
     const rx = new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'i');
     window.helpSearchHits = hits;
     toc.innerHTML = hits.map((h, i) => {
-        const pos = h.text.indexOf(q);
+        const pos = (h.match || h.text).indexOf(q);
         const start = Math.max(0, pos - 60);
         const snip = h.text.slice(start, Math.min(h.text.length, pos + q.length + 60)).trim();
         const snipHtml = esc(snip).replace(rx, '<b>$1</b>');
-        return `<button class="help-toc-item help-search-item${i === 0 ? ' active' : ''}" data-hit="${i}" onclick="helpSearchPick(this)"><span class="help-search-loc">${GROUPS[h.group]}</span>${esc(h.title)}<span class="help-search-snippet">…${snipHtml}…</span></button>`;
+        return `<button class="help-toc-item help-search-item${i === 0 ? ' active' : ''}"${i === 0 ? ' aria-current="true"' : ''} data-hit="${i}" onclick="helpSearchPick(this, true)"><span class="help-search-loc">${HELP_GROUPS[h.group]}</span>${esc(h.title)}<span class="help-search-snippet">…${snipHtml}…</span></button>`;
     }).join('');
-    helpSearchPick(toc.querySelector('[data-hit="0"]'));
+    if (status) status.textContent = hits.length === 1 ? '1 topic matches' : hits.length + ' topics match';
+    helpSearchPick(toc.querySelector('[data-hit="0"]'), false);
 }
 
-function helpSearchPick(btn) {
+function helpSearchPick(btn, reveal) {
     if (!btn) return;
     const i = +btn.getAttribute('data-hit');
     const h = (window.helpSearchHits || [])[i];
     if (!h) return;
     const toc = el('helpSearchToc');
-    toc.querySelectorAll('.help-toc-item').forEach(b => b.classList.toggle('active', b === btn));
+    if (toc) helpMarkCurrent(toc.querySelectorAll('.help-toc-item'), btn);
     const pane = el('helpSearchPane');
-    if (pane) pane.innerHTML = `<article class="help-article active"><h3 class="help-article-title">${esc(h.title)}</h3><div class="help-body">${h.raw}</div></article>`;
+    if (pane) pane.innerHTML = `<article class="help-article active"><h2 class="help-article-title">${esc(h.title)}</h2><div class="help-body">${h.raw}</div></article>`;
+    // Picking a result is a navigation and reveals the article; retyping a query is
+    // not, or every keystroke would yank the reader back to the top of the results.
+    if (reveal) helpScrollToLayout(el('helpSearchLayout'));
 }
 
 function helpSearchClear() {
@@ -5006,11 +5064,41 @@ function switchHelpSubTab(tabName) {
     const searchBox = el('helpSearch');
     if (searchBox && searchBox.value) { searchBox.value = ''; helpSearchRun(''); }
     document.querySelectorAll('.help-subtab').forEach(btn => {
-        btn.classList.toggle('active', btn.textContent.toLowerCase().replace(/\s+/g, '-') === tabName);
+        const on = btn.getAttribute('data-help-tab') === tabName;
+        btn.classList.toggle('active', on);
+        btn.setAttribute('aria-selected', on ? 'true' : 'false');
+        btn.setAttribute('tabindex', on ? '0' : '-1');
     });
     document.querySelectorAll('.help-subtab-content').forEach(content => {
         content.classList.toggle('active', content.id === 'help-' + tabName);
     });
+}
+
+// A tab strip is one Tab stop, not three: arrows walk it and open as they land,
+// which is cheap here because every panel is already in the DOM.
+function helpSubTabKey(e) {
+    const tabs = [...document.querySelectorAll('.help-subtab')];
+    const i = tabs.indexOf(document.activeElement);
+    if (i < 0) return;
+    let next = null;
+    if (e.key === 'ArrowRight') next = tabs[(i + 1) % tabs.length];
+    else if (e.key === 'ArrowLeft') next = tabs[(i - 1 + tabs.length) % tabs.length];
+    else if (e.key === 'Home') next = tabs[0];
+    else if (e.key === 'End') next = tabs[tabs.length - 1];
+    if (!next) return;
+    e.preventDefault();
+    switchHelpSubTab(next.getAttribute('data-help-tab'));
+    next.focus();
+}
+
+// Escape unwinds the search. The browser's own clear on <input type="search"> fires
+// no input event, so the result rail would be left stale behind an empty field.
+function helpSearchKey(e) {
+    if (e.key !== 'Escape') return;
+    const s = el('helpSearch');
+    if (!s || !s.value) return;
+    e.preventDefault();
+    helpSearchClear();
 }
 
 async function resolveSessionBanner() {

@@ -829,6 +829,7 @@ public sealed class DashboardPageTests
         Assert.Contains("function helpSearchPick(", DashboardPage.Script);
         Assert.Contains("help-search-snippet", DashboardPage.Script);
         Assert.Contains("No topics match", DashboardPage.Script);
+        Assert.Contains("Try a shorter term, or clear the search", DashboardPage.Script);
     }
 
     [Fact]
@@ -874,6 +875,56 @@ public sealed class DashboardPageTests
         // Table CSS: no hardcoded second-column centering; ol shares list styling with ul.
         Assert.DoesNotContain(".help-body td:nth-child(2)", DashboardPage.Html);
         Assert.Contains(".help-body ul, .help-body ol", DashboardPage.Html);
+    }
+
+    [Fact]
+    public void Guide_MarkdownRenderer_TableKeepsFirstDataRow()
+    {
+        // The row after the separator is the first body row, not a second header:
+        // every Guide table was rendering exactly one row short (Access Rights
+        // lost "Read", the update table lost "OpcBridge.App.dll").
+        Assert.DoesNotContain("else if (tableHeader) { tableHeader = false; continue; }", DashboardPage.Script);
+        Assert.Contains("The row after the separator is the first body row", DashboardPage.Script);
+        // Column headers carry explicit scope so the cell/column association
+        // does not depend on position alone.
+        Assert.Contains("<th scope=\"col\">", DashboardPage.Script);
+        // Tables scroll inside their own wrapper instead of dragging the whole
+        // Guide sideways on a phone.
+        Assert.Contains("help-table-wrap", DashboardPage.Script);
+        Assert.Contains(".help-table-wrap { overflow-x: auto;", DashboardPage.Html);
+    }
+
+    [Fact]
+    public void Guide_HelpSearch_SnippetsKeepDisplayCase()
+    {
+        // Snippets slice from a display-case copy; only the match key is lowered,
+        // so results read "Windows"/"HKLM" instead of "windows"/"hklm".
+        Assert.Contains("match: plain.toLowerCase()", DashboardPage.Script);
+        Assert.Contains("(it.match || it.text).includes(q)", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Guide_HeadingOutlineIsNested()
+    {
+        // H1 Guide > H2 article title > H3 sections: body ## is not a second H2.
+        Assert.Contains("<h2 class=\"help-article-title\">", DashboardPage.Script);
+        Assert.Contains("html += `<h3>${inlineFmt(line.replace(/^##\\s+/, ''))}</h3>`", DashboardPage.Script);
+        Assert.DoesNotContain("html += `<h2>${inlineFmt(line.replace(/^##\\s+/, ''))}</h2>`", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Guide_NavRailsAreNamedApart()
+    {
+        // Four nav.help-toc landmarks; a screen reader must hear them apart.
+        Assert.Contains("aria-label=\"Search results\"", DashboardPage.Html);
+        Assert.Contains("HELP_GROUPS[groupIdx]", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Guide_ClearSearchHasAccessibleName()
+    {
+        // The × glyph alone is not a name; title is the fallback, not the source.
+        Assert.Contains("aria-label=\"Clear search\"", DashboardPage.Html);
     }
 
     [Fact]
