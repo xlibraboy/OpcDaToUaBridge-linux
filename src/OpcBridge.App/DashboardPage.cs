@@ -33,6 +33,7 @@ namespace OpcBridge.App;
 //   faceplate: id="fpSubscription"/"fpSubscriptionField", function fpSubscriptionOptions(/updateFpRateEnabled(, id="fpPlcGroup"/"fpPlcGroupField", function fpPlcGroupOptions(/plcGroupRateFor(
 //   id="mapTypeTabs", data-map-type="opc-da|opc-ua|drivers", function setMapType(/opcDaSources(/mapTypeSources(
 //   tags/maps/opc-da, tags/maps/opc-ua, tags/maps/drivers
+//   Diagram: tab text "Source→UA", function diagSourceKind(= sourceTypeLabel( + sourceSubtitle()
 internal static class DashboardPage
 {
     public const string Html = """
@@ -2049,7 +2050,7 @@ internal static class DashboardPage
         <div class="diag-seg" id="diagSeg">
             <span class="seg-pill" id="segPill"></span>
             <button class="diag-tab active" data-diag="all" onclick="showDiagTab('all')">All</button>
-            <button class="diag-tab" data-diag="da-ua" onclick="showDiagTab('da-ua')">DA→UA</button>
+            <button class="diag-tab" data-diag="da-ua" onclick="showDiagTab('da-ua')">Source→UA</button>
             <button class="diag-tab" data-diag="interlinks" onclick="showDiagTab('interlinks')">Interlinks</button>
             <button class="diag-tab" data-diag="mqtt" onclick="showDiagTab('mqtt')">MQTT</button>
         </div>
@@ -2504,7 +2505,7 @@ function renderAllDiagram() {
     const links = collectInterlinks();
 
     if (mappings.length === 0 && sources.length === 0) {
-        return { svg: diagEmptyState('No sources or tags configured', 'Add a DA source or mapping to see the plant overview', 1400), maxHeight: 600, maxWidth: 1400 };
+        return { svg: diagEmptyState('No sources or tags configured', 'Add a source or mapping to see the plant overview', 1400), maxHeight: 600, maxWidth: 1400 };
     }
 
     // Aggregated overview: source → tag-group → UA/MQTT (O(sources), not O(tags))
@@ -2530,7 +2531,7 @@ function renderAllDiagram() {
 
     let svg = '';
     svg += `<text x="40" y="30" class="dg-muted" style="font-size:var(--fs-micro)" font-weight="600">PLANT OVERVIEW (aggregated)</text>`;
-    svg += `<text x="40" y="48" class="dg-muted" style="font-size:var(--fs-micro)">Sources → tag groups → UA / MQTT · trunks colored by live status · detail on DA→UA / Interlinks / MQTT tabs</text>`;
+    svg += `<text x="40" y="48" class="dg-muted" style="font-size:var(--fs-micro)">Sources → tag groups → UA / MQTT · trunks colored by live status · detail on Source→UA / Interlinks / MQTT tabs</text>`;
 
     const sourcePositions = new Map();
     const groupPositions = new Map();
@@ -2560,7 +2561,7 @@ function renderAllDiagram() {
         svg += `<g class="diag-node" data-source="${escapeHtml(sourceId)}">`;
         svg += `<rect x="${sourceX}" y="${sourceY}" width="${colW.source}" height="64" rx="0" class="dg-surface" stroke="${sourceColor}" stroke-width="2"/>`;
         svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 24}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)" font-weight="600">${escapeHtml(sourceName)}</text>`;
-        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 44}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">${escapeHtml(sourceSubtitle(sourceInfo))}</text>`;
+        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 44}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">${escapeHtml(diagSourceKind(sourceInfo))}</text>`;
         svg += `</g>`;
 
         const groupStatus = summary.total === 0 ? 'off' : summary.flow;
@@ -2657,7 +2658,7 @@ function renderAllDiagram() {
         svg += drawEdge(pos.right, pos.cy, mqttX, mqttY + 28, edgeStatus, getStatusColor(edgeStatus));
     });
 
-    svg += `<text x="${sourceX}" y="${Math.max(maxY, mqttY + 56) + 36}" class="dg-muted" style="font-size:var(--fs-micro)">Aggregated trunks · Grey = inactive · Color = live · Curves = DA→DA between sources (count badge)</text>`;
+    svg += `<text x="${sourceX}" y="${Math.max(maxY, mqttY + 56) + 36}" class="dg-muted" style="font-size:var(--fs-micro)">Aggregated trunks · Grey = inactive · Color = live · Curves = source↔source links (count badge)</text>`;
 
     return { svg, maxHeight: Math.max(maxY, mqttY + 56) + 60, maxWidth: 1240 };
 }
@@ -2732,7 +2733,7 @@ function renderDaUaDiagram() {
         svg += `<g class="diag-node" data-source="${escapeHtml(sourceId)}">`;
         svg += `<rect x="${sourceX}" y="${sourceY}" width="${colW.source}" height="64" rx="0" class="dg-surface" stroke="${sourceColor}" stroke-width="2"/>`;
         svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 24}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)" font-weight="600">${escapeHtml(sourceName)}</text>`;
-        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 44}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">${escapeHtml(sourceSubtitle(sourceInfo))}</text>`;
+        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 44}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">${escapeHtml(diagSourceKind(sourceInfo))}</text>`;
         svg += `</g>`;
 
         // Tag-group summary (click to expand/collapse)
@@ -2861,6 +2862,7 @@ function renderInterlinksDiagram() {
         const s = (sources || []).find(x => (x.sourceId || x.SourceId) === sid);
         return s?.displayName || s?.DisplayName || sid;
     };
+    const sourceInfoOf = (sid) => (sources || []).find(x => (x.sourceId || x.SourceId) === sid) || null;
 
     // Aggregate links by providerSource => consumerSource
     const pairMap = new Map();
@@ -2885,7 +2887,7 @@ function renderInterlinksDiagram() {
     }
 
     let svg = '';
-    svg += `<text x="50" y="28" class="dg-muted" style="font-size:var(--fs-micro)" font-weight="600">DA TO DA (aggregated)</text>`;
+    svg += `<text x="50" y="28" class="dg-muted" style="font-size:var(--fs-micro)" font-weight="600">SOURCE TO SOURCE (aggregated)</text>`;
     svg += `<text x="50" y="46" class="dg-muted" style="font-size:var(--fs-micro)">${links.length} link(s) · ${pairMap.size} source-pair(s) · click a pair badge to expand (page ${pageSize})</text>`;
 
     // Layout provider sources on left, consumer sources on right
@@ -2908,8 +2910,9 @@ function renderInterlinksDiagram() {
         const count = links.filter(l => (l.providerSourceId || 'default') === sid).length;
         svg += `<g class="diag-node" data-source="${escapeHtml(sid)}">`;
         svg += `<rect x="${leftX}" y="${y}" width="${colW.source}" height="64" rx="0" class="dg-surface" stroke="${color}" stroke-width="2"/>`;
-        svg += `<text x="${leftX + colW.source / 2}" y="${y + 24}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)" font-weight="600">${escapeHtml(sourceName(sid))}</text>`;
-        svg += `<text x="${leftX + colW.source / 2}" y="${y + 44}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">provider · ${count} out</text>`;
+        svg += `<text x="${leftX + colW.source / 2}" y="${y + 20}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)" font-weight="600">${escapeHtml(sourceName(sid))}</text>`;
+        svg += `<text x="${leftX + colW.source / 2}" y="${y + 36}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">${escapeHtml(diagSourceKind(sourceInfoOf(sid)))}</text>`;
+        svg += `<text x="${leftX + colW.source / 2}" y="${y + 52}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">provider · ${count} out</text>`;
         svg += `</g>`;
         y += rowH + sourceGap;
     });
@@ -2922,15 +2925,16 @@ function renderInterlinksDiagram() {
         const count = links.filter(l => (l.consumerSourceId || 'default') === sid).length;
         svg += `<g class="diag-node" data-source="${escapeHtml(sid)}">`;
         svg += `<rect x="${rightX}" y="${y}" width="${colW.source}" height="64" rx="0" class="dg-surface" stroke="${color}" stroke-width="2"/>`;
-        svg += `<text x="${rightX + colW.source / 2}" y="${y + 24}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)" font-weight="600">${escapeHtml(sourceName(sid))}</text>`;
-        svg += `<text x="${rightX + colW.source / 2}" y="${y + 44}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">consumer · ${count} in</text>`;
+        svg += `<text x="${rightX + colW.source / 2}" y="${y + 20}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)" font-weight="600">${escapeHtml(sourceName(sid))}</text>`;
+        svg += `<text x="${rightX + colW.source / 2}" y="${y + 36}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">${escapeHtml(diagSourceKind(sourceInfoOf(sid)))}</text>`;
+        svg += `<text x="${rightX + colW.source / 2}" y="${y + 52}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">consumer · ${count} in</text>`;
         svg += `</g>`;
         y += rowH + sourceGap;
         maxY = Math.max(maxY, y);
     });
 
     if (pairMap.size === 0) {
-        svg += `<text x="50" y="${maxY + 20}" class="dg-muted" style="font-size:var(--fs-micro)">No DA links yet — create provider→consumer links on the Links tab. Sources shown grey until linked/live.</text>`;
+        svg += `<text x="50" y="${maxY + 20}" class="dg-muted" style="font-size:var(--fs-micro)">No links yet — create provider→consumer links on the Links tab. Sources shown grey until linked/live.</text>`;
         return { svg, maxHeight: maxY + 50, maxWidth: 920 };
     }
 
@@ -3024,7 +3028,7 @@ function renderMqttDiagram() {
         return { svg: diagEmptyState('No mapped tags', 'Enable MQTT on a mapped tag to see it published to the broker', 1100), maxHeight: 600, maxWidth: 1100 };
     }
 
-    // Aggregated by DA source → MQTT broker. Expand source for paged tag detail.
+    // Aggregated by source → MQTT broker. Expand source for paged tag detail.
     const bySource = new Map();
     mappings.forEach(m => {
         const sid = m.sourceId || m.SourceId || 'default';
@@ -3099,7 +3103,7 @@ function renderMqttDiagram() {
         svg += `<g class="diag-node" data-source="${escapeHtml(sourceId)}">`;
         svg += `<rect x="${sourceX}" y="${sourceY}" width="${colW.source}" height="64" rx="0" class="dg-surface" stroke="${sourceColor}" stroke-width="2"/>`;
         svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 24}" text-anchor="middle" class="dg-ink" style="font-size:var(--fs-micro)" font-weight="600">${escapeHtml(sourceName)}</text>`;
-        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 44}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">${escapeHtml(sourceSubtitle(sourceInfo))}</text>`;
+        svg += `<text x="${sourceX + colW.source / 2}" y="${sourceY + 44}" text-anchor="middle" class="dg-muted" style="font-size:var(--fs-micro)">${escapeHtml(diagSourceKind(sourceInfo))}</text>`;
         svg += `</g>`;
 
         const groupColor = getStatusColor(mqttFlow);
@@ -3263,6 +3267,13 @@ function themePalette() {
 function getStatusColor(status) {
     const palette = themePalette();
     return palette[status] || palette.off;
+}
+
+// Diagram source label: short type (DA/UA/A3N/S7-200/MX) plus the endpoint,
+// so every source kind is identifiable — never OPC DA wording alone.
+function diagSourceKind(sourceInfo) {
+    if (!sourceInfo) return 'source';
+    return `${sourceTypeLabel(sourceInfo)} · ${sourceSubtitle(sourceInfo)}`;
 }
 
 // Diagram subtitle for a source node: what this source actually is, never a guess.

@@ -306,6 +306,21 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
+    public void Script_DiagramLabelsNameEverySourceType()
+    {
+        // The Diagram tabs cover every source kind, not OPC DA alone, so each source
+        // node shows its own type label (DA/UA/A3N/S7-200/MX) next to the endpoint and
+        // no tab or heading is named for DA only.
+        Assert.Contains("function diagSourceKind(", DashboardPage.Script);
+        Assert.Contains("return `${sourceTypeLabel(sourceInfo)} · ${sourceSubtitle(sourceInfo)}`;", DashboardPage.Script);
+        // Every source-node renderer goes through the typed label.
+        Assert.DoesNotContain("escapeHtml(sourceSubtitle(sourceInfo))", DashboardPage.Script);
+        Assert.Contains(">Source→UA</button>", DashboardPage.Html);
+        Assert.DoesNotContain("DA→UA", DashboardPage.Html);
+        Assert.DoesNotContain("DA TO DA", DashboardPage.Script);
+    }
+
+    [Fact]
     public void Script_DiagramLabelsUseInterlinkNaming()
     {
         // The Diagram tab's link view is renamed along with the subsystem.
