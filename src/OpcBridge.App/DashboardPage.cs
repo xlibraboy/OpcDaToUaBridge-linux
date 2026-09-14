@@ -259,7 +259,12 @@ internal static class DashboardPage
         .values-table .timestamp { color: var(--muted); font-size: var(--fs-micro); }
         .field { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
         .field:last-child { margin-bottom: 0; }
-        label.fl { color: var(--muted); font-size: var(--fs-micro); font-weight: 600; text-transform: uppercase; letter-spacing: .08em; width: 92px; flex-shrink: 0; font-family: var(--font-mono); }
+        label.fl { color: var(--muted); font-size: var(--fs-micro); font-weight: 600; text-transform: uppercase; letter-spacing: .08em; width: 104px; flex-shrink: 0; font-family: var(--font-mono); }
+        /* The info icon is the label's explanation, so it never leaves its side: a flex row
+           cannot wrap the icon onto a line of its own the way inline flow did (the old
+           92px box was 0.8px too narrow for "Source ID"/"Read Mode" and 8px for "Write
+           Mode", so those three dropped the icon below the text). */
+        .field > label.fl { display: flex; align-items: center; gap: 7px; }
         select, input[type=text], input[type=password] { background: var(--panel); color: var(--text); border: 1px solid var(--border2); border-radius: 2px; padding: 5px 8px; font-size: var(--fs-body); font-family: var(--font-ui); }
         input[type=number] { background: var(--panel); color: var(--text); border: 1px solid var(--border2); border-radius: 2px; padding: 5px 8px; font-size: var(--fs-body); font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
         input[type=text], input[type=password], select { min-width: 140px; }

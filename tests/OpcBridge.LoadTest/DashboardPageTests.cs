@@ -382,6 +382,19 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
+    public void Html_FieldLabelInfoIconStaysBesideItsLabel()
+    {
+        // The ⓘ icon explains its label, so it must never stand alone on the line
+        // below it. As inline content in the old 92px box that is exactly what
+        // happened: "Source ID" and "Read Mode" needed 92.8px and "Write Mode"
+        // 100.3px, so those three rows rendered the icon orphaned under the text
+        // (and two lines tall) while shorter labels kept it beside the text.
+        // The label is a non-wrapping flex row with room for text + icon.
+        Assert.Contains("label.fl { color: var(--muted); font-size: var(--fs-micro); font-weight: 600; text-transform: uppercase; letter-spacing: .08em; width: 104px;", DashboardPage.Html);
+        Assert.Contains(".field > label.fl { display: flex; align-items: center; gap: 7px; }", DashboardPage.Html);
+    }
+
+    [Fact]
     public void Html_MappingStatusBadgePinnedRightAndNeverClipped()
     {
         // The colored access status belongs at the far right of the row: config
