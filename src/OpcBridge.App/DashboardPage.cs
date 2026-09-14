@@ -224,6 +224,68 @@ internal static class DashboardPage
         .mon-stat-group .stat:last-child { border-bottom: none; padding-bottom: 0; }
         /* The lead row gives every column one prominent token: a state stamp or a reading. */
         .stat { background: none; border: none; border-bottom: 1px solid var(--border); border-radius: 0; padding: 10px 0 9px; }
+        /* ---- Data flow (Monitor lead) -------------------------------------
+           The plant's real path: every source feeds the bridge, the bridge
+           publishes to the UA server. Nodes stay real markup so their labels
+           wrap and stay readable; the wires are drawn by JS into an overlay
+           because their geometry follows the nodes. */
+        .flow-body { position: relative; display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, .9fr) minmax(0, .9fr); gap: 0 88px; padding: 14px 12px 16px; }
+        .flow-wires { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+        .flow-stage { position: relative; z-index: 1; min-width: 0; }
+        .flow-stage-hub { display: flex; flex-direction: column; }
+        .flow-stage-h { display: flex; align-items: baseline; gap: 6px; padding-bottom: 7px; margin-bottom: 8px; border-bottom: 1px solid var(--border2); font-size: var(--fs-micro); font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); font-family: var(--font-mono); }
+        .flow-nodes { display: flex; flex-direction: column; gap: 8px; }
+        /* A node states its condition twice, a rail colour and a stamp, so the
+           encoding survives greyscale and a colour-blind reader. */
+        .flow-node { display: block; box-sizing: border-box; width: 100%; padding: 7px 10px 8px; border: 1px solid var(--border); border-left: 3px solid var(--border2); border-radius: 0; background: var(--panel); color: var(--text); font-family: var(--font-ui); font-size: var(--fs-body); text-align: left; }
+        .flow-node-hub { margin: auto 0; padding: 11px 12px 12px; }
+        button.flow-node { cursor: pointer; transition: background-color .15s ease; }
+        button.flow-node:hover { background: var(--panel2); }
+        button.flow-node:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+        .flow-node[data-state="good"] { border-left-color: var(--good); }
+        .flow-node[data-state="warn"] { border-left-color: var(--warn); }
+        .flow-node[data-state="bad"] { border-left-color: var(--bad); }
+        .flow-node-n { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-weight: 600; }
+        .flow-node-n .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .flow-node-p { display: block; margin-top: 3px; color: var(--muted); font-size: var(--fs-micro); overflow-wrap: break-word; }
+        .flow-node-v { display: block; margin-top: 6px; font-family: var(--font-mono); font-size: var(--fs-title); font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; }
+        .flow-node-v .badge { font-size: var(--fs-body); padding: 1px 6px; }
+        /* A source that is down says why, in the node, not only in its colour. */
+        .flow-node-err { display: block; margin-top: 5px; padding: 3px 6px; background: var(--bad-bg); border: 1px solid var(--bad-border); color: var(--bad-text); font-size: var(--fs-micro); font-weight: 600; overflow-wrap: anywhere; }
+        .flow-empty { border-style: dashed; color: var(--muted); }
+        /* Wires: a static rule plus a marching dash. Dash speed is the source's
+           own poll rate, so a slow tag visibly beats slower. */
+        .flow-wire { fill: none; stroke-width: 1.5; stroke-linecap: butt; }
+        .flow-wire.good { stroke: var(--good); stroke-opacity: .35; }
+        .flow-wire.warn { stroke: var(--warn); stroke-opacity: .35; }
+        .flow-wire.off { stroke: var(--border2); stroke-dasharray: 2 5; }
+        .flow-pulse { fill: none; stroke-width: 3; stroke-dasharray: 7 11; stroke-linecap: butt; animation: flowMarch 1s linear infinite; }
+        .flow-pulse.good { stroke: var(--good); }
+        .flow-pulse.warn { stroke: var(--warn); animation-duration: 1.6s; }
+        @keyframes flowMarch { from { stroke-dashoffset: 18; } to { stroke-dashoffset: 0; } }
+        .flow-head { fill: none; stroke-width: 1.8; stroke-linecap: butt; }
+        .flow-head.good { stroke: var(--good); }
+        .flow-head.warn { stroke: var(--warn); }
+        .flow-head.off { stroke: var(--border2); }
+        /* A fault breaks the wire: the live half stops at the break and the rest
+           goes dead. "No data crosses here" is the message, so the wire stops. */
+        .flow-live-half { fill: none; stroke: var(--bad); stroke-width: 2.5; stroke-dasharray: 5 4; }
+        .flow-dead-half { fill: none; stroke: var(--border2); stroke-width: 1.5; stroke-dasharray: 2 5; }
+        .flow-fault .ring { fill: var(--panel); stroke: var(--bad); stroke-width: 1.5; }
+        .flow-fault .tick { stroke: var(--bad); stroke-width: 1.6; }
+        .flow-fault .tick-dot { fill: var(--bad); }
+        .flow-fault .halo { fill: none; stroke: var(--bad); stroke-width: 1.5; transform-box: fill-box; transform-origin: center; animation: flowFault 1.6s ease-out infinite; }
+        @keyframes flowFault { 0% { transform: scale(.7); opacity: .75; } 70%, 100% { transform: scale(2.3); opacity: 0; } }
+        .flow-key { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 9px 12px; border-top: 1px solid var(--border2); }
+        /* Stacked, the wires have no horizontal run to cross: the stages become
+           rows and the connector turns into a downward rule. */
+        @media (max-width: 900px) {
+            .flow-body { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 12px; }
+            .flow-wires { display: none; }
+            .flow-stage + .flow-stage { margin-top: 20px; }
+            .flow-stage + .flow-stage::before { content: '↓'; display: block; margin: -16px 0 8px; color: var(--muted); font-family: var(--font-mono); font-size: var(--fs-title); line-height: 1; }
+            .flow-stage-hub { display: block; }
+        }
         .alarm-bar { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 0; margin-bottom: 14px; font-size: var(--fs-body); font-weight: 600; border-left-width: 3px; border-left-style: solid; }
         .alarm-bar.ok { background: var(--good-bg); border: 1px solid var(--good-border); border-left: 3px solid var(--good); color: var(--good-text); }
         .alarm-bar.warning { background: var(--warn-bg); border: 1px solid var(--warn-border); border-left: 3px solid var(--warn); color: var(--warn-text); }
@@ -823,12 +885,11 @@ internal static class DashboardPage
 <div class="topbar" role="banner">
     <div class="brand"><span class="dot" id="dot" aria-hidden="true"></span>OPC Bridge <span class="ver" id="appVersion"></span></div>
     <div class="pills">
+        <div class="pill"><span class="k">Sources</span><b id="pSources">0</b><span id="pSourcesState">&#8212;</span></div>
         <div class="pill"><span class="k">Bridge</span><span id="pBridge">&#8212;</span></div>
-        <div class="pill"><span class="k">DA</span><span id="pDa">&#8212;</span></div>
         <div class="pill"><span class="k">UA</span><span id="pUa">&#8212;</span></div>
         <div class="pill"><span class="k">Tags</span><b id="pTags">0</b></div>
-         <div class="pill"><span class="k">Sources</span><b id="pSources">0</b></div>
-         <div class="pill"><span class="k">Apps</span><b id="pApps">1</b></div>
+        <div class="pill"><span class="k">Apps</span><b id="pApps">1</b></div>
     </div>
     <div class="theme-switch" role="group" aria-label="Color theme">
         <label class="theme-opt"><input type="radio" name="theme" value="light"><svg class="theme-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>Light</label>
@@ -887,16 +948,41 @@ internal static class DashboardPage
     <div class="first-run-banner" id="bannerNoMappings" role="status" style="display:none"></div>
     <div class="alarm-bar" id="rateAlarmBar" role="alert" style="display:none"></div>
     <div class="session-warn-banner" id="sessionBanner" role="alert" style="display:none"></div>
+    <div class="box flow-box">
+        <div class="box-h">Data Flow <span class="info" data-tip="The live path from every configured source, through the bridge, out to the OPC UA server. Each wire carries its own source's state and poll rate: a marching dash is data moving, a broken wire is a source that stopped delivering.">i</span><span class="msg" id="flowSummary" style="margin-left:auto"></span></div>
+        <div class="flow-body" id="flowBody">
+            <svg class="flow-wires" id="flowWires" aria-hidden="true" focusable="false"></svg>
+            <div class="flow-stage">
+                <div class="flow-stage-h">Sources <span id="flowSourceCount"></span></div>
+                <div class="flow-nodes" id="flowSourceNodes"><div class="flow-node flow-empty">Reading status…</div></div>
+            </div>
+            <div class="flow-stage flow-stage-hub">
+                <div class="flow-stage-h">Bridge</div>
+                <div class="flow-node flow-node-hub" id="flowBridgeNode" data-state="off"><span class="flow-node-v">&#8212;</span><span class="flow-node-p">Reading status…</span></div>
+            </div>
+            <div class="flow-stage flow-stage-hub">
+                <div class="flow-stage-h">OPC UA</div>
+                <div class="flow-node flow-node-hub" id="flowUaNode" data-state="off"><span class="flow-node-v">&#8212;</span><span class="flow-node-p">Reading status…</span></div>
+            </div>
+            <p class="sr-only" id="flowSr"></p>
+        </div>
+        <div class="flow-key">
+            <span class="legend-chip"><span class="legend-dot good"></span>Flowing</span>
+            <span class="legend-chip"><span class="legend-dot warn"></span>Degraded</span>
+            <span class="legend-chip"><span class="legend-dot bad"></span>Faulted · wire breaks where data stops</span>
+            <span class="legend-chip"><span class="legend-dot off"></span>Idle</span>
+        </div>
+    </div>
     <div class="mon-stats">
         <div class="mon-row mon-lead">
         <div class="mon-stat-group">
-            <div class="mon-stat-group-h">Bridge</div>
-                <div class="stat prime"><div class="k">Runtime</div><div class="v" id="bridgeState">&#8212;</div><div class="s" id="lastError">No errors</div></div>
+            <div class="mon-stat-group-h">Sources</div>
+                <div class="stat prime"><div class="k">Connections</div><div class="v" id="daState">&#8212;</div><div class="s" id="sourceMix">No sources configured</div></div>
+            <div class="stat"><div class="k">Last Read</div><div class="v" id="lastDaRead">&#8212;</div><div class="s" id="lastDaReadCount">0 values</div></div>
         </div>
         <div class="mon-stat-group">
-            <div class="mon-stat-group-h">OPC DA</div>
-                <div class="stat prime"><div class="k">Connection</div><div class="v" id="daState">&#8212;</div></div>
-            <div class="stat"><div class="k">Last Read</div><div class="v" id="lastDaRead">&#8212;</div><div class="s" id="lastDaReadCount">0 values</div></div>
+            <div class="mon-stat-group-h">Bridge</div>
+                <div class="stat prime"><div class="k">Runtime</div><div class="v" id="bridgeState">&#8212;</div><div class="s" id="lastError">No errors</div></div>
         </div>
         <div class="mon-stat-group">
             <div class="mon-stat-group-h">OPC UA</div>
@@ -3981,6 +4067,8 @@ async function showTab(name, route) {
     try { activeBtn.scrollIntoView({ block: 'nearest', inline: 'center' }); } catch (e) { activeBtn.scrollIntoView(); }
   }
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + activeTab));
+  // A hidden view has no geometry, so the wires are measured when it opens.
+  if (activeTab === 'monitor') requestAnimationFrame(drawFlowWires);
   if (location.hash !== '#/' + route) history.replaceState(null, '', '#/' + route);
   // Client-side navigation repaints the screen and tells nobody, so retitle the
   // document and land focus on the new view's heading. Only on a real move, not first paint.
@@ -5130,6 +5218,235 @@ async function resolveSessionBanner() {
         banner.innerHTML = '⚠ Resolve failed: ' + esc(e.message) + ' <button class="btn" type="button" onclick="resolveSessionBanner()">Retry</button> <button class="btn" type="button" onclick="state.sessionBannerDismissed=true;el(\'sessionBanner\').style.display=\'none\'">Dismiss</button>';
     }
 }
+// ---------------------------------------------------------------------------
+// Data flow (Monitor lead)
+// The path the plant actually takes: every source reads into the bridge, the
+// bridge publishes to the UA server. The nodes are live markup, so the wires
+// are drawn from their geometry into an overlay; a fault breaks the wire at its
+// midpoint, which shows data stopping without a word being read.
+// ---------------------------------------------------------------------------
+const FLOW_MAX_SOURCES = 5;
+const FLOW_MIN_PULSE_MS = 600;
+const FLOW_MAX_PULSE_MS = 3000;
+
+function flowPulseMs(rateMs) {
+    return Math.max(FLOW_MIN_PULSE_MS, Math.min(FLOW_MAX_PULSE_MS, Number(rateMs) || 1000));
+}
+// A wire carries its own source's state: the bridge aggregate would hide the
+// one faulted source among the healthy ones.
+function flowSourceStatus(connectionState) {
+    if (!connectionState) return 'off';
+    const cls = stateClass(connectionState);
+    return cls === 'partial' ? 'warn' : cls;
+}
+// Bridge → UA is live whenever both ends run. A faulted source degrades what
+// crosses, but it never paints the server itself as down.
+function flowLinkStatus(bridgeState, uaState) {
+    if (!bridgeState || !uaState) return 'off';
+    const down = s => s === 'stopped' || s === 'faulted' || s === 'disconnected';
+    const bs = String(bridgeState || '').toLowerCase();
+    const us = String(uaState || '').toLowerCase();
+    if (down(bs) || down(us)) return 'bad';
+    if (bs === 'running' && us === 'running') return 'good';
+    return 'warn';
+}
+function flowKindShort(source) {
+    if (isUaSource(source)) return 'OPC UA';
+    if (isMxSource(source)) return 'MX Component';
+    if (isMelsecSource(source)) return 'Melsec A3N';
+    if (isS7Source(source)) return 'S7-200 PPI';
+    return 'OPC DA';
+}
+// Configured order first so nodes never jump; a source that has no config
+// entry yet (or one that is gone) still appears from the live status payload.
+function flowRows(bridgeSources) {
+    const rows = new Map();
+    (state.sources || []).forEach(s => rows.set(String(s.sourceId || ''), { cfg: s, live: null }));
+    (bridgeSources || []).forEach(s => {
+        const id = String(get(s, 'sourceId') || '');
+        const row = rows.get(id) || { cfg: s, live: null };
+        row.live = s;
+        rows.set(id, row);
+    });
+    return Array.from(rows.entries()).map(([id, row]) => {
+        const info = row.live || row.cfg || {};
+        const statusText = get(info, 'connectionState') || '';
+        return {
+            id,
+            cfg: row.cfg || info,
+            name: get(info, 'displayName') || id,
+            kind: sourceSubtitle(info),
+            statusText,
+            status: flowSourceStatus(statusText),
+            rateMs: flowPulseMs(get(info, 'updateRateMs')),
+            error: String(get(info, 'lastError') || '')
+        };
+    });
+}
+function flowSourceNodeHtml(row) {
+    const badgeHtml = row.statusText ? badge(row.statusText, stateClass(row.statusText)) : '';
+    return `<button type="button" class="flow-node" data-state="${row.status}" data-wire="${row.status}" data-wire-ms="${Math.round(row.rateMs)}" data-action="flow-source" data-source-id="${attr(row.id)}" title="Open ${attr(row.name)} in Sources">`
+        + `<span class="flow-node-n"><span class="nm">${esc(row.name)}</span>${sourceTypeBadge(row.cfg)}${badgeHtml}</span>`
+        + `<span class="flow-node-p">${esc(row.id)} · ${esc(row.kind)} · ${esc(formatMs(row.rateMs))}</span>`
+        + (row.error ? `<span class="flow-node-err">${esc(row.error)}</span>` : '')
+        + `</button>`;
+}
+// "2 OPC DA · 1 OPC UA · 1 faulted" — the Sources tile answers for every
+// source type, not OPC DA alone.
+function sourceMixText(bridgeSources) {
+    const rows = flowRows(bridgeSources);
+    if (!rows.length) return 'No sources configured';
+    const kinds = new Map();
+    rows.forEach(r => {
+        const kind = flowKindShort(r.cfg);
+        kinds.set(kind, (kinds.get(kind) || 0) + 1);
+    });
+    const parts = Array.from(kinds.entries()).map(([kind, n]) => n + ' ' + kind);
+    const faulted = rows.filter(r => r.status === 'bad').length;
+    const degraded = rows.filter(r => r.status === 'warn').length;
+    if (faulted) parts.push(faulted + ' faulted');
+    else if (degraded) parts.push(degraded + ' degraded');
+    return parts.join(' · ');
+}
+function flowSentence(rows, bridgeState, uaState, uaClients) {
+    const sources = rows.length
+        ? rows.length + ' source' + (rows.length === 1 ? '' : 's') + ': ' + rows.map(r =>
+            r.name + ' ' + (r.statusText ? r.statusText.toLowerCase() : 'no status yet') + (r.error ? ' (' + r.error + ')' : '')
+        ).join(', ')
+        : 'no sources configured';
+    return `Data flow. ${sources}. Bridge ${(bridgeState || 'unknown').toLowerCase()}, OPC UA server ${(uaState || 'unknown').toLowerCase()} with ${uaClients} client${uaClients === 1 ? '' : 's'}.`;
+}
+function renderMonitorFlow(bridge, ua, bridgeSources) {
+    const host = el('flowSourceNodes');
+    if (!host) return;
+    const rows = flowRows(bridgeSources);
+    const bridgeState = get(bridge, 'bridgeState') || '';
+    const uaState = get(ua, 'state') || '';
+    const uaClients = get(ua, 'connectedClientCount') ?? 0;
+    const rateMs = flowPulseMs(get(bridge, 'updateRateMs'));
+    const mappingCount = get(bridge, 'mappingCount') ?? 0;
+    const shown = rows.slice(0, FLOW_MAX_SOURCES);
+    const hidden = rows.length - shown.length;
+    // Rebuilding the nodes restarts nothing, but rewriting them every second
+    // would fight the reader's cursor. Only a real change touches the DOM.
+    const signature = JSON.stringify([bridgeState, uaState, uaClients, rateMs, mappingCount, hidden,
+        rows.map(r => [r.id, r.name, r.kind, r.status, r.statusText, r.rateMs, r.error])]);
+    if (state.flowSignature !== signature) {
+        state.flowSignature = signature;
+        host.innerHTML = rows.length
+            ? shown.map(flowSourceNodeHtml).join('')
+                + (hidden > 0 ? `<button type="button" class="flow-node flow-empty" data-action="flow-more">+ ${hidden} more source${hidden === 1 ? '' : 's'}</button>` : '')
+            : '<div class="flow-node flow-empty">No sources configured. Add one under Sources.</div>';
+        const bridgeNode = el('flowBridgeNode');
+        if (bridgeNode) {
+            bridgeNode.dataset.state = flowSourceStatus(bridgeState);
+            bridgeNode.dataset.pulseMs = rateMs;
+            bridgeNode.innerHTML = `<span class="flow-node-v">${badge(bridgeState || '—', stateClass(bridgeState))}</span>`
+                + `<span class="flow-node-p">${esc(formatMs(rateMs))} cycle · ${mappingCount} tag${mappingCount === 1 ? '' : 's'} mapped</span>`;
+        }
+        const uaNode = el('flowUaNode');
+        if (uaNode) {
+            uaNode.dataset.state = flowSourceStatus(uaState);
+            uaNode.innerHTML = `<span class="flow-node-v">${badge(uaState || '—', stateClass(uaState))}</span>`
+                + `<span class="flow-node-p">${uaClients} client${uaClients === 1 ? '' : 's'} · ${mappingCount} tag${mappingCount === 1 ? '' : 's'} published</span>`;
+        }
+    }
+    const summary = el('flowSummary');
+    if (summary) {
+        const faulted = rows.filter(r => r.status === 'bad').length;
+        const degraded = rows.filter(r => r.status === 'warn').length;
+        let html = rows.length + ' source' + (rows.length === 1 ? '' : 's');
+        if (faulted) html += ` · <span class="bad">${faulted} faulted</span>`;
+        else if (degraded) html += ` · <span class="warn">${degraded} degraded</span>`;
+        summary.innerHTML = html;
+    }
+    const count = el('flowSourceCount');
+    if (count) count.textContent = '· ' + rows.length;
+    const sr = el('flowSr');
+    if (sr) sr.textContent = flowSentence(rows, bridgeState, uaState, uaClients);
+}
+function flowRound(n) { return Math.round(n * 10) / 10; }
+function flowCubicPath(p) {
+    return `M ${flowRound(p[0][0])} ${flowRound(p[0][1])} C ${flowRound(p[1][0])} ${flowRound(p[1][1])} ${flowRound(p[2][0])} ${flowRound(p[2][1])} ${flowRound(p[3][0])} ${flowRound(p[3][1])}`;
+}
+function flowCurve(from, to) {
+    // Half the run each side: the controls meet in the middle, so the wire
+    // leaves and enters horizontally and its midpoint is the gap's midpoint.
+    const dx = Math.max(12, Math.abs(to[0] - from[0]) / 2);
+    return [from, [from[0] + dx, from[1]], [to[0] - dx, to[1]], to];
+}
+// de Casteljau at t = .5, so the break lands exactly on the curve.
+function flowBreakAt(curve) {
+    const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+    const l = mid(curve[0], curve[1]);
+    const m = mid(curve[1], curve[2]);
+    const r = mid(curve[2], curve[3]);
+    const s = mid(l, m);
+    const t = mid(m, r);
+    const at = mid(s, t);
+    return { first: [curve[0], l, s, at], at, second: [at, t, r, curve[3]] };
+}
+function flowHead(x, y, status) {
+    return `<path class="flow-head ${status}" d="M ${flowRound(x - 7)} ${flowRound(y - 4)} L ${flowRound(x)} ${flowRound(y)} L ${flowRound(x - 7)} ${flowRound(y + 4)}"/>`;
+}
+function flowMarker(at) {
+    const x = flowRound(at[0]);
+    const y = flowRound(at[1]);
+    return `<g class="flow-fault">`
+        + `<circle class="halo" cx="${x}" cy="${y}" r="6"/>`
+        + `<circle class="ring" cx="${x}" cy="${y}" r="6"/>`
+        + `<path class="tick" d="M ${x} ${flowRound(y - 2.6)} V ${flowRound(y + 0.4)}"/>`
+        + `<circle class="tick-dot" cx="${x}" cy="${flowRound(y + 3)}" r=".9"/>`
+        + `</g>`;
+}
+function flowWireMarkup(from, to, status, pulseMs) {
+    const curve = flowCurve(from, to);
+    if (status === 'bad') {
+        const split = flowBreakAt(curve);
+        return `<path class="flow-live-half" d="${flowCubicPath(split.first)}"/>`
+            + `<path class="flow-dead-half" d="${flowCubicPath(split.second)}"/>`
+            + flowMarker(split.at);
+    }
+    const d = flowCubicPath(curve);
+    const head = flowHead(to[0], to[1], status);
+    if (status === 'off') return `<path class="flow-wire off" d="${d}"/>${head}`;
+    return `<path class="flow-wire ${status}" d="${d}"/>`
+        + `<path class="flow-pulse ${status}" style="animation-duration:${Math.round(pulseMs)}ms" d="${d}"/>`
+        + head;
+}
+// Geometry comes from the nodes, so the wires follow a resize, a longer error
+// message, or a source list that grows. Identical geometry is left alone, which
+// is what keeps a running pulse from restarting on every refresh tick.
+function drawFlowWires() {
+    const body = el('flowBody');
+    const svg = el('flowWires');
+    const bridgeNode = el('flowBridgeNode');
+    const uaNode = el('flowUaNode');
+    if (!body || !svg || !bridgeNode || !uaNode) return;
+    const rect = body.getBoundingClientRect();
+    if (rect.width < 8 || rect.height < 8) return;
+    const local = box => ({
+        left: box.left - rect.left,
+        right: box.right - rect.left,
+        cy: box.top - rect.top + box.height / 2
+    });
+    const bridge = local(bridgeNode.getBoundingClientRect());
+    const ua = local(uaNode.getBoundingClientRect());
+    let markup = '';
+    let worst = 'off';
+    document.querySelectorAll('#flowSourceNodes .flow-node[data-wire]').forEach(node => {
+        const box = local(node.getBoundingClientRect());
+        const status = node.dataset.wire || 'off';
+        worst = worstStatus(worst, status);
+        markup += flowWireMarkup([box.right, box.cy], [bridge.left, bridge.cy], status, Number(node.dataset.wireMs) || 1000);
+    });
+    const publish = worstStatus(flowLinkStatus(bridgeNode.dataset.state, uaNode.dataset.state), worst === 'bad' ? 'warn' : worst);
+    markup += flowWireMarkup([bridge.right, bridge.cy], [ua.left, ua.cy], publish, Number(bridgeNode.dataset.pulseMs) || 1000);
+    if (state.flowWires === markup) return;
+    state.flowWires = markup;
+    svg.setAttribute('viewBox', `0 0 ${Math.round(rect.width)} ${Math.round(rect.height)}`);
+    svg.innerHTML = markup;
+}
 async function refresh() {
     try {
         const lvSource = state.liveValuesSource || '';
@@ -5143,7 +5460,9 @@ async function refresh() {
          el('dot').className = 'dot';
          el('clock').textContent = new Date().toLocaleTimeString();
          el('pBridge').innerHTML = badge(get(b, 'bridgeState') || '—', stateClass(get(b, 'bridgeState')));
-         el('pDa').innerHTML = badge(get(b, 'daConnectionState') || '—', stateClass(get(b, 'daConnectionState')));
+         // The rail leads with the pipeline in flow order (sources → bridge → UA);
+         // this stamp is the aggregate connection state across every source type.
+         el('pSourcesState').innerHTML = badge(get(b, 'daConnectionState') || '—', stateClass(get(b, 'daConnectionState')));
          el('pUa').innerHTML = badge(get(ua, 'state') || '—', stateClass(get(ua, 'state')));
           el('pTags').textContent = get(b, 'mappingCount') ?? 0;
           state.headerMappingCount = get(b, 'mappingCount') ?? 0;
@@ -5279,6 +5598,10 @@ async function refresh() {
                 : 'no reads yet';
             return `<div class="li"><div style="flex:1"><div class="n">${esc(get(source,'displayName') || get(source,'sourceId'))} ${badge(connState, connClass)}</div><div class="p">${esc(sub)}${ioBit}</div><div class="p">${formatMs(get(source,'updateRateMs'))} · ${readBit}${get(source,'lastError') ? ' · <span class="bad">' + esc(get(source,'lastError')) + '</span>' : ''}</div></div></div>`;
         }).join('') : '<span class="msg">No source status yet.</span>';
+        renderMonitorFlow(b, ua, sources);
+        const sourceMix = el('sourceMix');
+        if (sourceMix) sourceMix.textContent = sourceMixText(sources);
+        requestAnimationFrame(drawFlowWires);
         const rateGroups = get(b, 'rateGroups') || [];
         const alarmBar = el('rateAlarmBar');
         if (alarmBar) {
@@ -7689,6 +8012,23 @@ function bindDynamicButtons() {
             pickSource(button.dataset.sourceId || '');
         });
     }
+    // The flow nodes are rebuilt from the live payload, so their clicks are
+    // delegated: a faulted source is one press away from its own settings.
+    const flowNodes = el('flowSourceNodes');
+    if (flowNodes) {
+        flowNodes.addEventListener('click', event => {
+            const button = event.target.closest('button[data-action]');
+            if (!button) return;
+            if (button.dataset.action === 'flow-source') pickSource(button.dataset.sourceId || '', { openConfig: true });
+            else if (button.dataset.action === 'flow-more') navigate('connectivity/sources');
+        });
+    }
+    // The wires are measured from the nodes, so they follow any reflow.
+    const flowBody = el('flowBody');
+    if (flowBody && window.ResizeObserver) {
+        new ResizeObserver(() => requestAnimationFrame(drawFlowWires)).observe(flowBody);
+    }
+    window.addEventListener('resize', () => requestAnimationFrame(drawFlowWires));
     el('listServers').addEventListener('click', event => {
         const button = event.target.closest('button[data-action="pick-server"]');
         if (!button) return;
