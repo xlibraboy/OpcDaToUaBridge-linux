@@ -473,7 +473,10 @@ internal static class DashboardPage
             #helpSearchToc { flex-direction: column; overflow-x: hidden; }
             #helpSearchToc .help-toc-item { white-space: normal; }
         }
-        .help-body { padding: 12px 18px 18px; max-width: 68ch; font-size: var(--fs-body); line-height: 1.65; }
+        .help-body { padding: 12px 18px 18px; font-size: var(--fs-body); line-height: 1.65; }
+        /* The measure belongs on prose, not the container: paragraphs and headings
+           stay at a readable 68ch while diagrams (pre) and tables use the full pane. */
+        .help-body > p, .help-body > ul, .help-body > ol, .help-body > h3, .help-body > h4, .help-body > h5 { max-width: 68ch; }
         .help-body ul, .help-body ol { padding-left: 20px; color: var(--ink2); }
         .help-body li + li { margin-top: 6px; }
         .help-body h5 { font-size: var(--fs-micro); font-weight: 700; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); margin: 16px 0 6px; font-family: var(--font-mono); }
