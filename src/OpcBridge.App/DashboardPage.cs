@@ -387,6 +387,24 @@ internal static class DashboardPage
         .fp-subtab:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
         .fp-tabpane { display: flex; flex-direction: column; gap: 10px; }
         .fp-tabpane .field { margin-bottom: 0; }
+        /* Setup is a settings list, so its rows share one grid instead of every field
+           picking its own width: labels stay wide enough to keep their info icon on the
+           same line (the longest, "Access Rights" + icon, measures 123px), the selects
+           are all 200px so they line up (the widest option needs 198px, and a longer
+           subscription name still grows its own select rather than being clipped), the
+           two numeric fields match each other, the text fields match each other, and
+           every row is at least as tall as a select. */
+        .fp-tabpane label.fl { width: 132px; }
+        #fp-pane-setup select { min-width: 200px; }
+        #fp-pane-setup input[type=number] { width: 90px; }
+        #fp-pane-setup input[type=text] { width: 150px; }
+        #fp-pane-setup .field { min-height: 32px; }
+        /* The one helper text left in Setup is the per-selection note (a named
+           subscription or PLC group locks the update rate, the Digital picker suggests a
+           mode). It belongs under the control it explains, in the control column, instead
+           of wrapping back to the left margin as an orphan line. Everything static is a
+           tooltip on the label. */
+        #fp-pane-setup .field > .msg:not(:empty) { flex: 1 0 100%; padding-left: 140px; font-size: var(--fs-micro); }
         .fp-body { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
         .fp-body.with-flow { grid-template-columns: 1fr auto 1fr; align-items: stretch; }
         .il-flow { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; cursor: help; user-select: none; padding: 0 2px; }
@@ -1747,19 +1765,18 @@ internal static class DashboardPage
                 <div class="field"><label class="fl" for="fpDescription">Description</label><input type="text" id="fpDescription" placeholder="Operator notes / tag description (optional)" style="flex:1"></div>
             </div>
             <div class="fp-tabpane" id="fp-pane-setup" style="display:none">
-                <div class="field"><label class="fl" for="fpAccess">Access Rights</label><select id="fpAccess" data-action="tag-access"><option value="Read">Read (Source → UA)</option><option value="Read-Write">Read-Write (Source ↔ UA)</option><option value="Write">Write (UA → Source)</option></select></div>
-                <div class="field"><label class="fl" for="fpEnabled">Enabled</label><input type="checkbox" id="fpEnabled" data-action="toggle-tag-enabled"></div>
-                <div class="field" id="fpSubscriptionField" style="display:none"><label class="fl" for="fpSubscription">Subscription</label><select id="fpSubscription"></select><span class="msg" id="fpSubscriptionHint"></span></div>
-                <div class="field" id="fpPlcGroupField" style="display:none"><label class="fl" for="fpPlcGroup">PLC Group</label><select id="fpPlcGroup"></select><span class="msg" id="fpPlcGroupHint"></span></div>
-                <div class="field"><label class="fl" for="fpPollRate">Update Rate</label><select id="fpPollRate" data-action="tag-poll-rate"><option value="0">Source Default</option><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
-                <div class="field"><label class="fl" for="fpDeadband">Deadband %</label><input type="number" id="fpDeadband" min="0" max="100" step="0.1" value="0" style="width:80px"></div>
-                <div class="field"><label class="fl" for="fpDecimals">Decimals</label><input type="number" id="fpDecimals" min="0" max="15" step="1" value="" placeholder="off (full precision)" style="width:150px"><span class="msg">digits after comma for Float/Double (blank = off, 0 = no decimals)</span></div>
-                <div class="field"><label class="fl" for="fpUnit">Unit</label><input type="text" id="fpUnit" placeholder="°C, bar, RPM…" style="flex:1"><span class="msg">engineering unit label (shown on HMI widgets)</span></div>
-                <div class="field"><label class="fl" for="fpTrendStyle">Trend Plot</label><select id="fpTrendStyle"><option value="Continuous">Continuous (line)</option><option value="Step">Step (hold last)</option></select><span class="msg">HMI history/trend drawing: line between samples, or hold each value until the next sample (classic SCADA step)</span></div>
-                <div class="field"><label class="fl" for="fpDigital">Digital</label><select id="fpDigital"><option value="">Auto (Boolean = on/off)</option><option value="true">Digital — show on/off text</option><option value="false">Analog — show raw value</option></select><span class="msg" id="fpDigitalHint"></span></div>
-                <div class="field"><label class="fl" for="fpOnText">On text</label><input type="text" id="fpOnText" placeholder="1 / true" style="width:150px"><span class="msg">HMI faceplate status text for the on state (blank = raw value)</span></div>
-                <div class="field"><label class="fl" for="fpOffText">Off text</label><input type="text" id="fpOffText" placeholder="0 / false" style="width:150px"><span class="msg">HMI faceplate status text for the off state (blank = raw value)</span></div>
-                <div class="hint" style="margin-top:4px">Update Rate = source poll/publish interval. With subscriptions on, the source pushes changes at this rate when supported. With subscriptions off, the bridge polls at this rate.</div>
+                <div class="field"><label class="fl" for="fpAccess">Access Rights <span class="info" data-tip="Direction of this mapping. Read = source to UA only, Read-Write = both ways, Write = UA to source only. A tag used as an interlink provider needs Read, a consumer needs Write.">i</span></label><select id="fpAccess" data-action="tag-access"><option value="Read">Read (Source → UA)</option><option value="Read-Write">Read-Write (Source ↔ UA)</option><option value="Write">Write (UA → Source)</option></select></div>
+                <div class="field"><label class="fl" for="fpEnabled">Enabled <span class="info" data-tip="When ON the tag is polled or subscribed and served over UA. When OFF the mapping is kept but the tag stops updating. Applies immediately, without Apply, and switches a Manual or Simulated tag back to Source mode.">i</span></label><input type="checkbox" id="fpEnabled" data-action="toggle-tag-enabled"></div>
+                <div class="field" id="fpSubscriptionField" style="display:none"><label class="fl" for="fpSubscription">Subscription <span class="info" data-tip="Named OPC UA subscription this tag joins, or Source Default for the source's own publishing interval. A named subscription supplies the rate, so Update Rate is not used.">i</span></label><select id="fpSubscription"></select><span class="msg" id="fpSubscriptionHint"></span></div>
+                <div class="field" id="fpPlcGroupField" style="display:none"><label class="fl" for="fpPlcGroup">PLC Group <span class="info" data-tip="Named group on the MX Component source. Every tag in the group shares one poll interval, which overrides this tag's Update Rate.">i</span></label><select id="fpPlcGroup"></select><span class="msg" id="fpPlcGroupHint"></span></div>
+                <div class="field"><label class="fl" for="fpPollRate">Update Rate <span class="info" data-tip="Poll or publish interval for this tag. With source subscriptions on, the source pushes changes at this rate when it supports them; with subscriptions off, the bridge polls at this rate. Source Default uses the source's own rate.">i</span></label><select id="fpPollRate" data-action="tag-poll-rate"><option value="0">Source Default</option><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
+                <div class="field"><label class="fl" for="fpDeadband">Deadband % <span class="info" data-tip="Smallest change worth reporting, as a percentage of the tag's range. OPC DA applies it per rate group, using the highest value set on any tag in that group.">i</span></label><input type="number" id="fpDeadband" min="0" max="100" step="0.1" value="0"></div>
+                <div class="field"><label class="fl" for="fpDecimals">Decimals <span class="info" data-tip="Digits after the decimal point for Float and Double values. Blank = full precision, 0 = no decimals.">i</span></label><input type="number" id="fpDecimals" min="0" max="15" step="1" value="" placeholder="off"></div>
+                <div class="field"><label class="fl" for="fpUnit">Unit <span class="info" data-tip="Engineering unit label, shown next to the value on HMI widgets.">i</span></label><input type="text" id="fpUnit" placeholder="°C, bar, RPM…"></div>
+                <div class="field"><label class="fl" for="fpTrendStyle">Trend Plot <span class="info" data-tip="How the HMI draws this tag's history: a line between samples, or hold each value until the next sample (classic SCADA step).">i</span></label><select id="fpTrendStyle"><option value="Continuous">Continuous (line)</option><option value="Step">Step (hold last)</option></select></div>
+                <div class="field"><label class="fl" for="fpDigital">Digital <span class="info" data-tip="How a two-state tag reads on the HMI: Auto shows on/off text for Boolean tags, Digital forces on/off text for any type, Analog always shows the raw value.">i</span></label><select id="fpDigital"><option value="">Auto (Boolean = on/off)</option><option value="true">Digital — show on/off text</option><option value="false">Analog — show raw value</option></select><span class="msg" id="fpDigitalHint"></span></div>
+                <div class="field"><label class="fl" for="fpOnText">On text <span class="info" data-tip="HMI faceplate status text for the on state (blank = raw value).">i</span></label><input type="text" id="fpOnText" placeholder="1 / true"></div>
+                <div class="field"><label class="fl" for="fpOffText">Off text <span class="info" data-tip="HMI faceplate status text for the off state (blank = raw value).">i</span></label><input type="text" id="fpOffText" placeholder="0 / false"></div>
             </div>
             <div class="fp-tabpane" id="fp-pane-sim" style="display:none">
                 <div class="field"><label class="fl" for="fpSimulated">Simulated</label><input type="checkbox" id="fpSimulated" data-action="tag-simulated"></div>
