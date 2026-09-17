@@ -5,6 +5,13 @@ namespace OpcBridge.Hmi.Core;
 public sealed class MultiBridgeTagEntry
 {
     public required TagBindingKey Key { get; init; }
+
+    /// <summary>Configured display name of the tag's source (falls back to the source id).</summary>
+    public string SourceName { get; set; } = string.Empty;
+
+    /// <summary>Source type (OpcDa, OpcUa, MelsecA3n, S7200Ppi, MxComponent); empty when unknown.</summary>
+    public string SourceType { get; set; } = string.Empty;
+
     public string DisplayName { get; set; } = string.Empty;
 
     /// <summary>Tag description for the trend pen table (e.g. "Level of Tank 1").</summary>
@@ -144,6 +151,8 @@ public sealed class MultiBridgeTagCache
     private static MultiBridgeTagEntry FromDto(TagBindingKey key, HmiTagDto dto) => new()
     {
         Key = key,
+        SourceName = string.IsNullOrWhiteSpace(dto.SourceName) ? key.SourceId : dto.SourceName,
+        SourceType = dto.SourceType ?? string.Empty,
         DisplayName = string.IsNullOrWhiteSpace(dto.DisplayName) ? dto.ItemId : dto.DisplayName,
         Description = dto.Description ?? string.Empty,
         DataType = dto.DataType,

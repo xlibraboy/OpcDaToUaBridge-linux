@@ -5,10 +5,23 @@ namespace OpcBridge.App.Hmi;
 
 public static class HmiTagSnapshot
 {
-    public static HmiTagsResponse Build(MappingStore mappingStore, BridgeState bridgeState)
+    public static HmiTagsResponse Build(
+        MappingStore mappingStore,
+        BridgeState bridgeState,
+        DaRuntimeSettingsSnapshot sourceSettings)
     {
         (IReadOnlyList<TagMapping> mappings, long version) = mappingStore.GetSnapshot();
         IReadOnlyList<BridgeValueSnapshot> values = bridgeState.GetValues();
+
+        // Source identity per tag: the HMI tag browser separates tags by source, so every
+        // tag carries its source's display name and type. Mappings whose source has been
+        // removed keep their SourceId as the name and report no type.
+        Dictionary<string, DaSourceRuntimeSettings> sourcesBySourceId = new(StringComparer.OrdinalIgnoreCase);
+        for (int i = 0; i < sourceSettings.Sources.Count; i++)
+        {
+            DaSourceRuntimeSettings source = sourceSettings.Sources[i];
+            sourcesBySourceId[source.SourceId] = source;
+        }
 
         Dictionary<string, BridgeValueSnapshot> byKey = new(StringComparer.OrdinalIgnoreCase);
         for (int i = 0; i < values.Count; i++)
@@ -33,9 +46,15 @@ public static class HmiTagSnapshot
             }
 
             byKey.TryGetValue(string.Concat(m.SourceId, "::", m.ItemId), out BridgeValueSnapshot? snap);
+            sourcesBySourceId.TryGetValue(m.SourceId, out DaSourceRuntimeSettings? source);
+            string sourceName = source is null || string.IsNullOrWhiteSpace(source.DisplayName)
+                ? m.SourceId
+                : source.DisplayName;
             tags.Add(new HmiTagDto
             {
                 SourceId = m.SourceId,
+                SourceName = sourceName,
+                SourceType = source?.SourceType ?? string.Empty,
                 ItemId = m.ItemId,
                 DisplayName = string.IsNullOrWhiteSpace(m.DisplayName) ? m.ItemId : m.DisplayName,
                 Description = m.Description,

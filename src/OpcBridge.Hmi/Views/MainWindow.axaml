@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:OpcBridge.Hmi.ViewModels"
+        xmlns:core="using:OpcBridge.Hmi.Core"
         xmlns:client="using:OpcBridge.Client"
         xmlns:controls="using:OpcBridge.Hmi.Controls"
         x:Class="OpcBridge.Hmi.Views.MainWindow"
@@ -228,6 +229,43 @@
 
             <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,8">
               <TextBox Watermark="Filter tags…" Text="{Binding Filter}" />
+              <Grid ColumnDefinitions="Auto,*" Margin="0,2,0,0">
+                <TextBlock Grid.Column="0" Classes="listHeader" Text="BRIDGE"
+                           VerticalAlignment="Center" Margin="0,0,8,0" />
+                <ComboBox Grid.Column="1"
+                          HorizontalAlignment="Stretch"
+                          ItemsSource="{Binding BridgeFilters}"
+                          SelectedItem="{Binding SelectedBridgeFilter}"
+                          ToolTip.Tip="Show tags from one bridge only">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="core:BridgeFilterOption">
+                      <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"
+                                 VerticalAlignment="Center" />
+                    </DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+              </Grid>
+              <Grid ColumnDefinitions="Auto,*" Margin="0,2,0,0">
+                <TextBlock Grid.Column="0" Classes="listHeader" Text="SOURCE"
+                           VerticalAlignment="Center" Margin="0,0,8,0" />
+                <ComboBox Grid.Column="1"
+                          HorizontalAlignment="Stretch"
+                          ItemsSource="{Binding SourceFilters}"
+                          SelectedItem="{Binding SelectedSourceFilter}"
+                          ToolTip.Tip="Show tags from one source only">
+                  <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="core:SourceFilterOption">
+                      <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"
+                                   VerticalAlignment="Center" />
+                        <Border Classes="pill muted" IsVisible="{Binding HasTypeLabel}">
+                          <TextBlock Text="{Binding TypeLabel}" />
+                        </Border>
+                      </StackPanel>
+                    </DataTemplate>
+                  </ComboBox.ItemTemplate>
+                </ComboBox>
+              </Grid>
               <Grid ColumnDefinitions="*,2*,*">
                 <TextBlock Grid.Column="0" Classes="listHeader" Text="BRIDGE" />
                 <TextBlock Grid.Column="1" Classes="listHeader" Text="TAG" />
@@ -237,6 +275,7 @@
 
             <StackPanel DockPanel.Dock="Bottom" Spacing="4" Margin="0,8,0,0">
               <TextBlock Text="{Binding SelectedTag.BridgeId, StringFormat=Bridge: {0}}" />
+              <TextBlock Text="{Binding SelectedTag.SourceDisplay, StringFormat=Source: {0}}" />
               <TextBlock Text="{Binding SelectedTag.DisplayName, StringFormat=Name: {0}}" />
               <TextBlock Text="{Binding SelectedTag.ValueText, StringFormat=Value: {0}}" />
               <TextBlock Classes="hint" TextWrapping="Wrap"

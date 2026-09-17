@@ -29,7 +29,7 @@
     </StackPanel>
 
     <ListBox x:Name="TagList"
-             ItemsSource="{Binding FilteredTags}"
+             ItemsSource="{Binding TrendPickerTags}"
              SelectionMode="Multiple">
       <ListBox.Styles>
         <Style Selector="ListBoxItem">
