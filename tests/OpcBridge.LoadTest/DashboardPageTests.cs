@@ -1188,20 +1188,57 @@ public sealed class DashboardPageTests
     [Fact]
     public void Html_FaceplateSetup_HasDigitalControls()
     {
-        // Tri-state Digital picker plus the on/off status text inputs.
-        Assert.Contains("id=\"fpDigital\"", DashboardPage.Html);
-        Assert.Contains("<option value=\"\">Auto (Boolean = on/off)</option>", DashboardPage.Html);
-        Assert.Contains("<option value=\"true\">Digital — show on/off text</option>", DashboardPage.Html);
-        Assert.Contains("<option value=\"false\">Analog — show raw value</option>", DashboardPage.Html);
+        // Digital picker plus the on/off status text inputs.
+        // The picker ships empty — its two states are built per tag type.
+        Assert.Contains("<select id=\"fpDigital\"></select>", DashboardPage.Html);
+        // Only the state that differs from the tag's own reading is offered: a Boolean
+        // already reads on/off, so its alternative is the raw value, and a Byte already
+        // reads raw, so its alternative is on/off text. The duplicate option is not
+        // offered at all, and "Analog" — a continuous process signal in PLC/DCS — is
+        // never used to name the raw-value mode.
+        Assert.Contains("function fpDigitalOptions(", DashboardPage.Script);
+        Assert.Contains("const auto = boolean ? 'Auto (on/off text)' : 'Auto (raw value)';", DashboardPage.Script);
+        Assert.Contains("'<option value=\"false\">Raw value — show true/false</option>'", DashboardPage.Script);
+        Assert.Contains("'<option value=\"true\">Digital — show on/off text</option>'", DashboardPage.Script);
+        Assert.DoesNotContain("Analog", DashboardPage.Html + DashboardPage.Script);
         Assert.Contains("id=\"fpOnText\"", DashboardPage.Html);
         Assert.Contains("id=\"fpOffText\"", DashboardPage.Html);
-        // Faceplate loads the current tri-state and saves it back in the update payload.
-        Assert.Contains("el('fpDigital').value = digitalExplicit === true ? 'true' : digitalExplicit === false ? 'false' : ''", DashboardPage.Script);
+        // Faceplate loads the current choice, built from the tag's type, and saves it back.
+        // A value that is not in the option list would leave the picker blank, so a
+        // redundant explicit value collapses onto the Auto option instead.
+        Assert.Contains("sel.value = show ? fpDigitalOptionValue(type, digitalExplicit) : ''", DashboardPage.Script);
+        Assert.Contains("function fpDigitalOptionValue(dataType, digitalExplicit) {", DashboardPage.Script);
+        Assert.Contains("if (digitalExplicit === true) return boolean ? '' : 'true';", DashboardPage.Script);
+        Assert.Contains("if (digitalExplicit === false) return boolean ? 'false' : '';", DashboardPage.Script);
+        Assert.Contains("fpDigitalOptionType = null; // force the picker's option set to be rebuilt for this tag", DashboardPage.Script);
         Assert.Contains("payload.digital = el('fpDigital').value === '' ? null : el('fpDigital').value === 'true'", DashboardPage.Script);
         Assert.Contains("payload.onText = el('fpOnText').value.trim() || null", DashboardPage.Script);
         Assert.Contains("payload.offText = el('fpOffText').value.trim() || null", DashboardPage.Script);
         // Update payload echoes the fields so /api/mappings/update never resets them.
         Assert.Contains("digital: (mapping.digital ?? mapping.Digital) ?? null", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Html_DigitalControls_AreOfferedOnlyForBooleanAndByteTags()
+    {
+        // Every control in the group carries the hook the visibility pass toggles together.
+        Assert.Contains("class=\"field fp-digital-row\"", DashboardPage.Html);
+        Assert.Contains("id=\"fpDigitalNote\"", DashboardPage.Html);
+        Assert.Contains("function isByteDataType(", DashboardPage.Script);
+        Assert.Contains("function supportsDigitalConfig(", DashboardPage.Script);
+        Assert.Contains("return isBooleanDataType(dataType) || isByteDataType(dataType);", DashboardPage.Script);
+        Assert.Contains("function updateDigitalConfigVisibility(", DashboardPage.Script);
+        Assert.Contains("document.querySelectorAll('.fp-digital-row').forEach(", DashboardPage.Script);
+        // A tag already carrying an explicit choice keeps its controls whatever the type,
+        // so the setting stays visible and reversible.
+        Assert.Contains("const show = explicitlySet || supportsDigitalConfig(type);", DashboardPage.Script);
+        // Options are rebuilt only when the type actually changes, so a live poll never
+        // resets a selection the operator has not applied yet.
+        Assert.Contains("if (sel && fpDigitalOptionType !== (show ? type : '')) {", DashboardPage.Script);
+        // An Auto mapping only learns its type from the first live value, so re-evaluate.
+        Assert.Contains("if (mapping) updateDigitalConfigVisibility(mapping, sourceId, itemId, mapping.digital ?? mapping.Digital);", DashboardPage.Script);
+        // Say why the row is gone, rather than leaving a silent hole in the form.
+        Assert.Contains("Digital and On/Off text apply to Boolean and Byte tags — this tag is ", DashboardPage.Script);
     }
 
     [Fact]
@@ -1211,7 +1248,9 @@ public sealed class DashboardPageTests
         Assert.Contains("function updateDigitalObservations(", DashboardPage.Script);
         Assert.Contains("function looksLikeDigital(", DashboardPage.Script);
         Assert.Contains("if (num !== 0 && num !== 1) obs.onlyBits = false;", DashboardPage.Script);
-        Assert.Contains("if (isBooleanDataType(type)) return false;", DashboardPage.Script);
+        // The suggestion only fires where the picker exists: a Byte, not a Boolean (already
+        // digital) and not a wider numeric type the panel no longer configures.
+        Assert.Contains("if (!isByteDataType(effectiveDataType(mapping, sourceId, itemId))) return false;", DashboardPage.Script);
         Assert.Contains("Observed values are only 0/1 — pick Digital to show on/off text.", DashboardPage.Script);
     }
 

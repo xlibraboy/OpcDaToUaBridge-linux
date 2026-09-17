@@ -1774,9 +1774,10 @@ internal static class DashboardPage
                 <div class="field"><label class="fl" for="fpDecimals">Decimals <span class="info" data-tip="Digits after the decimal point for Float and Double values. Blank = full precision, 0 = no decimals.">i</span></label><input type="number" id="fpDecimals" min="0" max="15" step="1" value="" placeholder="off"></div>
                 <div class="field"><label class="fl" for="fpUnit">Unit <span class="info" data-tip="Engineering unit label, shown next to the value on HMI widgets.">i</span></label><input type="text" id="fpUnit" placeholder="°C, bar, RPM…"></div>
                 <div class="field"><label class="fl" for="fpTrendStyle">Trend Plot <span class="info" data-tip="How the HMI draws this tag's history: a line between samples, or hold each value until the next sample (classic SCADA step).">i</span></label><select id="fpTrendStyle"><option value="Continuous">Continuous (line)</option><option value="Step">Step (hold last)</option></select></div>
-                <div class="field"><label class="fl" for="fpDigital">Digital <span class="info" data-tip="How a two-state tag reads on the HMI: Auto shows on/off text for Boolean tags, Digital forces on/off text for any type, Analog always shows the raw value.">i</span></label><select id="fpDigital"><option value="">Auto (Boolean = on/off)</option><option value="true">Digital — show on/off text</option><option value="false">Analog — show raw value</option></select><span class="msg" id="fpDigitalHint"></span></div>
-                <div class="field"><label class="fl" for="fpOnText">On text <span class="info" data-tip="HMI faceplate status text for the on state (blank = raw value).">i</span></label><input type="text" id="fpOnText" placeholder="1 / true"></div>
-                <div class="field"><label class="fl" for="fpOffText">Off text <span class="info" data-tip="HMI faceplate status text for the off state (blank = raw value).">i</span></label><input type="text" id="fpOffText" placeholder="0 / false"></div>
+                <div class="field fp-digital-row"><label class="fl" for="fpDigital">Digital <span class="info" data-tip="How this tag's status reads on the HMI faceplate. Auto follows the data type; the second choice forces the other reading — on/off text for a Byte that only ever carries 0/1, or the raw value for a Boolean. Only Boolean and Byte tags get this setting.">i</span></label><select id="fpDigital"></select><span class="msg" id="fpDigitalHint"></span></div>
+                <div class="field fp-digital-row"><label class="fl" for="fpOnText">On text <span class="info" data-tip="HMI faceplate status text for the on state (blank = raw value).">i</span></label><input type="text" id="fpOnText" placeholder="1 / true"></div>
+                <div class="field fp-digital-row"><label class="fl" for="fpOffText">Off text <span class="info" data-tip="HMI faceplate status text for the off state (blank = raw value).">i</span></label><input type="text" id="fpOffText" placeholder="0 / false"></div>
+                <div class="hint" id="fpDigitalNote" style="display:none"></div>
             </div>
             <div class="fp-tabpane" id="fp-pane-sim" style="display:none">
                 <div class="field"><label class="fl" for="fpSimulated">Simulated</label><input type="checkbox" id="fpSimulated" data-action="tag-simulated"></div>
@@ -3339,7 +3340,26 @@ function isBooleanDataType(dataType) {
     return t === 'boolean' || t === 'bool';
 }
 
-// Session-scoped 0/1 observation used to suggest marking a byte/int tag as Digital.
+function isByteDataType(dataType) {
+    return String(dataType || '').trim().toLowerCase() === 'byte';
+}
+
+// Only a two-state reading is worth configuring: Boolean is on/off by itself, and a Byte
+// is the classic 0/1 flag carrier. Every other type holds a real measurement, so offering
+// the picker there would only invite a setting the value can never honour.
+function supportsDigitalConfig(dataType) {
+    return isBooleanDataType(dataType) || isByteDataType(dataType);
+}
+
+// Runtime type from the live value when present (matches the Maps row badge); otherwise
+// the type configured on the mapping. A mapping still on "Auto" has no type of its own
+// until the first value arrives.
+function effectiveDataType(mapping, sourceId, itemId) {
+    const live = currentValue(sourceId, itemId);
+    return String((live && get(live, 'dataType')) || (mapping && (mapping.dataType || mapping.DataType)) || '');
+}
+
+// Session-scoped 0/1 observation used to suggest marking a Byte tag as Digital.
 // A tag that has only ever reported 0 or 1 looks like a flag; any other number
 // disqualifies it. Never applied automatically — the operator confirms in the faceplate.
 function updateDigitalObservations() {
@@ -3358,8 +3378,9 @@ function updateDigitalObservations() {
 function looksLikeDigital(mapping, sourceId, itemId) {
     const explicit = mapping ? (mapping.digital ?? mapping.Digital) : undefined;
     if (explicit === true) return false; // already digital
-    const type = (mapping && (mapping.dataType || mapping.DataType)) || '';
-    if (isBooleanDataType(type)) return false; // Boolean is digital automatically
+    // Only Byte is both ambiguous and configurable: a Boolean is digital already, and the
+    // picker is not offered for wider numeric types, so suggesting it there goes nowhere.
+    if (!isByteDataType(effectiveDataType(mapping, sourceId, itemId))) return false;
     const obs = state.digitalObservations.get(valueKey(sourceId, itemId));
     return !!(obs && obs.seen && obs.onlyBits);
 }
@@ -3835,6 +3856,9 @@ function renderMappingRows(mappings) {
 
 let faceplateOpen = false;
 let faceplateKey = null;
+// Effective type the Digital picker's options were last built for — the guard that stops a
+// live refresh from rebuilding (and so resetting) an unapplied selection.
+let fpDigitalOptionType = null;
 
 function openFaceplate(sourceId, itemId) {
     const mapping = getMapping(sourceId, itemId);
@@ -3919,12 +3943,10 @@ function openFaceplate(sourceId, itemId) {
     el('fpUnit').value = String(mapping.unit ?? mapping.Unit ?? '');
     el('fpTrendStyle').value = String(mapping.trendStyle || mapping.TrendStyle || 'Continuous');
     const digitalExplicit = mapping.digital ?? mapping.Digital;
-    el('fpDigital').value = digitalExplicit === true ? 'true' : digitalExplicit === false ? 'false' : '';
     el('fpOnText').value = String(mapping.onText ?? mapping.OnText ?? '');
     el('fpOffText').value = String(mapping.offText ?? mapping.OffText ?? '');
-    el('fpDigitalHint').textContent = looksLikeDigital(mapping, sourceId, itemId)
-        ? 'Observed values are only 0/1 — pick Digital to show on/off text.'
-        : '';
+    fpDigitalOptionType = null; // force the picker's option set to be rebuilt for this tag
+    updateDigitalConfigVisibility(mapping, sourceId, itemId, digitalExplicit);
     updateManualInputState();
     el('fpApply').dataset.sourceId = sourceId;
     el('fpApply').dataset.itemId = itemId;
@@ -3958,10 +3980,68 @@ function closeFaceplate() {
     el('faceplateOverlay').classList.remove('open');
 }
 
+// Only the two states that actually differ for this tag: a Boolean already reads on/off,
+// so its alternative is the raw value, and a Byte already reads raw, so its alternative is
+// on/off text. What the tag already does is Auto — never offered a second time, which is
+// what made a fixed three-state choice read as ambiguous.
+function fpDigitalOptions(dataType) {
+    const boolean = isBooleanDataType(dataType);
+    const auto = boolean ? 'Auto (on/off text)' : 'Auto (raw value)';
+    const alternative = boolean
+        ? '<option value="false">Raw value — show true/false</option>'
+        : '<option value="true">Digital — show on/off text</option>';
+    return `<option value="">${auto}</option>` + alternative;
+}
+
+// Maps the stored tri-state onto the two options offered for this type. The state the tag
+// already has IS Auto, so a redundant explicit value collapses onto it — selecting a value
+// that is not in the list would leave the picker blank (selectedIndex -1) and look broken.
+function fpDigitalOptionValue(dataType, digitalExplicit) {
+    const boolean = isBooleanDataType(dataType);
+    if (digitalExplicit === true) return boolean ? '' : 'true';
+    if (digitalExplicit === false) return boolean ? 'false' : '';
+    return '';
+}
+
+// The Digital picker only means something for a two-state reading: a Boolean, which is
+// on/off by itself, or a Byte that carries 0/1. On any other type the row is hidden so an
+// operator cannot set a mode the value can never honour. A tag that already carries an
+// explicit Digital choice keeps its controls whatever its type, so the setting stays
+// visible, editable and reversible. Called again on every live refresh because an "Auto"
+// mapping only learns its type once the first value arrives.
+function updateDigitalConfigVisibility(mapping, sourceId, itemId, digitalExplicit) {
+    const type = effectiveDataType(mapping, sourceId, itemId);
+    const explicitlySet = digitalExplicit !== null && digitalExplicit !== undefined;
+    const show = explicitlySet || supportsDigitalConfig(type);
+    const sel = el('fpDigital');
+    // Rebuild the options only when the effective type actually changes, so a live poll
+    // never resets a selection the operator has not applied yet.
+    if (sel && fpDigitalOptionType !== (show ? type : '')) {
+        fpDigitalOptionType = show ? type : '';
+        sel.innerHTML = show ? fpDigitalOptions(type) : '';
+        sel.value = show ? fpDigitalOptionValue(type, digitalExplicit) : '';
+    }
+    document.querySelectorAll('.fp-digital-row').forEach(f => { f.style.display = show ? '' : 'none'; });
+    const note = el('fpDigitalNote');
+    if (note) {
+        note.style.display = show ? 'none' : '';
+        note.textContent = show
+            ? ''
+            : 'Digital and On/Off text apply to Boolean and Byte tags — this tag is ' + (type || 'untyped') + '.';
+    }
+    el('fpDigitalHint').textContent = show && looksLikeDigital(mapping, sourceId, itemId)
+        ? 'Observed values are only 0/1 — pick Digital to show on/off text.'
+        : '';
+}
+
 function updateFaceplateLiveValues() {
     if (!faceplateOpen || !faceplateKey) return;
     const parts = faceplateKey.split('\u0000');
-    el('fpLivePanel').innerHTML = renderLiveValue(currentValue(parts[0] || 'default', parts[1] || ''));
+    const sourceId = parts[0] || 'default';
+    const itemId = parts[1] || '';
+    el('fpLivePanel').innerHTML = renderLiveValue(currentValue(sourceId, itemId));
+    const mapping = getMapping(sourceId, itemId);
+    if (mapping) updateDigitalConfigVisibility(mapping, sourceId, itemId, mapping.digital ?? mapping.Digital);
     updateManualValueHint();
 }
 

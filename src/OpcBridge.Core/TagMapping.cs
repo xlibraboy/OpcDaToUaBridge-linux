@@ -51,9 +51,9 @@ public sealed class TagMapping
     /// <summary>
     /// Renders this tag as a two-state (on/off) signal in the HMI faceplate, so status shows
     /// as <see cref="OnText"/>/<see cref="OffText"/> instead of the raw value.
-    /// null = auto (Boolean/Bool tags are digital, everything else is analog),
+    /// null = auto (Boolean/Bool tags are digital, everything else shows the raw value),
     /// true = force digital (e.g. a Byte tag that only ever carries 0/1),
-    /// false = force analog.
+    /// false = force the raw value.
     /// </summary>
     public bool? Digital { get; set; }
 
@@ -127,7 +127,7 @@ public static class TrendStyleTypes
 
 /// <summary>
 /// Resolves a tag's on/off ("digital") semantics and coerces raw values to a boolean.
-/// Booleans are digital automatically; byte and other numeric tags are analog unless
+/// Booleans are digital automatically; byte and other numeric tags show the raw value unless
 /// <see cref="TagMapping.Digital"/> is explicitly set, because a 0-255 value cannot be
 /// told apart from a genuine two-state flag by type alone.
 /// </summary>
