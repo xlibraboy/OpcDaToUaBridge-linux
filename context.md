@@ -1,6 +1,6 @@
 # context.md — OpcBridge
 
-Instruction file for AI agents working in this repo. All facts below are verified against committed code on `main` as of 2026-08-07 (`a55e3da`).
+Instruction file for AI agents working in this repo. All facts below are verified against committed code on `main` as of 2026-09-17 (`7c17e04`).
 
 ## What this project is
 
@@ -220,7 +220,7 @@ docker run --rm -v "$PWD/<worktree>":/src -w /src -v "$HOME/.nuget-cache":/home/
   -e HOME=/home/build -e DOTNET_CLI_HOME=/home/build --user "$(id -u):$(id -g)" \
   mcr.microsoft.com/dotnet/sdk:8.0 dotnet test tests/OpcBridge.LoadTest/OpcBridge.LoadTest.csproj
 ```
-`--user` keeps build artifacts iwan-owned (rootful daemon). Full suite: **358 tests** (xUnit, `tests/OpcBridge.LoadTest`), ~2 min in Docker. Since the last refresh, `DaConnectErrorClassifierTests` (5) and `AccessRightsNormalizationTests` (6) joined the suite. Known flaky: `InfluxApiTests.InfluxConfig_Post_Persists_EnabledFlag` (fails in full-suite order, passes isolated — pre-existing).
+`--user` keeps build artifacts iwan-owned (rootful daemon). Full suite: **869 tests** (xUnit, `tests/OpcBridge.LoadTest`), ~13–16 min in Docker on this host across three consecutive full runs — trust the run's own total over the wall time. The suite has grown well past the previous count (source/bridge tag-browser, mapping-range and trend-scale tests joined). Known flaky: `InfluxApiTests.InfluxConfig_Post_Persists_EnabledFlag` (historically failed in full-suite order, passes isolated — green in the last three full runs).
 
 **Worktree workflow (session convention):** fixes live in `git worktree add .worktrees/<branch-slug> -b <branch> main`; one worktree per branch; full suite per branch before merge; merge to main with `--no-ff`; push to origin. **Tool path quirk:** `edit`/`write` with relative `.worktrees/...` paths sometimes land in the main checkout — always use absolute paths and verify with grep after. `.dockerignore` excludes `.worktrees/` (7+ GB) so images can be built from the main checkout.
 
@@ -270,7 +270,7 @@ Package `publish.tmp` → tar.gz, SCP to host as `publish-new.tar.gz`, then run 
 - **Failure-resilient by default.** Errors are surfaced in the dashboard (per-source state, `LastError`), not fatal. A failed connect must leave the app alive and recoverable.
 - **Backend-first.** Verify the backend seam (`ISourceClient`, `BridgeWorker`, `BridgeState`) before wiring dashboard controls.
 - **Conventional commits** (`feat:`, `fix:`, etc.). Committed code on `main` is authoritative; uncommitted changes are a known risk.
-- **Tests exist** under `tests/OpcBridge.LoadTest` (xUnit, 358 tests). Prefer `InternalsVisibleTo` over making types public for tests. Run in Docker (command above). Primary verification is the full suite + rig/browser proof after deploy.
+- **Tests exist** under `tests/OpcBridge.LoadTest` (xUnit, 869 tests). Prefer `InternalsVisibleTo` over making types public for tests. Run in Docker (command above). Primary verification is the full suite + rig/browser proof after deploy.
 
 ## Gotchas
 
