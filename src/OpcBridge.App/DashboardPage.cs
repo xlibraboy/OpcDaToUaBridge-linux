@@ -1770,14 +1770,14 @@ internal static class DashboardPage
                 <div class="field" id="fpSubscriptionField" style="display:none"><label class="fl" for="fpSubscription">Subscription <span class="info" data-tip="Named OPC UA subscription this tag joins, or Source Default for the source's own publishing interval. A named subscription supplies the rate, so Update Rate is not used.">i</span></label><select id="fpSubscription"></select><span class="msg" id="fpSubscriptionHint"></span></div>
                 <div class="field" id="fpPlcGroupField" style="display:none"><label class="fl" for="fpPlcGroup">PLC Group <span class="info" data-tip="Named group on the MX Component source. Every tag in the group shares one poll interval, which overrides this tag's Update Rate.">i</span></label><select id="fpPlcGroup"></select><span class="msg" id="fpPlcGroupHint"></span></div>
                 <div class="field"><label class="fl" for="fpPollRate">Update Rate <span class="info" data-tip="Poll or publish interval for this tag. With source subscriptions on, the source pushes changes at this rate when it supports them; with subscriptions off, the bridge polls at this rate. Source Default uses the source's own rate.">i</span></label><select id="fpPollRate" data-action="tag-poll-rate"><option value="0">Source Default</option><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
-                <div class="field"><label class="fl" for="fpDeadband">Deadband % <span class="info" data-tip="Smallest change worth reporting, as a percentage of the tag's range. OPC DA applies it per rate group, using the highest value set on any tag in that group.">i</span></label><input type="number" id="fpDeadband" min="0" max="100" step="0.1" value="0"></div>
-                <div class="field"><label class="fl" for="fpDecimals">Decimals <span class="info" data-tip="Digits after the decimal point for Float and Double values. Blank = full precision, 0 = no decimals.">i</span></label><input type="number" id="fpDecimals" min="0" max="15" step="1" value="" placeholder="off"></div>
-                <div class="field"><label class="fl" for="fpUnit">Unit <span class="info" data-tip="Engineering unit label, shown next to the value on HMI widgets.">i</span></label><input type="text" id="fpUnit" placeholder="°C, bar, RPM…"></div>
+                <div class="field" data-fp-gate="deadband"><label class="fl" for="fpDeadband">Deadband % <span class="info" data-tip="Smallest change worth reporting, as a percentage of the tag's range. OPC DA applies it per rate group, using the highest value set on any tag in that group. Only for tags with a numeric range — a Boolean has nothing to filter.">i</span></label><input type="number" id="fpDeadband" min="0" max="100" step="0.1" value="0"></div>
+                <div class="field" data-fp-gate="decimals"><label class="fl" for="fpDecimals">Decimals <span class="info" data-tip="Digits after the decimal point for Float, Double and Decimal values. Blank = full precision, 0 = no decimals. Only for tags with fractional digits — integers and Booleans ignore it.">i</span></label><input type="number" id="fpDecimals" min="0" max="15" step="1" value="" placeholder="off"></div>
+                <div class="field" data-fp-gate="unit"><label class="fl" for="fpUnit">Unit <span class="info" data-tip="Engineering unit label, shown next to the value on HMI widgets. Only for tags with a numeric measurement — a Boolean has no unit.">i</span></label><input type="text" id="fpUnit" placeholder="°C, bar, RPM…"></div>
                 <div class="field"><label class="fl" for="fpTrendStyle">Trend Plot <span class="info" data-tip="How the HMI draws this tag's history: a line between samples, or hold each value until the next sample (classic SCADA step).">i</span></label><select id="fpTrendStyle"><option value="Continuous">Continuous (line)</option><option value="Step">Step (hold last)</option></select></div>
                 <div class="field fp-digital-row"><label class="fl" for="fpDigital">Digital <span class="info" data-tip="How this tag's status reads on the HMI faceplate. Auto follows the data type; the second choice forces the other reading — on/off text for a Byte that only ever carries 0/1, or the raw value for a Boolean. Only Boolean and Byte tags get this setting.">i</span></label><select id="fpDigital"></select><span class="msg" id="fpDigitalHint"></span></div>
                 <div class="field fp-digital-row"><label class="fl" for="fpOnText">On text <span class="info" data-tip="HMI faceplate status text for the on state (blank = raw value).">i</span></label><input type="text" id="fpOnText" placeholder="1 / true"></div>
                 <div class="field fp-digital-row"><label class="fl" for="fpOffText">Off text <span class="info" data-tip="HMI faceplate status text for the off state (blank = raw value).">i</span></label><input type="text" id="fpOffText" placeholder="0 / false"></div>
-                <div class="hint" id="fpDigitalNote" style="display:none"></div>
+                <div class="hint" id="fpSetupNote" style="display:none"></div>
             </div>
             <div class="fp-tabpane" id="fp-pane-sim" style="display:none">
                 <div class="field"><label class="fl" for="fpSimulated">Simulated</label><input type="checkbox" id="fpSimulated" data-action="tag-simulated"></div>
@@ -3344,6 +3344,30 @@ function isByteDataType(dataType) {
     return String(dataType || '').trim().toLowerCase() === 'byte';
 }
 
+// Data-type vocabulary mirroring DataTypeRanges (OpcBridge.Hmi.Core), plus the CLR aliases a
+// mapping may carry. A name outside this list is undetermined rather than inapplicable, and
+// undetermined never hides a Setup row.
+const FLOATING_DATA_TYPES = ['float', 'single', 'double', 'real8', 'decimal'];
+const INTEGER_DATA_TYPES = ['byte', 'sbyte', 'short', 'int16', 'ushort', 'uint16', 'int', 'int32', 'uint', 'uint32', 'long', 'int64', 'ulong', 'uint64'];
+
+function normalizeDataType(dataType) {
+    return String(dataType || '').trim().toLowerCase();
+}
+
+function isFloatingDataType(dataType) {
+    return FLOATING_DATA_TYPES.includes(normalizeDataType(dataType));
+}
+
+function isIntegerDataType(dataType) {
+    return INTEGER_DATA_TYPES.includes(normalizeDataType(dataType));
+}
+
+function isKnownDataType(dataType) {
+    const t = normalizeDataType(dataType);
+    return isBooleanDataType(t) || isFloatingDataType(t) || isIntegerDataType(t)
+        || t === 'string' || t === 'datetime' || t === 'bytestring';
+}
+
 // Only a two-state reading is worth configuring: Boolean is on/off by itself, and a Byte
 // is the classic 0/1 flag carrier. Every other type holds a real measurement, so offering
 // the picker there would only invite a setting the value can never honour.
@@ -3946,7 +3970,7 @@ function openFaceplate(sourceId, itemId) {
     el('fpOnText').value = String(mapping.onText ?? mapping.OnText ?? '');
     el('fpOffText').value = String(mapping.offText ?? mapping.OffText ?? '');
     fpDigitalOptionType = null; // force the picker's option set to be rebuilt for this tag
-    updateDigitalConfigVisibility(mapping, sourceId, itemId, digitalExplicit);
+    updateSetupGates(mapping, sourceId, itemId, digitalExplicit);
     updateManualInputState();
     el('fpApply').dataset.sourceId = sourceId;
     el('fpApply').dataset.itemId = itemId;
@@ -4003,35 +4027,57 @@ function fpDigitalOptionValue(dataType, digitalExplicit) {
     return '';
 }
 
-// The Digital picker only means something for a two-state reading: a Boolean, which is
-// on/off by itself, or a Byte that carries 0/1. On any other type the row is hidden so an
-// operator cannot set a mode the value can never honour. A tag that already carries an
-// explicit Digital choice keeps its controls whatever its type, so the setting stays
-// visible, editable and reversible. Called again on every live refresh because an "Auto"
-// mapping only learns its type once the first value arrives.
-function updateDigitalConfigVisibility(mapping, sourceId, itemId, digitalExplicit) {
+// The Setup pane hides rows a tag's data type cannot use, and says which ones it hid:
+//  - Deadband % is a percentage of the tag's range and Unit is an engineering label, so
+//    neither means anything for a two-state Boolean.
+//  - Decimals only applies where a value can have fractional digits: TagDecimals rounds
+//    float/double/decimal and passes everything else through untouched, so a Boolean, a
+//    Byte, an integer, a String or a timestamp has nothing to set.
+//  - The Digital rows only mean something for a two-state reading: a Boolean, which is
+//    on/off by itself, or a Byte that carries 0/1.
+// A row whose own value is already set is kept whatever the type, so nothing an operator
+// configured becomes unreachable, and an undetermined type hides nothing. Called again on
+// every live refresh because an "Auto" mapping only learns its type once a value arrives.
+function updateSetupGates(mapping, sourceId, itemId, digitalExplicit) {
     const type = effectiveDataType(mapping, sourceId, itemId);
+    const known = isKnownDataType(type);
+    const boolean = known && isBooleanDataType(type);
+    const hidden = [];
+
+    [
+        { field: 'deadband', label: 'Deadband', applies: !boolean, set: Number(el('fpDeadband').value) > 0 },
+        { field: 'decimals', label: 'Decimals', applies: !known || isFloatingDataType(type), set: el('fpDecimals').value.trim() !== '' },
+        { field: 'unit', label: 'Unit', applies: !boolean, set: el('fpUnit').value.trim() !== '' }
+    ].forEach(gate => {
+        const row = document.querySelector('[data-fp-gate="' + gate.field + '"]');
+        const keep = gate.applies || gate.set;
+        if (row) row.style.display = keep ? '' : 'none';
+        if (!keep) hidden.push(gate.label);
+    });
+
     const explicitlySet = digitalExplicit !== null && digitalExplicit !== undefined;
-    const show = explicitlySet || supportsDigitalConfig(type);
+    const showDigital = explicitlySet || supportsDigitalConfig(type);
     const sel = el('fpDigital');
     // Rebuild the options only when the effective type actually changes, so a live poll
     // never resets a selection the operator has not applied yet.
-    if (sel && fpDigitalOptionType !== (show ? type : '')) {
-        fpDigitalOptionType = show ? type : '';
-        sel.innerHTML = show ? fpDigitalOptions(type) : '';
-        sel.value = show ? fpDigitalOptionValue(type, digitalExplicit) : '';
+    if (sel && fpDigitalOptionType !== (showDigital ? type : '')) {
+        fpDigitalOptionType = showDigital ? type : '';
+        sel.innerHTML = showDigital ? fpDigitalOptions(type) : '';
+        sel.value = showDigital ? fpDigitalOptionValue(type, digitalExplicit) : '';
     }
-    document.querySelectorAll('.fp-digital-row').forEach(f => { f.style.display = show ? '' : 'none'; });
-    const note = el('fpDigitalNote');
-    if (note) {
-        note.style.display = show ? 'none' : '';
-        note.textContent = show
-            ? ''
-            : 'Digital and On/Off text apply to Boolean and Byte tags — this tag is ' + (type || 'untyped') + '.';
-    }
-    el('fpDigitalHint').textContent = show && looksLikeDigital(mapping, sourceId, itemId)
+    document.querySelectorAll('.fp-digital-row').forEach(f => { f.style.display = showDigital ? '' : 'none'; });
+    if (!showDigital) hidden.push('Digital');
+    el('fpDigitalHint').textContent = showDigital && looksLikeDigital(mapping, sourceId, itemId)
         ? 'Observed values are only 0/1 — pick Digital to show on/off text.'
         : '';
+
+    const note = el('fpSetupNote');
+    if (note) {
+        note.style.display = hidden.length ? '' : 'none';
+        note.textContent = hidden.length
+            ? 'Not shown for a ' + (type || 'untyped') + ' tag: ' + hidden.join(', ') + '.'
+            : '';
+    }
 }
 
 function updateFaceplateLiveValues() {
@@ -4041,7 +4087,7 @@ function updateFaceplateLiveValues() {
     const itemId = parts[1] || '';
     el('fpLivePanel').innerHTML = renderLiveValue(currentValue(sourceId, itemId));
     const mapping = getMapping(sourceId, itemId);
-    if (mapping) updateDigitalConfigVisibility(mapping, sourceId, itemId, mapping.digital ?? mapping.Digital);
+    if (mapping) updateSetupGates(mapping, sourceId, itemId, mapping.digital ?? mapping.Digital);
     updateManualValueHint();
 }
 
