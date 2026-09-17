@@ -391,6 +391,7 @@ public sealed class MappingStore
         }
 
         (string? providerSourceId, string? providerItemId) = NormalizeProvider(tag, sourceId, itemId);
+        (double? rangeMin, double? rangeMax) = NormalizeRange(tag.RangeMin, tag.RangeMax);
 
         return new TagMapping
         {
@@ -415,6 +416,8 @@ public sealed class MappingStore
             MqttTopic = string.IsNullOrWhiteSpace(tag.MqttTopic) ? null : tag.MqttTopic.Trim(),
             InfluxEnabled = tag.InfluxEnabled,
             Unit = string.IsNullOrWhiteSpace(tag.Unit) ? null : tag.Unit.Trim(),
+            RangeMin = rangeMin,
+            RangeMax = rangeMax,
             Digital = tag.Digital,
             OnText = string.IsNullOrWhiteSpace(tag.OnText) ? null : tag.OnText.Trim(),
             OffText = string.IsNullOrWhiteSpace(tag.OffText) ? null : tag.OffText.Trim(),
@@ -448,6 +451,22 @@ public sealed class MappingStore
         }
 
         return (providerSourceId, providerItemId);
+    }
+
+    /// <summary>
+    /// Normalizes a tag's engineering range: it is kept only when both ends are finite and
+    /// the max sits above the min, so a half-typed range can never pin a trend axis. Anything
+    /// else becomes "no range" and the HMI falls back to the data-type range.
+    /// </summary>
+    private static (double? Min, double? Max) NormalizeRange(double? min, double? max)
+    {
+        if (min is not { } low || max is not { } high
+            || !double.IsFinite(low) || !double.IsFinite(high) || high <= low)
+        {
+            return (null, null);
+        }
+
+        return (low, high);
     }
 
     private static string NormalizeSourceId(string? sourceId)

@@ -67,9 +67,25 @@ public partial class FaceplateViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty]
     private string _trendStyle = "Continuous";
 
-    // The tag's type decides the trend axis (booleans pin to 0..1); live cache refresh can
-    // populate it after the history load, so recompute whenever it actually changes.
+    /// <summary>
+    /// The tag's configured engineering range (dashboard Maps faceplate); null when unset, in
+    /// which case the 1h block falls back to the tag's data-type range, then to the samples.
+    /// </summary>
+    [ObservableProperty]
+    private double? _rangeMin;
+
+    /// <summary>High end of the tag's configured engineering range. See <see cref="RangeMin"/>.</summary>
+    [ObservableProperty]
+    private double? _rangeMax;
+
+    // The tag's type and its configured range decide the trend axis (booleans pin to 0..1);
+    // live cache refresh can populate them after the history load, so recompute whenever
+    // either actually changes.
     partial void OnDataTypeChanged(string value) => RecomputeTrendAxis();
+
+    partial void OnRangeMinChanged(double? value) => RecomputeTrendAxis();
+
+    partial void OnRangeMaxChanged(double? value) => RecomputeTrendAxis();
 
     [ObservableProperty]
     private string _valueText = string.Empty;
@@ -129,6 +145,8 @@ public partial class FaceplateViewModel : ObservableObject, IAsyncDisposable
             DisplayName = entry.DisplayName;
             DataType = entry.DataType;
             Unit = entry.Unit ?? string.Empty;
+            RangeMin = entry.RangeMin;
+            RangeMax = entry.RangeMax;
             TrendStyle = NormalizeTrendStyle(entry.TrendStyle);
             Writeable = entry.Writeable;
             InfluxEnabled = entry.InfluxEnabled;
@@ -148,6 +166,8 @@ public partial class FaceplateViewModel : ObservableObject, IAsyncDisposable
         {
             DisplayName = Key.DaItemId;
             Unit = string.Empty;
+            RangeMin = null;
+            RangeMax = null;
             TrendStyle = "Continuous";
             ValueText = "—";
             QualityText = "Unbound";
@@ -296,7 +316,8 @@ public partial class FaceplateViewModel : ObservableObject, IAsyncDisposable
 
     /// <summary>
     /// Resolves the Y axis for the loaded 1h history: booleans stay pinned to their 0..1
-    /// band so an on/off trace reads clearly; everything else auto-fits the samples.
+    /// band so an on/off trace reads clearly; everything else pins to the tag's configured
+    /// range when it has one, and otherwise fits the samples.
     /// </summary>
     private void RecomputeTrendAxis()
     {
@@ -322,7 +343,9 @@ public partial class FaceplateViewModel : ObservableObject, IAsyncDisposable
     }
 
     private (double Min, double Max)? TrendTypeRange() =>
-        IsBooleanLike(DataType) ? (0, 1) : DataTypeRanges.GetRange(DataType);
+        IsBooleanLike(DataType)
+            ? (0, 1)
+            : TrendScale.TagRange(RangeMin, RangeMax) ?? DataTypeRanges.GetRange(DataType);
 
     private static bool IsBooleanLike(string? dataType) =>
         string.Equals(dataType, "Boolean", StringComparison.OrdinalIgnoreCase)

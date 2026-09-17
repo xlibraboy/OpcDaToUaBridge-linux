@@ -37,8 +37,10 @@ public static class TrendScale
     /// tick values. When false the axis is pinned to the tag's data-type range (min..max).
     /// </param>
     /// <param name="typeRange">
-    /// The tag's natural range (e.g. byte 0..255, bool 0..1). Null for floating types.
-    /// When a fixed range is requested but none exists, the axis auto-fits.
+    /// The fixed range to pin to: the tag's configured engineering range when one is set,
+    /// otherwise its natural range (e.g. byte 0..255, bool 0..1). Null for floating types
+    /// without a configured range. When a fixed range is requested but none exists, the
+    /// axis auto-fits.
     /// </param>
     /// <param name="dataMin">Minimum numeric sample in the window (null when none).</param>
     /// <param name="dataMax">Maximum numeric sample in the window (null when none).</param>
@@ -119,6 +121,22 @@ public static class TrendScale
         }
 
         return new TrendAxis(min, max, step);
+    }
+
+    /// <summary>
+    /// A tag's configured engineering range (set per-tag in the dashboard) as a bounds pair
+    /// the axis can pin to, or null when it is unset or unusable. The two ends travel as
+    /// separate nullable numbers, so a range missing either end pins nothing.
+    /// </summary>
+    public static (double Min, double Max)? TagRange(double? min, double? max)
+    {
+        if (min is not { } low || max is not { } high
+            || !double.IsFinite(low) || !double.IsFinite(high) || high <= low)
+        {
+            return null;
+        }
+
+        return (low, high);
     }
 
     /// <summary>True when min/max are equal to within floating-point noise.</summary>

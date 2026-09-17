@@ -1773,6 +1773,8 @@ internal static class DashboardPage
                 <div class="field" data-fp-gate="deadband"><label class="fl" for="fpDeadband">Deadband % <span class="info" data-tip="Smallest change worth reporting, as a percentage of the tag's range. OPC DA applies it per rate group, using the highest value set on any tag in that group. Only for tags with a numeric range — a Boolean has nothing to filter.">i</span></label><input type="number" id="fpDeadband" min="0" max="100" step="0.1" value="0"></div>
                 <div class="field" data-fp-gate="decimals"><label class="fl" for="fpDecimals">Decimals <span class="info" data-tip="Digits after the decimal point for Float, Double and Decimal values. Blank = full precision, 0 = no decimals. Only for tags with fractional digits — integers and Booleans ignore it.">i</span></label><input type="number" id="fpDecimals" min="0" max="15" step="1" value="" placeholder="off"></div>
                 <div class="field" data-fp-gate="unit"><label class="fl" for="fpUnit">Unit <span class="info" data-tip="Engineering unit label, shown next to the value on HMI widgets. Only for tags with a numeric measurement — a Boolean has no unit.">i</span></label><input type="text" id="fpUnit" placeholder="°C, bar, RPM…"></div>
+                <div class="field" data-fp-gate="range"><label class="fl" for="fpRangeMin">Range Min <span class="info" data-tip="Low end of this tag's engineering range. HMI trends open pinned to Min–Max, so the operator sees the scale configured here; Auto range still fits the samples on demand. Leave both ends blank for automatic: the trend then uses the data type's natural range (integers and booleans) or fits the samples (Float, Double, Decimal). Display only — logged values are unchanged.">i</span></label><input type="number" id="fpRangeMin" step="any" placeholder="auto"></div>
+                <div class="field" data-fp-gate="range"><label class="fl" for="fpRangeMax">Range Max <span class="info" data-tip="High end of this tag's engineering range. Set it together with Range Min — a range with only one end pins nothing. Display only — logged values are unchanged.">i</span></label><input type="number" id="fpRangeMax" step="any" placeholder="auto"><span class="msg" id="fpRangeHint"></span></div>
                 <div class="field"><label class="fl" for="fpTrendStyle">Trend Plot <span class="info" data-tip="How the HMI draws this tag's history: a line between samples, or hold each value until the next sample (classic SCADA step).">i</span></label><select id="fpTrendStyle"><option value="Continuous">Continuous (line)</option><option value="Step">Step (hold last)</option></select></div>
                 <div class="field fp-digital-row"><label class="fl" for="fpDigital">Digital <span class="info" data-tip="How this tag's status reads on the HMI faceplate. Auto follows the data type; the second choice forces the other reading — on/off text for a Byte that only ever carries 0/1, or the raw value for a Boolean. Only Boolean and Byte tags get this setting.">i</span></label><select id="fpDigital"></select><span class="msg" id="fpDigitalHint"></span></div>
                 <div class="field fp-digital-row"><label class="fl" for="fpOnText">On text <span class="info" data-tip="HMI faceplate status text for the on state (blank = raw value).">i</span></label><input type="text" id="fpOnText" placeholder="1 / true"></div>
@@ -3965,6 +3967,10 @@ function openFaceplate(sourceId, itemId) {
     el('fpMqttTopic').value = String(mapping.mqttTopic ?? mapping.MqttTopic ?? '');
     el('fpInfluxEnabled').checked = (mapping.influxEnabled ?? mapping.InfluxEnabled) === true;
     el('fpUnit').value = String(mapping.unit ?? mapping.Unit ?? '');
+    const rangeMin = mapping.rangeMin ?? mapping.RangeMin;
+    const rangeMax = mapping.rangeMax ?? mapping.RangeMax;
+    el('fpRangeMin').value = (rangeMin === null || rangeMin === undefined) ? '' : String(rangeMin);
+    el('fpRangeMax').value = (rangeMax === null || rangeMax === undefined) ? '' : String(rangeMax);
     el('fpTrendStyle').value = String(mapping.trendStyle || mapping.TrendStyle || 'Continuous');
     const digitalExplicit = mapping.digital ?? mapping.Digital;
     el('fpOnText').value = String(mapping.onText ?? mapping.OnText ?? '');
@@ -4035,6 +4041,10 @@ function fpDigitalOptionValue(dataType, digitalExplicit) {
 //    Byte, an integer, a String or a timestamp has nothing to set.
 //  - The Digital rows only mean something for a two-state reading: a Boolean, which is
 //    on/off by itself, or a Byte that carries 0/1.
+//  - Range Min/Max are the Y axis an HMI trend opens on, which only exists for a
+//    measurement: a Boolean is already pinned to its 0..1 band, and a String or timestamp
+//    has no numeric axis at all. Floating-point tags are the main case — that is where a
+//    type-derived range does not exist.
 // A row whose own value is already set is kept whatever the type, so nothing an operator
 // configured becomes unreachable, and an undetermined type hides nothing. Called again on
 // every live refresh because an "Auto" mapping only learns its type once a value arrives.
@@ -4047,13 +4057,14 @@ function updateSetupGates(mapping, sourceId, itemId, digitalExplicit) {
     [
         { field: 'deadband', label: 'Deadband', applies: !boolean, set: Number(el('fpDeadband').value) > 0 },
         { field: 'decimals', label: 'Decimals', applies: !known || isFloatingDataType(type), set: el('fpDecimals').value.trim() !== '' },
-        { field: 'unit', label: 'Unit', applies: !boolean, set: el('fpUnit').value.trim() !== '' }
+        { field: 'unit', label: 'Unit', applies: !boolean, set: el('fpUnit').value.trim() !== '' },
+        { field: 'range', label: 'Range', applies: !known || isFloatingDataType(type) || isIntegerDataType(type), set: el('fpRangeMin').value.trim() !== '' || el('fpRangeMax').value.trim() !== '' }
     ].forEach(gate => {
-        const row = document.querySelector('[data-fp-gate="' + gate.field + '"]');
         const keep = gate.applies || gate.set;
-        if (row) row.style.display = keep ? '' : 'none';
+        document.querySelectorAll('[data-fp-gate="' + gate.field + '"]').forEach(row => { row.style.display = keep ? '' : 'none'; });
         if (!keep) hidden.push(gate.label);
     });
+    updateRangeHint();
 
     const explicitlySet = digitalExplicit !== null && digitalExplicit !== undefined;
     const showDigital = explicitlySet || supportsDigitalConfig(type);
@@ -4078,6 +4089,19 @@ function updateSetupGates(mapping, sourceId, itemId, digitalExplicit) {
             ? 'Not shown for a ' + (type || 'untyped') + ' tag: ' + hidden.join(', ') + '.'
             : '';
     }
+}
+
+// The Range rows are the scale an HMI trend opens on, so a half-filled pair would be a
+// silent no-op: the bridge only keeps a range when both ends are set (MappingStore drops
+// the rest), and a range missing an end pins nothing. Say so while the operator types.
+function updateRangeHint() {
+    const hint = el('fpRangeHint');
+    if (!hint) return;
+    const hasMin = el('fpRangeMin').value.trim() !== '';
+    const hasMax = el('fpRangeMax').value.trim() !== '';
+    hint.textContent = hasMin === hasMax
+        ? ''
+        : 'Set both Min and Max to pin the trend scale, or leave both blank for automatic.';
 }
 
 function updateFaceplateLiveValues() {
@@ -6427,6 +6451,8 @@ async function updateMapping(sourceId, itemId, mutate) {
         mqttTopic: el('fpMqttTopic').value.trim() || null,
         influxEnabled: el('fpInfluxEnabled').checked,
         unit: el('fpUnit').value.trim() || null,
+        rangeMin: (mapping.rangeMin ?? mapping.RangeMin) ?? null,
+        rangeMax: (mapping.rangeMax ?? mapping.RangeMax) ?? null,
         trendStyle: mapping.trendStyle || mapping.TrendStyle || 'Continuous',
         digital: (mapping.digital ?? mapping.Digital) ?? null,
         onText: (mapping.onText ?? mapping.OnText) ?? null,
@@ -8316,6 +8342,14 @@ function bindDynamicButtons() {
                     const parsed = raw === '' ? NaN : Number.parseInt(raw, 10);
                     payload.decimals = Number.isNaN(parsed) ? null : Math.max(0, Math.min(15, parsed));
                 }
+                {
+                    // Blank = automatic (the tag's data-type range, else a fitted axis); the
+                    // bridge keeps the pair only when both ends are set and Max sits above Min.
+                    const min = Number.parseFloat(el('fpRangeMin').value);
+                    const max = Number.parseFloat(el('fpRangeMax').value);
+                    payload.rangeMin = Number.isFinite(min) ? min : null;
+                    payload.rangeMax = Number.isFinite(max) ? max : null;
+                }
                 payload.description = el('fpDescription').value.trim() || null;
                 payload.trendStyle = el('fpTrendStyle').value || 'Continuous';
                 payload.digital = el('fpDigital').value === '' ? null : el('fpDigital').value === 'true';
@@ -8367,6 +8401,8 @@ function bindDynamicButtons() {
         }
     });
     el('fpManualInput').addEventListener('input', updateManualValueHint);
+    el('fpRangeMin').addEventListener('input', updateRangeHint);
+    el('fpRangeMax').addEventListener('input', updateRangeHint);
 }
 
 

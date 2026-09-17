@@ -108,6 +108,63 @@ public sealed class TrendScaleTests
         TrendAxis axis = TrendScale.Resolve(true, (0, 255), null, null);
         Assert.False(axis.IsValid);
     }
+
+    [Fact]
+    public void TagRange_CompletePair_IsUsable()
+    {
+        Assert.Equal((0d, 10d), TrendScale.TagRange(0, 10));
+    }
+
+    [Fact]
+    public void TagRange_HalfTyped_IsNull()
+    {
+        Assert.Null(TrendScale.TagRange(5, null));
+        Assert.Null(TrendScale.TagRange(null, 5));
+        Assert.Null(TrendScale.TagRange(null, null));
+    }
+
+    [Fact]
+    public void TagRange_InvertedOrDegenerate_IsNull()
+    {
+        Assert.Null(TrendScale.TagRange(10, 0));
+        Assert.Null(TrendScale.TagRange(5, 5));
+    }
+
+    [Fact]
+    public void TagRange_NonFinite_IsNull()
+    {
+        Assert.Null(TrendScale.TagRange(double.NaN, 10));
+        Assert.Null(TrendScale.TagRange(0, double.PositiveInfinity));
+    }
+
+    [Fact]
+    public void Fixed_PinsToTagRange_NotToTheData()
+    {
+        // A Double tag has no data-type range, so before per-tag ranges this axis auto-fit.
+        TrendAxis axis = TrendScale.Resolve(
+            autoRange: false,
+            typeRange: TrendScale.TagRange(0, 10),
+            dataMin: 100,
+            dataMax: 110);
+
+        Assert.True(axis.IsValid);
+        Assert.Equal(0, axis.Min);
+        Assert.Equal(10, axis.Max);
+    }
+
+    [Fact]
+    public void Auto_IgnoresTagRange_FitsTheData()
+    {
+        TrendAxis axis = TrendScale.Resolve(
+            autoRange: true,
+            typeRange: TrendScale.TagRange(0, 10),
+            dataMin: 100,
+            dataMax: 110);
+
+        Assert.True(axis.IsValid);
+        Assert.True(axis.Min <= 100);
+        Assert.True(axis.Max >= 110);
+    }
 }
 
 public sealed class TrendTimeAxisTests

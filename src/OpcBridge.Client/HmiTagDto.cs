@@ -23,6 +23,16 @@ public sealed class HmiTagDto
     public string? Unit { get; set; }
 
     /// <summary>
+    /// Low end of the tag's configured engineering range (dashboard Maps faceplate). The HMI
+    /// pins its trend Y axis to this range; null = fall back to the data-type range
+    /// (integers/booleans) or to fitting the samples (floating-point tags).
+    /// </summary>
+    public double? RangeMin { get; set; }
+
+    /// <summary>High end of the tag's configured engineering range. See <see cref="RangeMin"/>.</summary>
+    public double? RangeMax { get; set; }
+
+    /// <summary>
     /// How this tag's history renders in HMI trend charts: "Continuous" (line through the
     /// samples, default) or "Step" (sample-and-hold). Set per-tag in the dashboard Maps faceplate.
     /// </summary>

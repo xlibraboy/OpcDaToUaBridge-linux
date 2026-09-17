@@ -47,6 +47,8 @@ public static class HmiTagSnapshot
                 Writeable = m.Writeable,
                 UpdateRateMs = DashboardValues.LookupUpdateRate(updateRateByKey, m.SourceId, m.ItemId),
                 Unit = string.IsNullOrWhiteSpace(m.Unit) ? null : m.Unit,
+                RangeMin = m.RangeMin,
+                RangeMax = m.RangeMax,
                 TrendStyle = TrendStyleTypes.Normalize(m.TrendStyle),
                 InfluxEnabled = m.InfluxEnabled,
                 Digital = TagDigital.Resolve(m),

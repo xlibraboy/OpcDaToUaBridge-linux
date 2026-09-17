@@ -16,6 +16,12 @@ public partial class TrendPenViewModel : ObservableObject
 {
     private readonly BridgeApiClient api_;
 
+    /// <summary>
+    /// The tag's configured engineering range (dashboard Maps faceplate), or null when unset.
+    /// Pinned while the pen is not auto-fitting; it takes precedence over the data-type range.
+    /// </summary>
+    private readonly (double Min, double Max)? tagRange_;
+
     public TrendPenViewModel(
         TagBindingKey key,
         BridgeApiClient api,
@@ -24,7 +30,9 @@ public partial class TrendPenViewModel : ObservableObject
         string? dataType = null,
         string? unit = null,
         string? trendStyle = null,
-        string? color = null)
+        string? color = null,
+        double? rangeMin = null,
+        double? rangeMax = null)
     {
         Key = key;
         api_ = api;
@@ -34,6 +42,10 @@ public partial class TrendPenViewModel : ObservableObject
         Unit = unit ?? string.Empty;
         TrendStyle = NormalizeTrendStyle(trendStyle);
         Color = string.IsNullOrWhiteSpace(color) ? TrendSeriesPalette.ColorFor(0) : color!;
+        tagRange_ = TrendScale.TagRange(rangeMin, rangeMax);
+        // A tag with a configured range opens on it, so the operator sees the scale they set
+        // up; auto-fit stays one toggle away (the single-tag trend drives this flag).
+        AxisAutoRange = tagRange_ is null;
     }
 
     public TagBindingKey Key { get; }
@@ -108,8 +120,38 @@ public partial class TrendPenViewModel : ObservableObject
         Description,
         Visible: IsVisible,
         IsBoolean: IsBoolean,
-        FixedAxis: CustomAxis,
+        FixedAxis: FixedAxis,
         StrokeWidth: StrokeWidthFor());
+
+    /// <summary>
+    /// The fixed Y axis this pen plots at, or null to auto-fit its samples: the operator's
+    /// typed range wins, then the tag's configured range, then its data-type range (integers
+    /// and booleans). Null while the pen is set to auto-fit or nothing pins the axis.
+    /// </summary>
+    public (double Min, double Max, double Step)? FixedAxis
+    {
+        get
+        {
+            if (CustomAxis is { } custom)
+            {
+                return custom;
+            }
+
+            if (AxisAutoRange)
+            {
+                return null;
+            }
+
+            (double Min, double Max)? range = tagRange_ ?? DataTypeRanges.GetRange(DataType);
+            if (range is not { } bounds)
+            {
+                return null;
+            }
+
+            TrendAxis axis = TrendScale.FromBounds(bounds.Min, bounds.Max);
+            return axis.IsValid ? (axis.Min, axis.Max, axis.Step) : null;
+        }
+    }
 
     /// <summary>
     /// Trace thickness for this pen: thick when selected (plain click = one pen,
@@ -285,16 +327,17 @@ public partial class TrendPenViewModel : ObservableObject
     }
 
     /// <summary>
-    /// The scale this pen is currently plotted at: the custom range when set, otherwise
-    /// the auto-fit axis the chart computes (same policy). Shown in the Range column.
+    /// The scale this pen is currently plotted at: the operator's typed range or the tag's
+    /// configured range when one pins the axis, otherwise the auto-fit axis the chart
+    /// computes (same policy). Shown in the Range column.
     /// </summary>
     public string RangeText
     {
         get
         {
-            if (CustomAxis is { } custom)
+            if (FixedAxis is { } fixedAxis)
             {
-                return FormatValue(custom.Min) + " – " + FormatValue(custom.Max);
+                return FormatValue(fixedAxis.Min) + " – " + FormatValue(fixedAxis.Max);
             }
 
             if (IsBoolean)
@@ -321,13 +364,18 @@ public partial class TrendPenViewModel : ObservableObject
     }
 
     /// <summary>
-    /// True when this pen's axis auto-fits its data; the owning trend pins it to the
-    /// tag's data-type range when the operator turns Auto range off (single tags).
+    /// True when this pen's axis auto-fits its data; otherwise it pins to the tag's configured
+    /// range, else to its data-type range (integers and booleans).
     /// </summary>
     [ObservableProperty]
     private bool _axisAutoRange = true;
 
-    partial void OnAxisAutoRangeChanged(bool value) => OnPropertyChanged(nameof(RangeText));
+    partial void OnAxisAutoRangeChanged(bool value)
+    {
+        OnPropertyChanged(nameof(FixedAxis));
+        OnPropertyChanged(nameof(RangeText));
+        OnPropertyChanged(nameof(Series));
+    }
 
     /// <summary>
     /// Minimum column text over the visible window (no unit; the Unit column carries it).</summary>
