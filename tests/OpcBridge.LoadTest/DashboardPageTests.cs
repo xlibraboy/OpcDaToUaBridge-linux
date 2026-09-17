@@ -1206,7 +1206,7 @@ public sealed class DashboardPageTests
         // Faceplate loads the current choice, built from the tag's type, and saves it back.
         // A value that is not in the option list would leave the picker blank, so a
         // redundant explicit value collapses onto the Auto option instead.
-        Assert.Contains("sel.value = show ? fpDigitalOptionValue(type, digitalExplicit) : ''", DashboardPage.Script);
+        Assert.Contains("sel.value = showDigital ? fpDigitalOptionValue(type, digitalExplicit) : ''", DashboardPage.Script);
         Assert.Contains("function fpDigitalOptionValue(dataType, digitalExplicit) {", DashboardPage.Script);
         Assert.Contains("if (digitalExplicit === true) return boolean ? '' : 'true';", DashboardPage.Script);
         Assert.Contains("if (digitalExplicit === false) return boolean ? 'false' : '';", DashboardPage.Script);
@@ -1221,24 +1221,52 @@ public sealed class DashboardPageTests
     [Fact]
     public void Html_DigitalControls_AreOfferedOnlyForBooleanAndByteTags()
     {
-        // Every control in the group carries the hook the visibility pass toggles together.
+        // Every control in the group carries the hook the gate pass toggles together.
         Assert.Contains("class=\"field fp-digital-row\"", DashboardPage.Html);
-        Assert.Contains("id=\"fpDigitalNote\"", DashboardPage.Html);
         Assert.Contains("function isByteDataType(", DashboardPage.Script);
         Assert.Contains("function supportsDigitalConfig(", DashboardPage.Script);
         Assert.Contains("return isBooleanDataType(dataType) || isByteDataType(dataType);", DashboardPage.Script);
-        Assert.Contains("function updateDigitalConfigVisibility(", DashboardPage.Script);
+        Assert.Contains("function updateSetupGates(", DashboardPage.Script);
         Assert.Contains("document.querySelectorAll('.fp-digital-row').forEach(", DashboardPage.Script);
         // A tag already carrying an explicit choice keeps its controls whatever the type,
         // so the setting stays visible and reversible.
-        Assert.Contains("const show = explicitlySet || supportsDigitalConfig(type);", DashboardPage.Script);
+        Assert.Contains("const showDigital = explicitlySet || supportsDigitalConfig(type);", DashboardPage.Script);
         // Options are rebuilt only when the type actually changes, so a live poll never
         // resets a selection the operator has not applied yet.
-        Assert.Contains("if (sel && fpDigitalOptionType !== (show ? type : '')) {", DashboardPage.Script);
+        Assert.Contains("if (sel && fpDigitalOptionType !== (showDigital ? type : '')) {", DashboardPage.Script);
         // An Auto mapping only learns its type from the first live value, so re-evaluate.
-        Assert.Contains("if (mapping) updateDigitalConfigVisibility(mapping, sourceId, itemId, mapping.digital ?? mapping.Digital);", DashboardPage.Script);
-        // Say why the row is gone, rather than leaving a silent hole in the form.
-        Assert.Contains("Digital and On/Off text apply to Boolean and Byte tags — this tag is ", DashboardPage.Script);
+        Assert.Contains("if (mapping) updateSetupGates(mapping, sourceId, itemId, mapping.digital ?? mapping.Digital);", DashboardPage.Script);
+        // Say which rows are gone, rather than leaving a silent hole in the form.
+        Assert.Contains("'Not shown for a ' + (type || 'untyped') + ' tag: ' + hidden.join(', ') + '.'", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Html_SetupRows_AreGatedOnTheTagsDataType()
+    {
+        // Deadband, Decimals and Unit each carry the hook the gate pass toggles.
+        Assert.Contains("data-fp-gate=\"deadband\"", DashboardPage.Html);
+        Assert.Contains("data-fp-gate=\"decimals\"", DashboardPage.Html);
+        Assert.Contains("data-fp-gate=\"unit\"", DashboardPage.Html);
+        Assert.Contains("id=\"fpSetupNote\"", DashboardPage.Html);
+        // The type vocabulary mirrors DataTypeRanges (OpcBridge.Hmi.Core).
+        Assert.Contains("const FLOATING_DATA_TYPES = ['float', 'single', 'double', 'real8', 'decimal'];", DashboardPage.Script);
+        Assert.Contains("const INTEGER_DATA_TYPES = ['byte', 'sbyte', 'short', 'int16', 'ushort', 'uint16', 'int', 'int32', 'uint', 'uint32', 'long', 'int64', 'ulong', 'uint64'];", DashboardPage.Script);
+        Assert.Contains("function isFloatingDataType(", DashboardPage.Script);
+        Assert.Contains("function isIntegerDataType(", DashboardPage.Script);
+        Assert.Contains("function isKnownDataType(", DashboardPage.Script);
+        // Deadband % is a percentage of the tag's range and Unit is an engineering label,
+        // so neither means anything on a Boolean. Decimals only applies where a value can
+        // have fractional digits — TagDecimals rounds float/double/decimal and no other
+        // type — so it is kept for floating point and dropped for Boolean, Byte and every
+        // integer type.
+        Assert.Contains("{ field: 'deadband', label: 'Deadband', applies: !boolean, set: Number(el('fpDeadband').value) > 0 }", DashboardPage.Script);
+        Assert.Contains("{ field: 'decimals', label: 'Decimals', applies: !known || isFloatingDataType(type), set: el('fpDecimals').value.trim() !== '' }", DashboardPage.Script);
+        Assert.Contains("{ field: 'unit', label: 'Unit', applies: !boolean, set: el('fpUnit').value.trim() !== '' }", DashboardPage.Script);
+        // A row already carrying a value is kept whatever the type, so nothing an operator
+        // configured becomes unreachable, and an undetermined type hides nothing.
+        Assert.Contains("const known = isKnownDataType(type);", DashboardPage.Script);
+        Assert.Contains("const boolean = known && isBooleanDataType(type);", DashboardPage.Script);
+        Assert.Contains("const keep = gate.applies || gate.set;", DashboardPage.Script);
     }
 
     [Fact]

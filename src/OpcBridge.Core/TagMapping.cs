@@ -49,6 +49,19 @@ public sealed class TagMapping
     public string? Unit { get; set; }
 
     /// <summary>
+    /// Low end of this tag's engineering range (e.g. 0 for a 0..10 bar transmitter), set
+    /// per-tag in the dashboard. The HMI pins its trend Y axis to this range, so a trend opens
+    /// on the operator's scale instead of a fitted one. null — or a range missing either end,
+    /// since both are honoured together — falls back to the natural range of <see cref="DataType"/>
+    /// (integers and booleans), and to fitting the samples for floating-point tags.
+    /// Display-only: it never changes what is logged to InfluxDB.
+    /// </summary>
+    public double? RangeMin { get; set; }
+
+    /// <summary>High end of this tag's engineering range. See <see cref="RangeMin"/>.</summary>
+    public double? RangeMax { get; set; }
+
+    /// <summary>
     /// Renders this tag as a two-state (on/off) signal in the HMI faceplate, so status shows
     /// as <see cref="OnText"/>/<see cref="OffText"/> instead of the raw value.
     /// null = auto (Boolean/Bool tags are digital, everything else shows the raw value),

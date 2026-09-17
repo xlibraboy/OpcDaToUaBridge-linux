@@ -19,6 +19,8 @@ public sealed record MappingTagDto(
     string? MqttTopic = null,
     bool? InfluxEnabled = null,
     string? Unit = null,
+    double? RangeMin = null,
+    double? RangeMax = null,
     string? Subscription = null,
     string? PlcGroup = null,
     string? TrendStyle = null,

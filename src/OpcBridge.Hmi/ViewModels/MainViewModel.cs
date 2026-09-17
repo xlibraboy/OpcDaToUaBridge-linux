@@ -471,6 +471,8 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
                 description: entry?.Description,
                 dataType: entry?.DataType,
                 unit: entry?.Unit,
+                rangeMin: entry?.RangeMin,
+                rangeMax: entry?.RangeMax,
                 trendStyle: entry?.TrendStyle));
         }
 
@@ -647,11 +649,14 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
                     throw new InvalidOperationException("Bridge not connected: " + key.BridgeId);
                 }
 
+                MultiBridgeTagEntry? tagEntry = connections_.Cache.TryGet(key, out MultiBridgeTagEntry? cached) ? cached : null;
                 TrendViewModel vm = new(
                     key,
                     session.Api,
-                    dataType: connections_.Cache.TryGet(key, out var tagEntry) ? tagEntry?.DataType : null,
+                    dataType: tagEntry?.DataType,
                     unit: tagEntry?.Unit,
+                    rangeMin: tagEntry?.RangeMin,
+                    rangeMax: tagEntry?.RangeMax,
                     trendStyle: tagEntry?.TrendStyle,
                     displayName: tagEntry?.DisplayName,
                     description: tagEntry?.Description);

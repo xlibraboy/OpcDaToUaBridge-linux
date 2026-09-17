@@ -25,6 +25,16 @@ public sealed class MultiBridgeTagEntry
     public string? Unit { get; set; }
 
     /// <summary>
+    /// The tag's configured engineering range (dashboard Maps faceplate), or null when unset.
+    /// The trend pins its Y axis to this range and falls back to the data-type range for the
+    /// rest. Both ends are always set together.
+    /// </summary>
+    public double? RangeMin { get; set; }
+
+    /// <summary>High end of the tag's configured engineering range. See <see cref="RangeMin"/>.</summary>
+    public double? RangeMax { get; set; }
+
+    /// <summary>
     /// How this tag's history renders in the HMI trend charts: "Continuous" (line, default)
     /// or "Step" (sample-and-hold). Set per-tag in the dashboard Maps faceplate.
     /// </summary>
@@ -162,6 +172,8 @@ public sealed class MultiBridgeTagCache
         IsGood = dto.IsGood,
         Writeable = dto.Writeable,
         Unit = string.IsNullOrWhiteSpace(dto.Unit) ? null : dto.Unit,
+        RangeMin = dto.RangeMin,
+        RangeMax = dto.RangeMax,
         TrendStyle = NormalizeTrendStyle(dto.TrendStyle),
         InfluxEnabled = dto.InfluxEnabled,
         Digital = dto.Digital,

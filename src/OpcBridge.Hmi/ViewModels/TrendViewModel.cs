@@ -6,8 +6,9 @@ using OpcBridge.Hmi.Services;
 namespace OpcBridge.Hmi.ViewModels;
 
 /// <summary>
-/// Single-tag trend window: one tag as the only pen in the strip chart. The pen's Y
-/// axis is pinned to the tag's data-type range when available (or auto-fitted).
+/// Single-tag trend window: one tag as the only pen in the strip chart. The pen's Y axis is
+/// pinned to the tag's configured engineering range when the dashboard set one, else to the
+/// tag's data-type range when available (or auto-fitted).
 /// </summary>
 public partial class TrendViewModel : TrendWindowViewModelBase
 {
@@ -15,7 +16,7 @@ public partial class TrendViewModel : TrendWindowViewModelBase
     private readonly bool ownsApi_;
     private readonly (double Min, double Max)? fixedRange_;
 
-    public TrendViewModel(TagBindingKey key, BridgeApiClient api, bool ownsApi = false, string? dataType = null, string? unit = null, string? trendStyle = null, string? displayName = null, string? description = null)
+    public TrendViewModel(TagBindingKey key, BridgeApiClient api, bool ownsApi = false, string? dataType = null, string? unit = null, double? rangeMin = null, double? rangeMax = null, string? trendStyle = null, string? displayName = null, string? description = null)
     {
         Key = key;
         api_ = api;
@@ -27,11 +28,14 @@ public partial class TrendViewModel : TrendWindowViewModelBase
         DaItemId = key.DaItemId;
         DataType = dataType ?? "Double";
         Unit = unit ?? string.Empty;
-        // Booleans are always plotted on their natural 0..1 band so an on/off trace reads clearly.
+        // The axis this trend opens on: the tag's own range when the dashboard set one, else
+        // the natural range of its type. Booleans are always plotted on their 0..1 band so an
+        // on/off trace reads clearly; floating types without a range auto-fit.
+        (double, double)? tagRange = TrendScale.TagRange(rangeMin, rangeMax);
         (double, double)? typeRange = DataTypeRanges.GetRange(DataType);
-        fixedRange_ = IsBooleanLike(DataType) ? (0, 1) : typeRange;
+        fixedRange_ = IsBooleanLike(DataType) ? (0, 1) : tagRange ?? typeRange;
 
-        Pen = new TrendPenViewModel(key, api_, DisplayName, Description, DataType, Unit, trendStyle)
+        Pen = new TrendPenViewModel(key, api_, DisplayName, Description, DataType, Unit, trendStyle, rangeMin: rangeMin, rangeMax: rangeMax)
         {
             // Use the palette's single-tag default color; keep it stable across reloads.
             Color = TrendSeriesPalette.ColorFor(0)
@@ -55,7 +59,7 @@ public partial class TrendViewModel : TrendWindowViewModelBase
         Title = DisplayName;
         HasFixedRange = fixedRange_.HasValue;
         // Keep the pen's Range column in step with the Auto-range toggle (it decides
-        // between auto-fit and the pinned data-type scale).
+        // between auto-fit and the pinned scale).
         PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(AutoRange))
@@ -63,6 +67,9 @@ public partial class TrendViewModel : TrendWindowViewModelBase
                 Pen.AxisAutoRange = AutoRange;
             }
         };
+        // A tag with a configured range opens on it — that is the scale the operator set up;
+        // with no range the fitted axis stays the default.
+        AutoRange = !tagRange.HasValue;
         _ = ReloadAsync();
     }
 
@@ -125,17 +132,9 @@ public partial class TrendViewModel : TrendWindowViewModelBase
                 ? (AlarmLow ?? double.NegativeInfinity, AlarmHigh ?? double.PositiveInfinity)
                 : null;
 
-            // A typed custom range wins; otherwise pin to the tag's data-type range when
-            // the operator turned Auto range off (booleans always ride the digital 0..1 band).
-            (double Min, double Max, double Step)? fixedAxis = Pen.CustomAxis;
-            if (fixedAxis is null && !AutoRange && fixedRange_ is { } range)
-            {
-                TrendAxis fromRange = TrendScale.FromTypeRange(range);
-                if (fromRange.IsValid)
-                {
-                    fixedAxis = (fromRange.Min, fromRange.Max, fromRange.Step);
-                }
-            }
+            // The pen owns the axis policy: the operator's typed range wins, then the tag's
+            // configured range (else its data-type range) while Auto range is off.
+            (double Min, double Max, double Step)? fixedAxis = Pen.FixedAxis;
 
             return new[]
             {
