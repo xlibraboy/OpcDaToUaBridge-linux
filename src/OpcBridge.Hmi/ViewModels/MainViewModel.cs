@@ -22,6 +22,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     private readonly Dictionary<string, DisplayStoreClient> storeClients_ = new(StringComparer.OrdinalIgnoreCase);
     private readonly PopupWindowService popups_;
     private readonly Dictionary<string, TagItemViewModel> tagIndex_ = new(StringComparer.OrdinalIgnoreCase);
+    private MultiBridgeTagEntry[] tagEntries_ = Array.Empty<MultiBridgeTagEntry>();
     private readonly Dictionary<string, bool> bridgeInfluxConnected_ = new(StringComparer.OrdinalIgnoreCase);
     private readonly bool ownsServices_;
     private CancellationTokenSource? connectCts_;
@@ -160,6 +161,19 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty]
     private TagItemViewModel? _selectedTag;
 
+    /// <summary>
+    /// Source the tag browser is limited to. The "all sources" entry (or null) shows every source.
+    /// </summary>
+    [ObservableProperty]
+    private SourceFilterOption? _selectedSourceFilter;
+
+    /// <summary>
+    /// Bridge the tag browser is limited to. The "all bridges" entry (or null) shows every bridge,
+    /// and drives which sources the source selector lists.
+    /// </summary>
+    [ObservableProperty]
+    private BridgeFilterOption? _selectedBridgeFilter;
+
     [ObservableProperty]
     private string _statusMessage = string.Empty;
 
@@ -177,11 +191,36 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     public ObservableCollection<BridgeRow> BridgeRows { get; } = new();
 
     public IEnumerable<TagItemViewModel> FilteredTags =>
-        string.IsNullOrWhiteSpace(Filter)
-            ? Tags
-            : Tags.Where(MatchesFilter);
+        Tags.Where(tag => MatchesSelectedFilters(tag) && MatchesTextFilter(tag));
 
-    partial void OnFilterChanged(string value) => OnPropertyChanged(nameof(FilteredTags));
+    /// <summary>
+    /// Every tag matching the text filter, across all sources. The group-trend picker uses this:
+    /// it has no bridge/source selectors, so it must not inherit the tag browser's choice.
+    /// </summary>
+    public IEnumerable<TagItemViewModel> TrendPickerTags =>
+        Tags.Where(MatchesTextFilter);
+
+    /// <summary>Bridge selector entries: "all bridges" plus one per connected bridge.</summary>
+    public ObservableCollection<BridgeFilterOption> BridgeFilters { get; } = new();
+
+    /// <summary>Source selector entries: "all sources" plus one per source of the selected bridge.</summary>
+    public ObservableCollection<SourceFilterOption> SourceFilters { get; } = new();
+
+    partial void OnFilterChanged(string value)
+    {
+        OnPropertyChanged(nameof(FilteredTags));
+        OnPropertyChanged(nameof(TrendPickerTags));
+    }
+
+    partial void OnSelectedSourceFilterChanged(SourceFilterOption? value) =>
+        OnPropertyChanged(nameof(FilteredTags));
+
+    partial void OnSelectedBridgeFilterChanged(BridgeFilterOption? value)
+    {
+        // The source selector lists one bridge's sources, so picking a bridge re-scopes it.
+        RebuildSourceFilters();
+        OnPropertyChanged(nameof(FilteredTags));
+    }
 
     partial void OnIsConnectedChanged(bool value)
     {
@@ -658,11 +697,16 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     private void RebuildTagsFromCache()
     {
         string? selectedKey = SelectedTag?.Key;
+        MultiBridgeTagEntry[] entries = connections_.Cache.Tags
+            .OrderBy(t => t.Key.BridgeId, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(t => t.Key.SourceId, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(t => t.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        tagEntries_ = entries;
         Tags.Clear();
         tagIndex_.Clear();
-        foreach (MultiBridgeTagEntry entry in connections_.Cache.Tags
-                     .OrderBy(t => t.Key.BridgeId, StringComparer.OrdinalIgnoreCase)
-                     .ThenBy(t => t.DisplayName, StringComparer.OrdinalIgnoreCase))
+        foreach (MultiBridgeTagEntry entry in entries)
         {
             TagItemViewModel item = TagItemViewModel.FromEntry(entry);
             item.InfluxConnected = IsBridgeInfluxConnected(item.BridgeId);
@@ -670,11 +714,55 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             Tags.Add(item);
         }
 
+        RebuildBridgeFilters();
+        RebuildSourceFilters();
+
         SelectedTag = selectedKey is not null && tagIndex_.TryGetValue(selectedKey, out TagItemViewModel? still)
             ? still
             : null;
         OnPropertyChanged(nameof(FilteredTags));
+        OnPropertyChanged(nameof(TrendPickerTags));
         OnPropertyChanged(nameof(TagCount));
+    }
+
+    /// <summary>
+    /// Rebuilds the bridge selector from the connected bridges, keeping the operator's current
+    /// choice when that bridge is still connected.
+    /// </summary>
+    private void RebuildBridgeFilters()
+    {
+        string? bridgeId = SelectedBridgeFilter?.BridgeId;
+
+        BridgeFilters.Clear();
+        foreach (BridgeFilterOption option in BridgeFilterOptions.Build(tagEntries_))
+        {
+            BridgeFilters.Add(option);
+        }
+
+        SelectedBridgeFilter = BridgeFilters.FirstOrDefault(option =>
+            string.Equals(option.BridgeId, bridgeId, StringComparison.OrdinalIgnoreCase))
+            ?? BridgeFilterOption.All;
+    }
+
+    /// <summary>
+    /// Rebuilds the source selector for the selected bridge, keeping the operator's current
+    /// choice when that source is still present.
+    /// </summary>
+    private void RebuildSourceFilters()
+    {
+        string? bridgeId = SelectedSourceFilter?.BridgeId;
+        string? sourceId = SelectedSourceFilter?.SourceId;
+
+        SourceFilters.Clear();
+        foreach (SourceFilterOption option in SourceFilterOptions.Build(tagEntries_, SelectedBridgeFilter?.BridgeId))
+        {
+            SourceFilters.Add(option);
+        }
+
+        SelectedSourceFilter = SourceFilters.FirstOrDefault(option =>
+            string.Equals(option.SourceId, sourceId, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(option.BridgeId, bridgeId, StringComparison.OrdinalIgnoreCase))
+            ?? SourceFilterOption.All;
     }
 
     private async Task SafeDisconnectAsync()
@@ -691,6 +779,13 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         IsConnected = false;
         Tags.Clear();
         tagIndex_.Clear();
+        tagEntries_ = Array.Empty<MultiBridgeTagEntry>();
+        BridgeFilters.Clear();
+        BridgeFilters.Add(BridgeFilterOption.All);
+        SelectedBridgeFilter = BridgeFilterOption.All;
+        SourceFilters.Clear();
+        SourceFilters.Add(SourceFilterOption.All);
+        SelectedSourceFilter = SourceFilterOption.All;
         lock (bridgeInfluxConnected_)
         {
             bridgeInfluxConnected_.Clear();
@@ -714,6 +809,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         storeClients_.Clear();
         OnPropertyChanged(nameof(FilteredTags));
+        OnPropertyChanged(nameof(TrendPickerTags));
         OnPropertyChanged(nameof(TagCount));
     }
 
@@ -799,11 +895,20 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    private bool MatchesSelectedFilters(TagItemViewModel tag) =>
+        (SelectedBridgeFilter is null || SelectedBridgeFilter.Matches(tag.BridgeId))
+        && (SelectedSourceFilter is null || SelectedSourceFilter.Matches(tag.BindingKey));
+
+    private bool MatchesTextFilter(TagItemViewModel tag) =>
+        string.IsNullOrWhiteSpace(Filter) || MatchesFilter(tag);
+
     private bool MatchesFilter(TagItemViewModel tag)
     {
         string f = Filter.Trim();
         return tag.BridgeId.Contains(f, StringComparison.OrdinalIgnoreCase)
             || tag.SourceId.Contains(f, StringComparison.OrdinalIgnoreCase)
+            || tag.SourceName.Contains(f, StringComparison.OrdinalIgnoreCase)
+            || tag.SourceType.Contains(f, StringComparison.OrdinalIgnoreCase)
             || tag.DisplayName.Contains(f, StringComparison.OrdinalIgnoreCase)
             || tag.DaItemId.Contains(f, StringComparison.OrdinalIgnoreCase)
             || tag.ValueText.Contains(f, StringComparison.OrdinalIgnoreCase);

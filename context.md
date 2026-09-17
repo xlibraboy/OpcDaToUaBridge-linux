@@ -26,11 +26,11 @@ Projects under `src/`, all .NET 8, `ImplicitUsings` + `Nullable` enabled.
 | `OpcBridge.Mqtt` | `net8.0` | MQTT publish/subscribe helper for mapped tags. |
 | `OpcBridge.Influx` | `net8.0` | Continuous opt-in historical writer to InfluxDB 2.x/3.x (`IInfluxWriter`). |
 | `OpcBridge.Client` | `net8.0` | Shared HMI/App wire DTOs and tag-cache merge helpers: `HmiTagDto`, `HmiTagsResponse`, `HmiValueDelta`, `HmiWriteRequest`/`HmiWriteResponse`, `HmiMappingsChanged`, `HmiTagCache`, `HmiTrendPoint`, `HmiTrendResponse`. No framework deps. |
-| `OpcBridge.Hmi.Core` | `net8.0` | Pure HMI models: `TagBindingKey`, `MultiBridgeTagCache`, `HmiClientConfig`, display helpers. No Avalonia. |
-| `OpcBridge.Hmi` | `net8.0` (WinExe) | Avalonia 11 Runtime: hybrid process display + tag browser, popup faceplate/trend, v1 widgets. References Client + Hmi.Core; SignalR client for `/hmi`. |
+| `OpcBridge.Hmi.Core` | `net8.0` | Pure HMI models: `TagBindingKey`, `MultiBridgeTagCache`, `HmiClientConfig`, tag-browser filter options (`SourceFilterOption`/`BridgeFilterOption`, `SourceTypeLabels`), display helpers. No Avalonia. |
+| `OpcBridge.Hmi` | `net8.0` (WinExe) | Avalonia 11 Runtime: hybrid process display + tag browser separated by bridge and source, popup faceplate/trend, v1 widgets. References Client + Core + Hmi.Core; SignalR client for `/hmi`. |
 | `OpcBridge.Hmi.Designer` | `net8.0` (WinExe) | Avalonia 11 Designer: palette, add widgets, Open/Save displays on primary store. |
 
-Reference graph: `App → {Core, Da, Ua, Mqtt, Influx, Client, Drivers}`, `Hmi → {Client, Hmi.Core}`, `Hmi.Designer → {Client, Hmi.Core, Hmi}`, `Hmi.Core → Client`, `Da → Core`, `Ua → Core`, `Mqtt → Core`, `Influx → Core`.
+Reference graph: `App → {Core, Da, Ua, Mqtt, Influx, Client, Drivers}`, `Hmi → {Client, Core, Hmi.Core}`, `Hmi.Designer → {Client, Hmi.Core, Hmi}`, `Hmi.Core → {Client, Core}`, `Da → Core`, `Ua → Core`, `Mqtt → Core`, `Influx → Core`.
 
 ## Key contracts (OpcBridge.Core)
 
@@ -145,7 +145,7 @@ Endpoints (all in `Program.cs`):
 - `GET /api/values` — current `BridgeState` values
 - `GET /api/dashboard?limit=&sourceId=` — Live Values payload: `values[]` with `{sourceId, itemId, value, timestampUtc, daQuality, isGood, dataType, updateRate}` (dataType + updateRate resolved via `DashboardValues`; `updateRate` = effective ms per tag — per-tag `PollRateMs` wins, else the source default), `valuesTotal`, plus bridge/UA status blocks
 - `GET /api/status` | `/api/diagnostics` — bridge + UA status; diagnostics includes writeQueue stats, uaBandwidth, UA sessions/subscriptions, plus dashboard-facing sections: `runtime` (bridge/DA state, counters), `uaServer` (clients/nodes), `uptimeSeconds`, `mqtt` + `influx` health, `problems` (disconnected/bad-quality tags). Sections are individually guarded (`DiagnosticsSections.Safe`) — one failing section degrades to null instead of 500-ing the payload. Dashboard: Diagnostics tab = health overview; Ops ▸ Sessions tab = per-source/session detail (DA sources, time sync, UA sessions/subs/bandwidth).
-- `GET /api/hmi/tags` — HMI tag snapshot (mappings + current values)
+- `GET /api/hmi/tags` — HMI tag snapshot (mappings + current values), each tag stamped with its source's display name and type read from the `DaRuntimeSettings` registry (source no longer configured → `SourceId` + empty type)
 - `POST /api/hmi/write` — HMI write; gated on mapping access rights; reuses `WriteQueue` / `ApplyUaWriteAsync`
 - `GET /api/hmi/trends?sourceId=&daItemId=&from=&to=&maxPoints=` — history via bridge Influx proxy (HMI never holds Influx token). Soft-fails with empty points + `error` when Influx unavailable.
 - `GET /api/hmi/displays` — list SCADA display page summaries (`id`, `name`, `version`, `widgetCount`)
@@ -163,6 +163,17 @@ Endpoints (all in `Program.cs`):
 - `GET /health` — `{ "status": "ok" }`
 
 HMI note: the operator UI is not embedded in the dashboard; run `dotnet run --project src/OpcBridge.Hmi` against the bridge base URL. Historical trends are served only through the bridge proxy; the HMI has no Influx config or token.
+
+### HMI tag browser (bridge + source separation)
+
+The Runtime tag browser (`src/OpcBridge.Hmi/Views/MainWindow.axaml` + `MainViewModel`) narrows tags with two cascading selectors above the list (branch `feature/separate-source-tags`):
+
+- **Bridge** — "All bridges" plus one entry per connected bridge (labelled with the bridge id, i.e. the `HmiBridgeEndpoint.Id`). Picking one re-scopes the source selector to that bridge's sources.
+- **Source** — "All sources" plus one entry per `(bridge, source)`, labelled with the source's configured `DisplayName` and a short type badge from `SourceTypeLabels` (DA / UA / A3N / S7-200 / MX). While "All bridges" is selected the entry also carries the bridge id (`Name · bridge`) because the same source id can exist on several bridges; scoping to one bridge drops that suffix as redundant.
+- Entries are derived from the live tag set (`BridgeFilterOptions.Build` / `SourceFilterOptions.Build(Tags, bridgeId)`), so a source appears only while it still has tags. Both selections survive live cache rebuilds (matched by value, not instance) and reset to "All" on disconnect.
+- The text filter additionally matches source name and source type; it was text-only before.
+- The group-trend picker binds `TrendPickerTags` (text filter only, every bridge/source) — it has no selectors, so it must not silently inherit the browser's choice.
+- Per-tag source identity travels `HmiTagDto.SourceName`/`SourceType` → `MultiBridgeTagEntry` → `TagItemViewModel.SourceDisplay` (shown on the selected-tag detail line).
 
 `DashboardLogStore` is also wired as an `ILoggerProvider` (`DashboardLogProvider`), so `ILogger` calls under the `OpcBridge.*` categories at Information+ appear in the dashboard's Logs panel and docker logs. `OpcUaSourceClient` logs reconcile summaries (`subscription reconcile: desired=… active=… added=… removed=…`) — useful for verifying monitored-item behavior.
 

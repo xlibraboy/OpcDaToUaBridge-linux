@@ -15,8 +15,32 @@ public partial class TagItemViewModel : ObservableObject
     [ObservableProperty]
     private string _daItemId = string.Empty;
 
+    /// <summary>Configured display name of the tag's source (falls back to the source id).</summary>
+    [ObservableProperty]
+    private string _sourceName = string.Empty;
+
+    /// <summary>Source type as reported by the bridge (OpcDa, OpcUa, MelsecA3n, S7200Ppi, MxComponent).</summary>
+    [ObservableProperty]
+    private string _sourceType = string.Empty;
+
     [ObservableProperty]
     private string _displayName = string.Empty;
+
+    /// <summary>Short source type badge (DA / UA / A3N / S7-200 / MX); empty when unknown.</summary>
+    public string SourceTypeLabel => SourceTypeLabels.ShortLabel(SourceType);
+
+    /// <summary>Source name plus its type for the selected-tag detail line.</summary>
+    public string SourceDisplay => SourceTypeLabel.Length == 0
+        ? SourceName
+        : $"{SourceName} ({SourceTypeLabel})";
+
+    partial void OnSourceNameChanged(string value) => OnPropertyChanged(nameof(SourceDisplay));
+
+    partial void OnSourceTypeChanged(string value)
+    {
+        OnPropertyChanged(nameof(SourceTypeLabel));
+        OnPropertyChanged(nameof(SourceDisplay));
+    }
 
     [ObservableProperty]
     private string _dataType = "Double";
@@ -98,6 +122,8 @@ public partial class TagItemViewModel : ObservableObject
         BridgeId = entry.Key.BridgeId;
         SourceId = entry.Key.SourceId;
         DaItemId = entry.Key.DaItemId;
+        SourceName = string.IsNullOrWhiteSpace(entry.SourceName) ? entry.Key.SourceId : entry.SourceName;
+        SourceType = entry.SourceType;
         DisplayName = string.IsNullOrWhiteSpace(entry.DisplayName) ? entry.Key.DaItemId : entry.DisplayName;
         DataType = entry.DataType;
         Writeable = entry.Writeable;
@@ -111,6 +137,8 @@ public partial class TagItemViewModel : ObservableObject
         BridgeId = bridgeId;
         SourceId = dto.SourceId;
         DaItemId = dto.ItemId;
+        SourceName = string.IsNullOrWhiteSpace(dto.SourceName) ? dto.SourceId : dto.SourceName;
+        SourceType = dto.SourceType;
         DisplayName = string.IsNullOrWhiteSpace(dto.DisplayName) ? dto.ItemId : dto.DisplayName;
         DataType = dto.DataType;
         Writeable = dto.Writeable;

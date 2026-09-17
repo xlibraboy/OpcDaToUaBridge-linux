@@ -208,8 +208,8 @@ app.MapGet("/", (HttpContext ctx) => {
     return Results.Bytes(System.Text.Encoding.UTF8.GetBytes(DashboardPage.FullHtml), "text/html; charset=utf-8");
 });
 app.MapGet("/api/values", (BridgeState state) => Results.Json(new { values = state.GetValues() }));
-app.MapGet("/api/hmi/tags", (MappingStore mappingStore, BridgeState state) =>
-    Results.Json(HmiTagSnapshot.Build(mappingStore, state)));
+app.MapGet("/api/hmi/tags", (MappingStore mappingStore, BridgeState state, DaRuntimeSettings daSettings) =>
+    Results.Json(HmiTagSnapshot.Build(mappingStore, state, daSettings.GetSnapshot())));
 app.MapPost("/api/hmi/write", async (HmiWriteRequest request, BridgeWorker worker, CancellationToken ct) =>
 {
     (bool ok, string? error) = await worker.TryHmiWriteAsync(

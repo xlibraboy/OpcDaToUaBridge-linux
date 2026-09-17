@@ -3,6 +3,19 @@ namespace OpcBridge.Client;
 public sealed class HmiTagDto
 {
     public string SourceId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Configured display name of the source this tag belongs to, so the HMI can group its
+    /// tag browser by source. Falls back to <see cref="SourceId"/> when the source is gone.
+    /// </summary>
+    public string SourceName { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Source type (OpcDa, OpcUa, MelsecA3n, S7200Ppi, MxComponent). Empty when the source
+    /// is no longer in the bridge registry.
+    /// </summary>
+    public string SourceType { get; set; } = string.Empty;
+
     public string ItemId { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
 

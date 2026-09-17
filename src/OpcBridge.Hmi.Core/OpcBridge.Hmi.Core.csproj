@@ -6,5 +6,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\OpcBridge.Client\OpcBridge.Client.csproj" />
+    <ProjectReference Include="..\OpcBridge.Core\OpcBridge.Core.csproj" />
   </ItemGroup>
 </Project>

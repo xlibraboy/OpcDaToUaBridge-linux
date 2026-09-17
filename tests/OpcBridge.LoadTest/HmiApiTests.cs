@@ -11,7 +11,7 @@ public sealed class HmiApiTests
     {
         var appsettings = new
         {
-            Da = new { ProgId = "Matrikon.OPC.Simulation.1", Host = "localhost", UpdateRateMs = 1000, UseSubscriptions = true },
+            Da = new { SourceId = "default", DisplayName = "Sim Source", ProgId = "Matrikon.OPC.Simulation.1", Host = "localhost", UpdateRateMs = 1000, UseSubscriptions = true },
             Ua = new { ApplicationName = "OpcBridge", EndpointUrl = "opc.tcp://0.0.0.0:4840/OpcBridge", AutoAcceptUntrustedCertificates = true, RequireAuthentication = false, Username = "", Password = "", AllowedIpAddresses = Array.Empty<string>() },
             Bridge = new
             {
@@ -81,6 +81,8 @@ public sealed class HmiApiTests
 
         var int1 = list.Single(t => t.GetProperty("itemId").GetString() == "Random.Int1");
         Assert.Equal("default", int1.GetProperty("sourceId").GetString());
+        Assert.Equal("Sim Source", int1.GetProperty("sourceName").GetString());
+        Assert.Equal("OpcDa", int1.GetProperty("sourceType").GetString());
         Assert.Equal("Int1", int1.GetProperty("displayName").GetString());
         Assert.True(int1.GetProperty("writeable").GetBoolean());
 
