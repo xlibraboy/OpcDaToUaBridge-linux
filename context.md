@@ -26,8 +26,8 @@ Projects under `src/`, all .NET 8, `ImplicitUsings` + `Nullable` enabled.
 | `OpcBridge.Mqtt` | `net8.0` | MQTT publish/subscribe helper for mapped tags. |
 | `OpcBridge.Influx` | `net8.0` | Continuous opt-in historical writer to InfluxDB 2.x/3.x (`IInfluxWriter`). |
 | `OpcBridge.Client` | `net8.0` | Shared HMI/App wire DTOs and tag-cache merge helpers: `HmiTagDto`, `HmiTagsResponse`, `HmiValueDelta`, `HmiWriteRequest`/`HmiWriteResponse`, `HmiMappingsChanged`, `HmiTagCache`, `HmiTrendPoint`, `HmiTrendResponse`. No framework deps. |
-| `OpcBridge.Hmi.Core` | `net8.0` | Pure HMI models: `TagBindingKey`, `MultiBridgeTagCache`, `HmiClientConfig`, tag-browser filter options (`SourceFilterOption`/`BridgeFilterOption`, `SourceTypeLabels`), display helpers. No Avalonia. |
-| `OpcBridge.Hmi` | `net8.0` (WinExe) | Avalonia 11 Runtime: hybrid process display + tag browser separated by bridge and source, popup faceplate/trend, v1 widgets. References Client + Core + Hmi.Core; SignalR client for `/hmi`. |
+| `OpcBridge.Hmi.Core` | `net8.0` | Pure HMI models: `TagBindingKey`, `MultiBridgeTagCache`, `HmiClientConfig`, saved trend groups (`TrendGroupDefinition`, `TrendGroupStore` → `hmi-trendgroups.json`) plus their layout/axis mode constants, tag-browser filter options (`SourceFilterOption`/`BridgeFilterOption`, `SourceTypeLabels`), display helpers. No Avalonia. |
+| `OpcBridge.Hmi` | `net8.0` (WinExe) | Avalonia 11 Runtime: hybrid process display, tag browser separated by bridge and source, a saved **trend groups** page (`TrendGroupsPage`, Ctrl+3), popup faceplate/trend, v1 widgets. References Client + Core + Hmi.Core; SignalR client for `/hmi`. |
 | `OpcBridge.Hmi.Designer` | `net8.0` (WinExe) | Avalonia 11 Designer: palette, add widgets, Open/Save displays on primary store. |
 
 Reference graph: `App → {Core, Da, Ua, Mqtt, Influx, Client, Drivers}`, `Hmi → {Client, Core, Hmi.Core}`, `Hmi.Designer → {Client, Hmi.Core, Hmi}`, `Hmi.Core → {Client, Core}`, `Da → Core`, `Ua → Core`, `Mqtt → Core`, `Influx → Core`.
@@ -172,8 +172,19 @@ The Runtime tag browser (`src/OpcBridge.Hmi/Views/MainWindow.axaml` + `MainViewM
 - **Source** — "All sources" plus one entry per `(bridge, source)`, labelled with the source's configured `DisplayName` and a short type badge from `SourceTypeLabels` (DA / UA / A3N / S7-200 / MX). While "All bridges" is selected the entry also carries the bridge id (`Name · bridge`) because the same source id can exist on several bridges; scoping to one bridge drops that suffix as redundant.
 - Entries are derived from the live tag set (`BridgeFilterOptions.Build` / `SourceFilterOptions.Build(Tags, bridgeId)`), so a source appears only while it still has tags. Both selections survive live cache rebuilds (matched by value, not instance) and reset to "All" on disconnect.
 - The text filter additionally matches source name and source type; it was text-only before.
-- The group-trend picker binds `TrendPickerTags` (text filter only, every bridge/source) — it has no selectors, so it must not silently inherit the browser's choice.
+- The trend-group picker takes its own metadata snapshot (`MainViewModel.BuildPickerRows`, every bridge/source, text filter only) — it has no selectors, so it must not inherit the browser's choice.
 - Per-tag source identity travels `HmiTagDto.SourceName`/`SourceType` → `MultiBridgeTagEntry` → `TagItemViewModel.SourceDisplay` (shown on the selected-tag detail line).
+
+### HMI trend groups (saved, named)
+
+The Runtime has a third shell page — **Trend groups** (`Views/TrendGroupsPage.axaml`, `HmiPage.Trends`, View menu / **Ctrl+3**):
+
+- A group is a `TrendGroupDefinition` (id, name, ordered pens, `LayoutMode`, `YAxisMode`); each pen stores its `TagBindingKey` plus the display state the operator set in the chart window — colour, visibility, axis auto-range, typed Y range (`TrendGroupPenDefinition`). Saved per client in `hmi-trendgroups.json` beside `hmi-config.json` (`TrendGroupStore`, mirroring `HmiClientConfig`'s load/save shape). A missing or corrupt file reads as "no groups yet"; ids, names, modes (values outside `Mixed`/`Stacked` and `Shared`/`Percent`), colours (`#RRGGBB` or empty) and ranges are normalized on load *and* save, and pens with a blank key part or a duplicate key are dropped.
+- Page layout: group list (name + `N tags`, with `· M not on bridge` when a tag is gone), the selected group's tags as metadata-only rows, and New group… / Delete / Open chart / Add tags… / Remove tag. The name box saves on focus loss or Enter.
+- The tag picker (`TrendGroupPickerWindow` + `TagPickerViewModel`, `TagListRow`) serves three flows: ad-hoc "Group trend…" (unchanged behaviour: opens a throwaway chart, nothing saved), New group… (asks for a name) and Add tags… (tags already in the group are listed disabled with an "in group" marker). It shows **bridge / source / tag and nothing else — deliberately no live value**, and its rows come from a snapshot taken when the dialog opens, so the multi-select survives live value batches (the old picker bound the browser's constantly-rebuilt `TrendPickerTags` and lost the selection on every delta).
+- `Open chart` reuses `TrendWindow` via `TrendGroupViewModel(pens, groupName)` (title `<name> · N tags`); closing it writes the operator's pen edits back (`TrendGroupPenState.Capture` — palette colours are only assigned to pens that have no saved colour).
+- Tags are resolved by key against the tag cache when a group opens: a tag on a disconnected bridge, gone from the bridge, or without InfluxDB history is skipped with a count in the status strip, and **stays in the saved group** so it returns with the bridge.
+- Group rows refresh on demand (load, connect, mappings change, edit, chart close) — deliberately **not** from `RebuildTagsFromCache`, which runs on every value batch.
 
 `DashboardLogStore` is also wired as an `ILoggerProvider` (`DashboardLogProvider`), so `ILogger` calls under the `OpcBridge.*` categories at Information+ appear in the dashboard's Logs panel and docker logs. `OpcUaSourceClient` logs reconcile summaries (`subscription reconcile: desired=… active=… added=… removed=…`) — useful for verifying monitored-item behavior.
 

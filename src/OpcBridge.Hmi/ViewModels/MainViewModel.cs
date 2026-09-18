@@ -13,7 +13,8 @@ namespace OpcBridge.Hmi.ViewModels;
 public enum HmiPage
 {
     Home,
-    Config
+    Config,
+    Trends
 }
 
 public partial class MainViewModel : ObservableObject, IAsyncDisposable
@@ -29,6 +30,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     private Window? ownerWindow_;
     private readonly List<FaceplateViewModel> openFaceplates_ = new();
     private readonly string configPath_;
+    private readonly string trendGroupsPath_;
 
     public MainViewModel()
         : this(new BridgeConnectionManager(), new PopupWindowService(), ownsServices: true)
@@ -50,6 +52,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
                 "OpcBridge.Hmi",
                 "hmi-config.json")
             : configPath!;
+        trendGroupsPath_ = TrendGroupStore.DefaultPath(configPath_);
         DisplaySurface = new DisplaySurfaceViewModel(
             connections_.Cache,
             OpenFaceplateFor,
@@ -66,6 +69,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             }
         };
         LoadLocalConfig();
+        LoadTrendGroups();
         _ = DetectLocalBridgeAsync();
     }
 
@@ -114,10 +118,14 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     public bool IsConfigPage => CurrentPage == HmiPage.Config;
 
+    /// <summary>Saved trend groups page.</summary>
+    public bool IsTrendsPage => CurrentPage == HmiPage.Trends;
+
     partial void OnCurrentPageChanged(HmiPage value)
     {
         OnPropertyChanged(nameof(IsHomePage));
         OnPropertyChanged(nameof(IsConfigPage));
+        OnPropertyChanged(nameof(IsTrendsPage));
     }
 
     [RelayCommand]
@@ -125,6 +133,9 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     [RelayCommand]
     private void ShowConfig() => CurrentPage = HmiPage.Config;
+
+    [RelayCommand]
+    private void ShowTrends() => CurrentPage = HmiPage.Trends;
 
     // ---- Home overview card data ----
 
@@ -194,11 +205,34 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         Tags.Where(tag => MatchesSelectedFilters(tag) && MatchesTextFilter(tag));
 
     /// <summary>
-    /// Every tag matching the text filter, across all sources. The group-trend picker uses this:
-    /// it has no bridge/source selectors, so it must not inherit the tag browser's choice.
+    /// Snapshot of the tag metadata the trend-group picker lists. Every bridge/source is included
+    /// (the picker has no selectors, so it must not inherit the tag browser's choice) and rows carry
+    /// names only — no live values — so a multi-select is not disturbed by the value stream. Tags
+    /// already in <paramref name="alreadyInGroup"/> are listed disabled with an "in group" marker.
     /// </summary>
-    public IEnumerable<TagItemViewModel> TrendPickerTags =>
-        Tags.Where(MatchesTextFilter);
+    public IReadOnlyList<TagListRow> BuildPickerRows(ISet<TagBindingKey>? alreadyInGroup = null)
+    {
+        var rows = new List<TagListRow>();
+        foreach (MultiBridgeTagEntry entry in connections_.Cache.Tags
+            .OrderBy(t => t.Key.BridgeId, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(t => t.Key.SourceId, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(t => t.DisplayName, StringComparer.OrdinalIgnoreCase))
+        {
+            TagItemViewModel tag = TagItemViewModel.FromEntry(entry);
+            tag.InfluxConnected = IsBridgeInfluxConnected(tag.BridgeId);
+            bool inGroup = alreadyInGroup?.Contains(entry.Key) == true;
+            rows.Add(new TagListRow(
+                entry.Key,
+                tag.BridgeId,
+                tag.SourceName,
+                tag.DisplayName,
+                tag.DaItemId,
+                inGroup ? "in group" : tag.AvailabilityMarker,
+                tag.CanTrend && !inGroup));
+        }
+
+        return rows;
+    }
 
     /// <summary>Bridge selector entries: "all bridges" plus one per connected bridge.</summary>
     public ObservableCollection<BridgeFilterOption> BridgeFilters { get; } = new();
@@ -206,11 +240,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// <summary>Source selector entries: "all sources" plus one per source of the selected bridge.</summary>
     public ObservableCollection<SourceFilterOption> SourceFilters { get; } = new();
 
-    partial void OnFilterChanged(string value)
-    {
-        OnPropertyChanged(nameof(FilteredTags));
-        OnPropertyChanged(nameof(TrendPickerTags));
-    }
+    partial void OnFilterChanged(string value) => OnPropertyChanged(nameof(FilteredTags));
 
     partial void OnSelectedSourceFilterChanged(SourceFilterOption? value) =>
         OnPropertyChanged(nameof(FilteredTags));
@@ -229,6 +259,8 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         OpenFaceplateCommand.NotifyCanExecuteChanged();
         OpenTrendCommand.NotifyCanExecuteChanged();
         OpenGroupTrendCommand.NotifyCanExecuteChanged();
+        NewTrendGroupCommand.NotifyCanExecuteChanged();
+        AddTagsToTrendGroupCommand.NotifyCanExecuteChanged();
         RefreshDisplaysCommand.NotifyCanExecuteChanged();
         LoadSelectedDisplayCommand.NotifyCanExecuteChanged();
         OnPropertyChanged(nameof(InfluxUnavailableHint));
@@ -296,6 +328,8 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             OnPropertyChanged(nameof(TrendDisabledHint));
             OpenTrendCommand.NotifyCanExecuteChanged();
             OpenGroupTrendCommand.NotifyCanExecuteChanged();
+            NewTrendGroupCommand.NotifyCanExecuteChanged();
+            AddTagsToTrendGroupCommand.NotifyCanExecuteChanged();
             foreach (FaceplateViewModel faceplate in openFaceplates_)
             {
                 faceplate.NotifyInfluxAvailabilityChanged();
@@ -354,6 +388,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             await connections_.ConnectAllAsync(config, ct).ConfigureAwait(true);
             SaveLocalConfig(config);
             RebuildTagsFromCache();
+            RefreshTrendGroupRows();
             await RefreshDisplaysAsync().ConfigureAwait(true);
 
             IReadOnlyCollection<string> connected = connections_.ConnectedBridgeIds;
@@ -423,75 +458,298 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private bool CanOpenTrend() => IsConnected && SelectedTag is { CanTrend: true };
 
-    /// <summary>Opens the tag picker used to compose a multi-tag group trend.</summary>
+    /// <summary>Opens the tag picker used to compose a throwaway (unsaved) multi-tag group trend.</summary>
     [RelayCommand(CanExecute = nameof(CanOpenGroupTrend))]
-    private void OpenGroupTrend()
-    {
-        var picker = new TrendGroupPickerWindow { DataContext = this };
-        if (ownerWindow_ is { } owner)
-        {
-            picker.ShowDialog(owner);
-        }
-        else
-        {
-            picker.Show();
-        }
-    }
+    private void OpenGroupTrend() =>
+        ShowPicker(
+            BuildPickerRows(),
+            "Group trend",
+            "Open trend",
+            askForName: false,
+            result => OpenTrendGroup(result.Keys));
 
     private bool CanOpenGroupTrend() => IsConnected && Tags.Count > 0 && IsInfluxAvailable;
 
     /// <summary>
     /// Opens a group trend window plotting the given tags on one chart. Tags whose bridge
-    /// is not connected, or that have no InfluxDB history, are skipped.
+    /// is not connected, or that have no InfluxDB history, are skipped and reported.
     /// </summary>
-    public void OpenTrendGroup(IReadOnlyList<TagItemViewModel> tags)
+    public void OpenTrendGroup(IReadOnlyList<TagBindingKey> keys)
     {
-        var series = new List<TrendPenViewModel>();
-        int skippedNoHistory = 0;
-        foreach (TagItemViewModel tag in tags)
-        {
-            if (!tag.CanTrend)
-            {
-                skippedNoHistory++;
-                continue;
-            }
-
-            TagBindingKey key = tag.BindingKey;
-            if (!connections_.TryGetSession(key.BridgeId, out BridgeConnectionManager.BridgeSession? session)
-                || session is null)
-            {
-                continue;
-            }
-
-            var entry = connections_.Cache.TryGet(key, out MultiBridgeTagEntry? cached) ? cached : null;
-            series.Add(new TrendPenViewModel(
-                key,
-                session.Api,
-                displayName: tag.DisplayName,
-                description: entry?.Description,
-                dataType: entry?.DataType,
-                unit: entry?.Unit,
-                rangeMin: entry?.RangeMin,
-                rangeMax: entry?.RangeMax,
-                trendStyle: entry?.TrendStyle));
-        }
-
-        if (series.Count == 0)
+        List<TrendPenViewModel> pens = BuildPens(keys, savedGroup: null, out int skippedNoHistory, out int skippedUnavailable);
+        if (pens.Count == 0)
         {
             StatusMessage = "Group trend: no selected tags on a connected bridge";
             return;
         }
 
-        if (skippedNoHistory > 0 || series.Count < tags.Count)
+        ReportSkippedTags(pens.Count, keys.Count, skippedNoHistory, skippedUnavailable);
+        ShowTrendWindow(new TrendGroupViewModel(pens), onClosed: null);
+    }
+
+    // ---- Saved trend groups (Trend groups page) ----
+
+    /// <summary>Trend groups saved on this client, listed by the trend groups page.</summary>
+    public ObservableCollection<TrendGroupItemViewModel> TrendGroups { get; } = new();
+
+    [ObservableProperty]
+    private TrendGroupItemViewModel? _selectedTrendGroup;
+
+    /// <summary>Tag row selected in the group's tag list; drives "Remove tag".</summary>
+    [ObservableProperty]
+    private TagListRow? _selectedGroupTag;
+
+    public bool HasTrendGroups => TrendGroups.Count > 0;
+
+    public bool HasSelectedTrendGroup => SelectedTrendGroup is not null;
+
+    partial void OnSelectedTrendGroupChanged(TrendGroupItemViewModel? value)
+    {
+        SelectedGroupTag = null;
+        OnPropertyChanged(nameof(HasSelectedTrendGroup));
+        AddTagsToTrendGroupCommand.NotifyCanExecuteChanged();
+        RemoveSelectedGroupTagCommand.NotifyCanExecuteChanged();
+        DeleteTrendGroupCommand.NotifyCanExecuteChanged();
+        OpenTrendGroupChartCommand.NotifyCanExecuteChanged();
+    }
+
+    partial void OnSelectedGroupTagChanged(TagListRow? value) =>
+        RemoveSelectedGroupTagCommand.NotifyCanExecuteChanged();
+
+    /// <summary>Creates a named group from a tag selection and saves it.</summary>
+    [RelayCommand(CanExecute = nameof(CanCreateTrendGroup))]
+    private void NewTrendGroup() =>
+        ShowPicker(
+            BuildPickerRows(),
+            "New trend group",
+            "Create group",
+            askForName: true,
+            result =>
+            {
+                var group = new TrendGroupItemViewModel(new TrendGroupDefinition
+                {
+                    Id = Guid.NewGuid().ToString("N"),
+                    Name = result.Name ?? string.Empty
+                });
+                foreach (TagBindingKey key in result.Keys)
+                {
+                    group.AddTag(key);
+                }
+
+                TrendGroups.Add(group);
+                RefreshTrendGroupRows();
+                SelectedTrendGroup = group;
+                SaveTrendGroups();
+                OnPropertyChanged(nameof(HasTrendGroups));
+                StatusMessage = $"Trend group '{group.Name}' created with {group.Tags.Count} tag(s)";
+            });
+
+    private bool CanCreateTrendGroup() => IsConnected && Tags.Count > 0 && IsInfluxAvailable;
+
+    /// <summary>Adds tags to the selected group; tags already in it are listed but not selectable.</summary>
+    [RelayCommand(CanExecute = nameof(CanAddTagsToTrendGroup))]
+    private void AddTagsToTrendGroup()
+    {
+        if (SelectedTrendGroup is not { } group)
         {
-            string reason = skippedNoHistory > 0
-                ? $"skipped {skippedNoHistory} tag(s) without InfluxDB history"
-                : "skipped unconnected bridges";
-            StatusMessage = $"Group trend opened with {series.Count} of {tags.Count} tags ({reason})";
+            return;
         }
 
-        TrendGroupViewModel vm = new(series);
-        TrendWindow window = new(vm);
+        var existing = new HashSet<TagBindingKey>(group.Definition.Keys(), TagBindingKeyComparer.Instance);
+        ShowPicker(
+            BuildPickerRows(existing),
+            $"Add tags to {group.Name}",
+            "Add tags",
+            askForName: false,
+            result =>
+            {
+                int added = 0;
+                foreach (TagBindingKey key in result.Keys)
+                {
+                    if (group.AddTag(key))
+                    {
+                        added++;
+                    }
+                }
+
+                RefreshTrendGroupRows();
+                SaveTrendGroups();
+                StatusMessage = $"Added {added} tag(s) to '{group.Name}'";
+            });
+    }
+
+    private bool CanAddTagsToTrendGroup() =>
+        HasSelectedTrendGroup && IsConnected && Tags.Count > 0 && IsInfluxAvailable;
+
+    /// <summary>Drops the selected tag from the selected group.</summary>
+    [RelayCommand(CanExecute = nameof(CanRemoveSelectedGroupTag))]
+    private void RemoveSelectedGroupTag()
+    {
+        if (SelectedTrendGroup is not { } group || SelectedGroupTag is not { } row)
+        {
+            return;
+        }
+
+        if (group.RemoveTag(row.Key))
+        {
+            RefreshTrendGroupRows();
+            SaveTrendGroups();
+            StatusMessage = $"Removed {row.DisplayName} from '{group.Name}'";
+        }
+    }
+
+    private bool CanRemoveSelectedGroupTag() => HasSelectedTrendGroup && SelectedGroupTag is not null;
+
+    /// <summary>Deletes the selected group from the page and from disk.</summary>
+    [RelayCommand(CanExecute = nameof(CanDeleteTrendGroup))]
+    private void DeleteTrendGroup()
+    {
+        if (SelectedTrendGroup is not { } group)
+        {
+            return;
+        }
+
+        TrendGroups.Remove(group);
+        SelectedTrendGroup = TrendGroups.FirstOrDefault();
+        SaveTrendGroups();
+        OnPropertyChanged(nameof(HasTrendGroups));
+        StatusMessage = $"Deleted trend group '{group.Name}'";
+    }
+
+    private bool CanDeleteTrendGroup() => HasSelectedTrendGroup;
+
+    /// <summary>Opens the selected group's chart; closing it saves the pen setup back to the group.</summary>
+    [RelayCommand(CanExecute = nameof(CanOpenTrendGroupChart))]
+    private void OpenTrendGroupChart()
+    {
+        if (SelectedTrendGroup is { } group)
+        {
+            OpenSavedTrendGroup(group);
+        }
+    }
+
+    private bool CanOpenTrendGroupChart() => HasSelectedTrendGroup;
+
+    /// <summary>Persists the group list; called by the page after renames.</summary>
+    public void SaveTrendGroups()
+    {
+        try
+        {
+            TrendGroupStore.Save(trendGroupsPath_, TrendGroups.Select(group => group.Definition));
+        }
+        catch
+        {
+            // non-fatal
+        }
+    }
+
+    private void OpenSavedTrendGroup(TrendGroupItemViewModel group)
+    {
+        List<TagBindingKey> keys = group.Definition.Keys().ToList();
+        List<TrendPenViewModel> pens = BuildPens(keys, group.Definition, out int skippedNoHistory, out int skippedUnavailable);
+        if (pens.Count == 0)
+        {
+            StatusMessage = $"Trend group '{group.Name}': no tags on a connected bridge";
+            return;
+        }
+
+        ReportSkippedTags(pens.Count, keys.Count, skippedNoHistory, skippedUnavailable);
+
+        var viewModel = new TrendGroupViewModel(pens, group.Name)
+        {
+            LayoutMode = TrendGroupLayouts.Normalize(group.Definition.LayoutMode),
+            YAxisMode = TrendGroupAxisModes.Normalize(group.Definition.YAxisMode)
+        };
+        ShowTrendWindow(viewModel, onClosed: () =>
+        {
+            CaptureTrendGroupState(group.Definition, viewModel);
+            SaveTrendGroups();
+            RefreshTrendGroupRows();
+        });
+    }
+
+    /// <summary>
+    /// Builds one pen per tag: metadata from the tag cache, plus the saved per-pen display state
+    /// when the tag belongs to a saved group. Tags on a disconnected bridge, tags the bridge no
+    /// longer has, and tags without InfluxDB history are skipped (and counted).
+    /// </summary>
+    private List<TrendPenViewModel> BuildPens(
+        IReadOnlyList<TagBindingKey> keys,
+        TrendGroupDefinition? savedGroup,
+        out int skippedNoHistory,
+        out int skippedUnavailable)
+    {
+        var pens = new List<TrendPenViewModel>();
+        skippedNoHistory = 0;
+        skippedUnavailable = 0;
+        foreach (TagBindingKey key in keys)
+        {
+            if (!connections_.TryGetSession(key.BridgeId, out BridgeConnectionManager.BridgeSession? session)
+                || session is null)
+            {
+                skippedUnavailable++;
+                continue;
+            }
+
+            MultiBridgeTagEntry? entry = LookupTagEntry(key);
+            if (entry is null)
+            {
+                skippedUnavailable++;
+                continue;
+            }
+
+            if (!entry.InfluxEnabled || !IsBridgeInfluxConnected(key.BridgeId))
+            {
+                skippedNoHistory++;
+                continue;
+            }
+
+            TrendGroupPenDefinition? saved = savedGroup?.Pens.FirstOrDefault(pen => pen.Key.EqualsIgnoreCase(key));
+            var pen = new TrendPenViewModel(
+                key,
+                session.Api,
+                displayName: entry.DisplayName,
+                description: entry.Description,
+                dataType: entry.DataType,
+                unit: entry.Unit,
+                rangeMin: entry.RangeMin,
+                rangeMax: entry.RangeMax,
+                trendStyle: entry.TrendStyle,
+                color: string.IsNullOrWhiteSpace(saved?.Color) ? null : saved!.Color);
+            if (saved is not null)
+            {
+                TrendGroupPenState.Apply(pen, saved);
+            }
+
+            pens.Add(pen);
+        }
+
+        return pens;
+    }
+
+    /// <summary>Copies what the operator changed in the chart window back onto the saved group.</summary>
+    private static void CaptureTrendGroupState(TrendGroupDefinition definition, TrendGroupViewModel viewModel)
+    {
+        definition.LayoutMode = viewModel.LayoutMode;
+        definition.YAxisMode = viewModel.YAxisMode;
+        foreach (TrendPenViewModel pen in viewModel.Pens)
+        {
+            TrendGroupPenDefinition? saved = definition.Pens.FirstOrDefault(p => p.Key.EqualsIgnoreCase(pen.Key));
+            if (saved is not null)
+            {
+                TrendGroupPenState.Capture(pen, saved);
+            }
+        }
+    }
+
+    private void ShowTrendWindow(TrendGroupViewModel viewModel, Action? onClosed)
+    {
+        var window = new TrendWindow(viewModel);
+        if (onClosed is not null)
+        {
+            window.Closed += (_, _) => onClosed();
+        }
+
         if (ownerWindow_ is { } owner)
         {
             window.Show(owner);
@@ -501,6 +759,69 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             window.Show();
         }
     }
+
+    private void ShowPicker(
+        IReadOnlyList<TagListRow> rows,
+        string title,
+        string confirmText,
+        bool askForName,
+        Action<TagPickerResult> onConfirmed) =>
+        TrendGroupPickerWindow.ShowFor(
+            ownerWindow_,
+            new TagPickerViewModel(rows, title, confirmText, askForName),
+            onConfirmed);
+
+    private void ReportSkippedTags(int shown, int total, int skippedNoHistory, int skippedUnavailable)
+    {
+        if (shown >= total)
+        {
+            return;
+        }
+
+        var reasons = new List<string>();
+        if (skippedNoHistory > 0)
+        {
+            reasons.Add($"{skippedNoHistory} without InfluxDB history");
+        }
+
+        if (skippedUnavailable > 0)
+        {
+            reasons.Add($"{skippedUnavailable} not on a connected bridge");
+        }
+
+        StatusMessage = $"Group trend opened with {shown} of {total} tags ({string.Join(", ", reasons)})";
+    }
+
+    private void LoadTrendGroups()
+    {
+        TrendGroups.Clear();
+        foreach (TrendGroupDefinition definition in TrendGroupStore.Load(trendGroupsPath_))
+        {
+            TrendGroups.Add(new TrendGroupItemViewModel(definition));
+        }
+
+        RefreshTrendGroupRows();
+        SelectedTrendGroup = TrendGroups.FirstOrDefault();
+        OnPropertyChanged(nameof(HasTrendGroups));
+    }
+
+    /// <summary>
+    /// Rebuilds every group's tag rows from the tag cache. Deliberately not called from
+    /// <see cref="RebuildTagsFromCache"/>: that runs on every value batch, and the page must not
+    /// churn with the value stream.
+    /// </summary>
+    private void RefreshTrendGroupRows()
+    {
+        foreach (TrendGroupItemViewModel group in TrendGroups)
+        {
+            group.RefreshRows(LookupTagEntry);
+        }
+
+        SelectedGroupTag = null;
+    }
+
+    private MultiBridgeTagEntry? LookupTagEntry(TagBindingKey key) =>
+        connections_.Cache.TryGet(key, out MultiBridgeTagEntry? entry) ? entry : null;
 
     [RelayCommand(CanExecute = nameof(CanRefreshDisplays))]
     private async Task RefreshDisplaysAsync()
@@ -685,6 +1006,8 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             try
             {
                 await connections_.RefreshBridgeSnapshotAsync(bridgeId, CancellationToken.None).ConfigureAwait(true);
+                // Tags can appear/disappear with the mappings, so the saved groups' rows follow.
+                RefreshTrendGroupRows();
                 StatusMessage = $"Mappings changed on {bridgeId} (v{msg.Version})";
             }
             catch (Exception ex)
@@ -721,7 +1044,6 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             ? still
             : null;
         OnPropertyChanged(nameof(FilteredTags));
-        OnPropertyChanged(nameof(TrendPickerTags));
         OnPropertyChanged(nameof(TagCount));
     }
 
@@ -809,7 +1131,6 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         storeClients_.Clear();
         OnPropertyChanged(nameof(FilteredTags));
-        OnPropertyChanged(nameof(TrendPickerTags));
         OnPropertyChanged(nameof(TagCount));
     }
 

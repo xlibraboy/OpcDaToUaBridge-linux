@@ -18,7 +18,9 @@ public partial class TrendGroupViewModel : TrendWindowViewModelBase
     /// <inheritdoc />
     public override IReadOnlyList<TrendPenViewModel> Pens => PenRows;
 
-    public TrendGroupViewModel(IEnumerable<TrendPenViewModel> pens)
+    /// <param name="pens">The group's pens, in strip/palette order.</param>
+    /// <param name="groupName">Saved group name; null for an ad-hoc group built from the picker.</param>
+    public TrendGroupViewModel(IEnumerable<TrendPenViewModel> pens, string? groupName = null)
     {
         foreach (TrendPenViewModel pen in pens)
         {
@@ -28,15 +30,21 @@ public partial class TrendGroupViewModel : TrendWindowViewModelBase
 
         for (int i = 0; i < PenRows.Count; i++)
         {
-            PenRows[i].Color = TrendSeriesPalette.ColorFor(i);
+            // Palette colours are positional — a pen restored from a saved group keeps its own.
+            if (!PenRows[i].HasExplicitColor)
+            {
+                PenRows[i].Color = TrendSeriesPalette.ColorFor(i);
+            }
         }
 
-        Title = PenRows.Count switch
-        {
-            0 => "Trend group",
-            1 => PenRows[0].Name,
-            _ => $"Group trend · {PenRows.Count} tags"
-        };
+        Title = string.IsNullOrWhiteSpace(groupName)
+            ? PenRows.Count switch
+            {
+                0 => "Trend group",
+                1 => PenRows[0].Name,
+                _ => $"Group trend · {PenRows.Count} tags"
+            }
+            : $"{groupName.Trim()} · {PenRows.Count} {(PenRows.Count == 1 ? "tag" : "tags")}";
 
         // Group trends open in the mixed overlay layout (one plot, per-pen scale legend);
         // the toolbar lets the operator switch back to stacked strips.

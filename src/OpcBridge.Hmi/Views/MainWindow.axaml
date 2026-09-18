@@ -4,6 +4,7 @@
         xmlns:core="using:OpcBridge.Hmi.Core"
         xmlns:client="using:OpcBridge.Client"
         xmlns:controls="using:OpcBridge.Hmi.Controls"
+        xmlns:views="using:OpcBridge.Hmi.Views"
         x:Class="OpcBridge.Hmi.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Title="OpcBridge HMI"
@@ -25,6 +26,9 @@
         <MenuItem Header="Config" Command="{Binding ShowConfigCommand}"
                   ToggleType="CheckBox" IsChecked="{Binding IsConfigPage, Mode=OneWay}"
                   InputGesture="Ctrl+2" />
+        <MenuItem Header="Trend groups" Command="{Binding ShowTrendsCommand}"
+                  ToggleType="CheckBox" IsChecked="{Binding IsTrendsPage, Mode=OneWay}"
+                  InputGesture="Ctrl+3" />
         <Separator />
         <MenuItem Header="Open faceplate" Command="{Binding OpenFaceplateCommand}" />
         <MenuItem Header="Open trend" Command="{Binding OpenTrendCommand}" />
@@ -304,6 +308,9 @@
           </DockPanel>
         </Border>
       </Grid>
+
+      <!-- ======== TREND GROUPS ======== -->
+      <views:TrendGroupsPage IsVisible="{Binding IsTrendsPage}" />
     </Grid>
   </DockPanel>
 </Window>

@@ -70,6 +70,10 @@ public partial class MainWindow : Window
                 vm.ShowConfigCommand.Execute(null);
                 e.Handled = true;
                 break;
+            case Key.D3 when e.KeyModifiers.HasFlag(KeyModifiers.Control):
+                vm.ShowTrendsCommand.Execute(null);
+                e.Handled = true;
+                break;
         }
 
         if (!e.Handled)

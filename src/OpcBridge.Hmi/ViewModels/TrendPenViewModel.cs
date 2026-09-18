@@ -22,6 +22,9 @@ public partial class TrendPenViewModel : ObservableObject
     /// </summary>
     private readonly (double Min, double Max)? tagRange_;
 
+    /// <summary>True when the pen came in with a colour (a saved trend group) instead of the palette.</summary>
+    private readonly bool hasExplicitColor_;
+
     public TrendPenViewModel(
         TagBindingKey key,
         BridgeApiClient api,
@@ -41,10 +44,12 @@ public partial class TrendPenViewModel : ObservableObject
         DataType = dataType ?? "Double";
         Unit = unit ?? string.Empty;
         TrendStyle = NormalizeTrendStyle(trendStyle);
-        Color = string.IsNullOrWhiteSpace(color) ? TrendSeriesPalette.ColorFor(0) : color!;
+        hasExplicitColor_ = !string.IsNullOrWhiteSpace(color);
+        Color = hasExplicitColor_ ? color! : TrendSeriesPalette.ColorFor(0);
         tagRange_ = TrendScale.TagRange(rangeMin, rangeMax);
         // A tag with a configured range opens on it, so the operator sees the scale they set
-        // up; auto-fit stays one toggle away (the single-tag trend drives this flag).
+        // up; auto-fit stays one toggle away (the single-tag trend drives this flag). A saved
+        // trend group restores the flag it was closed with.
         AxisAutoRange = tagRange_ is null;
     }
 
@@ -52,6 +57,12 @@ public partial class TrendPenViewModel : ObservableObject
 
     /// <summary>Short pen name (tag display name or item id).</summary>
     public string Name { get; }
+
+    /// <summary>
+    /// True when the colour was set explicitly (restored from a saved trend group), so the owning
+    /// trend must not overwrite it with the palette colour for the pen's position.
+    /// </summary>
+    public bool HasExplicitColor => hasExplicitColor_;
 
     /// <summary>Tag description shown in the pen table (e.g. "Level of Tank 1").</summary>
     public string Description { get; }
@@ -259,6 +270,22 @@ public partial class TrendPenViewModel : ObservableObject
         RangeMinText = string.Empty;
         RangeMaxText = string.Empty;
     }
+
+    /// <summary>The operator's typed Y axis minimum, or null when unset.</summary>
+    public double? CustomRangeMin => ParsedMin;
+
+    /// <summary>The operator's typed Y axis maximum, or null when unset.</summary>
+    public double? CustomRangeMax => ParsedMax;
+
+    /// <summary>Restores a saved Y axis; used when a saved trend group reopens.</summary>
+    public void SetCustomRange(double? min, double? max)
+    {
+        RangeMinText = FormatCustomRange(min);
+        RangeMaxText = FormatCustomRange(max);
+    }
+
+    private string FormatCustomRange(double? value) =>
+        value is { } v ? FormatValue(v, includeUnit: false) : string.Empty;
 
     private double? ParsedMin => TryParse(RangeMinText);
 
