@@ -17,7 +17,7 @@
               Click="OnConfirmClick"
               IsEnabled="{Binding CanConfirm}"
               MinWidth="110" />
-      <Button Content="Cancel" Click="OnCancelClick" MinWidth="90" />
+      <Button Content="Cancel" Click="OnCancelClick" IsCancel="True" MinWidth="90" />
       <TextBlock Classes="hint"
                  VerticalAlignment="Center"
                  Text="Tags without InfluxDB history are disabled." />
@@ -26,9 +26,11 @@
     <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,8">
       <Grid ColumnDefinitions="Auto,*" IsVisible="{Binding AskForName}" Margin="0,0,0,4">
         <TextBlock Grid.Column="0" Classes="listHeader" Text="GROUP NAME" VerticalAlignment="Center" Margin="0,0,10,0" />
-        <TextBox Grid.Column="1" Watermark="Name of the trend group" Text="{Binding GroupName}" />
+        <TextBox Grid.Column="1"
+                 AutomationProperties.Name="Group name"
+                 Watermark="Name of the trend group" Text="{Binding GroupName}" />
       </Grid>
-      <TextBox Watermark="Filter tags…" Text="{Binding Filter}" />
+      <TextBox AutomationProperties.Name="Filter tags" Watermark="Filter tags…" Text="{Binding Filter}" />
       <Grid ColumnDefinitions="*,*,2*,Auto">
         <TextBlock Grid.Column="0" Classes="listHeader" Text="BRIDGE" />
         <TextBlock Grid.Column="1" Classes="listHeader" Text="SOURCE" />
@@ -38,7 +40,9 @@
 
     <ListBox x:Name="TagList"
              ItemsSource="{Binding Rows}"
-             SelectionMode="Multiple">
+             SelectionMode="Multiple"
+             AutomationProperties.Name="Tags"
+             AutomationProperties.HelpText="Tags without InfluxDB history are disabled. Use Ctrl or Shift with the arrow keys to select several.">
       <ListBox.Styles>
         <Style Selector="ListBoxItem">
           <Setter Property="IsEnabled" Value="{Binding Enabled, x:DataType=vm:TagListRow}" />

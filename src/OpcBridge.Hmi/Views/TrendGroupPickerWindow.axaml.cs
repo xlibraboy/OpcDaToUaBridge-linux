@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using OpcBridge.Hmi.ViewModels;
 
@@ -14,6 +15,9 @@ public partial class TrendGroupPickerWindow : Window
     public TrendGroupPickerWindow()
     {
         InitializeComponent();
+
+        // Inner controls claim Escape before it bubbles, so the window watches the tunnel pass.
+        AddHandler(KeyDownEvent, OnEscapeKeyDown, RoutingStrategies.Tunnel);
     }
 
     public TrendGroupPickerWindow(TagPickerViewModel viewModel)
@@ -69,4 +73,16 @@ public partial class TrendGroupPickerWindow : Window
     }
 
     private void OnCancelClick(object? sender, RoutedEventArgs e) => Close();
+
+    /// <summary>Escape cancels, the same way the Cancel button does.</summary>
+    private void OnEscapeKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Escape)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        Close();
+    }
 }

@@ -5,8 +5,10 @@ using System.Linq;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Media;
 using OpcBridge.Hmi.Core;
+using OpcBridge.Hmi.Themes;
 
 namespace OpcBridge.Hmi.Controls;
 
@@ -236,6 +238,7 @@ public sealed class TrendChartControl : Control
     {
         // Opaque background makes the whole chart a hit region for crosshair/pin/zoom.
         Cursor = new Cursor(StandardCursorType.Cross);
+        Focusable = true;
         AddHandler(Gestures.DoubleTappedEvent, OnChartDoubleTapped);
     }
 
@@ -276,6 +279,7 @@ public sealed class TrendChartControl : Control
     }
 
     private Point? cursorPoint_;
+    private double? keyboardCursorX_;
     private bool zoomDragging_;
     private double zoomAnchorX_;
     private double zoomCurrentX_;
@@ -294,6 +298,7 @@ public sealed class TrendChartControl : Control
     protected override void OnPointerMoved(PointerEventArgs e)
     {
         base.OnPointerMoved(e);
+        keyboardCursorX_ = null;
         Point position = e.GetPosition(this);
         if (zoomDragging_)
         {
@@ -431,11 +436,126 @@ public sealed class TrendChartControl : Control
     protected override void OnPointerExited(PointerEventArgs e)
     {
         base.OnPointerExited(e);
-        if (cursorPoint_.HasValue)
+        if (cursorPoint_.HasValue && keyboardCursorX_ is null)
         {
             cursorPoint_ = null;
             InvalidateVisual();
         }
+    }
+
+    /// <summary>
+    /// Keyboard equivalent of the pointer crosshair and Ctrl+Click pin command: arrows move the
+    /// time cursor, Enter pins or unpins the time under it, Delete drops that pin, Escape hides
+    /// the cursor. The cursor feeds the same readout chips the pointer uses.
+    /// </summary>
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+        if (e.Handled || layoutPlotWidth_ <= 0 || layoutToUtc_ <= layoutFromUtc_)
+        {
+            return;
+        }
+
+        double left = layoutPlotLeft_;
+        double right = layoutPlotLeft_ + layoutPlotWidth_;
+        double step = (e.KeyModifiers & KeyModifiers.Shift) != 0
+            ? layoutPlotWidth_ / 10
+            : layoutPlotWidth_ / 100;
+
+        switch (e.Key)
+        {
+            case Key.Left:
+                MoveKeyboardCursor(Math.Max(left, (keyboardCursorX_ ?? right) - step));
+                break;
+            case Key.Right:
+                MoveKeyboardCursor(Math.Min(right, (keyboardCursorX_ ?? left) + step));
+                break;
+            case Key.Home:
+                MoveKeyboardCursor(left);
+                break;
+            case Key.End:
+                MoveKeyboardCursor(right);
+                break;
+            case Key.Enter:
+            case Key.Space:
+                TogglePinAtKeyboardCursor();
+                break;
+            case Key.Delete:
+            case Key.Back:
+                RemovePinAtKeyboardCursor();
+                break;
+            case Key.Escape:
+                keyboardCursorX_ = null;
+                cursorPoint_ = null;
+                InvalidateVisual();
+                break;
+            default:
+                return;
+        }
+
+        e.Handled = true;
+    }
+
+    private void MoveKeyboardCursor(double x)
+    {
+        keyboardCursorX_ = x;
+        cursorPoint_ = new Point(x, Bounds.Height / 2);
+        InvalidateVisual();
+    }
+
+    /// <summary>Time under the keyboard cursor, or null when the cursor is not on the plot.</summary>
+    private DateTime? KeyboardCursorTime()
+    {
+        if (keyboardCursorX_ is not { } x || layoutPlotWidth_ <= 0)
+        {
+            return null;
+        }
+
+        double frac = Math.Clamp((x - layoutPlotLeft_) / layoutPlotWidth_, 0, 1);
+        return layoutFromUtc_ + TimeSpan.FromTicks((long)((layoutToUtc_ - layoutFromUtc_).Ticks * frac));
+    }
+
+    /// <summary>Pins the time under the keyboard cursor, or unpins a pin already sitting there.</summary>
+    private void TogglePinAtKeyboardCursor()
+    {
+        if (keyboardCursorX_ is not { } x || KeyboardCursorTime() is not { } pinned)
+        {
+            return;
+        }
+
+        var pins = Pins.ToList();
+        int hit = FindPinNear(x);
+        if (hit >= 0)
+        {
+            pins.RemoveAt(hit);
+        }
+        else
+        {
+            pins.Add(pinned);
+        }
+
+        Pins = System.Collections.Immutable.ImmutableList.ToImmutableList(pins);
+        PinsChanged?.Invoke(this, EventArgs.Empty);
+        InvalidateVisual();
+    }
+
+    /// <summary>Removes the pin under the keyboard cursor, if one is there.</summary>
+    private void RemovePinAtKeyboardCursor()
+    {
+        if (keyboardCursorX_ is not { } x)
+        {
+            return;
+        }
+
+        int hit = FindPinNear(x);
+        if (hit < 0)
+        {
+            return;
+        }
+
+        Pins = Pins.RemoveAt(hit);
+        PinsChanged?.Invoke(this, EventArgs.Empty);
+        InvalidateVisual();
     }
 
     /// <summary>Index of the pin line under the pointer X, or -1.</summary>
@@ -516,21 +636,27 @@ public sealed class TrendChartControl : Control
         e.Handled = true;
     }
 
-    // Palette matches Themes/SharedResources.axaml (dark theme).
-    private static readonly SolidColorBrush PanelBrush = new(Color.Parse("#1B1B20"));
-    private static readonly SolidColorBrush StripBrush = new(Color.Parse("#141419"));
-    private static readonly SolidColorBrush AxisLabelBrush = new(Color.Parse("#B4B4BE"));
-    private static readonly SolidColorBrush GridBrush = new(Color.Parse("#3A3A44"));
-    private static readonly SolidColorBrush FrameBrush = new(Color.Parse("#555560"));
-    private static readonly SolidColorBrush CrosshairBrush = new(Color.Parse("#7A7A86"));
-    private static readonly SolidColorBrush PinBrush = new(Color.Parse("#4A90D9"));
-    private static readonly SolidColorBrush DotFillBrush = new(Color.Parse("#FFFFFF"));
-    private static readonly SolidColorBrush ReadoutBgBrush = new(Color.FromArgb(0xEC, 0x23, 0x23, 0x29));
-    private static readonly SolidColorBrush LegendBackdropBrush = new(Color.FromArgb(0xC8, 0x17, 0x17, 0x1D));
-    private static readonly SolidColorBrush LegendBorderBrush = new(Color.FromArgb(0x50, 0xFF, 0xFF, 0xFF));
-    private static readonly SolidColorBrush ZoomFillBrush = new(Color.FromArgb(0x40, 0x4F, 0xC3, 0xF7));
-    private static readonly SolidColorBrush AlarmBandBrush = new(Color.FromArgb(0x1F, 0xEF, 0x53, 0x50));
-    private static readonly Pen AlarmPen = new(new SolidColorBrush(Color.Parse("#EF5350")), 1) { DashStyle = DashStyle.Dash };
+    // Every colour the chart draws resolves from Themes/SharedResources.axaml through
+    // ThemePalette, so the chart cannot drift from the shell when the palette moves.
+    private static IBrush PanelBrush => ThemePalette.Brush("PanelBrush", "#161E25");
+    private static IBrush StripBrush => ThemePalette.Brush("WellBrush", "#0C141A");
+    private static IBrush AxisLabelBrush => ThemePalette.Brush("MutedFgBrush", "#ADB9C4");
+    private static IBrush GridBrush => ThemePalette.Brush("GridLineBrush", "#28323A");
+    private static IBrush FrameBrush => ThemePalette.Brush("FrameBrush", "#4C5863");
+    private static IBrush CrosshairBrush => ThemePalette.Brush("CrosshairBrush", "#707E89");
+    private static IBrush PinBrush => ThemePalette.Brush("AccentMarkerBrush", "#4095CA");
+    private static IBrush DotFillBrush => ThemePalette.Brush("TextBrush", "#EEF0F3");
+
+    // Overlays are the same tokens at lower opacity rather than separate near-miss colours.
+    private static IBrush ReadoutBgBrush => ThemePalette.Brush("CardColor", 0.93, "#1E272F");
+    private static IBrush LegendBackdropBrush => ThemePalette.Brush("WellColor", 0.78, "#0C141A");
+    private static IBrush LegendBorderBrush => ThemePalette.Brush("CardBorderColor", 0.31, "#333F49");
+    private static IBrush ZoomFillBrush => ThemePalette.Brush("AccentValue", 0.25, "#74BDEF");
+    private static IBrush AlarmBandBrush => ThemePalette.Brush("AlarmColor", 0.12, "#EC5353");
+
+    private static Pen AlarmPen => new(ThemePalette.Brush("AlarmBrush", "#EC5353"), 1) { DashStyle = DashStyle.Dash };
+
+    private static Pen FocusRingPen => new(ThemePalette.Brush("AccentValueBrush", "#74BDEF"), 2);
 
     /// <summary>Solid brush for a pen color (hex string from the palette or view model).</summary>
     private static SolidColorBrush BrushFor(string colorHex)
@@ -541,7 +667,8 @@ public sealed class TrendChartControl : Control
         }
         catch
         {
-            return new SolidColorBrush(Color.Parse("#4FC3F7"));
+            // A pen with no usable colour falls back to the accent the shell uses for values.
+            return new SolidColorBrush(ThemePalette.Color("AccentValue", "#74BDEF"));
         }
     }
 
@@ -555,7 +682,8 @@ public sealed class TrendChartControl : Control
         }
         catch
         {
-            return new SolidColorBrush(Color.FromArgb(0x26, 0x4F, 0xC3, 0xF7));
+            Color accent = ThemePalette.Color("AccentValue", "#74BDEF");
+            return new SolidColorBrush(Color.FromArgb(0x26, accent.R, accent.G, accent.B));
         }
     }
 
@@ -578,6 +706,35 @@ public sealed class TrendChartControl : Control
     public override void Render(DrawingContext context)
     {
         base.Render(context);
+        RenderChart(context);
+        RenderFocusRing(context);
+    }
+
+    /// <summary>Border ring while the chart holds keyboard focus, since it draws its own chrome.</summary>
+    private void RenderFocusRing(DrawingContext context)
+    {
+        if (!IsFocused || Bounds.Width <= 2 || Bounds.Height <= 2)
+        {
+            return;
+        }
+
+        context.DrawRectangle(null, FocusRingPen, new Rect(1, 1, Bounds.Width - 2, Bounds.Height - 2));
+    }
+
+    protected override void OnGotFocus(GotFocusEventArgs e)
+    {
+        base.OnGotFocus(e);
+        InvalidateVisual();
+    }
+
+    protected override void OnLostFocus(RoutedEventArgs e)
+    {
+        base.OnLostFocus(e);
+        InvalidateVisual();
+    }
+
+    private void RenderChart(DrawingContext context)
+    {
         double width = Bounds.Width;
         double height = Bounds.Height;
         if (width <= 1 || height <= 1)

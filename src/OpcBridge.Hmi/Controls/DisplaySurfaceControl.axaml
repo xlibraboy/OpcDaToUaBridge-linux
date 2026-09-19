@@ -12,7 +12,7 @@
           ClipToBounds="True">
     <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
       <Panel Width="{Binding CanvasWidth}" Height="{Binding CanvasHeight}">
-        <Canvas Width="{Binding CanvasWidth}" Height="{Binding CanvasHeight}" Background="#252526" />
+        <Canvas Width="{Binding CanvasWidth}" Height="{Binding CanvasHeight}" Background="{DynamicResource CanvasBrush}" />
         <Canvas x:Name="GridHost" Width="{Binding CanvasWidth}" Height="{Binding CanvasHeight}" />
         <Canvas Width="{Binding CanvasWidth}" Height="{Binding CanvasHeight}">
           <ItemsControl ItemsSource="{Binding Widgets}"

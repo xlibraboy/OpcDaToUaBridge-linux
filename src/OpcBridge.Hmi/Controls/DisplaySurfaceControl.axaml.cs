@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
 using Avalonia.Input;
 using Avalonia.Media;
+using OpcBridge.Hmi.Themes;
 using OpcBridge.Hmi.ViewModels;
 using OpcBridge.Hmi.ViewModels.Widgets;
 
@@ -75,7 +76,7 @@ public partial class DisplaySurfaceControl : UserControl
             return;
         }
 
-        var stroke = new SolidColorBrush(Color.Parse("#2E2E36"));
+        var stroke = new SolidColorBrush(ThemePalette.Color("GridLineColor", "#28323A"));
         for (double x = GridStep; x < surface.CanvasWidth; x += GridStep)
         {
             host.Children.Add(new Line

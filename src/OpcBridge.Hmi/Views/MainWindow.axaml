@@ -5,11 +5,14 @@
         xmlns:client="using:OpcBridge.Client"
         xmlns:controls="using:OpcBridge.Hmi.Controls"
         xmlns:views="using:OpcBridge.Hmi.Views"
+        xmlns:converters="using:Avalonia.Data.Converters"
         x:Class="OpcBridge.Hmi.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Title="OpcBridge HMI"
         Width="1280"
-        Height="800">
+        Height="800"
+        MinWidth="1120"
+        MinHeight="640">
   <DockPanel>
     <!-- ======== Menu bar ======== -->
     <Menu DockPanel.Dock="Top">
@@ -51,16 +54,19 @@
             Padding="12,6">
       <DockPanel>
         <Border Classes="pill ok" IsVisible="{Binding IsConnected}">
-          <TextBlock Text="{Binding ConnectionState}" />
+          <TextBlock Text="{Binding ConnectionState}"
+                     AutomationProperties.LiveSetting="Polite" />
         </Border>
         <Border Classes="pill bad" IsVisible="{Binding !IsConnected}">
-          <TextBlock Text="{Binding ConnectionState}" />
+          <TextBlock Text="{Binding ConnectionState}"
+                     AutomationProperties.LiveSetting="Polite" />
         </Border>
         <TextBlock DockPanel.Dock="Right"
                    Classes="hint"
                    VerticalAlignment="Center"
                    MaxWidth="520"
                    TextTrimming="CharacterEllipsis"
+                   AutomationProperties.LiveSetting="Polite"
                    Text="{Binding StatusMessage}" />
         <TextBlock Margin="12,0,0,0"
                    Classes="hint"
@@ -171,14 +177,17 @@
                       <Grid ColumnDefinitions="2.1*,2.1*,1.1*,Auto,Auto" Margin="0,2">
                         <TextBox Grid.Column="0"
                                  Margin="0,0,4,0"
+                                 AutomationProperties.Name="OPC Bridge address"
                                  Watermark="http://127.0.0.1:8080"
                                  Text="{Binding Address}" />
                         <TextBox Grid.Column="1"
                                  Margin="0,0,4,0"
+                                 AutomationProperties.Name="Display store address"
                                  Watermark="= address"
                                  Text="{Binding DisplayStore}" />
                         <TextBox Grid.Column="2"
                                  Margin="0,0,4,0"
+                                 AutomationProperties.Name="Bridge name"
                                  Watermark="name"
                                  Text="{Binding Name}" />
                         <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="5" Margin="8,0,8,0" VerticalAlignment="Center">
@@ -187,6 +196,8 @@
                           <TextBlock Text="{Binding ScopeKind}" FontWeight="SemiBold" />
                         </StackPanel>
                         <Button Grid.Column="4" Classes="tool" Content="✕"
+                                AutomationProperties.Name="{Binding Address, StringFormat='Remove bridge {0}'}"
+                                ToolTip.Tip="Remove this bridge line"
                                 Command="{Binding $parent[ItemsControl].((vm:MainViewModel)DataContext).RemoveBridgeCommand}"
                                 CommandParameter="{Binding}" />
                       </Grid>
@@ -216,6 +227,36 @@
                       HorizontalAlignment="Left" />
             </StackPanel>
           </Border>
+
+          <!-- Inspector for whatever the tag browser has highlighted. It lives in this rail
+               so the browser keeps its full height for the list. -->
+          <Border Classes="card"
+                  IsVisible="{Binding SelectedTag, Converter={x:Static converters:ObjectConverters.IsNotNull}}">
+            <StackPanel Spacing="6">
+              <TextBlock Classes="sectionLabel" Text="SELECTED TAG" />
+              <TextBlock Text="{Binding SelectedTag.DisplayName}"
+                         FontWeight="SemiBold"
+                         TextTrimming="CharacterEllipsis"
+                         ToolTip.Tip="{Binding SelectedTag.DisplayName}" />
+              <TextBlock Classes="cardValue valueText"
+                         Text="{Binding SelectedTag.ValueText}"
+                         ToolTip.Tip="{Binding SelectedTag.ValueText}" />
+              <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" Margin="0,2,0,0">
+                <TextBlock Grid.Row="0" Grid.Column="0" Classes="listHeader"
+                           Text="BRIDGE" Margin="0,0,10,3" />
+                <TextBlock Grid.Row="0" Grid.Column="1"
+                           Text="{Binding SelectedTag.BridgeId}"
+                           TextTrimming="CharacterEllipsis" Margin="0,0,0,3"
+                           ToolTip.Tip="{Binding SelectedTag.BridgeId}" />
+                <TextBlock Grid.Row="1" Grid.Column="0" Classes="listHeader"
+                           Text="SOURCE" Margin="0,0,10,0" />
+                <TextBlock Grid.Row="1" Grid.Column="1"
+                           Text="{Binding SelectedTag.SourceDisplay}"
+                           TextTrimming="CharacterEllipsis"
+                           ToolTip.Tip="{Binding SelectedTag.SourceDisplay}" />
+              </Grid>
+            </StackPanel>
+          </Border>
         </StackPanel>
 
         <!-- Tag browser -->
@@ -232,12 +273,13 @@
             </Grid>
 
             <StackPanel DockPanel.Dock="Top" Spacing="4" Margin="0,0,0,8">
-              <TextBox Watermark="Filter tags…" Text="{Binding Filter}" />
+              <TextBox AutomationProperties.Name="Filter tags" Watermark="Filter tags…" Text="{Binding Filter}" />
               <Grid ColumnDefinitions="Auto,*" Margin="0,2,0,0">
                 <TextBlock Grid.Column="0" Classes="listHeader" Text="BRIDGE"
                            VerticalAlignment="Center" Margin="0,0,8,0" />
                 <ComboBox Grid.Column="1"
                           HorizontalAlignment="Stretch"
+                          AutomationProperties.Name="Show tags from one bridge"
                           ItemsSource="{Binding BridgeFilters}"
                           SelectedItem="{Binding SelectedBridgeFilter}"
                           ToolTip.Tip="Show tags from one bridge only">
@@ -254,6 +296,7 @@
                            VerticalAlignment="Center" Margin="0,0,8,0" />
                 <ComboBox Grid.Column="1"
                           HorizontalAlignment="Stretch"
+                          AutomationProperties.Name="Show tags from one source"
                           ItemsSource="{Binding SourceFilters}"
                           SelectedItem="{Binding SelectedSourceFilter}"
                           ToolTip.Tip="Show tags from one source only">
@@ -278,12 +321,8 @@
             </StackPanel>
 
             <StackPanel DockPanel.Dock="Bottom" Spacing="4" Margin="0,8,0,0">
-              <TextBlock Text="{Binding SelectedTag.BridgeId, StringFormat=Bridge: {0}}" />
-              <TextBlock Text="{Binding SelectedTag.SourceDisplay, StringFormat=Source: {0}}" />
-              <TextBlock Text="{Binding SelectedTag.DisplayName, StringFormat=Name: {0}}" />
-              <TextBlock Text="{Binding SelectedTag.ValueText, StringFormat=Value: {0}}" />
               <TextBlock Classes="hint" TextWrapping="Wrap"
-                         Text="Double-click tag or click widget to open faceplate. Open trend from faceplate." />
+                         Text="Double-click tag or click widget to open faceplate. Open trend from faceplate. Details of the selected tag are in the rail on the left." />
               <TextBlock Classes="hint warn"
                          TextWrapping="Wrap"
                          Text="{Binding TrendDisabledHint}" />
@@ -294,6 +333,8 @@
 
             <ListBox ItemsSource="{Binding FilteredTags}"
                      SelectedItem="{Binding SelectedTag}"
+                     AutomationProperties.Name="Tags"
+                     AutomationProperties.HelpText="Select a tag, then choose Open faceplate to open it."
                      DoubleTapped="OnTagDoubleTapped">
               <ListBox.ItemTemplate>
                 <DataTemplate x:DataType="vm:TagItemViewModel">

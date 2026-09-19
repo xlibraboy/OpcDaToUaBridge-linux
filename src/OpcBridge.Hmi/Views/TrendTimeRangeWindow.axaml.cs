@@ -1,5 +1,6 @@
 using System.Globalization;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using OpcBridge.Hmi.Core;
 using OpcBridge.Hmi.ViewModels;
@@ -15,6 +16,9 @@ public partial class TrendTimeRangeWindow : Window
     public TrendTimeRangeWindow()
     {
         InitializeComponent();
+
+        // Inner controls claim Escape before it bubbles, so the window watches the tunnel pass.
+        AddHandler(KeyDownEvent, OnEscapeKeyDown, RoutingStrategies.Tunnel);
     }
 
     public TrendTimeRangeWindow(TrendWindowViewModelBase viewModel)
@@ -125,5 +129,17 @@ public partial class TrendTimeRangeWindow : Window
         DateTimeOffset day = date.SelectedDate ?? DateTimeOffset.Now;
         TimeSpan clock = time.SelectedTime ?? TimeSpan.Zero;
         return day.Date + clock;
+    }
+
+    /// <summary>Escape cancels without applying, the same way the Cancel button does.</summary>
+    private void OnEscapeKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key != Key.Escape)
+        {
+            return;
+        }
+
+        e.Handled = true;
+        Close();
     }
 }

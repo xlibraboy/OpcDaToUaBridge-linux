@@ -15,13 +15,18 @@
       <Border Classes="card">
         <StackPanel Orientation="Horizontal" Spacing="8" IsEnabled="{Binding Writeable}">
           <TextBlock VerticalAlignment="Center" Text="Write:" />
-          <TextBox Width="180" Text="{Binding WriteValue}" />
+          <TextBox Width="180"
+                   AutomationProperties.Name="Value to write"
+                   AutomationProperties.HelpText="The live value appears here until you type a new one."
+                   Text="{Binding WriteValue}" />
           <Button Classes="primary" Content="Write" Command="{Binding WriteCommand}" MinWidth="80" />
         </StackPanel>
       </Border>
       <Button Content="Open trend" Command="{Binding OpenTrendCommand}" HorizontalAlignment="Left" MinWidth="120"
               ToolTip.Tip="Open a trend of this tag (requires InfluxDB logging enabled for the tag)" />
-      <TextBlock Classes="hint" Text="{Binding StatusMessage}" TextWrapping="Wrap" />
+      <TextBlock Classes="hint"
+                 AutomationProperties.LiveSetting="Polite"
+                 Text="{Binding StatusMessage}" TextWrapping="Wrap" />
     </StackPanel>
 
     <ScrollViewer>
@@ -44,6 +49,7 @@
         <TextBlock Classes="sectionLabel" Margin="0,6,0,0" Text="HISTORY (1H)" IsVisible="{Binding InfluxEnabled}" />
         <Border Classes="cardDark" Padding="8" IsVisible="{Binding InfluxEnabled}">
           <controls:TrendChartControl Height="150"
+                                      AutomationProperties.Name="History chart"
                                       Samples="{Binding TrendSamples}"
                                       FromUtc="{Binding TrendFromUtc}"
                                       ToUtc="{Binding TrendToUtc}"

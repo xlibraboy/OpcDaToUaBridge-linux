@@ -57,9 +57,9 @@ public partial class TrendWindow : Window
     }
 
     /// <summary>Pen-table swatch click: cycle that pen's trace color.</summary>
-    public void OnPenSwatchClick(object? sender, PointerPressedEventArgs e)
+    public void OnPenSwatchClick(object? sender, RoutedEventArgs e)
     {
-        if (DataContext is not TrendWindowViewModelBase viewModel || sender is not Border { Tag: string penName })
+        if (DataContext is not TrendWindowViewModelBase viewModel || sender is not Control { Tag: string penName })
         {
             return;
         }
@@ -122,6 +122,48 @@ public partial class TrendWindow : Window
         }
 
         viewModel.ClearPenSelection();
+    }
+
+    /// <summary>Keyboard equivalent of clicking a pen row: Enter or Space emphasizes that trace.</summary>
+    public void OnPenRowKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Handled
+            || DataContext is not TrendWindowViewModelBase viewModel
+            || sender is not Control { Tag: string penName }
+            || (e.Key != Key.Enter && e.Key != Key.Space))
+        {
+            return;
+        }
+
+        viewModel.SelectPen(penName, additive: e.KeyModifiers.HasFlag(KeyModifiers.Control));
+        e.Handled = true;
+    }
+
+    /// <summary>Keyboard equivalent of clicking the table's empty area: clears the emphasis.</summary>
+    public void OnClearEmphasisKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Handled
+            || DataContext is not TrendWindowViewModelBase viewModel
+            || (e.Key != Key.Enter && e.Key != Key.Space))
+        {
+            return;
+        }
+
+        viewModel.ClearPenSelection();
+        e.Handled = true;
+    }
+
+    /// <summary>Escape closes the window, the same way the window chrome does.</summary>
+    protected override void OnKeyDown(KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape && !e.Handled)
+        {
+            e.Handled = true;
+            Close();
+            return;
+        }
+
+        base.OnKeyDown(e);
     }
 
     private async void OnExportClick(object? sender, RoutedEventArgs e)

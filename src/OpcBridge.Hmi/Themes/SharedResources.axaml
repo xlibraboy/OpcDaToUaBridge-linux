@@ -1,35 +1,99 @@
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-  <!-- Panels -->
-  <Color x:Key="PanelColor">#1B1B20</Color>
-  <Color x:Key="CardColor">#232329</Color>
-  <Color x:Key="CardBorderColor">#3A3A44</Color>
-  <Color x:Key="CanvasColor">#252526</Color>
-  <Color x:Key="GridLineColor">#2E2E36</Color>
+  <!--
+    OpcBridge HMI palette.
 
-  <!-- Accent / selection -->
-  <Color x:Key="AccentColor">#4FC3F7</Color>
+    One neutral family (hue 245) and one accent ramp (hue 240). Roles are named for the
+    job they do, not for the colour they happen to be, so the whole shell, the trend chart
+    and the process widgets stay on one system.
 
-  <!-- Status pills -->
-  <Color x:Key="OkFg">#A5D6A7</Color>
-  <Color x:Key="OkBg">#1E3327</Color>
-  <Color x:Key="OkBorder">#2E7D46</Color>
-  <Color x:Key="BadFg">#EF9A9A</Color>
-  <Color x:Key="BadBg">#3A2326</Color>
-  <Color x:Key="BadBorder">#B04A4A</Color>
-  <Color x:Key="MutedFg">#B4B4BE</Color>
+    Values were built in OKLCH and written here as hex to match the rest of the project:
+    neutrals sit on a single hue with chroma capped low; every accent step carries the same
+    share (72-82%) of the chroma its lightness can hold; state colours keep their hue but
+    are separated by lightness so they survive a greyscale or colour-blind read.
+    Contrast measured against the surface each role actually renders on: body text 13-17:1,
+    muted text 6-10:1, accent values 5.9-9.6:1, state pills 5.5-8.5:1.
+  -->
 
+  <!-- Surfaces, darkest to lightest -->
+  <Color x:Key="CanvasColor">#060C12</Color>
+  <Color x:Key="WellColor">#0C141A</Color>
+  <Color x:Key="PanelColor">#161E25</Color>
+  <Color x:Key="CardColor">#1E272F</Color>
+  <Color x:Key="WidgetSurfaceColor">#2C3740</Color>
+  <Color x:Key="GridLineColor">#28323A</Color>
+  <Color x:Key="CardBorderColor">#333F49</Color>
+
+  <!-- Chart chrome -->
+  <Color x:Key="FrameColor">#4C5863</Color>
+  <Color x:Key="CrosshairColor">#707E89</Color>
+
+  <!-- Text -->
+  <Color x:Key="TextColor">#EEF0F3</Color>
+  <Color x:Key="MutedFg">#ADB9C4</Color>
+  <Color x:Key="DisabledFg">#6C7278</Color>
+
+  <!-- Accent ramp: values, action, selection, focus, and the pinned chart cursor -->
+  <Color x:Key="AccentPressed">#25526F</Color>
+  <Color x:Key="AccentAction">#286389</Color>
+  <Color x:Key="AccentSelection">#29709B</Color>
+  <Color x:Key="AccentHover">#3079A6</Color>
+  <Color x:Key="AccentMarker">#4095CA</Color>
+  <Color x:Key="AccentValue">#74BDEF</Color>
+  <Color x:Key="AccentLight">#99CBEF</Color>
+  <!-- Translucent accent tint for the emphasized pen row in the trend table -->
+  <Color x:Key="PenEmphasisColor">#334095CA</Color>
+
+  <!-- Connection and alarm state -->
+  <Color x:Key="OkFg">#A6DBA7</Color>
+  <Color x:Key="OkBg">#223322</Color>
+  <Color x:Key="OkBorder">#387D3D</Color>
+  <Color x:Key="WarnFg">#E5AC4C</Color>
+  <Color x:Key="BadFg">#E18883</Color>
+  <Color x:Key="BadBg">#3D2322</Color>
+  <Color x:Key="BadBorder">#B64242</Color>
+  <Color x:Key="AlarmColor">#EC5353</Color>
+
+  <!-- Tag quality: the lamp is a state light, so it carries more chroma than text does -->
+  <Color x:Key="QualityGood">#61CC69</Color>
+  <Color x:Key="QualityBad">#F05656</Color>
+  <Color x:Key="QualityUncertain">#EBAA2D</Color>
+
+  <!-- Brushes -->
+  <SolidColorBrush x:Key="CanvasBrush" Color="{DynamicResource CanvasColor}" />
+  <SolidColorBrush x:Key="WellBrush" Color="{DynamicResource WellColor}" />
   <SolidColorBrush x:Key="PanelBrush" Color="{DynamicResource PanelColor}" />
   <SolidColorBrush x:Key="CardBrush" Color="{DynamicResource CardColor}" />
-  <SolidColorBrush x:Key="CardBorderBrush" Color="{DynamicResource CardBorderColor}" />
-  <SolidColorBrush x:Key="CanvasBrush" Color="{DynamicResource CanvasColor}" />
+  <SolidColorBrush x:Key="WidgetSurfaceBrush" Color="{DynamicResource WidgetSurfaceColor}" />
   <SolidColorBrush x:Key="GridLineBrush" Color="{DynamicResource GridLineColor}" />
-  <SolidColorBrush x:Key="AccentBrush" Color="{DynamicResource AccentColor}" />
+  <SolidColorBrush x:Key="CardBorderBrush" Color="{DynamicResource CardBorderColor}" />
+  <SolidColorBrush x:Key="FrameBrush" Color="{DynamicResource FrameColor}" />
+  <SolidColorBrush x:Key="CrosshairBrush" Color="{DynamicResource CrosshairColor}" />
+
+  <SolidColorBrush x:Key="TextBrush" Color="{DynamicResource TextColor}" />
+  <SolidColorBrush x:Key="MutedFgBrush" Color="{DynamicResource MutedFg}" />
+  <SolidColorBrush x:Key="DisabledFgBrush" Color="{DynamicResource DisabledFg}" />
+
+  <SolidColorBrush x:Key="AccentBrush" Color="{DynamicResource AccentValue}" />
+  <SolidColorBrush x:Key="AccentValueBrush" Color="{DynamicResource AccentValue}" />
+  <SolidColorBrush x:Key="AccentLightBrush" Color="{DynamicResource AccentLight}" />
+  <SolidColorBrush x:Key="AccentMarkerBrush" Color="{DynamicResource AccentMarker}" />
+  <SolidColorBrush x:Key="AccentActionBrush" Color="{DynamicResource AccentAction}" />
+  <SolidColorBrush x:Key="AccentHoverBrush" Color="{DynamicResource AccentHover}" />
+  <SolidColorBrush x:Key="AccentPressedBrush" Color="{DynamicResource AccentPressed}" />
+  <SolidColorBrush x:Key="AccentSelectionBrush" Color="{DynamicResource AccentSelection}" />
+  <SolidColorBrush x:Key="PenEmphasisBrush" Color="{DynamicResource PenEmphasisColor}" />
+
   <SolidColorBrush x:Key="OkFgBrush" Color="{DynamicResource OkFg}" />
   <SolidColorBrush x:Key="OkBgBrush" Color="{DynamicResource OkBg}" />
   <SolidColorBrush x:Key="OkBorderBrush" Color="{DynamicResource OkBorder}" />
+  <SolidColorBrush x:Key="WarnFgBrush" Color="{DynamicResource WarnFg}" />
   <SolidColorBrush x:Key="BadFgBrush" Color="{DynamicResource BadFg}" />
   <SolidColorBrush x:Key="BadBgBrush" Color="{DynamicResource BadBg}" />
   <SolidColorBrush x:Key="BadBorderBrush" Color="{DynamicResource BadBorder}" />
-  <SolidColorBrush x:Key="MutedFgBrush" Color="{DynamicResource MutedFg}" />
+  <SolidColorBrush x:Key="AlarmBrush" Color="{DynamicResource AlarmColor}" />
+
+  <SolidColorBrush x:Key="QualityGoodBrush" Color="{DynamicResource QualityGood}" />
+  <SolidColorBrush x:Key="QualityBadBrush" Color="{DynamicResource QualityBad}" />
+  <SolidColorBrush x:Key="QualityUncertainBrush" Color="{DynamicResource QualityUncertain}" />
 </ResourceDictionary>

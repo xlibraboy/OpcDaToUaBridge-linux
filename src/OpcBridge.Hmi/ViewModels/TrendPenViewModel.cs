@@ -85,9 +85,6 @@ public partial class TrendPenViewModel : ObservableObject
     [ObservableProperty]
     private bool _isSelected;
 
-    /// <summary>Row background brush for the pen table: highlighted when selected.</summary>
-    public string RowBackground => IsSelected ? "#22017BFF" : "#00000000";
-
     /// <summary>Pen color; assigned by the owning trend from the shared palette.</summary>
     private string color_ = TrendSeriesPalette.ColorFor(0);
 
@@ -184,7 +181,6 @@ public partial class TrendPenViewModel : ObservableObject
 
     partial void OnIsSelectedChanged(bool value)
     {
-        OnPropertyChanged(nameof(RowBackground));
         OnPropertyChanged(nameof(Series));
     }
 

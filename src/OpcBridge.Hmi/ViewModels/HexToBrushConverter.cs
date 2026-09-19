@@ -8,7 +8,7 @@ namespace OpcBridge.Hmi.ViewModels;
 
 /// <summary>
 /// Converts a "#RRGGBB" hex string to an <see cref="IBrush"/> for the pen-table color
-/// swatches; parse failures fall back to the app's accent blue.
+/// swatches; parse failures fall back to the accent the shell uses for values.
 /// </summary>
 public sealed class HexToBrushConverter : IValueConverter
 {
@@ -27,7 +27,7 @@ public sealed class HexToBrushConverter : IValueConverter
             }
         }
 
-        return new SolidColorBrush(Color.Parse("#4FC3F7"));
+        return new SolidColorBrush(Themes.ThemePalette.Color("AccentValue", "#74BDEF"));
     }
 
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)

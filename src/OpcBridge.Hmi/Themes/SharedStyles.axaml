@@ -1,6 +1,22 @@
 <Styles xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
+  <!-- The window is the canvas everything else sits on, and it sets the colour every
+       descendant text inherits unless the text says otherwise (buttons, pills, warnings). -->
+  <Style Selector="Window">
+    <Setter Property="Background" Value="{DynamicResource CanvasBrush}" />
+    <Setter Property="TextElement.Foreground" Value="{DynamicResource TextBrush}" />
+  </Style>
+
+  <!-- Selected rows carry the accent family rather than the theme's own blue. -->
+  <Style Selector="ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentSelectionBrush}" />
+  </Style>
+
+  <Style Selector="ListBoxItem:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource AccentHoverBrush}" />
+  </Style>
+
   <!-- Card panel -->
   <Style Selector="Border.card">
     <Setter Property="Background" Value="{DynamicResource CardBrush}" />
@@ -46,7 +62,12 @@
   <!-- Warning text (e.g. trend disabled because a tag has no InfluxDB history) -->
   <Style Selector="TextBlock.hint.warn">
     <Setter Property="Opacity" Value="1" />
-    <Setter Property="Foreground" Value="#E8A33D" />
+    <Setter Property="Foreground" Value="{DynamicResource WarnFgBrush}" />
+  </Style>
+
+  <!-- Text that is present but cannot be used right now -->
+  <Style Selector="TextBlock.disabled">
+    <Setter Property="Foreground" Value="{DynamicResource DisabledFgBrush}" />
   </Style>
 
   <Style Selector="TextBlock.listHeader">
@@ -111,18 +132,18 @@
 
   <!-- Buttons -->
   <Style Selector="Button.primary">
-    <Setter Property="Background" Value="#0E639C" />
+    <Setter Property="Background" Value="{DynamicResource AccentActionBrush}" />
     <Setter Property="Foreground" Value="White" />
     <Setter Property="MinWidth" Value="96" />
     <Setter Property="FontWeight" Value="SemiBold" />
   </Style>
 
   <Style Selector="Button.primary:pointerover /template/ ContentPresenter">
-    <Setter Property="Background" Value="#1177BB" />
+    <Setter Property="Background" Value="{DynamicResource AccentHoverBrush}" />
   </Style>
 
   <Style Selector="Button.primary:pressed /template/ ContentPresenter">
-    <Setter Property="Background" Value="#0B5184" />
+    <Setter Property="Background" Value="{DynamicResource AccentPressedBrush}" />
   </Style>
 
   <Style Selector="Button.danger">
@@ -150,13 +171,48 @@
   </Style>
 
   <Style Selector="RadioButton.seg:checked /template/ ContentPresenter">
-    <Setter Property="Background" Value="#0E639C" />
-    <Setter Property="BorderBrush" Value="#1177BB" />
+    <Setter Property="Background" Value="{DynamicResource AccentActionBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentHoverBrush}" />
   </Style>
 
   <Style Selector="RadioButton.seg:checked">
     <Setter Property="Foreground" Value="White" />
     <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+
+  <!-- Flat button: no chrome, hit area larger than the glyph it draws -->
+  <Style Selector="Button.flat">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="4" />
+    <Setter Property="MinWidth" Value="0" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="CornerRadius" Value="4" />
+  </Style>
+
+  <Style Selector="Button.flat /template/ ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+
+  <Style Selector="Button.flat:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource CardBorderBrush}" />
+  </Style>
+
+  <Style Selector="Button.flat:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource FrameBrush}" />
+  </Style>
+
+  <Style Selector="Button.flat:focus-visible /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource CardBorderBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentValueBrush}" />
+    <Setter Property="BorderThickness" Value="2" />
+  </Style>
+
+  <!-- Focus ring for rows and bars that draw their own chrome instead of a template.
+       BoxShadow takes a literal: Avalonia parses the shadow in the setter, so this is the
+       one place the accent value appears as text rather than through the token. -->
+  <Style Selector="Border.focusRing:focus-visible">
+    <Setter Property="BoxShadow" Value="inset 0 0 0 2 #74BDEF" />
   </Style>
 
   <!-- Menu item accent check -->
