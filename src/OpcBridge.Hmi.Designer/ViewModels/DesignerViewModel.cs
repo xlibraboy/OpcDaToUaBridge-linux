@@ -25,7 +25,13 @@ public partial class DesignerViewModel : ObservableObject, IDisposable
     private DisplayDocumentDto document_ = NewDocument();
 
     public DesignerViewModel()
+        : this(System.Environment.GetCommandLineArgs().Skip(1).ToArray())
     {
+    }
+
+    public DesignerViewModel(string[] args)
+    {
+        StoreUrl = ResolveInitialStoreUrl(args);
         Surface = new DisplaySurfaceViewModel(cache_, _ => { }, (_, _) => Task.FromResult((true, (string?)null)));
         Surface.ApplyDesignMode(true);
         Surface.ShowGrid = true;
@@ -48,6 +54,7 @@ public partial class DesignerViewModel : ObservableObject, IDisposable
         if (found is null)
         {
             StatusMessage = "Local OpcBridge not detected — using " + StoreUrl;
+            _ = RefreshListAsync();
             return;
         }
 
@@ -57,6 +64,12 @@ public partial class DesignerViewModel : ObservableObject, IDisposable
             StoreUrl = found;
             StatusMessage = $"Local OpcBridge detected at {found}";
         }
+        else
+        {
+            StatusMessage = $"Using configured store {StoreUrl}";
+        }
+
+        _ = RefreshListAsync();
     }
 
     public DisplaySurfaceViewModel Surface { get; }
@@ -78,6 +91,34 @@ public partial class DesignerViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private string _storeUrl = "http://127.0.0.1:8080";
+
+    /// <summary>Initial store URL: --store takes precedence, then HMI_STORE_URL, then default.</summary>
+    public static string ResolveInitialStoreUrl(string[] args)
+    {
+        for (int i = 0; i < args.Length; i++)
+        {
+            string arg = args[i].Trim();
+            if (arg.StartsWith("--store=", StringComparison.OrdinalIgnoreCase))
+            {
+                string value = arg["--store=".Length..].Trim();
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    return value.TrimEnd('/');
+                }
+            }
+            else if (string.Equals(arg, "--store", StringComparison.OrdinalIgnoreCase) && i + 1 < args.Length)
+            {
+                string value = args[i + 1].Trim();
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    return value.TrimEnd('/');
+                }
+            }
+        }
+
+        string env = (Environment.GetEnvironmentVariable("HMI_STORE_URL") ?? string.Empty).Trim();
+        return string.IsNullOrWhiteSpace(env) ? "http://127.0.0.1:8080" : env.TrimEnd('/');
+    }
 
     [ObservableProperty]
     private string _documentId = "plant-overview";

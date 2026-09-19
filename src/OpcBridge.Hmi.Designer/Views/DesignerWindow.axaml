@@ -86,15 +86,23 @@
           <TextBlock DockPanel.Dock="Right" Classes="hint" VerticalAlignment="Center"
                      Text="{Binding DocumentName, StringFormat=Design: {0}}" />
           <StackPanel Orientation="Horizontal" Spacing="4">
-            <Button Classes="tool" Content="⇤" Command="{Binding AlignLeftCommand}" />
-            <Button Classes="tool" Content="↔" Command="{Binding AlignCenterXCommand}" />
-            <Button Classes="tool" Content="⇥" Command="{Binding AlignRightCommand}" />
-            <Button Classes="tool" Content="⇡" Command="{Binding AlignTopCommand}" />
-            <Button Classes="tool" Content="↕" Command="{Binding AlignCenterYCommand}" />
-            <Button Classes="tool" Content="⇣" Command="{Binding AlignBottomCommand}" />
+            <Button Classes="tool" Content="⇤" Command="{Binding AlignLeftCommand}"
+                    AutomationProperties.Name="Align left edges" ToolTip.Tip="Align left edges" />
+            <Button Classes="tool" Content="↔" Command="{Binding AlignCenterXCommand}"
+                    AutomationProperties.Name="Align horizontal centres" ToolTip.Tip="Align horizontal centres" />
+            <Button Classes="tool" Content="⇥" Command="{Binding AlignRightCommand}"
+                    AutomationProperties.Name="Align right edges" ToolTip.Tip="Align right edges" />
+            <Button Classes="tool" Content="⇡" Command="{Binding AlignTopCommand}"
+                    AutomationProperties.Name="Align top edges" ToolTip.Tip="Align top edges" />
+            <Button Classes="tool" Content="↕" Command="{Binding AlignCenterYCommand}"
+                    AutomationProperties.Name="Align vertical centres" ToolTip.Tip="Align vertical centres" />
+            <Button Classes="tool" Content="⇣" Command="{Binding AlignBottomCommand}"
+                    AutomationProperties.Name="Align bottom edges" ToolTip.Tip="Align bottom edges" />
             <Rectangle Classes="vsep" />
-            <Button Classes="tool" Content="Z+" Command="{Binding RaiseZCommand}" />
-            <Button Classes="tool" Content="Z−" Command="{Binding LowerZCommand}" />
+            <Button Classes="tool" Content="Z+" Command="{Binding RaiseZCommand}"
+                    AutomationProperties.Name="Bring forward" ToolTip.Tip="Bring forward" />
+            <Button Classes="tool" Content="Z−" Command="{Binding LowerZCommand}"
+                    AutomationProperties.Name="Send backward" ToolTip.Tip="Send backward" />
           </StackPanel>
         </DockPanel>
         <controls:DisplaySurfaceControl DataContext="{Binding Surface}" />
