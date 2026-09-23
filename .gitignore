@@ -37,8 +37,8 @@ publish.tmp/
 publish.bak.*/
 publish*.tar.gz
 
-# MSI / release build output (scripts/msi/build-msi.sh). WiX fragments are
-# generated into build/wix/ by scripts/msi/harvest.py on every build.
+# Release build output: portable zips from scripts/msi/build-portable.sh, and the
+# WiX fragments scripts/msi/harvest.py generates into build/wix/ for the MSI.
 build/
 dist/
 __pycache__/

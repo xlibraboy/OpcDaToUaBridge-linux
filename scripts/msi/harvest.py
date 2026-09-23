@@ -6,8 +6,8 @@ Emits one file with two fragments:
   - a ComponentGroup named AppFiles with one component per file, referenced by the
     main package (packaging/msi/OpcBridge.wxs) via <ComponentGroupRef>.
 
-File sources are written as absolute /src/... paths because the MSI is built inside
-the SDK container with the repository mounted at /src (see scripts/msi/build-msi.sh).
+File sources are written relative to the repository root, because the wix build is
+launched from there (natively on Windows, or under Wine in a container).
 
 Usage: harvest.py <publish-dir> <output-wxs> [root-directory-id] [component-group-name] [extra-skip-names]
 
@@ -26,9 +26,14 @@ from publish_skip import is_runtime_state
 SKIP_SUFFIXES = (".pdb", ".log", ".lock")
 
 
-def identifier(kind: str, relative: str) -> str:
-    """Stable cross-run element id derived from the relative path."""
-    digest = hashlib.sha1(relative.encode("utf-8")).hexdigest()[:10].upper()
+def identifier(kind: str, relative: str, namespace: str) -> str:
+    """Stable cross-run element id derived from the namespace and relative path.
+
+    The namespace (the component group / root directory) keeps ids unique across
+    fragments: the HMI and Designer publishes share dependency file names, so hashing
+    the relative path alone would collide and WiX rejects duplicate ids.
+    """
+    digest = hashlib.sha1(f"{namespace}:{relative}".encode("utf-8")).hexdigest()[:10].upper()
     return f"{kind}_{digest}"
 
 
@@ -50,12 +55,17 @@ def collect(publish_dir: Path, extra_skip_files: set[str]) -> list[Path]:
     return files
 
 
-def container_source(publish_arg: str, relative: Path) -> str:
-    """Source path as the SDK container sees it: the repository is mounted at /src."""
-    return "/src/" + "/".join(part for part in (publish_arg.strip("/"), str(relative)) if part)
+def source_path(publish_arg: str, relative: Path) -> str:
+    """Source path relative to the repo root, where the wix build runs.
+
+    Relative (not the container's /src/...) so the same fragment works whether WiX
+    runs natively on Windows or under Wine; the build is always launched from the
+    repository root.
+    """
+    return str(Path(publish_arg) / relative)
 
 
-def build_tree(files: list[Path], publish_dir: Path) -> dict:
+def build_tree(files: list[Path], publish_dir: Path, namespace: str) -> dict:
     """Nested {name: Node} tree of the directories that contain harvested files."""
 
     class Node:
@@ -66,7 +76,7 @@ def build_tree(files: list[Path], publish_dir: Path) -> dict:
 
         @property
         def element_id(self) -> str:
-            return identifier("dir", str(self.relative))
+            return identifier("dir", str(self.relative), namespace)
 
     root: dict = {}
     directories = {path.relative_to(publish_dir).parent for path in files}
@@ -90,14 +100,14 @@ def render_tree(nodes: dict, depth: int) -> list[str]:
     return lines
 
 
-def render_components(files: list[Path], publish_dir: Path, publish_arg: str, directory_ids: dict, root_directory_id: str) -> list[str]:
+def render_components(files: list[Path], publish_dir: Path, publish_arg: str, directory_ids: dict, root_directory_id: str, namespace: str) -> list[str]:
     lines: list[str] = []
     for file_path in files:
         relative = file_path.relative_to(publish_dir)
-        component_id = identifier("cmp", str(relative))
-        file_id = identifier("fil", str(relative))
+        component_id = identifier("cmp", str(relative), namespace)
+        file_id = identifier("fil", str(relative), namespace)
         parent_id = root_directory_id if str(relative.parent) == "." else directory_ids[str(relative.parent)]
-        source = escape(container_source(publish_arg, relative))
+        source = escape(source_path(publish_arg, relative))
         lines.append(f'      <Component Id="{component_id}" Directory="{parent_id}">')
         lines.append(f'        <File Id="{file_id}" Source="{source}" KeyPath="yes" />')
         lines.append("      </Component>")
@@ -117,7 +127,7 @@ def main() -> None:
     }
 
     files = collect(publish_dir, extra_skip_files=extra_skip_names)
-    tree = build_tree(files, publish_dir)
+    tree = build_tree(files, publish_dir, component_group)
 
     # The tree nodes know their ids; expose them by relative path for the components.
     directory_ids: dict[str, str] = {}
@@ -145,7 +155,7 @@ def main() -> None:
         "  </Fragment>",
         "  <Fragment>",
         f'    <ComponentGroup Id="{component_group}">',
-        *render_components(files, publish_dir, publish_arg, directory_ids, root_directory_id),
+        *render_components(files, publish_dir, publish_arg, directory_ids, root_directory_id, component_group),
         "    </ComponentGroup>",
         "  </Fragment>",
         "</Wix>",

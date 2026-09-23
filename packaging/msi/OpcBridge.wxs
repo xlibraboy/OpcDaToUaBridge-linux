@@ -1,13 +1,15 @@
 <!--
-  OpcBridge Windows installer (WiX v4/v5 schema, built with the cross-platform `wix` dotnet tool).
+  OpcBridge Windows installer (WiX v5 schema, built with the `wix` dotnet tool).
 
-  Built by scripts/msi/build-msi.sh, which supplies:
+  Built by .github/workflows/windows-msi.yml on a Windows runner, which supplies:
     -define MsiVersion=<x.y.z>   from Directory.Build.props (must equal the newest CHANGELOG.md release)
     -d HttpPort=<port>           bridge HTTP port (default 8080)
     -d UaPort=<port>             bridge OPC UA port (default 4840)
     build/wix/AppFiles-x86.wxs          harvested OpcBridge.App (server) files
     build/wix/HmiFiles.wxs              harvested OpcBridge.Hmi (runtime) files
     build/wix/DesignerFiles.wxs         harvested OpcBridge.Hmi.Designer files
+
+  The harvested files come from scripts/msi/harvest.py.
 
   Port caveat: the firewall rules and the dashboard Start Menu shortcut are built
   from the ports above. The bridge auto-assigns the next free port at runtime when a
@@ -28,8 +30,8 @@
   keep per-user config under %APPDATA%\OpcBridge.Hmi (hmi-config.json, trend groups)
   because Program Files is read-only for normal users.
 
-  Build-time note: File/@Source paths are absolute (/src/...) because the build always
-  runs in the SDK container with the repository mounted at /src.
+  Build-time note: File/@Source paths are relative to the repository root, because the
+  wix build always runs from there (see .github/workflows/windows-msi.yml).
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
      xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util"
@@ -89,20 +91,20 @@
       <Directory Id="INSTALLFOLDER" Name="OpcBridge">
         <Directory Id="HmiFolder" Name="Hmi">
           <Component Id="HmiExe" Guid="3F5A8D24-C19B-4E27-8E93-7A06F4B52E9D">
-            <File Id="HmiAppExe" Source="/src/build/publish-hmi/OpcBridge.Hmi.exe" KeyPath="yes">
+            <File Id="HmiAppExe" Source="build\publish-hmi\OpcBridge.Hmi.exe" KeyPath="yes">
               <Shortcut Id="HmiStartShortcut" Directory="MenuFolder" Name="OpcBridge HMI" Advertise="yes" />
             </File>
           </Component>
         </Directory>
         <Directory Id="DesignerFolder" Name="Designer">
           <Component Id="DesignerExe" Guid="B7E2C95F-64A1-4F0C-8D3E-52A09C7E31B8">
-            <File Id="DesignerAppExe" Source="/src/build/publish-designer/OpcBridge.Hmi.Designer.exe" KeyPath="yes">
+            <File Id="DesignerAppExe" Source="build\publish-designer\OpcBridge.Hmi.Designer.exe" KeyPath="yes">
               <Shortcut Id="DesignerStartShortcut" Directory="MenuFolder" Name="OpcBridge Designer" Advertise="yes" />
             </File>
           </Component>
         </Directory>
         <Component Id="AppExe" Guid="2382C016-392A-4372-9766-E06798F71068">
-          <File Id="OpcBridgeAppExe" Source="/src/build/publish-x86/OpcBridge.App.exe" KeyPath="yes" />
+          <File Id="OpcBridgeAppExe" Source="build\publish-x86\OpcBridge.App.exe" KeyPath="yes" />
           <ServiceInstall Id="OpcBridgeService"
                           Name="OpcBridge"
                           DisplayName="OpcBridge"
