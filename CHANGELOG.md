@@ -26,6 +26,12 @@ between them instead of pushing the pair to the right edge. They now ride in one
 right-aligned actions group using the banner's own 12px gap, and every state of the
 banner (warning, relaunching, resolve failed) renders from one markup contract.
 
+**Release notes layout.** Help ▸ Release Notes rendered the changelog into the Guide's
+two-column flex layout, so every paragraph, heading and bullet became its own squeezed
+column instead of a block of prose. The notes now render into the prose container,
+hard-wrapped lines reflow into the paragraph or bullet they belong to, and markdown
+links render as links.
+
 ## [1.2.0] - 2026-09-23
 
 ### Added

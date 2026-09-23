@@ -586,6 +586,8 @@ internal static class DashboardPage
         .help-body h4 { font-size: var(--fs-body); margin: 16px 0 6px; }
         .help-body p { color: var(--ink2); margin: 8px 0; }
         .help-body em { color: var(--muted); }
+        .help-body a { color: var(--text); cursor: pointer; text-decoration: underline; text-underline-position: from-font; text-decoration-thickness: from-font; text-underline-offset: 2px; }
+        .help-body a:hover { background: var(--text); color: var(--panel); text-decoration: none; }
         .help-body table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: var(--fs-body); }
         /* Data tables keep their columns and scroll inside their own region: without
            this a wide table (nowrap first cells) drags the whole Guide sideways on
@@ -1949,7 +1951,7 @@ internal static class DashboardPage
     <div class="box">
         <div class="box-h">Release Notes <span class="msg" id="changelogVersion" role="status" style="margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0"></span></div>
         <div class="box-b">
-            <div class="help-layout" id="changelogBody"><span class="msg">Loading release notes…</span></div>
+            <div class="help-body" id="changelogBody"><span class="msg">Loading release notes…</span></div>
         </div>
     </div>
 </div>
@@ -5628,7 +5630,8 @@ async function loadAppInfo(force = false) {
 
 let helpLoaded = false;
 const HELP_GROUPS = ['Getting Started', 'Features', 'Reference'];
-const inlineFmt = (s) => s.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>');
+const inlineFmt = (s) => s.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
 function renderMarkdown(md) {
     // Headings arrive one level too high: the author's `#` became the article's
     // <h2> title before this runs, so body `##` is really an <h3> beneath it.
@@ -5672,6 +5675,24 @@ function renderMarkdown(md) {
     if (inCode) html += '</code></pre>';
     return html;
 }
+// CHANGELOG.md is hard-wrapped at ~90 columns, while renderMarkdown is line-oriented
+// (the Guide is authored one line per paragraph, so it never joins anything). Reflow
+// the notes first, so a wrapped paragraph or bullet arrives as the one block it means.
+function reflowWrappedLines(md) {
+    const out = [];
+    let block = null;
+    const flush = () => { if (block !== null) { out.push(block); block = null; } };
+    for (const raw of md.replace(/\r\n/g, '\n').split('\n')) {
+        const line = raw.trim();
+        if (line === '' || /^#{1,6}\s/.test(line) || /^```/.test(line) || /^\|/.test(line) || /^-{3,}$/.test(line)) {
+            flush(); out.push(line); continue;
+        }
+        if (/^([-*]|\d+\.)\s/.test(line)) { flush(); block = line; continue; }
+        block = block === null ? line : block + ' ' + line;
+    }
+    flush();
+    return out.join('\n');
+}
 // Release notes come from the bridge (the embedded CHANGELOG.md), so a deployed
 // bridge always shows the notes for the version it is actually running.
 let changelogLoaded = false;
@@ -5680,7 +5701,7 @@ async function loadChangelog() {
     const p = await (await fetch('/api/changelog', { cache: 'no-store' })).json();
     const body = el('changelogBody');
     if (!body) return;
-    body.innerHTML = renderMarkdown(p.markdown || '');
+    body.innerHTML = renderMarkdown(reflowWrappedLines(p.markdown || ''));
     el('changelogVersion').textContent = p.version ? 'Version ' + p.version : '';
     changelogLoaded = true;
 }
