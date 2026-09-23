@@ -1,0 +1,185 @@
+<!--
+  OpcBridge Windows installer (WiX v4/v5 schema, built with the cross-platform `wix` dotnet tool).
+
+  Built by scripts/msi/build-msi.sh, which supplies:
+    -define MsiVersion=<x.y.z>   from Directory.Build.props (must equal the newest CHANGELOG.md release)
+    -d HttpPort=<port>           bridge HTTP port (default 8080)
+    -d UaPort=<port>             bridge OPC UA port (default 4840)
+    build/wix/AppFiles-x86.wxs          harvested OpcBridge.App (server) files
+    build/wix/HmiFiles.wxs              harvested OpcBridge.Hmi (runtime) files
+    build/wix/DesignerFiles.wxs         harvested OpcBridge.Hmi.Designer files
+
+  Port caveat: the firewall rules and the dashboard Start Menu shortcut are built
+  from the ports above. The bridge auto-assigns the next free port at runtime when a
+  default is taken (Bridge:HttpPort / Bridge:OpcUaPort in appsettings.json), so on a
+  host where a port moved, open the actual port shown by Monitor → Bridge instead.
+
+  Three selectable features (WixUI_FeatureTree shows the tree):
+    - OpcBridge Server: self-contained win-x86 app installed as a Windows service.
+      x86 because a 64-bit process cannot load 32-bit OPC DA COM servers (Matrikon,
+      MX Component) without DCOM surrogate setup.
+    - OpcBridge HMI Runtime: self-contained win-x64 Avalonia app (operator client).
+    - OpcBridge HMI Designer: self-contained win-x64 Avalonia app (display authoring).
+
+  The service component lives in the Server feature, so an HMI-only station installs
+  nothing that runs. Runtime state goes to C:\ProgramData\OpcBridge (OPCBRIDGE_DATA
+  machine environment variable) so upgrades replace binaries and never touch
+  users.json, mappings.json, sources.json, displays or the PKI store. The HMI apps
+  keep per-user config under %APPDATA%\OpcBridge.Hmi (hmi-config.json, trend groups)
+  because Program Files is read-only for normal users.
+
+  Build-time note: File/@Source paths are absolute (/src/...) because the build always
+  runs in the SDK container with the repository mounted at /src.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util"
+     xmlns:fw="http://wixtoolset.org/schemas/v4/wxs/firewall"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+
+  <Package Name="OpcBridge"
+           Manufacturer="Budi Kurniawan"
+           Version="$(MsiVersion)"
+           UpgradeCode="6D9C5284-357E-4709-BB37-E51F6992000D"
+           Scope="perMachine"
+           Compressed="yes"
+           Language="1033"
+           Codepage="1252"
+           InstallerVersion="500">
+
+    <SummaryInformation Description="OpcBridge — OPC DA to OPC UA bridge, HMI runtime and designer" />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed. Uninstall it first." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- Feature tree in the installer: pick which of the three apps to install. -->
+    <ui:WixUI Id="WixUI_FeatureTree" />
+    <WixVariable Id="WixUILicenseRtf" Value="packaging/msi/License.rtf" />
+
+    <Feature Id="Server"
+             Title="OpcBridge Server"
+             Description="The bridge: OPC DA/UA and PLC sources, OPC UA endpoint, web dashboard, MQTT and InfluxDB historian. Installs as a Windows service that starts at boot."
+             Level="1"
+             InstallDefault="local">
+      <ComponentGroupRef Id="AppFiles" />
+      <ComponentRef Id="AppExe" />
+      <ComponentRef Id="DataEnvironment" />
+      <ComponentRef Id="DataDirectoryFolder" />
+      <ComponentRef Id="DashboardShortcut" />
+    </Feature>
+
+    <Feature Id="HmiRuntime"
+             Title="OpcBridge HMI Runtime"
+             Description="Avalonia operator runtime: process displays, live values, trend groups, faceplates. Connects to bridges over HTTP/SignalR only."
+             Level="1"
+             InstallDefault="local">
+      <ComponentGroupRef Id="HmiFiles" />
+      <ComponentRef Id="HmiExe" />
+    </Feature>
+
+    <Feature Id="HmiDesigner"
+             Title="OpcBridge HMI Designer"
+             Description="Standalone authoring tool for process displays; saves them to the primary bridge's display store."
+             Level="1"
+             InstallDefault="local">
+      <ComponentGroupRef Id="DesignerFiles" />
+      <ComponentRef Id="DesignerExe" />
+    </Feature>
+
+    <StandardDirectory Id="ProgramFilesFolder">
+      <Directory Id="INSTALLFOLDER" Name="OpcBridge">
+        <Directory Id="HmiFolder" Name="Hmi">
+          <Component Id="HmiExe" Guid="3F5A8D24-C19B-4E27-8E93-7A06F4B52E9D">
+            <File Id="HmiAppExe" Source="/src/build/publish-hmi/OpcBridge.Hmi.exe" KeyPath="yes">
+              <Shortcut Id="HmiStartShortcut" Directory="MenuFolder" Name="OpcBridge HMI" Advertise="yes" />
+            </File>
+          </Component>
+        </Directory>
+        <Directory Id="DesignerFolder" Name="Designer">
+          <Component Id="DesignerExe" Guid="B7E2C95F-64A1-4F0C-8D3E-52A09C7E31B8">
+            <File Id="DesignerAppExe" Source="/src/build/publish-designer/OpcBridge.Hmi.Designer.exe" KeyPath="yes">
+              <Shortcut Id="DesignerStartShortcut" Directory="MenuFolder" Name="OpcBridge Designer" Advertise="yes" />
+            </File>
+          </Component>
+        </Directory>
+        <Component Id="AppExe" Guid="2382C016-392A-4372-9766-E06798F71068">
+          <File Id="OpcBridgeAppExe" Source="/src/build/publish-x86/OpcBridge.App.exe" KeyPath="yes" />
+          <ServiceInstall Id="OpcBridgeService"
+                          Name="OpcBridge"
+                          DisplayName="OpcBridge"
+                          Description="OPC DA to OPC UA bridge with web dashboard (http://localhost:$(HttpPort)). Runs in session 0: session-bound PLC simulators (GX Simulator via MX OPC) need the dashboard's resolve-to-desktop relaunch."
+                          Start="auto"
+                          Type="ownProcess"
+                          ErrorControl="normal"
+                          Account="LocalSystem"
+                          Vital="yes" />
+          <ServiceControl Id="OpcBridgeServiceControl"
+                          Name="OpcBridge"
+                          Start="install"
+                          Stop="both"
+                          Remove="uninstall"
+                          Wait="yes" />
+          <fw:FirewallException Id="FwDashboard"
+                                Name="OpcBridge Dashboard"
+                                Description="OpcBridge web dashboard and API"
+                                Protocol="tcp"
+                                Port="$(HttpPort)"
+                                Scope="any" />
+          <fw:FirewallException Id="FwOpcUa"
+                                Name="OpcBridge OPC UA"
+                                Description="OpcBridge OPC UA server endpoint"
+                                Protocol="tcp"
+                                Port="$(UaPort)"
+                                Scope="any" />
+        </Component>
+        <Component Id="DataEnvironment" Guid="05301D05-092B-4EFA-B9F9-04555504109C">
+          <!-- Runtime state (users.json, mappings.json, sources.json, displays, pki)
+               must survive upgrades and must not live in Program Files, which is why
+               the app honours OPCBRIDGE_DATA (see src/OpcBridge.App/DataDirectory.cs). -->
+          <RegistryValue Root="HKLM"
+                         Key="Software\OpcBridge"
+                         Name="DataDirectory"
+                         Type="string"
+                         Value="[DATADIRECTORY]"
+                         KeyPath="yes" />
+          <Environment Id="EnvOpcBridgeData"
+                       Name="OPCBRIDGE_DATA"
+                       Value="[DATADIRECTORY]"
+                       Action="set"
+                       Part="all"
+                       System="yes"
+                       Permanent="no" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="CommonAppDataFolder">
+      <Directory Id="DATADIRECTORY" Name="OpcBridge">
+        <Component Id="DataDirectoryFolder" Guid="6ECD59AA-B3D4-420C-B3B9-E2F6FE8639D4">
+          <CreateFolder />
+          <RegistryValue Root="HKLM"
+                         Key="Software\OpcBridge"
+                         Name="DataDirectoryCreated"
+                         Type="integer"
+                         Value="1"
+                         KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="MenuFolder" Name="OpcBridge">
+        <Component Id="DashboardShortcut" Guid="9A4F7B31-8C2D-4E1A-9B6F-3D8C5A2E70F4">
+          <util:InternetShortcut Id="DashboardUrlShortcut"
+                                 Name="OpcBridge Dashboard"
+                                 Target="http://localhost:$(HttpPort)/" />
+          <RegistryValue Root="HKLM"
+                         Key="Software\OpcBridge"
+                         Name="StartMenuShortcut"
+                         Type="integer"
+                         Value="1"
+                         KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+  </Package>
+</Wix>

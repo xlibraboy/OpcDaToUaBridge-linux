@@ -37,9 +37,15 @@ publish.tmp/
 publish.bak.*/
 publish*.tar.gz
 
+# MSI / release build output (scripts/msi/build-msi.sh). WiX fragments are
+# generated into build/wix/ by scripts/msi/harvest.py on every build.
+build/
+dist/
+__pycache__/
+*.pyc
+
 # Runtime state (generated at runtime)
 mappings.json
-hmi-settings.json
 
 # Local NuGet package cache
 .nuget/

@@ -148,7 +148,18 @@ if (OperatingSystem.IsWindows())
 BridgeState.ConfigureSession(sessionId, interactiveSession);
 logger.LogInformation("Bridge listening on http://0.0.0.0:{HttpPort}", httpPort);
 logger.LogInformation("OPC UA server endpoint: opc.tcp://0.0.0.0:{UaPort}/OpcBridge", uaPort);
+
 WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
+
+// Run as a Windows service when launched by the SCM (the MSI installs the app that
+// way). Interactive launches are unaffected: this is a no-op unless the parent
+// process is services.exe. The service runs in session 0, so session-bound PLC
+// simulators (GX Simulator via MX OPC) cannot deliver values — the dashboard shows
+// the session banner and offers the resolve-to-desktop relaunch instead.
+if (OperatingSystem.IsWindows())
+{
+    builder.Host.UseWindowsService();
+}
 
 builder.WebHost.UseUrls($"http://0.0.0.0:{httpPort}");
 builder.Configuration.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
