@@ -1409,7 +1409,7 @@ internal static class DashboardPage
     </div>
 </div>
 <div class="auth-overlay" id="authOverlay" style="display:none">
-    <form class="auth-card" id="authForm" onsubmit="return doLogin();">
+    <form class="auth-card" id="authForm" onsubmit="doLogin(); return false;">
         <h1>OPC Bridge</h1>
         <div class="auth-sub">Sign in to continue</div>
         <div class="field"><label class="fl" for="loginUser">User</label><input id="loginUser" type="text" autocomplete="username" required style="flex:1"></div>
