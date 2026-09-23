@@ -10,7 +10,7 @@
     tests/OpcBridge.LoadTest/ChangelogTests.cs fails if the two drift apart.
   -->
   <PropertyGroup>
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
     <InformationalVersion>$(Version)</InformationalVersion>
     <Product>OpcBridge</Product>
   </PropertyGroup>

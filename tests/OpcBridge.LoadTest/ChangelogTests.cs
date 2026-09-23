@@ -51,7 +51,7 @@ public sealed class ChangelogTests
         Assert.True(released.Count >= 2, $"expected at least the 1.0.0 baseline and the current release, got {released.Count}");
 
         // Newest first: the top released section is the current version.
-        Assert.Equal("1.1.0", released[0].Groups[1].Value);
+        Assert.Equal("1.2.0", released[0].Groups[1].Value);
         Assert.Equal("1.0.0", released[^1].Groups[1].Value);
     }
 

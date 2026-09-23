@@ -1,7 +1,7 @@
 <!--
   OpcBridge Windows installer (WiX v5 schema, built with the `wix` dotnet tool).
 
-  Built by .github/workflows/windows-msi.yml on a Windows runner, which supplies:
+  Built by .github/workflows/windows-release.yml on a Windows runner, which supplies:
     -define MsiVersion=<x.y.z>   from Directory.Build.props (must equal the newest CHANGELOG.md release)
     -d HttpPort=<port>           bridge HTTP port (default 8080)
     -d UaPort=<port>             bridge OPC UA port (default 4840)
@@ -31,7 +31,7 @@
   because Program Files is read-only for normal users.
 
   Build-time note: File/@Source paths are relative to the repository root, because the
-  wix build always runs from there (see .github/workflows/windows-msi.yml).
+  wix build always runs from there (see .github/workflows/windows-release.yml).
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
      xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util"

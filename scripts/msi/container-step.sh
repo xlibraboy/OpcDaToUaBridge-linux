@@ -5,7 +5,7 @@
 #
 # Publishes the server for the portable zips only. The HMI and Designer publishes are
 # done on the Windows runner, which is where the MSI is built
-# (see .github/workflows/windows-msi.yml).
+# (see .github/workflows/windows-release.yml).
 set -euo pipefail
 
 step="${1:?usage: container-step.sh publish}"

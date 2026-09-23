@@ -9,6 +9,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-23
+
+### Added
+
+**Windows installer.** A WiX MSI installs OpcBridge straight onto a Windows host as a
+feature tree, so a station takes only the parts it needs:
+
+- **OpcBridge Server** — the bridge, installed as a Windows service that starts
+  automatically at boot. The installer opens firewall ports 8080 (dashboard) and 4840
+  (OPC UA) and adds a Start Menu shortcut to the dashboard.
+- **OpcBridge HMI Runtime** — the Avalonia operator client, with a Start Menu shortcut.
+- **OpcBridge HMI Designer** — the standalone display authoring tool, with a Start Menu
+  shortcut.
+
+The installer is x86 only, because a 64-bit process cannot load 32-bit OPC DA COM
+servers (Matrikon, MX Component) without DCOM surrogate setup. Hosts that only use
+64-bit or out-of-process DA servers take a portable self-contained build instead
+(`scripts/msi/build-portable.sh` produces the win-x86 and win-x64 zips).
+
+Runtime state stays outside the install directory: the installer points the
+machine-wide `OPCBRIDGE_DATA` at `C:\ProgramData\OpcBridge`, so an upgrade replaces
+binaries and never touches `users.json`, `mappings.json`, `sources.json`, `displays/`
+or the PKI store.
+
+The installer is built by `.github/workflows/windows-release.yml` on a Windows runner,
+because WiX cannot link an MSI on Linux.
+
+### Changed
+
+- The bridge now also runs as a Windows service when launched by the service control
+  manager (`UseWindowsService`); interactive launches are unchanged. A service runs in
+  session 0, where session-bound PLC simulators (GX Simulator via MX OPC) cannot
+  deliver values — the dashboard's session banner and resolve-to-desktop relaunch
+  already cover that case.
+
 ## [1.1.0] - 2026-09-23
 
 ### Added
