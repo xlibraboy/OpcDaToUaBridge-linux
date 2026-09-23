@@ -1,10 +1,10 @@
 # context.md — OpcBridge
 
-Instruction file for AI agents working in this repo. All facts below are verified against committed code on `main` as of 2026-09-17 (`7c17e04`).
+Instruction file for AI agents working in this repo. All facts below are verified against committed code on `main` as of 2026-09-23 (`8b6d26c`).
 
 ## What this project is
 
-A bridge that mirrors OPC DA tag values into an OPC UA server, with a web dashboard for configuration and monitoring and Avalonia HMI clients. The bridge is a **Linux-first** .NET 8 process: it supports OPC UA **inbound sources** (UA client → external servers), serial PLC drivers (Melsec A3N, S7-200 PPI), and — on Windows only — OPC DA sources via direct COM/DCOM (DA COM requires Windows). HMI Runtime and Designer are **separate processes**. Edited and built on Linux, deployed to a Windows host.
+A bridge that mirrors OPC DA tag values into an OPC UA server, with a web dashboard for configuration and monitoring and Avalonia HMI clients. The bridge is a **Linux-first** .NET 8 process: it supports OPC UA **inbound sources** (UA client → external servers), serial PLC drivers (Melsec A3N, S7-200 PPI), and — on Windows only — OPC DA sources via direct COM/DCOM (DA COM requires Windows). HMI Runtime and Designer are **separate processes**. Edited and built on Linux, deployed to a Windows host — either as a portable self-contained publish or as the MSI installer (`packaging/msi/`), which installs the bridge as a Windows service.
 
 - **DA side**: connects to OPC DA servers via direct COM/DCOM interop (no vendor SDK) — Windows-only at runtime.
 - **UA side**: an in-process OPC UA server (OPCFoundation.NetStandard SDK) that mirrors source reads as UA variables.
@@ -233,7 +233,7 @@ Topology views under **Diagram** (SVG canvas, live status colors):
 - `Bridge:HttpPort` (auto-assigned + persisted), `Bridge:OpcUaPort`, `Bridge:RateLimits` (rate→max-tags map), `Bridge:ExpectedTagCount`, `Bridge:Mappings` (seed mappings, used only if `mappings.json` is absent).
 - `Hmi:BroadcastFlushMs` — SignalR live-value coalesce interval (50–1000 ms, default 100). Caps HMI live update rate (~10 Hz default).
 
-Runtime state files live beside the running app in `AppContext.BaseDirectory` (`mappings.json`, `displays/*.json`). Preserve these during deploy cutover or live bridge / HMI page state is lost.
+Runtime state lives in `DataDirectory.Value` (`src/OpcBridge.App/DataDirectory.cs`) — the `OPCBRIDGE_DATA` environment variable when set, else `AppContext.BaseDirectory`. The files are `mappings.json`, `sources.json`, `links.json`, `mqtt.json`, `influx.json`, `users.json`, `displays/*.json` and `pki/`. The MSI sets the machine-wide `OPCBRIDGE_DATA` to `C:\ProgramData\OpcBridge` so an upgrade replaces binaries only; portable/publish deployments leave it unset and keep state beside the app. Preserve this directory during deploy cutover or live bridge / HMI page state is lost. HMI per-user config is separate: `%APPDATA%\OpcBridge.Hmi` (`hmi-config.json`, `hmi-trendgroups.json`), because the installed app cannot write into `Program Files`.
 
 ## Build & tests
 
@@ -248,6 +248,17 @@ docker run --rm -v "$PWD/<worktree>":/src -w /src -v "$HOME/.nuget-cache":/home/
 **Worktree workflow (session convention):** fixes live in `git worktree add .worktrees/<branch-slug> -b <branch> main`; one worktree per branch; full suite per branch before merge; merge to main with `--no-ff`; push to origin. **Tool path quirk:** `edit`/`write` with relative `.worktrees/...` paths sometimes land in the main checkout — always use absolute paths and verify with grep after. `.dockerignore` excludes `.worktrees/` (7+ GB) so images can be built from the main checkout.
 
 **Windows host build:** `"%USERPROFILE%\AppData\Local\Microsoft\dotnet\dotnet.exe" build OpcBridge.sln` — the `C:\Program Files\dotnet` install lacks the ASP.NET shared framework. Stop the running app before building (it locks `OpcBridge.Ua.dll`).
+
+**Release artifacts:** `scripts/msi/build-portable.sh` publishes the server (win-x86 + win-x64) in the SDK container and writes the portable zips to `dist/`. The `.msi` is **not** built on Linux — WiX cannot link an MSI there (it warns `WIX0000` and then fails `Directory/@Name` validation, reproducible with a one-line package) — so `.github/workflows/windows-release.yml` builds the MSI *and* both zips on a Windows runner, on `workflow_dispatch` or a `v*` tag. WiX is pinned to 5.0.2 with extensions pinned to match (`wix extension add --global …/5.0.2`); unpinned resolves to 7.x, which WiX 5 rejects (`WIX6101`) and 6+ puts behind the OSMF licence. `scripts/msi/harvest.py` generates the file-list fragments into `build/wix/` (gitignored), emitting `Source` paths relative to the repo root and ids namespaced per fragment — WiX requires globally unique ids, and the HMI/Designer publishes share dependency file names.
+
+### Windows installer (`packaging/msi/OpcBridge.wxs`)
+
+Per-machine MSI (`Program Files\OpcBridge`) with a **feature tree**, so a station installs only what it needs:
+
+- **OpcBridge Server** — the bridge as a Windows service named `OpcBridge` (`LocalSystem`, start=auto). Opens firewall ports 8080 (dashboard) and 4840 (OPC UA), sets the machine-wide `OPCBRIDGE_DATA`, and adds a Start Menu dashboard shortcut.
+- **OpcBridge HMI Runtime** / **OpcBridge HMI Designer** — each with its own Start Menu shortcut.
+
+The MSI is x86-only because a 64-bit process cannot load 32-bit OPC DA COM servers without DCOM surrogate setup; 64-bit-only hosts use the portable zip. The firewall and shortcut ports come from the `HttpPort`/`UaPort` build defines (default 8080/4840) — a host whose bridge auto-assigned a different port needs it opened by hand. Being a service, it runs in **session 0**, where session-bound PLC simulators (GX Simulator via MX OPC) cannot deliver values; the dashboard's session banner and resolve-to-desktop relaunch cover that.
 
 ## Load-test rig & harness
 
@@ -275,6 +286,8 @@ Package `publish.tmp` → tar.gz, SCP to host as `publish-new.tar.gz`, then run 
 **Host launcher:** scheduled task `OpcBridge` → `scripts/windows/start-published-bridge.cmd` which `cd`s into `publish\` and runs `OpcBridge.App.exe` (self-contained apphost — carries its own runtime; falls back to `dotnet OpcBridge.App.dll`. CWD must be the publish folder so `appsettings.json` resolves).
 
 **register-published-task.ps1** kills old process, re-registers AtStartup S4U task, starts it, probes `http://127.0.0.1:8080/health`.
+
+**MSI installer (alternative to the tar.gz publish):** for a clean Windows host prefer `dist\OpcBridge-<version>-win-x86.msi` — it installs the bridge as a service plus the HMI runtime and designer, so no scheduled task, manual extract or launcher script is involved (start at boot, firewall ports and `OPCBRIDGE_DATA` handled by the installer). The tar.gz / scheduled-task flow above remains how hosts already registered that way are updated. See **Windows installer** under Build & tests.
 
 **Deploy guards:**
 - Restore host-specific `appsettings.json` (do not ship a broken `EndpointUrl` from the build machine).
