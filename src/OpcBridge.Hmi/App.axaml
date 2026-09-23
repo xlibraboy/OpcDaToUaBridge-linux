@@ -5,6 +5,11 @@
   <Application.Styles>
     <FluentTheme />
     <StyleInclude Source="avares://OpcBridge.Hmi/Themes/SharedStyles.axaml" />
+    <!-- Title bar, taskbar and Alt-Tab icon for every window of this app, main window
+         and popups alike. The exe's own icon comes from ApplicationIcon in the csproj. -->
+    <Style Selector=":is(Window)">
+      <Setter Property="Icon" Value="avares://OpcBridge.Hmi/Assets/opcbridge-hmi.ico" />
+    </Style>
   </Application.Styles>
   <Application.Resources>
     <ResourceDictionary>

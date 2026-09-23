@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+**Application icons.** The three Windows apps shipped without one, so Explorer and the
+Start Menu showed the generic blank icon for `OpcBridge.App.exe`, `OpcBridge.Hmi.exe` and
+`OpcBridge.Hmi.Designer.exe`. Each exe now carries its own icon — the bridge, the operator
+runtime and the designer — the Avalonia windows use theirs in the title bar, taskbar and
+Alt-Tab, and the installer gives the product an Apps & features entry icon. The artwork is
+generated rather than hand-drawn: `scripts/icons/make-icons.py` draws every size from 16px
+to 256px and writes the committed `src/*/Assets/*.ico` files.
+
 ### Changed
 
 **Status bar rails.** The bar was one flat row, so the free space landed wherever it
