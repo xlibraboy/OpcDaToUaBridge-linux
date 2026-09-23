@@ -9,6 +9,10 @@ name: Windows release
 #
 # The installer is a feature tree: server, HMI runtime and HMI designer are
 # individually selectable at install time.
+#
+# A `v*` tag push also publishes a GitHub Release carrying the MSI and both zips;
+# a manual workflow_dispatch run stops at the uploaded artifacts, because there is
+# no tag to release against.
 
 on:
   workflow_dispatch:
@@ -17,7 +21,7 @@ on:
       - 'v*'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   msi:
@@ -109,3 +113,35 @@ jobs:
             dist/*.msi
             dist/*.zip
           if-no-files-found: error
+
+      # Only a tagged run has something to release; a workflow_dispatch run stops above.
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = '${{ steps.version.outputs.version }}'
+
+          # Release notes are the CHANGELOG section for this version — the same text the
+          # bridge serves at /api/changelog, so the release page and the app agree.
+          # -Encoding utf8 is required: without it Get-Content reads UTF-8 as ANSI and
+          # mangles every em dash in the file.
+          $lines = Get-Content -Path CHANGELOG.md -Encoding utf8
+          $start = ($lines | Select-String -Pattern "^## \[$([regex]::Escape($version))\]").LineNumber
+          if (-not $start) { throw "CHANGELOG.md has no '## [$version]' section" }
+          $rest = @($lines[$start..($lines.Count - 1)])
+          $next = ($rest | Select-String -Pattern '^## \[' | Select-Object -Skip 1 -First 1).LineNumber
+          $body = if ($next) { @($rest[0..($next - 2)]) } else { $rest }
+          $body | Set-Content -Path build/release-notes.md -Encoding utf8
+
+          # Assets are named from Directory.Build.props, not the tag, so they always
+          # match what the publish steps above produced.
+          gh release create $env:TAG `
+            "dist/OpcBridge-$version-win-x86.msi" `
+            "dist/OpcBridge-$version-win-x86.zip" `
+            "dist/OpcBridge-$version-win-x64.zip" `
+            --title "OpcBridge $version" `
+            --notes-file build/release-notes.md
