@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+**Session warning banner buttons.** `Resolve` and `Dismiss` sat a wide, uneven distance
+apart — both buttons carried `margin-left: auto`, so the browser split the free space
+between them instead of pushing the pair to the right edge. They now ride in one
+right-aligned actions group using the banner's own 12px gap, and every state of the
+banner (warning, relaunching, resolve failed) renders from one markup contract.
+
 ## [1.2.0] - 2026-09-23
 
 ### Added

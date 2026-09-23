@@ -298,7 +298,9 @@ internal static class DashboardPage
         .first-run-banner button { margin-left: auto; }
         .port-banner { display: flex; align-items: center; gap: 12px; padding: 9px 12px; border-radius: 0; margin-bottom: 12px; font-size: var(--fs-body); font-weight: 600; background: var(--warn-bg); border: 1px solid var(--warn-border); border-left: 3px solid var(--warn); color: var(--warn-text); }
         .port-banner button { margin-left: auto; }
-        .session-warn-banner button { margin-left: auto; }
+        /* Both buttons ride in one actions group: margin-left:auto on each button
+           split the free space between them (the pair drifted ~90px apart). */
+        .session-warn-banner .banner-actions { display: flex; align-items: center; gap: 12px; margin-left: auto; }
         .stat .k { color: var(--muted); font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .09em; font-family: var(--font-mono); font-weight: 600; }
         .stat .v { margin-top: 5px; font-size: var(--fs-title); font-weight: 700; line-height: 1.15; font-family: var(--font-mono); font-variant-numeric: tabular-nums; letter-spacing: -.01em; }
         .stat .s { margin-top: 5px; color: var(--muted); font-size: var(--fs-micro); overflow-wrap: break-word; }
@@ -5847,10 +5849,21 @@ function helpSearchKey(e) {
     helpSearchClear();
 }
 
+// The session banner reads icon → message → actions (the actions group pins itself
+// right). One markup contract keeps the poll's warning state and the resolve flow's
+// working/error states in step.
+const SESSION_DISMISS_ONCLICK = 'state.sessionBannerDismissed=true;el(\'sessionBanner\').style.display=\'none\'';
+function sessionBannerBtn(label, onclick) {
+    return '<button class="btn" type="button" onclick="' + onclick + '">' + label + '</button>';
+}
+function sessionBannerHtml(message, actions) {
+    return '<span class="banner-icon" aria-hidden="true">⚠</span><span class="banner-msg">' + message + '</span>'
+        + (actions ? '<span class="banner-actions">' + actions + '</span>' : '');
+}
 async function resolveSessionBanner() {
     const banner = el('sessionBanner');
     if (!banner) return;
-    banner.innerHTML = '⚠ Relaunching bridge into the interactive desktop session… this page will reconnect automatically.';
+    banner.innerHTML = sessionBannerHtml('Relaunching bridge into the interactive desktop session… this page will reconnect automatically.');
     state.sessionBannerDismissed = true;
     try {
         const r = await fetch('/api/session/resolve', { method: 'POST' });
@@ -5858,14 +5871,14 @@ async function resolveSessionBanner() {
         if (!r.ok || j.status !== "ok") {
             state.sessionBannerDismissed = false;
             banner.style.display = '';
-            banner.innerHTML = '⚠ Resolve failed: ' + esc(j.message || j.status || 'unknown error') + ' <button class="btn" type="button" onclick="resolveSessionBanner()">Retry</button> <button class="btn" type="button" onclick="state.sessionBannerDismissed=true;el(\'sessionBanner\').style.display=\'none\'">Dismiss</button>';
+            banner.innerHTML = sessionBannerHtml('Resolve failed: ' + esc(j.message || j.status || 'unknown error'), sessionBannerBtn('Retry', 'resolveSessionBanner()') + sessionBannerBtn('Dismiss', SESSION_DISMISS_ONCLICK));
             return;
         }
         banner.style.display = 'none';
     } catch (e) {
         state.sessionBannerDismissed = false;
         banner.style.display = '';
-        banner.innerHTML = '⚠ Resolve failed: ' + esc(e.message) + ' <button class="btn" type="button" onclick="resolveSessionBanner()">Retry</button> <button class="btn" type="button" onclick="state.sessionBannerDismissed=true;el(\'sessionBanner\').style.display=\'none\'">Dismiss</button>';
+        banner.innerHTML = sessionBannerHtml('Resolve failed: ' + esc(e.message), sessionBannerBtn('Retry', 'resolveSessionBanner()') + sessionBannerBtn('Dismiss', SESSION_DISMISS_ONCLICK));
     }
 }
 // ---------------------------------------------------------------------------
@@ -6127,7 +6140,7 @@ async function refresh() {
                     sessionBanner.style.display = 'none';
                 } else {
                     sessionBanner.style.display = '';
-                    sessionBanner.innerHTML = '⚠ This bridge runs in a non-interactive Windows session (session 0). Session-bound OPC DA servers (GX Simulator via MX OPC, or any simulator using session-scoped shared memory) will not deliver values. <button class="btn" type="button" onclick="resolveSessionBanner()">Resolve</button> <button class="btn" type="button" onclick="state.sessionBannerDismissed=true;el(\'sessionBanner\').style.display=\'none\'">Dismiss</button>';
+                    sessionBanner.innerHTML = sessionBannerHtml('This bridge runs in a non-interactive Windows session (session 0). Session-bound OPC DA servers (GX Simulator via MX OPC, or any simulator using session-scoped shared memory) will not deliver values.', sessionBannerBtn('Resolve', 'resolveSessionBanner()') + sessionBannerBtn('Dismiss', SESSION_DISMISS_ONCLICK));
                 }
             } else {
                 sessionBanner.style.display = 'none';
