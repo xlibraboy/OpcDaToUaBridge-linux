@@ -8,7 +8,9 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using OpcBridge.App;
+using OpcBridge.App.Auth;
 using OpcBridge.App.Hmi;
 using OpcBridge.Client;
 using OpcBridge.Core;
@@ -157,6 +159,10 @@ builder.Services.Configure<UaServerOptions>(builder.Configuration.GetSection("Ua
 builder.Services.Configure<MqttBrokerOptions>(builder.Configuration.GetSection("Mqtt"));
 builder.Services.Configure<InfluxOptions>(builder.Configuration.GetSection("Influx"));
 builder.Services.Configure<HmiOptions>(builder.Configuration.GetSection("Hmi"));
+builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection("Auth"));
+builder.Services.AddSingleton<UserStore>();
+builder.Services.AddSingleton<AuthSessionStore>();
+builder.Services.AddSingleton<LoginThrottle>();
 builder.Services.AddSingleton<DashboardLogStore>();
 builder.Logging.Services.AddSingleton<ILoggerProvider, DashboardLogProvider>();
 
@@ -196,6 +202,25 @@ builder.Services.AddSingleton<IInfluxTrendQuery>(sp =>
 
 
 WebApplication app = builder.Build();
+
+// Session + role gate: resolves the dashboard caller and answers 401/403 from the
+// AuthPolicy table before any endpoint runs. A no-op unless Auth:Enabled is set.
+app.UseMiddleware<RoleGateMiddleware>();
+
+if (app.Services.GetRequiredService<IOptions<AuthOptions>>().Value.Enabled)
+{
+    UserStore authUsers = app.Services.GetRequiredService<UserStore>();
+    app.Logger.LogInformation("Dashboard authentication is enabled (roles: Admin, Engineer, Operator, Viewer).");
+    if (authUsers.SeededDefaultAdmin)
+    {
+        app.Logger.LogWarning(
+            "users.json did not exist: seeded the default administrator '{User}' with password '{Password}'. " +
+            "Sign in and change it under Ops > Users.",
+            UserStore.DefaultAdminUsername,
+            UserStore.DefaultAdminPassword);
+    }
+}
+
 TryMigrateLegacyInterlinks(app);
 
 // Wall-clock-independent tick captured at startup; powers uptimeSeconds on /api/diagnostics.
@@ -633,6 +658,12 @@ app.MapGet("/api/version", () =>
     });
 });
 app.MapGet("/api/help", () => Results.Json(new { markdown = HelpContent.Markdown }));
+// Release notes: the embedded CHANGELOG.md, rendered by the dashboard's Help > Release Notes view.
+app.MapGet("/api/changelog", () => Results.Json(new
+{
+    markdown = ChangelogContent.Markdown,
+    version = ChangelogContent.LatestVersion
+}));
 app.MapGet("/api/da/sources", (DaRuntimeSettings settings) =>
 {
     DaRuntimeSettingsSnapshot snapshot = settings.GetSnapshot();
@@ -2239,6 +2270,7 @@ app.MapGet("/api/influx/status", (InfluxRuntimeSettings settings) =>
 });
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
+app.MapAuth();
 app.MapHub<HmiHub>("/hmi");
 
 await app.RunAsync().ConfigureAwait(false);

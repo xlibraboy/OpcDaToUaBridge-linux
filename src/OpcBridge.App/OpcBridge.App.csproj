@@ -25,6 +25,12 @@
     </None>
   </ItemGroup>
 
+  <!-- The release notes are shipped inside the assembly and served at
+       /api/changelog, so the dashboard and CHANGELOG.md can never disagree. -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\CHANGELOG.md" LogicalName="OpcBridge.App.CHANGELOG.md" />
+  </ItemGroup>
+
   <ItemGroup>
     <InternalsVisibleTo Include="OpcBridge.LoadTest" />
   </ItemGroup>
@@ -34,8 +40,7 @@
     <TargetFramework>net8.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Version>1.0.0</Version>
-    <InformationalVersion>1.0.0</InformationalVersion>
+    <!-- Version / InformationalVersion come from Directory.Build.props. -->
   </PropertyGroup>
 
 </Project>

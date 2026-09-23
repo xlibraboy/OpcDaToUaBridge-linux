@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using OpcBridge.App;
 using Xunit;
 
@@ -43,6 +44,12 @@ public sealed class TestAppHandle : IAsyncDisposable
         {
             CopyDirectory(runtimesSource, Path.Combine(appDirectory, "runtimes"));
         }
+
+        // The shipped appsettings.json enables dashboard authentication; test hosts run
+        // without it unless the per-test configuration opts back in by writing its own
+        // appsettings.json (see AuthApiTests). Applied before the callback so a test that
+        // replaces the file wins.
+        DisableAuthentication(appDirectory);
 
         configureAppDirectory(appDirectory);
 
@@ -187,6 +194,31 @@ public sealed class TestAppHandle : IAsyncDisposable
         }
 
         throw new Xunit.Sdk.XunitException($"Timed out waiting for OpcBridge.App to become healthy.{Environment.NewLine}{output_}");
+    }
+
+    private static void DisableAuthentication(string appDirectory)
+    {
+        string settingsPath = Path.Combine(appDirectory, "appsettings.json");
+        try
+        {
+            if (!File.Exists(settingsPath))
+            {
+                return;
+            }
+
+            JsonNode? root = JsonNode.Parse(File.ReadAllText(settingsPath));
+            if (root is not JsonObject settings)
+            {
+                return;
+            }
+
+            settings["Auth"] = new JsonObject { ["Enabled"] = false };
+            File.WriteAllText(settingsPath, settings.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+        }
+        catch
+        {
+            // A malformed settings file is the test's problem, not the harness's.
+        }
     }
 
     private static int? ReadBridgeIntSetting(string settingsPath, string key)

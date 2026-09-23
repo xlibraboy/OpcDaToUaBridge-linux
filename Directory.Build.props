@@ -1,0 +1,18 @@
+<Project>
+
+  <!--
+    Single source of truth for the product version. Every project (App, Ua, Da,
+    Mqtt, Influx, Client, Hmi, Hmi.Designer, drivers, tests) inherits it, so the
+    version reported by /api/version, /api/app-info, the assembly metadata and the
+    Windows publish all agree without being edited per project.
+
+    Bump this together with the newest released section of CHANGELOG.md —
+    tests/OpcBridge.LoadTest/ChangelogTests.cs fails if the two drift apart.
+  -->
+  <PropertyGroup>
+    <Version>1.1.0</Version>
+    <InformationalVersion>$(Version)</InformationalVersion>
+    <Product>OpcBridge</Product>
+  </PropertyGroup>
+
+</Project>

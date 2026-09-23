@@ -899,6 +899,24 @@ internal static class DashboardPage
             .info { position: relative; }
             .info::after { content: ''; position: absolute; inset: -7px; }
         }
+        /* ---- Dashboard sign-in gate + user administration ---- */
+        .auth-overlay { position: fixed; inset: 0; z-index: 900; display: flex; align-items: center; justify-content: center; background: var(--bg); padding: 16px; }
+        .auth-card { background: var(--panel); border: 1px solid var(--text); border-top: 3px solid var(--text); padding: 20px 22px; width: min(360px, 92vw); }
+        .auth-card h1 { font-size: var(--fs-title); margin: 0 0 4px; letter-spacing: -.01em; }
+        .auth-card .auth-sub { font-size: var(--fs-micro); color: var(--muted); font-family: var(--font-mono); margin-bottom: 14px; }
+        .auth-card .field { margin-bottom: 10px; }
+        .auth-card .btn { width: 100%; justify-content: center; }
+        .auth-error { color: #c62828; font-size: var(--fs-micro); font-family: var(--font-mono); min-height: 15px; margin-top: 8px; }
+        .user-chip { display: flex; align-items: center; gap: 6px; margin-left: 10px; }
+        .user-chip .un { font-size: var(--fs-micro); font-family: var(--font-mono); }
+        .user-role { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .06em; border: 1px solid var(--border2); padding: 1px 5px; color: var(--muted); white-space: nowrap; }
+        .users-list { border: 1px solid var(--border2); }
+        .user-row { display: flex; align-items: center; gap: 8px; padding: 7px 9px; border-bottom: 1px solid var(--border2); }
+        .user-row:last-child { border-bottom: none; }
+        .user-row .ur-name { font-family: var(--font-mono); min-width: 110px; }
+        .user-row .ur-dim { font-size: var(--fs-micro); color: var(--muted); font-family: var(--font-mono); }
+        .user-row .ur-spacer { margin-left: auto; }
+        .user-row.ur-off .ur-name { opacity: .55; text-decoration: line-through; }
     </style>
 </head>
 <body>
@@ -911,6 +929,12 @@ internal static class DashboardPage
         <div class="pill"><span class="k">UA</span><span id="pUa">&#8212;</span></div>
         <div class="pill"><span class="k">Tags</span><b id="pTags">0</b></div>
         <div class="pill"><span class="k">Apps</span><b id="pApps">1</b></div>
+    </div>
+    <div class="user-chip" id="userChip" style="display:none">
+        <span class="un" id="userName"></span>
+        <span class="user-role" id="userRole"></span>
+        <button class="btn ghost" id="btnOwnPassword" type="button" onclick="openOwnPassword()">Password</button>
+        <button class="btn ghost" id="btnSignOut" type="button" onclick="doLogout()">Sign out</button>
     </div>
     <div class="theme-switch" role="group" aria-label="Color theme">
         <label class="theme-opt"><input type="radio" name="theme" value="light"><svg class="theme-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>Light</label>
@@ -954,11 +978,13 @@ internal static class DashboardPage
     <button class="tabbtn" data-tab="sessions" data-route="ops/sessions" onclick="navigate('ops/sessions')">Sessions</button>
     <button class="tabbtn" data-tab="logs" data-route="ops/logs" onclick="navigate('ops/logs')">Logs</button>
     <button class="tabbtn" data-tab="diagram" data-route="ops/diagram" onclick="navigate('ops/diagram')">Diagram</button>
+    <button class="tabbtn" data-tab="users" data-route="ops/users" id="navUsers" style="display:none" onclick="navigate('ops/users')">Users</button>
   </div>
   <div class="nav-group">
     <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2.5-3 4.5"/><circle cx="12" cy="17.2" r="0.9" fill="currentColor" stroke="none"/></svg>Help</div>
     <button class="tabbtn" data-tab="help" data-route="help/guide" onclick="navigate('help/guide')">Guide</button>
     <button class="tabbtn" data-tab="about" data-route="help/about" onclick="navigate('help/about')">About</button>
+    <button class="tabbtn" data-tab="changelog" data-route="help/release-notes" onclick="navigate('help/release-notes')">Release Notes</button>
   </div>
 </div>
 <div class="content" id="main" role="main" tabindex="-1">
@@ -1366,6 +1392,40 @@ internal static class DashboardPage
             <div id="plcGroupsList" class="dag-grid"></div>
             <div class="hint" style="margin-top:8px">Named polling groups for MX Component sources. Each group polls its member tags at its own update rate; tags without a group ride the source default rate. MX Component has no push model — groups are bridge-side timers sharing the PLC link (Programming Manual sh081085 §5.2).</div>
         </div>
+    </div>
+</div>
+<div class="auth-overlay" id="authOverlay" style="display:none">
+    <form class="auth-card" id="authForm" onsubmit="return doLogin();">
+        <h1>OPC Bridge</h1>
+        <div class="auth-sub">Sign in to continue</div>
+        <div class="field"><label class="fl" for="loginUser">User</label><input id="loginUser" type="text" autocomplete="username" required style="flex:1"></div>
+        <div class="field"><label class="fl" for="loginPass">Password</label><input id="loginPass" type="password" autocomplete="current-password" required style="flex:1"></div>
+        <button class="btn" id="btnLogin" type="submit">Sign in</button>
+        <div class="auth-error" id="authError" role="alert"></div>
+    </form>
+</div>
+<div class="modal-overlay" id="userModal" onclick="if(event.target===this)closeUserModal()">
+    <div class="modal" style="width:min(420px,94vw)">
+        <div class="modal-h"><div class="n" id="userModalTitle">Add User</div><button class="modal-close" type="button" onclick="closeUserModal()" aria-label="Close">×</button></div>
+        <div class="modal-b">
+            <div class="field"><label class="fl" for="newUserName">User</label><input id="newUserName" type="text" maxlength="64" autocomplete="off" style="flex:1"></div>
+            <div class="field"><label class="fl" for="newUserDisplay">Display Name</label><input id="newUserDisplay" type="text" maxlength="128" style="flex:1"></div>
+            <div class="field"><label class="fl" for="newUserPass">Password</label><input id="newUserPass" type="password" autocomplete="new-password" style="flex:1"></div>
+            <div class="field"><label class="fl" for="newUserRole">Role</label><select id="newUserRole" style="flex:1"></select></div>
+            <div class="msg" id="userModalMsg" role="status"></div>
+        </div>
+        <div class="modal-f"><button class="btn ghost" type="button" onclick="closeUserModal()">Cancel</button><button class="btn" type="button" id="userModalSaveBtn" onclick="saveUserModal()">Create</button></div>
+    </div>
+</div>
+<div class="modal-overlay" id="pwModal" onclick="if(event.target===this)closePwModal()">
+    <div class="modal" style="width:min(420px,94vw)">
+        <div class="modal-h"><div class="n" id="pwModalTitle">Change Password</div><button class="modal-close" type="button" onclick="closePwModal()" aria-label="Close">×</button></div>
+        <div class="modal-b">
+            <div class="field" id="pwCurrentRow"><label class="fl" for="pwCurrent">Current</label><input id="pwCurrent" type="password" autocomplete="current-password" style="flex:1"></div>
+            <div class="field"><label class="fl" for="pwNew">New Password</label><input id="pwNew" type="password" autocomplete="new-password" style="flex:1"></div>
+            <div class="msg" id="pwModalMsg" role="status"></div>
+        </div>
+        <div class="modal-f"><button class="btn ghost" type="button" onclick="closePwModal()">Cancel</button><button class="btn" type="button" id="pwModalSaveBtn" onclick="savePwModal()">Save</button></div>
     </div>
 </div>
 <div class="modal-overlay" id="plcGroupModal" onclick="if(event.target===this)closePlcGroupModal()">
@@ -1833,6 +1893,19 @@ internal static class DashboardPage
         </div>
     </div>
 </div>
+<div class="view" id="view-users">
+    <h1 class="view-title" tabindex="-1">Users</h1>
+    <div class="box">
+        <div class="box-h">Sign-in Accounts <span class="msg" id="usersMessage" role="status" style="margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0">Admin &gt; Engineer &gt; Operator &gt; Viewer.</span></div>
+        <div class="box-b">
+            <div class="toolbar">
+                <button class="btn ghost" id="btnRefreshUsers" type="button" onclick="loadUsers().catch(e => el('usersMessage').textContent = '✗ ' + e.message)">Refresh</button>
+                <button class="btn" id="btnAddUser" type="button" onclick="openUserModal()">Add user…</button>
+            </div>
+            <div class="users-list" id="usersList"><span class="msg">Loading users…</span></div>
+        </div>
+    </div>
+</div>
 <div class="view" id="view-help">
     <h1 class="view-title" tabindex="-1">Guide</h1>
     <div class="help-subtabs" role="tablist" aria-label="Guide sections" onkeydown="helpSubTabKey(event)">
@@ -1857,6 +1930,15 @@ internal static class DashboardPage
     </div>
     <div class="help-subtab-content" id="help-reference" role="tabpanel" aria-labelledby="helpTab-reference">
         <div class="help-layout" id="helpLayout3"></div>
+    </div>
+</div>
+<div class="view" id="view-changelog">
+    <h1 class="view-title" tabindex="-1">Release Notes</h1>
+    <div class="box">
+        <div class="box-h">Release Notes <span class="msg" id="changelogVersion" role="status" style="margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0"></span></div>
+        <div class="box-b">
+            <div class="help-layout" id="changelogBody"><span class="msg">Loading release notes…</span></div>
+        </div>
     </div>
 </div>
 <div class="view" id="view-about">
@@ -4187,6 +4269,360 @@ function updateManualValueHint() {
     hint.style.display = '';
 }
 
+// ---- Dashboard sign-in gate -------------------------------------------------
+// The server is the source of truth (RoleGateMiddleware + AuthPolicy). This layer
+// only renders what the signed-in role may actually do, and turns a mid-shift 401
+// into the sign-in card instead of a wall of failed fetches.
+const ROLE_RANK = { Viewer: 0, Operator: 1, Engineer: 2, Admin: 3 };
+// Sections only Engineer and up may use (configuration editing surfaces).
+const ENGINEER_TABS = ['connection', 'opc-da', 'opc-da-groups', 'opc-ua', 'ua-subs', 'drivers', 'mx-component', 'plc-groups', 'tags', 'interlinks', 'mqtt', 'influx'];
+const DEFAULT_ROLES = ['Admin', 'Engineer', 'Operator', 'Viewer'];
+let authSession = { authenticated: false, authEnabled: false, username: '', displayName: '', role: 'Viewer' };
+let authRoles = DEFAULT_ROLES.slice();
+let resetPasswordUser = null;
+
+function roleRank() { return ROLE_RANK[authSession.role] ?? 0; }
+function isEngineer() { return roleRank() >= ROLE_RANK.Engineer; }
+
+// Installed before anything polls so an expired session re-opens the sign-in card.
+const authAwareFetch = window.fetch.bind(window);
+window.fetch = async (input, init) => {
+    const response = await authAwareFetch(input, init);
+    if (response.status === 401) {
+        const url = typeof input === 'string' ? input : (input && input.url) || '';
+        if (!url.includes('/api/auth/login') && authSession.authEnabled) {
+            showAuthOverlay('Your session expired. Sign in again.');
+        }
+    }
+    return response;
+};
+
+function showAuthOverlay(message) {
+    el('authOverlay').style.display = 'flex';
+    el('authError').textContent = message || '';
+}
+
+function hideAuthOverlay() { el('authOverlay').style.display = 'none'; }
+
+async function initAuth() {
+    let payload = {};
+    try {
+        const r = await fetch('/api/auth/me', { cache: 'no-store' });
+        if (r.ok) payload = await r.json();
+    } catch (e) { /* Unreachable bridge: the polling loop reports that separately. */ }
+    authSession = {
+        authenticated: !!payload.authenticated,
+        authEnabled: !!payload.authEnabled,
+        username: payload.username || '',
+        displayName: payload.displayName || payload.username || '',
+        role: payload.role || 'Viewer'
+    };
+
+    const signedIn = authSession.authenticated || !authSession.authEnabled;
+    if (!signedIn) {
+        showAuthOverlay('');
+        el('loginUser').focus();
+        return false;
+    }
+
+    hideAuthOverlay();
+    if (authSession.authenticated) {
+        el('userChip').style.display = '';
+        el('userName').textContent = authSession.displayName || authSession.username;
+        el('userRole').textContent = authSession.role;
+    }
+    applyRoleUi();
+    return true;
+}
+
+// Hides the sections the current role cannot use, and collapses nav groups that end
+// up empty. Hidden entries stay in the DOM so a role change needs no re-render.
+function applyRoleUi() {
+    const engineer = isEngineer();
+    ENGINEER_TABS.forEach(tab => {
+        document.querySelectorAll('.tabbtn[data-tab="' + tab + '"]').forEach(button => {
+            button.style.display = engineer ? '' : 'none';
+        });
+    });
+    document.querySelectorAll('.nav-group').forEach(group => {
+        const anyVisible = Array.from(group.querySelectorAll('.tabbtn'))
+            .some(button => button.style.display !== 'none');
+        group.style.display = anyVisible ? '' : 'none';
+    });
+    el('navUsers').style.display = authSession.role === 'Admin' ? '' : 'none';
+}
+
+// A bookmarked route may point at a section this role cannot open.
+function routeAllowed(route) {
+    const tab = ROUTE_TO_TAB[route] || ROUTE_TO_TAB[DEFAULT_ROUTE];
+    if (tab === 'users') return authSession.role === 'Admin';
+    return ENGINEER_TABS.includes(tab) ? isEngineer() : true;
+}
+
+async function doLogin() {
+    const username = el('loginUser').value.trim();
+    const password = el('loginPass').value;
+    if (!username || !password) {
+        el('authError').textContent = 'User and password are required.';
+        return false;
+    }
+
+    el('btnLogin').disabled = true;
+    try {
+        const r = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: username, password: password })
+        });
+        const payload = await r.json().catch(() => ({}));
+        if (!r.ok) {
+            el('authError').textContent = payload.error || ('Sign-in failed (' + r.status + ')');
+            el('loginPass').value = '';
+            el('loginPass').focus();
+            return false;
+        }
+        // Reload rather than reconfigure in place: every panel then starts from the
+        // new role's data instead of whatever the previous user had loaded.
+        location.reload();
+    } catch (e) {
+        el('authError').textContent = '✗ ' + e.message;
+    } finally {
+        el('btnLogin').disabled = false;
+    }
+    return false;
+}
+
+async function doLogout() {
+    try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (e) { /* sign out locally anyway */ }
+    location.reload();
+}
+
+// ---- Users (Admin only; the server enforces it) ----
+function fillRoleSelect(select) {
+    select.textContent = '';
+    authRoles.forEach(role => {
+        const option = document.createElement('option');
+        option.value = role;
+        option.textContent = role;
+        select.appendChild(option);
+    });
+}
+
+function userRow(user, me) {
+    const row = document.createElement('div');
+    row.className = 'user-row' + (user.enabled ? '' : ' ur-off');
+
+    const name = document.createElement('span');
+    name.className = 'ur-name';
+    name.textContent = user.username;
+    row.appendChild(name);
+
+    if (user.displayName && user.displayName !== user.username) {
+        const display = document.createElement('span');
+        display.className = 'ur-dim';
+        display.textContent = user.displayName;
+        row.appendChild(display);
+    }
+
+    const lastLogin = document.createElement('span');
+    lastLogin.className = 'ur-dim';
+    lastLogin.textContent = user.lastLoginUtc ? 'last ' + new Date(user.lastLoginUtc).toLocaleString() : 'never signed in';
+    row.appendChild(lastLogin);
+
+    const spacer = document.createElement('span');
+    spacer.className = 'ur-spacer';
+    row.appendChild(spacer);
+
+    const role = document.createElement('select');
+    fillRoleSelect(role);
+    role.value = user.role;
+    role.addEventListener('change', () => updateUser(user.username, { role: role.value }));
+    row.appendChild(role);
+
+    const enabled = document.createElement('input');
+    enabled.type = 'checkbox';
+    enabled.checked = user.enabled;
+    enabled.title = 'Enabled';
+    enabled.setAttribute('aria-label', 'Enabled: ' + user.username);
+    enabled.addEventListener('change', () => updateUser(user.username, { enabled: enabled.checked }));
+    row.appendChild(enabled);
+
+    const setPassword = document.createElement('button');
+    setPassword.type = 'button';
+    setPassword.className = 'btn ghost';
+    setPassword.textContent = 'Set password';
+    setPassword.addEventListener('click', () => openResetPassword(user.username));
+    row.appendChild(setPassword);
+
+    // You cannot delete yourself, so do not offer it (the server rejects it too).
+    if (user.username.toLowerCase() !== String(me || '').toLowerCase()) {
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'btn ghost';
+        remove.textContent = 'Delete';
+        remove.addEventListener('click', () => deleteUser(user.username));
+        row.appendChild(remove);
+    }
+
+    return row;
+}
+
+async function loadUsers() {
+    const container = el('usersList');
+    const r = await fetch('/api/auth/users', { cache: 'no-store' });
+    const payload = await r.json().catch(() => ({}));
+    if (!r.ok) {
+        el('usersMessage').textContent = '✗ ' + (payload.error || r.status);
+        return;
+    }
+
+    if (Array.isArray(payload.roles) && payload.roles.length) authRoles = payload.roles;
+    fillRoleSelect(el('newUserRole'));
+    container.textContent = '';
+    const users = payload.users || [];
+    if (!users.length) {
+        const empty = document.createElement('span');
+        empty.className = 'msg';
+        empty.textContent = 'No users.';
+        container.appendChild(empty);
+        return;
+    }
+
+    users.forEach(user => container.appendChild(userRow(user, payload.me)));
+    el('usersMessage').textContent = users.length + ' user' + (users.length === 1 ? '' : 's') + '.';
+}
+
+async function updateUser(username, patch) {
+    const r = await fetch('/api/auth/users/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.assign({ username: username }, patch))
+    });
+    const payload = await r.json().catch(() => ({}));
+    if (!r.ok) {
+        el('usersMessage').textContent = '✗ ' + (payload.error || r.status);
+        await loadUsers();
+        return;
+    }
+
+    el('usersMessage').textContent = 'Updated ' + username + '.';
+    await loadUsers();
+}
+
+async function deleteUser(username) {
+    if (!window.confirm('Delete user "' + username + '"? They are signed out immediately.')) return;
+    const r = await fetch('/api/auth/users/remove', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: username })
+    });
+    const payload = await r.json().catch(() => ({}));
+    if (!r.ok) {
+        el('usersMessage').textContent = '✗ ' + (payload.error || r.status);
+        return;
+    }
+
+    el('usersMessage').textContent = 'Deleted ' + username + '.';
+    await loadUsers();
+}
+
+function openUserModal() {
+    el('userModalTitle').textContent = 'Add User';
+    el('newUserName').value = '';
+    el('newUserDisplay').value = '';
+    el('newUserPass').value = '';
+    el('userModalMsg').textContent = '';
+    fillRoleSelect(el('newUserRole'));
+    el('newUserRole').value = 'Viewer';
+    el('userModal').classList.add('open');
+    el('newUserName').focus();
+}
+
+function closeUserModal() { el('userModal').classList.remove('open'); }
+
+async function saveUserModal() {
+    const body = {
+        username: el('newUserName').value.trim(),
+        displayName: el('newUserDisplay').value.trim(),
+        password: el('newUserPass').value,
+        role: el('newUserRole').value
+    };
+    if (!body.username || !body.password) {
+        el('userModalMsg').textContent = 'User and password are required.';
+        return;
+    }
+
+    const r = await fetch('/api/auth/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    const payload = await r.json().catch(() => ({}));
+    if (!r.ok) {
+        el('userModalMsg').textContent = '✗ ' + (payload.error || r.status);
+        return;
+    }
+
+    closeUserModal();
+    el('usersMessage').textContent = 'Created ' + body.username + '.';
+    await loadUsers();
+}
+
+function openOwnPassword() {
+    resetPasswordUser = null;
+    el('pwModalTitle').textContent = 'Change Password';
+    el('pwCurrentRow').style.display = '';
+    el('pwCurrent').value = '';
+    el('pwNew').value = '';
+    el('pwModalMsg').textContent = '';
+    el('pwModal').classList.add('open');
+    el('pwCurrent').focus();
+}
+
+function openResetPassword(username) {
+    resetPasswordUser = username;
+    el('pwModalTitle').textContent = 'Set Password — ' + username;
+    el('pwCurrentRow').style.display = 'none';
+    el('pwNew').value = '';
+    el('pwModalMsg').textContent = '';
+    el('pwModal').classList.add('open');
+    el('pwNew').focus();
+}
+
+function closePwModal() {
+    el('pwModal').classList.remove('open');
+    resetPasswordUser = null;
+}
+
+async function savePwModal() {
+    const next = el('pwNew').value;
+    if (!next) {
+        el('pwModalMsg').textContent = 'New password is required.';
+        return;
+    }
+
+    const target = resetPasswordUser;
+    const r = await fetch(target ? '/api/auth/users/password' : '/api/auth/password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(target
+            ? { username: target, newPassword: next }
+            : { currentPassword: el('pwCurrent').value, newPassword: next })
+    });
+    const payload = await r.json().catch(() => ({}));
+    if (!r.ok) {
+        el('pwModalMsg').textContent = '✗ ' + (payload.error || r.status);
+        return;
+    }
+
+    el('pwModalMsg').textContent = '✓ Saved';
+    if (target) {
+        el('usersMessage').textContent = 'Password set for ' + target + '.';
+        await loadUsers();
+    }
+    setTimeout(closePwModal, 600);
+}
+
 const ROUTE_TO_TAB = {
   'connectivity/sources': 'connection',
   'connectivity/opc-da': 'opc-da',
@@ -4213,9 +4649,11 @@ const ROUTE_TO_TAB = {
   'tags/values': 'values',
   'ops/values': 'values', // bookmark alias
   'ops/logs': 'logs',
+  'ops/users': 'users',
   'ops/diagram': 'diagram',
   'help/guide': 'help',
-  'help/about': 'about'
+  'help/about': 'about',
+  'help/release-notes': 'changelog'
 };
 const DEFAULT_ROUTE = 'ops/monitor';
 
@@ -4264,7 +4702,9 @@ async function showTab(name, route) {
   if (activeTab === 'logs') { state.logsLoaded = false; loadLogs(true).catch(e => el('logMessage').textContent = '✗ ' + e.message); }
   if (activeTab === 'diagnostics' || activeTab === 'sessions') { diagnosticsActive = true; loadDiagnostics(); }
   else { diagnosticsActive = false; }
+  if (activeTab === 'users') { await loadUsers().catch(e => { el('usersMessage').textContent = '✗ ' + e.message; }); }
   if (activeTab === 'about') loadAppInfo().catch(e => el('aboutName').textContent = '✗ ' + e.message);
+  if (activeTab === 'changelog') loadChangelog().catch(e => el('changelogBody').innerHTML = '<span class="msg bad" role="alert">✗ ' + escapeHtml(e.message) + '</span>');
   if (activeTab === 'help') loadHelp().catch(e => { const c = el('helpLayout1'); if (c) c.innerHTML = '<span class="msg bad" role="alert">✗ ' + esc(e.message) + '</span>'; });
   if (activeTab === 'mx-component') { renderMx(); }
   if (activeTab === 'mqtt') { await loadMqtt(); }
@@ -5220,6 +5660,19 @@ function renderMarkdown(md) {
     if (inCode) html += '</code></pre>';
     return html;
 }
+// Release notes come from the bridge (the embedded CHANGELOG.md), so a deployed
+// bridge always shows the notes for the version it is actually running.
+let changelogLoaded = false;
+async function loadChangelog() {
+    if (changelogLoaded) return;
+    const p = await (await fetch('/api/changelog', { cache: 'no-store' })).json();
+    const body = el('changelogBody');
+    if (!body) return;
+    body.innerHTML = renderMarkdown(p.markdown || '');
+    el('changelogVersion').textContent = p.version ? 'Version ' + p.version : '';
+    changelogLoaded = true;
+}
+
 async function loadHelp() {
     if (helpLoaded) return;
     const p = await (await fetch('/api/help', { cache: 'no-store' })).json();
@@ -8735,11 +9188,16 @@ document.addEventListener('DOMContentLoaded', async () => {
       influx: 'historian/influx',
       diagram: 'ops/diagram',
       help: 'help/guide',
-      about: 'help/about'
+      about: 'help/about',
+      changelog: 'help/release-notes'
     };
     const initHashRaw = location.hash.replace(/^#\/?/, '');
     let initRoute = Object.prototype.hasOwnProperty.call(ROUTE_TO_TAB, initHashRaw) ? initHashRaw
       : (LEGACY_TAB_TO_ROUTE[initHashRaw] || DEFAULT_ROUTE);
+    // Authentication is opt-in (Auth:Enabled). Until sign-in succeeds, do not fetch
+    // anything: the gate answers 401 and the card is already on screen.
+    if (!await initAuth()) return;
+    if (!routeAllowed(initRoute)) initRoute = DEFAULT_ROUTE;
     await navigate(initRoute);
     await loadSources();
     await loadMappings();

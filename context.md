@@ -11,7 +11,7 @@ A bridge that mirrors OPC DA tag values into an OPC UA server, with a web dashbo
 - **UA inbound sources**: `SourceType=OpcUa` connects outbound as a UA client (`OpcUaSourceClient`) to external servers; feeds the same `BridgeState` → UA node pipeline.
 - **PLC drivers**: `SourceType=MelsecA3n` → `MelsecA3nClient` (1C Frame serial), `SourceType=S7200Ppi` → `S7200Client` (PPI serial); UI under Connectivity → Drivers.
 - **Dashboard**: ASP.NET Core minimal API + single-page HTML dashboard for sources, mappings, browsing, live values (with data-type column), MQTT, InfluxDB writer config, and Diagram topology.
-- **HMI**: Avalonia desktop operator Runtime (`OpcBridge.Hmi`) and standalone Designer (`OpcBridge.Hmi.Designer`). Runtime loads process displays from primary-bridge `/api/hmi/displays`, shows live multi-bridge tags, and opens popup faceplate/trend windows; Designer authors JSON display documents. Both talk HTTP + SignalR only (no DA/UA/COM). Faceplate chart loads history via bridge `GET /api/hmi/trends` (Influx proxy — HMI never holds an Influx token). Bridge can log opt-in tags to InfluxDB 2.x/3.x via writer. Auth / Android remain deferred non-goals.
+- **HMI**: Avalonia desktop operator Runtime (`OpcBridge.Hmi`) and standalone Designer (`OpcBridge.Hmi.Designer`). Runtime loads process displays from primary-bridge `/api/hmi/displays`, shows live multi-bridge tags, and opens popup faceplate/trend windows; Designer authors JSON display documents. Both talk HTTP + SignalR only (no DA/UA/COM). Faceplate chart loads history via bridge `GET /api/hmi/trends` (Influx proxy — HMI never holds an Influx token). Bridge can log opt-in tags to InfluxDB 2.x/3.x via writer. Dashboard sign-in with roles (Admin / Engineer / Operator / Viewer) is built in, opt-in via `Auth:Enabled`; Android remains a deferred non-goal.
 
 ## Project map
 
@@ -160,7 +160,19 @@ Endpoints (all in `Program.cs`):
 - `GET /api/interlinks` (and related write endpoints) — provider/consumer interlinks
 - MQTT config/status/values endpoints under `/api/mqtt/*`
 - Influx config/connect/status endpoints under `/api/influx/*` (opt-in per-tag `InfluxEnabled` logging)
+- `POST /api/auth/login` — `{username, password}` → sets the `opcbridge_session` cookie; `POST /api/auth/logout`; `GET /api/auth/me` (public, reports `authenticated`/`role`/`authEnabled`)
+- `POST /api/auth/password` — change your own password (any signed-in role)
+- `GET /api/auth/users` | `POST /api/auth/users` | `/api/auth/users/update` | `/api/auth/users/password` | `/api/auth/users/remove` — Admin-only user administration (users.json)
 - `GET /health` — `{ "status": "ok" }`
+
+### Dashboard authentication & roles
+
+Opt-in (`Auth:Enabled`, default true in the shipped `appsettings.json`; the test host disables it unless a test opts in). Enforcement is API-level, one table in `AuthPolicy` checked by `RoleGateMiddleware` — reads need `Viewer`, any mutation needs `Engineer`, with named overrides (`POST /api/hmi/write` → `Operator`, `/api/auth/users*` and `POST /api/session/resolve` → `Admin`). Sessions are in-memory (`AuthSessionStore`, sliding 12 h default, HttpOnly + SameSite=Strict cookie, not `Secure` because the dashboard is served over LAN http) — a restart signs everyone out.
+
+- **Users** live in `users.json` beside `mappings.json` (PBKDF2-SHA256, 100k iterations, per-user salt; the wire shape never carries the hash). An empty/missing file seeds `admin` / `admin` (logged as a warning). The last enabled administrator cannot be demoted, disabled or deleted; deleting/disabling a user or changing their role drops their live sessions immediately.
+- **Trusted HMI:** with `Auth:TrustHmi` (default true) the endpoints the Avalonia apps use stay open on the LAN — `/hmi` (SignalR), `/api/values`, `/api/hmi/tags`, `/api/hmi/trends`, `/api/hmi/displays`, `/api/hmi/write`. Set it false to require a session there too (the HMI apps hold no credentials). The dashboard faceplate writes tags through that same `/api/hmi/write`, so a trusted-LAN deployment leaves one write path reachable without signing in; the gate covers every other endpoint, and the dashboard hides what the signed-in role cannot do.
+- **Public surface:** `/health`, `/`, `/favicon.ico`, `/api/app-info`, `/api/version`, `/api/auth/login|logout|me`.
+- **Dashboard UI:** sign-in card (`#authOverlay`) shown when `/api/auth/me` reports unauthenticated; header user chip with role badge + Sign out; a 401 from any fetch re-opens the card; nav sections requiring Engineer (Sources, Drivers, PLC Groups, Maps, Interlinks, MQTT, InfluxDB) are hidden below Engineer, and the Users page (`ops/users`) is Admin-only.
 
 HMI note: the operator UI is not embedded in the dashboard; run `dotnet run --project src/OpcBridge.Hmi` against the bridge base URL. Historical trends are served only through the bridge proxy; the HMI has no Influx config or token.
 

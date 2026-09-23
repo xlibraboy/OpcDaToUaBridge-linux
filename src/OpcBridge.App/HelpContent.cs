@@ -23,7 +23,7 @@ The sidebar groups pages by job:
 - **IoT** — MQTT (broker config), Traffic (publish/subscribe monitor)
 - **Historian** — InfluxDB (config, write status, per-tag enable via faceplate)
 - **Ops** — Monitor (status, resources), Diagnostics (bridge vitals: uptime, values/sec, poll duration), Live Values (live tag values), Sessions (DA source diagnostics, time sync, UA sessions/subscriptions, bandwidth), Logs, Diagram
-- **Help** — Guide, About
+- **Help** — Guide, Release Notes (what changed in this version), About
 
 Use **Sources → OPC DA → + Add Source** for the guided setup wizard.
 Use **Sources → OPC DA** to edit ProgID/host, credentials, default rate, subscriptions, discover servers, and backup/restore.
@@ -104,6 +104,7 @@ Use **IoT → MQTT → Setup Wizard** and **Historian → InfluxDB → Setup Wiz
   │  Ops ──► Monitor, Diagnostics, Live Values,                          │
   │           Sessions, Logs, Diagram                                    │
   │  Help ──► Guide, About                                               │
+  │           Release Notes                                              │
   │                                                                      │
   │  HTTP API: /api/dashboard, /api/mappings, /api/da/sources, etc.      │
   │                                                                      │
@@ -872,6 +873,8 @@ Updates are **local only** — no internet, no admin. Overwrite the DLLs and res
 3. **Get the new version files** — a `publish` folder from the developer (USB drive, network share, SCP, etc.)
 
 ## What's in a new version
+
+**Help ▸ Release Notes** (also `GET /api/changelog`) lists what changed in the version that is running — no need to open the package or ask the developer.
 
 The new `publish` folder contains updated DLLs and possibly updated scripts:
 
