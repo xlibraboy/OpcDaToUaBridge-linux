@@ -139,8 +139,13 @@ internal static class DashboardPage
            Article prose is left alone: browsers ignore balance past a few lines. */
         .view-title, .help-article-title, .help-body h3, .help-body h4, .modal-h .n { text-wrap: balance; }
         .hint, .msg, .alarm-bar, .first-run-banner, .session-warn-banner, .port-banner, .help-noresults { text-wrap: pretty; }
-        /* Status rail. Auto height on purpose: it wraps instead of clipping. */
+        /* Status bar. Auto height on purpose: it wraps instead of clipping. */
         .topbar { display: flex; align-items: stretch; gap: 0; min-height: 53px; padding: 0 14px; background: var(--panel); border-bottom: 2px solid var(--text); flex-wrap: wrap; }
+        /* Two rails share the bar: what the bridge is doing on the left, who is signed
+           in and how it looks on the right. The free space falls between the rails, so
+           the controls stay one cluster instead of drifting apart at wide widths. */
+        .status-rail { display: flex; align-items: stretch; gap: 0; min-width: 0; flex-wrap: wrap; }
+        .utility-rail { display: flex; align-items: stretch; gap: 0; justify-content: flex-end; margin-left: auto; flex-wrap: wrap; }
         .brand { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: var(--fs-title); letter-spacing: -.01em; white-space: nowrap; padding-right: 14px; }
         .dot { width: 9px; height: 9px; border-radius: 1px; background: var(--good); flex: none; }
         .ver { font-family: var(--font-mono); font-size: var(--fs-micro); font-weight: 400; color: var(--muted); border: 1px solid var(--border2); border-radius: 2px; padding: 0 5px; margin-left: 2px; }
@@ -151,7 +156,7 @@ internal static class DashboardPage
         .pill .k { color: var(--muted); text-transform: uppercase; font-size: var(--fs-micro); letter-spacing: .08em; font-family: var(--font-mono); }
         .pill .badge, .pill .good, .pill .bad, .pill .warn { font-size: var(--fs-micro); }
         .pill.fed { background: var(--fed-bg); color: var(--fed-text); }
-        .topbar .clock { margin-left: auto; display: flex; align-items: center; color: var(--ink2); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--fs-body); white-space: nowrap; padding-left: 14px; border-left: 1px solid var(--border); }
+        .topbar .clock { display: flex; align-items: center; color: var(--ink2); font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--fs-body); white-space: nowrap; padding-left: 14px; border-left: 1px solid var(--border); }
         .topbar .clock.off { color: var(--bad); font-weight: 600; }
         /* Theme picker: three settings with visible labels; ink marks the active one. */
         .theme-switch { display: flex; align-items: center; border-left: 1px solid var(--border); padding-left: 14px; }
@@ -860,8 +865,9 @@ internal static class DashboardPage
             .brand { padding-right: 10px; }
             .pill { padding: 5px 10px; }
             .pill .k { font-size: var(--fs-micro); }
-            .topbar .clock { margin-left: 0; border-left: none; padding-left: 0; padding-bottom: 8px; }
-            .theme-switch { margin-left: auto; border-left: none; padding-left: 10px; }
+            .user-chip { border-left: none; padding-left: 0; padding-right: 0; }
+            .theme-switch { border-left: none; padding-left: 10px; }
+            .topbar .clock { border-left: none; padding-left: 0; padding-bottom: 8px; }
             .view { padding: 14px 12px 48px; }
             .box-b { padding: 10px; }
             .mon-stat-group { border-right: none; border-bottom: 1px solid var(--border); }
@@ -909,7 +915,7 @@ internal static class DashboardPage
         .auth-card .field { margin-bottom: 10px; }
         .auth-card .btn { width: 100%; justify-content: center; }
         .auth-error { color: #c62828; font-size: var(--fs-micro); font-family: var(--font-mono); min-height: 15px; margin-top: 8px; }
-        .user-chip { display: flex; align-items: center; gap: 6px; margin-left: 10px; }
+        .user-chip { display: flex; align-items: center; gap: 6px; border-left: 1px solid var(--border); padding-left: 14px; padding-right: 10px; }
         .user-chip .un { font-size: var(--fs-micro); font-family: var(--font-mono); }
         .user-role { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .06em; border: 1px solid var(--border2); padding: 1px 5px; color: var(--muted); white-space: nowrap; }
         .users-list { border: 1px solid var(--border2); }
@@ -924,26 +930,30 @@ internal static class DashboardPage
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
 <div class="topbar" role="banner">
-    <div class="brand"><span class="dot" id="dot" aria-hidden="true"></span>OPC Bridge <span class="ver" id="appVersion"></span></div>
-    <div class="pills">
-        <div class="pill"><span class="k">Sources</span><b id="pSources">0</b><span id="pSourcesState">&#8212;</span></div>
-        <div class="pill"><span class="k">Bridge</span><span id="pBridge">&#8212;</span></div>
-        <div class="pill"><span class="k">UA</span><span id="pUa">&#8212;</span></div>
-        <div class="pill"><span class="k">Tags</span><b id="pTags">0</b></div>
-        <div class="pill"><span class="k">Apps</span><b id="pApps">1</b></div>
+    <div class="status-rail">
+        <div class="brand"><span class="dot" id="dot" aria-hidden="true"></span>OPC Bridge <span class="ver" id="appVersion"></span></div>
+        <div class="pills">
+            <div class="pill"><span class="k">Sources</span><b id="pSources">0</b><span id="pSourcesState">&#8212;</span></div>
+            <div class="pill"><span class="k">Bridge</span><span id="pBridge">&#8212;</span></div>
+            <div class="pill"><span class="k">UA</span><span id="pUa">&#8212;</span></div>
+            <div class="pill"><span class="k">Tags</span><b id="pTags">0</b></div>
+            <div class="pill"><span class="k">Apps</span><b id="pApps">1</b></div>
+        </div>
     </div>
-    <div class="user-chip" id="userChip" style="display:none">
-        <span class="un" id="userName"></span>
-        <span class="user-role" id="userRole"></span>
-        <button class="btn ghost" id="btnOwnPassword" type="button" onclick="openOwnPassword()">Password</button>
-        <button class="btn ghost" id="btnSignOut" type="button" onclick="doLogout()">Sign out</button>
+    <div class="utility-rail">
+        <div class="user-chip" id="userChip" style="display:none">
+            <span class="un" id="userName"></span>
+            <span class="user-role" id="userRole"></span>
+            <button class="btn ghost" id="btnOwnPassword" type="button" onclick="openOwnPassword()">Password</button>
+            <button class="btn ghost" id="btnSignOut" type="button" onclick="doLogout()">Sign out</button>
+        </div>
+        <div class="theme-switch" role="group" aria-label="Color theme">
+            <label class="theme-opt"><input type="radio" name="theme" value="light"><svg class="theme-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>Light</label>
+            <label class="theme-opt"><input type="radio" name="theme" value="dark"><svg class="theme-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z"/></svg>Dark</label>
+            <label class="theme-opt"><input type="radio" name="theme" value="system"><svg class="theme-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/></svg>System</label>
+        </div>
+        <div class="clock" id="clock">&#8212;</div>
     </div>
-    <div class="theme-switch" role="group" aria-label="Color theme">
-        <label class="theme-opt"><input type="radio" name="theme" value="light"><svg class="theme-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>Light</label>
-        <label class="theme-opt"><input type="radio" name="theme" value="dark"><svg class="theme-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z"/></svg>Dark</label>
-        <label class="theme-opt"><input type="radio" name="theme" value="system"><svg class="theme-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/></svg>System</label>
-    </div>
-    <div class="clock" id="clock">&#8212;</div>
 </div>
 <div class="app-shell">
 <div class="tabbar" role="navigation" aria-label="Sections">

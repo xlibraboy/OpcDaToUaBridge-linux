@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+**Status bar rails.** The bar was one flat row, so the free space landed wherever it
+fell: the signed-in user sat wedged between the status pills and the theme picker, while
+the clock was pushed alone to the far edge. The bar is now two rails — bridge status
+(brand, version, pills) on the left, and the operator cluster (`Administrator`, role,
+`Password`, `Sign out`) joined with the theme picker and the clock on the right — so
+identity and controls read as one group and the slack lands between the rails.
+
 ### Fixed
 
 **Session warning banner buttons.** `Resolve` and `Dismiss` sat a wide, uneven distance
