@@ -1,6 +1,6 @@
 # context.md — OpcBridge
 
-Instruction file for AI agents working in this repo. All facts below are verified against committed code on `main` as of 2026-09-23 (`8b6d26c`).
+Instruction file for AI agents working in this repo. All facts below are verified against committed code on `main` as of 2026-09-24 (`3f9acde`).
 
 ## What this project is
 
@@ -163,6 +163,7 @@ Endpoints (all in `Program.cs`):
 - `POST /api/auth/login` — `{username, password}` → sets the `opcbridge_session` cookie; `POST /api/auth/logout`; `GET /api/auth/me` (public, reports `authenticated`/`role`/`authEnabled`)
 - `POST /api/auth/password` — change your own password (any signed-in role)
 - `GET /api/auth/users` | `POST /api/auth/users` | `/api/auth/users/update` | `/api/auth/users/password` | `/api/auth/users/remove` — Admin-only user administration (users.json)
+- `GET /api/changelog` — `{markdown, version}` from the `CHANGELOG.md` embedded in the assembly at build time; any signed-in role (Viewer default), powers Help ▸ Release Notes. One copy means the repo file, the served text and the released version cannot drift apart.
 - `GET /health` — `{ "status": "ok" }`
 
 ### Dashboard authentication & roles
@@ -243,7 +244,7 @@ docker run --rm -v "$PWD/<worktree>":/src -w /src -v "$HOME/.nuget-cache":/home/
   -e HOME=/home/build -e DOTNET_CLI_HOME=/home/build --user "$(id -u):$(id -g)" \
   mcr.microsoft.com/dotnet/sdk:8.0 dotnet test tests/OpcBridge.LoadTest/OpcBridge.LoadTest.csproj
 ```
-`--user` keeps build artifacts iwan-owned (rootful daemon). Full suite: **869 tests** (xUnit, `tests/OpcBridge.LoadTest`), ~13–16 min in Docker on this host across three consecutive full runs — trust the run's own total over the wall time. The suite has grown well past the previous count (source/bridge tag-browser, mapping-range and trend-scale tests joined). Known flaky: `InfluxApiTests.InfluxConfig_Post_Persists_EnabledFlag` (historically failed in full-suite order, passes isolated — green in the last three full runs).
+`--user` keeps build artifacts iwan-owned (rootful daemon). Full suite: **964 tests** (xUnit, `tests/OpcBridge.LoadTest`), ~12–16 min in Docker on this host — trust the run's own total over the wall time. The suite has grown well past the previous count (auth/role, user-store and changelog tests joined). Known flaky: `InfluxApiTests.InfluxConfig_Post_Persists_EnabledFlag` (historically failed in full-suite order, passes isolated — green in the latest full run).
 
 **Worktree workflow (session convention):** fixes live in `git worktree add .worktrees/<branch-slug> -b <branch> main`; one worktree per branch; full suite per branch before merge; merge to main with `--no-ff`; push to origin. **Tool path quirk:** `edit`/`write` with relative `.worktrees/...` paths sometimes land in the main checkout — always use absolute paths and verify with grep after. `.dockerignore` excludes `.worktrees/` (7+ GB) so images can be built from the main checkout.
 
@@ -314,7 +315,7 @@ Package `publish.tmp` → tar.gz, SCP to host as `publish-new.tar.gz`, then run 
 - **Failure-resilient by default.** Errors are surfaced in the dashboard (per-source state, `LastError`), not fatal. A failed connect must leave the app alive and recoverable.
 - **Backend-first.** Verify the backend seam (`ISourceClient`, `BridgeWorker`, `BridgeState`) before wiring dashboard controls.
 - **Conventional commits** (`feat:`, `fix:`, etc.). Committed code on `main` is authoritative; uncommitted changes are a known risk.
-- **Tests exist** under `tests/OpcBridge.LoadTest` (xUnit, 869 tests). Prefer `InternalsVisibleTo` over making types public for tests. Run in Docker (command above). Primary verification is the full suite + rig/browser proof after deploy.
+- **Tests exist** under `tests/OpcBridge.LoadTest` (xUnit, 964 tests). Prefer `InternalsVisibleTo` over making types public for tests. Run in Docker (command above). Primary verification is the full suite + rig/browser proof after deploy.
 
 ## Gotchas
 
