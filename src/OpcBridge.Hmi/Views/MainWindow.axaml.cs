@@ -45,6 +45,9 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OnReleaseNotesClick(object? sender, RoutedEventArgs e) =>
+        ReleaseNotesWindow.ShowFor(this, "OpcBridge HMI", typeof(MainWindow).Assembly, "OpcBridge.Hmi.CHANGELOG.md");
+
     protected override void OnKeyDown(KeyEventArgs e)
     {
         if (ViewModel is not { } vm)

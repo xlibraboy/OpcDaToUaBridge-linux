@@ -15,6 +15,12 @@
   <ItemGroup>
     <AvaloniaResource Include="Assets/opcbridge-designer.ico" />
   </ItemGroup>
+  <!-- The release notes ship inside the assembly: Help ▸ Release notes shows the
+       embedded CHANGELOG.md, so the app and the file can never disagree. -->
+  <ItemGroup>
+    <None Remove="CHANGELOG.md" />
+    <EmbeddedResource Include="CHANGELOG.md" LogicalName="OpcBridge.Hmi.Designer.CHANGELOG.md" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.2.1" />
     <PackageReference Include="Avalonia.Desktop" Version="11.2.1" />

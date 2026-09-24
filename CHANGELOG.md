@@ -1,13 +1,29 @@
 # Changelog
 
-All notable changes to OpcBridge are documented in this file. The bridge serves this
-file at `GET /api/changelog` and renders it under **Help ▸ Release Notes**, so what
-operators read in the app is exactly what is written here.
+All notable changes to the OpcBridge **Server** — the bridge, its web dashboard and the
+shared libraries — are documented in this file. The bridge serves this file at
+`GET /api/changelog` and renders it under **Help ▸ Release Notes**, so what operators
+read in the app is exactly what is written here. It is also the release authority: the
+version in `Directory.Build.props`, the MSI version and the GitHub release notes follow
+its newest section.
+
+The two desktop apps keep their own logs and list only the releases that changed them:
+`src/OpcBridge.Hmi/CHANGELOG.md` (HMI runtime) and
+`src/OpcBridge.Hmi.Designer/CHANGELOG.md` (HMI designer). All three share one version.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Changed
+
+**Release notes are per app now.** The changelog was one file covering the bridge and
+both desktop apps; the server keeps its own — this one, the release authority that the
+MSI version and the release page follow — while the HMI runtime and the designer ship
+theirs (`src/OpcBridge.Hmi/CHANGELOG.md`, `src/OpcBridge.Hmi.Designer/CHANGELOG.md`),
+each listing only the releases that changed it. All three keep the shared version, and
+each app shows its own file under Help ▸ Release notes.
 
 ## [1.3.0] - 2026-09-24
 

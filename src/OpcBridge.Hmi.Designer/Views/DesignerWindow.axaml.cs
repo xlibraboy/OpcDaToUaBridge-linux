@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Input;
 using OpcBridge.Hmi.Designer.ViewModels;
+using OpcBridge.Hmi.Views;
 
 namespace OpcBridge.Hmi.Designer.Views;
 
@@ -21,6 +22,9 @@ public partial class DesignerWindow : Window
         => TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is TextBox;
 
     private void OnExitClick(object? sender, RoutedEventArgs e) => Close();
+
+    private void OnReleaseNotesClick(object? sender, RoutedEventArgs e) =>
+        ReleaseNotesWindow.ShowFor(this, "OpcBridge HMI Designer", typeof(DesignerWindow).Assembly, "OpcBridge.Hmi.Designer.CHANGELOG.md");
 
     private void OnAboutClick(object? sender, RoutedEventArgs e)
     {

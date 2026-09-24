@@ -134,17 +134,37 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $version = '${{ steps.version.outputs.version }}'
 
-          # Release notes are the CHANGELOG section for this version — the same text the
-          # bridge serves at /api/changelog, so the release page and the app agree.
+          # Release notes are composed from the three per-app changelogs: each file's
+          # '## [<version>]' section under its own heading. A file without that section
+          # means the release shipped the app unchanged; the server's CHANGELOG.md is the
+          # release authority and must always carry it.
           # -Encoding utf8 is required: without it Get-Content reads UTF-8 as ANSI and
           # mangles every em dash in the file.
-          $lines = Get-Content -Path CHANGELOG.md -Encoding utf8
-          $start = ($lines | Select-String -Pattern "^## \[$([regex]::Escape($version))\]").LineNumber
-          if (-not $start) { throw "CHANGELOG.md has no '## [$version]' section" }
-          $rest = @($lines[$start..($lines.Count - 1)])
-          $next = ($rest | Select-String -Pattern '^## \[' | Select-Object -Skip 1 -First 1).LineNumber
-          $body = if ($next) { @($rest[0..($next - 2)]) } else { $rest }
-          $body | Set-Content -Path build/release-notes.md -Encoding utf8
+          $changelogs = @(
+            @{ Label = 'OpcBridge Server'; Path = 'CHANGELOG.md' },
+            @{ Label = 'OpcBridge HMI Runtime'; Path = 'src/OpcBridge.Hmi/CHANGELOG.md' },
+            @{ Label = 'OpcBridge HMI Designer'; Path = 'src/OpcBridge.Hmi.Designer/CHANGELOG.md' }
+          )
+
+          $notes = @()
+          foreach ($changelog in $changelogs) {
+            $notes += "## $($changelog.Label)"
+            $notes += ''
+            $lines = Get-Content -Path $changelog.Path -Encoding utf8
+            $start = ($lines | Select-String -Pattern "^## \[$([regex]::Escape($version))\]").LineNumber
+            if (-not $start) {
+              if ($changelog.Path -eq 'CHANGELOG.md') { throw "CHANGELOG.md has no '## [$version]' section" }
+              $notes += '_No changes in this release._'
+              $notes += ''
+              continue
+            }
+            $rest = @($lines[$start..($lines.Count - 1)])
+            $next = ($rest | Select-String -Pattern '^## \[' | Select-Object -Skip 1 -First 1).LineNumber
+            $body = if ($next) { @($rest[0..($next - 2)]) } else { $rest }
+            $notes += $body
+            $notes += ''
+          }
+          $notes | Set-Content -Path build/release-notes.md -Encoding utf8
 
           # The asset is named from Directory.Build.props, not the tag, so it always matches
           # what the Build MSI step above produced.

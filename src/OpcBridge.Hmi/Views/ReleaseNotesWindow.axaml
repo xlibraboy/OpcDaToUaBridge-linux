@@ -1,0 +1,27 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="OpcBridge.Hmi.Views.ReleaseNotesWindow"
+        Title="Release notes"
+        FontSize="11"
+        Width="720"
+        Height="620"
+        MinWidth="480"
+        MinHeight="360"
+        WindowStartupLocation="CenterOwner">
+  <DockPanel Margin="12">
+    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="8" Margin="0,10,0,0">
+      <Button Classes="primary" Content="Close" Click="OnCloseClick" IsCancel="True" MinWidth="90" />
+      <TextBlock Classes="hint"
+                 VerticalAlignment="Center"
+                 Text="What changed in the version you are running." />
+    </StackPanel>
+    <Border BorderBrush="{DynamicResource CardBorderBrush}"
+            BorderThickness="1"
+            CornerRadius="4"
+            Padding="10">
+      <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+        <SelectableTextBlock x:Name="Notes" TextWrapping="Wrap" LineHeight="18" />
+      </ScrollViewer>
+    </Border>
+  </DockPanel>
+</Window>

@@ -2,7 +2,7 @@
   OpcBridge Windows installer (WiX v5 schema, built with the `wix` dotnet tool).
 
   Built by .github/workflows/windows-release.yml on a Windows runner, which supplies:
-    -define MsiVersion=<x.y.z>   from Directory.Build.props (must equal the newest CHANGELOG.md release)
+    -define MsiVersion=<x.y.z>   from Directory.Build.props (must equal the newest release in the server's CHANGELOG.md)
     -d HttpPort=<port>           bridge HTTP port (default 8080)
     -d UaPort=<port>             bridge OPC UA port (default 4840)
     build/wix/AppFiles-x86.wxs          harvested OpcBridge.App (server) files

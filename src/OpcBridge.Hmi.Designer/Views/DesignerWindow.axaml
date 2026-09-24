@@ -36,6 +36,7 @@
         <MenuItem Header="Show grid" ToggleType="CheckBox" IsChecked="{Binding ShowGrid}" />
       </MenuItem>
       <MenuItem Header="_Help">
+        <MenuItem Header="Release notes" Click="OnReleaseNotesClick" />
         <MenuItem Header="Designer tips" Click="OnAboutClick" />
       </MenuItem>
     </Menu>

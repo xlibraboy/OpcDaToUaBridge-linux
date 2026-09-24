@@ -6,8 +6,10 @@
     version reported by /api/version, /api/app-info, the assembly metadata and the
     Windows publish all agree without being edited per project.
 
-    Bump this together with the newest released section of CHANGELOG.md —
-    tests/OpcBridge.LoadTest/ChangelogTests.cs fails if the two drift apart.
+    Bump this together with the newest released section of the server's
+    CHANGELOG.md — tests/OpcBridge.LoadTest/ChangelogTests.cs fails if the two
+    drift apart. The per-app changelogs (OpcBridge.Hmi, OpcBridge.Hmi.Designer)
+    carry only the releases that changed them; the version stays shared.
   -->
   <PropertyGroup>
     <Version>1.3.0</Version>

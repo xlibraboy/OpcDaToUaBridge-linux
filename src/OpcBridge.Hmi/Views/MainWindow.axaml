@@ -42,6 +42,7 @@
         <MenuItem Header="Connection and display settings" Command="{Binding ShowConfigCommand}" />
       </MenuItem>
       <MenuItem Header="_Help">
+        <MenuItem Header="Release notes" Click="OnReleaseNotesClick" />
         <MenuItem Header="About" Click="OnAboutClick" />
       </MenuItem>
     </Menu>
