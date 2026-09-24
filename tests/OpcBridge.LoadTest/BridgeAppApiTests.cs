@@ -62,5 +62,30 @@ public sealed class BridgeAppApiTests
         Assert.False(string.IsNullOrWhiteSpace(machineName.GetString()));
         Assert.True(appInfo.RootElement.TryGetProperty("name", out var name));
         Assert.Equal("OpcBridge.App", name.GetString());
+
+        // No Profile section: the dashboard hides the Personal Profile box on these values.
+        Assert.Equal(string.Empty, appInfo.RootElement.GetProperty("creator").GetString());
+        Assert.Equal(string.Empty, appInfo.RootElement.GetProperty("section").GetString());
+    }
+
+    [Fact]
+    public async Task AppInfo_ReturnsConfiguredProfile()
+    {
+        await using var handle = await TestAppHandle.StartAsync(dir =>
+        {
+            var appsettings = new
+            {
+                Da = new { ProgId = "Matrikon.OPC.Simulation.1", Host = "localhost", UpdateRateMs = 1000, UseSubscriptions = true },
+                Ua = new { ApplicationName = "OpcBridge", EndpointUrl = "opc.tcp://0.0.0.0:4840/OpcBridge", AutoAcceptUntrustedCertificates = true, RequireAuthentication = false, Username = "", Password = "", AllowedIpAddresses = Array.Empty<string>() },
+                Bridge = new { RateLimits = new { }, ExpectedTagCount = 100, Mappings = Array.Empty<object>() },
+                Mqtt = new { Enabled = false, BrokerUrl = "tcp://localhost:1883", ClientId = "OpcBridge", UserName = (string?)null, Password = (string?)null, Tls = false, IgnoreCertErrors = false, TopicPrefix = "bridge/tags", PayloadFields = "Value, Timestamp" },
+                Profile = new { Creator = "Budi Kurniawan", Section = "AM2" }
+            };
+            File.WriteAllText(Path.Combine(dir, "appsettings.json"), JsonSerializer.Serialize(appsettings, new JsonSerializerOptions { WriteIndented = true }));
+        });
+
+        using var appInfo = await handle.GetJsonAsync("/api/app-info");
+        Assert.Equal("Budi Kurniawan", appInfo.RootElement.GetProperty("creator").GetString());
+        Assert.Equal("AM2", appInfo.RootElement.GetProperty("section").GetString());
     }
 }

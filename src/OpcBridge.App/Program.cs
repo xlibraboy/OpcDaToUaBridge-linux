@@ -171,6 +171,7 @@ builder.Services.Configure<MqttBrokerOptions>(builder.Configuration.GetSection("
 builder.Services.Configure<InfluxOptions>(builder.Configuration.GetSection("Influx"));
 builder.Services.Configure<HmiOptions>(builder.Configuration.GetSection("Hmi"));
 builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection("Auth"));
+builder.Services.Configure<ProfileOptions>(builder.Configuration.GetSection("Profile"));
 builder.Services.AddSingleton<UserStore>();
 builder.Services.AddSingleton<AuthSessionStore>();
 builder.Services.AddSingleton<LoginThrottle>();
@@ -643,9 +644,9 @@ app.MapGet("/api/logs", (DashboardLogStore logStore, int? limit, string? level) 
         })
     });
 });
- app.MapGet("/api/app-info", () =>
+ app.MapGet("/api/app-info", (IOptions<ProfileOptions> profile) =>
  {
-     var info = AppInfoSnapshot.CreateCurrent();
+     var info = AppInfoSnapshot.CreateCurrent(profile.Value.Creator, profile.Value.Section);
      return Results.Json(new
      {
          name = info.Name,

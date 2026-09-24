@@ -232,6 +232,7 @@ internal static class DashboardPage
         .mon-stat-group .stat:last-child { border-bottom: none; padding-bottom: 0; }
         /* The lead row gives every column one prominent token: a state stamp or a reading. */
         .stat { background: none; border: none; border-bottom: 1px solid var(--border); border-radius: 0; padding: 10px 0 9px; }
+        .profile-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0 16px; }
         /* ---- Data flow (Monitor lead) -------------------------------------
            The plant's real path: every source feeds the bridge, the bridge
            publishes to the UA server. Nodes stay real markup so their labels
@@ -1968,8 +1969,21 @@ internal static class DashboardPage
                 <div class="k">Architecture</div><div class="v" id="aboutArchitecture">—</div>
                 <div class="k">Operating System</div><div class="v" id="aboutOs">—</div>
                 <div class="k">Machine</div><div class="v" id="aboutMachine">—</div>
-                <div class="k">Creator</div><div class="v" id="aboutCreator">—</div>
-                <div class="k">Section</div><div class="v" id="aboutSection">—</div>
+            </div>
+        </div>
+    </div>
+    <div class="box" id="boxPersonalProfile" style="margin-top:14px;display:none">
+        <div class="box-h">Personal Profile</div>
+        <div class="box-b">
+            <div class="profile-stats">
+                <div class="stat" id="personalCreatorCell">
+                    <div class="k">Creator</div>
+                    <div class="v" id="aboutCreator">—</div>
+                </div>
+                <div class="stat" id="personalSectionCell">
+                    <div class="k">Section</div>
+                    <div class="v" id="aboutSection">—</div>
+                </div>
             </div>
         </div>
     </div>
@@ -5689,8 +5703,13 @@ async function loadAppInfo(force = false) {
     el('aboutArchitecture').textContent = payload.processArchitecture || '—';
     el('aboutOs').textContent = payload.osDescription || '—';
     el('aboutMachine').textContent = payload.machineName || '—';
-    el('aboutCreator').textContent = payload.creator || '—';
-    el('aboutSection').textContent = payload.section || '—';
+    const creator = (payload.creator || '').trim();
+    const section = (payload.section || '').trim();
+    el('aboutCreator').textContent = creator || '—';
+    el('aboutSection').textContent = section || '—';
+    el('personalCreatorCell').style.display = creator ? '' : 'none';
+    el('personalSectionCell').style.display = section ? '' : 'none';
+    el('boxPersonalProfile').style.display = (creator || section) ? '' : 'none';
     state.appInfoLoaded = true;
 }
 

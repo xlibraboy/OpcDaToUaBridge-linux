@@ -14,7 +14,7 @@ public sealed record AppInfoSnapshot(
     string Creator,
     string Section)
 {
-    public static AppInfoSnapshot CreateCurrent()
+    public static AppInfoSnapshot CreateCurrent(string creator = "", string section = "")
     {
         Assembly assembly = typeof(AppInfoSnapshot).Assembly;
         AssemblyName assemblyName = assembly.GetName();
@@ -26,7 +26,7 @@ public sealed record AppInfoSnapshot(
             RuntimeInformation.ProcessArchitecture.ToString(),
             RuntimeInformation.OSDescription,
             Environment.MachineName,
-            "Budi Kurniawan",
-            "AM2");
+            creator,
+            section);
     }
 }
