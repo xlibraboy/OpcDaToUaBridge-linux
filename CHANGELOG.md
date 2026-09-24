@@ -11,6 +11,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+**Idle sign-out.** A dashboard left open on an unattended workstation stayed signed in
+forever: its 1-second poll counted as activity, so the session's sliding lifetime never
+lapsed. Sessions now end after `Auth:IdleMinutes` (default 30) without real input — the
+tab tracks mouse, keyboard, wheel, scroll and touch activity, shared across tabs because
+they share one session cookie, then returns to the sign-in card explaining why. The
+server drops the session on the same window, so a closed tab, a shut-down browser or a
+replayed cookie cannot outlive it; set `IdleMinutes` to `0` to disable the check and keep
+only `SessionHours`.
+
 **Application icons.** The three Windows apps shipped without one, so Explorer and the
 Start Menu showed the generic blank icon for `OpcBridge.App.exe`, `OpcBridge.Hmi.exe` and
 `OpcBridge.Hmi.Designer.exe`. Each exe now carries its own icon — the bridge, the operator

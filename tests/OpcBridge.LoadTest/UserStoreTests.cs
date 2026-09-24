@@ -212,4 +212,59 @@ public sealed class UserStoreTests : IDisposable
         sessions.Remove(other);
         Assert.False(sessions.TryValidate(other, out _, out _));
     }
+
+    [Fact]
+    public void SessionStore_SignsOutSessionsIdleBeyondTheWindow()
+    {
+        TestClock clock = new();
+        AuthSessionStore sessions = CreateSessionStore(clock, idleMinutes: 30);
+
+        string token = sessions.Create("op1", UserRole.Operator);
+
+        // A dashboard that keeps being used stays signed in however long the shift runs.
+        for (int i = 0; i < 8; i++)
+        {
+            clock.Advance(TimeSpan.FromMinutes(29));
+            Assert.True(sessions.TryValidate(token, out _, out _));
+        }
+
+        // The window without a request ends it, long before the 12h lifetime.
+        clock.Advance(TimeSpan.FromMinutes(30));
+        Assert.False(sessions.TryValidate(token, out _, out _));
+        Assert.False(sessions.TryValidate(token, out _, out _)); // and it is gone for good
+    }
+
+    [Fact]
+    public void SessionStore_IdleSignOutCanBeDisabled()
+    {
+        TestClock clock = new();
+        AuthSessionStore sessions = CreateSessionStore(clock, idleMinutes: 0);
+
+        string token = sessions.Create("op1", UserRole.Operator);
+
+        clock.Advance(TimeSpan.FromHours(11));
+        Assert.True(sessions.TryValidate(token, out _, out _));
+
+        // Only the sliding lifetime is left to end it.
+        clock.Advance(TimeSpan.FromHours(13));
+        Assert.False(sessions.TryValidate(token, out _, out _));
+    }
+
+    private static AuthSessionStore CreateSessionStore(TimeProvider clock, int idleMinutes) =>
+        new(Microsoft.Extensions.Options.Options.Create(new AuthOptions
+        {
+            Enabled = true,
+            SessionHours = 12,
+            IdleMinutes = idleMinutes
+        }), clock);
+
+    /// <summary>A clock the test moves by hand: the idle window is minutes wide, so waiting is not an option.</summary>
+    private sealed class TestClock : TimeProvider
+    {
+        private DateTimeOffset _now = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+
+        public override DateTimeOffset GetUtcNow() => _now;
+
+        public void Advance(TimeSpan delta) => _now += delta;
+    }
 }

@@ -965,6 +965,25 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
+    public void Script_SignsOutAfterTheServersIdleWindow()
+    {
+        // The 1s poll keeps the session alive by itself, so a workstation nobody is
+        // using would never reach the server's idle window. The tab tracks real input
+        // and signs itself out on the window the server reports (idleMinutes), so both
+        // sides agree; the reload then says why on the sign-in card.
+        Assert.Contains("function startIdleWatch(", DashboardPage.Script);
+        Assert.Contains("startIdleWatch(payload.idleMinutes);", DashboardPage.Script);
+        Assert.Contains("function stopIdleWatch(", DashboardPage.Script);
+        Assert.Contains("function noteActivity(", DashboardPage.Script);
+        Assert.Contains("function checkIdle(", DashboardPage.Script);
+        Assert.Contains("const IDLE_EVENTS = ['mousemove', 'mousedown', 'keydown', 'wheel', 'scroll', 'touchstart', 'touchmove'];", DashboardPage.Script);
+        Assert.Contains("sessionStorage.setItem(IDLE_KEY", DashboardPage.Script);
+        Assert.Contains("showAuthOverlay(takeIdleSignOutNote());", DashboardPage.Script);
+        // Tabs share the session cookie, so activity in one holds the others open.
+        Assert.Contains("new BroadcastChannel('opcbridge.idle')", DashboardPage.Script);
+    }
+
+    [Fact]
     public void Script_HasBalancedBraces()
     {
         // Regression guard: a bad merge once left a duplicate '}' inside

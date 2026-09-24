@@ -84,7 +84,9 @@ public static class AuthEndpoints
                 username = caller.Value.Username,
                 displayName = account?.DisplayName ?? caller.Value.Username,
                 role = UserRoles.Format(caller.Value.Role),
-                authEnabled = options.Value.Enabled
+                authEnabled = options.Value.Enabled,
+                // The dashboard signs itself out on the same window (0 = disabled).
+                idleMinutes = (int)options.Value.IdleTimeout.TotalMinutes
             });
         });
 

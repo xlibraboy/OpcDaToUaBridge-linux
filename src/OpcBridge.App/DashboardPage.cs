@@ -4334,7 +4334,8 @@ async function initAuth() {
 
     const signedIn = authSession.authenticated || !authSession.authEnabled;
     if (!signedIn) {
-        showAuthOverlay('');
+        // An idle sign-out reloads the page: show its reason once, then forget it.
+        showAuthOverlay(takeIdleSignOutNote());
         el('loginUser').focus();
         return false;
     }
@@ -4344,6 +4345,7 @@ async function initAuth() {
         el('userChip').style.display = '';
         el('userName').textContent = authSession.displayName || authSession.username;
         el('userRole').textContent = authSession.role;
+        startIdleWatch(payload.idleMinutes);
     }
     applyRoleUi();
     return true;
@@ -4409,6 +4411,70 @@ async function doLogin() {
 async function doLogout() {
     try { await fetch('/api/auth/logout', { method: 'POST' }); } catch (e) { /* sign out locally anyway */ }
     location.reload();
+}
+
+// ---- Idle sign-out ----------------------------------------------------------
+// The 1s poll counts as traffic, so the server's idle window alone would never be
+// reached on a workstation nobody is using. Real input is tracked here instead, and
+// when the window the server reports runs out the tab signs itself out. The server
+// drops the same session on that window too, which covers a tab that is closed or
+// never comes back.
+const IDLE_KEY = 'opcbridge.idleSignOut';
+const IDLE_EVENTS = ['mousemove', 'mousedown', 'keydown', 'wheel', 'scroll', 'touchstart', 'touchmove'];
+const IDLE_PING_MS = 1000;
+const IDLE_CHECK_MS = 5000;
+// Tabs share one session cookie, so activity in any tab must hold the others open —
+// otherwise a background tab would sign the whole browser out. Without
+// BroadcastChannel each tab watches only its own input.
+const idleChannel = typeof BroadcastChannel === 'function' ? new BroadcastChannel('opcbridge.idle') : null;
+let idleWatch = { minutes: 0, lastActivity: 0, timer: null };
+
+function startIdleWatch(minutes) {
+    const windowMinutes = Math.round(Number(minutes) || 0);
+    if (windowMinutes <= 0) return; // IdleMinutes 0: only the session lifetime applies.
+    idleWatch.minutes = windowMinutes;
+    idleWatch.lastActivity = Date.now();
+    IDLE_EVENTS.forEach(name => document.addEventListener(name, noteActivity, { passive: true, capture: true }));
+    if (idleChannel) idleChannel.onmessage = () => { idleWatch.lastActivity = Date.now(); };
+    idleWatch.timer = setInterval(checkIdle, IDLE_CHECK_MS);
+}
+
+function stopIdleWatch() {
+    idleWatch.minutes = 0;
+    if (idleWatch.timer) {
+        clearInterval(idleWatch.timer);
+        idleWatch.timer = null;
+    }
+}
+
+function noteActivity() {
+    const now = Date.now();
+    if (now - idleWatch.lastActivity < IDLE_PING_MS) return; // one ping a second is plenty
+    idleWatch.lastActivity = now;
+    if (idleChannel) idleChannel.postMessage('active');
+}
+
+function checkIdle() {
+    const minutes = idleWatch.minutes;
+    if (!minutes || Date.now() - idleWatch.lastActivity < minutes * 60000) return;
+    stopIdleWatch();
+    rememberIdleSignOut('Signed out after ' + minutes + ' minute' + (minutes === 1 ? '' : 's') + ' without activity.');
+    doLogout();
+}
+
+function rememberIdleSignOut(reason) {
+    try { sessionStorage.setItem(IDLE_KEY, reason); } catch (e) { /* the card just shows no reason */ }
+}
+
+// Read once: the reload the sign-out triggers puts the reason on the sign-in card.
+function takeIdleSignOutNote() {
+    try {
+        const reason = sessionStorage.getItem(IDLE_KEY) || '';
+        if (reason) sessionStorage.removeItem(IDLE_KEY);
+        return reason;
+    } catch (e) {
+        return '';
+    }
 }
 
 // ---- Users (Admin only; the server enforces it) ----

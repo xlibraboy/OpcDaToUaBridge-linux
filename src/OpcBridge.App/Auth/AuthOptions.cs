@@ -15,6 +15,15 @@ public sealed class AuthOptions
     public int SessionHours { get; set; } = 12;
 
     /// <summary>
+    /// Sign a dashboard session out after this many minutes without a request
+    /// (clamped to 1 minute – 24 hours); 0 disables the idle check and leaves only
+    /// <see cref="SessionLifetime"/>. The dashboard enforces the same window itself,
+    /// because its 1-second poll would otherwise count as activity forever on a
+    /// workstation nobody is using.
+    /// </summary>
+    public int IdleMinutes { get; set; } = 30;
+
+    /// <summary>
     /// Trust the Avalonia HMI apps on the LAN: leave the endpoints they call
     /// (/hmi hub, /api/hmi/*, /api/values) reachable without a dashboard login.
     /// Set false to require a session for them too (the HMI apps would then need
@@ -26,4 +35,8 @@ public sealed class AuthOptions
     public const string CookieName = "opcbridge_session";
 
     public TimeSpan SessionLifetime => TimeSpan.FromHours(Math.Clamp(SessionHours, 1, 168));
+
+    /// <summary>Effective idle window, or <see cref="TimeSpan.Zero"/> when idle sign-out is disabled.</summary>
+    public TimeSpan IdleTimeout =>
+        IdleMinutes > 0 ? TimeSpan.FromMinutes(Math.Clamp(IdleMinutes, 1, 1440)) : TimeSpan.Zero;
 }

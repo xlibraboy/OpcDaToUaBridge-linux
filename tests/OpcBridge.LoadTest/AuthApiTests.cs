@@ -23,7 +23,7 @@ public sealed class AuthApiTests
             Ua = new { ApplicationName = "OpcBridge", EndpointUrl = "opc.tcp://0.0.0.0:4840/OpcBridge", AutoAcceptUntrustedCertificates = true, RequireAuthentication = false, Username = "", Password = "", AllowedIpAddresses = Array.Empty<string>() },
             Bridge = new { RateLimits = new { }, ExpectedTagCount = 10, Mappings = Array.Empty<object>() },
             Mqtt = new { Enabled = false, BrokerUrl = "tcp://localhost:1883", ClientId = "OpcBridge", UserName = (string?)null, Password = (string?)null, Tls = false, IgnoreCertErrors = false, TopicPrefix = "bridge/tags", PayloadFields = "Value, Timestamp" },
-            Auth = new { Enabled = true, SessionHours = 12, TrustHmi = trustHmi }
+            Auth = new { Enabled = true, SessionHours = 12, IdleMinutes = 45, TrustHmi = trustHmi }
         };
         File.WriteAllText(
             Path.Combine(dir, "appsettings.json"),
@@ -146,6 +146,19 @@ public sealed class AuthApiTests
 
         using HttpResponseMessage users = await admin.Client.GetAsync("/api/auth/users");
         Assert.Equal(HttpStatusCode.OK, users.StatusCode);
+    }
+
+    [Fact]
+    public async Task Me_ReportsTheIdleWindow_TheDashboardSignsOutOn()
+    {
+        await using TestAppHandle handle = await TestAppHandle.StartAsync(dir => WriteAuthAppsettings(dir));
+
+        using Session admin = await Session.SignInAsync(handle.Client.BaseAddress!, "admin", "admin");
+        using HttpResponseMessage me = await admin.Client.GetAsync("/api/auth/me");
+        using JsonDocument body = JsonDocument.Parse(await me.Content.ReadAsStringAsync());
+
+        // The dashboard cannot guess it: its own poll would never let the server's window lapse.
+        Assert.Equal(45, body.RootElement.GetProperty("idleMinutes").GetInt32());
     }
 
     [Fact]
