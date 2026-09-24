@@ -1,16 +1,21 @@
 name: Windows release
 
-# Builds every Windows release artifact in one run: the .msi installer and the two
-# portable server zips.
+# Builds the Windows release artifact: the x86 .msi installer.
 #
 # The installer is built here, on Windows, because WiX cannot link an MSI on Linux (it
-# reports WIX0000 and fails to validate Directory/@Name). The Linux/Docker path
-# (scripts/msi/build-portable.sh) builds the same zips for local iteration.
+# reports WIX0000 and fails to validate Directory/@Name). It carries the x86 server (a
+# 32-bit process is required to activate 32-bit local OPC DA / MX Component COM servers),
+# plus the x64 HMI runtime and Designer, which only speak HTTP to the bridge.
+#
+# A win-x64 server publish is also produced and uploaded as a CI artifact for hosts whose
+# OPC DA servers are 64-bit only — a 32-bit bridge cannot activate those — but it is not
+# attached to the GitHub Release, which carries the MSI alone. scripts/msi/build-portable.sh
+# builds the same zips locally in the SDK container.
 #
 # The installer is a feature tree: server, HMI runtime and HMI designer are
 # individually selectable at install time.
 #
-# A `v*` tag push also publishes a GitHub Release carrying the MSI and both zips;
+# A `v*` tag push also publishes a GitHub Release carrying the MSI;
 # a manual workflow_dispatch run stops at the uploaded artifacts, because there is
 # no tag to release against.
 
@@ -98,20 +103,24 @@ jobs:
             build/wix/DesignerFiles.wxs `
             -o "dist/OpcBridge-${{ steps.version.outputs.version }}-win-x86.msi"
 
-      - name: Build portable zips
+      - name: Package the 64-bit server (CI artifact only)
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          python scripts/msi/make-zip.py build/publish-x86 "dist/OpcBridge-${{ steps.version.outputs.version }}-win-x86.zip"
           python scripts/msi/make-zip.py build/publish-x64 "dist/OpcBridge-${{ steps.version.outputs.version }}-win-x64.zip"
 
-      - name: Upload artifacts
+      - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
-          name: OpcBridge-${{ steps.version.outputs.version }}-win
-          path: |
-            dist/*.msi
-            dist/*.zip
+          name: OpcBridge-${{ steps.version.outputs.version }}-win-x86-msi
+          path: dist/*.msi
+          if-no-files-found: error
+
+      - name: Upload 64-bit server
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpcBridge-${{ steps.version.outputs.version }}-win-x64-server
+          path: dist/*-win-x64.zip
           if-no-files-found: error
 
       # Only a tagged run has something to release; a workflow_dispatch run stops above.
@@ -137,11 +146,9 @@ jobs:
           $body = if ($next) { @($rest[0..($next - 2)]) } else { $rest }
           $body | Set-Content -Path build/release-notes.md -Encoding utf8
 
-          # Assets are named from Directory.Build.props, not the tag, so they always
-          # match what the publish steps above produced.
+          # The asset is named from Directory.Build.props, not the tag, so it always matches
+          # what the Build MSI step above produced.
           gh release create $env:TAG `
             "dist/OpcBridge-$version-win-x86.msi" `
-            "dist/OpcBridge-$version-win-x86.zip" `
-            "dist/OpcBridge-$version-win-x64.zip" `
             --title "OpcBridge $version" `
             --notes-file build/release-notes.md
