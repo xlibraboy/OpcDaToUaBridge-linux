@@ -92,14 +92,24 @@ public sealed class PlcGroupSettingsTests
             new PlcGroupSettings("  Fast ", 1),     // clamped to 100
             new PlcGroupSettings("fast", 999),      // duplicate CI — first wins (100)
             new PlcGroupSettings("   ", 500),       // blank dropped
-            new PlcGroupSettings("Slow", 0)         // clamped to 100
+            new PlcGroupSettings("Slow", 0)         // no rate supplied — 1 s default
         });
 
         Assert.Equal(2, normalized.Count);
         Assert.Equal("Fast", normalized[0].Name);
         Assert.Equal(100, normalized[0].UpdateRateMs);
         Assert.Equal("Slow", normalized[1].Name);
-        Assert.Equal(100, normalized[1].UpdateRateMs);
+        Assert.Equal(1000, normalized[1].UpdateRateMs);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-250)]
+    public void NormalizePlcGroupRate_UnsuppliedRate_TakesOneSecondDefault(int rateMs)
+    {
+        Assert.Equal(1000, SourceConfigMigration.NormalizePlcGroupRate(rateMs));
+        Assert.Equal(100, SourceConfigMigration.NormalizePlcGroupRate(1));
+        Assert.Equal(250, SourceConfigMigration.NormalizePlcGroupRate(250));
     }
 
     [Fact]

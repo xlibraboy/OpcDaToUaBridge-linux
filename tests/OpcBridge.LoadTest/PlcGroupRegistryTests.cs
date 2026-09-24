@@ -88,6 +88,16 @@ public sealed class PlcGroupRegistryTests : IDisposable
     }
 
     [Fact]
+    public void Upsert_WithoutRate_DefaultsToOneSecond()
+    {
+        (DaRuntimeSettings settings, string sourceId) = CreateWithMxSource();
+
+        settings.UpsertPlcGroup(sourceId, "Default", 0);
+
+        Assert.Equal(1000, settings.GetSnapshot().GetSource(sourceId)!.PlcGroupsList[0].UpdateRateMs);
+    }
+
+    [Fact]
     public void Upsert_RejectsNonMxSource()
     {
         (DaRuntimeSettings settings, _) = CreateWithMxSource();

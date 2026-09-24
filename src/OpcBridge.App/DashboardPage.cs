@@ -7753,7 +7753,7 @@ async function plcGroupModalSave() {
     try {
         const sourceId = el('plcGroupName').dataset.sourceId;
         const name = el('plcGroupName').value.trim();
-        const rate = parseInt(el('plcGroupRate').value, 10) || 100;
+        const rate = parseInt(el('plcGroupRate').value, 10) || 1000;
         if (!sourceId) throw new Error('Pick a source first.');
         if (!name) throw new Error('Name is required.');
         if (rate < 100) throw new Error('Update rate must be at least 100 ms.');

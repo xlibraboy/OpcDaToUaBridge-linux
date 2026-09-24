@@ -25,6 +25,15 @@ theirs (`src/OpcBridge.Hmi/CHANGELOG.md`, `src/OpcBridge.Hmi.Designer/CHANGELOG.
 each listing only the releases that changed it. All three keep the shared version, and
 each app shows its own file under Help ▸ Release notes.
 
+### Fixed
+
+**PLC group rate when none is supplied.** Creating a PLC group through `POST
+/api/plc/groups` without an `updateRateMs` landed it on the 100 ms floor, so a group made
+by a script or an API client polled ten times faster than the dashboard's own Add PLC Group
+modal, which offers 1 s. A group posted without a rate now takes 1 s
+(`SourceConfigMigration.DefaultPlcGroupRateMs`), the same rate the dashboard shows by
+default; a rate that is supplied still clamps up to the 100 ms minimum.
+
 ## [1.3.0] - 2026-09-24
 
 ### Added

@@ -220,6 +220,27 @@ public sealed class PlcGroupApiTests
     }
 
     [Fact]
+    public async Task Upsert_WithoutRate_FallsBackToOneSecond()
+    {
+        await using TestAppHandle handle = await TestAppHandle.StartAsync(dir => WriteMinimalAppsettings(dir));
+        await SeedMxSourceAsync(handle, "mx1");
+
+        // No updateRateMs in the payload — the group takes the 1 s default, not the 100 ms floor.
+        using (HttpResponseMessage up = await handle.Client.PostAsync(
+            "/api/plc/groups",
+            JsonBody(new { sourceId = "mx1", name = "Default" })))
+        {
+            Assert.Equal(HttpStatusCode.OK, up.StatusCode);
+        }
+
+        using JsonDocument list = await handle.GetJsonAsync("/api/plc/groups?sourceId=mx1");
+        JsonElement groups = GetSource(list, "mx1").GetProperty("groups");
+        Assert.Equal(1, groups.GetArrayLength());
+        Assert.Equal("Default", groups[0].GetProperty("name").GetString());
+        Assert.Equal(1000, groups[0].GetProperty("updateRateMs").GetInt32());
+    }
+
+    [Fact]
     public async Task Get_ListsOnlyMxSources_WithMemberCounts()
     {
         await using TestAppHandle handle = await TestAppHandle.StartAsync(dir => WriteMinimalAppsettings(dir));

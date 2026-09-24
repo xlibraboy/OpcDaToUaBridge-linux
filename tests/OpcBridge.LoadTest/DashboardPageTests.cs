@@ -1151,6 +1151,14 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
+    public void Script_PlcGroupSave_DefaultsToTheOneSecondRate()
+    {
+        // An unreadable dropdown value must not fall back to the 100 ms floor: the modal
+        // opens at 1 s, and the server's own default for a rate left out is 1 s too.
+        Assert.Contains("parseInt(el('plcGroupRate').value, 10) || 1000", DashboardPage.Script);
+    }
+
+    [Fact]
     public void Html_Faceplate_HasPlcGroupField_AndBuilder()
     {
         Assert.Contains("id=\"fpPlcGroupField\"", DashboardPage.Html);

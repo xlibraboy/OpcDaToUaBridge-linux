@@ -263,7 +263,8 @@ public sealed class DaRuntimeSettings
 
     /// <summary>Add or update a named PLC group on an MxComponent source. Throws ArgumentException
     /// for unknown sources, non-MX sources (PLC Groups are MX Component-only this iteration),
-    /// invalid names, or past the 16-group cap. Clamps the rate to the 100 ms floor (spec §4).</summary>
+    /// invalid names, or past the 16-group cap. Clamps the rate to the 100 ms floor (spec §4);
+    /// a rate the caller leaves out takes the 1 s group default.</summary>
     public DaRuntimeSettingsSnapshot UpsertPlcGroup(string sourceId, string name, int updateRateMs)
     {
         string trimmed = (name ?? string.Empty).Trim();
@@ -272,7 +273,7 @@ public sealed class DaRuntimeSettings
             throw new ArgumentException("PLC group name must be 1-64 characters.", nameof(name));
         }
 
-        int clampedRate = Math.Max(100, updateRateMs);
+        int clampedRate = SourceConfigMigration.NormalizePlcGroupRate(updateRateMs);
 
         lock (sync_)
         {
@@ -1566,7 +1567,16 @@ public static class SourceConfigMigration
 
     public const int MaxPlcGroupsPerSource = 16;
 
-    /// <summary>Trim names, dedupe case-insensitively (first wins), clamp rates to >= 100 ms, drop blanks.</summary>
+    /// <summary>Rate a PLC group takes when no rate is supplied — the dashboard's 1 s default.</summary>
+    public const int DefaultPlcGroupRateMs = 1000;
+
+    /// <summary>PLC group rate rule: a supplied rate keeps the 100 ms floor (spec §4), an omitted
+    /// one (zero or negative) takes <see cref="DefaultPlcGroupRateMs"/> instead of the floor.</summary>
+    public static int NormalizePlcGroupRate(int updateRateMs)
+        => updateRateMs > 0 ? Math.Max(100, updateRateMs) : DefaultPlcGroupRateMs;
+
+    /// <summary>Trim names, dedupe case-insensitively (first wins), clamp rates to >= 100 ms
+    /// (omitted rates default to 1 s), drop blanks.</summary>
     public static IReadOnlyList<PlcGroupSettings> NormalizePlcGroups(IEnumerable<PlcGroupSettings>? groups)
     {
         if (groups is null)
@@ -1583,7 +1593,7 @@ public static class SourceConfigMigration
                 continue;
             }
 
-            int rate = Math.Max(100, group.UpdateRateMs);
+            int rate = NormalizePlcGroupRate(group.UpdateRateMs);
             if (!result.ContainsKey(name))
             {
                 result[name] = new PlcGroupSettings(name, rate);
