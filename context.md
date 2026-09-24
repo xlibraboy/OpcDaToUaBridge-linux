@@ -1,6 +1,6 @@
 # context.md — OpcBridge
 
-Instruction file for AI agents working in this repo. All facts below are verified against committed code on `main` as of 2026-09-24 (`3f9acde`).
+Instruction file for AI agents working in this repo. All facts below are verified against committed code on `main` as of 2026-09-24 (`ca1d52f`).
 
 ## What this project is
 
@@ -250,7 +250,7 @@ docker run --rm -v "$PWD/<worktree>":/src -w /src -v "$HOME/.nuget-cache":/home/
 
 **Windows host build:** `"%USERPROFILE%\AppData\Local\Microsoft\dotnet\dotnet.exe" build OpcBridge.sln` — the `C:\Program Files\dotnet` install lacks the ASP.NET shared framework. Stop the running app before building (it locks `OpcBridge.Ua.dll`).
 
-**Release artifacts:** `scripts/msi/build-portable.sh` publishes the server (win-x86 + win-x64) in the SDK container and writes the portable zips to `dist/`. The `.msi` is **not** built on Linux — WiX cannot link an MSI there (it warns `WIX0000` and then fails `Directory/@Name` validation, reproducible with a one-line package) — so `.github/workflows/windows-release.yml` builds the MSI *and* both zips on a Windows runner, on `workflow_dispatch` or a `v*` tag. WiX is pinned to 5.0.2 with extensions pinned to match (`wix extension add --global …/5.0.2`); unpinned resolves to 7.x, which WiX 5 rejects (`WIX6101`) and 6+ puts behind the OSMF licence. `scripts/msi/harvest.py` generates the file-list fragments into `build/wix/` (gitignored), emitting `Source` paths relative to the repo root and ids namespaced per fragment — WiX requires globally unique ids, and the HMI/Designer publishes share dependency file names.
+**Release artifacts:** the GitHub Release carries the x86 MSI alone (`dist/OpcBridge-<version>-win-x86.msi`). `scripts/msi/build-portable.sh` still publishes the server (win-x86 + win-x64) in the SDK container and writes the portable zips to `dist/` for local iteration. The `.msi` is **not** built on Linux — WiX cannot link an MSI there (it warns `WIX0000` and then fails `Directory/@Name` validation, reproducible with a one-line package) — so `.github/workflows/windows-release.yml` builds it on a Windows runner, on `workflow_dispatch` or a `v*` tag, and uploads the win-x64 server as a CI artifact for hosts whose OPC DA servers are 64-bit only (a 32-bit bridge cannot activate those); that zip is deliberately not a release asset. WiX is pinned to 5.0.2 with extensions pinned to match (`wix extension add --global …/5.0.2`); unpinned resolves to 7.x, which WiX 5 rejects (`WIX6101`) and 6+ puts behind the OSMF licence. `scripts/msi/harvest.py` generates the file-list fragments into `build/wix/` (gitignored), emitting `Source` paths relative to the repo root and ids namespaced per fragment — WiX requires globally unique ids, and the HMI/Designer publishes share dependency file names.
 
 ### Windows installer (`packaging/msi/OpcBridge.wxs`)
 
