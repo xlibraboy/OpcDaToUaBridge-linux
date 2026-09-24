@@ -9266,7 +9266,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     el('btnReloadServers').addEventListener('click', () => browseServers().catch(e => el('msgServers').textContent = e.message));
     el('btnBrowseTags').addEventListener('click', () => browseTags('').catch(e => el('tagTree').innerHTML = `<span class="bad">${esc(e.message)}</span>`));
     el('btnBrowseAllTags').addEventListener('click', () => browseTags('', true).catch(e => el('tagTree').innerHTML = `<span class="bad">${esc(e.message)}</span>`));
-    el('manualAdd').addEventListener('click', () => addManual().catch(e => alert('Add failed: ' + e.message)));
+    const submitManual = () => addManual().catch(e => alert('Add failed: ' + e.message));
+    el('manualAdd').addEventListener('click', submitManual);
+    // The global Enter/Space activation skips inputs, and address-based sources
+    // (MX Component, Drivers) have no browse tree, so both manual fields submit
+    // the same add the button runs.
+    for (const manualField of ['manualItem', 'manualUaNodeId']) {
+        el(manualField).addEventListener('keydown', event => {
+            if (event.key !== 'Enter') return;
+            event.preventDefault();
+            submitManual();
+        });
+    }
     el('mappingFilter').addEventListener('input', e => { state.mappingFilter = e.target.value; rerenderMappings(); });
     el('mappingSort').addEventListener('change', e => { state.mappingSort = e.target.value; rerenderMappings(); });
     el('mappingSortDir').addEventListener('click', () => { state.mappingSortDir *= -1; el('mappingSortDir').textContent = state.mappingSortDir > 0 ? '↑' : '↓'; rerenderMappings(); });

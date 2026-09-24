@@ -34,6 +34,13 @@ modal, which offers 1 s. A group posted without a rate now takes 1 s
 (`SourceConfigMigration.DefaultPlcGroupRateMs`), the same rate the dashboard shows by
 default; a rate that is supplied still clamps up to the 100 ms minimum.
 
+**Enter submits the Add Mapping box.** The mapping form only answered the Add Mapping
+button — the dashboard's global Enter/Space activation deliberately skips inputs — so a
+typed tag had no keyboard path. That cost the most on address-based sources (MX
+Component, Drivers), where the manual box is the only way to add a tag because there is
+no tag tree to browse. Enter in either the Item ID / Address field or the UA node field
+now runs the same add as the button.
+
 ## [1.3.0] - 2026-09-24
 
 ### Added

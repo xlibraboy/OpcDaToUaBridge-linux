@@ -351,6 +351,18 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
+    public void Script_ManualMappingAddsOnEnter()
+    {
+        // Address-based sources (MX Component, Drivers) have no browse tree, so the
+        // manual box is the only add path: Enter in either field must submit the
+        // same add the button runs.
+        Assert.Contains("el('manualAdd').addEventListener('click', submitManual)", DashboardPage.Script);
+        Assert.Contains("['manualItem', 'manualUaNodeId']", DashboardPage.Script);
+        Assert.Contains("if (event.key !== 'Enter') return;", DashboardPage.Script);
+        Assert.Contains("submitManual();", DashboardPage.Script);
+    }
+
+    [Fact]
     public void Html_MapsHasSourceTypeSubTabs()
     {
         Assert.Contains("id=\"mapTypeTabs\"", DashboardPage.Html);
