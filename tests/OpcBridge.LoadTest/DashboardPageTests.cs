@@ -1367,9 +1367,10 @@ public sealed class DashboardPageTests
         Assert.Contains("id=\"srcPagerNext\"", DashboardPage.Html);
         Assert.Contains("id=\"srcPagerCount\"", DashboardPage.Html);
         Assert.Contains("class=\"pager-btn\"", DashboardPage.Html);
-        // Five pages: Sources, OPC DA + DA Groups, OPC UA + UA Subs, Drivers,
-        // MX Component + PLC Groups.
-        Assert.Contains("data-page=\"4\"", DashboardPage.Html);
+        // Four pages: OPC DA + DA Groups, OPC UA + UA Subs, Drivers, MX Component +
+        // PLC Groups. Sources is pinned above the carousel, not a page of it.
+        Assert.Contains("class=\"pager-pinned\"", DashboardPage.Html);
+        Assert.Contains("data-page=\"3\"", DashboardPage.Html);
         Assert.Contains("data-state=\"opc-da\"", DashboardPage.Html);
         // Geometry of the two lines: the source sits at 28px with its 8px state
         // square, and the sub-page hangs off the rail at 31px on a deeper indent.
@@ -1384,6 +1385,8 @@ public sealed class DashboardPageTests
         Assert.Contains("function stepSourcePager(", DashboardPage.Script);
         Assert.Contains("function renderSourcePagerStates(", DashboardPage.Script);
         Assert.Contains("renderSourcePager();", DashboardPage.Script);
+        // Stepping to another group leaves the carousel on the source it showed.
+        Assert.Contains("state.sourcePage = index;", DashboardPage.Script);
         // The add-source wizard stays one click from the rail.
         Assert.Contains("class=\"nav-add\"", DashboardPage.Html);
         Assert.Contains("onclick=\"openAddSourceWizard()\"", DashboardPage.Html);

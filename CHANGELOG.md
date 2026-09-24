@@ -26,17 +26,18 @@ each listing only the releases that changed it. All three keep the shared versio
 each app shows its own file under Help ▸ Release notes.
 
 **The Sources rail pages one source at a time.** The group listed all eight entries flat,
-so the rail grew a line for every source added and would keep growing. It is now a pager:
-the two visible lines are the current source and the sub-page under it (OPC DA with DA
-Groups, OPC UA with UA Subs, MX Component with PLC Groups), the arrows walk the rest and a
-counter at the foot reads `3 / 5` — so the group keeps the same height however many
-sources are configured. Sources, Drivers and PLC Groups stand on their own; only the
-pages that own a connection carry the 8px state square (green connected, amber degraded,
-red faulted, grey when the page has no sources), with the word on the button's title
-because at rail width there is no room for it. Every entry stays a real nav button with
-its route, so bookmarks, `aria-current` and the rail's scroll-into-view are unchanged, and
-`+ Add Source` moves to the right of the SOURCES header, mirroring the label-left /
-action-right pattern the page headers use.
+so the rail grew a line for every source added and would keep growing. `Sources` stays
+pinned at the top — it is the overview of every source, not one of them — and everything
+under it is a pager showing one source at a time: its own line and the sub-page beneath it
+(OPC DA with DA Groups, OPC UA with UA Subs, MX Component with PLC Groups), with arrows to
+walk the rest and a counter at the foot (`2 / 4`). Drivers stands on its own. The group
+therefore keeps the same height however many sources are configured, and stepping away to
+another group leaves the carousel where it was. Only the pages that own a connection carry
+the 8px state square (green connected, amber degraded, red faulted, grey when the page has
+no sources), with the word on the button's title because at rail width there is no room
+for it. Every entry stays a real nav button with its route, so bookmarks, `aria-current`
+and the rail's scroll-into-view are unchanged, and `+ Add Source` moves to the right of
+the SOURCES header, mirroring the label-left / action-right pattern the page headers use.
 
 ### Fixed
 

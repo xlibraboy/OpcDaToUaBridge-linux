@@ -23,8 +23,9 @@ namespace OpcBridge.App;
 //   data-tab="opc-ua", id="view-opc-ua", data-route="connectivity/opc-ua", text "OPC UA"
 //   data-tab="connection", id="view-connection", data-route="connectivity/sources", text "Sources"
 //   Sources rail is a pager: id="srcPager"/"srcPagerPrev"/"srcPagerNext"/"srcPagerCount",
-//   class "pager-line" with data-page 0..4 (Sources, OPC DA+DA Groups, OPC UA+UA Subs,
-//   Drivers, MX Component+PLC Groups), data-state on the source line, class "nav-add" (+ Add Source),
+//   class "pager-line" with data-page 0..3 (OPC DA+DA Groups, OPC UA+UA Subs, Drivers,
+//   MX Component+PLC Groups); the Sources page is pinned above it in class "pager-pinned",
+//   data-state on the source line, state.sourcePage, class "nav-add" (+ Add Source),
 //   function renderSourcePager(/stepSourcePager(/renderSourcePagerStates(
 //   id="sourcesStatusList" (Sources tab status list) survives the Monitor
 //   panel's rename to id="sourceRosterList": the tab markup and tests pin it.
@@ -195,6 +196,9 @@ internal static class DashboardPage
 .nav-add:hover { background: var(--panel2); border-color: var(--text); color: var(--text); }
 .nav-add:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 .nav-add svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; }
+/* Sources is the overview of every source, so it stays put above the pager rather
+   than taking a turn in it; the rule separates the fixed entry from the carousel. */
+.pager-pinned { display: flex; flex-direction: column; border-bottom: 1px solid var(--border); }
 .pager-view { display: flex; flex-direction: column; min-width: 0; }
 .pager-line[hidden] { display: none; }
 .nav-group .pager-parent { padding-left: 28px; }
@@ -991,15 +995,17 @@ internal static class DashboardPage
 <div class="tabbar" role="navigation" aria-label="Sections">
   <div class="nav-group">
     <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><circle cx="7" cy="7" r="1" fill="currentColor" stroke="none"/><circle cx="7" cy="17" r="1" fill="currentColor" stroke="none"/></svg>Sources<button class="nav-add" type="button" onclick="openAddSourceWizard()" title="Add Source" aria-label="Add Source"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></div>
+    <div class="pager-pinned">
+      <button class="tabbtn pager-parent" data-tab="connection" data-route="connectivity/sources" onclick="navigate('connectivity/sources')">Sources</button>
+    </div>
     <div class="pager-view" id="srcPager">
-      <button class="tabbtn pager-line pager-parent" data-page="0" data-tab="connection" data-route="connectivity/sources" onclick="navigate('connectivity/sources')">Sources</button>
-      <button class="tabbtn pager-line pager-parent" data-page="1" data-state="opc-da" data-tab="opc-da" data-route="connectivity/opc-da" onclick="navigate('connectivity/opc-da')"><span class="pager-state off" aria-hidden="true"></span>OPC DA</button>
-      <button class="tabbtn pager-line pager-child" data-page="1" data-tab="opc-da-groups" data-route="connectivity/opc-da-groups" onclick="navigate('connectivity/opc-da-groups')">DA Groups</button>
-      <button class="tabbtn pager-line pager-parent" data-page="2" data-state="opc-ua" data-tab="opc-ua" data-route="connectivity/opc-ua" onclick="navigate('connectivity/opc-ua')"><span class="pager-state off" aria-hidden="true"></span>OPC UA</button>
-      <button class="tabbtn pager-line pager-child" data-page="2" data-tab="ua-subs" data-route="connectivity/ua-subs" onclick="navigate('connectivity/ua-subs')">UA Subs</button>
-      <button class="tabbtn pager-line pager-parent" data-page="3" data-state="drivers" data-tab="drivers" data-route="connectivity/drivers" onclick="navigate('connectivity/drivers')"><span class="pager-state off" aria-hidden="true"></span>Drivers</button>
-      <button class="tabbtn pager-line pager-parent" data-page="4" data-state="mx" data-tab="mx-component" data-route="connectivity/mx-component" onclick="navigate('connectivity/mx-component')"><span class="pager-state off" aria-hidden="true"></span>MX Component</button>
-      <button class="tabbtn pager-line pager-child" data-page="4" data-tab="plc-groups" data-route="connectivity/plc-groups" onclick="navigate('connectivity/plc-groups')">PLC Groups</button>
+      <button class="tabbtn pager-line pager-parent" data-page="0" data-state="opc-da" data-tab="opc-da" data-route="connectivity/opc-da" onclick="navigate('connectivity/opc-da')"><span class="pager-state off" aria-hidden="true"></span>OPC DA</button>
+      <button class="tabbtn pager-line pager-child" data-page="0" data-tab="opc-da-groups" data-route="connectivity/opc-da-groups" onclick="navigate('connectivity/opc-da-groups')">DA Groups</button>
+      <button class="tabbtn pager-line pager-parent" data-page="1" data-state="opc-ua" data-tab="opc-ua" data-route="connectivity/opc-ua" onclick="navigate('connectivity/opc-ua')"><span class="pager-state off" aria-hidden="true"></span>OPC UA</button>
+      <button class="tabbtn pager-line pager-child" data-page="1" data-tab="ua-subs" data-route="connectivity/ua-subs" onclick="navigate('connectivity/ua-subs')">UA Subs</button>
+      <button class="tabbtn pager-line pager-parent" data-page="2" data-state="drivers" data-tab="drivers" data-route="connectivity/drivers" onclick="navigate('connectivity/drivers')"><span class="pager-state off" aria-hidden="true"></span>Drivers</button>
+      <button class="tabbtn pager-line pager-parent" data-page="3" data-state="mx" data-tab="mx-component" data-route="connectivity/mx-component" onclick="navigate('connectivity/mx-component')"><span class="pager-state off" aria-hidden="true"></span>MX Component</button>
+      <button class="tabbtn pager-line pager-child" data-page="3" data-tab="plc-groups" data-route="connectivity/plc-groups" onclick="navigate('connectivity/plc-groups')">PLC Groups</button>
     </div>
     <div class="pager-foot">
       <button class="pager-btn" id="srcPagerPrev" type="button" title="Previous source" aria-label="Previous source" onclick="stepSourcePager(-1)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
@@ -4909,13 +4915,18 @@ function sourcePagerRoutes() {
 }
 function sourcePagerIndex() {
     const active = sourcePagerLines().find(b => b.classList.contains('active'));
-    return active ? Number(active.dataset.page) : 0;
+    if (active) return Number(active.dataset.page);
+    // Sources is pinned above the pager and the other groups are outside it, so an
+    // active route that is not a source leaves the carousel where it was.
+    const pages = sourcePagerRoutes().length;
+    return Math.min(state.sourcePage || 0, Math.max(pages - 1, 0));
 }
 function renderSourcePager() {
     const lines = sourcePagerLines();
     if (!lines.length) return;
     const index = sourcePagerIndex();
     const routes = sourcePagerRoutes();
+    state.sourcePage = index;
     lines.forEach(b => { b.hidden = Number(b.dataset.page) !== index; });
     const count = el('srcPagerCount');
     if (count) {
