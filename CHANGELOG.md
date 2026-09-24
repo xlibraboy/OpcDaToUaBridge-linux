@@ -51,6 +51,14 @@ column instead of a block of prose. The notes now render into the prose containe
 hard-wrapped lines reflow into the paragraph or bullet they belong to, and markdown
 links render as links.
 
+**Unbounded handle growth from the resource sampler.** The 5-second sampler behind
+Monitor ▸ Resources opened a process handle for every sample and never released it, so the
+bridge's handle count climbed by one every 5 seconds for as long as it ran — the panel that
+exists to warn about unbounded handle growth was itself inflating the number it reports,
+and private bytes crept up with it. A bridge up for 90 minutes was holding 692 process
+handles. `Sample()` now disposes the `Process` object it opens, which frees the handle
+immediately instead of leaving it to the finalizer.
+
 ## [1.2.0] - 2026-09-23
 
 ### Added

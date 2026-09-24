@@ -38,12 +38,14 @@ public sealed class OpcBridgeMonitor : BackgroundService
     [SupportedOSPlatform("windows")]
     private static ResourceSnapshot Sample()
     {
-        IntPtr process = System.Diagnostics.Process.GetCurrentProcess().Handle;
-        int handles = GetProcessHandleCount(process, out int handleCount) != 0
+        // The Process object owns the process handle; without disposal every sample leaks one.
+        using System.Diagnostics.Process process = System.Diagnostics.Process.GetCurrentProcess();
+        IntPtr handle = process.Handle;
+        int handles = GetProcessHandleCount(handle, out int handleCount) != 0
             ? handleCount
             : 0;
-        int gdi = GetGuiResources(process, GR_GDIOBJECTS);
-        int user = GetGuiResources(process, GR_USEROBJECTS);
+        int gdi = GetGuiResources(handle, GR_GDIOBJECTS);
+        int user = GetGuiResources(handle, GR_USEROBJECTS);
         return new ResourceSnapshot(true, handles, gdi, user);
     }
 
