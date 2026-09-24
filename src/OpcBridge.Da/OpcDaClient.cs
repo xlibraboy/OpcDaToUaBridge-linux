@@ -812,6 +812,11 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISub
             if (hr < 0)
             {
                 subscriptions_active_ = false;
+
+                // The connection point is only borrowed until Advise succeeds: release it here,
+                // or every poll tick that re-attempts the subscription leaks another RCW.
+                try { Marshal.ReleaseComObject(cp); } catch { }
+
                 WarnOnce(
                     $"{forcedMode}OPC DA callback Advise failed for rate {group.Rate}ms (0x{hr:X8}); " +
                     "falling back to polling.");

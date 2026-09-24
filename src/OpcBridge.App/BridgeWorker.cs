@@ -1089,10 +1089,12 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
                 continue;
             }
 
+            ISourceClient? client = null;
+            bool sessionRegistered = false;
             try
             {
                 bridge_state_.SetSourceConnectionState(source.SourceId, "Connecting");
-                ISourceClient client = da_client_factory_.Create(settings, source);
+                client = da_client_factory_.Create(settings, source);
 
                 // Attach handlers BEFORE connect: the DA client raises Warning during
                 // ConnectAsync when the subscription attempt fails (server lacks
@@ -1116,6 +1118,7 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
                 await client.ConnectAsync(cancellationToken).ConfigureAwait(false);
 
                 sessions[source.SourceId] = new SourceSession(source, client);
+                sessionRegistered = true;
                 bridge_state_.SetSourceConnectionState(source.SourceId, "Connected");
 
                 if (client is OpcDaClient connectedDaClient)
@@ -1163,6 +1166,22 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
                 bridge_state_.SetSourceError(source.SourceId, ex);
                 logger_.LogWarning(ex, "Source {SourceId} connection failed", source.SourceId);
                 changed.Add(source.SourceId);
+            }
+            finally
+            {
+                // A client that never reached sessions still owns its COM thread: without this,
+                // every retry of a source that cannot connect leaks that thread and its handles.
+                if (!sessionRegistered && client is not null)
+                {
+                    try
+                    {
+                        await client.DisposeAsync().ConfigureAwait(false);
+                    }
+                    catch (Exception disposeEx)
+                    {
+                        logger_.LogWarning(disposeEx, "Source {SourceId} failed-client dispose failed", source.SourceId);
+                    }
+                }
             }
         }
 

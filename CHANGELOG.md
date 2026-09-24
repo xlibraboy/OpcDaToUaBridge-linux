@@ -59,6 +59,19 @@ and private bytes crept up with it. A bridge up for 90 minutes was holding 692 p
 handles. `Sample()` now disposes the `Process` object it opens, which frees the handle
 immediately instead of leaving it to the finalizer.
 
+**Thread leak while a source cannot connect.** A connection attempt that failed left the
+client it had just built — and the dedicated COM thread that client owns — to the garbage
+collector, because only the success path kept a reference to it. The coordinator retries an
+unreachable source every few seconds, so a server that stayed down leaked one thread and its
+handles per retry. A client that never reaches the session table is now disposed on the way
+out, while a failure after the session is registered still leaves the running session intact.
+
+**COM leak when a DA server refuses the callback subscription.** If a server exposed
+`IConnectionPointContainer` but its `Advise` failed, the connection point was dropped
+without being released, and the bridge re-attempts the subscription on every poll tick — so a
+server in that state leaked one COM reference per poll while falling back to polling. The
+failure path now releases the connection point, mirroring the unsubscribe path.
+
 ## [1.2.0] - 2026-09-23
 
 ### Added
