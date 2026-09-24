@@ -379,6 +379,110 @@ public sealed class MxComponentClientTests
         Assert.False(client.TryGetTagMetadata("ZZZ", out _, out _));
     }
 
+    [Fact]
+    public async Task ReadAsync_XHexAddress_AlignsToHexWordBase()
+    {
+        var session = new ScriptedMxSession();
+        session.ReadResponses.Enqueue(new ushort[] { 0x0040 }); // bit 6 of the X0B0 word
+
+        await using var client = new MxComponentClient(
+            new MxComponentClientOptions { SourceId = "mx", RetryCount = 0 },
+            session);
+        await client.ConnectAsync(CancellationToken.None);
+
+        IReadOnlyList<BridgeValue> values = await client.ReadAsync(
+            new[] { new TagMapping { SourceId = "mx", ItemId = "X0B6", Mode = TagMode.Source } },
+            CancellationToken.None);
+
+        Assert.True(values[0].IsGood);
+        Assert.Equal(true, values[0].Value);
+
+        // A3N X/Y are hexadecimal (IB-66543: "X/Y0 to X/Y7FF"), so X0B6 is point 182 and the
+        // 16-point word base is X0B0. Reading it as octal used to send X260 — a different point.
+        Assert.Equal(("X0B0", 1), session.Reads[0]);
+    }
+
+    [Fact]
+    public async Task ReadAsync_XAddressWithHexDigitEight_ParsesAsHex()
+    {
+        var session = new ScriptedMxSession();
+        session.ReadResponses.Enqueue(new ushort[] { 0x0100 }); // bit 8 of the X010 word
+
+        await using var client = new MxComponentClient(
+            new MxComponentClientOptions { SourceId = "mx", RetryCount = 0 },
+            session);
+        await client.ConnectAsync(CancellationToken.None);
+
+        IReadOnlyList<BridgeValue> values = await client.ReadAsync(
+            new[] { new TagMapping { SourceId = "mx", ItemId = "X18", Mode = TagMode.Source } },
+            CancellationToken.None);
+
+        Assert.True(values[0].IsGood);
+        Assert.Equal(true, values[0].Value);
+
+        // X18 is point 24 in hex: word base X010, bit 8.
+        Assert.Equal(("X010", 1), session.Reads[0]);
+    }
+
+    [Fact]
+    public async Task ReadAsync_ConsecutiveHexBits_OneBatchedRead()
+    {
+        var session = new ScriptedMxSession();
+        session.ReadResponses.Enqueue(new ushort[] { 0x00C0 }); // bits 6 and 7
+
+        await using var client = new MxComponentClient(
+            new MxComponentClientOptions { SourceId = "mx", RetryCount = 0 },
+            session);
+        await client.ConnectAsync(CancellationToken.None);
+
+        IReadOnlyList<BridgeValue> values = await client.ReadAsync(
+            new[]
+            {
+                new TagMapping { SourceId = "mx", ItemId = "X0B6", Mode = TagMode.Source },
+                new TagMapping { SourceId = "mx", ItemId = "X0B7", Mode = TagMode.Source }
+            },
+            CancellationToken.None);
+
+        Assert.Equal(true, values[0].Value);
+        Assert.Equal(true, values[1].Value);
+        Assert.Single(session.Reads);
+        Assert.Equal(("X0B0", 1), session.Reads[0]);
+    }
+
+    [Fact]
+    public async Task ReadAsync_XBeyondAnNRange_ReturnsBadQuality_NoIo()
+    {
+        var session = new ScriptedMxSession();
+
+        await using var client = new MxComponentClient(
+            new MxComponentClientOptions { SourceId = "mx", RetryCount = 0 },
+            session);
+        await client.ConnectAsync(CancellationToken.None);
+
+        IReadOnlyList<BridgeValue> values = await client.ReadAsync(
+            new[] { new TagMapping { SourceId = "mx", ItemId = "X800", Mode = TagMode.Source } }, // 2048 > 0x7FF
+            CancellationToken.None);
+
+        Assert.False(values[0].IsGood);
+        Assert.Empty(session.Reads);
+    }
+
+    [Fact]
+    public async Task WriteAsync_XHexBit_SendsCanonicalHexDevice()
+    {
+        var session = new ScriptedMxSession();
+
+        await using var client = new MxComponentClient(
+            new MxComponentClientOptions { SourceId = "mx", RetryCount = 0 },
+            session);
+        await client.ConnectAsync(CancellationToken.None);
+
+        Assert.True(await client.WriteAsync("x0b6", true, CancellationToken.None));
+
+        // Reads and writes must name the same point, so the canonical form is hex as well.
+        Assert.Equal(("X0B6", true), session.BitWrites[0]);
+    }
+
     private sealed class ScriptedMxSession : IMxComponentSession
     {
         public bool IsOpen { get; private set; }

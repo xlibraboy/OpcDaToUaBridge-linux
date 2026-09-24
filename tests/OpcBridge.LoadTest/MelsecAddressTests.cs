@@ -46,4 +46,28 @@ public sealed class MelsecAddressTests
         Assert.False(MelsecAddressParser.TryParse(input, out _, out string error));
         Assert.False(string.IsNullOrWhiteSpace(error));
     }
+
+    [Theory]
+    [InlineData("X0B6", "X0B6", MelsecDeviceKind.X, 182)]
+    [InlineData("x18", "X018", MelsecDeviceKind.X, 24)] // 8 is a valid hex digit
+    [InlineData("X20", "X020", MelsecDeviceKind.X, 32)] // the octal reading would say 16
+    [InlineData("Y7FF", "Y7FF", MelsecDeviceKind.Y, 2047)] // A3NCPU I/O max (IB-66543)
+    public void TryParse_HexXyRadix_ReadsXyAsHexadecimal(string input, string canonical, MelsecDeviceKind kind, int number)
+    {
+        Assert.True(
+            MelsecAddressParser.TryParse(input, MelsecXyRadix.Hexadecimal, out var addr, out string error),
+            error);
+        Assert.Equal(canonical, addr.Canonical);
+        Assert.Equal(kind, addr.Device);
+        Assert.Equal(number, addr.Number);
+    }
+
+    [Theory]
+    [InlineData("X800")] // 2048 — past the A3NCPU X/Y cap of 0x7FF
+    [InlineData("XG1")] // not a hexadecimal digit
+    public void TryParse_HexXyRadix_RejectsOutOfRangeAndNonHex(string input)
+    {
+        Assert.False(MelsecAddressParser.TryParse(input, MelsecXyRadix.Hexadecimal, out _, out string error));
+        Assert.False(string.IsNullOrWhiteSpace(error));
+    }
 }

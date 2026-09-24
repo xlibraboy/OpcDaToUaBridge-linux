@@ -1464,7 +1464,7 @@ app.MapPost("/api/mappings/update", (MappingUpdateRequest request, MappingStore 
     if (source is not null && (string.Equals(source.SourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase)
         || string.Equals(source.SourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase)))
     {
-        if (!MelsecAddressParser.TryParse(tag.ItemId, out MelsecAddress address, out string addrError))
+        if (!MelsecAddressParser.TryParse(tag.ItemId, XyRadixFor(source), out MelsecAddress address, out string addrError))
         {
             return Results.BadRequest(new { error = $"Invalid Melsec address '{tag.ItemId}': {addrError}" });
         }
@@ -3055,7 +3055,7 @@ static bool ValidateMelsecMappings(List<TagMapping> tags, DaRuntimeSettings daSe
             continue;
         }
 
-        if (!MelsecAddressParser.TryParse(tag.ItemId, out MelsecAddress address, out string addrError))
+        if (!MelsecAddressParser.TryParse(tag.ItemId, XyRadixFor(source), out MelsecAddress address, out string addrError))
         {
             error = $"Invalid Melsec address '{tag.ItemId}': {addrError}";
             return true;
@@ -3108,6 +3108,19 @@ static bool IsMelsecAddressSource(DaSourceRuntimeSettings source)
 {
     return string.Equals(source.SourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase)
         || string.Equals(source.SourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase);
+}
+
+/// <summary>
+/// Radix for reading X/Y device numbers on a MELSEC-family source. The A3NCPU numbers its I/O
+/// in hexadecimal (IB-66543: "X/Y0 to X/Y7FF"), which is how the MX Component driver reads
+/// them; the AnN serial driver keeps its historical octal reading. Validation and the driver
+/// must agree, or a stored address means one point and the read hits another.
+/// </summary>
+static MelsecXyRadix XyRadixFor(DaSourceRuntimeSettings source)
+{
+    return string.Equals(source.SourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase)
+        ? MelsecXyRadix.Hexadecimal
+        : MelsecXyRadix.Octal;
 }
 
 

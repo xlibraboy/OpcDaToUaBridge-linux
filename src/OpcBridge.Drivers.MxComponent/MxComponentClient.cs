@@ -12,7 +12,9 @@ namespace OpcBridge.Drivers.MxComponent;
 /// The physical link (RS-422/RS-232C or Ethernet, baud, PLC station) is configured inside
 /// MX Component's Communication Settings Utility; this client only references a logical
 /// station number. Device addresses use the same MELSEC A3N space as the serial driver:
-/// <c>D100</c>, <c>M10</c>, <c>X20</c>, <c>Y0F</c>, bit-in-word <c>D100:8</c>.
+/// <c>D100</c>, <c>M10</c>, <c>X0B6</c>, <c>Y0F</c>, bit-in-word <c>D100:8</c>. X/Y numbers
+/// are read as hexadecimal — the A3NCPU numbers its I/O in hex (IB-66543: 2048 points,
+/// "X/Y0 to X/Y7FF"), so <c>X0B6</c> is point 182 and <c>X18</c> is point 24.
 ///
 /// Windows-only at runtime (MX Component is a Windows COM component). On non-Windows
 /// <see cref="ConnectAsync"/> throws <see cref="PlatformNotSupportedException"/>.
@@ -118,7 +120,10 @@ public sealed class MxComponentClient : ISourceClient
             {
                 TagMapping mapping = mappings[i];
                 string itemId = mapping.ItemId ?? string.Empty;
-                if (!MelsecAddressParser.TryParse(itemId, out MelsecAddress address, out string error))
+
+                // X/Y are hexadecimal on the A3NCPU (IB-66543: "X/Y0 to X/Y7FF"), so X0B6 is
+                // point 182 — not the octal reading the AnN serial driver uses.
+                if (!MelsecAddressParser.TryParse(itemId, MelsecXyRadix.Hexadecimal, out MelsecAddress address, out string error))
                 {
                     _logger?.LogWarning(
                         "Invalid MELSEC address '{ItemId}' on source {SourceId}: {Error}",
@@ -205,7 +210,7 @@ public sealed class MxComponentClient : ISourceClient
             return false;
         }
 
-        if (!MelsecAddressParser.TryParse(itemId, out MelsecAddress address, out string error))
+        if (!MelsecAddressParser.TryParse(itemId, MelsecXyRadix.Hexadecimal, out MelsecAddress address, out string error))
         {
             _logger?.LogWarning(
                 "Write rejected — invalid MELSEC address '{ItemId}': {Error}",
@@ -301,7 +306,7 @@ public sealed class MxComponentClient : ISourceClient
             return false;
         }
 
-        if (!MelsecAddressParser.TryParse(itemId, out MelsecAddress address, out _))
+        if (!MelsecAddressParser.TryParse(itemId, MelsecXyRadix.Hexadecimal, out MelsecAddress address, out _))
         {
             return false;
         }
@@ -573,17 +578,18 @@ public sealed class MxComponentClient : ISourceClient
     }
 
     /// <summary>Device name for a 16-aligned bit base number (M/X/Y/TS/TC/CS/CC). X/Y are
-    /// octal in the AnN series; timers/counters are decimal (Programming Manual §"Device
-    /// Types"). The base number is formatted back in the device's native base, matching the
-    /// canonical form of parsed addresses.</summary>
+    /// hexadecimal on the A3NCPU (IB-66543: "X/Y0 to X/Y7FF") and timers/counters are decimal,
+    /// so the base is formatted back in the device's own radix — the same radix the addresses
+    /// were parsed in, which keeps the 16-point alignment inside one number space.</summary>
     private static string BitDeviceName(MelsecDeviceKind device, int baseNumber)
     {
         string number = baseNumber.ToString(CultureInfo.InvariantCulture);
+        string hexNumber = baseNumber.ToString("X3", CultureInfo.InvariantCulture);
         return device switch
         {
             MelsecDeviceKind.M => "M" + number,
-            MelsecDeviceKind.X => "X" + Convert.ToString(baseNumber, 8).ToUpperInvariant().PadLeft(3, '0'),
-            MelsecDeviceKind.Y => "Y" + Convert.ToString(baseNumber, 8).ToUpperInvariant().PadLeft(3, '0'),
+            MelsecDeviceKind.X => "X" + hexNumber,
+            MelsecDeviceKind.Y => "Y" + hexNumber,
             MelsecDeviceKind.TS => "TS" + number,
             MelsecDeviceKind.TC => "TC" + number,
             MelsecDeviceKind.CS => "CS" + number,

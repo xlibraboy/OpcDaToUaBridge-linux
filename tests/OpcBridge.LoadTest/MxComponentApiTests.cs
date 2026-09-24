@@ -171,6 +171,40 @@ public sealed class MxComponentApiTests
     }
 
     [Fact]
+    public async Task MappingAdd_HexOnlyXyAddress_IsAcceptedAndCanonicalizedToHex()
+    {
+        await using TestAppHandle app = await StartWithMxSource("mxhex", logicalStationNumber: 2);
+
+        using HttpResponseMessage post = await app.Client.PostAsync(
+            "/api/mappings/add",
+            Json(new
+            {
+                tags = new[]
+                {
+                    new { sourceId = "mxhex", itemId = "x18" }
+                }
+            }));
+
+        Assert.Equal(HttpStatusCode.OK, post.StatusCode);
+
+        using JsonDocument get = await app.GetJsonAsync("/api/mappings");
+        bool found = false;
+        foreach (JsonElement tag in get.RootElement.GetProperty("mappings").EnumerateArray())
+        {
+            if (string.Equals(tag.GetProperty("sourceId").GetString(), "mxhex", StringComparison.OrdinalIgnoreCase))
+            {
+                // X/Y are hexadecimal on the A3NCPU (IB-66543), so X18 is point 24. An
+                // octal-only validator rejected the '8' outright; the serial A3N driver still
+                // reads X/Y as octal, so this canonicalization is MX-source-specific.
+                Assert.Equal("X018", tag.GetProperty("itemId").GetString());
+                found = true;
+            }
+        }
+
+        Assert.True(found);
+    }
+
+    [Fact]
     public async Task GetStatus_MxSource_IncludesEndpointSummary()
     {
         // Seed at startup (like the Melsec status test) so BridgeState knows the source

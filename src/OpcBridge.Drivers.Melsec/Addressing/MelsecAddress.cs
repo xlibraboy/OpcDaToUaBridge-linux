@@ -8,10 +8,31 @@ public sealed record MelsecAddress(
     int? BitIndex,
     string Canonical);
 
+/// <summary>
+/// Radix used to read X/Y device numbers. An X/Y number read in the wrong radix silently
+/// addresses a different point, and the radix is a property of the CPU family:
+/// the A3NCPU numbers its I/O in hexadecimal — A1N/A2N(S1)/A3NCPU User's Manual (IB-66543)
+/// device list: 2048 I/O points, "X/Y0 to X/Y7FF" — while M/L/T/C/D are decimal.
+/// The MX Component driver passes <see cref="Hexadecimal"/>; the AnN serial driver keeps
+/// its historical <see cref="Octal"/> reading.
+/// </summary>
+public enum MelsecXyRadix
+{
+    Octal,
+    Hexadecimal
+}
+
 public static class MelsecAddressParser
 {
 
     public static bool TryParse(string? input, out MelsecAddress address, out string error)
+        => TryParse(input, MelsecXyRadix.Octal, out address, out error);
+
+    public static bool TryParse(
+        string? input,
+        MelsecXyRadix xyRadix,
+        out MelsecAddress address,
+        out string error)
     {
         address = null!;
         error = "";
@@ -89,7 +110,7 @@ public static class MelsecAddressParser
 
             case MelsecDeviceKind.X:
             case MelsecDeviceKind.Y:
-                if (!TryParseXyNumber(body, out number, out numberCanonical, out var xyError))
+                if (!TryParseXyNumber(body, xyRadix, out number, out numberCanonical, out var xyError))
                 {
                     error = xyError;
                     return false;
@@ -214,12 +235,15 @@ public static class MelsecAddressParser
     }
 
     /// <summary>
-    /// X/Y AnN addresses are traditionally octal (digits 0-7). Design examples also use
-    /// hex-looking forms such as Y0F (15). Accept pure octal, or hex when A-F appear;
-    /// reject 8/9 which are invalid in octal and not used by the brief fixtures.
+    /// X/Y numbers are read in the radix the calling driver asks for.
+    /// <see cref="MelsecXyRadix.Hexadecimal"/> (MX Component / A3NCPU): plain hexadecimal
+    /// digits, so X18 is point 24 and X0B6 is point 182.
+    /// <see cref="MelsecXyRadix.Octal"/> (AnN serial): pure octal digits, with hex-looking
+    /// forms such as Y0F (15) accepted when A-F appear; 8/9 are invalid octal digits.
     /// </summary>
     private static bool TryParseXyNumber(
         string body,
+        MelsecXyRadix xyRadix,
         out int number,
         out string numberCanonical,
         out string error)
@@ -227,6 +251,18 @@ public static class MelsecAddressParser
         number = 0;
         numberCanonical = "";
         error = "";
+
+        if (xyRadix == MelsecXyRadix.Hexadecimal)
+        {
+            if (!int.TryParse(body, NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out number))
+            {
+                error = "X/Y device numbers must be hexadecimal digits (0-9, A-F).";
+                return false;
+            }
+
+            numberCanonical = number.ToString("X", CultureInfo.InvariantCulture).PadLeft(3, '0');
+            return true;
+        }
 
         var hasHexLetter = false;
         foreach (var ch in body)
