@@ -583,7 +583,9 @@ public sealed class DashboardPageTests
         Assert.Contains(".nav-group .tabbtn { position: relative; padding-top: 8px; padding-bottom: 8px; padding-left: 44px; }", DashboardPage.Html);
         Assert.Contains(".nav-group .tabbtn::before { content: ''; position: absolute; left: 24px; top: 0; bottom: 0; width: 2px; background: var(--border); }", DashboardPage.Html);
         Assert.Contains(".nav-group .tabbtn.active::before { background: var(--accent); opacity: .5; }", DashboardPage.Html);
-        Assert.Contains(".nav-group .tabbtn:last-child:not(.active)::before { bottom: auto; height: 55%; }", DashboardPage.Html);
+        // The truncated rail belongs to the flat lists only; a pager line keeps its
+        // rail at full height, because the sub-page under it is the tree's last node.
+        Assert.Contains(".nav-group .tabbtn:last-child:not(.active):not(.pager-line)::before { bottom: auto; height: 55%; }", DashboardPage.Html);
         Assert.Contains(".nav-group .tabbtn::before { display: none; }", DashboardPage.Html);
     }
 
@@ -1348,5 +1350,42 @@ public sealed class DashboardPageTests
         Assert.Contains("cs.getPropertyValue('--good')", DashboardPage.Script);
         Assert.DoesNotContain("'#0f6b3d'", DashboardPage.Script);
         Assert.DoesNotContain("fill=\"#ffffff\"", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Html_SourcesGroupIsAPager()
+    {
+        // The Sources group shows one source at a time — its own page plus the
+        // sub-page under it — and the arrows walk the rest, so the group keeps a
+        // fixed height however many sources are configured. Every entry stays a
+        // real .tabbtn nav button, so routing, the active/aria-current wiring and
+        // bookmarked hashes are unchanged.
+        Assert.Contains("id=\"srcPager\"", DashboardPage.Html);
+        Assert.Contains("class=\"pager-view\"", DashboardPage.Html);
+        Assert.Contains("class=\"pager-foot\"", DashboardPage.Html);
+        Assert.Contains("id=\"srcPagerPrev\"", DashboardPage.Html);
+        Assert.Contains("id=\"srcPagerNext\"", DashboardPage.Html);
+        Assert.Contains("id=\"srcPagerCount\"", DashboardPage.Html);
+        Assert.Contains("class=\"pager-btn\"", DashboardPage.Html);
+        // Five pages: Sources, OPC DA + DA Groups, OPC UA + UA Subs, Drivers,
+        // MX Component + PLC Groups.
+        Assert.Contains("data-page=\"4\"", DashboardPage.Html);
+        Assert.Contains("data-state=\"opc-da\"", DashboardPage.Html);
+        // Geometry of the two lines: the source sits at 28px with its 8px state
+        // square, and the sub-page hangs off the rail at 31px on a deeper indent.
+        Assert.Contains(".nav-group .pager-parent { padding-left: 28px; }", DashboardPage.Html);
+        Assert.Contains(".nav-group .pager-child::before { left: 31px; }", DashboardPage.Html);
+        Assert.Contains(".pager-state { width: 8px; height: 8px; flex: none; }", DashboardPage.Html);
+        foreach (var route in new[] { "connectivity/sources", "connectivity/opc-da", "connectivity/opc-da-groups", "connectivity/opc-ua", "connectivity/ua-subs", "connectivity/drivers", "connectivity/mx-component", "connectivity/plc-groups" })
+        {
+            Assert.Contains($"data-route=\"{route}\"", DashboardPage.Html);
+        }
+        Assert.Contains("function renderSourcePager(", DashboardPage.Script);
+        Assert.Contains("function stepSourcePager(", DashboardPage.Script);
+        Assert.Contains("function renderSourcePagerStates(", DashboardPage.Script);
+        Assert.Contains("renderSourcePager();", DashboardPage.Script);
+        // The add-source wizard stays one click from the rail.
+        Assert.Contains("class=\"nav-add\"", DashboardPage.Html);
+        Assert.Contains("onclick=\"openAddSourceWizard()\"", DashboardPage.Html);
     }
 }

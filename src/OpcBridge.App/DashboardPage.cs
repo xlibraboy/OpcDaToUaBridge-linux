@@ -22,6 +22,10 @@ namespace OpcBridge.App;
 //   MX sources are separate from serial drivers: isDriverSource excludes MxComponent
 //   data-tab="opc-ua", id="view-opc-ua", data-route="connectivity/opc-ua", text "OPC UA"
 //   data-tab="connection", id="view-connection", data-route="connectivity/sources", text "Sources"
+//   Sources rail is a pager: id="srcPager"/"srcPagerPrev"/"srcPagerNext"/"srcPagerCount",
+//   class "pager-line" with data-page 0..4 (Sources, OPC DA+DA Groups, OPC UA+UA Subs,
+//   Drivers, MX Component+PLC Groups), data-state on the source line, class "nav-add" (+ Add Source),
+//   function renderSourcePager(/stepSourcePager(/renderSourcePagerStates(
 //   id="sourcesStatusList" (Sources tab status list) survives the Monitor
 //   panel's rename to id="sourceRosterList": the tab markup and tests pin it.
 //   id="uaCfgEndpointUrl", id="uaCfgSourceId", function saveUaSource/testUaConnection
@@ -183,7 +187,32 @@ internal static class DashboardPage
 .nav-group .tabbtn:hover::before { background: var(--border2); }
 .nav-group .tabbtn.active::before { background: var(--accent); opacity: .5; }
 .nav-group .tabbtn.active::before { opacity: 1; }
-.nav-group .tabbtn:last-child:not(.active)::before { bottom: auto; height: 55%; }
+.nav-group .tabbtn:last-child:not(.active):not(.pager-line)::before { bottom: auto; height: 55%; }
+/* Sources is a pager: one source at a time on two lines (its own page plus the
+   sub-page under it), arrows to walk the rest. The group keeps the same height
+   however many sources are configured, so the rail never grows a scrollbar. */
+.nav-add { margin-left: auto; flex: none; width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; padding: 0; background: none; border: 1px solid var(--border2); border-radius: 2px; color: var(--muted); cursor: pointer; }
+.nav-add:hover { background: var(--panel2); border-color: var(--text); color: var(--text); }
+.nav-add:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.nav-add svg { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; }
+.pager-view { display: flex; flex-direction: column; min-width: 0; }
+.pager-line[hidden] { display: none; }
+.nav-group .pager-parent { padding-left: 28px; }
+.nav-group .pager-parent::before { display: none; }
+.nav-group .pager-child { padding-left: 56px; }
+.nav-group .pager-child::before { left: 31px; }
+.pager-state { width: 8px; height: 8px; flex: none; }
+.pager-state.good { background: var(--good); }
+.pager-state.warn { background: var(--warn); }
+.pager-state.bad { background: var(--bad); }
+.pager-state.off { background: var(--muted); }
+.pager-foot { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-top: 1px solid var(--border); }
+.pager-btn { width: 30px; height: 24px; flex: none; display: inline-flex; align-items: center; justify-content: center; padding: 0; background: none; border: 1px solid var(--border2); border-radius: 2px; color: var(--text); cursor: pointer; }
+.pager-btn:hover { background: var(--panel2); border-color: var(--text); }
+.pager-btn:disabled { opacity: .45; cursor: not-allowed; }
+.pager-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.pager-btn svg { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.pager-count { margin-left: auto; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--fs-micro); font-weight: 600; letter-spacing: .08em; color: var(--muted); }
 .content { flex: 1; min-width: 0; overflow: auto; background: var(--paper); }
 .view { display: none; padding: 16px 20px 56px; max-width: 1600px; margin-inline: auto; }
 .view.active { display: block; }
@@ -961,15 +990,22 @@ internal static class DashboardPage
 <div class="app-shell">
 <div class="tabbar" role="navigation" aria-label="Sections">
   <div class="nav-group">
-    <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><circle cx="7" cy="7" r="1" fill="currentColor" stroke="none"/><circle cx="7" cy="17" r="1" fill="currentColor" stroke="none"/></svg>Sources</div>
-    <button class="tabbtn" data-tab="connection" data-route="connectivity/sources" onclick="navigate('connectivity/sources')">Sources</button>
-    <button class="tabbtn" data-tab="opc-da" data-route="connectivity/opc-da" onclick="navigate('connectivity/opc-da')">OPC DA</button>
-    <button class="tabbtn" data-tab="opc-da-groups" data-route="connectivity/opc-da-groups" onclick="navigate('connectivity/opc-da-groups')">DA Groups</button>
-    <button class="tabbtn" data-tab="opc-ua" data-route="connectivity/opc-ua" onclick="navigate('connectivity/opc-ua')">OPC UA</button>
-    <button class="tabbtn" data-tab="ua-subs" data-route="connectivity/ua-subs" onclick="navigate('connectivity/ua-subs')">UA Subs</button>
-    <button class="tabbtn" data-tab="drivers" data-route="connectivity/drivers" onclick="navigate('connectivity/drivers')">Drivers</button>
-    <button class="tabbtn" data-tab="mx-component" data-route="connectivity/mx-component" onclick="navigate('connectivity/mx-component')">MX Component</button>
-    <button class="tabbtn" data-tab="plc-groups" data-route="connectivity/plc-groups" onclick="navigate('connectivity/plc-groups')">PLC Groups</button>
+    <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><circle cx="7" cy="7" r="1" fill="currentColor" stroke="none"/><circle cx="7" cy="17" r="1" fill="currentColor" stroke="none"/></svg>Sources<button class="nav-add" type="button" onclick="openAddSourceWizard()" title="Add Source" aria-label="Add Source"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></div>
+    <div class="pager-view" id="srcPager">
+      <button class="tabbtn pager-line pager-parent" data-page="0" data-tab="connection" data-route="connectivity/sources" onclick="navigate('connectivity/sources')">Sources</button>
+      <button class="tabbtn pager-line pager-parent" data-page="1" data-state="opc-da" data-tab="opc-da" data-route="connectivity/opc-da" onclick="navigate('connectivity/opc-da')"><span class="pager-state off" aria-hidden="true"></span>OPC DA</button>
+      <button class="tabbtn pager-line pager-child" data-page="1" data-tab="opc-da-groups" data-route="connectivity/opc-da-groups" onclick="navigate('connectivity/opc-da-groups')">DA Groups</button>
+      <button class="tabbtn pager-line pager-parent" data-page="2" data-state="opc-ua" data-tab="opc-ua" data-route="connectivity/opc-ua" onclick="navigate('connectivity/opc-ua')"><span class="pager-state off" aria-hidden="true"></span>OPC UA</button>
+      <button class="tabbtn pager-line pager-child" data-page="2" data-tab="ua-subs" data-route="connectivity/ua-subs" onclick="navigate('connectivity/ua-subs')">UA Subs</button>
+      <button class="tabbtn pager-line pager-parent" data-page="3" data-state="drivers" data-tab="drivers" data-route="connectivity/drivers" onclick="navigate('connectivity/drivers')"><span class="pager-state off" aria-hidden="true"></span>Drivers</button>
+      <button class="tabbtn pager-line pager-parent" data-page="4" data-state="mx" data-tab="mx-component" data-route="connectivity/mx-component" onclick="navigate('connectivity/mx-component')"><span class="pager-state off" aria-hidden="true"></span>MX Component</button>
+      <button class="tabbtn pager-line pager-child" data-page="4" data-tab="plc-groups" data-route="connectivity/plc-groups" onclick="navigate('connectivity/plc-groups')">PLC Groups</button>
+    </div>
+    <div class="pager-foot">
+      <button class="pager-btn" id="srcPagerPrev" type="button" title="Previous source" aria-label="Previous source" onclick="stepSourcePager(-1)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+      <button class="pager-btn" id="srcPagerNext" type="button" title="Next source" aria-label="Next source" onclick="stepSourcePager(1)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg></button>
+      <span class="pager-count" id="srcPagerCount"></span>
+    </div>
   </div>
   <div class="nav-group">
     <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><circle cx="7" cy="7" r="1.5" fill="currentColor" stroke="none"/></svg>Tags</div>
@@ -4770,6 +4806,7 @@ async function showTab(name, route) {
     b.classList.toggle('active', on);
     if (on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
   });
+  renderSourcePager();
   // The rail scrolls in both directions (taller than the window on desktop, a
   // horizontal strip on narrow screens), so an off-screen active section scrolls
   // back into view rather than making the user hunt for it. 'nearest' moves least.
@@ -4846,6 +4883,79 @@ async function showTab(name, route) {
     await Promise.all([loadSources(), loadMappings(), loadInterlinks(), loadMqtt().catch(() => {})]);
     renderDiagram();
   }
+}
+// Sources is a pager: the rail shows one source at a time — its own page on the
+// first line and the sub-page under it on the second — and the arrows walk the
+// rest, so the group keeps the same height however many sources are configured.
+// Pager lines stay ordinary .tabbtn buttons, so routing and the active/aria-current
+// wiring are untouched; data-page groups the lines that belong to one source.
+const SOURCE_PAGE_SOURCES = {
+    'opc-da': () => opcDaSources(),
+    'opc-ua': () => uaSources(),
+    'drivers': () => driverSources(),
+    'mx': () => mxSources()
+};
+const SOURCE_PAGE_STATE_WORDS = { good: 'connected', warn: 'degraded', bad: 'faulted', off: 'no sources configured' };
+function sourcePagerLines() {
+    return Array.from(document.querySelectorAll('#srcPager .pager-line'));
+}
+function sourcePagerRoutes() {
+    const routes = [];
+    sourcePagerLines().forEach(b => {
+        const page = Number(b.dataset.page);
+        if (routes[page] === undefined) routes[page] = b.dataset.route;
+    });
+    return routes;
+}
+function sourcePagerIndex() {
+    const active = sourcePagerLines().find(b => b.classList.contains('active'));
+    return active ? Number(active.dataset.page) : 0;
+}
+function renderSourcePager() {
+    const lines = sourcePagerLines();
+    if (!lines.length) return;
+    const index = sourcePagerIndex();
+    const routes = sourcePagerRoutes();
+    lines.forEach(b => { b.hidden = Number(b.dataset.page) !== index; });
+    const count = el('srcPagerCount');
+    if (count) {
+        count.textContent = (index + 1) + ' / ' + routes.length;
+        count.title = 'Source ' + (index + 1) + ' of ' + routes.length;
+    }
+    const prev = el('srcPagerPrev');
+    const next = el('srcPagerNext');
+    if (prev) prev.disabled = index <= 0;
+    if (next) next.disabled = index >= routes.length - 1;
+    renderSourcePagerStates();
+}
+function stepSourcePager(delta) {
+    const routes = sourcePagerRoutes();
+    const target = sourcePagerIndex() + delta;
+    if (routes[target]) navigate(routes[target]);
+}
+// The square is the app's legend-dot: green flowing, amber degraded, red faulted,
+// gray when the page has no sources yet. At rail width there is no room for the
+// legend's word, so the state rides on the button's title instead.
+function renderSourcePagerStates() {
+    const lines = sourcePagerLines().filter(b => b.dataset.state);
+    if (!lines.length || !state.sources) return;
+    const live = new Map((state.bridgeSources || []).map(s => [String(get(s, 'sourceId') || '').toLowerCase(), s]));
+    lines.forEach(b => {
+        const sources = (SOURCE_PAGE_SOURCES[b.dataset.state] || (() => []))();
+        let cls = 'off';
+        if (sources.length) {
+            cls = 'good';
+            sources.forEach(source => {
+                const status = live.get(String(source.sourceId || '').toLowerCase());
+                const one = stateClass((status ? get(status, 'connectionState') : '') || source.connectionState);
+                if (one === 'bad') cls = 'bad';
+                else if (one !== 'good' && cls !== 'bad') cls = 'warn';
+            });
+        }
+        const dot = b.querySelector('.pager-state');
+        if (dot) dot.className = 'pager-state ' + cls;
+        b.title = b.textContent.trim() + ' — ' + SOURCE_PAGE_STATE_WORDS[cls];
+    });
 }
 function badge(t, c) { return `<span class="badge ${c}">${esc(t)}</span>`; }
 function stateClass(v) {
@@ -5345,6 +5455,7 @@ async function loadSources() {
     if (el('cfgUpdateRate') && document.activeElement !== el('cfgUpdateRate')) el('cfgUpdateRate').value = String(state.updateRateMs);
     renderSources();
     populateLiveValuesSource();
+    renderSourcePagerStates();
     if (document.getElementById('view-interlinks')?.classList.contains('active')) renderInterlinksView();
 }
 function updateLiveValuesUi() {
@@ -6235,6 +6346,7 @@ async function refresh() {
         const vs = p.values || p.Values || [];
          const sources = get(b, 'sources') || [];
          state.bridgeSources = sources;
+         renderSourcePagerStates();
          const apps = p.apps || p.Apps || {};
          el('dot').className = 'dot';
          el('clock').textContent = new Date().toLocaleTimeString();
