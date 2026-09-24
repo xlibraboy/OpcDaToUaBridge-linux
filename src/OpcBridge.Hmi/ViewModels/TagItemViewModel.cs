@@ -98,8 +98,6 @@ public partial class TagItemViewModel : ObservableObject
 
     public TagBindingKey BindingKey => TagBindingKey.Create(BridgeId, SourceId, DaItemId);
 
-    public string Key => BindingKey.CacheKey;
-
     public static TagItemViewModel FromEntry(MultiBridgeTagEntry entry)
     {
         var vm = new TagItemViewModel();

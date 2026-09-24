@@ -21,6 +21,16 @@ assembly: what changed in the running version, no repository or installer needed
 Releases that did not change the runtime have no section here — the server's changelog
 carries the whole product history.
 
+### Fixed
+
+**Tag browser hover and selection no longer flicker under the live-value stream.** Every
+value batch (~10 per second) rebuilt the tag list, so the list control recreated its rows:
+the row under the pointer lost its hover highlight until the mouse moved, and the selected
+row flickered in the left rail. Rows are now updated in place, and the list is rebuilt only
+when the tags themselves change (connect, disconnect, a mapping edit on the bridge). The
+bridge and source selectors were refilled on every batch as well and now only change when
+their entries do.
+
 ## [1.3.0] - 2026-09-24
 
 ### Added

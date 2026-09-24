@@ -22,7 +22,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     private readonly BridgeConnectionManager connections_;
     private readonly Dictionary<string, DisplayStoreClient> storeClients_ = new(StringComparer.OrdinalIgnoreCase);
     private readonly PopupWindowService popups_;
-    private readonly Dictionary<string, TagItemViewModel> tagIndex_ = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<TagBindingKey, TagItemViewModel> tagIndex_ = new(TagBindingKeyComparer.Instance);
     private MultiBridgeTagEntry[] tagEntries_ = Array.Empty<MultiBridgeTagEntry>();
     private readonly Dictionary<string, bool> bridgeInfluxConnected_ = new(StringComparer.OrdinalIgnoreCase);
     private readonly bool ownsServices_;
@@ -201,8 +201,11 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// <summary>One editable line per bridge server (address, store, name, status).</summary>
     public ObservableCollection<BridgeRow> BridgeRows { get; } = new();
 
-    public IEnumerable<TagItemViewModel> FilteredTags =>
-        Tags.Where(tag => MatchesSelectedFilters(tag) && MatchesTextFilter(tag));
+    /// <summary>
+    /// Rows the tag browser shows: <see cref="Tags"/> narrowed by the bridge/source selectors and
+    /// the filter text. Kept in step row by row by <see cref="RefreshFilteredTags"/>.
+    /// </summary>
+    public ObservableCollection<TagItemViewModel> FilteredTags { get; } = new();
 
     /// <summary>
     /// Snapshot of the tag metadata the trend-group picker lists. Every bridge/source is included
@@ -240,16 +243,15 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// <summary>Source selector entries: "all sources" plus one per source of the selected bridge.</summary>
     public ObservableCollection<SourceFilterOption> SourceFilters { get; } = new();
 
-    partial void OnFilterChanged(string value) => OnPropertyChanged(nameof(FilteredTags));
+    partial void OnFilterChanged(string value) => RefreshFilteredTags();
 
-    partial void OnSelectedSourceFilterChanged(SourceFilterOption? value) =>
-        OnPropertyChanged(nameof(FilteredTags));
+    partial void OnSelectedSourceFilterChanged(SourceFilterOption? value) => RefreshFilteredTags();
 
     partial void OnSelectedBridgeFilterChanged(BridgeFilterOption? value)
     {
         // The source selector lists one bridge's sources, so picking a bridge re-scopes it.
         RebuildSourceFilters();
-        OnPropertyChanged(nameof(FilteredTags));
+        RefreshFilteredTags();
     }
 
     partial void OnIsConnectedChanged(bool value)
@@ -1017,48 +1019,108 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         });
     }
 
+    /// <summary>
+    /// Applies the tag cache to the browser. Live values arrive every ~100 ms, so a batch that
+    /// leaves the tag set alone refreshes the existing rows in place: replacing the rows, or
+    /// re-setting the bound list, makes the ListBox rebuild every container it holds, which drops
+    /// the hover and the selection the operator is on. The collections are rebuilt only when the
+    /// tag set itself changed (connect, disconnect, mapping edit).
+    /// </summary>
     private void RebuildTagsFromCache()
     {
-        string? selectedKey = SelectedTag?.Key;
+        TagBindingKey? selectedKey = SelectedTag?.BindingKey;
         MultiBridgeTagEntry[] entries = connections_.Cache.Tags
             .OrderBy(t => t.Key.BridgeId, StringComparer.OrdinalIgnoreCase)
             .ThenBy(t => t.Key.SourceId, StringComparer.OrdinalIgnoreCase)
             .ThenBy(t => t.DisplayName, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
+        bool sameTags = HasSameTags(tagEntries_, entries);
         tagEntries_ = entries;
-        Tags.Clear();
-        tagIndex_.Clear();
-        foreach (MultiBridgeTagEntry entry in entries)
+
+        if (sameTags)
         {
-            TagItemViewModel item = TagItemViewModel.FromEntry(entry);
-            item.InfluxConnected = IsBridgeInfluxConnected(item.BridgeId);
-            tagIndex_[item.Key] = item;
-            Tags.Add(item);
+            foreach (MultiBridgeTagEntry entry in entries)
+            {
+                if (tagIndex_.TryGetValue(entry.Key, out TagItemViewModel? item))
+                {
+                    item.InfluxConnected = IsBridgeInfluxConnected(item.BridgeId);
+                    item.Apply(entry);
+                }
+            }
+        }
+        else
+        {
+            Tags.Clear();
+            FilteredTags.Clear();
+            tagIndex_.Clear();
+            foreach (MultiBridgeTagEntry entry in entries)
+            {
+                TagItemViewModel item = TagItemViewModel.FromEntry(entry);
+                item.InfluxConnected = IsBridgeInfluxConnected(item.BridgeId);
+                tagIndex_[entry.Key] = item;
+                Tags.Add(item);
+            }
         }
 
         RebuildBridgeFilters();
         RebuildSourceFilters();
 
-        SelectedTag = selectedKey is not null && tagIndex_.TryGetValue(selectedKey, out TagItemViewModel? still)
+        SelectedTag = selectedKey is { } key && tagIndex_.TryGetValue(key, out TagItemViewModel? still)
             ? still
             : null;
-        OnPropertyChanged(nameof(FilteredTags));
+        RefreshFilteredTags();
         OnPropertyChanged(nameof(TagCount));
     }
 
+    /// <summary>True when the cache still holds the same tags, in the same order.</summary>
+    private static bool HasSameTags(MultiBridgeTagEntry[] previous, MultiBridgeTagEntry[] current)
+    {
+        if (previous.Length != current.Length)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < current.Length; i++)
+        {
+            if (!previous[i].Key.EqualsIgnoreCase(current[i].Key))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Brings the browser's visible rows in line with the bridge/source selectors and the filter
+    /// text. The text filter matches live values, so a value batch can change which rows belong in
+    /// the list — the rows are synced one by one rather than the list being rebuilt.
+    /// </summary>
+    private void RefreshFilteredTags() =>
+        FilteredRowSync.Apply(Tags, FilteredTags, IsTagVisible);
+
+    private bool IsTagVisible(TagItemViewModel tag) =>
+        MatchesSelectedFilters(tag) && MatchesTextFilter(tag);
+
     /// <summary>
     /// Rebuilds the bridge selector from the connected bridges, keeping the operator's current
-    /// choice when that bridge is still connected.
+    /// choice when that bridge is still connected. The entries are refreshed on every value batch,
+    /// so the list is only refilled when they actually changed — a refill would make the ComboBox
+    /// rebuild its items under the operator.
     /// </summary>
     private void RebuildBridgeFilters()
     {
         string? bridgeId = SelectedBridgeFilter?.BridgeId;
+        IReadOnlyList<BridgeFilterOption> options = BridgeFilterOptions.Build(tagEntries_);
 
-        BridgeFilters.Clear();
-        foreach (BridgeFilterOption option in BridgeFilterOptions.Build(tagEntries_))
+        if (!BridgeFilters.SequenceEqual(options))
         {
-            BridgeFilters.Add(option);
+            BridgeFilters.Clear();
+            foreach (BridgeFilterOption option in options)
+            {
+                BridgeFilters.Add(option);
+            }
         }
 
         SelectedBridgeFilter = BridgeFilters.FirstOrDefault(option =>
@@ -1068,17 +1130,23 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     /// <summary>
     /// Rebuilds the source selector for the selected bridge, keeping the operator's current
-    /// choice when that source is still present.
+    /// choice when that source is still present. Like the bridge selector, the list is refreshed
+    /// on every value batch and only refilled when its entries actually changed.
     /// </summary>
     private void RebuildSourceFilters()
     {
         string? bridgeId = SelectedSourceFilter?.BridgeId;
         string? sourceId = SelectedSourceFilter?.SourceId;
+        IReadOnlyList<SourceFilterOption> options =
+            SourceFilterOptions.Build(tagEntries_, SelectedBridgeFilter?.BridgeId);
 
-        SourceFilters.Clear();
-        foreach (SourceFilterOption option in SourceFilterOptions.Build(tagEntries_, SelectedBridgeFilter?.BridgeId))
+        if (!SourceFilters.SequenceEqual(options))
         {
-            SourceFilters.Add(option);
+            SourceFilters.Clear();
+            foreach (SourceFilterOption option in options)
+            {
+                SourceFilters.Add(option);
+            }
         }
 
         SelectedSourceFilter = SourceFilters.FirstOrDefault(option =>
@@ -1100,6 +1168,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         IsConnected = false;
         Tags.Clear();
+        FilteredTags.Clear();
         tagIndex_.Clear();
         tagEntries_ = Array.Empty<MultiBridgeTagEntry>();
         BridgeFilters.Clear();
@@ -1130,7 +1199,6 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
 
         storeClients_.Clear();
-        OnPropertyChanged(nameof(FilteredTags));
         OnPropertyChanged(nameof(TagCount));
     }
 
