@@ -270,24 +270,6 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
-    public void Script_SourcePauseControl_PostsToPauseEndpoint()
-    {
-        // Temporary pause (#5): the dashboard must drive POST /api/da/sources/pause
-        // from both saved-connection lists and report the outcome.
-        Assert.Contains("async function toggleSourcePause(", DashboardPage.Script);
-        Assert.Contains("'/api/da/sources/pause'", DashboardPage.Script);
-        Assert.Contains("data-action=\"toggle-source-pause\"", DashboardPage.Script);
-        Assert.Contains("function sourcePauseButton(", DashboardPage.Script);
-        Assert.Contains("function sourcePauseChip(", DashboardPage.Script);
-        // Both lists carry the control and the status line.
-        Assert.Contains("id=\"sourcesPauseMsg\"", DashboardPage.Html);
-        Assert.Contains("id=\"uaSourcesPauseMsg\"", DashboardPage.Html);
-        // Paused rows render with the badge and a Resume action.
-        Assert.Contains("source.paused === true ? ' ' + badge('Paused', 'warn') : ''", DashboardPage.Script);
-        Assert.Contains("${paused ? 'Resume' : 'Pause'}", DashboardPage.Script);
-    }
-
-    [Fact]
     public void Script_DaSourceStillUsesDaTagsApi()
     {
         Assert.Contains("/api/da/tags", DashboardPage.Script);

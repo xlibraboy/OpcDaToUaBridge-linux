@@ -38,10 +38,6 @@ public sealed record DaServerConfigRequest(
 
 public sealed record DaSourceIoModeRequest(string SourceId, string IoMode);
 
-/// <summary>Temporary runtime pause of a source so another program can take its
-/// upstream connection (e.g. the PLC's COM port).</summary>
-public sealed record DaSourcePauseRequest(string SourceId, bool Paused);
-
 public sealed record DaGroupIoModeRequest(string SourceId, string Name, int Rate, string IoMode, string? RenameFrom = null);
 
 public sealed record DaGroupIoModeResetRequest(string SourceId, string? Name = null, int? Rate = null);

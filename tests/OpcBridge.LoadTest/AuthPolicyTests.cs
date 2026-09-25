@@ -58,7 +58,6 @@ public sealed class AuthPolicyTests
     [InlineData("DELETE", "/api/hmi/displays/line-1", UserRole.Engineer)]
     [InlineData("POST", "/api/mappings/add", UserRole.Engineer)]
     [InlineData("POST", "/api/da/sources", UserRole.Engineer)]
-    [InlineData("POST", "/api/da/sources/pause", UserRole.Engineer)]
     [InlineData("POST", "/api/mqtt/config", UserRole.Engineer)]
     [InlineData("POST", "/api/influx/config", UserRole.Engineer)]
     [InlineData("POST", "/api/config/import", UserRole.Engineer)]

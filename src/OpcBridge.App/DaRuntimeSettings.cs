@@ -15,12 +15,6 @@ public sealed class DaRuntimeSettings
     private readonly string persist_path_;
     private DaRuntimeSettingsSnapshot snapshot_;
 
-    // Runtime-only pause set. A paused source releases its upstream connection
-    // (PLC COM port / UA session) so another program can take it over, but the
-    // flag is never written to sources.json: it is an operator's temporary
-    // action, not saved configuration, so a restart resumes normal polling.
-    private readonly HashSet<string> paused_ = new(StringComparer.OrdinalIgnoreCase);
-
     public DaRuntimeSettings(IOptions<DaClientOptions> options)
     {
         persist_path_ = DataDirectory.Combine("sources.json");
@@ -79,51 +73,12 @@ public sealed class DaRuntimeSettings
         }
     }
 
-    /// <summary>True when the source is currently paused at runtime (not persisted).</summary>
-    public bool IsPaused(string? sourceId)
-    {
-        string normalizedSourceId = NormalizeSourceId(sourceId);
-        lock (sync_)
-        {
-            return paused_.Contains(normalizedSourceId);
-        }
-    }
-
-    /// <summary>
-    /// Pause or resume a source at runtime. Pausing drops the source's upstream
-    /// connection on the next reconcile pass so a second program (e.g. GX Works)
-    /// can take the PLC's COM port; resuming reconnects on the next pass. The
-    /// flag is deliberately not persisted — see <see cref="paused_"/>.
-    /// </summary>
-    public DaRuntimeSettingsSnapshot SetPaused(string sourceId, bool paused)
-    {
-        string normalizedSourceId = NormalizeSourceId(sourceId);
-
-        lock (sync_)
-        {
-            if (paused)
-            {
-                paused_.Add(normalizedSourceId);
-            }
-            else
-            {
-                paused_.Remove(normalizedSourceId);
-            }
-
-            // Bump the version so the bridge worker reconciles this source on its
-            // next tick (connect/disconnect), without writing sources.json.
-            snapshot_ = snapshot_ with { Version = snapshot_.Version + 1 };
-            return snapshot_;
-        }
-    }
-
     public bool TryRemoveSource(string sourceId, out DaRuntimeSettingsSnapshot snapshot)
     {
         string normalizedSourceId = NormalizeSourceId(sourceId);
 
         lock (sync_)
         {
-            paused_.Remove(normalizedSourceId);
             List<DaSourceRuntimeSettings> sources = snapshot_.Sources
                 .Where(source => !string.Equals(source.SourceId, normalizedSourceId, StringComparison.OrdinalIgnoreCase))
                 .ToList();
@@ -720,9 +675,6 @@ public sealed class DaRuntimeSettings
     {
         lock (sync_)
         {
-            // Import replaces configuration wholesale; runtime pause is an operator
-            // action tied to the previous source set, so it is dropped too.
-            paused_.Clear();
             int defaultRate = NormalizeUpdateRate(snapshot.UpdateRateMs);
             IReadOnlyList<DaSourceRuntimeSettings> normalizedSources = snapshot.Sources
                 .Select(source => NormalizeSource(source, defaultRate))
