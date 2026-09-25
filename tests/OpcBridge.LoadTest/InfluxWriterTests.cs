@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using OpcBridge.App;
 using OpcBridge.Core;
@@ -92,6 +93,88 @@ public sealed class InfluxWriterTests
         BridgeValue value = new("src", "item.1", 1L, DateTime.UtcNow, 0, false);
         InfluxPointModel point = InfluxPointBuilder.Build(options, value, "  ");
         Assert.False(point.Tags.ContainsKey("display_name"));
+    }
+
+    [Fact]
+    public async Task Connect_UnreachableServer_FaultsInsteadOfClaimingConnected()
+    {
+        await using InfluxWriter writer = new(NullLogger<InfluxWriter>.Instance);
+
+        // Port 9 is the discard port: nothing listens, so the probe is refused immediately.
+        InfluxOptions options = new()
+        {
+            Enabled = true,
+            Url = "http://127.0.0.1:9",
+            Org = "demo-org",
+            Bucket = "demo-bucket",
+            Token = "demo-token",
+            TimeoutMs = 1000,
+            VerifySsl = false
+        };
+
+        InvalidOperationException error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => writer.ConnectAsync(options, CancellationToken.None));
+
+        // The message must name the host: it is what the dashboard shows as Last error.
+        Assert.Contains("127.0.0.1:9", error.Message);
+        Assert.Equal(InfluxConnectionState.Faulted, writer.State);
+    }
+
+    [Fact]
+    public async Task Connect_UnreachableServer_NeverRaisesConnected()
+    {
+        await using InfluxWriter writer = new(NullLogger<InfluxWriter>.Instance);
+        List<InfluxConnectionState> seen = new();
+        writer.StateChanged += state => seen.Add(state);
+
+        InfluxOptions options = new()
+        {
+            Enabled = true,
+            Url = "http://127.0.0.1:9",
+            Org = "demo-org",
+            Bucket = "demo-bucket",
+            Token = "demo-token",
+            TimeoutMs = 1000,
+            VerifySsl = false
+        };
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => writer.ConnectAsync(options, CancellationToken.None));
+
+        // Connected must never be announced for a server that did not answer. (The run opens with
+        // a Disconnected from the pre-connect teardown, so only the absence is asserted here.)
+        Assert.Contains(InfluxConnectionState.Connecting, seen);
+        Assert.DoesNotContain(InfluxConnectionState.Connected, seen);
+        Assert.Equal(InfluxConnectionState.Faulted, seen[^1]);
+    }
+
+    [Fact]
+    public async Task Connect_MissingCredentials_FaultsBeforeProbing()
+    {
+        await using InfluxWriter writer = new(NullLogger<InfluxWriter>.Instance);
+        InfluxOptions options = new()
+        {
+            Enabled = true,
+            Url = "http://127.0.0.1:9",
+            Org = string.Empty,
+            Bucket = string.Empty,
+            Token = null
+        };
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => writer.ConnectAsync(options, CancellationToken.None));
+        Assert.Equal(InfluxConnectionState.Faulted, writer.State);
+    }
+
+    [Fact]
+    public void SetLastError_RecordsFailureWithoutChangingState()
+    {
+        InfluxRuntimeSettings settings = new(Options.Create(new InfluxOptions()));
+        settings.SetState("Connected");
+
+        settings.SetLastError("Write failed: unauthorized");
+
+        InfluxRuntimeSnapshot snapshot = settings.GetSnapshot();
+        Assert.Equal("Connected", snapshot.State);
+        Assert.Equal("Write failed: unauthorized", snapshot.LastError);
     }
 
     [Fact]

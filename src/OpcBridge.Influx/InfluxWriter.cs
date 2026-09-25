@@ -64,14 +64,21 @@ public sealed class InfluxWriter : IInfluxWriter
             InfluxDBClient client = new InfluxDBClient(clientOptions);
             WriteApiAsync writeApi = client.GetWriteApiAsync();
 
-            // Probe write API construction; network validation deferred to first write.
-            _ = writeApi;
-
             lock (sync_)
             {
                 client_ = client;
                 writeApi_ = writeApi;
                 options_ = CloneOptions(options, url, org, bucket, token!);
+            }
+
+            // A constructed client is not a connection: the write API is stateless HTTP and only
+            // complains on the first write. Probe the server before announcing Connected, otherwise
+            // the dashboard reports a live historian for a URL with nothing behind it (issue #10).
+            // Storing the client first lets the failure path below dispose it.
+            if (!await ProbeReachableAsync(client, url).ConfigureAwait(false))
+            {
+                throw new InvalidOperationException(
+                    $"InfluxDB at {url} did not answer its /ping probe — check the URL, the port, and that the server is running.");
             }
 
             SetState(InfluxConnectionState.Connected);
@@ -160,6 +167,29 @@ public sealed class InfluxWriter : IInfluxWriter
             .Timestamp(model.TimestampUtc, WritePrecision.Ns);
 
         return point;
+    }
+
+    /// <summary>
+    /// Reachability probe for <see cref="ConnectAsync"/>. A refused connection, a timeout or a
+    /// non-success response is false; a thrown transport error is re-thrown wrapped with the URL so
+    /// the operator reads which host failed. Both outcomes leave the caller to set Faulted, so
+    /// "Connected" never describes an unreachable server.
+    /// </summary>
+    private static async Task<bool> ProbeReachableAsync(InfluxDBClient client, string url)
+    {
+        try
+        {
+            // PingAsync takes no token of its own; the client's configured Timeout bounds the call.
+            return await client.PingAsync().ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException($"Cannot reach InfluxDB at {url}: {ex.Message}", ex);
+        }
     }
 
     private static InfluxOptions CloneOptions(InfluxOptions source, string url, string org, string bucket, string token)
