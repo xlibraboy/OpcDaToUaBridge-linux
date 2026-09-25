@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+**The UA root folder is "Bridge Tags" now.** UA clients browsing the server saw every
+mapped tag under a folder named "OPC DA Tags" — wrong the moment a source feeds tags
+from OPC UA, Melsec or S7-200 instead of DA. The folder under Objects is now
+**Bridge Tags** (symbolic name `BridgeTags`, same `ns=2` namespace); variable node IDs
+(`ns=2;s={sourceId}/{itemId}`) are untouched, so client subscriptions and node lists
+keep working across the rename.
+
 **Release notes are per app now.** The changelog was one file covering the bridge and
 both desktop apps; the server keeps its own — this one, the release authority that the
 MSI version and the release page follow — while the HMI runtime and the designer ship

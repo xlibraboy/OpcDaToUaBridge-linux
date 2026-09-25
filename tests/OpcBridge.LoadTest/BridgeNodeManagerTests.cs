@@ -51,4 +51,13 @@ public sealed class BridgeNodeManagerTests
 
         Assert.Equal(expected, actual);
     }
+
+    [Fact]
+    public void RootFolder_IsProtocolNeutral()
+    {
+        // Issue #13: the root folder must not present the bridge as OPC-DA-only —
+        // sources can be OPC DA, OPC UA, Melsec or S7-200.
+        Assert.Equal("BridgeTags", BridgeNodeManager.RootFolderPath);
+        Assert.Equal("Bridge Tags", BridgeNodeManager.RootFolderDisplayName);
+    }
 }

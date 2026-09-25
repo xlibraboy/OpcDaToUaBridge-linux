@@ -46,6 +46,15 @@ public sealed class HelpContentTests
     }
 
     [Fact]
+    public void HelpText_NamesTheUaRootFolderBridgeTags()
+    {
+        // Issue #13: help must describe the protocol-neutral root folder.
+        Assert.Contains("Bridge Tags", HelpContent.Markdown);
+        Assert.DoesNotContain("OPC DA Tags", HelpContent.Markdown);
+        Assert.DoesNotContain("OpcDaTags", HelpContent.Markdown);
+    }
+
+    [Fact]
     public void HelpText_DescribesGroupedNavigation()
     {
         Assert.Contains("# Dashboard Navigation", HelpContent.Markdown);
