@@ -1635,6 +1635,7 @@ internal static class DashboardPage
             <div class="box">
                 <div class="box-h">MX Component Connections <span class="msg" id="mxCount" style="margin-left:auto"></span></div>
                 <div class="box-b">
+                    <div class="hint" id="mxPauseMsg" role="status"></div>
                     <div class="list" id="mxList" style="max-height:280px"></div>
                 </div>
             </div>
@@ -5233,7 +5234,7 @@ function sourcePauseButton(source) {
     return `<button class="btn ghost" type="button" data-action="toggle-source-pause" data-source-id="${attr(source.sourceId)}" data-paused="${paused ? 'true' : 'false'}" title="${attr(title)}">${paused ? 'Resume' : 'Pause'}</button>`;
 }
 function setSourcePauseMessage(text) {
-    ['sourcesPauseMsg', 'uaSourcesPauseMsg'].forEach(id => {
+    ['sourcesPauseMsg', 'uaSourcesPauseMsg', 'mxPauseMsg'].forEach(id => {
         const node = el(id);
         if (node) node.textContent = text || '';
     });
@@ -5257,6 +5258,8 @@ async function toggleSourcePause(sourceId, paused) {
     }
     await refresh();
     await loadSources();
+    // loadSources renders the DA/UA lists; the MX list has its own renderer.
+    if (el('mxList')) renderMx();
 }
 function renderSources() {
     const select = el('selectedSource');
@@ -7955,7 +7958,7 @@ function renderMx() {
     }
     el('mxCount').textContent = sources.length + ' connection' + (sources.length !== 1 ? 's' : '');
     el('mxList').innerHTML = sources.length ? sources.map(source =>
-        `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)} ${sourceTypeBadge(source)}</div><div class="p">${esc(source.sourceId)} · MX station ${esc(String(source.logicalStationNumber ?? 0))} · ${formatMs(source.updateRateMs)}</div></div><button class="btn ghost" data-action="select-mx" data-source-id="${attr(source.sourceId)}">Select</button></div>`
+        `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)} ${sourceTypeBadge(source)}${sourcePauseChip(source)}</div><div class="p">${esc(source.sourceId)} · MX station ${esc(String(source.logicalStationNumber ?? 0))} · ${formatMs(source.updateRateMs)}</div></div><span style="display:flex;gap:4px"><button class="btn ghost" data-action="select-mx" data-source-id="${attr(source.sourceId)}">Select</button>${sourcePauseButton(source)}</span></div>`
     ).join('') : '<span class="msg">No MX Component connections configured. Click + Add Connection.</span>';
     loadMxForm();
 }
@@ -9354,6 +9357,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (el('mxTest')) el('mxTest').addEventListener('click', () => testMxConnection().catch(e => el('mxMessage').textContent = '✗ ' + e.message));
     if (el('mxList')) {
         el('mxList').addEventListener('click', event => {
+            const pauseButton = event.target.closest('button[data-action="toggle-source-pause"]');
+            if (pauseButton) {
+                toggleSourcePause(pauseButton.dataset.sourceId || '', pauseButton.dataset.paused === 'true');
+                return;
+            }
             const button = event.target.closest('button[data-action="select-mx"]');
             if (!button) return;
             pickMxSource(button.dataset.sourceId || '');

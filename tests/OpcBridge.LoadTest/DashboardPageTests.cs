@@ -273,18 +273,30 @@ public sealed class DashboardPageTests
     public void Script_SourcePauseControl_PostsToPauseEndpoint()
     {
         // Temporary pause (#5): the dashboard must drive POST /api/da/sources/pause
-        // from both saved-connection lists and report the outcome.
+        // from every source list and report the outcome.
         Assert.Contains("async function toggleSourcePause(", DashboardPage.Script);
         Assert.Contains("'/api/da/sources/pause'", DashboardPage.Script);
         Assert.Contains("data-action=\"toggle-source-pause\"", DashboardPage.Script);
         Assert.Contains("function sourcePauseButton(", DashboardPage.Script);
         Assert.Contains("function sourcePauseChip(", DashboardPage.Script);
-        // Both lists carry the control and the status line.
+        // Every list carries the control and the status line.
         Assert.Contains("id=\"sourcesPauseMsg\"", DashboardPage.Html);
         Assert.Contains("id=\"uaSourcesPauseMsg\"", DashboardPage.Html);
+        Assert.Contains("id=\"mxPauseMsg\"", DashboardPage.Html);
         // Paused rows render with the badge and a Resume action.
         Assert.Contains("source.paused === true ? ' ' + badge('Paused', 'warn') : ''", DashboardPage.Script);
         Assert.Contains("${paused ? 'Resume' : 'Pause'}", DashboardPage.Script);
+        // MX Component is the COM-port case (#5), so its own list — not only the
+        // DA/UA saved connections — must render the control and delegate the click.
+        string script = DashboardPage.Script;
+        int mxStart = script.IndexOf("function renderMx(", StringComparison.Ordinal);
+        Assert.True(mxStart >= 0, "renderMx missing");
+        int mxEnd = script.IndexOf("\nfunction ", mxStart + 1, StringComparison.Ordinal);
+        string renderMx = mxEnd > mxStart ? script[mxStart..mxEnd] : script[mxStart..];
+        Assert.Contains("${sourcePauseChip(source)}", renderMx);
+        Assert.Contains("${sourcePauseButton(source)}", renderMx);
+        // DA + UA + MX lists each delegate the pause action.
+        Assert.Equal(3, CountOccurrences(script, "closest('button[data-action=\"toggle-source-pause\"]')"));
     }
 
     [Fact]
@@ -1106,6 +1118,17 @@ public sealed class DashboardPageTests
     }
 
     private static string ExtractScript() => DashboardPage.Script;
+
+    private static int CountOccurrences(string text, string needle)
+    {
+        int count = 0;
+        for (int i = text.IndexOf(needle, StringComparison.Ordinal); i >= 0; i = text.IndexOf(needle, i + needle.Length, StringComparison.Ordinal))
+        {
+            count++;
+        }
+
+        return count;
+    }
 
     [Fact]
     public void Html_DiagramIsStaticExceptFlowDashes()
