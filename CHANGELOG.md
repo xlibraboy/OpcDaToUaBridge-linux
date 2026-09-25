@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+**The sidebar folds.** The Tags, IoT, Historian, Ops and Help groups in the rail are
+collapsible now: each header is a toggle with a caret, every group starts closed, and
+navigating to one of its pages — by click, pager, wizard follow-up or deep link — opens
+its group on the way. A rail that listed every page always now shows five labels until
+you ask for more. Sources keeps its pinned pager and never folds.
+
 **The UA root folder is "Bridge Tags" now.** UA clients browsing the server saw every
 mapped tag under a folder named "OPC DA Tags" — wrong the moment a source feeds tags
 from OPC UA, Melsec or S7-200 instead of DA. The folder under Objects is now
