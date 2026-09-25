@@ -77,7 +77,7 @@ Use **IoT → MQTT → Setup Wizard** and **Historian → InfluxDB → Setup Wiz
   ┌──────────────▼───────────────────────────────────────────────────────┐
   │                   OPC UA Server (Opc.Ua.Server SDK)                   │
   │                                                                       │
-  │   Folder: OpcDaTags (ns=2)                                            │
+  │   Folder: BridgeTags (ns=2)                                           │
   │   ├── ns=2;s=sourceA/TagA   ← live value, quality, timestamp         │
   │   ├── ns=2;s=sourceA/TagB   ← live value                             │
   │   ├── ns=2;s=sourceA/TagD   ← live value                             │
@@ -237,7 +237,7 @@ Interlinks are a **separate subsystem** from DA → UA mappings. A provider chan
 # OPC UA Server
 
 - The bridge runs a built-in OPC UA server. UA clients connect to the endpoint shown on the Monitor tab.
-- Each DA tag mapping creates one UA variable node under the "OPC DA Tags" folder (namespace index 2).
+- Each DA tag mapping creates one UA variable node under the "Bridge Tags" folder (namespace index 2).
 - Node IDs follow the pattern `ns=2;s={sourceId}/{itemId}` unless a custom UA Node ID is specified.
 - The UA server supports read, subscription (monitored items), and **writes** for tags with Read-Write or Write access rights.
 
@@ -600,7 +600,7 @@ The bridge exposes **all tags from all DA sources** in a single OPC UA server ad
  UA Side (one server, one address space)
 
 opc.tcp://bridge-host:4840/OpcBridge
- Folder: OpcDaTags (ns=2)
+ Folder: BridgeTags (ns=2)
  ├── ns=2;s=sourceA/Tag1    ← updated every 500ms by Source A poller
  ├── ns=2;s=sourceA/Tag2    ← updated every 500ms
  ├── ns=2;s=sourceA/Tag3    ← updated every 1000ms

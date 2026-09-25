@@ -20,6 +20,11 @@ internal sealed class BridgeNodeManager : CustomNodeManager2
 
     private static readonly double TicksPerSecond = TimeSpan.FromSeconds(1).Ticks;
 
+    // Root folder that organizes every mapped tag under Objects. Sources feed the bridge
+    // from OPC DA, OPC UA, Melsec and S7-200 alike, so the folder name stays protocol-neutral.
+    internal const string RootFolderPath = "BridgeTags";
+    internal const string RootFolderDisplayName = "Bridge Tags";
+
     public BridgeNodeManager(
         IServerInternal server,
         ApplicationConfiguration configuration,
@@ -42,7 +47,7 @@ internal sealed class BridgeNodeManager : CustomNodeManager2
                 externalReferences[ObjectIds.ObjectsFolder] = references;
             }
 
-            FolderState root = CreateFolder(null, "OpcDaTags", "OPC DA Tags");
+            FolderState root = CreateFolder(null, RootFolderPath, RootFolderDisplayName);
             root.AddReference(ReferenceTypeIds.Organizes, true, ObjectIds.ObjectsFolder);
             references.Add(new NodeStateReference(ReferenceTypeIds.Organizes, false, root.NodeId));
             AddPredefinedNode(SystemContext, root);

@@ -125,7 +125,7 @@ When `TagMapping.Mode == "Manual"`, `BridgeWorker.ApplyManualMappings` synthesiz
 ## UA server
 
 - SDK: `OPCFoundation.NetStandard.Opc.Ua` 1.5.378.145.
-- Namespace URI `urn:ohmypi:opc-bridge:tags` (index 2 at runtime). Root folder `OpcDaTags` under Objects. Mirror node id: string `{sourceId}/{itemId}` in that namespace (e.g. `ns=2;s=ua-a/ns=2;s=Tag00001`).
+- Namespace URI `urn:ohmypi:opc-bridge:tags` (index 2 at runtime). Root folder `BridgeTags` (display name "Bridge Tags") under Objects. Mirror node id: string `{sourceId}/{itemId}` in that namespace (e.g. `ns=2;s=ua-a/ns=2;s=Tag00001`).
 - Endpoint `opc.tcp://0.0.0.0:4840/OpcBridge` (runtime port from `Bridge:OpcUaPort`), security policy `None` only, `AutoAcceptUntrustedCertificates = true` (dev default — tighten for production).
 - PKI directory stores: `pki/own`, `pki/trusted`, `pki/issuers`, `pki/rejected`.
 - `BridgeNodeManager.SyncMappings` (via `BridgeUaServer`) adds/removes nodes AND **refreshes mapping-driven attributes in place** when a mapping changes: `AccessLevel`/`UserAccessLevel` (from `AccessRights` via `ToAccessLevel`), `DataType` (via `ToDataTypeId`; a type change resets the value to a type-consistent initial), `DisplayName`/`Description`, and the `OnWriteValue` handler. Guarded by a change check so steady-state SyncMappings over 100k nodes is a near no-op. `ToAccessLevel`/`ToDataTypeId` are `internal` and unit-tested.
