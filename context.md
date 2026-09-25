@@ -1,6 +1,6 @@
 # context.md — OpcBridge
 
-Instruction file for AI agents working in this repo. All facts below are verified against committed code on `main` as of 2026-09-25 (`d847f37`).
+Instruction file for AI agents working in this repo. All facts below are verified against committed code on `main` as of 2026-09-25 (`66feea7`).
 
 ## What this project is
 
@@ -153,7 +153,7 @@ Endpoints (all in `Program.cs`):
 - SignalR hub `/hmi` — events `values` (batched `HmiValueDelta[]`) and `mappingsChanged` (`HmiMappingsChanged`)
 - `GET /api/logs?limit=&level=` — `DashboardLogStore` ring buffer
 - `GET /api/app-info` | `/api/version` | `/api/help` — assembly info / `HelpContent.Markdown`
-- `GET /api/da/sources` — source registry (each row carries `paused`); `POST /api/da/sources` (upsert); `POST /api/da/sources/remove`; `POST /api/da/sources/update-rate`; `POST /api/da/update-rate`; `POST /api/da/sources/pause` — `{"sourceId":..., "paused":true|false}` temporary runtime pause (#5, Engineer role): the worker disposes the source's session and reports `Paused` until resumed; the flag is **never** persisted to sources.json, so a restart resumes everything, and config import clears it
+- `GET /api/da/sources` — source registry (each row carries `paused`); `POST /api/da/sources` (upsert); `POST /api/da/sources/remove`; `POST /api/da/sources/update-rate`; `POST /api/da/update-rate`; `POST /api/da/sources/pause` — `{"sourceId":..., "paused":true|false}` temporary runtime pause (#5, Engineer role): the worker disposes the source's session and reports `Paused` until resumed; the flag is **never** persisted to sources.json, so a restart resumes everything, and config import clears it (dashboard Pause/Resume control: the DA, UA and MX Component connection lists)
 - `POST /api/da/servers` — enumerate OPC DA servers (Windows-only, 10s timeout); `POST /api/da/tags` — browse tags (Windows-only, 15s timeout)
 - `POST /api/ua/test-connection` — probe an external UA endpoint from the bridge
 - `GET /api/mappings`; `POST /api/mappings/add` | `/bulk-add` | `/update` | `/remove` (see API gotchas above)
@@ -246,7 +246,7 @@ docker run --rm -v "$PWD/<worktree>":/src -w /src -v "$HOME/.nuget-cache":/home/
   -e HOME=/home/build -e DOTNET_CLI_HOME=/home/build --user "$(id -u):$(id -g)" \
   mcr.microsoft.com/dotnet/sdk:8.0 dotnet test tests/OpcBridge.LoadTest/OpcBridge.LoadTest.csproj
 ```
-`--user` keeps build artifacts iwan-owned (rootful daemon). Full suite: **1032 tests** (xUnit, `tests/OpcBridge.LoadTest`), ~8–16 min in Docker on this host — trust the run's own total over the wall time. The suite has grown well past the previous count (auth/role, user-store and changelog tests joined). Known flaky: `InfluxApiTests.InfluxConfig_Post_Persists_EnabledFlag` (historically failed in full-suite order, passes isolated — green in the latest full run).
+`--user` keeps build artifacts iwan-owned (rootful daemon). Full suite: **1037 tests** (xUnit, `tests/OpcBridge.LoadTest`), ~8–16 min in Docker on this host — trust the run's own total over the wall time. The suite has grown well past the previous count (auth/role, user-store and changelog tests joined). Known flaky: `InfluxApiTests.InfluxConfig_Post_Persists_EnabledFlag` (historically failed in full-suite order, passes isolated — green in the latest full run).
 
 **Worktree workflow (session convention):** fixes live in `git worktree add .worktrees/<branch-slug> -b <branch> main`; one worktree per branch; full suite per branch before merge; merge to main with `--no-ff`; push to origin. **Tool path quirk:** `edit`/`write` with relative `.worktrees/...` paths sometimes land in the main checkout — always use absolute paths and verify with grep after. `.dockerignore` excludes `.worktrees/` (7+ GB) so images can be built from the main checkout.
 
