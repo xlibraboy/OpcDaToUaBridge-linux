@@ -1,13 +1,13 @@
 #!/bin/sh
 # Pause-feature verification rig for issue #5:
-#   opcbridge-pause : the fix/source-pause worktree on port 18085
+#   opcbridge-pause : the main checkout on port 18085 (pause is merged to main)
 #   opcua-sim-pause : an OPC UA sim for it to poll
 # Both containers join the user-defined opcbridge-pause-net network so the
 # bridge can resolve the sim's hostname (container DNS is user-defined only).
 # The sim source proves the live worker path: a paused source must drop its
 # session, report Paused, and stop producing values until resumed.
 set -e
-WT=/home/autoinst578/ProjectDirectory/OpcDaToUaBridge/.worktrees/fix-source-pause
+REPO=/home/autoinst578/ProjectDirectory/OpcDaToUaBridge
 
 docker rm -f opcbridge-pause opcua-sim-pause >/dev/null 2>&1 || true
 docker network create opcbridge-pause-net >/dev/null 2>&1 || true
@@ -29,7 +29,7 @@ docker run -d --name opcbridge-pause \
   --network opcbridge-pause-net \
   -p 18085:8080 \
   -u 1000:1000 \
-  -v "$WT":/wt \
+  -v "$REPO":/wt \
   --workdir /wt/src/OpcBridge.App/bin/Debug/net8.0 \
   mcr.microsoft.com/dotnet/sdk:8.0 dotnet OpcBridge.App.dll >/dev/null
 
