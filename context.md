@@ -103,7 +103,7 @@ When `TagMapping.Mode == "Manual"`, `BridgeWorker.ApplyManualMappings` synthesiz
 
 - A failed source read enqueues the source id to `failedSourceQueue`; the coordinator loop tears down all pollers + sessions and rebuilds on the next tick. The app stays alive. The subscription watchdog (`ScanWatchdog`) detects dead subscriptions and reconnects the source.
 - **Per-item failures are handled in the DA client, not the coordinator** (see above): a single bad tag yields a BAD value + retry, never a source teardown. `connectedVersion` is invalidated on any reconfigure failure so every source (including reconnects) is re-evaluated on the next tick.
-- `BridgeState.SetSourceError` marks the source `"Faulted"` and surfaces the message; aggregate `DaConnectionState` becomes `"Partial"` if some sources are connected.
+- `BridgeState.SetSourceError` marks the source `"Faulted"` and surfaces the message; aggregate `DaConnectionState` becomes `"Partial"` if some sources are connected. Paused sources (see `/api/da/sources/pause` above) are intentionally offline, not failures: `AggregateConnectionState` treats `"Paused"` as neutral (all-paused → aggregate `"Paused"`; paused + faulted → `"Faulted"`; paused + connected → `"Connected"`), and `BridgeState.ClearSourceError` wipes a stale fault text without touching the state.
 - Empty `ProgId` on a DA source → state `"Disconnected"` with a clear error, no crash. The baked-in DA `default` source always fails on Linux (`PlatformNotSupportedException`, COM) — expected; remove it via the API on UA-only rigs.
 
 ## Source client seam
@@ -153,7 +153,7 @@ Endpoints (all in `Program.cs`):
 - SignalR hub `/hmi` — events `values` (batched `HmiValueDelta[]`) and `mappingsChanged` (`HmiMappingsChanged`)
 - `GET /api/logs?limit=&level=` — `DashboardLogStore` ring buffer
 - `GET /api/app-info` | `/api/version` | `/api/help` — assembly info / `HelpContent.Markdown`
-- `GET /api/da/sources` — source registry; `POST /api/da/sources` (upsert); `POST /api/da/sources/remove`; `POST /api/da/sources/update-rate`; `POST /api/da/update-rate`
+- `GET /api/da/sources` — source registry (each row carries `paused`); `POST /api/da/sources` (upsert); `POST /api/da/sources/remove`; `POST /api/da/sources/update-rate`; `POST /api/da/update-rate`; `POST /api/da/sources/pause` — `{"sourceId":..., "paused":true|false}` temporary runtime pause (#5, Engineer role): the worker disposes the source's session and reports `Paused` until resumed; the flag is **never** persisted to sources.json, so a restart resumes everything, and config import clears it
 - `POST /api/da/servers` — enumerate OPC DA servers (Windows-only, 10s timeout); `POST /api/da/tags` — browse tags (Windows-only, 15s timeout)
 - `POST /api/ua/test-connection` — probe an external UA endpoint from the bridge
 - `GET /api/mappings`; `POST /api/mappings/add` | `/bulk-add` | `/update` | `/remove` (see API gotchas above)
@@ -246,7 +246,7 @@ docker run --rm -v "$PWD/<worktree>":/src -w /src -v "$HOME/.nuget-cache":/home/
   -e HOME=/home/build -e DOTNET_CLI_HOME=/home/build --user "$(id -u):$(id -g)" \
   mcr.microsoft.com/dotnet/sdk:8.0 dotnet test tests/OpcBridge.LoadTest/OpcBridge.LoadTest.csproj
 ```
-`--user` keeps build artifacts iwan-owned (rootful daemon). Full suite: **1017 tests** (xUnit, `tests/OpcBridge.LoadTest`), ~8–16 min in Docker on this host — trust the run's own total over the wall time. The suite has grown well past the previous count (auth/role, user-store and changelog tests joined). Known flaky: `InfluxApiTests.InfluxConfig_Post_Persists_EnabledFlag` (historically failed in full-suite order, passes isolated — green in the latest full run).
+`--user` keeps build artifacts iwan-owned (rootful daemon). Full suite: **1032 tests** (xUnit, `tests/OpcBridge.LoadTest`), ~8–16 min in Docker on this host — trust the run's own total over the wall time. The suite has grown well past the previous count (auth/role, user-store and changelog tests joined). Known flaky: `InfluxApiTests.InfluxConfig_Post_Persists_EnabledFlag` (historically failed in full-suite order, passes isolated — green in the latest full run).
 
 **Worktree workflow (session convention):** fixes live in `git worktree add .worktrees/<branch-slug> -b <branch> main`; one worktree per branch; full suite per branch before merge; merge to main with `--no-ff`; push to origin. **Tool path quirk:** `edit`/`write` with relative `.worktrees/...` paths sometimes land in the main checkout — always use absolute paths and verify with grep after. `.dockerignore` excludes `.worktrees/` (7+ GB) so images can be built from the main checkout.
 

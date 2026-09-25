@@ -683,7 +683,7 @@ app.MapGet("/api/da/sources", (DaRuntimeSettings settings) =>
     {
         updateRateMs = snapshot.UpdateRateMs,
         useSubscriptions = snapshot.UseSubscriptions,
-        sources = snapshot.Sources.Select(ToSourceApiDto)
+        sources = snapshot.Sources.Select(source => ToSourceApiDto(source, settings.IsPaused(source.SourceId)))
     });
 });
 app.MapPost("/api/da/update-rate", (DaUpdateRateRequest request, DaRuntimeSettings settings) =>
@@ -765,6 +765,27 @@ app.MapPost("/api/da/sources/io-mode", (DaSourceIoModeRequest request, DaRuntime
         version = snapshot.Version,
         sourceId = source.SourceId,
         ioMode = source.IoMode
+    });
+});
+app.MapPost("/api/da/sources/pause", (DaSourcePauseRequest request, DaRuntimeSettings settings) =>
+{
+    if (string.IsNullOrWhiteSpace(request.SourceId))
+    {
+        return Results.BadRequest(new { error = "Source ID is required." });
+    }
+
+    DaSourceRuntimeSettings? source = settings.GetSnapshot().GetSource(request.SourceId);
+    if (source is null)
+    {
+        return Results.BadRequest(new { error = "Source not found." });
+    }
+
+    DaRuntimeSettingsSnapshot snapshot = settings.SetPaused(source.SourceId, request.Paused);
+    return Results.Json(new
+    {
+        version = snapshot.Version,
+        sourceId = source.SourceId,
+        paused = settings.IsPaused(source.SourceId)
     });
 });
 app.MapGet("/api/da/sources/groups", (string? sourceId, DaRuntimeSettings settings, MappingStore mappingStore) =>
@@ -1118,7 +1139,7 @@ app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings
     return Results.Json(new
     {
         version = snapshot.Version,
-        source = ToSourceApiDto(source)
+        source = ToSourceApiDto(source, settings.IsPaused(source.SourceId))
     });
 });
 app.MapPost("/api/da/sources/remove", (DaSourceRemoveRequest request, DaRuntimeSettings settings, MappingStore store, InterlinkStore interlinkStore) =>
@@ -1508,7 +1529,7 @@ app.MapGet("/api/config/export", (DaRuntimeSettings daSettings, MappingStore map
         {
             updateRateMs = daSnapshot.UpdateRateMs,
             useSubscriptions = daSnapshot.UseSubscriptions,
-            sources = daSnapshot.Sources.Select(ToSourceApiDto)
+            sources = daSnapshot.Sources.Select(source => ToSourceApiDto(source, daSettings.IsPaused(source.SourceId)))
         },
         mappings = mappings
     });
@@ -2438,10 +2459,11 @@ static string NormalizeInterlinkSourceId(string? sourceId)
     return value.Length == 0 ? DaRuntimeSettings.DefaultSourceId : value;
 }
 
-static object ToSourceApiDto(DaSourceRuntimeSettings source)
+static object ToSourceApiDto(DaSourceRuntimeSettings source, bool paused = false)
 {
     return new
     {
+        paused,
         sourceId = source.SourceId,
         displayName = source.DisplayName,
         sourceType = source.SourceType,
