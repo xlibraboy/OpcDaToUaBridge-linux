@@ -1414,8 +1414,8 @@ app.MapPost("/api/mappings/add", (MappingAddRequest request, MappingStore store,
         return Results.BadRequest(new { error = maxError });
     }
 
-    long version = store.Add(tags);
-    return Results.Json(new { version });
+    long version = store.Add(tags, out MappingAddResult addResult);
+    return Results.Json(AddResultPayload(version, addResult));
 });
 app.MapPost("/api/mappings/bulk-add", (MappingAddRequest request, MappingStore store, DaRuntimeSettings settings) =>
 {
@@ -1448,8 +1448,15 @@ app.MapPost("/api/mappings/bulk-add", (MappingAddRequest request, MappingStore s
         return Results.BadRequest(new { error = maxError });
     }
 
-    long version = store.Add(tags);
-    return Results.Json(new { version, received = request.Tags.Count });
+    long version = store.Add(tags, out MappingAddResult addResult);
+    return Results.Json(new
+    {
+        version,
+        received = request.Tags.Count,
+        added = addResult.Added,
+        skippedExisting = addResult.SkippedExisting,
+        existing = ExistingKeysPayload(addResult)
+    });
 });
 app.MapPost("/api/mappings/update", (MappingUpdateRequest request, MappingStore store, DaRuntimeSettings daSettings) =>
 {
@@ -2747,6 +2754,20 @@ static bool TryValidateUaConnectionFields(
 
     return true;
 }
+
+// Insert-only add answers with what it did, so the Maps tab can say "already mapped"
+// instead of appearing to ignore the click (issue #7).
+static object AddResultPayload(long version, MappingAddResult result) => new
+{
+    version,
+    added = result.Added,
+    skippedExisting = result.SkippedExisting,
+    existing = ExistingKeysPayload(result)
+};
+
+static object[] ExistingKeysPayload(MappingAddResult result) => result.ExistingKeys
+    .Select(key => new { sourceId = key.SourceId, itemId = key.ItemId })
+    .ToArray<object>();
 
 static string? TryGetMaxMappedTagsError(
     IReadOnlyList<TagMapping> incoming,
