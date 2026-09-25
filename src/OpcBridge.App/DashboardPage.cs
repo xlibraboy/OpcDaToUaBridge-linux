@@ -188,6 +188,16 @@ internal static class DashboardPage
 .nav-group .tabbtn:hover::before { background: var(--border2); }
 .nav-group .tabbtn.active::before { background: var(--accent); opacity: .5; }
 .nav-group .tabbtn.active::before { opacity: 1; }
+        /* Collapsible groups (issue #11): Tags/IoT/Historian/Ops/Help fold their pages
+           behind their header, which becomes a real toggle with a caret. Every group
+           ships closed; a group re-opens by itself when navigation lands on one of its
+           pages, so a link is never hidden behind a fold the user cannot see past.
+           Sources keeps its pinned pager and never folds. */
+        .nav-group-h { width: 100%; text-align: left; background: none; border: none; cursor: pointer; font-family: var(--font-mono); }
+        .nav-group-h .nav-caret { display: inline-flex; margin-left: auto; width: 12px; height: 12px; opacity: .55; transition: transform .15s ease; }
+        .nav-group-h .nav-caret svg { width: 100%; height: 100%; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+        .nav-group-h[aria-expanded="true"] .nav-caret { transform: rotate(180deg); }
+        .nav-group-h:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .nav-group .tabbtn:last-child:not(.active):not(.pager-line)::before { bottom: auto; height: 55%; }
 /* Sources is a pager: one source at a time on two lines (its own page plus the
    sub-page under it), arrows to walk the rest. The group keeps the same height
@@ -230,7 +240,7 @@ internal static class DashboardPage
         .view-title { font-family: var(--font-mono); font-size: var(--fs-title); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text); padding-bottom: 8px; border-bottom: 1px solid var(--border2); margin-bottom: 14px; }
         .view-title:focus { outline: none; }
         .view-title:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-@media (max-width: 600px) { .app-shell { flex-direction: column; } .tabbar { flex-direction: row; width: 100%; min-width: 0; border-right: none; border-bottom: 1px solid var(--border2); padding: 0 8px; overflow-x: auto; } .tabbtn { border-left: none; border-bottom: 3px solid transparent; padding: 10px 14px; white-space: nowrap; overflow: visible; text-overflow: clip; flex-shrink: 0; } .tabbtn.active { border-left: none; border-bottom-color: var(--accent); } .nav-group { border-bottom: none; } .nav-group-h { display: none; } .nav-group .tabbtn { padding: 10px 14px; } .nav-group .tabbtn::before { display: none; } }
+@media (max-width: 600px) { .app-shell { flex-direction: column; } .tabbar { flex-direction: row; width: 100%; min-width: 0; border-right: none; border-bottom: 1px solid var(--border2); padding: 0 8px; overflow-x: auto; } .tabbtn { border-left: none; border-bottom: 3px solid transparent; padding: 10px 14px; white-space: nowrap; overflow: visible; text-overflow: clip; flex-shrink: 0; } .tabbtn.active { border-left: none; border-bottom-color: var(--accent); } .nav-group { border-bottom: none; } .nav-group-h, .nav-group .nav-group-body[hidden] { display: none; } .nav-group .tabbtn { padding: 10px 14px; } .nav-group .tabbtn::before { display: none; } }
         /* Tablet: a fixed 208px rail eats 27% of a 768px screen and squeezes the tables into
            horizontal scroll. Below 900px the rail becomes the same horizontal strip the phone
            uses, so the content column keeps its columns. */
@@ -240,7 +250,10 @@ internal static class DashboardPage
             .tabbtn { border-left: none; border-bottom: 3px solid transparent; padding: 10px 14px; white-space: nowrap; overflow: visible; text-overflow: clip; flex-shrink: 0; }
             .tabbtn.active { border-left: none; border-bottom-color: var(--accent); }
             .nav-group { border-bottom: none; flex: 0 0 auto; }
-            .nav-group-h { display: none; }
+            /* Open bodies pour their buttons straight into the horizontal strip. */
+            .nav-group-body { display: contents; }
+            .nav-group-body[hidden] { display: none; }
+            .nav-group-h, .nav-group .nav-group-body[hidden] { display: none; }
             .nav-group .tabbtn { padding: 10px 14px; }
             .nav-group .tabbtn::before { display: none; }
         }
@@ -1014,34 +1027,44 @@ internal static class DashboardPage
     </div>
   </div>
   <div class="nav-group">
-    <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><circle cx="7" cy="7" r="1.5" fill="currentColor" stroke="none"/></svg>Tags</div>
+    <button type="button" class="nav-group-h" data-nav-group="tags" aria-expanded="false" aria-controls="navBody-tags" onclick="toggleNavGroup('tags')"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><circle cx="7" cy="7" r="1.5" fill="currentColor" stroke="none"/></svg>Tags<span class="nav-caret" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></span></button>
+    <div class="nav-group-body" id="navBody-tags" hidden>
     <button class="tabbtn" data-tab="tags" data-route="tags/maps" onclick="navigate('tags/maps')">Maps</button>
     <button class="tabbtn" data-tab="values" data-route="tags/values" onclick="navigate('tags/values')">Live Values</button>
     <button class="tabbtn" data-tab="interlinks" data-route="tags/interlinks" onclick="navigate('tags/interlinks')">Interlinks</button>
+    </div>
   </div>
   <div class="nav-group">
-    <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1.2" fill="currentColor" stroke="none"/></svg>IoT</div>
+    <button type="button" class="nav-group-h" data-nav-group="iot" aria-expanded="false" aria-controls="navBody-iot" onclick="toggleNavGroup('iot')"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1.2" fill="currentColor" stroke="none"/></svg>IoT<span class="nav-caret" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></span></button>
+    <div class="nav-group-body" id="navBody-iot" hidden>
     <button class="tabbtn" data-tab="mqtt" data-route="iot/mqtt" onclick="navigate('iot/mqtt')">MQTT</button>
     <button class="tabbtn" data-tab="iot-traffic" data-route="iot/traffic" onclick="navigate('iot/traffic')">Traffic</button>
+    </div>
   </div>
   <div class="nav-group">
-    <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"/></svg>Historian</div>
+    <button type="button" class="nav-group-h" data-nav-group="historian" aria-expanded="false" aria-controls="navBody-historian" onclick="toggleNavGroup('historian')"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"/></svg>Historian<span class="nav-caret" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></span></button>
+    <div class="nav-group-body" id="navBody-historian" hidden>
     <button class="tabbtn" data-tab="influx" data-route="historian/influx" onclick="navigate('historian/influx')">InfluxDB</button>
+    </div>
   </div>
   <div class="nav-group">
-    <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>Ops</div>
+    <button type="button" class="nav-group-h" data-nav-group="ops" aria-expanded="false" aria-controls="navBody-ops" onclick="toggleNavGroup('ops')"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>Ops<span class="nav-caret" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></span></button>
+    <div class="nav-group-body" id="navBody-ops" hidden>
     <button class="tabbtn active" data-tab="monitor" data-route="ops/monitor" onclick="navigate('ops/monitor')">Monitor</button>
     <button class="tabbtn" data-tab="diagnostics" data-route="ops/diagnostics" onclick="navigate('ops/diagnostics')">Diagnostics</button>
     <button class="tabbtn" data-tab="sessions" data-route="ops/sessions" onclick="navigate('ops/sessions')">Sessions</button>
     <button class="tabbtn" data-tab="logs" data-route="ops/logs" onclick="navigate('ops/logs')">Logs</button>
     <button class="tabbtn" data-tab="diagram" data-route="ops/diagram" onclick="navigate('ops/diagram')">Diagram</button>
     <button class="tabbtn" data-tab="users" data-route="ops/users" id="navUsers" style="display:none" onclick="navigate('ops/users')">Users</button>
+    </div>
   </div>
   <div class="nav-group">
-    <div class="nav-group-h"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2.5-3 4.5"/><circle cx="12" cy="17.2" r="0.9" fill="currentColor" stroke="none"/></svg>Help</div>
+    <button type="button" class="nav-group-h" data-nav-group="help" aria-expanded="false" aria-controls="navBody-help" onclick="toggleNavGroup('help')"><svg class="nav-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2.5-3 4.5"/><circle cx="12" cy="17.2" r="0.9" fill="currentColor" stroke="none"/></svg>Help<span class="nav-caret" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></span></button>
+    <div class="nav-group-body" id="navBody-help" hidden>
     <button class="tabbtn" data-tab="help" data-route="help/guide" onclick="navigate('help/guide')">Guide</button>
     <button class="tabbtn" data-tab="about" data-route="help/about" onclick="navigate('help/about')">About</button>
     <button class="tabbtn" data-tab="changelog" data-route="help/release-notes" onclick="navigate('help/release-notes')">Release Notes</button>
+    </div>
   </div>
 </div>
 <div class="content" id="main" role="main" tabindex="-1">
@@ -2347,6 +2370,10 @@ const state = {
     influxConfigured: false,
     influxState: 'Disconnected',
     sessionBannerDismissed: false,
+    // Collapsible rail groups (issue #11): every group ships closed and a group
+    // re-opens by itself when navigation lands on one of its pages. The first
+    // showTab (boot) only auto-opens for a real deep link, not a plain load.
+    navGroupsAutoOpen: false,
     mqttValFilter: { direction: '', topic: '' },
     valuesByKey: new Map(),
     // key -> { seen, onlyBits }: session-scoped 0/1 observation used to suggest Digital.
@@ -4836,6 +4863,10 @@ async function showTab(name, route) {
     try { shownTitle.focus({ preventScroll: true }); } catch (e) { shownTitle.focus(); }
   }
   state.lastTab = activeTab;
+  // The initial tab is server-rendered with its group still closed (issue #11:
+  // "by default all close"); any later navigation opens the group it lands in.
+  if (state.navGroupsAutoOpen) openNavGroupForTab(activeTab);
+  state.navGroupsAutoOpen = true;
   if (activeTab === 'logs') { state.logsLoaded = false; loadLogs(true).catch(e => el('logMessage').textContent = '✗ ' + e.message); }
   if (activeTab === 'diagnostics' || activeTab === 'sessions') { diagnosticsActive = true; loadDiagnostics(); }
   else { diagnosticsActive = false; }
@@ -4938,6 +4969,33 @@ function renderSourcePager() {
     if (prev) prev.disabled = index <= 0;
     if (next) next.disabled = index >= routes.length - 1;
     renderSourcePagerStates();
+}
+// ---- Collapsible rail groups (issue #11) ----------------------------------
+// Tags / IoT / Historian / Ops / Help fold their pages behind their header, which
+// is a real toggle button with a caret; all groups ship closed. Sources keeps its
+// pinned pager and never folds. A group re-opens by itself when navigation lands
+// on one of its pages, so an in-app jump (pager, wizard follow-up, breadcrumb)
+// can never land the user on a section they cannot see.
+function navGroupBody(name) {
+    const body = el('navBody-' + name);
+    return body || null;
+}
+function setNavGroupOpen(name, open) {
+    const body = navGroupBody(name);
+    if (!body) return;
+    body.hidden = !open;
+    const head = document.querySelector('.nav-group-h[data-nav-group="' + name + '"]');
+    if (head) head.setAttribute('aria-expanded', open ? 'true' : 'false');
+}
+function toggleNavGroup(name) {
+    const body = navGroupBody(name);
+    if (body) setNavGroupOpen(name, body.hidden);
+}
+function openNavGroupForTab(name) {
+    const btn = document.querySelector('.tabbtn[data-tab="' + name + '"]');
+    const group = btn ? btn.closest('.nav-group') : null;
+    const head = group ? group.querySelector('.nav-group-h[data-nav-group]') : null;
+    if (head) setNavGroupOpen(head.getAttribute('data-nav-group'), true);
 }
 function stepSourcePager(delta) {
     const routes = sourcePagerRoutes();
@@ -9497,6 +9555,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // anything: the gate answers 401 and the card is already on screen.
     if (!await initAuth()) return;
     if (!routeAllowed(initRoute)) initRoute = DEFAULT_ROUTE;
+    // A deep link asks for a specific page, so its group opens; a plain boot
+    // (no hash) stays fully collapsed (issue #11: "by default all close").
+    state.navGroupsAutoOpen = initHashRaw.length > 0 && initRoute !== DEFAULT_ROUTE;
     await navigate(initRoute);
     await loadSources();
     await loadMappings();

@@ -16,7 +16,9 @@ internal static class HelpContent
 
 # Dashboard Navigation
 
-The sidebar groups pages by job:
+The sidebar groups pages by job. The Tags, IoT, Historian, Ops and Help groups start
+collapsed and open on click — selecting a page in one of them (or following a link
+that lands there) opens its group for you:
 
 - **Sources** — Sources (status, + Add Source wizard), OPC DA (connection config, credentials, default rate, subscriptions, discover, backup), DA Groups (per-rate COM groups, per-group I/O mode), OPC UA (client sources) — external UA servers the bridge connects out to, UA Subs (named UA subscriptions and their publish rates), Drivers (PLC serial: Mitsubishi A3N RS-232, Siemens S7-200 PPI), MX Component (Mitsubishi A3N via MELSOFT MX Component 4 COM)
 - **Tags** — Maps (OPC DA / OPC UA / Drivers sub-tabs: browse, map to UA, faceplate), Interlinks (tag-to-tag forwarding across sources)

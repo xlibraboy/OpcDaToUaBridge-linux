@@ -1402,4 +1402,63 @@ public sealed class DashboardPageTests
         Assert.Contains("class=\"nav-add\"", DashboardPage.Html);
         Assert.Contains("onclick=\"openAddSourceWizard()\"", DashboardPage.Html);
     }
+
+    [Fact]
+    public void Html_CollapsibleGroups_FiveToggleHeaders_SourcesUntouched()
+    {
+        // Issue #11: Tags/IoT/Historian/Ops/Help fold; Sources keeps its pager.
+        foreach (var group in new[] { "tags", "iot", "historian", "ops", "help" })
+        {
+            Assert.Contains($"data-nav-group=\"{group}\"", DashboardPage.Html);
+            Assert.Contains($"aria-controls=\"navBody-{group}\"", DashboardPage.Html);
+            Assert.Contains($"id=\"navBody-{group}\"", DashboardPage.Html);
+        }
+        // Headers are real buttons (not just labels) and every group ships closed
+        // (all five render aria-expanded="false"; none ships open).
+        Assert.Contains("class=\"nav-group-h\" data-nav-group", DashboardPage.Html);
+        Assert.Equal(5, CountOccurrences(DashboardPage.Html, "aria-expanded=\"false\""));
+        Assert.Equal(5, CountOccurrences(DashboardPage.Html, "class=\"nav-group-body\""));
+        // Caret affordance on each toggle, wired to the toggle function.
+        Assert.Equal(5, CountOccurrences(DashboardPage.Html, "class=\"nav-caret\""));
+        Assert.Equal(5, CountOccurrences(DashboardPage.Html, "onclick=\"toggleNavGroup("));
+        // The Sources group header is still a plain label with the add-source button.
+        Assert.DoesNotContain("data-nav-group=\"sources\"", DashboardPage.Html);
+        Assert.Contains("onclick=\"openAddSourceWizard()\"", DashboardPage.Html);
+    }
+
+    [Fact]
+    public void Script_CollapsibleGroups_ToggleAutoOpenAndBootClosed()
+    {
+        Assert.Contains("function toggleNavGroup(", DashboardPage.Script);
+        Assert.Contains("function setNavGroupOpen(", DashboardPage.Script);
+        Assert.Contains("function openNavGroupForTab(", DashboardPage.Script);
+        Assert.Contains("body.hidden = !open;", DashboardPage.Script);
+        // Navigation lands on a page -> its group opens (after boot).
+        Assert.Contains("if (state.navGroupsAutoOpen) openNavGroupForTab(activeTab);", DashboardPage.Script);
+        // Plain boot stays fully collapsed; only a real deep link auto-opens.
+        Assert.Contains("state.navGroupsAutoOpen = initHashRaw.length > 0 && initRoute !== DEFAULT_ROUTE;", DashboardPage.Script);
+        // a11y state follows the fold.
+        Assert.Contains("head.setAttribute('aria-expanded', open ? 'true' : 'false');", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Css_CollapsibleGroups_CaretRotationAndFlatStripFallback()
+    {
+        Assert.Contains(".nav-group-h[aria-expanded=\"true\"] .nav-caret { transform: rotate(180deg); }", DashboardPage.Html);
+        // Below 900px the rail is a horizontal strip: an open group pours its
+        // buttons straight in, a closed one disappears entirely.
+        Assert.Contains(".nav-group-body { display: contents; }", DashboardPage.Html);
+        Assert.Contains(".nav-group-body[hidden] { display: none; }", DashboardPage.Html);
+    }
+
+    private static int CountOccurrences(string haystack, string needle)
+    {
+        int count = 0, index = 0;
+        while ((index = haystack.IndexOf(needle, index, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            index += needle.Length;
+        }
+        return count;
+    }
 }
