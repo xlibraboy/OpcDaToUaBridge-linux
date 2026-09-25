@@ -51,6 +51,16 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
             SingleWriter = false
         });
     private HashSet<string> influx_enabled_keys_ = new(StringComparer.OrdinalIgnoreCase);
+
+    // Historian recovery: a failed write arms a retry, a landed point clears it. The attempt
+    // counter drives the backoff and only a successful *write* resets it, so a server that accepts
+    // connects but rejects points backs off instead of reconnect-looping at full speed.
+    private const int InfluxRetryBaseDelayMs = 2000;
+    private const int InfluxRetryMaxDelayMs = 30000;
+    private const int InfluxRetryIdlePollMs = 500;
+    private volatile bool influx_retry_needed_;
+    private int influx_retry_attempt_;
+
     private volatile SourceMappingCache? source_mapping_cache_;
 
     public BridgeWorker(
@@ -144,10 +154,19 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
                 {
                     influx_settings_.ResetCounters();
                 }
+
+                if (state == InfluxConnectionState.Disconnected)
+                {
+                    // An explicit Disconnect (button, API, shutdown) means "stay off": it must not
+                    // be undone a moment later by a retry armed by an earlier failed write.
+                    influx_retry_needed_ = false;
+                    influx_retry_attempt_ = 0;
+                }
             };
             bridge_state_.ValueUpdated += OnBridgeValueUpdated;
             _ = Task.Run(() => MqttPublishDrainAsync(stoppingToken), stoppingToken);
             _ = Task.Run(() => InfluxWriteDrainAsync(stoppingToken), stoppingToken);
+            _ = Task.Run(() => InfluxReconnectLoopAsync(stoppingToken), stoppingToken);
 
             if (mqtt_settings_.GetOptions().Enabled)
             {
@@ -1463,15 +1482,102 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
                     ResolveDisplayName(value.SourceId, value.ItemId),
                     ct).ConfigureAwait(false);
                 influx_settings_.IncrementWritten();
+                // A landed point is the only proof the link works, so it ends any recovery and
+                // resets the backoff (InfluxWriter has already marked itself Faulted otherwise).
+                influx_retry_needed_ = false;
+                influx_retry_attempt_ = 0;
             }
             catch (Exception ex)
             {
                 // Surface it on the Historian panel: a rejected write is the only signal this
                 // HTTP-based writer gets, and the panel otherwise stays at "Connected / No errors"
-                // while every point is being dropped.
+                // while every point is being dropped. The writer is Faulted by now, and
+                // InfluxReconnectLoopAsync is what brings it back without an operator.
                 influx_settings_.SetLastError("Write failed: " + ex.Message);
+                influx_retry_needed_ = true;
                 logger_.LogWarning(ex, "Influx write failed for {SourceId}/{ItemId}", value.SourceId, value.ItemId);
             }
+        }
+    }
+
+    /// <summary>
+    /// Recovery loop for the historian: a failed write leaves the writer Faulted (the link is not
+    /// usable) and this brings it back on its own, reconnecting with exponential backoff until a
+    /// point lands again. With Auto-connect off the operator owns the connection and nothing is
+    /// retried, and an explicit Disconnect clears the pending retry (see the StateChanged handler).
+    /// </summary>
+    private async Task InfluxReconnectLoopAsync(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            if (!influx_retry_needed_ || !influx_settings_.GetOptions().Enabled)
+            {
+                // Auto-connect off means "leave the connection alone": drop any pending retry.
+                influx_retry_needed_ = false;
+                influx_retry_attempt_ = 0;
+                if (!await DelayAsync(InfluxRetryIdlePollMs, ct).ConfigureAwait(false))
+                {
+                    return;
+                }
+
+                continue;
+            }
+
+            if (influx_writer_.State == InfluxConnectionState.Connected)
+            {
+                // Back in. The next write decides whether it stays: a landed point clears the
+                // retry, another failure re-arms it with the backoff already grown.
+                if (!await DelayAsync(InfluxRetryIdlePollMs, ct).ConfigureAwait(false))
+                {
+                    return;
+                }
+
+                continue;
+            }
+
+            if (!await DelayAsync(InfluxRetryDelayMs(influx_retry_attempt_), ct).ConfigureAwait(false))
+            {
+                return;
+            }
+
+            // The wait can be cancelled under us (operator Disconnect, Auto-connect off).
+            if (!influx_retry_needed_ || !influx_settings_.GetOptions().Enabled)
+            {
+                continue;
+            }
+
+            await ConnectInfluxAsync(ct).ConfigureAwait(false);
+            influx_retry_attempt_++;
+            if (influx_writer_.State == InfluxConnectionState.Connected)
+            {
+                logger_.LogInformation(
+                    "Influx reconnected after {Attempts} attempt(s); the next write decides whether it holds",
+                    influx_retry_attempt_);
+                continue;
+            }
+
+            influx_retry_needed_ = true;
+            logger_.LogWarning(
+                "Influx reconnect attempt {Attempt} failed; next try in {DelayMs} ms",
+                influx_retry_attempt_,
+                InfluxRetryDelayMs(influx_retry_attempt_));
+        }
+    }
+
+    /// <summary>2s, 4s, 8s, 16s, then 30s for every further attempt.</summary>
+    internal static int InfluxRetryDelayMs(int attempt) =>
+        Math.Min(InfluxRetryMaxDelayMs, InfluxRetryBaseDelayMs << Math.Min(attempt, 4));
+
+    private static async Task<bool> DelayAsync(int milliseconds, CancellationToken ct)
+    {
+        try
+        {
+            await Task.Delay(milliseconds, ct).ConfigureAwait(false);
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
         }
     }
 

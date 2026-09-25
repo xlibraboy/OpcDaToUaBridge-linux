@@ -72,6 +72,13 @@ public sealed class ConnectedTagsTests
         method!.Invoke(instance, args);
     }
 
+    private static T GetPrivateField<T>(object instance, string name)
+    {
+        FieldInfo? field = instance.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.NotNull(field);
+        return (T)field!.GetValue(instance)!;
+    }
+
 
     [Fact]
     public async Task OnBridgeValueUpdated_Enqueues_Only_InfluxEnabled()
@@ -111,14 +118,83 @@ public sealed class ConnectedTagsTests
         Assert.Equal("default", written.SourceId);
     }
 
+    [Fact]
+    public async Task InfluxWriteFailure_ReconnectsOnItsOwnWithBackoff()
+    {
+        MappingStore mappingStore = new(Options.Create(new BridgeOptions()));
+        InterlinkStore linkStore = CreateLinkStore();
+        BridgeWorker worker = CreateWorker(mappingStore, linkStore);
+
+        FakeInfluxWriter fake = new() { State = InfluxConnectionState.Connected, WriteFailuresRemaining = 1 };
+        SetPrivateField(worker, "influx_writer_", fake);
+        SetPrivateField(worker, "influx_enabled_keys_", new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "default::enabled" });
+        InfluxRuntimeSettings settings = new(Options.Create(new InfluxOptions { Enabled = true }));
+        SetPrivateField(worker, "influx_settings_", settings);
+
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(30));
+        Task drain = (Task)worker.GetType()
+            .GetMethod("InfluxWriteDrainAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(worker, [cts.Token])!;
+        Task retryLoop = (Task)worker.GetType()
+            .GetMethod("InfluxReconnectLoopAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(worker, [cts.Token])!;
+
+        // The write fails, which faults the writer; nobody clicks Connect, so the retry loop is the
+        // only thing that can get it back — its first attempt is one 2s backoff away.
+        InvokePrivateVoid(worker, "OnBridgeValueUpdated", new BridgeValue("default", "enabled", 1L, DateTime.UtcNow, 192, true));
+
+        DateTime failedAt = DateTime.UtcNow.AddSeconds(5);
+        while (fake.WriteFailuresRemaining == 1 && DateTime.UtcNow < failedAt)
+        {
+            await Task.Delay(20, CancellationToken.None);
+        }
+
+        Assert.Equal(0, fake.WriteFailuresRemaining);
+        Assert.Equal(InfluxConnectionState.Faulted, fake.State);
+        // The writer was put into Connected directly, so no connect has happened yet: anything from
+        // here on is the retry loop's own doing (its first attempt is one 2s backoff away).
+        Assert.Equal(0, fake.ConnectCount);
+
+        DateTime reconnected = DateTime.UtcNow.AddSeconds(10);
+        while (fake.ConnectCount == 0 && DateTime.UtcNow < reconnected)
+        {
+            await Task.Delay(50, CancellationToken.None);
+        }
+
+        Assert.Equal(InfluxConnectionState.Connected, fake.State);
+        Assert.True(
+            GetPrivateField<bool>(worker, "influx_retry_needed_"),
+            "the retry stays armed until a point actually lands");
+
+        // A point that lands now ends the recovery and resets the backoff.
+        InvokePrivateVoid(worker, "OnBridgeValueUpdated", new BridgeValue("default", "enabled", 2L, DateTime.UtcNow, 192, true));
+        DateTime landed = DateTime.UtcNow.AddSeconds(5);
+        while (fake.Written.Count == 0 && DateTime.UtcNow < landed)
+        {
+            await Task.Delay(20, CancellationToken.None);
+        }
+
+        cts.Cancel();
+        try { await drain; } catch (OperationCanceledException) { }
+        try { await retryLoop; } catch (OperationCanceledException) { }
+
+        Assert.Single(fake.Written);
+        Assert.False(
+            GetPrivateField<bool>(worker, "influx_retry_needed_"),
+            "a landed point ends the recovery");
+    }
+
     private sealed class FakeInfluxWriter : IInfluxWriter
     {
         public List<BridgeValue> Written { get; } = new();
+        public int ConnectCount { get; private set; }
+        public int WriteFailuresRemaining { get; set; }
         public InfluxConnectionState State { get; set; } = InfluxConnectionState.Disconnected;
         public event Action<InfluxConnectionState>? StateChanged;
 
         public Task ConnectAsync(InfluxOptions options, CancellationToken ct)
         {
+            ConnectCount++;
             State = InfluxConnectionState.Connected;
             StateChanged?.Invoke(State);
             return Task.CompletedTask;
@@ -133,6 +209,15 @@ public sealed class ConnectedTagsTests
 
         public Task WritePointAsync(BridgeValue value, string? displayName, CancellationToken ct)
         {
+            if (WriteFailuresRemaining > 0)
+            {
+                WriteFailuresRemaining--;
+                // Same shape as the real writer: a rejected point marks the link unusable.
+                State = InfluxConnectionState.Faulted;
+                StateChanged?.Invoke(State);
+                throw new InvalidOperationException("historian rejected the point");
+            }
+
             Written.Add(value);
             return Task.CompletedTask;
         }

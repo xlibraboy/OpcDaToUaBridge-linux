@@ -134,6 +134,11 @@ public sealed class InfluxWriter : IInfluxWriter
                 "Influx write failed for source={SourceId} item={ItemId}",
                 value.SourceId,
                 value.ItemId);
+
+            // A rejected point is the only failure signal an HTTP writer gets, and it means the
+            // link is not usable: say so instead of staying green. BridgeWorker retries the
+            // connect (and the drain skips writes until it is Connected again).
+            SetState(InfluxConnectionState.Faulted);
             throw;
         }
     }
