@@ -75,6 +75,16 @@ public sealed class InfluxRuntimeSettings
         }
     }
 
+    /// <summary>
+    /// Records what went wrong without touching the connection state. Used for a failed write: the
+    /// writer's HTTP link has no socket to lose, so a rejected point is the only evidence the state
+    /// panel has that the historian is not actually absorbing data.
+    /// </summary>
+    public void SetLastError(string? lastError)
+    {
+        lock (sync_) { last_error_ = lastError; }
+    }
+
     public void IncrementWritten() { lock (sync_) { written_count_++; rate_window_written_++; } }
 
     private void Persist()

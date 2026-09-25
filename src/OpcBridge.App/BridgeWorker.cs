@@ -1466,6 +1466,10 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
             }
             catch (Exception ex)
             {
+                // Surface it on the Historian panel: a rejected write is the only signal this
+                // HTTP-based writer gets, and the panel otherwise stays at "Connected / No errors"
+                // while every point is being dropped.
+                influx_settings_.SetLastError("Write failed: " + ex.Message);
                 logger_.LogWarning(ex, "Influx write failed for {SourceId}/{ItemId}", value.SourceId, value.ItemId);
             }
         }
