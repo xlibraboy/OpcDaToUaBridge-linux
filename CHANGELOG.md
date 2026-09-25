@@ -16,6 +16,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+**Credentials for external OPC UA clients.** The built-in UA server could already
+enforce a username and password, but nothing exposed the setting and nothing enforced
+it either — the check sat on an overload the stack no longer calls, so with the
+requirement on a client activated a session with any password or none at all. Monitor
+now has a **UA Server Access** card: tick *Require username & password*, set the
+credentials, save, restart, and every external client (UaExpert, SCADA, historians)
+must present them; the endpoint advertises the username/password token policy alone,
+so anonymous sessions are refused instead of failing later. The stored password never
+echoes back to the dashboard, blank credential sets are rejected, and the Help page
+documents the flow. The credentials travel unencrypted — the server's only channel
+policy is None, so this is an access gate, not transport security.
+
 ### Changed
 
 **The sidebar folds.** The Tags, IoT, Historian, Ops and Help groups in the rail are

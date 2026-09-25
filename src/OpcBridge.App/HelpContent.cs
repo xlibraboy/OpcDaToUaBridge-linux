@@ -253,6 +253,29 @@ When a tag's Access Rights is **Read-Write** or **Write**:
 - If the write succeeds, the UA value is accepted; on failure the UA write is rejected with `BadNoCommunication` or `BadRequestTimeout` (5s).
 - **Read** access rights remain read-only (`AccessLevel = CurrentRead` only).
 
+## UA Server Access (client credentials)
+
+The built-in OPC UA server can demand a username and password from every external
+client that connects (UaExpert, SCADA, historians). Configure it on **Monitor ▸ UA
+Server Access** or via `POST /api/ua/settings`:
+
+- **Require username & password** off (default): anonymous access, as before.
+- On: the endpoint advertises only a UserName token policy — clients must present the
+  configured credentials at connect time; anonymous sessions are refused.
+- Enabling the requirement with blank credentials would lock every client out, so the
+  dashboard refuses to save that state and the API answers `400`; a blank **field**
+  means "no change" (the cleared password box never wipes the stored one).
+- The stored password is never sent back to the dashboard; the field stays empty
+  until you type a new one. To change credentials, type both fields and save.
+- Settings persist in `ua-settings.json` and apply on the next bridge restart —
+  the save response says so.
+- This is an access gate, not transport security: the server serves Security Policy
+  `None` only, so the username and password travel unencrypted — keep it on a
+  trusted network.
+
+In UaExpert: connect to the endpoint (this build offers only Security Policy `None`),
+then pick the Username/Password identity and enter these credentials.
+
 ```
   UA Client writes value ─► BridgeNodeManager.OnWriteValue
                                  │

@@ -46,6 +46,17 @@ public sealed class HelpContentTests
     }
 
     [Fact]
+    public void HelpText_DescribesUaServerAccessCredentials()
+    {
+        // Issue #14: the client-credential gate must be documented where operators read.
+        Assert.Contains("# UA Server Access (client credentials)", HelpContent.Markdown);
+        Assert.Contains("POST /api/ua/settings", HelpContent.Markdown);
+        Assert.Contains("Monitor \u25b8 UA", HelpContent.Markdown);
+        Assert.Contains("never sent back", HelpContent.Markdown);
+        Assert.Contains("apply on the next bridge restart", HelpContent.Markdown);
+    }
+
+    [Fact]
     public void HelpText_NamesTheUaRootFolderBridgeTags()
     {
         // Issue #13: help must describe the protocol-neutral root folder.

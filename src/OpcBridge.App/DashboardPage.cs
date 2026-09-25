@@ -1153,6 +1153,24 @@ internal static class DashboardPage
         </div>
     </div>
     <div class="box" style="margin-top:14px">
+        <div class="box-h">UA Server Access <span class="info" data-tip="Credentials external OPC UA clients (UaExpert, SCADA, historians) must present to read this server's tags. Off = anonymous access. Saved settings apply after the bridge restarts.">i</span><span class="msg" id="uaAccessState" style="margin-left:auto"></span></div>
+        <div class="box-b">
+            <div class="field" style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+                <input type="checkbox" id="uaAccessRequire" onchange="onUaAccessToggle()">
+                <label class="fl" for="uaAccessRequire" style="margin:0">Require username &amp; password (off = anonymous access)</label>
+            </div>
+            <div class="field" style="display:flex;gap:10px;flex-wrap:wrap">
+                <div style="flex:1;min-width:160px"><label class="fl" for="uaAccessUser">Username</label><input type="text" id="uaAccessUser" autocomplete="off" style="width:100%"></div>
+                <div style="flex:1;min-width:160px"><label class="fl" for="uaAccessPass">Password</label><input type="password" id="uaAccessPass" autocomplete="new-password" style="width:100%"></div>
+            </div>
+            <div class="msg" style="margin:6px 0 8px;color:var(--muted)">In UaExpert connect to the endpoint, then pick the Username/Password identity and enter these credentials.</div>
+            <div style="display:flex;gap:8px;align-items:center">
+                <button class="btn" id="btnSaveUaAccess" type="button" onclick="saveUaAccess()">Save UA Access</button>
+                <span class="msg" id="uaAccessMsg" role="status"></span>
+            </div>
+        </div>
+    </div>
+    <div class="box" style="margin-top:14px">
         <div class="box-h">Bridge Fleet <span class="info" data-tip="Other OpcBridge instances discovered on the network (UDP/HTTP probe). 'Local' is the instance serving this dashboard.">i</span><span class="msg" id="fleetCount" style="margin-left:auto"></span></div>
         <div class="box-b"><div class="list" id="fleetList" style="max-height:220px"><span class="msg">No fleet data yet.</span></div></div>
     </div>
@@ -6834,6 +6852,47 @@ async function loadMqttStatus() {
     } catch (e) { if (el('mqttMessage')) el('mqttMessage').textContent = '✗ ' + e.message; }
 }
 async function loadMqtt() { await Promise.all([loadMqttConfig(), loadMqttStatus()]); }
+// ---- UA server access (issue #14) -----------------------------------------
+// Credentials for external OPC UA clients hitting the built-in server. The
+// checkbox mirrors requireAuthentication from GET /api/ua/settings; the server
+// applies changes on restart, so a save says so. The password field never
+// echoes the stored secret — it stays empty until a new one is typed.
+async function loadUaAccess() {
+    try {
+        const p = await (await fetch('/api/ua/settings')).json();
+        el('uaAccessRequire').checked = !!p.requireAuthentication;
+        el('uaAccessUser').value = p.username || '';
+        el('uaAccessPass').value = '';
+        el('uaAccessState').innerHTML = p.requireAuthentication
+            ? '<span class="badge warn">Credentials required</span>'
+            : '<span class="badge good">Anonymous access</span>';
+        onUaAccessToggle();
+    } catch (e) { el('uaAccessMsg').textContent = '✗ ' + e.message; }
+}
+function onUaAccessToggle() {
+    const on = el('uaAccessRequire').checked;
+    el('uaAccessUser').disabled = !on;
+    el('uaAccessPass').disabled = !on;
+}
+async function saveUaAccess() {
+    try {
+        const on = el('uaAccessRequire').checked;
+        const user = el('uaAccessUser').value.trim();
+        const pass = el('uaAccessPass').value;
+        if (on && (!user || !pass)) {
+            el('uaAccessMsg').textContent = '✗ Enter a username and password, or turn the requirement off.';
+            return;
+        }
+        const body = { requireAuthentication: on, username: user };
+        if (pass) body.password = pass;
+        const r = await fetch('/api/ua/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        const p = await r.json();
+        if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
+        el('uaAccessMsg').textContent = '✓ ' + (p.message || 'Saved.');
+        el('uaAccessPass').value = '';
+        await loadUaAccess();
+    } catch (e) { el('uaAccessMsg').textContent = '✗ ' + e.message; }
+}
 async function saveMqtt() {
     const body = {
         enabled: el('mqttEnabled').checked,
@@ -9559,6 +9618,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // (no hash) stays fully collapsed (issue #11: "by default all close").
     state.navGroupsAutoOpen = initHashRaw.length > 0 && initRoute !== DEFAULT_ROUTE;
     await navigate(initRoute);
+    loadUaAccess().catch(() => {});
     await loadSources();
     await loadMappings();
     if (document.getElementById('view-tags')?.classList.contains('active')) {

@@ -1451,6 +1451,34 @@ public sealed class DashboardPageTests
         Assert.Contains(".nav-group-body[hidden] { display: none; }", DashboardPage.Html);
     }
 
+    [Fact]
+    public void Html_UaServerAccessCard_FieldsAndMessages()
+    {
+        // Issue #14: the UA credential gate needs a surface on the dashboard.
+        Assert.Contains("UA Server Access", DashboardPage.Html);
+        Assert.Contains("id=\"uaAccessRequire\"", DashboardPage.Html);
+        Assert.Contains("onchange=\"onUaAccessToggle()\"", DashboardPage.Html);
+        Assert.Contains("id=\"uaAccessUser\"", DashboardPage.Html);
+        Assert.Contains("type=\"password\" id=\"uaAccessPass\"", DashboardPage.Html);
+        Assert.Contains("onclick=\"saveUaAccess()\"", DashboardPage.Html);
+        Assert.Contains("id=\"uaAccessMsg\"", DashboardPage.Html);
+        Assert.Contains("id=\"uaAccessState\"", DashboardPage.Html);
+    }
+
+    [Fact]
+    public void Script_UaServerAccess_LoadsSavesAndRefusesBlankCredentials()
+    {
+        Assert.Contains("async function loadUaAccess(", DashboardPage.Script);
+        Assert.Contains("function onUaAccessToggle(", DashboardPage.Script);
+        Assert.Contains("async function saveUaAccess(", DashboardPage.Script);
+        Assert.Contains("fetch('/api/ua/settings'", DashboardPage.Script);
+        // The password never echoes: the field clears after save and load.
+        Assert.Contains("el('uaAccessPass').value = '';", DashboardPage.Script);
+        // Client-side guard mirroring the server: enabling without credentials is refused.
+        Assert.Contains("Enter a username and password, or turn the requirement off.", DashboardPage.Script);
+        Assert.Contains("loadUaAccess().catch(() => {});", DashboardPage.Script);
+    }
+
     private static int CountOccurrences(string haystack, string needle)
     {
         int count = 0, index = 0;

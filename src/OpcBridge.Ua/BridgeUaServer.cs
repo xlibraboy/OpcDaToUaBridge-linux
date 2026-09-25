@@ -198,21 +198,38 @@ internal sealed class BridgeUaServer : StandardServer
 
     public override UserTokenPolicyCollection GetUserTokenPolicies(ApplicationConfiguration configuration, EndpointDescription endpoint)
     {
-        UserTokenPolicyCollection policies = base.GetUserTokenPolicies(configuration, endpoint);
+        return SelectUserTokenPolicies(base.GetUserTokenPolicies(configuration, endpoint), options_.RequireAuthentication);
+    }
 
-        if (options_.RequireAuthentication)
+    /// <summary>
+    /// Issue #14: with the credential gate on, the endpoint advertises the
+    /// username/password policy ALONE. Keeping the SDK's default anonymous policy in
+    /// the list invites a client to select anonymous and only then be refused at
+    /// ActivateSession — advertise what the server actually accepts so clients ask
+    /// for credentials up front.
+    ///
+    /// The token policy is None (plaintext) because that is the only thing this
+    /// server can verify: its sole channel policy is None, and a client that encrypts
+    /// the password for Basic256Sha256 arrives with a token the server cannot decrypt
+    /// (DecryptedPassword comes back null and every login fails).
+    /// </summary>
+    internal static UserTokenPolicyCollection SelectUserTokenPolicies(UserTokenPolicyCollection basePolicies, bool requireAuthentication)
+    {
+        if (!requireAuthentication)
         {
-            // Add username/password token policy so clients know to send credentials
-            policies.Add(new UserTokenPolicy(UserTokenType.UserName)
+            return basePolicies;
+        }
+
+        return new UserTokenPolicyCollection
+        {
+            new UserTokenPolicy(UserTokenType.UserName)
             {
                 PolicyId = "username",
                 IssuedTokenType = null,
                 IssuerEndpointUrl = null,
-                SecurityPolicyUri = SecurityPolicies.Basic256Sha256
-            });
-        }
-
-        return policies;
+                SecurityPolicyUri = SecurityPolicies.None
+            }
+        };
     }
 #pragma warning disable CS0618, CS0672
     public override ResponseHeader CreateSession(
@@ -251,6 +268,30 @@ internal sealed class BridgeUaServer : StandardServer
             out serverSignature, out maxRequestMessageSize);
     }
 
+    /// <summary>
+    /// The live entry point: the stack calls this overload, so the credential gate has
+    /// to be enforced here. Validating only in the obsolete <see cref="ActivateSession"/>
+    /// override (as this server used to) left the gate dead code — a wrong password
+    /// still activated a session (issue #14).
+    /// </summary>
+    public override async Task<ActivateSessionResponse> ActivateSessionAsync(
+        SecureChannelContext secureChannelContext,
+        RequestHeader requestHeader,
+        SignatureData clientSignature,
+        SignedSoftwareCertificateCollection clientSoftwareCertificates,
+        StringCollection localeIds,
+        ExtensionObject userIdentityToken,
+        SignatureData userTokenSignature,
+        CancellationToken ct)
+    {
+        ValidateUserIdentity(userIdentityToken);
+
+        return await base.ActivateSessionAsync(
+                secureChannelContext, requestHeader, clientSignature, clientSoftwareCertificates,
+                localeIds, userIdentityToken, userTokenSignature, ct)
+            .ConfigureAwait(false);
+    }
+
     public override ResponseHeader ActivateSession(
         SecureChannelContext channel,
         RequestHeader requestHeader,
@@ -263,35 +304,61 @@ internal sealed class BridgeUaServer : StandardServer
         out StatusCodeCollection results,
         out DiagnosticInfoCollection diagnosticInfos)
     {
-        // Username/password validation
-        if (options_.RequireAuthentication)
-        {
-            if (userIdentityToken.Body is UserNameIdentityToken userNameToken)
-            {
-                string? username = userNameToken.UserName;
-                string password = userNameToken.DecryptedPassword != null
-                    ? System.Text.Encoding.UTF8.GetString(userNameToken.DecryptedPassword)
-                    : string.Empty;
-
-                if (!string.Equals(username, options_.Username, StringComparison.Ordinal) ||
-                    !string.Equals(password, options_.Password, StringComparison.Ordinal))
-                {
-                    throw new ServiceResultException(StatusCodes.BadIdentityTokenInvalid,
-                        "Invalid username or password.");
-                }
-            }
-            else
-            {
-                // Anonymous access when auth is required
-                throw new ServiceResultException(StatusCodes.BadUserAccessDenied,
-                    "Authentication required. Provide a username and password.");
-            }
-        }
+        ValidateUserIdentity(userIdentityToken);
 
         return base.ActivateSession(channel, requestHeader, clientSignature, clientSoftwareCertificates,
             localeIds, userIdentityToken, userTokenSignature, out serverNonce, out results, out diagnosticInfos);
     }
 #pragma warning restore CS0618, CS0672
+
+    private void ValidateUserIdentity(ExtensionObject userIdentityToken)
+    {
+        if (!options_.RequireAuthentication)
+        {
+            return;
+        }
+
+        if (userIdentityToken.Body is not UserNameIdentityToken userNameToken)
+        {
+            // Anonymous identity while the gate is on.
+            throw new ServiceResultException(StatusCodes.BadUserAccessDenied,
+                "Authentication required. Provide a username and password.");
+        }
+
+        string? username = userNameToken.UserName;
+        // The endpoint advertises a plaintext (policy None) user token, so the password
+        // arrives as UTF-8 bytes in Password. DecryptedPassword is still null here: the
+        // stack fills it while it processes the token inside the base activation, which
+        // is why validating before the base call has to read Password directly.
+        string password = userNameToken.Password != null
+            ? System.Text.Encoding.UTF8.GetString(userNameToken.Password)
+            : string.Empty;
+
+        if (!ValidateUserNameCredential(username, password, options_.Username, options_.Password))
+        {
+            throw new ServiceResultException(StatusCodes.BadIdentityTokenInvalid,
+                "Invalid username or password.");
+        }
+    }
+
+    /// <summary>
+    /// Issue #14: exact, ordinal credential comparison for external OPC UA clients.
+    /// A null/blank stored side is never valid (the server refuses to authenticate
+    /// anyone until real credentials are configured), and a client-supplied null or
+    /// blank is rejected before it can be compared — so empty strings can never match.
+    /// </summary>
+    internal static bool ValidateUserNameCredential(string? username, string? password, string? storedUsername, string? storedPassword)
+    {
+        if (string.IsNullOrWhiteSpace(storedUsername) || string.IsNullOrWhiteSpace(storedPassword))
+        {
+            return false;
+        }
+
+        return !string.IsNullOrEmpty(username)
+            && !string.IsNullOrEmpty(password)
+            && string.Equals(username, storedUsername, StringComparison.Ordinal)
+            && string.Equals(password, storedPassword, StringComparison.Ordinal);
+    }
 
     private static string GetMappingKey(string sourceId, string itemId)
     {

@@ -1773,13 +1773,34 @@ app.MapPost("/api/ua/settings", async (HttpContext context, UaServerHost uaServe
         System.Text.Json.JsonElement root = doc.RootElement;
 
         UaServerOptions current = uaServer.GetOptions();
+
+        // Issue #14: enabling the credential gate with no usable credentials — in the
+        // request or already stored — would lock every client out of the server, so
+        // refuse that state instead of persisting it.
+        if (root.TryGetProperty("requireAuthentication", out var raReq) && raReq.GetBoolean())
+        {
+            string effectiveUsername = FirstNonBlank(
+                root.TryGetProperty("username", out var unReq) ? unReq.GetString() : null,
+                current.Username);
+            string effectivePassword = FirstNonBlank(
+                root.TryGetProperty("password", out var pwReq) ? pwReq.GetString() : null,
+                current.Password);
+            if (string.IsNullOrWhiteSpace(effectiveUsername) || string.IsNullOrWhiteSpace(effectivePassword))
+            {
+                return Results.BadRequest(new
+                {
+                    error = "Enabling credentials requires a username and password (in the request or already stored)."
+                });
+            }
+        }
+
         UaServerOptions updated = new()
         {
             ApplicationName = current.ApplicationName,
             EndpointUrl = root.TryGetProperty("endpointUrl", out var ep) ? ep.GetString() ?? current.EndpointUrl : current.EndpointUrl,
             AutoAcceptUntrustedCertificates = root.TryGetProperty("autoAcceptUntrustedCertificates", out var aa) ? aa.GetBoolean() : current.AutoAcceptUntrustedCertificates,
             RequireAuthentication = root.TryGetProperty("requireAuthentication", out var ra) ? ra.GetBoolean() : current.RequireAuthentication,
-            Username = root.TryGetProperty("username", out var un) ? un.GetString() : current.Username,
+            Username = root.TryGetProperty("username", out var un) && !string.IsNullOrEmpty(un.GetString()) ? un.GetString() : current.Username,
             Password = root.TryGetProperty("password", out var pw) && !string.IsNullOrEmpty(pw.GetString()) ? pw.GetString() : current.Password,
             AllowedIpAddresses = root.TryGetProperty("allowedIpAddresses", out var ip) && ip.ValueKind == System.Text.Json.JsonValueKind.Array
                 ? ip.EnumerateArray().Select(x => x.GetString() ?? string.Empty).ToList()
@@ -2635,6 +2656,12 @@ static bool TryValidateUaSecurity(string? securityMode, string? securityPolicy, 
     }
 
     return true;
+}
+
+static string FirstNonBlank(string? first, string? second)
+{
+    if (!string.IsNullOrWhiteSpace(first)) return first;
+    return second ?? string.Empty;
 }
 
 static bool TryResolveUaConnection(

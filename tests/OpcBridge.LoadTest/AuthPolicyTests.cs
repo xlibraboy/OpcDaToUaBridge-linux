@@ -61,6 +61,8 @@ public sealed class AuthPolicyTests
     [InlineData("POST", "/api/mqtt/config", UserRole.Engineer)]
     [InlineData("POST", "/api/influx/config", UserRole.Engineer)]
     [InlineData("POST", "/api/config/import", UserRole.Engineer)]
+    // Issue #14: the UA server access settings are engineering configuration.
+    [InlineData("POST", "/api/ua/settings", UserRole.Engineer)]
     public void RequiredRole_MatchesTheEndpointTable(string method, string path, UserRole expected) =>
         Assert.Equal(expected, AuthPolicy.RequiredRole(method, path));
 
