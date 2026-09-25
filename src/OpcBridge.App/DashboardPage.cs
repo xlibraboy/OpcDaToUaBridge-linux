@@ -1674,6 +1674,7 @@ internal static class DashboardPage
             <div class="box">
                 <div class="box-h">MX Component Connections <span class="msg" id="mxCount" style="margin-left:auto"></span></div>
                 <div class="box-b">
+                    <div class="hint" id="mxPauseMsg" role="status"></div>
                     <div class="list" id="mxList" style="max-height:280px"></div>
                 </div>
             </div>
@@ -5293,6 +5294,45 @@ function renderMonitorRoster(bridgeSources) {
 }
 function daSources() { return state.sources.filter(s => !isUaSource(s)); }
 function uaSources() { return state.sources.filter(s => isUaSource(s)); }
+// Temporary pause for MX Component connections: releases the PLC COM port so a
+// second program (e.g. GX Works) can take it over, and keeps it released until
+// Resume. Offered on the MX list only; runtime-only — POST /api/da/sources/pause.
+function sourcePauseChip(source) {
+    return source.paused === true ? ' ' + badge('Paused', 'warn') : '';
+}
+function sourcePauseButton(source) {
+    const paused = source.paused === true;
+    const title = paused
+        ? 'Resume polling this source'
+        : 'Disconnect this source so another program can take its port, without removing it';
+    return `<button class="btn ghost" type="button" data-action="toggle-source-pause" data-source-id="${attr(source.sourceId)}" data-paused="${paused ? 'true' : 'false'}" title="${attr(title)}">${paused ? 'Resume' : 'Pause'}</button>`;
+}
+function setSourcePauseMessage(text) {
+    const node = el('mxPauseMsg');
+    if (node) node.textContent = text || '';
+}
+async function toggleSourcePause(sourceId, paused) {
+    const wanted = paused !== true;
+    setSourcePauseMessage((wanted ? 'Pausing ' : 'Resuming ') + sourceId + '\u2026');
+    try {
+        const r = await fetch('/api/da/sources/pause', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sourceId: sourceId, paused: wanted })
+        });
+        const p = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
+        setSourcePauseMessage(p.paused
+            ? '\u23f8 ' + sourceId + ' paused \u2014 its connection is released; another program can use it now.'
+            : '\u25b6 ' + sourceId + ' resumed \u2014 reconnecting.');
+    } catch (e) {
+        setSourcePauseMessage('Could not change pause state: ' + e.message);
+    }
+    await refresh();
+    await loadSources();
+    // loadSources refreshes state.sources (which carries `paused`); re-render the MX list.
+    if (el('mxList')) renderMx();
+}
 function renderSources() {
     const select = el('selectedSource');
     const uaSelect = el('uaSelectedSource');
@@ -8031,7 +8071,7 @@ function renderMx() {
     }
     el('mxCount').textContent = sources.length + ' connection' + (sources.length !== 1 ? 's' : '');
     el('mxList').innerHTML = sources.length ? sources.map(source =>
-        `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)} ${sourceTypeBadge(source)}</div><div class="p">${esc(source.sourceId)} · MX station ${esc(String(source.logicalStationNumber ?? 0))} · ${formatMs(source.updateRateMs)}</div></div><button class="btn ghost" data-action="select-mx" data-source-id="${attr(source.sourceId)}">Select</button></div>`
+        `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)} ${sourceTypeBadge(source)}${sourcePauseChip(source)}</div><div class="p">${esc(source.sourceId)} · MX station ${esc(String(source.logicalStationNumber ?? 0))} · ${formatMs(source.updateRateMs)}</div></div><span style="display:flex;gap:4px"><button class="btn ghost" data-action="select-mx" data-source-id="${attr(source.sourceId)}">Select</button>${sourcePauseButton(source)}</span></div>`
     ).join('') : '<span class="msg">No MX Component connections configured. Click + Add Connection.</span>';
     loadMxForm();
 }
@@ -9420,6 +9460,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (el('mxTest')) el('mxTest').addEventListener('click', () => testMxConnection().catch(e => el('mxMessage').textContent = '✗ ' + e.message));
     if (el('mxList')) {
         el('mxList').addEventListener('click', event => {
+            const pauseButton = event.target.closest('button[data-action="toggle-source-pause"]');
+            if (pauseButton) {
+                toggleSourcePause(pauseButton.dataset.sourceId || '', pauseButton.dataset.paused === 'true');
+                return;
+            }
             const button = event.target.closest('button[data-action="select-mx"]');
             if (!button) return;
             pickMxSource(button.dataset.sourceId || '');

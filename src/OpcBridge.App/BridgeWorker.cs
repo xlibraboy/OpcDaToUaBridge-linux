@@ -373,6 +373,14 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
                             // Also pre-stop sources whose connection settings changed.
                             foreach (DaSourceRuntimeSettings src in settings.Sources)
                             {
+                                if (da_settings_.IsPaused(src.SourceId))
+                                {
+                                    // Pause disposes the session in ReconfigureSessionsAsync;
+                                    // stop its pollers here so none outlive the client.
+                                    preStop.Add(src.SourceId);
+                                    continue;
+                                }
+
                                 if (sessions.TryGetValue(src.SourceId, out SourceSession? existing)
                                     && !SourceConnectionEquals(existing.Source, src))
                                 {
@@ -976,6 +984,26 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
             DaSourceRuntimeSettings source = settings.Sources[i];
             bool force = forceRebuildSourceIds is not null
                 && forceRebuildSourceIds.Contains(source.SourceId);
+
+            // Operator paused this source: release the upstream connection (PLC COM
+            // port, UA session, …) so another program can take it over, and never
+            // connect while paused. The next reconcile pass (on resume) reconnects.
+            if (da_settings_.IsPaused(source.SourceId))
+            {
+                if (sessions.Remove(source.SourceId, out SourceSession? pausedSession))
+                {
+                    try { pausedSession.PollerCts?.Cancel(); } catch (ObjectDisposedException) { }
+                    pausedSession.PollerCts?.Dispose();
+                    await pausedSession.Client.DisposeAsync().ConfigureAwait(false);
+                    bridge_state_.ClearSourceValues(source.SourceId);
+                    logger_.LogInformation("Source {SourceId} paused; connection released", source.SourceId);
+                }
+
+                watchdog_activity_.TryRemove(source.SourceId, out _);
+                bridge_state_.ClearSourceError(source.SourceId);
+                bridge_state_.SetSourceConnectionState(source.SourceId, "Paused");
+                continue;
+            }
 
             if (sessions.TryGetValue(source.SourceId, out SourceSession? existing)
                 && !force

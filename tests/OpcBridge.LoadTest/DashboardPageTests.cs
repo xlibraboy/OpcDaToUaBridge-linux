@@ -270,6 +270,44 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
+    public void Script_SourcePauseControl_IsMxComponentOnly()
+    {
+        // Temporary pause (#5) exists for MX Component — its COM port is what a
+        // second program (e.g. GX Works) needs back — so only that list offers it.
+        Assert.Contains("async function toggleSourcePause(", DashboardPage.Script);
+        Assert.Contains("'/api/da/sources/pause'", DashboardPage.Script);
+        Assert.Contains("data-action=\"toggle-source-pause\"", DashboardPage.Script);
+        Assert.Contains("function sourcePauseButton(", DashboardPage.Script);
+        Assert.Contains("function sourcePauseChip(", DashboardPage.Script);
+        // Paused rows render with the badge and a Resume action.
+        Assert.Contains("source.paused === true ? ' ' + badge('Paused', 'warn') : ''", DashboardPage.Script);
+        Assert.Contains("${paused ? 'Resume' : 'Pause'}", DashboardPage.Script);
+        // The MX list renders the control and the status line…
+        Assert.Contains("id=\"mxPauseMsg\"", DashboardPage.Html);
+        string script = DashboardPage.Script;
+        string renderMx = FunctionBody(script, "function renderMx(");
+        Assert.Contains("${sourcePauseChip(source)}", renderMx);
+        Assert.Contains("${sourcePauseButton(source)}", renderMx);
+        // …and no other list does: one delegated handler (the MX list), no DA/UA
+        // message slots, and no pause control in their rows.
+        Assert.Equal(1, CountOccurrences(script, "closest('button[data-action=\"toggle-source-pause\"]')"));
+        Assert.DoesNotContain("sourcesPauseMsg", DashboardPage.Html);
+        Assert.DoesNotContain("uaSourcesPauseMsg", DashboardPage.Html);
+        Assert.DoesNotContain("sourcesPauseMsg", script);
+        string renderSources = FunctionBody(script, "function renderSources(");
+        Assert.DoesNotContain("sourcePauseChip(source)", renderSources);
+        Assert.DoesNotContain("sourcePauseButton(source)", renderSources);
+    }
+
+    private static string FunctionBody(string script, string signature)
+    {
+        int start = script.IndexOf(signature, StringComparison.Ordinal);
+        Assert.True(start >= 0, $"'{signature}' missing");
+        int end = script.IndexOf("\nfunction ", start + signature.Length, StringComparison.Ordinal);
+        return end > start ? script[start..end] : script[start..];
+    }
+
+    [Fact]
     public void Script_DaSourceStillUsesDaTagsApi()
     {
         Assert.Contains("/api/da/tags", DashboardPage.Script);

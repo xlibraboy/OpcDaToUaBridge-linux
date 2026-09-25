@@ -43,6 +43,8 @@ public static class AuthPolicy
         ("/api/auth/users", null, UserRole.Admin),
         ("/api/session/resolve", "POST", UserRole.Admin),
         ("/api/hmi/write", "POST", UserRole.Operator),
+        // Pausing releases a live PLC/serial connection, so it is explicit engineering work.
+        ("/api/da/sources/pause", "POST", UserRole.Engineer),
         ("/api/hmi/displays", "PUT", UserRole.Engineer),
         ("/api/hmi/displays", "DELETE", UserRole.Engineer)
     };
