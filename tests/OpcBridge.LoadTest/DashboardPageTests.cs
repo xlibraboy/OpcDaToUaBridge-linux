@@ -259,6 +259,17 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
+    public void Script_AddMappingReportsSkippedDuplicates()
+    {
+        // An insert-only add that skips an already-mapped key has to say so — the Add
+        // button used to look like it did nothing at all (issue #7).
+        Assert.Contains("function reportMappingAdd(", DashboardPage.Script);
+        Assert.Contains("result.skippedExisting", DashboardPage.Script);
+        Assert.Contains("already mapped on this source, so skipped: ", DashboardPage.Script);
+        Assert.Contains("id=\"mappingMessage\"", DashboardPage.Html);
+    }
+
+    [Fact]
     public void Script_DaSourceStillUsesDaTagsApi()
     {
         Assert.Contains("/api/da/tags", DashboardPage.Script);

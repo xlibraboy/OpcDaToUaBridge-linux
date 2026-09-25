@@ -8835,14 +8835,44 @@ async function browseTags(path, recursive = false) {
     el('tagTree').innerHTML = rows.length ? rows.join('') : '<span class="msg">No tags or folders here.</span>';
     el('tagStatus').textContent = branches.length + ' folders · ' + tags.length + ' tags';
 }
+// The add endpoints are insert-only: a key that is already mapped on the source is
+// skipped, not overwritten. Say so — the click used to look like it did nothing (#7).
+function reportMappingAdd(result, label) {
+    const msg = el('mappingMessage');
+    if (!msg) return;
+    const added = Number(result && result.added) || 0;
+    const skipped = Number(result && result.skippedExisting) || 0;
+    const keys = (result && Array.isArray(result.existing)) ? result.existing : [];
+    if (skipped > 0) {
+        const named = keys.map(k => k.itemId).filter(Boolean).slice(0, 3);
+        const rest = skipped - named.length;
+        const which = named.length
+            ? named.join(', ') + (rest > 0 ? ' and ' + rest + ' more' : '')
+            : skipped + (skipped === 1 ? ' tag' : ' tags');
+        msg.textContent = (added > 0 ? '✓ ' + added + ' added · ' : '⚠ ')
+            + 'already mapped on this source, so skipped: ' + which + '. Open it from the list below to change it.';
+        msg.className = 'hint warn';
+        return;
+    }
+    if (added > 0) {
+        msg.textContent = added === 1 ? '✓ ' + label + ' added to Maps.' : '✓ ' + added + ' tags added to Maps.';
+        msg.className = 'hint';
+        return;
+    }
+    msg.textContent = '⚠ ' + label + ' was not added.';
+    msg.className = 'hint warn';
+}
 async function addTag(sourceId, itemId, name) {
-    await fetch('/api/mappings/add', {
+    const r = await fetch('/api/mappings/add', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tags: [{ sourceId, itemId: itemId, displayName: name || itemId, dataType: 'Auto', uaNodeId: defaultUaNodeId(sourceId, itemId) }] })
     });
+    const p = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
     await loadMappings();
     await refresh();
+    reportMappingAdd(p, itemId);
 }
 async function addManual() {
     const itemId = el('manualItem').value.trim();
@@ -8850,15 +8880,21 @@ async function addManual() {
     if (!itemId || !source || state.editingNewSource) return;
     const sourceId = source.sourceId;
     const uaNodeId = el('manualUaNodeId').value.trim() || defaultUaNodeId(sourceId, itemId);
-    await fetch('/api/mappings/add', {
+    const r = await fetch('/api/mappings/add', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tags: [{ sourceId, itemId: itemId, displayName: itemId, dataType: 'Auto', uaNodeId }] })
     });
-    el('manualItem').value = '';
-    el('manualUaNodeId').value = '';
+    const p = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
+    // Keep the typed value when nothing was added, so the box still shows what was rejected.
+    if (Number(p.added) > 0) {
+        el('manualItem').value = '';
+        el('manualUaNodeId').value = '';
+    }
     await loadMappings();
     await refresh();
+    reportMappingAdd(p, itemId);
 }
 async function removeMapping(sourceId, itemId) {
     await fetch('/api/mappings/remove', {

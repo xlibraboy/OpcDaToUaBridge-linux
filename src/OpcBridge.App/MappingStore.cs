@@ -34,10 +34,27 @@ public sealed class MappingStore
         get { lock (sync_) { return version_; } }
     }
 
-    public long Add(IEnumerable<TagMapping> tags)
+    /// <summary>
+    /// Cap on how many already-present keys one <see cref="Add"/> call reports back. A bulk
+    /// re-import of 100k mappings duplicates every key; the caller only needs enough of them
+    /// to say what was skipped, never the whole set.
+    /// </summary>
+    private const int MaxReportedExistingKeys = 20;
+
+    public long Add(IEnumerable<TagMapping> tags) => Add(tags, out _);
+
+    /// <summary>
+    /// Insert-only add (existing keys are skipped, never overwritten). The outcome is
+    /// reported so a caller can tell the operator what was skipped and why — the dashboard
+    /// Maps tab used to show nothing at all when the tag was already mapped (issue #7).
+    /// </summary>
+    public long Add(IEnumerable<TagMapping> tags, out MappingAddResult result)
     {
         long raisedVersion = 0;
         bool raise = false;
+        int added = 0;
+        int skippedExisting = 0;
+        List<MappingKey> existingKeys = new();
         lock (sync_)
         {
             // Build a HashSet of existing keys for O(1) duplicate lookup
@@ -60,12 +77,23 @@ public sealed class MappingStore
 
                 if (!existing.Add((normalized.SourceId, normalized.ItemId)))
                 {
+                    // Already stored — or sent twice in this same payload, which lands the
+                    // same way: kept once, reported once.
+                    skippedExisting++;
+                    if (existingKeys.Count < MaxReportedExistingKeys)
+                    {
+                        existingKeys.Add(new MappingKey(normalized.SourceId, normalized.ItemId));
+                    }
+
                     continue;
                 }
 
                 mappings_.Add(normalized);
+                added++;
                 changed = true;
             }
+
+            result = new MappingAddResult(added, skippedExisting, existingKeys);
 
             if (changed)
             {
@@ -552,3 +580,13 @@ public sealed class MappingStore
         }
     }
 }
+
+/// <summary>Case-insensitive identity of one mapping: the (source, item) pair it is keyed by.</summary>
+public readonly record struct MappingKey(string SourceId, string ItemId);
+
+/// <summary>
+/// What an insert-only <see cref="MappingStore.Add(IEnumerable{TagMapping}, out MappingAddResult)"/>
+/// actually did: how many mappings were created, how many were left untouched because the key was
+/// already mapped, and — capped at 20 — which keys those were, so a caller can name them.
+/// </summary>
+public readonly record struct MappingAddResult(int Added, int SkippedExisting, IReadOnlyList<MappingKey> ExistingKeys);
