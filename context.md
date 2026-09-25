@@ -1,6 +1,6 @@
 # context.md — OpcBridge
 
-Instruction file for AI agents working in this repo. All facts below are verified against committed code on `main` as of 2026-09-25 (`eff67a2`).
+Instruction file for AI agents working in this repo. All facts below are verified against committed code on `main` as of 2026-09-25 (`d72c5bf`).
 
 ## What this project is
 
