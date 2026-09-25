@@ -1,6 +1,6 @@
 # context.md — OpcBridge
 
-Instruction file for AI agents working in this repo. All facts below are verified against committed code on `main` as of 2026-09-25 (`66feea7`).
+Instruction file for AI agents working in this repo. All facts below are verified against committed code on `main` as of 2026-09-25 (`db8104c`).
 
 ## What this project is
 
@@ -153,7 +153,7 @@ Endpoints (all in `Program.cs`):
 - SignalR hub `/hmi` — events `values` (batched `HmiValueDelta[]`) and `mappingsChanged` (`HmiMappingsChanged`)
 - `GET /api/logs?limit=&level=` — `DashboardLogStore` ring buffer
 - `GET /api/app-info` | `/api/version` | `/api/help` — assembly info / `HelpContent.Markdown`
-- `GET /api/da/sources` — source registry (each row carries `paused`); `POST /api/da/sources` (upsert); `POST /api/da/sources/remove`; `POST /api/da/sources/update-rate`; `POST /api/da/update-rate`; `POST /api/da/sources/pause` — `{"sourceId":..., "paused":true|false}` temporary runtime pause (#5, Engineer role): the worker disposes the source's session and reports `Paused` until resumed; the flag is **never** persisted to sources.json, so a restart resumes everything, and config import clears it (dashboard Pause/Resume control: the DA, UA and MX Component connection lists)
+- `GET /api/da/sources` — source registry (each row carries `paused`); `POST /api/da/sources` (upsert); `POST /api/da/sources/remove`; `POST /api/da/sources/update-rate`; `POST /api/da/update-rate`; `POST /api/da/sources/pause` — `{"sourceId":..., "paused":true|false}` temporary runtime pause (#5, Engineer role): the worker disposes the source's session and reports `Paused` until resumed; the flag is **never** persisted to sources.json, so a restart resumes everything, and config import clears it (dashboard Pause/Resume control: the MX Component list only — that COM port is the case it exists for)
 - `POST /api/da/servers` — enumerate OPC DA servers (Windows-only, 10s timeout); `POST /api/da/tags` — browse tags (Windows-only, 15s timeout)
 - `POST /api/ua/test-connection` — probe an external UA endpoint from the bridge
 - `GET /api/mappings`; `POST /api/mappings/add` | `/bulk-add` | `/update` | `/remove` (see API gotchas above)
