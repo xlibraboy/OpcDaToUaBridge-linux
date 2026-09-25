@@ -1330,6 +1330,7 @@ internal static class DashboardPage
             <div class="box">
                 <div class="box-h">Saved Connections <span class="msg" id="pSourcesSide" style="margin-left:auto"></span></div>
                 <div class="box-b">
+                    <div class="hint" id="sourcesPauseMsg" role="status"></div>
                     <div class="list" id="sourcesList" style="max-height:280px"></div>
                 </div>
             </div>
@@ -1413,6 +1414,7 @@ internal static class DashboardPage
             <div class="box">
                 <div class="box-h">Saved UA Connections <span class="msg" id="pUaSourcesSide" style="margin-left:auto"></span></div>
                 <div class="box-b">
+                    <div class="hint" id="uaSourcesPauseMsg" role="status"></div>
                     <div class="list" id="uaSourcesList" style="max-height:280px"></div>
                 </div>
             </div>
@@ -5217,6 +5219,45 @@ function renderMonitorRoster(bridgeSources) {
 }
 function daSources() { return state.sources.filter(s => !isUaSource(s)); }
 function uaSources() { return state.sources.filter(s => isUaSource(s)); }
+// Temporary pause: releases a source's upstream connection (the PLC COM port, a
+// serial port, or a UA session) so another program can take it over, and keeps it
+// released until Resume. Runtime-only — see POST /api/da/sources/pause.
+function sourcePauseChip(source) {
+    return source.paused === true ? ' ' + badge('Paused', 'warn') : '';
+}
+function sourcePauseButton(source) {
+    const paused = source.paused === true;
+    const title = paused
+        ? 'Resume polling this source'
+        : 'Disconnect this source so another program can take its port, without removing it';
+    return `<button class="btn ghost" type="button" data-action="toggle-source-pause" data-source-id="${attr(source.sourceId)}" data-paused="${paused ? 'true' : 'false'}" title="${attr(title)}">${paused ? 'Resume' : 'Pause'}</button>`;
+}
+function setSourcePauseMessage(text) {
+    ['sourcesPauseMsg', 'uaSourcesPauseMsg'].forEach(id => {
+        const node = el(id);
+        if (node) node.textContent = text || '';
+    });
+}
+async function toggleSourcePause(sourceId, paused) {
+    const wanted = paused !== true;
+    setSourcePauseMessage((wanted ? 'Pausing ' : 'Resuming ') + sourceId + '\u2026');
+    try {
+        const r = await fetch('/api/da/sources/pause', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sourceId: sourceId, paused: wanted })
+        });
+        const p = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
+        setSourcePauseMessage(p.paused
+            ? '\u23f8 ' + sourceId + ' paused \u2014 its connection is released; another program can use it now.'
+            : '\u25b6 ' + sourceId + ' resumed \u2014 reconnecting.');
+    } catch (e) {
+        setSourcePauseMessage('Could not change pause state: ' + e.message);
+    }
+    await refresh();
+    await loadSources();
+}
 function renderSources() {
     const select = el('selectedSource');
     const uaSelect = el('uaSelectedSource');
@@ -5252,14 +5293,14 @@ function renderSources() {
     if (list) {
         const das = opcDaSources();
         list.innerHTML = das.length ? das.map(source =>
-            `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)} ${sourceTypeBadge(source)}</div><div class="p">${esc(source.sourceId)} · ${esc(source.host || 'localhost')} · ${esc(source.progId || '')} · ${formatMs(source.updateRateMs)}</div></div><button class="btn ghost" data-action="select-source" data-source-id="${attr(source.sourceId)}">Select</button></div>`
+            `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)} ${sourceTypeBadge(source)}${sourcePauseChip(source)}</div><div class="p">${esc(source.sourceId)} · ${esc(source.host || 'localhost')} · ${esc(source.progId || '')} · ${formatMs(source.updateRateMs)}</div></div><span style="display:flex;gap:4px"><button class="btn ghost" data-action="select-source" data-source-id="${attr(source.sourceId)}">Select</button>${sourcePauseButton(source)}</span></div>`
         ).join('') : '<span class="msg">No OPC DA sources configured.</span>';
     }
     const uaList = el('uaSourcesList');
     if (uaList) {
         const uas = uaSources();
         uaList.innerHTML = uas.length ? uas.map(source =>
-            `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)} ${sourceTypeBadge(source)}</div><div class="p">${esc(source.sourceId)} · ${esc(source.endpointUrl || '')} · ${formatMs(source.updateRateMs)}</div></div><button class="btn ghost" data-action="select-ua-source" data-source-id="${attr(source.sourceId)}">Select</button></div>`
+            `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)} ${sourceTypeBadge(source)}${sourcePauseChip(source)}</div><div class="p">${esc(source.sourceId)} · ${esc(source.endpointUrl || '')} · ${formatMs(source.updateRateMs)}</div></div><span style="display:flex;gap:4px"><button class="btn ghost" data-action="select-ua-source" data-source-id="${attr(source.sourceId)}">Select</button>${sourcePauseButton(source)}</span></div>`
         ).join('') : '<span class="msg">No OPC UA sources configured.</span>';
     }
     renderMonitorRoster(state.sources);
@@ -8919,6 +8960,11 @@ function toggleLiveValues() {
 
 function bindDynamicButtons() {
     el('sourcesList').addEventListener('click', event => {
+        const pauseButton = event.target.closest('button[data-action="toggle-source-pause"]');
+        if (pauseButton) {
+            toggleSourcePause(pauseButton.dataset.sourceId || '', pauseButton.dataset.paused === 'true');
+            return;
+        }
         const button = event.target.closest('button[data-action="select-source"]');
         if (!button) return;
         pickSource(button.dataset.sourceId || '');
@@ -8936,6 +8982,11 @@ function bindDynamicButtons() {
     const uaList = el('uaSourcesList');
     if (uaList) {
         uaList.addEventListener('click', event => {
+            const pauseButton = event.target.closest('button[data-action="toggle-source-pause"]');
+            if (pauseButton) {
+                toggleSourcePause(pauseButton.dataset.sourceId || '', pauseButton.dataset.paused === 'true');
+                return;
+            }
             const button = event.target.closest('button[data-action="select-ua-source"]');
             if (!button) return;
             pickSource(button.dataset.sourceId || '');
