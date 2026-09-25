@@ -1,3 +1,5 @@
+using System.Net;
+using System.Net.Sockets;
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
@@ -165,6 +167,44 @@ public sealed class InfluxWriterTests
     }
 
     [Fact]
+    public async Task Write_Failure_FaultsTheWriterSoItStopsClaimingConnected()
+    {
+        using FailingWriteServer server = FailingWriteServer.Start();
+        await using InfluxWriter writer = new(NullLogger<InfluxWriter>.Instance);
+        InfluxOptions options = new()
+        {
+            Enabled = true,
+            Url = server.Url,
+            Org = "demo-org",
+            Bucket = "demo-bucket",
+            Token = "demo-token",
+            TimeoutMs = 2000,
+            VerifySsl = false
+        };
+
+        await writer.ConnectAsync(options, CancellationToken.None);
+        Assert.Equal(InfluxConnectionState.Connected, writer.State);
+
+        BridgeValue value = new("src", "item.1", 1.5, DateTime.UtcNow, 192, true);
+        await Assert.ThrowsAnyAsync<Exception>(() => writer.WritePointAsync(value, "Tag", CancellationToken.None));
+
+        // The point never landed, so the link is not usable and the state must not stay Connected:
+        // BridgeWorker's reconnect loop is what brings it back.
+        Assert.Equal(InfluxConnectionState.Faulted, writer.State);
+    }
+
+    [Fact]
+    public void Retry_Backoff_GrowsToTheCapAndStopsThere()
+    {
+        Assert.Equal(2000, BridgeWorker.InfluxRetryDelayMs(0));
+        Assert.Equal(4000, BridgeWorker.InfluxRetryDelayMs(1));
+        Assert.Equal(8000, BridgeWorker.InfluxRetryDelayMs(2));
+        Assert.Equal(16000, BridgeWorker.InfluxRetryDelayMs(3));
+        Assert.Equal(30000, BridgeWorker.InfluxRetryDelayMs(4));
+        Assert.Equal(30000, BridgeWorker.InfluxRetryDelayMs(12));
+    }
+
+    [Fact]
     public void SetLastError_RecordsFailureWithoutChangingState()
     {
         InfluxRuntimeSettings settings = new(Options.Create(new InfluxOptions()));
@@ -201,5 +241,79 @@ public sealed class InfluxWriterTests
         Assert.Equal("factory", opts.Org);
         Assert.Equal("tags", opts.Bucket);
         Assert.Equal("secret", opts.Token);
+    }
+
+    /// <summary>
+    /// Answers the readiness probe and rejects every write — the shape of a historian that is up
+    /// with a token it will not accept, or one that died between connect and the next point.
+    /// </summary>
+    private sealed class FailingWriteServer : IDisposable
+    {
+        private readonly HttpListener listener_;
+
+        private FailingWriteServer(HttpListener listener, string url)
+        {
+            listener_ = listener;
+            Url = url;
+        }
+
+        public string Url { get; }
+
+        public static FailingWriteServer Start()
+        {
+            TcpListener probe = new(IPAddress.Loopback, 0);
+            probe.Start();
+            int port = ((IPEndPoint)probe.LocalEndpoint).Port;
+            probe.Stop();
+
+            HttpListener listener = new();
+            listener.Prefixes.Add($"http://127.0.0.1:{port}/");
+            listener.Start();
+
+            FailingWriteServer server = new(listener, $"http://127.0.0.1:{port}");
+            _ = server.ServeAsync();
+            return server;
+        }
+
+        private async Task ServeAsync()
+        {
+            while (listener_.IsListening)
+            {
+                HttpListenerContext context;
+                try
+                {
+                    context = await listener_.GetContextAsync().ConfigureAwait(false);
+                }
+                catch (Exception)
+                {
+                    return; // stopped
+                }
+
+                bool ping = context.Request.Url?.AbsolutePath == "/ping";
+                context.Response.StatusCode = ping ? 204 : 401;
+                context.Response.Headers["X-Influxdb-Version"] = "2.7.0";
+                try
+                {
+                    context.Response.Close();
+                }
+                catch (Exception)
+                {
+                    // client hung up
+                }
+            }
+        }
+
+        public void Dispose()
+        {
+            try
+            {
+                listener_.Stop();
+                listener_.Close();
+            }
+            catch (Exception)
+            {
+                // already down
+            }
+        }
     }
 }
