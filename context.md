@@ -1,6 +1,6 @@
 # context.md — OpcBridge
 
-Instruction file for AI agents working in this repo. All facts below are verified against committed code on `main` as of 2026-09-25 (`54c83c4`).
+Instruction file for AI agents working in this repo. All facts below are verified against committed code on `main` as of 2026-09-26 (`275a433`).
 
 ## What this project is
 
@@ -248,7 +248,7 @@ docker run --rm -v "$PWD/<worktree>":/src -w /src -v "$HOME/.nuget-cache":/home/
   -e HOME=/home/build -e DOTNET_CLI_HOME=/home/build --user "$(id -u):$(id -g)" \
   mcr.microsoft.com/dotnet/sdk:8.0 dotnet test tests/OpcBridge.LoadTest/OpcBridge.LoadTest.csproj
 ```
-`--user` keeps build artifacts iwan-owned (rootful daemon). Full suite: **1064 tests** (xUnit, `tests/OpcBridge.LoadTest`), ~8–16 min in Docker on this host — trust the run's own total over the wall time. The suite has grown well past the previous count (auth/role, user-store and changelog tests joined). Known flaky: `InfluxApiTests.InfluxConfig_Post_Persists_EnabledFlag` (historically failed in full-suite order, passes isolated — green in the latest full run).
+`--user` keeps build artifacts iwan-owned (rootful daemon). Full suite: **1072 tests** (xUnit, `tests/OpcBridge.LoadTest`), ~8–16 min in Docker on this host — trust the run's own total over the wall time. The suite has grown well past the previous count (auth/role, user-store, changelog and MX-resume tests joined). Known flaky: `InfluxApiTests.InfluxConfig_Post_Persists_EnabledFlag` (historically failed in full-suite order, passes isolated — green in the latest full run), and `SourcePauseStoreTests.Pause_IsNotPersistedToSourcesJson`, which byte-compares the shared `sources.json` while `PlcGroupRegistryTests` writes `MX1` into it (both pass isolated; one `[Collection]` attribute on those two classes would serialize them).
 
 **Worktree workflow (session convention):** fixes live in `git worktree add .worktrees/<branch-slug> -b <branch> main`; one worktree per branch; full suite per branch before merge; merge to main with `--no-ff`; push to origin. **Tool path quirk:** `edit`/`write` with relative `.worktrees/...` paths sometimes land in the main checkout — always use absolute paths and verify with grep after. `.dockerignore` excludes `.worktrees/` (7+ GB) so images can be built from the main checkout.
 
