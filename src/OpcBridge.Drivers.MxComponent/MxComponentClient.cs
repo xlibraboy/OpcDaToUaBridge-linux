@@ -84,9 +84,23 @@ public sealed class MxComponentClient : ISourceClient
                 return;
             }
 
-            await ExecuteWithRetryAsync(
-                () => _session.ConnectAsync(cancellationToken),
-                cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await ExecuteWithRetryAsync(
+                    () => _session.ConnectAsync(cancellationToken),
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (MxConnectErrorClassifier.IsTransient(ex))
+            {
+                // #5: a transient open failure must not park the source in the terminal Faulted
+                // state. Reporting it as a lost connection makes the coordinator retry with
+                // backoff and show "Reconnecting", so a resume that raced the COM release of
+                // the session we just disposed recovers on its own.
+                throw new SourceConnectionLostException(
+                    $"MX Component source '{_options.SourceId}' could not open logical station " +
+                    $"{_options.LogicalStationNumber}: {ex.Message}",
+                    ex);
+            }
 
             _connected = true;
         }
@@ -340,9 +354,15 @@ public sealed class MxComponentClient : ISourceClient
         {
             await _session.CloseAsync(CancellationToken.None).ConfigureAwait(false);
         }
-        catch
+        catch (Exception ex)
         {
-            // best-effort
+            // Best-effort, but never silent: a close that fails leaves the PLC session (and the
+            // COM port) claimed by this process, which is what blocks the next Open() after a
+            // pause (#5). Same reason ActUtlTypeSession logs its own release failures.
+            _logger?.LogWarning(
+                ex,
+                "MX Component session close failed for source {SourceId}",
+                _options.SourceId);
         }
 
         if (_ownsSession)

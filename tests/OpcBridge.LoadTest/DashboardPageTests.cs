@@ -299,6 +299,34 @@ public sealed class DashboardPageTests
         Assert.DoesNotContain("sourcePauseButton(source)", renderSources);
     }
 
+    [Fact]
+    public void Script_RefreshMergesLiveSourceStatus()
+    {
+        // A reconnected source must stop showing the state it had when the config rows
+        // were last loaded: a resumed MX source kept reading "Reconnecting" long after
+        // it had connected, because only loadSources() merged the live status (#5).
+        string script = DashboardPage.Script;
+        Assert.Contains("function applyBridgeSourceStatus(", script);
+
+        string refresh = FunctionBody(script, "async function refresh(");
+        Assert.Contains("applyBridgeSourceStatus(sources)", refresh);
+
+        // One merge implementation, used by both the config load and every refresh tick.
+        Assert.Equal(1, CountOccurrences(script, "const statusBySource"));
+    }
+
+    [Fact]
+    public void Script_MxEndpointSummary_NeverInventsStationZero()
+    {
+        // The roster can render from the live status payload, which carries no station
+        // number; printing "MX station 0" for a station-1 source read as if the
+        // configuration had changed. An unknown station must not print a number at all.
+        string summary = FunctionBody(DashboardPage.Script, "function sourceEndpointSummary(");
+        Assert.Contains("MX station ", summary);
+        Assert.Contains("'MX Component'", summary);
+        Assert.DoesNotContain("?? 0", summary);
+    }
+
     private static string FunctionBody(string script, string signature)
     {
         int start = script.IndexOf(signature, StringComparison.Ordinal);

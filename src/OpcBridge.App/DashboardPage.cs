@@ -5252,7 +5252,10 @@ function sourceEndpointSummary(source) {
         return esc(source.endpointUrl || source.EndpointUrl || '—');
     }
     if (isMxSource(source)) {
-        return esc('MX station ' + (source.logicalStationNumber ?? 0));
+        // Never invent a station number: a live-status row carries no station field, and
+        // printing 0 for a station-1 source reads as if the configuration had changed.
+        const station = source.logicalStationNumber ?? source.LogicalStationNumber;
+        return esc(station === null || station === undefined ? 'MX Component' : 'MX station ' + station);
     }
     return `${esc(source.host || 'localhost')} · ${esc(source.progId || '')}`;
 }
@@ -5564,18 +5567,9 @@ async function loadSources() {
     const payload = await (await fetch('/api/da/sources', { cache: 'no-store' })).json();
     state.sources = payload.sources || [];
     // Merge live connection status (from /api/dashboard bridge.sources) so the
-    // status list and Select-by-type rows show Connected/Faulted + last error.
-    const statusBySource = new Map((state.bridgeSources || []).map(s => [String(get(s, 'sourceId') || '').toLowerCase(), s]));
-    state.sources.forEach(source => {
-        const status = statusBySource.get(String(source.sourceId || '').toLowerCase());
-        if (status) {
-            source.connectionState = get(status, 'connectionState');
-            source.lastError = get(status, 'lastError');
-            source.serverInfo = get(status, 'serverInfo');
-            source.readMode = get(status, 'readMode') || '';
-            source.writeMode = get(status, 'writeMode') || '';
-        }
-    });
+    // status list and Select-by-type rows show Connected/Faulted + last error. The
+    // same merge runs on every refresh tick, via applyBridgeSourceStatus.
+    applyBridgeSourceStatus(state.bridgeSources);
     state.updateRateMs = Number(payload.updateRateMs || state.updateRateMs || 1000);
     state.useSubscriptions = payload.useSubscriptions !== false;
     if (el('cfgUseSubscriptions')) el('cfgUseSubscriptions').checked = state.useSubscriptions;
@@ -6464,6 +6458,23 @@ function drawFlowWires() {
     svg.setAttribute('viewBox', `0 0 ${Math.round(rect.width)} ${Math.round(rect.height)}`);
     svg.innerHTML = markup;
 }
+// Live per-source status arrives on every /api/dashboard tick, while the configured rows
+// come from /api/da/sources. Merge them on each tick so everything reading state.sources
+// (the Source Diagnostics list, the pager) shows the current state instead of whatever it
+// was when loadSources() last ran — a resumed source kept reading "Reconnecting" long
+// after it had actually connected (#5).
+function applyBridgeSourceStatus(sources) {
+    const statusBySource = new Map((sources || []).map(s => [String(get(s, 'sourceId') || '').toLowerCase(), s]));
+    (state.sources || []).forEach(source => {
+        const status = statusBySource.get(String(source.sourceId || '').toLowerCase());
+        if (!status) return;
+        source.connectionState = get(status, 'connectionState');
+        source.lastError = get(status, 'lastError');
+        source.serverInfo = get(status, 'serverInfo');
+        source.readMode = get(status, 'readMode') || '';
+        source.writeMode = get(status, 'writeMode') || '';
+    });
+}
 async function refresh() {
     try {
         const lvSource = state.liveValuesSource || '';
@@ -6473,6 +6484,7 @@ async function refresh() {
         const vs = p.values || p.Values || [];
          const sources = get(b, 'sources') || [];
          state.bridgeSources = sources;
+         applyBridgeSourceStatus(sources);
          renderSourcePagerStates();
          const apps = p.apps || p.Apps || {};
          el('dot').className = 'dot';
@@ -6565,41 +6577,19 @@ async function refresh() {
         }
         // Refresh live connection status on the Connectivity status list too.
         if (document.getElementById('view-connection')?.classList.contains('active')) {
-            const statusBySource = new Map(sources.map(s => [String(get(s, 'sourceId') || '').toLowerCase(), s]));
-            state.sources.forEach(source => {
-                const status = statusBySource.get(String(source.sourceId || '').toLowerCase());
-                if (status) {
-                    source.connectionState = get(status, 'connectionState');
-                    source.lastError = get(status, 'lastError');
-                    source.serverInfo = get(status, 'serverInfo');
-                    source.readMode = get(status, 'readMode') || '';
-                    source.writeMode = get(status, 'writeMode') || '';
-                }
-            });
             renderMonitorRoster(sources);
         }
         // Keep the config forms' Detected Server / Read Mode lines live.
         const activeView = document.querySelector('.view.active')?.id || '';
+        // Status fields were merged for every source above; these views only need
+        // their own form refresh.
         if (activeView === 'view-opc-da') {
             const selId = String(state.selectedSourceId || '').toLowerCase();
             const current = state.sources.find(s => String(s.sourceId || '').toLowerCase() === selId);
-            const status = sources.find(s => String(get(s, 'sourceId') || '').toLowerCase() === selId);
-            if (current && status) {
-                current.connectionState = get(status, 'connectionState');
-                current.lastError = get(status, 'lastError');
-                current.serverInfo = get(status, 'serverInfo');
-                current.readMode = get(status, 'readMode') || '';
-                current.writeMode = get(status, 'writeMode') || '';
-            }
             updateCfgServerInfo(current);
         } else if (activeView === 'view-opc-ua') {
             const selId = String(state.selectedSourceId || '').toLowerCase();
             const current = state.sources.find(s => String(s.sourceId || '').toLowerCase() === selId);
-            const status = sources.find(s => String(get(s, 'sourceId') || '').toLowerCase() === selId);
-            if (current && status) {
-                current.readMode = get(status, 'readMode') || '';
-                current.writeMode = get(status, 'writeMode') || '';
-            }
             updateUaCfgReadMode(current);
         }
         renderMonitorRoster(sources);
