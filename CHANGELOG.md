@@ -109,6 +109,17 @@ Component, Drivers), where the manual box is the only way to add a tag because t
 no tag tree to browse. Enter in either the Item ID / Address field or the UA node field
 now runs the same add as the button.
 
+**Auto-typed tags no longer fault their source on the first reading.** A mapping whose
+DataType is *Auto* — the default, and what a tag added by address gets — is mirrored by a UA
+node whose declared DataType is the abstract `BaseDataType`. The new bandwidth measurement
+asked that node for its wrapped `Variant`, which the stack cannot build without a concrete
+type: it threw `Unable to cast object of type 'System.Boolean' to type 'Opc.Ua.Variant'`. The
+exception escaped the value update into the poll cycle, so the source was parked in **Faulted**
+and its readings were cleared — an all-Auto rig, such as an MX Component source of bit tags,
+faulted every one of its sources and showed no readings at all. The measurement now wraps the
+value itself, the way the stack builds it for a read and for a published notification, so no
+declared type can turn a diagnostic into a source failure.
+
 ## [1.3.0] - 2026-09-24
 
 ### Added

@@ -78,4 +78,49 @@ public sealed class BridgeNodeManagerTests
         Assert.True(small is > 0 and < 80, $"expected an Int32 payload below the old 80-byte guess, got {small}");
         Assert.True(large >= small + 512, $"expected the string payload to carry its 512 bytes, got {large} vs {small}");
     }
+
+    public static TheoryData<object?> AutoTypedValues() => new()
+    {
+        true,          // an MX Component bit tag (M/X/Y, TS/TC/CS/CC, D-bit) — the reported shape
+        false,
+        (short)-12,    // an MX Component word tag (D/TN/CN)
+        7,
+        1.5,
+        "RUN",
+        null           // a BAD read mirrors a null value
+    };
+
+    [Theory]
+    [MemberData(nameof(AutoTypedValues))]
+    public void MeasureNotificationBytes_HandlesEveryValueAnAutoMappingCarries(object? value)
+    {
+        // Regression: a mapping with DataType "Auto" gets a node whose UA DataType is the
+        // abstract BaseDataType, and BaseVariableState.WrappedValue cannot wrap a raw value for
+        // such a node — it throws InvalidCastException ("Unable to cast object of type
+        // 'System.Boolean' to type 'Opc.Ua.Variant'"). Measuring through it made that exception
+        // escape the value update into the poll cycle, which faulted the source and cleared its
+        // readings: every Auto-mapped source on a rig went Faulted with no readings at all.
+        ServiceMessageContext context = new(DefaultTelemetry.Create(_ => { }));
+
+        int bytes = BridgeNodeManager.MeasureNotificationBytes(
+            context,
+            BridgeNodeManager.WrapForMeasurement(value),
+            StatusCodes.Good,
+            DateTime.UtcNow);
+
+        Assert.True(bytes > 0, $"expected a measured payload for {value ?? "null"}, got {bytes}");
+    }
+
+    [Fact]
+    public void WrapForMeasurement_KeepsAVariantAndWrapsRawValuesByTheirOwnType()
+    {
+        // A metadata source hands the bridge a Variant (its type is already decided); a source
+        // read hands it a raw CLR value, which becomes the Variant the notification carries.
+        Variant existing = new(42);
+        Assert.Equal(BuiltInType.Int32, BridgeNodeManager.WrapForMeasurement(existing).TypeInfo.BuiltInType);
+        Assert.Equal(BuiltInType.Boolean, BridgeNodeManager.WrapForMeasurement(true).TypeInfo.BuiltInType);
+        Assert.Equal(BuiltInType.Int16, BridgeNodeManager.WrapForMeasurement((short)-12).TypeInfo.BuiltInType);
+        Assert.Equal(BuiltInType.String, BridgeNodeManager.WrapForMeasurement("RUN").TypeInfo.BuiltInType);
+        Assert.True(BridgeNodeManager.WrapForMeasurement(null).IsNull);
+    }
 }
