@@ -68,6 +68,7 @@ The UA server is a **mirror**, not a computation path. Every value shown in the 
 
 - `TagMapping.PollRateMs` (>0 overrides the source default).
 - `BridgeWorker` builds one poller task per `(SourceId, distinct-rate)` group. `SourceMappingCache.GetDistinctRates` derives the set.
+- **A poller's period is its rate** (since `fix/mx-cycle-budget`): the delay after a cycle is what is left of the rate window (`BridgeWorker.NextPollDelayMs`), not a fresh full rate on top of the work. The real period used to be `rate + cycle`, so a group whose read approached its rate sampled at almost half the configured rate and its tags aged past the dashboard's `2 × rate` freshness check — the yellow "Stale" marks reported in #20. A group at or over budget keeps a 10% gap instead of polling back-to-back.
 - `Bridge:RateLimits` in `appsettings.json` caps tags-per-rate-group; `BridgeState.UpdateRateGroup` reports `ok`/`warning`/`saturated`/`limit-exceeded` per group.
 
 ### OPC UA inbound sources (standard, rig-verified to 100k tags / 3 sources)
