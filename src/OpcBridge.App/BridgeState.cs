@@ -28,12 +28,27 @@ public sealed class BridgeState
     public static bool HttpAutoAssigned { get; private set; }
     public static bool UaAutoAssigned { get; private set; }
 
+    /// <summary>
+    /// Address families each chosen port was free on when the bridge started, probed before
+    /// it bound its own listeners. A family another process holds is reported, never acted
+    /// on: the bridge listens on IPv4 only, so an IPv6-only holder does not stop the bind,
+    /// and moving the port would invalidate the installer's build-time firewall rule.
+    /// </summary>
+    public static PortProbe HttpPortProbe { get; private set; } = new(true, null);
+    public static PortProbe UaPortProbe { get; private set; } = new(true, null);
+
     public static void ConfigurePorts(int httpPort, int uaPort, bool httpAuto, bool uaAuto)
     {
         HttpPort = httpPort;
         UaPort = uaPort;
         HttpAutoAssigned = httpAuto;
         UaAutoAssigned = uaAuto;
+    }
+
+    public static void ConfigurePortReport(PortProbe httpProbe, PortProbe uaProbe)
+    {
+        HttpPortProbe = httpProbe;
+        UaPortProbe = uaProbe;
     }
 
     /// <summary>Windows session the bridge runs in. Set once at startup.</summary>

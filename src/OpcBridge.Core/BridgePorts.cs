@@ -11,4 +11,7 @@ public sealed record BridgePorts(
     bool HttpAutoAssigned,
     bool UaAutoAssigned,
     string? UaEndpointBind,
-    string? UaEndpointClient);
+    string? UaEndpointClient,
+    PortProbe HttpProbe,
+    PortProbe UaProbe,
+    string? DiscoveryServer);

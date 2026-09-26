@@ -565,6 +565,8 @@ The **Endpoint URL** in Connection settings has two faces:
 - Same machine: `opc.tcp://localhost:4840/OpcBridge`
 - Another machine on the LAN: `opc.tcp://192.168.x.x:4840/OpcBridge` or `opc.tcp://HOSTNAME:4840/OpcBridge`
 
+**4840 is the Local Discovery Server's port.** The OPC Foundation's UA Local Discovery Server (`opcualds`, installed alongside Siemens SIMATIC WinCC, Matrikon and Kepware OPC UA products) owns TCP 4840 by convention, for server discovery. Where one is running, give the bridge a port of its own — set `Bridge:OpcUaPort` (e.g. 4841) and open that port in the firewall. The bridge binds IPv4 only, so the LDS holding the IPv6 side does not stop it listening; what it does do is make a client on the same machine that resolves `localhost` to `::1` reach the LDS instead of the bridge's address space. **Monitor → Ports** names the discovery server when it detects one.
+
 The **Monitor** tab shows both values: the configured bind address and the derived client connect URL.
 
 ---
@@ -689,6 +691,8 @@ The bridge runs as a **background scheduled task** — no Windows Service, no ad
    - Port **4840/TCP** (default) — OPC UA server; same note applies if auto-assigned
    - Run as admin: `netsh advfirewall firewall add rule name="OPC Bridge Dashboard" dir=in action=allow protocol=TCP localport=8080` and `... localport=4840`
    - On first startup the bridge checks both ports; if either is already in use it silently moves to the next free port and saves it to `appsettings.json` (`Bridge:HttpPort`, `Bridge:OpcUaPort`). Check the Monitor tab or startup logs for the actual ports in use.
+   - **A moved or shared port needs the firewall opened by hand.** The MSI creates its rules for the ports it was built with (8080 and 4840) — if the bridge auto-assigned a different port, or you pinned `Bridge:OpcUaPort` to one, add a rule for that port. A bridge that listens fine locally but is unreachable from the LAN is usually this.
+   - **Check for a Local Discovery Server before choosing the UA port.** If `opcualds` (OPC UA Local Discovery Server) is installed it holds 4840 for discovery, so pin the bridge to a free port and open that one instead. Monitor → Ports reports a port a second listener also holds, and names the discovery server.
 
 4. **DCOM permissions** (only for remote DA servers):
    - On the DA server host, run `dcomcnfg` → DCOM Config → find the OPC DA server → Properties → Security tab

@@ -123,6 +123,26 @@ if (httpPort != savedHttp || uaPort != savedUa)
 
 BridgeState.ConfigurePorts(httpPort, uaPort, httpAuto, uaAuto);
 
+// Record which address families the chosen ports were already held on. This has to happen
+// here: past this point Kestrel and the UA server bind, and the bridge's own listener would
+// make its port read as taken. An IPv6-only holder — the OPC UA Local Discovery Server's
+// [::]:4840 is the common one on a WinCC/Matrikon host — does not stop the IPv4 bind, so it
+// is surfaced instead of triggering a port move that the installer's build-time firewall
+// rule would not cover.
+PortProbe httpProbe = PortHelper.Probe(httpPort);
+PortProbe uaProbe = PortHelper.Probe(uaPort);
+BridgeState.ConfigurePortReport(httpProbe, uaProbe);
+
+if (httpProbe.HeldFamilies() is string httpHeld)
+{
+    logger.LogWarning("HTTP port {Port} is also held by another process on {Families}. Clients can reach that process instead of the bridge.", httpPort, httpHeld);
+}
+
+if (uaProbe.HeldFamilies() is string uaHeld)
+{
+    logger.LogWarning("OPC UA port {Port} is also held by another process on {Families}. A client on this machine using localhost can reach that process instead of the bridge.", uaPort, uaHeld);
+}
+
 // Windows session awareness: session-bound PLC simulators (GX Simulator's shared
 // memory behind MX OPC, etc.) are only reachable from the interactive desktop
 // session. A bridge launched into session 0 (SSH/WMI, services, S4U tasks) looks
@@ -187,6 +207,7 @@ builder.Services.AddSingleton<InterlinkStore>();
 builder.Services.AddSingleton<IInterlinkMetadataResolver>(sp => sp.GetRequiredService<BridgeWorker>());
 builder.Services.AddSingleton<UaServerHost>();
 builder.Services.AddSingleton<OpcUaBrowseService>();
+builder.Services.AddSingleton<DiscoveryServerProbe>();
 builder.Services.AddSingleton<IMqttBridge, MqttBridge>();
 builder.Services.AddSingleton<MqttRuntimeSettings>();
 builder.Services.AddSingleton<MqttValueStore>();
@@ -460,7 +481,7 @@ app.MapPost("/api/session/resolve", (IHostApplicationLifetime lifetime) =>
     _ = Task.Run(async () => { await Task.Delay(2000); lifetime.StopApplication(); });
     return Results.Json(new { status = "ok", message = "Relaunching bridge into the interactive desktop session. This page will reconnect automatically." });
 });
-app.MapGet("/api/status/ports", () =>
+app.MapGet("/api/status/ports", (DiscoveryServerProbe discoveryProbe) =>
 {
     string hostName = System.Net.Dns.GetHostName();
     string uaBind = $"opc.tcp://0.0.0.0:{BridgeState.UaPort}/OpcBridge";
@@ -473,7 +494,10 @@ app.MapGet("/api/status/ports", () =>
         BridgeState.HttpAutoAssigned,
         BridgeState.UaAutoAssigned,
         uaBind,
-        uaClient));
+        uaClient,
+        BridgeState.HttpPortProbe,
+        BridgeState.UaPortProbe,
+        discoveryProbe.Detect()));
 });
  app.MapGet("/api/dashboard", (BridgeState state, UaServerHost uaServer, BridgeAppDiscovery discovery, MappingStore mappingStore, InterlinkStore interlinkStore, BridgeWorker worker, DaRuntimeSettings daSettings, int? limit, string? sourceId) =>
  {
