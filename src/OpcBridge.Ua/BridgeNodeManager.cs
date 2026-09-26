@@ -142,7 +142,7 @@ internal sealed class BridgeNodeManager : CustomNodeManager2
 
             int notificationBytes = MeasureNotificationBytes(
                 Server.MessageContext,
-                variable.WrappedValue,
+                WrapForMeasurement(value.Value),
                 variable.StatusCode,
                 variable.Timestamp);
 
@@ -170,6 +170,22 @@ internal sealed class BridgeNodeManager : CustomNodeManager2
             Interlocked.Read(ref total_bytes_),
             Interlocked.Read(ref bytes_in_window_));
     }
+
+    /// <summary>
+    /// The Variant a notification for this value carries. The node's own
+    /// <c>BaseVariableState.WrappedValue</c> cannot be used for this: it throws
+    /// <see cref="InvalidCastException"/> when the node's DataType is the abstract
+    /// <c>BaseDataType</c> — what every mapping with DataType "Auto" gets — because it cannot
+    /// wrap a raw value without a concrete type. A measurement must never be able to fault its
+    /// source, so the Variant is built from the value instead, the same way the stack builds it
+    /// for a read (<c>NodeState.ReadValueAttribute</c>) and for a published notification.
+    /// </summary>
+    internal static Variant WrapForMeasurement(object? value) => value switch
+    {
+        Variant variant => variant,
+        null => Variant.Null,
+        _ => new Variant(value)
+    };
 
     /// <summary>
     /// Real byte size of the notification one value change produces: the encoded
