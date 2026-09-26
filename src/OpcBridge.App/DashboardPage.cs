@@ -4893,7 +4893,12 @@ async function showTab(name, route) {
   if (activeTab === 'about') loadAppInfo().catch(e => el('aboutName').textContent = '✗ ' + e.message);
   if (activeTab === 'changelog') loadChangelog().catch(e => el('changelogBody').innerHTML = '<span class="msg bad" role="alert">✗ ' + escapeHtml(e.message) + '</span>');
   if (activeTab === 'help') loadHelp().catch(e => { const c = el('helpLayout1'); if (c) c.innerHTML = '<span class="msg bad" role="alert">✗ ' + esc(e.message) + '</span>'; });
-  if (activeTab === 'mx-component') { renderMx(); }
+  if (activeTab === 'mx-component') {
+    // The list shows each connection's live effective rate(s), which come from the
+    // PLC-groups endpoint — load it before painting so the numbers are real (#23).
+    await loadPlcGroups().catch(e => console.warn(e));
+    renderMx();
+  }
   if (activeTab === 'mqtt') { await loadMqtt(); }
   if (activeTab === 'iot-traffic') { await loadMqttValues(); }
   if (name === 'influx') { await loadInflux(); }
@@ -8085,6 +8090,23 @@ async function deletePlcGroup(sourceId, name, memberCount) {
 // --- PLC driver sources (Melsec A3N) ---
 function mxSources() { return state.sources.filter(s => isMxSource(s)); }
 function currentMx() { return state.editingNewMx ? null : mxSources().find(s => s.sourceId === state.selectedMxId) || null; }
+// Effective update rates for an MX source: the distinct rates its mapped tags
+// actually poll at — a named PLC group's rate wins, else the per-tag rate, else
+// the source default. Read from /api/plc/groups so each connection lists its live
+// cadence instead of the fixed 1 s source default (#23).
+function mxPlcGroupsEntry(sourceId) {
+    const cache = (typeof plcGroupsCache !== 'undefined' && Array.isArray(plcGroupsCache)) ? plcGroupsCache : [];
+    return cache.find(s => String(s.sourceId).toLowerCase() === String(sourceId).toLowerCase()) || null;
+}
+function mxEffectiveRates(source) {
+    const entry = mxPlcGroupsEntry(source.sourceId);
+    const rates = entry && Array.isArray(entry.effectiveRates) ? entry.effectiveRates.map(Number) : [];
+    const distinct = Array.from(new Set(rates.filter(n => n > 0))).sort((a, b) => a - b);
+    return distinct.length ? distinct : [Number(source.updateRateMs) || 1000];
+}
+function mxRateSummary(source) {
+    return mxEffectiveRates(source).map(formatMs).join(' \u00b7 ');
+}
 function renderMx() {
     const sources = mxSources();
     if (!state.editingNewMx && !sources.some(s => s.sourceId === state.selectedMxId)) {
@@ -8092,7 +8114,7 @@ function renderMx() {
     }
     el('mxCount').textContent = sources.length + ' connection' + (sources.length !== 1 ? 's' : '');
     el('mxList').innerHTML = sources.length ? sources.map(source =>
-        `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)} ${sourceTypeBadge(source)}${sourcePauseChip(source)}</div><div class="p">${esc(source.sourceId)} · MX station ${esc(String(source.logicalStationNumber ?? 0))} · ${formatMs(source.updateRateMs)}</div></div><span style="display:flex;gap:4px"><button class="btn ghost" data-action="select-mx" data-source-id="${attr(source.sourceId)}">Select</button>${sourcePauseButton(source)}</span></div>`
+        `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)} ${sourceTypeBadge(source)}${sourcePauseChip(source)}</div><div class="p">${esc(source.sourceId)} · MX station ${esc(String(source.logicalStationNumber ?? 0))} · ${mxRateSummary(source)}</div></div><span style="display:flex;gap:4px"><button class="btn ghost" data-action="select-mx" data-source-id="${attr(source.sourceId)}">Select</button>${sourcePauseButton(source)}</span></div>`
     ).join('') : '<span class="msg">No MX Component connections configured. Click + Add Connection.</span>';
     loadMxForm();
 }

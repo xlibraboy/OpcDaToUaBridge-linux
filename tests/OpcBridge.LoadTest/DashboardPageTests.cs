@@ -327,6 +327,29 @@ public sealed class DashboardPageTests
         Assert.DoesNotContain("?? 0", summary);
     }
 
+    [Fact]
+    public void Script_MxList_ShowsEffectiveRates_NotTheFixedSourceDefault()
+    {
+        // The MX connection list printed the source's own updateRateMs, which is
+        // hard-pinned to 1 s — so a connection whose tags run a 100 ms PLC group
+        // still read "1 s" and looked like the rate had never changed (#23). The
+        // list now reports the effective rates from /api/plc/groups, falling back
+        // to the source default only when nothing is mapped.
+        string script = DashboardPage.Script;
+        Assert.Contains("function mxPlcGroupsEntry(", script);
+        Assert.Contains("function mxEffectiveRates(", script);
+        Assert.Contains("function mxRateSummary(", script);
+        Assert.Contains("entry.effectiveRates", script);
+
+        string renderMx = FunctionBody(script, "function renderMx(");
+        Assert.Contains("mxRateSummary(source)", renderMx);
+        Assert.DoesNotContain("formatMs(source.updateRateMs)", renderMx);
+
+        // The group cache is loaded before the list paints, so the rates are live.
+        string showTab = FunctionBody(script, "async function showTab(");
+        Assert.Contains("await loadPlcGroups()", showTab);
+    }
+
     private static string FunctionBody(string script, string signature)
     {
         int start = script.IndexOf(signature, StringComparison.Ordinal);
