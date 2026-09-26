@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using OpcBridge.App;
+using OpcBridge.Core;
 using Xunit;
 
 namespace OpcBridge.LoadTest;
@@ -52,6 +53,11 @@ public sealed class TestAppHandle : IAsyncDisposable
         DisableAuthentication(appDirectory);
 
         configureAppDirectory(appDirectory);
+
+        // Give this instance its own ports. Left at the defaults, several instances starting at
+        // once all probed 8080, all found it free, and one died binding it ("Address already in
+        // use") — failing whichever test happened to own that instance.
+        WriteReservedPorts(appDirectory, ReservePort(), ReservePort());
 
         ProcessStartInfo startInfo = new()
         {
@@ -219,6 +225,67 @@ public sealed class TestAppHandle : IAsyncDisposable
         {
             // A malformed settings file is the test's problem, not the harness's.
         }
+    }
+
+    private static int next_candidate_port_ = 18100;
+
+    /// <summary>
+    /// A free port that no other instance is being handed. The counter keeps concurrent test
+    /// app instances apart; the availability check covers whatever else is on the machine.
+    /// </summary>
+    private static int ReservePort()
+    {
+        while (true)
+        {
+            int candidate = Interlocked.Increment(ref next_candidate_port_);
+            if (candidate > 30000)
+            {
+                throw new InvalidOperationException("Ran out of ports to hand to test app instances.");
+            }
+
+            if (PortHelper.IsPortAvailable(candidate))
+            {
+                return candidate;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Pins this instance's ports in its appsettings.json. <c>Ua:EndpointUrl</c> is what drives
+    /// the UA server's actual bind address, so it has to move with <c>Bridge:OpcUaPort</c> or the
+    /// two disagree and the server binds the old port.
+    /// </summary>
+    private static void WriteReservedPorts(string appDirectory, int httpPort, int uaPort)
+    {
+        string settingsPath = Path.Combine(appDirectory, "appsettings.json");
+        if (!File.Exists(settingsPath))
+        {
+            return;
+        }
+
+        if (JsonNode.Parse(File.ReadAllText(settingsPath)) is not JsonObject settings)
+        {
+            return;
+        }
+
+        if (settings["Bridge"] is not JsonObject bridge)
+        {
+            bridge = new JsonObject();
+            settings["Bridge"] = bridge;
+        }
+
+        bridge["HttpPort"] = httpPort;
+        bridge["OpcUaPort"] = uaPort;
+
+        if (settings["Ua"] is JsonObject ua &&
+            ua["EndpointUrl"] is JsonValue endpoint &&
+            endpoint.TryGetValue(out string? url) &&
+            Uri.TryCreate(url, UriKind.Absolute, out Uri? parsed))
+        {
+            ua["EndpointUrl"] = new UriBuilder(parsed) { Port = uaPort }.Uri.ToString();
+        }
+
+        File.WriteAllText(settingsPath, settings.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
     }
 
     private static int? ReadBridgeIntSetting(string settingsPath, string key)

@@ -30,6 +30,21 @@ echoes back to the dashboard, blank credential sets are rejected, and the Help p
 documents the flow. The credentials travel unencrypted — the server's only channel
 policy is None, so this is an access gate, not transport security.
 
+**The Ports card reports a port a second listener also holds.** The availability check
+probed IPv4 only, so it could not see a process holding just the IPv6 side — the common
+case being the OPC Foundation's **UA Local Discovery Server** (`opcualds`, installed with
+Siemens SIMATIC WinCC, Matrikon and Kepware), which owns 4840 by convention for discovery.
+On one rig the bridge and the LDS both ended up listening on 4840, and Windows treats
+delivery between two sockets on one port as indeterminate: a client on that machine
+resolving `localhost` to `::1` reached the LDS instead of the bridge's address space.
+`PortHelper` now probes each address family separately, **Monitor → Ports** marks a port as
+*also held on IPv4 / IPv6*, and startup logs a warning. The port the bridge listens on is
+deliberately **unchanged**: the installer's firewall rules are built from the ports the MSI
+was built with, so moving off 4840 by itself would leave the bridge listening somewhere the
+firewall does not allow and silently unreachable from the LAN. The card names the discovery
+server when it detects one and states the fix — pin `Bridge:OpcUaPort` to a free port and
+open that port in the firewall.
+
 ### Changed
 
 **The sidebar folds.** The Tags, IoT, Historian, Ops and Help groups in the rail are

@@ -1124,7 +1124,7 @@ internal static class DashboardPage
         </div>
         <div class="mon-row mon-support">
         <div class="mon-stat-group">
-            <div class="mon-stat-group-h">Ports <span class="info" data-tip="Listening ports for this bridge. When the default port is already in use by another application, the bridge auto-assigns the next free port and saves it to appsettings.json (Bridge:HttpPort / Bridge:OpcUaPort).">i</span></div>
+            <div class="mon-stat-group-h">Ports <span class="info" data-tip="Listening ports for this bridge. When the default port is already in use by another application, the bridge auto-assigns the next free port and saves it to appsettings.json (Bridge:HttpPort / Bridge:OpcUaPort). A port marked 'also held' has a second listener on that address family: an IPv6-only holder, such as the OPC UA Local Discovery Server on 4840, does not stop the bridge listening, but a client on this machine using localhost reaches that process instead.">i</span></div>
             <div class="stat"><div class="k">HTTP</div><div class="v" id="httpPortVal">&#8212;</div><div class="s" id="httpPortNote">Dashboard + API</div></div>
             <div class="stat"><div class="k">OPC UA</div><div class="v" id="uaPortVal">&#8212;</div><div class="s" id="uaPortNote">UA server endpoint</div></div>
         </div>
@@ -5731,6 +5731,19 @@ async function loadDiagnostics() {
     }
 }
 
+// Which address families another process already holds on a probed port. The bridge binds
+// IPv4 only, so an IPv6-only holder never stopped it listening — it makes a client on this
+// machine that resolves localhost to ::1 reach the other process instead.
+function heldFamilies(probe) {
+    if (!probe) return '';
+    const v4 = probe.ipv4Free !== undefined ? probe.ipv4Free : probe.Ipv4Free;
+    const v6 = probe.ipv6Free !== undefined ? probe.ipv6Free : probe.Ipv6Free;
+    const held = [];
+    if (v4 === false) held.push('IPv4');
+    if (v6 === false) held.push('IPv6');
+    return held.join(' + ');
+}
+
 async function refreshPortsInfo() {
     try {
         const r = await (await fetch('/api/status/ports', { cache: 'no-store' })).json();
@@ -5740,6 +5753,9 @@ async function refreshPortsInfo() {
         const uaDefault = r.uaDefault ?? 4840;
         const httpAuto = !!r.httpAutoAssigned;
         const uaAuto = !!r.uaAutoAssigned;
+        const httpHeld = heldFamilies(r.httpProbe ?? r.HttpProbe);
+        const uaHeld = heldFamilies(r.uaProbe ?? r.UaProbe);
+        const discoveryServer = r.discoveryServer ?? r.DiscoveryServer ?? null;
         const host = location.hostname || 'localhost';
         const httpEl = el('httpPortVal');
         const uaEl = el('uaPortVal');
@@ -5752,22 +5768,31 @@ async function refreshPortsInfo() {
             uaEl.title = uaAuto ? 'Auto-assigned: the default port ' + uaDefault + ' was in use.' : 'Default port';
         }
         const httpNote = el('httpPortNote');
-        if (httpNote) httpNote.textContent = httpAuto
+        if (httpNote) httpNote.textContent = (httpAuto
             ? 'auto-assigned from ' + httpDefault + ' · http://' + host + ':' + httpPort
-            : 'Dashboard + API · http://' + host + ':' + httpPort;
+            : 'Dashboard + API · http://' + host + ':' + httpPort) + (httpHeld ? ' · also held on ' + httpHeld : '');
         const uaNote = el('uaPortNote');
-        if (uaNote) uaNote.textContent = uaAuto
+        if (uaNote) uaNote.textContent = (uaAuto
             ? 'auto-assigned from ' + uaDefault + ' · ' + (r.uaEndpointClient || '')
-            : 'UA server endpoint · ' + (r.uaEndpointClient || '');
+            : 'UA server endpoint · ' + (r.uaEndpointClient || '')) + (uaHeld ? ' · also held on ' + uaHeld : '');
         const banner = el('portBanner');
         if (banner) {
             const autoPorts = [];
             if (httpAuto) autoPorts.push('HTTP ' + httpPort + ' (default ' + httpDefault + ' was in use)');
             if (uaAuto) autoPorts.push('OPC UA ' + uaPort + ' (default ' + uaDefault + ' was in use)');
+            const problems = [];
             if (autoPorts.length) {
+                problems.push('Bridge is running on auto-assigned port' + (autoPorts.length > 1 ? 's' : '') + ': ' + autoPorts.join('; ') + '.');
+            }
+            if (discoveryServer && Number(uaPort) === Number(uaDefault)) {
+                problems.push('An OPC UA Local Discovery Server (' + discoveryServer + ') owns port ' + uaDefault +
+                    ' by convention, so a client on this machine using localhost reaches it instead of this bridge. ' +
+                    'Set Bridge:OpcUaPort to a free port and open it in the firewall, then restart.');
+            }
+            if (problems.length) {
                 banner.style.display = '';
-                banner.innerHTML = '&#9888; Bridge is running on auto-assigned port' + (autoPorts.length > 1 ? 's' : '') + ': ' + autoPorts.join('; ') +
-                    '. <button class="btn" type="button" onclick="this.parentElement.style.display=\'none\'">Dismiss</button>';
+                banner.innerHTML = '&#9888; ' + problems.join(' ') +
+                    ' <button class="btn" type="button" onclick="this.parentElement.style.display=\'none\'">Dismiss</button>';
             } else {
                 banner.style.display = 'none';
             }
