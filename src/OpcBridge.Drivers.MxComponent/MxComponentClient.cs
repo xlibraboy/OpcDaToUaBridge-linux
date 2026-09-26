@@ -152,7 +152,12 @@ public sealed class MxComponentClient : ISourceClient
                 parsed[i] = new ParsedReadItem(i, itemId, address);
             }
 
-            // Walk in order; batch consecutive pure bits / pure D words; bit-in-word solo.
+            // Bit-in-word tags are read first so they can be grouped by their containing word:
+            // the usual shape is many bits of one register, and reading them one COM call at a
+            // time was a leading cause of a cycle hitting its budget (#20).
+            await ReadBitInWordSpansAsync(parsed, results, cancellationToken).ConfigureAwait(false);
+
+            // Walk in order; batch consecutive pure bits / pure D words.
             int index = 0;
             while (index < mappings.Count)
             {
@@ -196,7 +201,7 @@ public sealed class MxComponentClient : ISourceClient
                 }
                 else if (IsBitInWord(addr))
                 {
-                    await ReadBitInWordAsync(item, results, cancellationToken).ConfigureAwait(false);
+                    // Already read by the bit-in-word span pass above.
                     index++;
                 }
                 else
@@ -471,27 +476,85 @@ public sealed class MxComponentClient : ISourceClient
         }
     }
 
-    private async Task ReadBitInWordAsync(
-        ParsedReadItem item,
+    /// <summary>
+    /// Reads every bit-in-word tag (<c>D100:8</c>) in the read set.
+    ///
+    /// Items are grouped by their containing word and merged into contiguous spans, so a block
+    /// of flags costs one read per span of at most <see cref="MaxWordsPerBatch"/> words instead
+    /// of one COM round trip per tag — sixteen bits of one D register used to be sixteen calls,
+    /// which alone could push a cycle to (or past) its rate. Bits are masked out of the words
+    /// the span read returns.
+    /// </summary>
+    private async Task ReadBitInWordSpansAsync(
+        ParsedReadItem?[] parsed,
         BridgeValue[] results,
         CancellationToken cancellationToken)
     {
-        string wordDevice = WordDeviceName(item.Address.Number);
-        int bitIndex = item.Address.BitIndex!.Value;
-
-        try
+        List<ParsedReadItem> items = new();
+        for (int i = 0; i < parsed.Length; i++)
         {
-            ushort[] data = await ExecuteWithRetryAsync(
-                () => _session.ReadWordsAsync(wordDevice, 1, cancellationToken),
-                cancellationToken).ConfigureAwait(false);
-
-            bool bit = ((data[0] >> bitIndex) & 1) != 0;
-            results[item.Index] = Good(item.ItemId, bit, DateTime.UtcNow);
+            if (parsed[i] is { } candidate && IsBitInWord(candidate.Address))
+            {
+                items.Add(candidate);
+            }
         }
-        catch (Exception ex) when (ex is TimeoutException or InvalidOperationException)
+
+        if (items.Count == 0)
         {
-            _logger?.LogWarning(ex, "MX Component bit-in-word read failed for {ItemId}", item.ItemId);
-            results[item.Index] = Bad(item.ItemId, null);
+            return;
+        }
+
+        items.Sort(static (left, right) => left.Address.Number.CompareTo(right.Address.Number));
+
+        int index = 0;
+        while (index < items.Count)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // A span takes every following word that is the same word or the next one, so
+            // same-word bits (the common case) and adjacent registers share one read.
+            int spanStart = items[index].Address.Number;
+            int end = index + 1;
+            while (end < items.Count
+                   && items[end].Address.Number - spanStart < MaxWordsPerBatch
+                   && items[end].Address.Number - items[end - 1].Address.Number <= 1)
+            {
+                end++;
+            }
+
+            int words = items[end - 1].Address.Number - spanStart + 1;
+            string device = WordDeviceName(spanStart);
+
+            try
+            {
+                ushort[] data = await ExecuteWithRetryAsync(
+                    () => _session.ReadWordsAsync(device, words, cancellationToken),
+                    cancellationToken).ConfigureAwait(false);
+
+                DateTime ts = DateTime.UtcNow;
+                for (int i = index; i < end; i++)
+                {
+                    ParsedReadItem item = items[i];
+                    int bitIndex = item.Address.BitIndex!.Value;
+                    bool bit = ((data[item.Address.Number - spanStart] >> bitIndex) & 1) != 0;
+                    results[item.Index] = Good(item.ItemId, bit, ts);
+                }
+            }
+            catch (Exception ex) when (ex is TimeoutException or InvalidOperationException)
+            {
+                _logger?.LogWarning(
+                    ex,
+                    "MX Component bit-in-word read failed for {Device} words {Words}",
+                    device,
+                    words);
+                for (int i = index; i < end; i++)
+                {
+                    ParsedReadItem item = items[i];
+                    results[item.Index] = Bad(item.ItemId, null);
+                }
+            }
+
+            index = end;
         }
     }
 

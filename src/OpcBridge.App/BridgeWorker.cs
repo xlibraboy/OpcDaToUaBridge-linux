@@ -563,7 +563,7 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
     {
         while (!pollerToken.IsCancellationRequested)
         {
-            int delayRate = rate;
+            TimeSpan cycleElapsed = TimeSpan.Zero;
 
             try
             {
@@ -583,9 +583,10 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
                     cache,
                     pollerToken).ConfigureAwait(false);
                 cycleTimer.Stop();
+                cycleElapsed = cycleTimer.Elapsed;
 
-                bridge_state_.MarkUaWrite(result.OutputValueCount, cycleTimer.Elapsed);
-                bridge_state_.UpdateRateGroup(source.SourceId, rate, sourceReadMappings.Count, GetRateLimit(rate), cycleTimer.Elapsed);
+                bridge_state_.MarkUaWrite(result.OutputValueCount, cycleElapsed);
+                bridge_state_.UpdateRateGroup(source.SourceId, rate, sourceReadMappings.Count, GetRateLimit(rate), cycleElapsed);
 
                 if (!result.ReadSucceeded)
                 {
@@ -604,7 +605,7 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
 
             try
             {
-                await Task.Delay(delayRate, pollerToken).ConfigureAwait(false);
+                await Task.Delay(NextPollDelayMs(rate, cycleElapsed), pollerToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (pollerToken.IsCancellationRequested)
             {
@@ -612,6 +613,30 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
             }
         }
     }
+
+    /// <summary>
+    /// Milliseconds to wait before the next cycle: what is left of the rate window after the work
+    /// that just ran, not a whole fresh window after it.
+    ///
+    /// Sleeping the full rate once the cycle had finished made a poller's real period
+    /// <c>rate + cycle</c>, so a group whose read approached its rate sampled at almost half the
+    /// configured rate. That is what made healthy tags on the diagram look stale (the dashboard
+    /// ages a value against its configured rate) and what understated the cycle budget (#20).
+    /// A group that is at or over its budget keeps a 10% gap instead of spinning back-to-back,
+    /// so an overrunning source keeps its write queue moving.
+    /// </summary>
+    internal static int NextPollDelayMs(int rateMs, TimeSpan cycle)
+    {
+        if (rateMs <= 0)
+        {
+            return 0;
+        }
+
+        double remaining = rateMs - cycle.TotalMilliseconds;
+        double floor = Math.Max(1, rateMs * 0.1);
+        return (int)Math.Round(Math.Max(floor, remaining));
+    }
+
     private async Task ProcessWriteQueueAsync(
         string sourceId,
         SourceSession session,

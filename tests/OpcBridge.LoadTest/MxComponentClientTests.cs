@@ -234,6 +234,146 @@ public sealed class MxComponentClientTests
     }
 
     [Fact]
+    public async Task ReadAsync_BitInWord_SameWordBits_OneBatchedRead()
+    {
+        var session = new ScriptedMxSession();
+        session.ReadResponses.Enqueue(new ushort[] { 0x0005 }); // D5 bits 0 and 2 set, bit 15 clear
+
+        await using var client = new MxComponentClient(
+            new MxComponentClientOptions { SourceId = "mx", RetryCount = 0 },
+            session);
+        await client.ConnectAsync(CancellationToken.None);
+
+        IReadOnlyList<BridgeValue> values = await client.ReadAsync(
+            new[]
+            {
+                new TagMapping { SourceId = "mx", ItemId = "D5:0", Mode = TagMode.Source },
+                new TagMapping { SourceId = "mx", ItemId = "D5:2", Mode = TagMode.Source },
+                new TagMapping { SourceId = "mx", ItemId = "D5:15", Mode = TagMode.Source }
+            },
+            CancellationToken.None);
+
+        Assert.Equal(3, values.Count);
+        Assert.All(values, value => Assert.True(value.IsGood));
+        Assert.Equal(true, values[0].Value);
+        Assert.Equal(true, values[1].Value);
+        Assert.Equal(false, values[2].Value);
+
+        // #20: a block of flags on one register is one COM round trip, not one per tag.
+        Assert.Single(session.Reads);
+        Assert.Equal(("D5", 1), session.Reads[0]);
+    }
+
+    [Fact]
+    public async Task ReadAsync_BitInWord_AdjacentWords_OneSpanRead()
+    {
+        var session = new ScriptedMxSession();
+        session.ReadResponses.Enqueue(new ushort[] { 0x0002, 0x0008 }); // D10 bit 1, D11 bit 3
+
+        await using var client = new MxComponentClient(
+            new MxComponentClientOptions { SourceId = "mx", RetryCount = 0 },
+            session);
+        await client.ConnectAsync(CancellationToken.None);
+
+        IReadOnlyList<BridgeValue> values = await client.ReadAsync(
+            new[]
+            {
+                new TagMapping { SourceId = "mx", ItemId = "D10:1", Mode = TagMode.Source },
+                new TagMapping { SourceId = "mx", ItemId = "D11:3", Mode = TagMode.Source }
+            },
+            CancellationToken.None);
+
+        Assert.Equal(2, values.Count);
+        Assert.All(values, value => Assert.True(value.IsGood));
+        Assert.Equal(true, values[0].Value);
+        Assert.Equal(true, values[1].Value);
+
+        Assert.Single(session.Reads);
+        Assert.Equal(("D10", 2), session.Reads[0]);
+    }
+
+    [Fact]
+    public async Task ReadAsync_BitInWord_GapStartsNewSpan()
+    {
+        var session = new ScriptedMxSession();
+        session.ReadResponses.Enqueue(new ushort[] { 0x0001 }); // D10 bit 0
+        session.ReadResponses.Enqueue(new ushort[] { 0x0002 }); // D20 bit 1
+
+        await using var client = new MxComponentClient(
+            new MxComponentClientOptions { SourceId = "mx", RetryCount = 0 },
+            session);
+        await client.ConnectAsync(CancellationToken.None);
+
+        IReadOnlyList<BridgeValue> values = await client.ReadAsync(
+            new[]
+            {
+                new TagMapping { SourceId = "mx", ItemId = "D20:1", Mode = TagMode.Source },
+                new TagMapping { SourceId = "mx", ItemId = "D10:0", Mode = TagMode.Source }
+            },
+            CancellationToken.None);
+
+        Assert.Equal(2, values.Count);
+        Assert.All(values, value => Assert.True(value.IsGood));
+
+        // Grouping is by register, not by position in the read set: the unordered pair still
+        // reads one word each, and results stay on their mapping.
+        Assert.Equal(2, session.Reads.Count);
+        Assert.Equal(("D10", 1), session.Reads[0]);
+        Assert.Equal(("D20", 1), session.Reads[1]);
+        Assert.Equal(true, values[0].Value); // D20:1
+        Assert.Equal(true, values[1].Value); // D10:0
+    }
+
+    [Fact]
+    public async Task ReadAsync_BitInWord_LongRun_CappedAtBatchLimit()
+    {
+        var session = new ScriptedMxSession();
+        session.ReadResponses.Enqueue(new ushort[64]);
+        session.ReadResponses.Enqueue(new ushort[6]);
+
+        await using var client = new MxComponentClient(
+            new MxComponentClientOptions { SourceId = "mx", RetryCount = 0 },
+            session);
+        await client.ConnectAsync(CancellationToken.None);
+
+        TagMapping[] mappings = Enumerable.Range(0, 70)
+            .Select(number => new TagMapping { SourceId = "mx", ItemId = $"D{number}:0", Mode = TagMode.Source })
+            .ToArray();
+
+        IReadOnlyList<BridgeValue> values = await client.ReadAsync(mappings, CancellationToken.None);
+
+        // 70 contiguous registers split into spans of at most MaxWordsPerBatch (64).
+        Assert.Equal(2, session.Reads.Count);
+        Assert.Equal(("D0", 64), session.Reads[0]);
+        Assert.Equal(("D64", 6), session.Reads[1]);
+        Assert.Equal(70, values.Count);
+        Assert.All(values, value => Assert.True(value.IsGood));
+    }
+
+    [Fact]
+    public async Task ReadAsync_BitInWord_FailedSpan_MarksWholeSpanBad()
+    {
+        var session = new ScriptedMxSession { FailReads = true };
+
+        await using var client = new MxComponentClient(
+            new MxComponentClientOptions { SourceId = "mx", RetryCount = 0 },
+            session);
+        await client.ConnectAsync(CancellationToken.None);
+
+        IReadOnlyList<BridgeValue> values = await client.ReadAsync(
+            new[]
+            {
+                new TagMapping { SourceId = "mx", ItemId = "D5:0", Mode = TagMode.Source },
+                new TagMapping { SourceId = "mx", ItemId = "D5:4", Mode = TagMode.Source }
+            },
+            CancellationToken.None);
+
+        Assert.Equal(2, values.Count);
+        Assert.All(values, value => Assert.False(value.IsGood));
+        Assert.Single(session.Reads);
+    }
+
+    [Fact]
     public async Task ReadAsync_Failure_RetriesThenBad()
     {
         var session = new ScriptedMxSession { FailReads = true };
