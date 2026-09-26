@@ -1284,11 +1284,11 @@ internal static class DashboardPage
         </div>
     </div>
     <div class="box">
-        <div class="box-h">UA Bandwidth <span class="info" data-tip="Notifications/sec counts how many value changes were pushed to UA nodes. Estimated bandwidth = notifications/sec x ~80 bytes (typical UA notification encoding). The SDK does not expose actual wire bytes.">i</span></div>
+        <div class="box-h">UA Bandwidth <span class="info" data-tip="Measured: every value change is encoded with the OPC UA binary encoder and the real notification payload size (client handle + DataValue) is summed per second. Excludes TCP/UA message framing, and counts one payload per value change — not one per connected client.">i</span></div>
         <div class="box-b">
             <div class="stats">
                 <div class="stat"><div class="k">Notifications/sec</div><div class="v" id="diagNotifPerSec">&#8212;</div></div>
-                <div class="stat"><div class="k">Est. Bandwidth</div><div class="v" id="diagBandwidth">&#8212;</div><div class="s" id="diagTotalNotif">0 total</div></div>
+                <div class="stat"><div class="k">Measured Bandwidth</div><div class="v" id="diagBandwidth">&#8212;</div><div class="s" id="diagTotalNotif">0 notif · 0 B</div></div>
             </div>
         </div>
     </div>
@@ -5605,6 +5605,13 @@ function formatRate(value) {
     return n > 0 ? n.toLocaleString(undefined, { maximumFractionDigits: 1 }) + ' values/s' : '0 values/s';
 }
 
+function formatBytes(value) {
+    const n = Number(value ?? 0);
+    if (n < 1024) return n.toFixed(0) + ' B';
+    if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
+    return (n / (1024 * 1024)).toFixed(2) + ' MB';
+}
+
 function formatUaDiagnostics(ua) {
     const nodeCount = get(ua, 'mappedNodeCount') ?? 0;
     const lastUpdateUtc = get(ua, 'lastValueUpdateUtc');
@@ -5898,9 +5905,8 @@ function renderDiagnostics(p) {
     const bw = (p.bridge && p.bridge.uaBandwidth) || {};
     const nps = Number(bw.notificationsPerSec || 0);
     el('diagNotifPerSec').textContent = nps.toFixed(1);
-    const bps = Number(bw.estimatedBytesPerSec || 0);
-    el('diagBandwidth').textContent = bps < 1024 ? bps.toFixed(0) + ' B/s' : (bps / 1024).toFixed(1) + ' KB/s';
-    el('diagTotalNotif').textContent = (bw.totalNotifications || 0).toLocaleString() + ' total';
+    el('diagBandwidth').textContent = formatBytes(bw.bytesPerSec) + '/s';
+    el('diagTotalNotif').textContent = (bw.totalNotifications || 0).toLocaleString() + ' notif · ' + formatBytes(bw.totalBytes);
 
     // Write Queue
     const wq = (p.bridge && p.bridge.writeQueue) || {};

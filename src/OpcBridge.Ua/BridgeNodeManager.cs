@@ -17,6 +17,10 @@ internal sealed class BridgeNodeManager : CustomNodeManager2
     private long total_notifications_;
     private long notifications_window_start_ticks_;
     private long notifications_in_window_;
+    private long total_bytes_;
+    private long bytes_in_window_;
+
+    private const int ClientHandleSizeBytes = 4;
 
     private static readonly double TicksPerSecond = TimeSpan.FromSeconds(1).Ticks;
 
@@ -135,7 +139,15 @@ internal sealed class BridgeNodeManager : CustomNodeManager2
             variable.StatusCode = value.IsGood ? StatusCodes.Good : StatusCodes.Bad;
             variable.ClearChangeMasks(SystemContext, false);
             last_value_update_utc_ = DateTime.UtcNow;
+
+            int notificationBytes = MeasureNotificationBytes(
+                Server.MessageContext,
+                variable.WrappedValue,
+                variable.StatusCode,
+                variable.Timestamp);
+
             Interlocked.Increment(ref total_notifications_);
+            Interlocked.Add(ref total_bytes_, notificationBytes);
 
             long nowTicks = DateTime.UtcNow.Ticks;
             long elapsed = nowTicks - Interlocked.Read(ref notifications_window_start_ticks_);
@@ -143,16 +155,45 @@ internal sealed class BridgeNodeManager : CustomNodeManager2
             {
                 Interlocked.Exchange(ref notifications_window_start_ticks_, nowTicks);
                 Interlocked.Exchange(ref notifications_in_window_, 0);
+                Interlocked.Exchange(ref bytes_in_window_, 0);
             }
             Interlocked.Increment(ref notifications_in_window_);
+            Interlocked.Add(ref bytes_in_window_, notificationBytes);
         }
     }
 
-    public (long TotalNotifications, double NotificationsPerSec) GetBandwidthEstimate()
+    public UaBandwidthMetrics GetBandwidthMetrics()
     {
-        long total = Interlocked.Read(ref total_notifications_);
-        long inWindow = Interlocked.Read(ref notifications_in_window_);
-        return (total, inWindow);
+        return new UaBandwidthMetrics(
+            Interlocked.Read(ref total_notifications_),
+            Interlocked.Read(ref notifications_in_window_),
+            Interlocked.Read(ref total_bytes_),
+            Interlocked.Read(ref bytes_in_window_));
+    }
+
+    /// <summary>
+    /// Real byte size of the notification one value change produces: the encoded
+    /// MonitoredItemNotification payload (client handle + DataValue), measured with the
+    /// stack's own binary encoder instead of assuming a fixed size per notification.
+    /// The encode is bounded work and must never break the publish path, so a value the
+    /// encoder rejects (e.g. a string beyond the configured limit) counts as zero.
+    /// </summary>
+    internal static int MeasureNotificationBytes(
+        IServiceMessageContext context,
+        Variant value,
+        StatusCode statusCode,
+        DateTime sourceTimestamp)
+    {
+        try
+        {
+            BinaryEncoder encoder = new(context);
+            encoder.WriteDataValue(null, new DataValue(value, statusCode, sourceTimestamp));
+            return encoder.Close() + ClientHandleSizeBytes;
+        }
+        catch (Exception)
+        {
+            return 0;
+        }
     }
     public void SetWriteHandler(Action<BridgeValue, TaskCompletionSource<bool>> handler)
     {

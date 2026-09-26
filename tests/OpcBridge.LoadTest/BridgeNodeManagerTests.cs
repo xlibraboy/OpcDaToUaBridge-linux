@@ -60,4 +60,22 @@ public sealed class BridgeNodeManagerTests
         Assert.Equal("BridgeTags", BridgeNodeManager.RootFolderPath);
         Assert.Equal("Bridge Tags", BridgeNodeManager.RootFolderDisplayName);
     }
+
+    [Fact]
+    public void MeasureNotificationBytes_UsesTheEncodedPayloadSize()
+    {
+        // Issue #19: bandwidth is measured by encoding the actual notification payload,
+        // not assumed at ~80 bytes per notification. A small value must come out well
+        // below that guess, and a long string must grow the measurement by its own length.
+        ServiceMessageContext context = new(DefaultTelemetry.Create(_ => { }));
+        DateTime timestamp = DateTime.UtcNow;
+
+        int small = BridgeNodeManager.MeasureNotificationBytes(
+            context, new Variant(1), StatusCodes.Good, timestamp);
+        int large = BridgeNodeManager.MeasureNotificationBytes(
+            context, new Variant(new string('x', 512)), StatusCodes.Good, timestamp);
+
+        Assert.True(small is > 0 and < 80, $"expected an Int32 payload below the old 80-byte guess, got {small}");
+        Assert.True(large >= small + 512, $"expected the string payload to carry its 512 bytes, got {large} vs {small}");
+    }
 }
