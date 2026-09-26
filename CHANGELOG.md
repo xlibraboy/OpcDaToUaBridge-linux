@@ -66,6 +66,18 @@ for it. Every entry stays a real nav button with its route, so bookmarks, `aria-
 and the rail's scroll-into-view are unchanged, and `+ Add Source` moves to the right of
 the SOURCES header, mirroring the label-left / action-right pattern the page headers use.
 
+**UA bandwidth is measured, not estimated.** The Diagnostics tab showed a bandwidth
+number derived from `notifications/sec × ~80 bytes` — a guess that was wrong for every
+value type, and never zero even with no client connected. Each value change is now
+encoded with the stack's own binary encoder and the real notification payload size
+(client handle + DataValue) is summed per second, so an Int32 tag costs the ~18 bytes it
+actually costs and a long string carries its own length. The box is labelled **Measured
+Bandwidth** and reports notifications and bytes both per second and as running totals;
+`/api/diagnostics` exposes the measured `bytesPerSec` / `totalBytes` (the old
+`estimatedBytesPerSec` is gone, and the monitor script follows). The number still counts
+one payload per value change rather than one per connected client, and TCP/UA message
+framing stays outside the measurement — both stated in the box tooltip.
+
 ### Fixed
 
 **PLC group rate when none is supplied.** Creating a PLC group through `POST

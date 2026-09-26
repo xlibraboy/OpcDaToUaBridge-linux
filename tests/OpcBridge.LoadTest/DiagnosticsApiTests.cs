@@ -44,7 +44,15 @@ public sealed class DiagnosticsApiTests : IAsyncLifetime
         Assert.True(root.TryGetProperty("bridge", out JsonElement bridge));
         Assert.True(bridge.TryGetProperty("staThreads", out _));
         Assert.True(bridge.TryGetProperty("writeQueue", out _));
-        Assert.True(bridge.TryGetProperty("uaBandwidth", out _));
+        Assert.True(bridge.TryGetProperty("uaBandwidth", out JsonElement uaBandwidth));
+        Assert.True(uaBandwidth.TryGetProperty("notificationsPerSec", out _));
+        Assert.True(uaBandwidth.TryGetProperty("totalNotifications", out _));
+        Assert.True(uaBandwidth.TryGetProperty("bytesPerSec", out JsonElement bytesPerSec));
+        Assert.Equal(JsonValueKind.Number, bytesPerSec.ValueKind);
+        Assert.True(bytesPerSec.GetDouble() >= 0);
+        Assert.True(uaBandwidth.TryGetProperty("totalBytes", out JsonElement totalBytes));
+        Assert.Equal(JsonValueKind.Number, totalBytes.ValueKind);
+        Assert.True(totalBytes.GetInt64() >= 0);
         Assert.True(root.TryGetProperty("ua", out JsonElement ua));
         Assert.True(ua.TryGetProperty("sessions", out _));
         Assert.True(ua.TryGetProperty("subscriptions", out _));

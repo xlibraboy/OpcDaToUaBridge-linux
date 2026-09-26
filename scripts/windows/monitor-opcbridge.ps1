@@ -225,7 +225,7 @@ if ($BridgeUser) {
             Write-Host "    write queue     : depth $($diagnostics.bridge.writeQueue.currentDepth), enqueued $($diagnostics.bridge.writeQueue.totalEnqueued), failed $($diagnostics.bridge.writeQueue.totalFailed)"
         }
         if ($null -ne $diagnostics.bridge.uaBandwidth) {
-            Write-Host "    ua bandwidth    : $([math]::Round($diagnostics.bridge.uaBandwidth.notificationsPerSec, 1)) notif/s, ~$([math]::Round($diagnostics.bridge.uaBandwidth.estimatedBytesPerSec, 0)) B/s"
+            Write-Host "    ua bandwidth    : $([math]::Round($diagnostics.bridge.uaBandwidth.notificationsPerSec, 1)) notif/s, $([math]::Round($diagnostics.bridge.uaBandwidth.bytesPerSec, 0)) B/s measured"
         }
         if ($null -ne $diagnostics.ua.sessions) {
             Write-Host "    ua sessions     : $($diagnostics.ua.sessions.Count) with $($diagnostics.ua.subscriptions.Count) subscription(s)"

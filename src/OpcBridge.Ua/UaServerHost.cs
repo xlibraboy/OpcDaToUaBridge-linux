@@ -142,9 +142,9 @@ public sealed class UaServerHost : IAsyncDisposable
         return server_?.GetSubscriptionDiagnostics() ?? Array.Empty<UaSubscriptionDiagnostic>();
     }
 
-    public (long TotalNotifications, double NotificationsPerSec) GetBandwidthEstimate()
+    public UaBandwidthMetrics GetBandwidthMetrics()
     {
-        return server_?.GetBandwidthEstimate() ?? (0, 0);
+        return server_?.GetBandwidthMetrics() ?? new UaBandwidthMetrics(0, 0, 0, 0);
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)

@@ -96,9 +96,9 @@ internal sealed class BridgeUaServer : StandardServer
     {
         return node_manager_?.GetLastValueUpdateUtc();
     }
-    public (long TotalNotifications, double NotificationsPerSec) GetBandwidthEstimate()
+    public UaBandwidthMetrics GetBandwidthMetrics()
     {
-        return node_manager_?.GetBandwidthEstimate() ?? (0, 0);
+        return node_manager_?.GetBandwidthMetrics() ?? new UaBandwidthMetrics(0, 0, 0, 0);
     }
 
     public IReadOnlyList<UaSessionDiagnostic> GetSessionDiagnostics()
@@ -365,6 +365,12 @@ internal sealed class BridgeUaServer : StandardServer
         return string.Concat(sourceId.Trim(), "::", itemId.Trim());
     }
 }
+
+public sealed record UaBandwidthMetrics(
+    long TotalNotifications,
+    double NotificationsPerSec,
+    long TotalBytes,
+    double BytesPerSec);
 
 public sealed record UaSessionDiagnostic(
     string SessionId,

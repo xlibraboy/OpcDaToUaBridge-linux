@@ -1885,8 +1885,9 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
             };
         }
 
-        // UA bandwidth estimate (from BridgeNodeManager notification counter)
-        var (totalNotifications, notificationsPerSec) = ua_server_.GetBandwidthEstimate();
+        // UA bandwidth: BridgeNodeManager encodes every notification payload and reports the
+        // real byte size, so the byte rate is measured rather than notifications/sec × a guess.
+        UaBandwidthMetrics bandwidth = ua_server_.GetBandwidthMetrics();
 
         return new
         {
@@ -1894,9 +1895,10 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
             writeQueue,
             uaBandwidth = new
             {
-                totalNotifications,
-                notificationsPerSec,
-                estimatedBytesPerSec = notificationsPerSec * 80.0
+                totalNotifications = bandwidth.TotalNotifications,
+                notificationsPerSec = bandwidth.NotificationsPerSec,
+                totalBytes = bandwidth.TotalBytes,
+                bytesPerSec = bandwidth.BytesPerSec
             }
         };
     }
