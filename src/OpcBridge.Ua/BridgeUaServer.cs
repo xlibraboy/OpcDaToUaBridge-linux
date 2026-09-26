@@ -187,9 +187,9 @@ internal sealed class BridgeUaServer : StandardServer
     {
         return new ServerProperties
         {
-            ManufacturerName = "Oh My Pi",
+            ManufacturerName = "OpcBridge",
             ProductName = "OPC Bridge",
-            ProductUri = "urn:ohmypi:opc-bridge",
+            ProductUri = "urn:opcbridge:opc-bridge",
             SoftwareVersion = typeof(BridgeUaServer).Assembly.GetName().Version?.ToString() ?? "0.1.0",
             BuildNumber = "0",
             BuildDate = DateTime.UtcNow

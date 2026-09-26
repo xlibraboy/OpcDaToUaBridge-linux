@@ -1334,13 +1334,13 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
             : options_.ApplicationName.Trim();
         // ApplicationUri must stay stable across sources so the shared
         // pki/ua-client application certificate remains valid.
-        string applicationUri = $"urn:ohmypi:{applicationName}";
+        string applicationUri = $"urn:opcbridge:{applicationName}";
 
         ApplicationConfiguration configuration = new()
         {
             ApplicationName = applicationName,
             ApplicationUri = applicationUri,
-            ProductUri = "urn:ohmypi:opc-bridge-client",
+            ProductUri = "urn:opcbridge:opc-bridge-client",
             ApplicationType = ApplicationType.Client,
             SecurityConfiguration = new SecurityConfiguration
             {
@@ -1401,6 +1401,10 @@ public sealed class OpcUaSourceClient : ISourceClient, ISubscribableSourceClient
                     || e.Error.StatusCode == StatusCodes.BadCertificateHostNameInvalid;
             };
         }
+
+        await UaCertificateIdentity
+            .EnsureOwnCertificateMatchesApplicationUriAsync(configuration, null, logger_, cancellationToken)
+            .ConfigureAwait(false);
 
         // Match server host pattern: ApplicationInstance without telemetry is obsolete but acceptable
         // when no ITelemetryContext is injected into the source client yet.

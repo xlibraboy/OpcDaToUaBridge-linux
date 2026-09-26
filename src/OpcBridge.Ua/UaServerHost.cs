@@ -62,7 +62,12 @@ public sealed class UaServerHost : IAsyncDisposable
         ApplicationConfiguration configuration = CreateConfiguration();
         await configuration.ValidateAsync(ApplicationType.Server).ConfigureAwait(false);
 
-        ApplicationInstance application = new(new BridgeTelemetryContext(logger_factory_))
+        BridgeTelemetryContext telemetry = new(logger_factory_);
+        await UaCertificateIdentity
+            .EnsureOwnCertificateMatchesApplicationUriAsync(configuration, telemetry, logger_, cancellationToken)
+            .ConfigureAwait(false);
+
+        ApplicationInstance application = new(telemetry)
         {
             ApplicationName = options_.ApplicationName,
             ApplicationType = ApplicationType.Server,
@@ -168,14 +173,14 @@ public sealed class UaServerHost : IAsyncDisposable
 
     private ApplicationConfiguration CreateConfiguration()
     {
-        string applicationUri = $"urn:ohmypi:{options_.ApplicationName}";
+        string applicationUri = $"urn:opcbridge:{options_.ApplicationName}";
         string pkiRoot = Path.Combine(DataDirectory.Value, "pki");
 
         return new ApplicationConfiguration
         {
             ApplicationName = options_.ApplicationName,
             ApplicationUri = applicationUri,
-            ProductUri = "urn:ohmypi:opc-bridge",
+            ProductUri = "urn:opcbridge:opc-bridge",
             ApplicationType = ApplicationType.Server,
             SecurityConfiguration = new SecurityConfiguration
             {

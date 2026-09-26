@@ -47,6 +47,22 @@ open that port in the firewall.
 
 ### Changed
 
+**The OPC UA identity no longer carries the `ohmypi` vendor prefix.** The server's
+`ApplicationUri`, `ProductUri` and the tag namespace URI were built from a leftover vendor
+prefix (`urn:ohmypi:…`), so UaExpert and other clients showed a name the product does not
+use in the address-space namespace list. Everything is `urn:opcbridge:…` now — server
+`urn:opcbridge:{ApplicationName}` and `urn:opcbridge:opc-bridge`, tag namespace
+`urn:opcbridge:opc-bridge:tags`, shared UA client `urn:opcbridge:{ApplicationName}` and
+`urn:opcbridge:opc-bridge-client` — and the server reports `ManufacturerName` `OpcBridge`.
+Two consequences matter on an upgrade. The application URI is written into the SAN of the
+application certificate and the stack treats a stored certificate for a different URI as
+invalid rather than re-issuing one, so `UaCertificateIdentity` deletes it (with its private
+key) before the check and the bridge issues a certificate for the new identity on the same
+start — **every UA client must trust the new bridge certificate**, and upstream UA servers
+must trust the new client certificate. Node IDs are untouched: `ns=2;s={sourceId}/{itemId}`
+keeps the same index and identifier, so subscriptions and node lists survive; only clients
+that reference the namespace *URI* need a re-browse.
+
 **The sidebar folds.** The Tags, IoT, Historian, Ops and Help groups in the rail are
 collapsible now: each header is a toggle with a caret, every group starts closed, and
 navigating to one of its pages — by click, pager, wizard follow-up or deep link — opens

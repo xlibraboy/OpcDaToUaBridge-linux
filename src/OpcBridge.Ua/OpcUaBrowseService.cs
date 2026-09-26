@@ -420,7 +420,7 @@ public sealed class OpcUaBrowseService
             : options.ApplicationName.Trim();
         // ApplicationUri must stay stable across sources/browse calls so the shared
         // pki/ua-client application certificate remains valid.
-        string applicationUri = $"urn:ohmypi:{applicationName}";
+        string applicationUri = $"urn:opcbridge:{applicationName}";
         int operationTimeout = options.SessionTimeoutMs > 0
             ? Math.Clamp(options.SessionTimeoutMs, 5000, DefaultTimeoutMs)
             : DefaultTimeoutMs;
@@ -429,7 +429,7 @@ public sealed class OpcUaBrowseService
         {
             ApplicationName = applicationName,
             ApplicationUri = applicationUri,
-            ProductUri = "urn:ohmypi:opc-bridge-client",
+            ProductUri = "urn:opcbridge:opc-bridge-client",
             ApplicationType = ApplicationType.Client,
             SecurityConfiguration = new SecurityConfiguration
             {
@@ -490,6 +490,10 @@ public sealed class OpcUaBrowseService
                     || e.Error.StatusCode == StatusCodes.BadCertificateHostNameInvalid;
             };
         }
+
+        await UaCertificateIdentity
+            .EnsureOwnCertificateMatchesApplicationUriAsync(configuration, null, logger_, cancellationToken)
+            .ConfigureAwait(false);
 
 #pragma warning disable CS0618
         ApplicationInstance application = new()
