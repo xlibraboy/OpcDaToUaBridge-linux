@@ -1,4 +1,5 @@
 using OpcBridge.Core;
+using OpcBridge.Da;
 using OpcBridge.Drivers.MxComponent;
 using Xunit;
 
@@ -328,7 +329,7 @@ public sealed class MxComponentClientTests
     }
 
     [Fact]
-    public async Task ConnectAsync_SessionProbeFailure_Throws()
+    public async Task ConnectAsync_SessionProbeFailure_IsReportedAsLostConnection()
     {
         var session = new ScriptedMxSession { FailConnect = true };
 
@@ -336,7 +337,13 @@ public sealed class MxComponentClientTests
             new MxComponentClientOptions { SourceId = "mx", RetryCount = 0 },
             session);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => client.ConnectAsync(CancellationToken.None));
+        // #5: a failed open is transient — the logical station can still be claimed by the
+        // session a pause just released — so it surfaces as a lost connection the coordinator
+        // retries with backoff, not as a bare InvalidOperationException (terminal Faulted).
+        SourceConnectionLostException error = await Assert.ThrowsAsync<SourceConnectionLostException>(
+            () => client.ConnectAsync(CancellationToken.None));
+        Assert.IsType<InvalidOperationException>(error.InnerException);
+
         // The session was never opened (probe failed before Open succeeded).
         Assert.False(session.IsOpen);
         Assert.Equal(0, session.OpenCalls);

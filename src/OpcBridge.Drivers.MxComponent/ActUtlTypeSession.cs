@@ -58,13 +58,13 @@ internal sealed class ActUtlTypeSession : IMxComponentSession
         Type? type = Type.GetTypeFromProgID(ActUtlTypeProgId);
         if (type is null)
         {
-            throw new InvalidOperationException(
+            throw new MxComponentUnavailableException(
                 $"MX Component 4 is not registered on this machine (ProgID '{ActUtlTypeProgId}' not found). " +
                 "Install MELSOFT MX Component 4 and configure a logical station in its Communication Settings Utility.");
         }
 
         object com = Activator.CreateInstance(type)
-            ?? throw new InvalidOperationException($"Failed to create the '{ActUtlTypeProgId}' COM object.");
+            ?? throw new MxComponentUnavailableException($"Failed to create the '{ActUtlTypeProgId}' COM object.");
 
         _com = com;
         try
@@ -88,8 +88,7 @@ internal sealed class ActUtlTypeSession : IMxComponentSession
         }
         catch
         {
-            TryCloseCore(com);
-            _com = null;
+            CloseCore();
             throw;
         }
 
@@ -104,9 +103,7 @@ internal sealed class ActUtlTypeSession : IMxComponentSession
             return Task.CompletedTask;
         }
 
-        TryCloseCore(_com);
-        _open = false;
-        _com = null;
+        CloseCore();
         return Task.CompletedTask;
     }
 
@@ -211,22 +208,19 @@ internal sealed class ActUtlTypeSession : IMxComponentSession
         return Task.FromResult(cpu);
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
         if (_disposed)
         {
-            return;
+            return ValueTask.CompletedTask;
         }
 
+        // Release COM first, then latch. Setting _disposed before calling our own CloseAsync
+        // made that call throw ObjectDisposedException straight into an empty catch, so the
+        // session could never close itself and the logical station stayed claimed until GC.
+        CloseCore();
         _disposed = true;
-        try
-        {
-            await CloseAsync(CancellationToken.None).ConfigureAwait(false);
-        }
-        catch
-        {
-            // best-effort
-        }
+        return ValueTask.CompletedTask;
     }
 
     private (string CpuName, string CpuCode) GetCpuTypeCore(dynamic act)
@@ -275,8 +269,19 @@ internal sealed class ActUtlTypeSession : IMxComponentSession
             "Verify the logical station in the MX Component Communication Settings Utility and the PLC connection.");
     }
 
-    private static void TryCloseCore(object? com)
+    /// <summary>
+    /// Releases the ActUtlType COM object: <c>Close()</c> to hand the logical station back to
+    /// MX Component, then <see cref="Marshal.FinalReleaseComObject"/> so the RCW does not linger
+    /// until a GC. Dropping the reference alone was not enough — the station stays claimed while
+    /// the RCW lives, so a resume's <c>Open()</c> could fail against the session that had just
+    /// been paused (#5). Never throws: a failed release is logged and left to the finalizer.
+    /// </summary>
+    private void CloseCore()
     {
+        object? com = _com;
+        _com = null;
+        _open = false;
+
         if (com is null)
         {
             return;
@@ -286,9 +291,29 @@ internal sealed class ActUtlTypeSession : IMxComponentSession
         {
             ((dynamic)com).Close();
         }
-        catch
+        catch (Exception ex)
         {
-            // best-effort
+            _logger?.LogWarning(
+                ex,
+                "MX Component Close failed (logical station {Station})",
+                _options.LogicalStationNumber);
+        }
+
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        try
+        {
+            Marshal.FinalReleaseComObject(com);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogDebug(
+                ex,
+                "MX Component COM release failed (logical station {Station})",
+                _options.LogicalStationNumber);
         }
     }
 
