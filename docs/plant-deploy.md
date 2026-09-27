@@ -54,7 +54,11 @@ ssh Tested1@192.168.48.129 'powershell -File C:\...\register-published-task.ps1 
 # or -LogonType S4U for plant
 curl http://192.168.48.129:8080/health # {"status":"ok"}
 curl http://192.168.48.129:8080/api/status | jq .bridge.sessionId,.bridge.interactiveSession
+# Memory of the deployed bridge (issue #27) — and its Server vs Workstation GC A/B:
+scripts/windows/measure-windows-memory.sh --label after-deploy --minutes 10
 ```
+
+The measurement flow is documented in `docs/ram-measurement.md`.
 
 ## 4. Which to use?
 

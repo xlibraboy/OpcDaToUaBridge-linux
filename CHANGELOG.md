@@ -69,6 +69,18 @@ the matching rule moves with a changed port, and an **Apply firewall rule** butt
 rule an earlier roll left behind; the plain `netsh` line stays on the card as the manual
 fallback (#26).
 
+**The bridge's memory can be measured — and its GC mode A/B'd — on a deployed host.** The
+service's high working set (#27) is suspected to be its GC mode: `Microsoft.NET.Sdk.Web`
+gives it **Server GC** (one heap per core) inside the x86 process the MSI installs for 32-bit
+OPC DA COM servers, and nothing measured it. `scripts/windows/measure-windows-memory.sh` runs
+the existing `monitor-opcbridge.ps1` on a deployed host over SSH, streams its verdict and pulls
+the CSV into `dist/memory/` (gitignored); `--gc-mode Server|Workstation` first flips
+`System.GC.Server` in the deployed `OpcBridge.App.runtimeconfig.json` and restarts the bridge —
+the same property a `<ServerGarbageCollection>` csproj change writes, so both arms are tested
+with no rebuild and the measured effect transfers to the shipped change. Environment variables
+are deliberately not used: a service host or Task Scheduler does not pick up a machine variable
+set after boot. `docs/ram-measurement.md` documents the flow and how to read the result.
+
 ### Changed
 
 **The OPC UA identity no longer carries the `ohmypi` vendor prefix.** The server's
