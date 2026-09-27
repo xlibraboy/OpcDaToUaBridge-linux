@@ -24,6 +24,9 @@ public sealed class TestAppHandle : IAsyncDisposable
 
     public HttpClient Client { get; }
 
+    /// <summary>The app's working directory — where its live appsettings.json, pki/, sources.json live.</summary>
+    public string AppDirectory => app_directory_;
+
     /// <summary>OPC UA port the app under test actually listens on (PortSetup auto-assigns when 4840 is taken).</summary>
     public int UaPort { get; private set; } = 4840;
 

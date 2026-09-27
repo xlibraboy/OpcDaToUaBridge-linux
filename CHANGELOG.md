@@ -42,8 +42,8 @@ resolving `localhost` to `::1` reached the LDS instead of the bridge's address s
 deliberately **unchanged**: the installer's firewall rules are built from the ports the MSI
 was built with, so moving off 4840 by itself would leave the bridge listening somewhere the
 firewall does not allow and silently unreachable from the LAN. The card names the discovery
-server when it detects one and states the fix — pin `Bridge:OpcUaPort` to a free port and
-open that port in the firewall.
+server when it detects one and states the fix — move the port and its firewall rule from
+**Monitor → Port Configuration**.
 
 **Search the tag list in Maps.** A source with a few thousand tags was only workable
 through the browser's own find: *Browse All Tags* loads the whole tree, and nothing in the
@@ -55,6 +55,19 @@ event). The count sits beside the field: *12 of 340*, or *No tags match*. It fil
 a browse has already rendered, so press *Browse All Tags* (or open a folder) first; the
 box clears when you switch source or sub-tab, and it is hidden on the address-based
 Drivers / MX lanes, which have no browse tree (#24).
+
+**Ports and their firewall rules are editable from the dashboard.** The bridge already moved
+itself to the next free port when 8080 or 4840 was taken, but the move was one-way: the
+installer's firewall rules stay on the ports the MSI was built with, so a rolled port left
+the dashboard and the OPC UA endpoint unreachable from the LAN until someone added a rule by
+hand. **Monitor → Port Configuration** now shows the running and saved ports, checks a
+candidate on demand — free, held on IPv6 only, or in use by another process — with a *Use
+next free* suggestion drawn from the same 8080–8180 and 4840–4940 ranges the bridge scans,
+and saves the change for the next restart, saying so (a UA port change also moves the UA
+endpoint and re-issues the certificate, exactly like startup auto-assignment). On Windows
+the matching rule moves with a changed port, and an **Apply firewall rule** button fixes a
+rule an earlier roll left behind; the plain `netsh` line stays on the card as the manual
+fallback (#26).
 
 ### Changed
 

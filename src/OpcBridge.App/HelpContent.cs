@@ -567,7 +567,7 @@ The **Endpoint URL** in Connection settings has two faces:
 - Same machine: `opc.tcp://localhost:4840/OpcBridge`
 - Another machine on the LAN: `opc.tcp://192.168.x.x:4840/OpcBridge` or `opc.tcp://HOSTNAME:4840/OpcBridge`
 
-**4840 is the Local Discovery Server's port.** The OPC Foundation's UA Local Discovery Server (`opcualds`, installed alongside Siemens SIMATIC WinCC, Matrikon and Kepware OPC UA products) owns TCP 4840 by convention, for server discovery. Where one is running, give the bridge a port of its own — set `Bridge:OpcUaPort` (e.g. 4841) and open that port in the firewall. The bridge binds IPv4 only, so the LDS holding the IPv6 side does not stop it listening; what it does do is make a client on the same machine that resolves `localhost` to `::1` reach the LDS instead of the bridge's address space. **Monitor → Ports** names the discovery server when it detects one.
+**4840 is the Local Discovery Server's port.** The OPC Foundation's UA Local Discovery Server (`opcualds`, installed alongside Siemens SIMATIC WinCC, Matrikon and Kepware OPC UA products) owns TCP 4840 by convention, for server discovery. Where one is running, give the bridge a port of its own — set it under **Monitor → Port Configuration** (e.g. 4841) and use that card's firewall button; the underlying setting is `Bridge:OpcUaPort`. The bridge binds IPv4 only, so the LDS holding the IPv6 side does not stop it listening; what it does do is make a client on the same machine that resolves `localhost` to `::1` reach the LDS instead of the bridge's address space. **Monitor → Ports** names the discovery server when it detects one.
 
 The **Monitor** tab shows both values: the configured bind address and the derived client connect URL.
 
@@ -689,12 +689,11 @@ The bridge runs as a **background scheduled task** — no Windows Service, no ad
 2. **OPC DA server** — installed by the vendor (e.g. Matrikon OPC Simulation, Kepware, RSLinx). Verify it appears in `dcomcnfg` → Component Services → Computers → My Computer → DCOM Config.
 
 3. **Windows Firewall** — open ports if accessing from other machines:
-   - Port **8080/TCP** (default) — web dashboard; if the port was auto-assigned (Monitor → Bridge shows a different port), open that port instead
-   - Port **4840/TCP** (default) — OPC UA server; same note applies if auto-assigned
-   - Run as admin: `netsh advfirewall firewall add rule name="OPC Bridge Dashboard" dir=in action=allow protocol=TCP localport=8080` and `... localport=4840`
-   - On first startup the bridge checks both ports; if either is already in use it silently moves to the next free port and saves it to `appsettings.json` (`Bridge:HttpPort`, `Bridge:OpcUaPort`). Check the Monitor tab or startup logs for the actual ports in use.
-   - **A moved or shared port needs the firewall opened by hand.** The MSI creates its rules for the ports it was built with (8080 and 4840) — if the bridge auto-assigned a different port, or you pinned `Bridge:OpcUaPort` to one, add a rule for that port. A bridge that listens fine locally but is unreachable from the LAN is usually this.
-   - **Check for a Local Discovery Server before choosing the UA port.** If `opcualds` (OPC UA Local Discovery Server) is installed it holds 4840 for discovery, so pin the bridge to a free port and open that one instead. Monitor → Ports reports a port a second listener also holds, and names the discovery server.
+   - Port **8080/TCP** (default) — web dashboard; port **4840/TCP** (default) — OPC UA server. The MSI creates both rules at install.
+   - Use **Monitor → Port Configuration** to check a port, change it, and keep the firewall rule in step. The card shows what each rule currently covers; **Apply firewall rule** points a rule at the port the bridge actually listens on, and saving a changed port moves it automatically. The installed bridge runs as a service (LocalSystem), which is what gives it the rights to do this — a hand-started copy may not have them.
+   - On first startup the bridge checks both ports; if either is already in use it silently moves to the next free port and saves it to `appsettings.json` (`Bridge:HttpPort`, `Bridge:OpcUaPort`). Check Monitor → Ports or the startup logs for the actual ports in use.
+   - Manual fallback (run as admin): `netsh advfirewall firewall add rule name="OPC Bridge Dashboard" dir=in action=allow protocol=TCP localport=8080` and `... localport=4840`. **A bridge that listens fine locally but is unreachable from the LAN is usually a rule that does not cover the port it moved to.**
+   - **Check for a Local Discovery Server before choosing the UA port.** If `opcualds` (OPC UA Local Discovery Server) is installed it holds 4840 for discovery, so give the bridge a free port under **Monitor → Port Configuration** instead. Monitor → Ports reports a port a second listener also holds, and names the discovery server.
 
 4. **DCOM permissions** (only for remote DA servers):
    - On the DA server host, run `dcomcnfg` → DCOM Config → find the OPC DA server → Properties → Security tab
