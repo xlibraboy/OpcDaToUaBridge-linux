@@ -155,6 +155,18 @@ icon after the three exes got theirs. The `InternetShortcut` now pins `IconFile`
 installed `OpcBridge.App.exe` (index 0) — the same icon as the Apps & features entry — while
 the HMI and Designer shortcuts keep resolving theirs from their own exes.
 
+### Removed
+
+**The dashboard's resolve-to-desktop relaunch is gone.** The session-0 banner carried a
+*Resolve* button that wrote two PowerShell helpers next to the exe, registered a temporary
+`OpcBridgeResolve` scheduled task with `-LogonType Interactive` and then stopped the bridge so
+the desktop-session copy could take the single-instance lock and the ports. A bridge installed
+as a Windows service cannot move itself across sessions, so the button, the endpoint
+(`POST /api/session/resolve`, admin-only) and its helpers are removed (#25). The session-0
+banner stays and names the deployment fix instead: run the published-task deployment with
+`register-published-task.ps1 -LogonType Interactive` (or use a real PLC instead of GX
+Simulator) — the S4U/Interactive choice belongs to install time, not to the dashboard.
+
 ## [1.3.0] - 2026-09-24
 
 ### Added

@@ -6239,37 +6239,14 @@ function helpSearchKey(e) {
     helpSearchClear();
 }
 
-// The session banner reads icon → message → actions (the actions group pins itself
-// right). One markup contract keeps the poll's warning state and the resolve flow's
-// working/error states in step.
+// The session banner reads icon → message → dismiss (the action group pins itself
+// right). It warns that session-bound OPC DA servers cannot deliver values here;
+// moving the bridge into a desktop session is a deployment decision (the published
+// task script with -LogonType Interactive), not something the dashboard does.
 const SESSION_DISMISS_ONCLICK = 'state.sessionBannerDismissed=true;el(\'sessionBanner\').style.display=\'none\'';
-function sessionBannerBtn(label, onclick) {
-    return '<button class="btn" type="button" onclick="' + onclick + '">' + label + '</button>';
-}
-function sessionBannerHtml(message, actions) {
+function sessionBannerHtml(message) {
     return '<span class="banner-icon" aria-hidden="true">⚠</span><span class="banner-msg">' + message + '</span>'
-        + (actions ? '<span class="banner-actions">' + actions + '</span>' : '');
-}
-async function resolveSessionBanner() {
-    const banner = el('sessionBanner');
-    if (!banner) return;
-    banner.innerHTML = sessionBannerHtml('Relaunching bridge into the interactive desktop session… this page will reconnect automatically.');
-    state.sessionBannerDismissed = true;
-    try {
-        const r = await fetch('/api/session/resolve', { method: 'POST' });
-        const j = await r.json().catch(() => ({}));
-        if (!r.ok || j.status !== "ok") {
-            state.sessionBannerDismissed = false;
-            banner.style.display = '';
-            banner.innerHTML = sessionBannerHtml('Resolve failed: ' + esc(j.message || j.status || 'unknown error'), sessionBannerBtn('Retry', 'resolveSessionBanner()') + sessionBannerBtn('Dismiss', SESSION_DISMISS_ONCLICK));
-            return;
-        }
-        banner.style.display = 'none';
-    } catch (e) {
-        state.sessionBannerDismissed = false;
-        banner.style.display = '';
-        banner.innerHTML = sessionBannerHtml('Resolve failed: ' + esc(e.message), sessionBannerBtn('Retry', 'resolveSessionBanner()') + sessionBannerBtn('Dismiss', SESSION_DISMISS_ONCLICK));
-    }
+        + '<span class="banner-actions"><button class="btn" type="button" onclick="' + SESSION_DISMISS_ONCLICK + '">Dismiss</button></span>';
 }
 // ---------------------------------------------------------------------------
 // Data flow (Monitor lead)
@@ -6549,7 +6526,7 @@ async function refresh() {
                     sessionBanner.style.display = 'none';
                 } else {
                     sessionBanner.style.display = '';
-                    sessionBanner.innerHTML = sessionBannerHtml('This bridge runs in a non-interactive Windows session (session 0). Session-bound OPC DA servers (GX Simulator via MX OPC, or any simulator using session-scoped shared memory) will not deliver values.', sessionBannerBtn('Resolve', 'resolveSessionBanner()') + sessionBannerBtn('Dismiss', SESSION_DISMISS_ONCLICK));
+                    sessionBanner.innerHTML = sessionBannerHtml('This bridge runs in a non-interactive Windows session (session 0). Session-bound OPC DA servers (GX Simulator via MX OPC, or any simulator using session-scoped shared memory) will not deliver values. Deploy the bridge into a desktop session instead — a scheduled task registered with -LogonType Interactive — or use a real PLC.');
                 }
             } else {
                 sessionBanner.style.display = 'none';
