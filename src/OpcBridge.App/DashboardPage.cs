@@ -41,6 +41,11 @@ namespace OpcBridge.App;
 //   Tag Browser search (#24): id="tagSearch"/"tagSearchStatus", function applyTagFilter(/tagSearchKey(/clearTagSearch(,
 //   tag-tree rows carry data-search (display name + item ID) and data-pin="1" on the ".." row
 //   Diagram: tab text "Source→UA", function diagSourceKind(= sourceTypeLabel( + sourceSubtitle()
+//   Port Configuration (#26): id="httpPortInput"/"uaPortInput"/"httpPortCheckMsg"/"uaPortCheckMsg"/
+//   "btnHttpPortCheck"/"btnUaPortCheck"/"btnHttpPortSuggest"/"btnUaPortSuggest"/"portCfgState"/
+//   "portsMsg"/"fwSection"/"fwState"/"fwRules"/"btnApplyFirewall"/"fwMsg"/"portCmdHint",
+//   function loadPortConfig(/checkPort(/useSuggestedPort(/savePorts(/loadFirewall(/applyFirewall(,
+//   /api/ports/config, /api/ports/probe, /api/firewall/status, /api/firewall/apply
 internal static class DashboardPage
 {
     public const string Html = """
@@ -1169,6 +1174,38 @@ internal static class DashboardPage
             <div style="display:flex;gap:8px;align-items:center">
                 <button class="btn" id="btnSaveUaAccess" type="button" onclick="saveUaAccess()">Save UA Access</button>
                 <span class="msg" id="uaAccessMsg" role="status"></span>
+            </div>
+        </div>
+    </div>
+    <div class="box" style="margin-top:14px">
+        <div class="box-h">Port Configuration <span class="info" data-tip="The ports this bridge listens on. A saved change applies after the bridge restarts — the HTTP port moves the dashboard itself, the OPC UA port moves the UA endpoint. Saving also moves the Windows Firewall rule with the port (the installer's rules are pinned to the ports the MSI was built with).">i</span><span class="msg" id="portCfgState" style="margin-left:auto"></span></div>
+        <div class="box-b">
+            <div class="field" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:8px">
+                <div><label class="fl" for="httpPortInput">HTTP port</label><input type="number" id="httpPortInput" min="1" max="65535" style="width:110px"></div>
+                <button class="btn ghost" id="btnHttpPortCheck" type="button" onclick="checkPort('http')">Check</button>
+                <button class="btn ghost" id="btnHttpPortSuggest" type="button" onclick="useSuggestedPort('http')">Use next free</button>
+                <span class="msg" id="httpPortCheckMsg" role="status"></span>
+            </div>
+            <div class="field" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:8px">
+                <div><label class="fl" for="uaPortInput">OPC UA port</label><input type="number" id="uaPortInput" min="1" max="65535" style="width:110px"></div>
+                <button class="btn ghost" id="btnUaPortCheck" type="button" onclick="checkPort('ua')">Check</button>
+                <button class="btn ghost" id="btnUaPortSuggest" type="button" onclick="useSuggestedPort('ua')">Use next free</button>
+                <span class="msg" id="uaPortCheckMsg" role="status"></span>
+            </div>
+            <div class="msg" style="margin:0 0 8px;color:var(--muted)">A port outside the auto-assign range is allowed. The bridge binds IPv4, so a port another process holds on IPv6 alone still works — but localhost on this machine may reach that process instead.</div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                <button class="btn" id="btnSavePorts" type="button" onclick="savePorts()">Save Ports</button>
+                <span class="msg" id="portsMsg" role="status"></span>
+            </div>
+            <div id="fwSection" style="margin-top:12px;border-top:1px solid var(--line);padding-top:10px">
+                <div class="k" style="font-size:var(--fs-micro);text-transform:uppercase;letter-spacing:.05em;color:var(--muted)">Windows Firewall</div>
+                <div class="msg" id="fwState" role="status" style="margin-top:4px">Checking rules…</div>
+                <div class="list" id="fwRules" style="margin:6px 0"></div>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                    <button class="btn" id="btnApplyFirewall" type="button" onclick="applyFirewall()">Apply firewall rule</button>
+                    <span class="msg" id="fwMsg" role="status"></span>
+                </div>
+                <div class="msg" style="margin-top:8px;color:var(--muted)">Manual fallback (run as admin): <code id="portCmdHint"></code></div>
             </div>
         </div>
     </div>
@@ -5798,7 +5835,7 @@ async function refreshPortsInfo() {
             if (discoveryServer && Number(uaPort) === Number(uaDefault)) {
                 problems.push('An OPC UA Local Discovery Server (' + discoveryServer + ') owns port ' + uaDefault +
                     ' by convention, so a client on this machine using localhost reaches it instead of this bridge. ' +
-                    'Set Bridge:OpcUaPort to a free port and open it in the firewall, then restart.');
+                    'Set a free port and apply the firewall rule under Monitor → Port Configuration, then restart.');
             }
             if (problems.length) {
                 banner.style.display = '';
@@ -6941,6 +6978,125 @@ async function saveUaAccess() {
         el('uaAccessPass').value = '';
         await loadUaAccess();
     } catch (e) { el('uaAccessMsg').textContent = '✗ ' + e.message; }
+}
+// ---- Port configuration (issue #26) ---------------------------------------
+// The listeners bind once at startup, so a save answers "restart required" and the card
+// compares running vs saved ports. The firewall block is Windows-only: the server reports
+// supported=false elsewhere and the block is hidden.
+async function loadPortConfig() {
+    try {
+        const p = await (await fetch('/api/ports/config', { cache: 'no-store' })).json();
+        const running = p.running || {};
+        const saved = p.saved || {};
+        el('httpPortInput').value = saved.httpPort != null ? saved.httpPort : '';
+        el('uaPortInput').value = saved.uaPort != null ? saved.uaPort : '';
+        const state = el('portCfgState');
+        const restart = !!p.restartRequired;
+        state.innerHTML = restart
+            ? '<span class="badge warn">Restart required</span>'
+            : '<span class="badge good">Running</span>';
+        state.title = 'Running: HTTP ' + running.httpPort + ', OPC UA ' + running.uaPort +
+            (running.httpAutoAssigned || running.uaAutoAssigned ? ' (auto-assigned — the default port was in use)' : '');
+        el('portsMsg').textContent = restart
+            ? 'Saved ports differ from the running ones — restart the bridge to apply them.'
+            : '';
+        if (el('fwSection')) el('fwSection').style.display = p.firewallSupported ? '' : 'none';
+        updatePortCmdHint();
+        if (p.firewallSupported) await loadFirewall();
+    } catch (e) { el('portsMsg').textContent = '✗ ' + e.message; }
+}
+function updatePortCmdHint() {
+    const hint = el('portCmdHint');
+    if (hint) hint.textContent = 'netsh advfirewall firewall add rule name="OPC Bridge Dashboard" dir=in action=allow protocol=TCP localport=' + (el('httpPortInput').value || '8080');
+}
+async function checkPort(kind) {
+    const input = el(kind === 'http' ? 'httpPortInput' : 'uaPortInput');
+    const msg = el(kind === 'http' ? 'httpPortCheckMsg' : 'uaPortCheckMsg');
+    const port = parseInt(input.value, 10);
+    if (!port || port < 1 || port > 65535) { msg.textContent = '✗ Enter a port between 1 and 65535.'; return; }
+    try {
+        const r = await fetch('/api/ports/probe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ port: port, kind: kind }) });
+        const p = await r.json();
+        if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
+        const next = p.suggestion ? ' Next free: ' + p.suggestion + '.' : '';
+        if (p.inUseByBridge) { msg.textContent = '● Current port — the bridge is listening here.'; return; }
+        if (p.ipv4Free && !p.heldFamilies) { msg.textContent = '✓ Free.'; return; }
+        if (p.ipv4Free) { msg.textContent = '⚠ Held on ' + p.heldFamilies + ' by another process. The bridge binds IPv4 so the port still works, but localhost on this machine may reach that process.' + next; return; }
+        msg.textContent = '✗ In use' + (p.heldFamilies ? ' on ' + p.heldFamilies : '') + '.' + next;
+    } catch (e) { msg.textContent = '✗ ' + e.message; }
+}
+async function useSuggestedPort(kind) {
+    const input = el(kind === 'http' ? 'httpPortInput' : 'uaPortInput');
+    const msg = el(kind === 'http' ? 'httpPortCheckMsg' : 'uaPortCheckMsg');
+    const current = parseInt(input.value, 10);
+    const fallback = kind === 'http' ? 8080 : 4840;
+    try {
+        const r = await fetch('/api/ports/probe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ port: current > 0 && current < 65536 ? current : fallback, kind: kind }) });
+        const p = await r.json();
+        if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
+        if (!p.suggestion) { msg.textContent = '✗ No free port found in the scan range.'; return; }
+        input.value = p.suggestion;
+        msg.textContent = '✓ ' + p.suggestion + ' selected.';
+        updatePortCmdHint();
+    } catch (e) { msg.textContent = '✗ ' + e.message; }
+}
+async function savePorts() {
+    const httpPort = parseInt(el('httpPortInput').value, 10);
+    const uaPort = parseInt(el('uaPortInput').value, 10);
+    if (!httpPort || !uaPort || httpPort < 1 || uaPort < 1 || httpPort > 65535 || uaPort > 65535) {
+        el('portsMsg').textContent = '✗ Both ports must be between 1 and 65535.';
+        return;
+    }
+    if (httpPort === uaPort) { el('portsMsg').textContent = '✗ HTTP and OPC UA must use different ports.'; return; }
+    try {
+        const r = await fetch('/api/ports/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ httpPort: httpPort, uaPort: uaPort }) });
+        const p = await r.json();
+        if (!r.ok) {
+            const busy = (p.busy || []).map(function (b) { return 'port ' + b.port + ' (' + (b.heldFamilies || 'held') + ')'; }).join(', ');
+            const sug = p.suggestion && (p.suggestion.httpPort || p.suggestion.uaPort)
+                ? ' Next free: ' + (p.suggestion.httpPort ? 'HTTP ' + p.suggestion.httpPort + ' ' : '') + (p.suggestion.uaPort ? 'OPC UA ' + p.suggestion.uaPort : '')
+                : '';
+            throw new Error((p.error || ('HTTP ' + r.status)) + (busy ? ' In use: ' + busy + '.' : '') + sug);
+        }
+        const fw = (p.firewall && p.firewall.results) || [];
+        const fwNote = fw.length
+            ? ' Firewall: ' + fw.map(function (x) { return x.ok ? (x.action + ' port ' + x.port) : ('port ' + x.port + ' failed — ' + (x.error || 'error')); }).join('; ') + '.'
+            : '';
+        // Reload first: it rewrites portsMsg with the running/saved summary.
+        await loadPortConfig();
+        el('portsMsg').textContent = '✓ ' + (p.message || 'Saved.') + fwNote;
+    } catch (e) { el('portsMsg').textContent = '✗ ' + e.message; }
+}
+async function loadFirewall() {
+    const rulesEl = el('fwRules');
+    try {
+        const p = await (await fetch('/api/firewall/status', { cache: 'no-store' })).json();
+        if (!p.supported) {
+            el('fwState').textContent = p.message || 'Windows Firewall rules apply on Windows hosts only.';
+            if (rulesEl) rulesEl.innerHTML = '';
+            return;
+        }
+        const rules = p.rules || [];
+        el('fwState').textContent = rules.length ? 'Inbound TCP allow rules for this bridge:' : 'No rules reported.';
+        if (rulesEl) rulesEl.innerHTML = rules.map(function (r) {
+            const label = r.error ? 'unknown' : (!r.exists ? 'missing' : (r.anyPort ? 'present (any port)' : 'present on ' + r.port));
+            const note = r.error ? r.error
+                : (!r.exists ? 'Apply to create it'
+                    : (r.matchesRunning ? 'covers the running port'
+                        : (r.matchesSaved ? 'covers the saved port — restart pending' : 'does not cover the current ports')));
+            return '<div class="li"><div style="flex:1"><div class="n">' + esc(r.name) + ' ' + badge(label, r.exists && !r.error ? 'good' : 'bad') + '</div><div class="p">' + esc(note) + '</div></div></div>';
+        }).join('');
+    } catch (e) { el('fwState').textContent = '✗ ' + e.message; }
+}
+async function applyFirewall() {
+    try {
+        const p = await (await fetch('/api/firewall/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })).json();
+        if (!p.supported) { el('fwMsg').textContent = p.message || 'Windows Firewall rules apply on Windows hosts only.'; return; }
+        const results = p.results || [];
+        const ok = results.length > 0 && results.every(function (r) { return r.ok; });
+        el('fwMsg').textContent = (ok ? '✓ ' : '⚠ ') + results.map(function (r) { return r.name + ': ' + (r.ok ? (r.action + ' port ' + r.port) : (r.error || 'failed')); }).join('; ');
+        await loadFirewall();
+    } catch (e) { el('fwMsg').textContent = '✗ ' + e.message; }
 }
 async function saveMqtt() {
     const body = {
@@ -9726,6 +9882,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     state.navGroupsAutoOpen = initHashRaw.length > 0 && initRoute !== DEFAULT_ROUTE;
     await navigate(initRoute);
     loadUaAccess().catch(() => {});
+    loadPortConfig().catch(() => {});
     await loadSources();
     await loadMappings();
     if (document.getElementById('view-tags')?.classList.contains('active')) {

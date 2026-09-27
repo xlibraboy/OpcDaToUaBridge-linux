@@ -34,6 +34,21 @@ public sealed class UaServerHost : IAsyncDisposable
         PersistSettings();
     }
 
+    /// <summary>
+    /// Retargets the endpoint without starting the server: the in-memory options always
+    /// follow, while ua-settings.json is rewritten only when it already exists. A port-only
+    /// change must not create that file — its presence pins the whole UA section, so later
+    /// appsettings.json edits would silently stop applying.
+    /// </summary>
+    public void SetEndpointUrl(string endpointUrl)
+    {
+        options_.EndpointUrl = endpointUrl;
+        if (File.Exists(settings_path_))
+        {
+            PersistSettings();
+        }
+    }
+
     private UaServerOptions LoadSettings(UaServerOptions defaults)
     {
         try

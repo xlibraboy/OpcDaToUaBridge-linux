@@ -1,6 +1,5 @@
 using System.Reflection;
 using System.Diagnostics;
-using Newtonsoft.Json.Linq;
 using System.IO.Ports;
 using System.Text.Json;
 using Microsoft.AspNetCore.Builder;
@@ -70,12 +69,7 @@ catch (IOException)
 using FileStream instanceLock = acquiredLock!;
 
 // Port auto-assignment: check defaults, auto-roll if in use, persist to appsettings.json
-string cfgPath = DataDirectory.Combine("appsettings.json");
-JObject? cfg = null;
-try { cfg = JObject.Parse(File.ReadAllText(cfgPath)); } catch { }
-
-int savedHttp = cfg?["Bridge"]?["HttpPort"]?.Value<int>() ?? PortHelper.HttpScanStart;
-int savedUa = cfg?["Bridge"]?["OpcUaPort"]?.Value<int>() ?? PortHelper.OpcUaScanStart;
+(int savedHttp, int savedUa) = PortConfigStore.ReadBridgePorts(PortHelper.HttpScanStart, PortHelper.OpcUaScanStart);
 using var loggerFactory = LoggerFactory.Create(b => b.AddConsole());
 ILogger logger = loggerFactory.CreateLogger("PortSetup");
 
@@ -99,13 +93,7 @@ bool uaAuto = uaPort != savedUa && savedUa == PortHelper.OpcUaScanStart;
 // Persist only when ports changed from the saved values
 if (httpPort != savedHttp || uaPort != savedUa)
 {
-    cfg ??= new JObject();
-    if (cfg["Bridge"] == null) cfg["Bridge"] = new JObject();
-    cfg["Bridge"]!["HttpPort"] = httpPort;
-    cfg["Bridge"]!["OpcUaPort"] = uaPort;
-    if (cfg["Ua"]?["EndpointUrl"] is not null)
-        cfg["Ua"]!["EndpointUrl"] = PatchPortInUrl(cfg["Ua"]!["EndpointUrl"]!.ToString(), uaPort);
-    File.WriteAllText(cfgPath, cfg.ToString(Newtonsoft.Json.Formatting.Indented));
+    PortConfigStore.Save(httpPort, uaPort);
 
     if (httpAuto)
         logger.LogWarning("HTTP port {Default} already in use. Auto-assigned to {Port}. appsettings.json updated.", PortHelper.HttpScanStart, httpPort);
@@ -113,10 +101,8 @@ if (httpPort != savedHttp || uaPort != savedUa)
         logger.LogWarning("OPC UA port {Default} already in use. Auto-assigned to {Port}. appsettings.json updated.", PortHelper.OpcUaScanStart, uaPort);
 
     // Force PKI cert regen when UA port changed
-    string certDer = Path.Combine(DataDirectory.Value, "pki", "own", "cert.der");
-    if (uaAuto && File.Exists(certDer))
+    if (uaAuto && PortConfigStore.DeleteUaCertificateIfPresent())
     {
-        File.Delete(certDer);
         logger.LogInformation("Deleted pki/own/cert.der to trigger certificate regeneration with new UA port {Port}.", uaPort);
     }
 }
@@ -409,6 +395,267 @@ app.MapGet("/api/status/ports", (DiscoveryServerProbe discoveryProbe) =>
         BridgeState.UaPortProbe,
         discoveryProbe.Detect()));
 });
+
+// Port configuration (issue #26). The listeners bind once at startup, so a save persists the
+// new ports for the next start and says so — the contract the UA Server Access card already
+// uses. Values go to the data directory's appsettings.json (the file startup reads); a UA port
+// change also moves the UA endpoint and re-issues the certificate, exactly like startup's
+// auto-assignment does.
+app.MapGet("/api/ports/config", () =>
+{
+    (int savedHttp, int savedUa) = PortConfigStore.ReadBridgePorts(PortHelper.HttpScanStart, PortHelper.OpcUaScanStart);
+    // ua-settings.json (written by the UA Server Access card) overrides appsettings.json, so
+    // the effective saved UA port is the one inside the endpoint URL that will bind.
+    string? uaEndpointUrl = PortConfigStore.ReadUaEndpointUrl();
+    int effectiveSavedUa = PortConfigStore.PortOf(uaEndpointUrl) ?? savedUa;
+
+    return Results.Json(new
+    {
+        running = new
+        {
+            httpPort = BridgeState.HttpPort,
+            uaPort = BridgeState.UaPort,
+            httpAutoAssigned = BridgeState.HttpAutoAssigned,
+            uaAutoAssigned = BridgeState.UaAutoAssigned
+        },
+        saved = new
+        {
+            httpPort = savedHttp,
+            uaPort = effectiveSavedUa,
+            uaEndpointUrl
+        },
+        restartRequired = savedHttp != BridgeState.HttpPort || effectiveSavedUa != BridgeState.UaPort,
+        scanRanges = new
+        {
+            httpStart = PortHelper.HttpScanStart,
+            httpEnd = PortHelper.HttpScanEnd,
+            uaStart = PortHelper.OpcUaScanStart,
+            uaEnd = PortHelper.OpcUaScanEnd
+        },
+        firewallSupported = WindowsFirewall.IsSupported
+    });
+});
+
+// On-demand availability check for a candidate port: the startup probe only runs before the
+// bridge binds, so the card needs this to check a port before saving it.
+app.MapPost("/api/ports/probe", (PortProbeRequest request) =>
+{
+    if (request.Port is < 1 or > 65535)
+    {
+        return Results.BadRequest(new { error = "Port must be between 1 and 65535." });
+    }
+
+    string kind = (request.Kind ?? string.Empty).Trim().ToLowerInvariant();
+    if (kind != "http" && kind != "ua")
+    {
+        return Results.BadRequest(new { error = "Kind must be 'http' or 'ua'." });
+    }
+
+    PortProbe probe = PortHelper.Probe(request.Port);
+    int suggestion = kind == "http"
+        ? PortHelper.FindAvailablePort(PortHelper.HttpScanStart, PortHelper.HttpScanEnd)
+        : PortHelper.FindAvailablePort(PortHelper.OpcUaScanStart, PortHelper.OpcUaScanEnd);
+
+    return Results.Json(new
+    {
+        port = request.Port,
+        kind,
+        ipv4Free = probe.Ipv4Free,
+        ipv6Free = probe.Ipv6Free,
+        heldFamilies = probe.HeldFamilies(),
+        inUseByBridge = request.Port == BridgeState.HttpPort || request.Port == BridgeState.UaPort,
+        suggestion = suggestion > 0 ? suggestion : (int?)null
+    });
+});
+
+app.MapPost("/api/ports/config", async (PortConfigRequest request, UaServerHost uaServer, ILogger<Program> logger, CancellationToken cancellationToken) =>
+{
+    if (request.HttpPort is < 1 or > 65535 || request.UaPort is < 1 or > 65535)
+    {
+        return Results.BadRequest(new { error = "Ports must be between 1 and 65535." });
+    }
+
+    if (request.HttpPort == request.UaPort)
+    {
+        return Results.BadRequest(new { error = "HTTP and OPC UA must use different ports." });
+    }
+
+    // A port this bridge is already listening on reads as taken to the probe — it is ours, and
+    // saving it back is how a restart re-applies the same port. An IPv6-only holder stays
+    // allowed on purpose: the bridge binds IPv4, and moving off such a port would leave the
+    // installer's firewall rule behind (PortHelper's documented policy).
+    List<object> busy = new();
+    PortProbe httpProbe = PortHelper.Probe(request.HttpPort);
+    bool httpIsOurs = request.HttpPort == BridgeState.HttpPort || request.HttpPort == BridgeState.UaPort;
+    if (!httpProbe.Ipv4Free && !httpIsOurs)
+    {
+        busy.Add(new { port = request.HttpPort, kind = "http", heldFamilies = httpProbe.HeldFamilies() });
+    }
+
+    PortProbe uaProbe = PortHelper.Probe(request.UaPort);
+    bool uaIsOurs = request.UaPort == BridgeState.HttpPort || request.UaPort == BridgeState.UaPort;
+    if (!uaProbe.Ipv4Free && !uaIsOurs)
+    {
+        busy.Add(new { port = request.UaPort, kind = "ua", heldFamilies = uaProbe.HeldFamilies() });
+    }
+
+    if (busy.Count > 0)
+    {
+        int httpSuggestion = PortHelper.FindAvailablePort(PortHelper.HttpScanStart, PortHelper.HttpScanEnd);
+        int uaSuggestion = PortHelper.FindAvailablePort(PortHelper.OpcUaScanStart, PortHelper.OpcUaScanEnd);
+        return Results.Json(
+            new
+            {
+                error = "A port is already in use by another process.",
+                busy,
+                suggestion = new
+                {
+                    httpPort = httpSuggestion > 0 ? httpSuggestion : (int?)null,
+                    uaPort = uaSuggestion > 0 ? uaSuggestion : (int?)null
+                }
+            },
+            statusCode: StatusCodes.Status409Conflict);
+    }
+
+    (int previousHttp, int previousUa) = PortConfigStore.ReadBridgePorts(PortHelper.HttpScanStart, PortHelper.OpcUaScanStart);
+    int effectivePreviousUa = PortConfigStore.PortOf(PortConfigStore.ReadUaEndpointUrl()) ?? previousUa;
+
+    PortConfigStore.Save(request.HttpPort, request.UaPort);
+
+    bool uaChanged = request.UaPort != effectivePreviousUa;
+    bool certificateReset = false;
+    if (uaChanged)
+    {
+        // In-memory options follow immediately, so a later UA Server Access save cannot write
+        // the old endpoint back; ua-settings.json is rewritten only when it already exists.
+        uaServer.SetEndpointUrl(PortConfigStore.PatchPortInUrl(uaServer.GetOptions().EndpointUrl, request.UaPort));
+        certificateReset = PortConfigStore.DeleteUaCertificateIfPresent();
+    }
+
+    // The installer's firewall rules are pinned to the ports the MSI was built with, so a saved
+    // port that differs from the running one needs its rule moved. Best-effort — a firewall
+    // failure must not fail the save; the card also has an explicit Apply button.
+    List<object> firewallResults = new();
+    if (OperatingSystem.IsWindows())
+    {
+        if (request.HttpPort != BridgeState.HttpPort)
+        {
+            firewallResults.Add(await ApplyFirewallRuleAsync(
+                WindowsFirewall.DashboardRuleName,
+                WindowsFirewall.DashboardRuleDescription,
+                request.HttpPort,
+                cancellationToken).ConfigureAwait(false));
+        }
+
+        if (request.UaPort != BridgeState.UaPort)
+        {
+            firewallResults.Add(await ApplyFirewallRuleAsync(
+                WindowsFirewall.UaRuleName,
+                WindowsFirewall.UaRuleDescription,
+                request.UaPort,
+                cancellationToken).ConfigureAwait(false));
+        }
+    }
+
+    bool restartRequired = request.HttpPort != BridgeState.HttpPort || request.UaPort != BridgeState.UaPort;
+    string dashboardUrl = $"http://{System.Net.Dns.GetHostName()}:{request.HttpPort}/";
+    string message = restartRequired
+        ? $"Ports saved. Restart the bridge to apply them (MSI service: Restart-Service OpcBridge; scheduled task: restart the OpcBridge task), then open {dashboardUrl}."
+        : "Ports saved. The bridge is already listening on these ports.";
+    if (certificateReset)
+    {
+        message += " OPC UA clients must re-point to the new endpoint and re-trust the re-issued certificate.";
+    }
+
+    logger.LogInformation(
+        "Port configuration saved from the dashboard: HTTP {PreviousHttp} → {HttpPort}, OPC UA {PreviousUa} → {UaPort}. Restart required: {RestartRequired}.",
+        previousHttp,
+        request.HttpPort,
+        effectivePreviousUa,
+        request.UaPort,
+        restartRequired);
+
+    return Results.Json(new
+    {
+        status = "ok",
+        httpPort = request.HttpPort,
+        uaPort = request.UaPort,
+        restartRequired,
+        dashboardUrl,
+        certificateReset,
+        firewall = new { applied = firewallResults.Count > 0, results = firewallResults },
+        message
+    });
+});
+
+// Windows Firewall state for the two rules the installer creates (Windows hosts only; the
+// dashboard hides the firewall block elsewhere).
+app.MapGet("/api/firewall/status", async (CancellationToken cancellationToken) =>
+{
+    if (!OperatingSystem.IsWindows())
+    {
+        return Results.Json(new
+        {
+            supported = false,
+            platform = "non-windows",
+            message = "Windows Firewall rules apply on Windows hosts only.",
+            rules = Array.Empty<object>()
+        });
+    }
+
+    (int savedHttp, int savedUa) = PortConfigStore.ReadBridgePorts(PortHelper.HttpScanStart, PortHelper.OpcUaScanStart);
+    int effectiveSavedUa = PortConfigStore.PortOf(PortConfigStore.ReadUaEndpointUrl()) ?? savedUa;
+
+    (string Name, int RunningPort, int SavedPort)[] wanted =
+    {
+        (WindowsFirewall.DashboardRuleName, BridgeState.HttpPort, savedHttp),
+        (WindowsFirewall.UaRuleName, BridgeState.UaPort, effectiveSavedUa)
+    };
+
+    List<object> rules = new();
+    foreach ((string name, int runningPort, int savedPort) in wanted)
+    {
+        WindowsFirewall.RuleStatus status = await WindowsFirewall.GetRuleAsync(name, cancellationToken).ConfigureAwait(false);
+        rules.Add(new
+        {
+            name = status.Name,
+            exists = status.Exists,
+            enabled = status.Enabled,
+            port = status.Port,
+            anyPort = status.AnyPort,
+            error = status.Error,
+            matchesRunning = status.Exists && status.Port == runningPort,
+            matchesSaved = status.Exists && status.Port == savedPort
+        });
+    }
+
+    return Results.Json(new { supported = true, platform = "windows", rules });
+});
+
+app.MapPost("/api/firewall/apply", async (FirewallApplyRequest request, CancellationToken cancellationToken) =>
+{
+    if (!OperatingSystem.IsWindows())
+    {
+        return Results.Json(new
+        {
+            supported = false,
+            message = "Windows Firewall rules apply on Windows hosts only.",
+            results = Array.Empty<object>()
+        });
+    }
+
+    int httpPort = request.HttpPort is > 0 and <= 65535 ? request.HttpPort.Value : BridgeState.HttpPort;
+    int uaPort = request.UaPort is > 0 and <= 65535 ? request.UaPort.Value : BridgeState.UaPort;
+
+    List<object> results = new()
+    {
+        await ApplyFirewallRuleAsync(WindowsFirewall.DashboardRuleName, WindowsFirewall.DashboardRuleDescription, httpPort, cancellationToken).ConfigureAwait(false),
+        await ApplyFirewallRuleAsync(WindowsFirewall.UaRuleName, WindowsFirewall.UaRuleDescription, uaPort, cancellationToken).ConfigureAwait(false)
+    };
+
+    return Results.Json(new { supported = true, results });
+});
+
  app.MapGet("/api/dashboard", (BridgeState state, UaServerHost uaServer, BridgeAppDiscovery discovery, MappingStore mappingStore, InterlinkStore interlinkStore, BridgeWorker worker, DaRuntimeSettings daSettings, int? limit, string? sourceId) =>
  {
      IReadOnlyList<BridgeValueSnapshot> values = state.GetValues(limit ?? DashboardValuesLimit, sourceId);
@@ -2297,6 +2544,31 @@ static OpcTagBrowseResult BrowseDaTags(DaTagBrowseRequest request)
         request.RemoteDomain);
 }
 
+/// <summary>
+/// Applies one Windows Firewall rule and turns any failure into a result object — a firewall
+/// problem must never fail a port save. The platform guard keeps the Windows-only call honest
+/// elsewhere; callers check the platform too, so it is unreachable on other hosts.
+/// </summary>
+static async Task<object> ApplyFirewallRuleAsync(string ruleName, string description, int port, CancellationToken cancellationToken)
+{
+    if (!OperatingSystem.IsWindows())
+    {
+        return new { name = ruleName, port, action = string.Empty, ok = false, error = "Windows Firewall rules apply on Windows hosts only." };
+    }
+
+    try
+    {
+        WindowsFirewall.ApplyResult result = await WindowsFirewall
+            .ApplyRuleAsync(ruleName, description, port, cancellationToken)
+            .ConfigureAwait(false);
+        return new { name = result.Name, port = result.Port, action = result.Action, ok = result.Ok, error = result.Error };
+    }
+    catch (Exception exception)
+    {
+        return new { name = ruleName, port, action = string.Empty, ok = false, error = exception.Message };
+    }
+}
+
 
 static void TryMigrateLegacyInterlinks(WebApplication app)
 {
@@ -3235,31 +3507,6 @@ static bool ValidateS7Mappings(List<TagMapping> tags, DaRuntimeSettings daSettin
     return false;
 }
 
-/// <summary>
-/// Replaces the port in a URL string (e.g. opc.tcp://0.0.0.0:4840/...).
-/// Handles URLs with or without explicit port.
-/// </summary>
-static string PatchPortInUrl(string url, int port)
-{
-    if (string.IsNullOrEmpty(url)) return url;
-    try
-    {
-        var uri = new Uri(url);
-        var builder = new UriBuilder(uri) { Port = port };
-        return builder.Uri.ToString().TrimEnd('/');
-    }
-    catch
-    {
-        // Fallback: manual replacement
-        int lastColon = url.LastIndexOf(':');
-        int lastSlash = url.LastIndexOf('/');
-        if (lastColon > lastSlash && int.TryParse(url[(lastColon + 1)..], out _))
-            return url[..(lastColon + 1)] + port + url[(url.IndexOf('/', lastColon)..)];
-        // No port in URL — append it
-        return url.TrimEnd('/') + $":{port}";
-    }
-}
-
 internal sealed class StringTupleComparerIgnoreCase : IEqualityComparer<(string SourceId, string ItemId)>
 {
     public static StringTupleComparerIgnoreCase Instance { get; } = new();
@@ -3271,6 +3518,12 @@ internal sealed class StringTupleComparerIgnoreCase : IEqualityComparer<(string 
             StringComparer.OrdinalIgnoreCase.GetHashCode(value.SourceId),
             StringComparer.OrdinalIgnoreCase.GetHashCode(value.ItemId));
 }
+
+record PortProbeRequest(int Port, string? Kind);
+
+record PortConfigRequest(int HttpPort, int UaPort);
+
+record FirewallApplyRequest(int? HttpPort, int? UaPort);
 
 record MqttConfigRequest(
     bool Enabled,

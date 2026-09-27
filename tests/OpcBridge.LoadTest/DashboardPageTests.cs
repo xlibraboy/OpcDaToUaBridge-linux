@@ -1577,6 +1577,47 @@ public sealed class DashboardPageTests
         Assert.Contains("loadUaAccess().catch(() => {});", DashboardPage.Script);
     }
 
+    [Fact]
+    public void Html_PortConfigurationCard_FieldsAndMessages()
+    {
+        // Issue #26: ports and their firewall rules are editable after installation.
+        Assert.Contains("Port Configuration", DashboardPage.Html);
+        Assert.Contains("id=\"httpPortInput\"", DashboardPage.Html);
+        Assert.Contains("id=\"uaPortInput\"", DashboardPage.Html);
+        Assert.Contains("onclick=\"checkPort('http')\"", DashboardPage.Html);
+        Assert.Contains("onclick=\"checkPort('ua')\"", DashboardPage.Html);
+        Assert.Contains("onclick=\"useSuggestedPort('http')\"", DashboardPage.Html);
+        Assert.Contains("onclick=\"useSuggestedPort('ua')\"", DashboardPage.Html);
+        Assert.Contains("onclick=\"savePorts()\"", DashboardPage.Html);
+        Assert.Contains("id=\"portsMsg\"", DashboardPage.Html);
+        Assert.Contains("id=\"portCfgState\"", DashboardPage.Html);
+        Assert.Contains("id=\"fwSection\"", DashboardPage.Html);
+        Assert.Contains("onclick=\"applyFirewall()\"", DashboardPage.Html);
+        Assert.Contains("id=\"fwMsg\"", DashboardPage.Html);
+        Assert.Contains("id=\"portCmdHint\"", DashboardPage.Html);
+    }
+
+    [Fact]
+    public void Script_PortConfiguration_ChecksSavesAndAppliesFirewallRules()
+    {
+        Assert.Contains("async function loadPortConfig(", DashboardPage.Script);
+        Assert.Contains("async function checkPort(", DashboardPage.Script);
+        Assert.Contains("async function useSuggestedPort(", DashboardPage.Script);
+        Assert.Contains("async function savePorts(", DashboardPage.Script);
+        Assert.Contains("async function loadFirewall(", DashboardPage.Script);
+        Assert.Contains("async function applyFirewall(", DashboardPage.Script);
+        Assert.Contains("fetch('/api/ports/config'", DashboardPage.Script);
+        Assert.Contains("fetch('/api/ports/probe'", DashboardPage.Script);
+        Assert.Contains("fetch('/api/firewall/status'", DashboardPage.Script);
+        Assert.Contains("fetch('/api/firewall/apply'", DashboardPage.Script);
+        // Restart-to-apply is the contract, exactly like the UA Server Access card.
+        Assert.Contains("restart the bridge to apply them", DashboardPage.Script);
+        Assert.Contains("HTTP and OPC UA must use different ports.", DashboardPage.Script);
+        // The IPv6-holder policy is explained, not silently allowed.
+        Assert.Contains("localhost on this machine may reach that process", DashboardPage.Script);
+        Assert.Contains("loadPortConfig().catch(() => {});", DashboardPage.Script);
+    }
+
     private static int CountOccurrences(string haystack, string needle)
     {
         int count = 0, index = 0;

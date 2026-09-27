@@ -13,8 +13,11 @@
 
   Port caveat: the firewall rules and the dashboard Start Menu shortcut are built
   from the ports above. The bridge auto-assigns the next free port at runtime when a
-  default is taken (Bridge:HttpPort / Bridge:OpcUaPort in appsettings.json), so on a
-  host where a port moved, open the actual port shown by Monitor → Bridge instead.
+  default is taken (Bridge:HttpPort / Bridge:OpcUaPort in appsettings.json). On a host
+  where a port moved, the dashboard's Monitor → Port Configuration card moves the
+  matching rule to the actual port (the app runs as LocalSystem, so it can); the Start
+  Menu shortcut still points at the build-time port, so reach the dashboard by the
+  address Monitor → Ports shows.
 
   Three selectable features (WixUI_FeatureTree shows the tree):
     - OpcBridge Server: self-contained win-x86 app installed as a Windows service.
