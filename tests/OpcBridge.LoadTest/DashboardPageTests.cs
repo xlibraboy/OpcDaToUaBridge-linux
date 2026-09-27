@@ -343,6 +343,38 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
+    public void Script_MapsTagSearchFiltersLoadedTree()
+    {
+        // #24: the Tag Browser search filters what a browse already rendered — the tree
+        // holds the loaded list, rows carry their own match text (display name + item
+        // ID), and the recursive browse stays the only thing that widens it.
+        string html = DashboardPage.Html;
+        string script = DashboardPage.Script;
+        int mapsStart = html.IndexOf("id=\"view-tags\"", StringComparison.Ordinal);
+        int mapsEnd = html.IndexOf("id=\"view-interlinks\"", StringComparison.Ordinal);
+        Assert.True(mapsStart >= 0 && mapsEnd > mapsStart, "Maps view block missing");
+        string mapsView = html[mapsStart..mapsEnd];
+        Assert.Contains("id=\"tagSearch\"", mapsView);
+        Assert.Contains("id=\"tagSearchStatus\"", mapsView);
+        Assert.Contains("placeholder=\"filter tags by name or item ID\"", mapsView);
+
+        Assert.Contains("function applyTagFilter(", script);
+        Assert.Contains("function clearTagSearch(", script);
+        Assert.Contains("function tagSearchKey(e)", script);
+        Assert.Contains("el('tagSearch').addEventListener('input'", script);
+        // Rows carry the lowercased match text; the ".." row stays pinned and visible.
+        Assert.Contains("data-search=\"${attr((name + ' ' + itemId).toLowerCase())}\"", script);
+        Assert.Contains("data-search=\"${attr(branch.toLowerCase())}\"", script);
+        Assert.Contains("data-pin=\"1\"", script);
+        Assert.Contains("row.dataset.pin === '1'", script);
+        // Both browse paths re-apply the filter after rendering.
+        Assert.True(CountOccurrences(script, "applyTagFilter();") >= 2);
+        // Scope: switching source or lane clears it, and the address-based lanes hide it.
+        Assert.Contains("clearTagSearch();", script);
+        Assert.Contains("el('tagSearchRow').style.display = addressBased ? 'none' : '';", script);
+    }
+
+    [Fact]
     public void Script_InterlinksNoLongerRestrictedToDaSources()
     {
         // Interlinks span OPC DA, OPC UA and MX Component sources, so the old

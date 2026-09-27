@@ -38,6 +38,8 @@ namespace OpcBridge.App;
 //   faceplate: id="fpSubscription"/"fpSubscriptionField", function fpSubscriptionOptions(/updateFpRateEnabled(, id="fpPlcGroup"/"fpPlcGroupField", function fpPlcGroupOptions(/plcGroupRateFor(
 //   id="mapTypeTabs", data-map-type="opc-da|opc-ua|drivers", function setMapType(/opcDaSources(/mapTypeSources(
 //   tags/maps/opc-da, tags/maps/opc-ua, tags/maps/drivers
+//   Tag Browser search (#24): id="tagSearch"/"tagSearchStatus", function applyTagFilter(/tagSearchKey(/clearTagSearch(,
+//   tag-tree rows carry data-search (display name + item ID) and data-pin="1" on the ".." row
 //   Diagram: tab text "Source→UA", function diagSourceKind(= sourceTypeLabel( + sourceSubtitle()
 internal static class DashboardPage
 {
@@ -1823,6 +1825,11 @@ internal static class DashboardPage
                 <span class="msg" id="tagSourceStatus"></span>
                 <span class="msg" id="mapSourceHint"></span>
             </div>
+            <div class="field" id="tagSearchRow" style="margin-bottom:10px">
+                <label class="fl" for="tagSearch">Search</label>
+                <input id="tagSearch" type="search" placeholder="filter tags by name or item ID" style="flex:1;min-width:120px" autocomplete="off">
+                <span class="msg" id="tagSearchStatus" role="status"></span>
+            </div>
             <div style="margin:-6px 0 8px 0">
                 <button class="btn ghost" type="button" id="mapAddressRangesToggle" style="display:none;padding:3px 9px;font-size:var(--fs-micro)" onclick="toggleAddressRanges('mapAddressRanges', this)">Show accepted addresses ▾</button>
                 <div id="mapAddressRanges" style="display:none"></div>
@@ -2356,6 +2363,8 @@ function initTheme() {
 }
 const state = {
     tagPath: '',
+    // Maps tag search (#24): filters the rows a browse already rendered.
+    tagSearch: '',
     uaBrowseTrail: [],
     interlinkSideSource: { consumer: '', provider: '' },
     sources: [],
@@ -5145,6 +5154,7 @@ function setMapType(type, opts) {
     syncMapTypeUi();
     if (changed || (opts && opts.force)) {
         state.tagPath = '';
+        clearTagSearch();
         state.uaBrowseTrail = [];
         if (el('tagTree')) el('tagTree').innerHTML = '';
         if (el('tagBreadcrumb')) el('tagBreadcrumb').innerHTML = '';
@@ -5206,6 +5216,7 @@ function updateMapBrowseUi() {
     const addressBased = state.mapType === 'drivers' || state.mapType === 'mx';
     if (allBtn) allBtn.style.display = addressBased ? 'none' : '';
     if (folderBtn) folderBtn.style.display = addressBased ? 'none' : '';
+    if (el('tagSearchRow')) el('tagSearchRow').style.display = addressBased ? 'none' : '';
     if (el('manualItem')) {
         el('manualItem').placeholder = state.mapType === 'opc-ua'
             ? 'NodeId (e.g. ns=2;s=Tag)'
@@ -7359,6 +7370,7 @@ function pickSource(sourceId, opts) {
     state.editingNewSource = false;
     state.editingNewUaSource = false;
     state.tagPath = '';
+    clearTagSearch();
     state.uaBrowseTrail = [];
     el('tagTree').innerHTML = '<span class="msg">Browse the active source to load tags.</span>';
     el('tagStatus').textContent = 'Browse all tags, or open folders one level at a time.';
@@ -8934,7 +8946,7 @@ async function browseUaSource(nodeId) {
         // displayed node is the previous trail entry (or '' for root).
         const parentTrail = state.uaBrowseTrail.slice(0, -1);
         const parentNodeId = parentTrail.length ? parentTrail[parentTrail.length - 1].nodeId : '';
-        rows.push(`<div class="li clickable" role="button" tabindex="0" data-action="open-branch" data-path="${attr(parentNodeId)}" data-trail-depth="${parentTrail.length}"><span class="icon folder">&#9650;</span><div style="flex:1"><div class="n">..</div><div class="p">Up one level</div></div></div>`);
+        rows.push(`<div class="li clickable" role="button" tabindex="0" data-action="open-branch" data-pin="1" data-path="${attr(parentNodeId)}" data-trail-depth="${parentTrail.length}"><span class="icon folder">&#9650;</span><div style="flex:1"><div class="n">..</div><div class="p">Up one level</div></div></div>`);
     }
     let folders = 0, vars = 0;
     for (const node of nodes) {
@@ -8945,14 +8957,15 @@ async function browseUaSource(nodeId) {
         if (cls === 'variable') {
             vars++;
             const isMapped = mappedKeys.has(valueKey(source.sourceId, nid));
-            rows.push(`<div class="li"><span class="icon tag">&#9878;</span><div style="flex:1"><div class="n">${esc(name)}</div><div class="p">${esc(nid)} · Variable</div></div><div class="li-actions">${isMapped ? '<span class="mapped-badge">Mapped</span>' : ''}<button class="btn ghost" data-action="add-tag" data-source-id="${attr(source.sourceId)}" data-item-id="${attr(nid)}" data-name="${attr(name)}">Map</button></div></div>`);
+            rows.push(`<div class="li" data-search="${attr((name + ' ' + nid).toLowerCase())}"><span class="icon tag">&#9878;</span><div style="flex:1"><div class="n">${esc(name)}</div><div class="p">${esc(nid)} · Variable</div></div><div class="li-actions">${isMapped ? '<span class="mapped-badge">Mapped</span>' : ''}<button class="btn ghost" data-action="add-tag" data-source-id="${attr(source.sourceId)}" data-item-id="${attr(nid)}" data-name="${attr(name)}">Map</button></div></div>`);
         } else {
             folders++;
             const childIcon = hasChildren ? '&#128193;' : '&#128196;';
-            rows.push(`<div class="li clickable" role="button" tabindex="0" data-action="open-branch" data-path="${attr(nid)}" data-node-name="${attr(name)}"><span class="icon folder">${childIcon}</span><div style="flex:1"><div class="n">${esc(name)}</div><div class="p">${esc(nid)} · ${esc(node.nodeClass || 'folder')}${hasChildren ? '' : ' (leaf)'}</div></div></div>`);
+            rows.push(`<div class="li clickable" role="button" tabindex="0" data-action="open-branch" data-search="${attr((name + ' ' + nid).toLowerCase())}" data-path="${attr(nid)}" data-node-name="${attr(name)}"><span class="icon folder">${childIcon}</span><div style="flex:1"><div class="n">${esc(name)}</div><div class="p">${esc(nid)} · ${esc(node.nodeClass || 'folder')}${hasChildren ? '' : ' (leaf)'}</div></div></div>`);
         }
     }
     el('tagTree').innerHTML = rows.length ? rows.join('') : '<span class="msg">No child nodes at this node.</span>';
+    applyTagFilter();
     el('tagStatus').textContent = folders + ' folders · ' + vars + ' variables';
 }
 async function browseTags(path, recursive = false) {
@@ -8998,20 +9011,69 @@ async function browseTags(path, recursive = false) {
     const rows = [];
     if (state.tagPath) {
         const parent = state.tagPath.includes('.') ? state.tagPath.substring(0, state.tagPath.lastIndexOf('.')) : '';
-        rows.push(`<div class="li clickable" role="button" tabindex="0" data-action="open-branch" data-path="${attr(parent)}"><span class="icon folder">&#9650;</span><div style="flex:1"><div class="n">..</div><div class="p">Up one level</div></div></div>`);
+        rows.push(`<div class="li clickable" role="button" tabindex="0" data-action="open-branch" data-pin="1" data-path="${attr(parent)}"><span class="icon folder">&#9650;</span><div style="flex:1"><div class="n">..</div><div class="p">Up one level</div></div></div>`);
     }
     for (const branch of branches) {
         const child = state.tagPath ? state.tagPath + '.' + branch : branch;
-        rows.push(`<div class="li clickable" role="button" tabindex="0" data-action="open-branch" data-path="${attr(child)}"><span class="icon folder">&#128193;</span><div style="flex:1"><div class="n">${esc(branch)}</div><div class="p">folder</div></div></div>`);
+        rows.push(`<div class="li clickable" role="button" tabindex="0" data-action="open-branch" data-search="${attr(branch.toLowerCase())}" data-path="${attr(child)}"><span class="icon folder">&#128193;</span><div style="flex:1"><div class="n">${esc(branch)}</div><div class="p">folder</div></div></div>`);
     }
     for (const tag of tags) {
         const itemId = tag.itemId || tag.ItemId || tag.daItemId || tag.DaItemId;
         const name = tag.name || tag.Name || itemId;
         const isMapped = mappedKeys.has(valueKey(source.sourceId, itemId));
-        rows.push(`<div class="li"><span class="icon tag">&#9878;</span><div style="flex:1"><div class="n">${esc(name)}</div><div class="p">${esc(itemId)}</div></div><div class="li-actions">${isMapped ? '<span class="mapped-badge">Mapped</span>' : ''}<button class="btn ghost" data-action="add-tag" data-source-id="${attr(source.sourceId)}" data-item-id="${attr(itemId)}" data-name="${attr(name)}">Add</button></div></div>`);
+        rows.push(`<div class="li" data-search="${attr((name + ' ' + itemId).toLowerCase())}"><span class="icon tag">&#9878;</span><div style="flex:1"><div class="n">${esc(name)}</div><div class="p">${esc(itemId)}</div></div><div class="li-actions">${isMapped ? '<span class="mapped-badge">Mapped</span>' : ''}<button class="btn ghost" data-action="add-tag" data-source-id="${attr(source.sourceId)}" data-item-id="${attr(itemId)}" data-name="${attr(name)}">Add</button></div></div>`);
     }
     el('tagTree').innerHTML = rows.length ? rows.join('') : '<span class="msg">No tags or folders here.</span>';
+    applyTagFilter();
     el('tagStatus').textContent = branches.length + ' folders · ' + tags.length + ' tags';
+}
+// Maps tag search (#24) filters what a browse already rendered: the tree holds the
+// loaded list and matching runs on data-search (display name + item ID), so the count
+// never depends on row markup. The ".." row is pinned — it is navigation, not a result.
+// Manual by design: the recursive browse is the only thing that widens the list.
+function applyTagFilter() {
+    const tree = el('tagTree');
+    const status = el('tagSearchStatus');
+    if (!tree) return;
+    const q = (state.tagSearch || '').trim().toLowerCase();
+    const rows = [...tree.querySelectorAll('.li')];
+    if (!q) {
+        rows.forEach(row => { row.style.display = ''; });
+        if (status) status.textContent = '';
+        return;
+    }
+    if (!rows.length) {
+        if (status) status.textContent = 'No tags loaded — press Browse All Tags above.';
+        return;
+    }
+    let shown = 0, total = 0;
+    rows.forEach(row => {
+        if (row.dataset.pin === '1') { row.style.display = ''; return; }
+        total++;
+        const hit = (row.dataset.search || '').includes(q);
+        row.style.display = hit ? '' : 'none';
+        if (hit) shown++;
+    });
+    if (status) status.textContent = shown ? shown + ' of ' + total : 'No tags match';
+}
+function clearTagSearch() {
+    state.tagSearch = '';
+    const box = el('tagSearch');
+    if (box) box.value = '';
+    const status = el('tagSearchStatus');
+    if (status) status.textContent = '';
+}
+// Escape unwinds the search. The browser's own clear on <input type="search"> fires no
+// input event, so the tree would be left filtered behind an empty field (help search
+// carries the same guard).
+function tagSearchKey(e) {
+    if (e.key !== 'Escape') return;
+    const box = el('tagSearch');
+    if (!box || !box.value) return;
+    e.preventDefault();
+    state.tagSearch = '';
+    box.value = '';
+    applyTagFilter();
 }
 // The add endpoints are insert-only: a key that is already mapped on the source is
 // skipped, not overwritten. Say so — the click used to look like it did nothing (#7).
@@ -9608,6 +9670,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     el('btnReloadServers').addEventListener('click', () => browseServers().catch(e => el('msgServers').textContent = e.message));
     el('btnBrowseTags').addEventListener('click', () => browseTags('').catch(e => el('tagTree').innerHTML = `<span class="bad">${esc(e.message)}</span>`));
     el('btnBrowseAllTags').addEventListener('click', () => browseTags('', true).catch(e => el('tagTree').innerHTML = `<span class="bad">${esc(e.message)}</span>`));
+    el('tagSearch').addEventListener('input', e => { state.tagSearch = e.target.value; applyTagFilter(); });
+    el('tagSearch').addEventListener('keydown', tagSearchKey);
     const submitManual = () => addManual().catch(e => alert('Add failed: ' + e.message));
     el('manualAdd').addEventListener('click', submitManual);
     // The global Enter/Space activation skips inputs, and address-based sources

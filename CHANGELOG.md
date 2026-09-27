@@ -45,6 +45,17 @@ firewall does not allow and silently unreachable from the LAN. The card names th
 server when it detects one and states the fix — pin `Bridge:OpcUaPort` to a free port and
 open that port in the firewall.
 
+**Search the tag list in Maps.** A source with a few thousand tags was only workable
+through the browser's own find: *Browse All Tags* loads the whole tree, and nothing in the
+dashboard could narrow it to the tag you actually wanted. The Tag Browser now has a
+**Search** box under the source picker that filters the loaded rows by display name or
+item ID as you type — folders match too, the `..` row stays put so you can keep
+navigating, and Escape clears the box (the browser's own clear button fires no input
+event). The count sits beside the field: *12 of 340*, or *No tags match*. It filters what
+a browse has already rendered, so press *Browse All Tags* (or open a folder) first; the
+box clears when you switch source or sub-tab, and it is hidden on the address-based
+Drivers / MX lanes, which have no browse tree (#24).
+
 ### Changed
 
 **The OPC UA identity no longer carries the `ohmypi` vendor prefix.** The server's
