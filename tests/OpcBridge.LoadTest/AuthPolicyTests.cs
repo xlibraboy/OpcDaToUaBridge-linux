@@ -52,7 +52,6 @@ public sealed class AuthPolicyTests
     [InlineData("GET", "/api/auth/users", UserRole.Admin)]
     [InlineData("POST", "/api/auth/users", UserRole.Admin)]
     [InlineData("POST", "/api/auth/users/remove", UserRole.Admin)]
-    [InlineData("POST", "/api/session/resolve", UserRole.Admin)]
     [InlineData("POST", "/api/hmi/write", UserRole.Operator)]
     [InlineData("PUT", "/api/hmi/displays/line-1", UserRole.Engineer)]
     [InlineData("DELETE", "/api/hmi/displays/line-1", UserRole.Engineer)]

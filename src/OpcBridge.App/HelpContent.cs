@@ -511,8 +511,10 @@ run in the **same logged-in desktop session**. In practice this means:
 - The bridge **detects this at startup**: when it is launched into a non-interactive session
   (session 0) on Windows it logs a warning and shows an amber banner on the dashboard — "this
   bridge runs in a non-interactive Windows session… session-bound OPC DA servers will not
-  deliver values". Treat that banner as the signal to relaunch from the desktop session (a
-  console login / Startup shortcut or an Interactive-logon scheduled task).
+  deliver values". The banner is informational: the bridge cannot move itself between sessions,
+  so treat it as the signal to change the deployment — register the scheduled task with
+  `-LogonType Interactive` (a console login, or the published-task deployment) instead of running
+  the service — or to switch to a real PLC.
 - Mitsubishi documents the same constraint for its own OPC server: the MX OPC Server manual
   states that to use GX Simulator the server *"should NOT BE INSTALLED AS A SERVICE"*.
 - A **console login is required** — after a log-off or reboot the task waits for that user
@@ -873,13 +875,16 @@ query session
 
 Deployment modes:
 
-- **Service-style / headless (session 0)** — scheduled task as SYSTEM or S4U default logon. Starts at boot
-  without login. Use when every source targets real PLC hardware over Ethernet/serial or servers installed as services.
+- **Service-style / headless (session 0)** — what the installer ships: a Windows service, or a scheduled task as
+  SYSTEM/S4U. Starts at boot without login. Use when every source targets real PLC hardware over Ethernet/serial
+  or servers installed as services.
 - **Interactive desktop (session 1)** — scheduled task with `-LogonType Interactive`; runs while that user is
   logged into the console. Required for GX Simulator sources (via MxComponent or MXOPC).
 
-Switching between modes is just enabling/disabling the corresponding tasks and restarting the app —
-`mappings.json`, `sources.json`, and the `pki\` certificates are shared and untouched.
+The mode is decided when the bridge is installed or its task is registered, so switching means
+re-registering the task (or installing the published-task deployment instead of the service) and
+restarting the app — `mappings.json`, `sources.json`, and the `pki\` certificates are shared and
+untouched. The bridge cannot move itself from session 0 into a desktop session while it runs.
 
 ## Backup and restore
 

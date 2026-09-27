@@ -175,7 +175,7 @@ WebApplicationBuilder builder = WebApplication.CreateBuilder(args);
 // way). Interactive launches are unaffected: this is a no-op unless the parent
 // process is services.exe. The service runs in session 0, so session-bound PLC
 // simulators (GX Simulator via MX OPC) cannot deliver values — the dashboard shows
-// the session banner and offers the resolve-to-desktop relaunch instead.
+// the session banner, which names the desktop-session deployment to use instead.
 if (OperatingSystem.IsWindows())
 {
     builder.Host.UseWindowsService();
@@ -391,96 +391,6 @@ app.MapDelete("/api/hmi/displays/{id}", (string id, DisplayStore displayStore) =
      apps = discovery.GetStatus(),
  }));
 
-// Resolve a session-0 (non-interactive) launch: relaunch the bridge into the
-// logged-in interactive desktop session so session-bound OPC DA servers
-// (GX Simulator via MX OPC, etc.) deliver values. The current process cannot
-// move itself across sessions, so it registers an Interactive-logon scheduled
-// task whose launcher waits for this PID to exit (releasing the single-instance
-// lock and the HTTP/UA ports), then starts the bridge exe in session 1. The
-// old process then stops itself; the dashboard reconnects on the same ports.
-app.MapPost("/api/session/resolve", (IHostApplicationLifetime lifetime) =>
-{
-    if (!OperatingSystem.IsWindows())
-        return Results.Json(new { status = "error", message = "Resolve is only available on Windows." });
-    if (BridgeState.InteractiveSession)
-        return Results.Json(new { status = "error", message = "Bridge is already running in an interactive session." });
-
-    string? user = GetInteractiveWindowsUser();
-    if (string.IsNullOrWhiteSpace(user))
-        return Results.Json(new { status = "error", message = "No interactive desktop user is logged on. Log in at the console and retry." });
-
-    string dir = AppContext.BaseDirectory.TrimEnd('\\', '/');
-    string apphost = Path.Combine(dir, "OpcBridge.App.exe");
-    string dll = Path.Combine(dir, "OpcBridge.App.dll");
-    string exePath = Environment.ProcessPath ?? apphost;
-    // Prefer apphost exe (framework-dependent publish produces it); fall back to dotnet + dll
-    string exeToLaunch;
-    string launchArgs = "";
-    if (File.Exists(apphost))
-    {
-        exeToLaunch = apphost;
-    }
-    else if (exePath.EndsWith("dotnet.exe", StringComparison.OrdinalIgnoreCase) && File.Exists(dll))
-    {
-        exeToLaunch = exePath;
-        launchArgs = $"\"{dll}\"";
-    }
-    else
-    {
-        exeToLaunch = exePath;
-    }
-    if (!File.Exists(exeToLaunch))
-        return Results.Json(new { status = "error", message = $"Bridge executable not found: {exeToLaunch}" });
-
-    string launcherPath = Path.Combine(dir, "resolve-interactive.ps1");
-    string registerPath = Path.Combine(dir, "resolve-register.ps1");
-
-    try
-    {
-        string launchCmd = string.IsNullOrEmpty(launchArgs)
-            ? $"Start-Process -FilePath $exe -WorkingDirectory $dir -WindowStyle Hidden"
-            : $"Start-Process -FilePath $exe -ArgumentList $args -WorkingDirectory $dir -WindowStyle Hidden";
-        string launcher =
-            "param([int]$OldPid)\r\n" +
-            "$exe = '" + exeToLaunch.Replace("'", "''") + "'\r\n" +
-            "$args = '" + launchArgs.Replace("'", "''") + "'\r\n" +
-            "$dir = '" + dir.Replace("'", "''") + "'\r\n" +
-            "$deadline = (Get-Date).AddSeconds(90)\r\n" +
-            "while ((Get-Process -Id $OldPid -ErrorAction SilentlyContinue) -and (Get-Date) -lt $deadline) { Start-Sleep -Seconds 1 }\r\n" +
-            "if (Get-Process -Id $OldPid -ErrorAction SilentlyContinue) { exit 2 }\r\n" +
-            launchCmd + "\r\n" +
-            "schtasks /delete /tn OpcBridgeResolve /f *> $null\r\n" +
-            "Remove-Item -LiteralPath '" + launcherPath.Replace("'", "''") + "' -Force -ErrorAction SilentlyContinue\r\n";
-        File.WriteAllText(launcherPath, launcher);
-
-        string actionArgs =
-            "-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" + launcherPath + "\" -OldPid " + Environment.ProcessId;
-        string register =
-            "$ErrorActionPreference = 'Stop'\r\n" +
-            "$action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '" + actionArgs.Replace("'", "''") + "'\r\n" +
-            "$principal = New-ScheduledTaskPrincipal -UserId '" + user + "' -LogonType Interactive -RunLevel Highest\r\n" +
-            "Register-ScheduledTask -TaskName 'OpcBridgeResolve' -Action $action -Principal $principal -Force | Out-Null\r\n" +
-            "Start-ScheduledTask -TaskName 'OpcBridgeResolve'\r\n" +
-            "Remove-Item -LiteralPath '" + registerPath.Replace("'", "''") + "' -Force -ErrorAction SilentlyContinue\r\n";
-        File.WriteAllText(registerPath, register);
-
-        (int code, string stdout, string stderr) = RunHiddenProcess(
-            "powershell.exe",
-            $"-NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"{registerPath}\"",
-            30000);
-        if (code != 0)
-            return Results.Json(new { status = "error", message = $"Could not start resolve task (exit {code}): {stderr.Trim()} {stdout.Trim()}" });
-    }
-    catch (Exception ex)
-    {
-        return Results.Json(new { status = "error", message = "Resolve failed: " + ex.Message });
-    }
-
-    // Let the HTTP response flush, then stop this instance so the launcher can
-    // start the new one (single-instance lock + ports must be released first).
-    _ = Task.Run(async () => { await Task.Delay(2000); lifetime.StopApplication(); });
-    return Results.Json(new { status = "ok", message = "Relaunching bridge into the interactive desktop session. This page will reconnect automatically." });
-});
 app.MapGet("/api/status/ports", (DiscoveryServerProbe discoveryProbe) =>
 {
     string hostName = System.Net.Dns.GetHostName();
@@ -3348,53 +3258,6 @@ static string PatchPortInUrl(string url, int port)
         // No port in URL — append it
         return url.TrimEnd('/') + $":{port}";
     }
-}
-
-/// <summary>Runs a process hidden, returns exit code + captured output. Never throws on failure.</summary>
-static (int ExitCode, string StdOut, string StdErr) RunHiddenProcess(string fileName, string arguments, int timeoutMs)
-{
-    try
-    {
-        using var process = new Process
-        {
-            StartInfo = new ProcessStartInfo
-            {
-                FileName = fileName,
-                Arguments = arguments,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true
-            }
-        };
-        if (!process.Start())
-            return (-1, string.Empty, "Failed to start " + fileName);
-        string stdout = process.StandardOutput.ReadToEnd();
-        string stderr = process.StandardError.ReadToEnd();
-        if (!process.WaitForExit(timeoutMs))
-        {
-            try { process.Kill(); } catch { }
-            return (-2, stdout, stderr + " (timed out after " + timeoutMs + " ms)");
-        }
-        return (process.ExitCode, stdout, stderr);
-    }
-    catch (Exception ex)
-    {
-        return (-3, string.Empty, ex.Message);
-    }
-}
-
-/// <summary>Returns the console (interactive) user as DOMAIN\user, or null when nobody is logged on.</summary>
-static string? GetInteractiveWindowsUser()
-{
-    (int code, string stdout, _) = RunHiddenProcess(
-        "powershell.exe",
-        "-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"(Get-CimInstance Win32_ComputerSystem).UserName\"",
-        15000);
-    if (code != 0)
-        return null;
-    string? user = stdout.Trim();
-    return string.IsNullOrWhiteSpace(user) ? null : user;
 }
 
 internal sealed class StringTupleComparerIgnoreCase : IEqualityComparer<(string SourceId, string ItemId)>

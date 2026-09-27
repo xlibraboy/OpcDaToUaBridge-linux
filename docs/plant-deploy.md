@@ -20,7 +20,7 @@ Set-ItemProperty HKLM:\...\Winlogon DefaultDomainName DESKTOP-BC2AU7H
 # Verify: Get-ScheduledTask OpcBridge | fl; Get-ScheduledTaskInfo; curl http://127.0.0.1:8080/api/status → sessionId 1 interactive true
 ```
 
-* `Resolve` button (`DashboardPage.cs` + `Program.cs /api/session/resolve` `791742d`+) is a **lab safety net**: if someone redeploys as `S4U` (`sessionId 0` banner appears), one click relaunches via temporary `OpcBridgeResolve` task (`OpcBridge.App.exe` `apphost` preferred, else `dotnet + dll`, `WindowStyle Hidden` `Highest`) into `1`. After permanent `Interactive` the banner stays `display:none`.
+* The dashboard's session-0 banner is **informational only** — the in-app `Resolve` relaunch was removed (#25), because a bridge that is running cannot move itself across sessions. If the bridge comes up as `S4U` (`sessionId 0`, banner appears), re-run `register-published-task.ps1 -LogonType Interactive` and restart the task; after a permanent `Interactive` registration the banner stays `display:none`.
 
 * Closing a **visible** console kills the app (`CTRL_CLOSE_EVENT`). `Interactive Hidden` has no window → close-proof. `S4U` is headless by definition.
 
@@ -63,4 +63,6 @@ curl http://192.168.48.129:8080/api/status | jq .bridge.sessionId,.bridge.intera
 | Lab `BC2AU7H` | `Interactive` | `1` | **yes** | Hidden | **yes** | yes |
 | Plant | `S4U` | `0` | **no** | none | no | **yes** |
 
-The same `775df67+` binary supports both; the `Resolve` button handles accidental `S4U` in lab. For a new plant VM, just run the `S4U` line above and delete `mx1` from `sources.json`.
+The same `775df67+` binary supports both; re-running the script with `-LogonType Interactive` handles an accidental `S4U` registration in lab. For a new plant VM, just run the `S4U` line above and delete `mx1` from `sources.json`.
+
+The **MSI installs the bridge as a Windows service** (session 0, `LocalSystem`), so an installed bridge cannot serve GX Simulator sources — for the lab, deploy with this script (published task) instead of the installer.

@@ -117,7 +117,7 @@
           <ServiceInstall Id="OpcBridgeService"
                           Name="OpcBridge"
                           DisplayName="OpcBridge"
-                          Description="OPC DA to OPC UA bridge with web dashboard (http://localhost:$(HttpPort)). Runs in session 0: session-bound PLC simulators (GX Simulator via MX OPC) need the dashboard's resolve-to-desktop relaunch."
+                          Description="OPC DA to OPC UA bridge with web dashboard (http://localhost:$(HttpPort)). Runs as a session-0 service: session-bound PLC simulators (GX Simulator via MX OPC) need the published-task deployment with -LogonType Interactive instead."
                           Start="auto"
                           Type="ownProcess"
                           ErrorControl="normal"
