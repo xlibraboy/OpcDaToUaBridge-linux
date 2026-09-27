@@ -136,6 +136,14 @@ faulted every one of its sources and showed no readings at all. The measurement 
 value itself, the way the stack builds it for a read and for a published notification, so no
 declared type can turn a diagnostic into a source failure.
 
+**The dashboard Start Menu entry shows the bridge icon.** The Server feature's only Start
+Menu entry is a `.url` — the dashboard opens in a browser — and the installer gave it no icon
+of its own. Windows draws a URL shortcut that way through the default browser's handler, which
+on a Windows 10 Start Menu with Edge is a blank page, so the entry still read as a missing app
+icon after the three exes got theirs. The `InternetShortcut` now pins `IconFile` to the
+installed `OpcBridge.App.exe` (index 0) — the same icon as the Apps & features entry — while
+the HMI and Designer shortcuts keep resolving theirs from their own exes.
+
 ## [1.3.0] - 2026-09-24
 
 ### Added
