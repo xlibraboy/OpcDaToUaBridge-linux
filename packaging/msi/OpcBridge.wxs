@@ -11,13 +11,13 @@
 
   The harvested files come from scripts/msi/harvest.py.
 
-  Port caveat: the firewall rules and the dashboard Start Menu shortcut are built
-  from the ports above. The bridge auto-assigns the next free port at runtime when a
-  default is taken (Bridge:HttpPort / Bridge:OpcUaPort in appsettings.json). On a host
-  where a port moved, the dashboard's Monitor → Port Configuration card moves the
-  matching rule to the actual port (the app runs as LocalSystem, so it can); the Start
-  Menu shortcut still points at the build-time port, so reach the dashboard by the
-  address Monitor → Ports shows.
+  Port caveat: the firewall rules are built from the ports above, and the dashboard
+  Start Menu shortcut is written from $(HttpPort) as well. The bridge auto-assigns the
+  next free port at runtime when a default is taken (Bridge:HttpPort / Bridge:OpcUaPort
+  in appsettings.json). On a host where a port moved, the dashboard's Monitor → Port
+  Configuration card moves the matching firewall rule to the actual port (the app runs
+  as LocalSystem, so it can), and the bridge rewrites the shortcut's URL on every start
+  to the port it bound — see src/OpcBridge.App/DashboardShortcut.cs.
 
   Three selectable features (WixUI_FeatureTree shows the tree):
     - OpcBridge Server: self-contained win-x86 app installed as a Windows service.
@@ -120,7 +120,7 @@
           <ServiceInstall Id="OpcBridgeService"
                           Name="OpcBridge"
                           DisplayName="OpcBridge"
-                          Description="OPC DA to OPC UA bridge with web dashboard (http://localhost:$(HttpPort)). Runs as a session-0 service: session-bound PLC simulators (GX Simulator via MX OPC) need the published-task deployment with -LogonType Interactive instead."
+                          Description="OPC DA to OPC UA bridge with web dashboard (the Start Menu shortcut carries the actual URL). Runs as a session-0 service: session-bound PLC simulators (GX Simulator via MX OPC) need the published-task deployment with -LogonType Interactive instead."
                           Start="auto"
                           Type="ownProcess"
                           ErrorControl="normal"
@@ -183,13 +183,17 @@
     <StandardDirectory Id="ProgramMenuFolder">
       <Directory Id="MenuFolder" Name="OpcBridge">
         <Component Id="DashboardShortcut" Guid="9A4F7B31-8C2D-4E1A-9B6F-3D8C5A2E70F4">
-          <!-- IconFile is a formatted field, so [#OpcBridgeAppExe] resolves to the
+          <!-- Type="url" is explicit: WiX's default for InternetShortcut is a .lnk (a binary
+               shell link), while this entry ships as the text .url the bridge rewrites on
+               every start to the port it bound (src/OpcBridge.App/DashboardShortcut.cs).
+               IconFile is a formatted field, so [#OpcBridgeAppExe] resolves to the
                installed bridge exe. A .url without one is drawn by Windows through the
                default browser's handler — a blank page icon on a Windows 10 Start Menu
                with Edge — and this is the only Start Menu entry the Server feature adds. -->
           <util:InternetShortcut Id="DashboardUrlShortcut"
                                  Name="OpcBridge Dashboard"
                                  Target="http://localhost:$(HttpPort)/"
+                                 Type="url"
                                  IconFile="[#OpcBridgeAppExe]"
                                  IconIndex="0" />
           <RegistryValue Root="HKLM"

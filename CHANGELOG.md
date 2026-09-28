@@ -190,6 +190,16 @@ icon after the three exes got theirs. The `InternetShortcut` now pins `IconFile`
 installed `OpcBridge.App.exe` (index 0) — the same icon as the Apps & features entry — while
 the HMI and Designer shortcuts keep resolving theirs from their own exes.
 
+**The Start Menu dashboard entry follows the port the bridge actually listens on.** The
+installer writes the shortcut from the port the MSI was built with (8080), so on a host
+where something already held 8080 the bridge moved to the next free port and the entry
+opened a dead page while the bridge was healthy one port over. The bridge now rewrites the
+shortcut's URL on every start to the port it bound, keeping the icon the installer pinned
+(#29). The entry also ships as a real `.url` now — WiX's default for the element is a
+binary `.lnk` — which is what makes the file rewritable in place. The firewall rules still
+come from the MSI's build-time ports; Monitor → Port Configuration moves a rule when a port
+is changed or rolled.
+
 ### Removed
 
 **The dashboard's resolve-to-desktop relaunch is gone.** The session-0 banner carried a

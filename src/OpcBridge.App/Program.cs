@@ -109,6 +109,11 @@ if (httpPort != savedHttp || uaPort != savedUa)
 
 BridgeState.ConfigurePorts(httpPort, uaPort, httpAuto, uaAuto);
 
+// The installer writes the Start Menu dashboard shortcut with the port it was built with
+// (8080); this is the only place that knows the port the bridge actually got, so keep the
+// shortcut on it. Best effort — and a no-op where the MSI's shortcut is not installed.
+DashboardShortcut.Update(httpPort, logger);
+
 // Record which address families the chosen ports were already held on. This has to happen
 // here: past this point Kestrel and the UA server bind, and the bridge's own listener would
 // make its port read as taken. An IPv6-only holder — the OPC UA Local Discovery Server's
