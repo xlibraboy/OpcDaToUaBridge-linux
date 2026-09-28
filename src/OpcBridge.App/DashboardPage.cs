@@ -1164,7 +1164,7 @@ internal static class DashboardPage
         <div class="box-b">
             <div class="field" style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
                 <input type="checkbox" id="uaAccessRequire" onchange="onUaAccessToggle()">
-                <label class="fl" for="uaAccessRequire" style="margin:0">Require username &amp; password (off = anonymous access)</label>
+                <label class="fl" for="uaAccessRequire" style="margin:0;width:auto">Require username &amp; password (off = anonymous access)</label>
             </div>
             <div class="field" style="display:flex;gap:10px;flex-wrap:wrap">
                 <div style="flex:1;min-width:160px"><label class="fl" for="uaAccessUser">Username</label><input type="text" id="uaAccessUser" autocomplete="off" style="width:100%"></div>
@@ -1181,13 +1181,13 @@ internal static class DashboardPage
         <div class="box-h">Port Configuration <span class="info" data-tip="The ports this bridge listens on. A saved change applies after the bridge restarts — the HTTP port moves the dashboard itself, the OPC UA port moves the UA endpoint. Saving also moves the Windows Firewall rule with the port (the installer's rules are pinned to the ports the MSI was built with).">i</span><span class="msg" id="portCfgState" style="margin-left:auto"></span></div>
         <div class="box-b">
             <div class="field" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:8px">
-                <div><label class="fl" for="httpPortInput">HTTP port</label><input type="number" id="httpPortInput" min="1" max="65535" style="width:110px"></div>
+                <div style="display:flex;flex-direction:column;gap:6px;width:150px"><label class="fl" for="httpPortInput" style="width:auto">HTTP port</label><input type="number" id="httpPortInput" min="1" max="65535" style="width:100%"></div>
                 <button class="btn ghost" id="btnHttpPortCheck" type="button" onclick="checkPort('http')">Check</button>
                 <button class="btn ghost" id="btnHttpPortSuggest" type="button" onclick="useSuggestedPort('http')">Use next free</button>
                 <span class="msg" id="httpPortCheckMsg" role="status"></span>
             </div>
             <div class="field" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:8px">
-                <div><label class="fl" for="uaPortInput">OPC UA port</label><input type="number" id="uaPortInput" min="1" max="65535" style="width:110px"></div>
+                <div style="display:flex;flex-direction:column;gap:6px;width:150px"><label class="fl" for="uaPortInput" style="width:auto">OPC UA port</label><input type="number" id="uaPortInput" min="1" max="65535" style="width:100%"></div>
                 <button class="btn ghost" id="btnUaPortCheck" type="button" onclick="checkPort('ua')">Check</button>
                 <button class="btn ghost" id="btnUaPortSuggest" type="button" onclick="useSuggestedPort('ua')">Use next free</button>
                 <span class="msg" id="uaPortCheckMsg" role="status"></span>

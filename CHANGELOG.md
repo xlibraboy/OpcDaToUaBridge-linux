@@ -200,6 +200,15 @@ binary `.lnk` — which is what makes the file rewritable in place. The firewall
 come from the MSI's build-time ports; Monitor → Port Configuration moves a rule when a port
 is changed or rolled.
 
+**Monitor's UA Access and Port Configuration cards keep a row per control.** The
+require-credentials label is a direct child of its field row, so it inherited the shared
+104 px field-label column and "Require username & password (off = anonymous access)"
+wrapped onto four lines; the port rows kept each label beside its input, so a narrow window
+pushed *Check* / *Use next free* onto a line of their own. The checkbox label now takes its
+natural width, and each port stacks its label above a 150 px input column with the buttons
+bottom-aligned to the input — both cards read as one line per control at a normal window
+width.
+
 ### Removed
 
 **The dashboard's resolve-to-desktop relaunch is gone.** The session-0 banner carried a
