@@ -145,6 +145,16 @@ Bandwidth** and reports notifications and bytes both per second and as running t
 one payload per value change rather than one per connected client, and TCP/UA message
 framing stays outside the measurement — both stated in the box tooltip.
 
+**The MSI publishes the product as AM2-DEV51.** Windows labels an installed program's maker
+with the word *Publisher* — the column in Programs and Features, the line on the Apps &
+features entry, and the `Publisher` value under the uninstall registry key — and it read
+`Budi Kurniawan`, the author's own name, because the WiX package carried it as
+`Manufacturer`. The installer now carries **AM2-DEV51**
+(`packaging/msi/OpcBridge.wxs`), so a station lists the site rather than a person (#28).
+Nothing else in the package moves: the product name stays `OpcBridge`, and the upgrade code
+and version handling are untouched, so an installed station picks the new publisher up with
+its next MSI upgrade.
+
 ### Fixed
 
 **PLC group rate when none is supplied.** Creating a PLC group through `POST

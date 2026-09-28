@@ -267,6 +267,10 @@ Per-machine MSI (`Program Files\OpcBridge`) with a **feature tree**, so a statio
 - **OpcBridge Server** — the bridge as a Windows service named `OpcBridge` (`LocalSystem`, start=auto). Opens firewall ports 8080 (dashboard) and 4840 (OPC UA), sets the machine-wide `OPCBRIDGE_DATA`, and adds a Start Menu dashboard shortcut.
 - **OpcBridge HMI Runtime** / **OpcBridge HMI Designer** — each with its own Start Menu shortcut.
 
+The package's `Manufacturer` is where Windows reads the installed app's **Publisher** — the
+Programs and Features column, the Apps & features entry and the uninstall registry key — and
+it is `AM2-DEV51`, the site's name, not the author's (#28); the product itself stays `OpcBridge`.
+
 App icons are committed under `src/*/Assets/` (`opcbridge-server.ico`, `opcbridge-hmi.ico`,
 `opcbridge-designer.ico`): each exe embeds its own via `ApplicationIcon` in the csproj (that is
 what Explorer and the advertised Start Menu shortcuts resolve against), the Avalonia apps also

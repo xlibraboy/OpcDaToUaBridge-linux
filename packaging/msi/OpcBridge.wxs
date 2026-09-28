@@ -42,7 +42,7 @@
      xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
 
   <Package Name="OpcBridge"
-           Manufacturer="Budi Kurniawan"
+           Manufacturer="AM2-DEV51"
            Version="$(MsiVersion)"
            UpgradeCode="6D9C5284-357E-4709-BB37-E51F6992000D"
            Scope="perMachine"
