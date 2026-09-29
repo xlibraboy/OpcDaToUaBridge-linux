@@ -141,6 +141,17 @@ lock with the logging pipeline — it may be running on the thread that died hol
 
 ### Changed
 
+**The Release carries the Windows portable builds.** The GitHub Release shipped the x86 MSI
+alone, so the hosts the MSI cannot serve — its server is 32-bit because a 64-bit process
+cannot load 32-bit OPC DA COM servers — had no artifact at all and were built locally.
+`.github/workflows/windows-release.yml` now also produces the two portable server zips
+`scripts/msi/build-portable.sh` has always built for local iteration
+(`OpcBridge-<version>-win-x86.zip` and `-win-x64.zip`, both self-contained), zipped through
+the same `publish_skip.py` runtime-state filter the installer harvest uses, so a host's live
+mappings, sources, users or PKI can never ship inside one. The MSI stays the install; the
+win-x64 zip is what a 64-bit-only DA host runs, and the win-x86 zip is the server without the
+installer for extraction deployments.
+
 **The bridge runs on Workstation GC.** `Microsoft.NET.Sdk.Web` hands a web app Server GC, which
 allocates a heap and a dedicated collection thread per core and sizes for throughput — the wrong
 trade for a bridge that is idle most of the time (this app spends about 0.1 s of CPU per ten
