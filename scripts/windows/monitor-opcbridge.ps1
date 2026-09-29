@@ -20,6 +20,12 @@ $ErrorActionPreference = 'Stop'
 #   private bytes rising, handles/  -> managed growth (inbound MQTT topics, interlink stats,
 #   threads flat                       rate buckets) rather than COM
 #
+# Memory bands are 1.0 MB/min (suspect) and 0.3 MB/min (watch). They used to be 10 and 2, which
+# was far too coarse: a bridge that is genuinely flat sits at ~0.1 MB/min, while a fresh Server GC
+# process climbing to its steady state measured +1.71 MB/min over ten minutes on WORKSTAT02
+# (2026-09-29) and the old band printed "No growth trend" over it. A shorter window under-reports
+# the rate, so a verdict of "flat" is only worth what the window it came from is worth.
+#
 # Usage (no arguments needed):
 #   powershell -ExecutionPolicy Bypass -File .\monitor-opcbridge.ps1
 #   powershell -ExecutionPolicy Bypass -File .\monitor-opcbridge.ps1 -Samples 30 -IntervalSec 10
@@ -181,11 +187,16 @@ elseif ($handleRate -ge 10) {
 if ($privateRate -ge 10) {
     $verdicts += "MEMORY GROWTH SUSPECT: +$([math]::Round($privateRate, 1)) MB/min private bytes. If handles and threads are flat this is managed growth (inbound MQTT topics, interlink stats, rate buckets)."
 }
-elseif ($privateRate -ge 2) {
-    $verdicts += "Private bytes climbing slowly (+$([math]::Round($privateRate, 1)) MB/min) - keep sampling longer to confirm."
+elseif ($privateRate -ge 1) {
+    $verdicts += "MEMORY GROWTH SUSPECT: +$([math]::Round($privateRate, 1)) MB/min private bytes - that is $([math]::Round($privateRate * 60, 0)) MB/hour, well clear of the ~0.1 MB/min a flat bridge on this workload sits at. A GC mode change (see docs/ram-measurement.md) is the usual cause when handles and threads are flat; sample longer to find the ceiling."
+}
+elseif ($privateRate -ge 0.3) {
+    $verdicts += "Private bytes climbing (+$([math]::Round($privateRate, 1)) MB/min) - keep sampling longer to confirm."
 }
 if ($verdicts.Count -eq 0) {
-    $verdicts += "No growth trend in this window: working set sawtooth with flat private bytes, handles and threads is normal managed-GC behaviour."
+    # State the measurement rather than asserting a shape: the old text claimed "flat private
+    # bytes" whatever the numbers said, which is how +1.71 MB/min once read as no growth.
+    $verdicts += "No growth trend in this window (private $([math]::Round($privateRate, 2)) MB/min, working set $([math]::Round($deltaWorkingSet / $minutes, 2)) MB/min, handles $([math]::Round($handleRate, 1))/min, threads $deltaThreads): working set sawtooth with flat private bytes, handles and threads is normal managed-GC behaviour."
 }
 
 Write-Host ""

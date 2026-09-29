@@ -29,6 +29,10 @@ using DataDirectory = OpcBridge.App.DataDirectory;
 // poll cycle; beyond this many values it freezes browsers. UI shows total separately.
 const int DashboardValuesLimit = 2000;
 
+// Registered before anything else can throw, so a startup failure is reported too. A bridge that
+// dies must leave a reason behind — see CrashLog for the two unexplained stops that motivated it.
+CrashLog.Install();
+
 // ---- Single-instance guard: only one bridge may run per machine/user at a time ----
 // A lock file is opened with FileShare.None and held for the process lifetime; the OS
 // releases it automatically if the process exits or crashes, so there is no stale lock.
@@ -187,6 +191,10 @@ builder.Services.AddSingleton<AuthSessionStore>();
 builder.Services.AddSingleton<LoginThrottle>();
 builder.Services.AddSingleton<DashboardLogStore>();
 builder.Logging.Services.AddSingleton<ILoggerProvider, DashboardLogProvider>();
+// Durable twin of the dashboard's in-memory ring buffer. As a Windows service the console goes
+// nowhere, so without this the bridge has no log that outlives the process.
+builder.Services.AddSingleton<FileLogStore>();
+builder.Logging.Services.AddSingleton<ILoggerProvider, FileLogProvider>();
 
 
 builder.Services.AddSingleton<DaRuntimeSettings>();
@@ -225,6 +233,11 @@ builder.Services.AddSingleton<IInfluxTrendQuery>(sp =>
 
 
 WebApplication app = builder.Build();
+
+// Name the durable log up front. An operator investigating a stop needs to know the file exists
+// before they think to look for it — the whole reason the 2026-09-29 stops went unexplained was
+// that nobody knew there was anything to read.
+app.Logger.LogInformation("Durable log: {LogPath}", app.Services.GetRequiredService<FileLogStore>().FilePath);
 
 // Session + role gate: resolves the dashboard caller and answers 401/403 from the
 // AuthPolicy table before any endpoint runs. A no-op unless Auth:Enabled is set.
