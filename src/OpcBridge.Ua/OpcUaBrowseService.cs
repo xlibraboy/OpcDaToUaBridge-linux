@@ -15,6 +15,12 @@ public sealed class OpcUaBrowseService
     public const int DefaultMaxNodes = 200;
     public const int AbsoluteMaxNodes = 1000;
     public const int DefaultTimeoutMs = 15_000;
+
+    /// <summary>Ceiling on the whole-address-space tag walk used by the Maps import dialog.</summary>
+    public const int TagListMaxNodes = 20_000;
+
+    private const int MaxBrowsePagesPerNode = 16;
+
     public static readonly string DefaultNodeId = ObjectIds.ObjectsFolder.ToString();
 
     private readonly ILogger logger_;
@@ -332,6 +338,172 @@ public sealed class OpcUaBrowseService
         }
 
         return Math.Min(maxNodes, AbsoluteMaxNodes);
+    }
+
+    /// <summary>
+    /// Every Variable node below <paramref name="rootNodeId"/>, walked breadth-first over the
+    /// hierarchical references and following continuation points. The Maps import dialog uses it
+    /// to compare an imported tag list with the tags a source really exposes; the walk stops at
+    /// <paramref name="maxNodes"/> and reports <see cref="UaTagListResult.Truncated"/>, because a
+    /// cut-short walk must never be read as "the server does not have this tag".
+    /// </summary>
+    public async Task<UaTagListResult> ListVariableNodeIdsAsync(
+        OpcUaSourceClientOptions options,
+        string? rootNodeId,
+        int maxNodes,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        int limit = maxNodes > 0 ? Math.Min(maxNodes, TagListMaxNodes) : TagListMaxNodes;
+        string targetNodeId = string.IsNullOrWhiteSpace(rootNodeId) ? DefaultNodeId : rootNodeId.Trim();
+        if (!NodeId.TryParse(targetNodeId, out NodeId? parsedNodeId) || parsedNodeId is null)
+        {
+            return new UaTagListResult(Array.Empty<string>(), Truncated: false, Error: $"Invalid nodeId '{targetNodeId}'.");
+        }
+
+        using var timeoutCts = CreateOperationTimeoutCts(options, cancellationToken);
+
+        Session? session = null;
+        try
+        {
+            session = await OpenSessionAsync(options, timeoutCts.Token).ConfigureAwait(false);
+
+            List<string> nodeIds = new();
+            Queue<NodeId> pending = new();
+            HashSet<string> visited = new(StringComparer.Ordinal);
+            pending.Enqueue(parsedNodeId);
+            visited.Add(parsedNodeId.ToString());
+
+            while (pending.Count > 0)
+            {
+                NodeId current = pending.Dequeue();
+                IReadOnlyList<ReferenceDescription> references =
+                    await BrowseAllReferencesAsync(session, current, timeoutCts.Token).ConfigureAwait(false);
+
+                foreach (ReferenceDescription reference in references)
+                {
+                    string childNodeId = ExpandedNodeIdToString(reference.NodeId, session.NamespaceUris);
+                    if (reference.NodeClass == NodeClass.Variable)
+                    {
+                        nodeIds.Add(childNodeId);
+                        if (nodeIds.Count >= limit)
+                        {
+                            return new UaTagListResult(nodeIds, Truncated: true, Error: null);
+                        }
+
+                        continue;
+                    }
+
+                    // Only nodes that can hold more tags below them are worth descending into;
+                    // a Variable's own children are its properties, never mapped tags.
+                    if (MayHaveChildren(reference.NodeClass)
+                        && visited.Add(childNodeId)
+                        && NodeId.TryParse(childNodeId, out NodeId? childId)
+                        && childId is not null)
+                    {
+                        pending.Enqueue(childId);
+                    }
+                }
+            }
+
+            return new UaTagListResult(nodeIds, Truncated: false, Error: null);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            return new UaTagListResult(Array.Empty<string>(), Truncated: false, Error: "The tag walk timed out.");
+        }
+        catch (Exception ex) when (IsTimeoutLike(ex))
+        {
+            return new UaTagListResult(Array.Empty<string>(), Truncated: false, Error: "The tag walk timed out.");
+        }
+        catch (Exception ex)
+        {
+            logger_.LogDebug(ex, "UA tag walk failed for {Endpoint}", options.EndpointUrl);
+            return new UaTagListResult(Array.Empty<string>(), Truncated: false, Error: FlattenMessage(ex));
+        }
+        finally
+        {
+            await SafeCloseAndDisposeAsync(session).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// One node's hierarchical references, all pages of them. A node that refuses to browse
+    /// (access denied, or it left the address space mid-walk) ends that branch rather than the
+    /// walk: the caller's other nodes are unaffected.
+    /// </summary>
+    private static async Task<IReadOnlyList<ReferenceDescription>> BrowseAllReferencesAsync(
+        Session session,
+        NodeId nodeId,
+        CancellationToken cancellationToken)
+    {
+        List<ReferenceDescription> references = new();
+        byte[]? continuation = null;
+        int page = 0;
+
+        do
+        {
+            BrowseResult? result;
+            if (continuation is null)
+            {
+                BrowseResponse response = await session.BrowseAsync(
+                        requestHeader: null,
+                        view: null,
+                        requestedMaxReferencesPerNode: (uint)AbsoluteMaxNodes,
+                        nodesToBrowse: new BrowseDescriptionCollection
+                        {
+                            new()
+                            {
+                                NodeId = nodeId,
+                                BrowseDirection = BrowseDirection.Forward,
+                                ReferenceTypeId = ReferenceTypeIds.HierarchicalReferences,
+                                IncludeSubtypes = true,
+                                NodeClassMask = 0u,
+                                ResultMask = (uint)BrowseResultMask.All
+                            }
+                        },
+                        ct: cancellationToken)
+                    .ConfigureAwait(false);
+                result = response.Results?.Count > 0 ? response.Results[0] : null;
+            }
+            else
+            {
+                BrowseNextResponse response = await session.BrowseNextAsync(
+                        requestHeader: null,
+                        releaseContinuationPoints: false,
+                        continuationPoints: new ByteStringCollection { continuation },
+                        ct: cancellationToken)
+                    .ConfigureAwait(false);
+                result = response.Results?.Count > 0 ? response.Results[0] : null;
+            }
+
+            if (result is null || StatusCode.IsBad(result.StatusCode))
+            {
+                break;
+            }
+
+            if (result.References is not null)
+            {
+                foreach (ReferenceDescription reference in result.References)
+                {
+                    if (reference is not null)
+                    {
+                        references.Add(reference);
+                    }
+                }
+            }
+
+            continuation = result.ContinuationPoint is { Length: > 0 } point ? point : null;
+            page++;
+        }
+        while (continuation is not null && page < MaxBrowsePagesPerNode);
+
+        return references;
     }
 
     private static CancellationTokenSource CreateOperationTimeoutCts(
@@ -877,6 +1049,16 @@ public sealed record UaBrowseNodeDto(
 public sealed record UaBrowseResult(
     IReadOnlyList<UaBrowseNodeDto> Nodes,
     string? ContinuationPoint,
+    string? Error);
+
+/// <summary>
+/// The Variable nodes a whole-address-space walk found. <see cref="Truncated"/> means the walk
+/// hit its node ceiling, so the list is a subset of the server's tags, not the answer to
+/// "does this server have that tag".
+/// </summary>
+public sealed record UaTagListResult(
+    IReadOnlyList<string> NodeIds,
+    bool Truncated,
     string? Error);
 
 public sealed record UaDiscoverResult(

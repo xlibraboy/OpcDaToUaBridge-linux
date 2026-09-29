@@ -178,7 +178,11 @@ public sealed class DashboardPageTests
         Assert.Contains("function connectInflux(", DashboardPage.Script);
         Assert.Contains("function disconnectInflux(", DashboardPage.Script);
         Assert.Contains("/api/influx/config", DashboardPage.Script);
-        Assert.Contains("influxEnabled: el('fpInfluxEnabled').checked", DashboardPage.Script);
+        // The faceplate's Influx box is still what saves a tag's Influx flag — now taken inside
+        // the faceplate-open guard, so the Maps import dialog (which edits with the faceplate
+        // closed) cannot write an idle input's value onto the tag.
+        Assert.Contains("if (faceplateOpen) {", DashboardPage.Script);
+        Assert.Contains("payload.influxEnabled = el('fpInfluxEnabled').checked;", DashboardPage.Script);
         Assert.Contains("if (name === 'influx')", DashboardPage.Script);
     }
 
@@ -1488,6 +1492,55 @@ public sealed class DashboardPageTests
         // The IPv6-holder policy is explained, not silently allowed.
         Assert.Contains("localhost on this machine may reach that process", DashboardPage.Script);
         Assert.Contains("loadPortConfig().catch(() => {});", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Html_MapsImportDialogIsAModalOverlay()
+    {
+        Assert.Contains("id=\"btnImportTags\"", DashboardPage.Html);
+        Assert.Contains("id=\"importTagsFile\"", DashboardPage.Html);
+        Assert.Contains("class=\"modal-overlay\" id=\"importTagsOverlay\"", DashboardPage.Html);
+        Assert.Contains("id=\"importTagsPick\"", DashboardPage.Html);
+        Assert.Contains("id=\"importTagsSource\"", DashboardPage.Html);
+        Assert.Contains("id=\"importTagsGroup\"", DashboardPage.Html);
+        Assert.Contains("id=\"importTagsSummary\" role=\"status\"", DashboardPage.Html);
+        Assert.Contains("id=\"importTagsList\"", DashboardPage.Html);
+        Assert.Contains("id=\"importTagsMessage\" role=\"status\"", DashboardPage.Html);
+        Assert.Contains("id=\"importTagsAddAll\"", DashboardPage.Html);
+        Assert.Contains("id=\"importTagsUpdateAll\"", DashboardPage.Html);
+        // The faceplate carries the mapping's add stamp (issue #30).
+        Assert.Contains("id=\"fpAdded\"", DashboardPage.Html);
+    }
+
+    [Fact]
+    public void Script_MapsImportComparesThenAddsThroughTheApi()
+    {
+        Assert.Contains("/api/mappings/import/preview", DashboardPage.Script);
+        Assert.Contains("function openImportTags(", DashboardPage.Script);
+        Assert.Contains("function closeImportTags(", DashboardPage.Script);
+        Assert.Contains("function renderImportTags(", DashboardPage.Script);
+        Assert.Contains("function addImportRows(", DashboardPage.Script);
+        Assert.Contains("function updateImportRows(", DashboardPage.Script);
+        Assert.Contains("data-action=\"import-add\"", DashboardPage.Script);
+        Assert.Contains("data-action=\"import-update\"", DashboardPage.Script);
+        // Rows the source does not expose stay out of Add all; a single Add is still allowed.
+        Assert.Contains("row.status === 'new' && row.onSource !== false", DashboardPage.Script);
+        // The dialog opens the shared modal class, never an inline display toggle.
+        Assert.Contains("el('importTagsOverlay').classList.add('open')", DashboardPage.Script);
+        Assert.DoesNotContain("el('importTagsOverlay').style.display", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Script_MappingUpdateEchoesTheStoredMapping()
+    {
+        // The import dialog updates a description with the faceplate closed: the full-replace
+        // payload must come from the stored mapping, and only the faceplate's own fields may be
+        // read from its inputs while it is open.
+        Assert.Contains("function mappingReplacePayload(", DashboardPage.Script);
+        Assert.Contains("const payload = mappingReplacePayload(mapping, sourceId, itemId);", DashboardPage.Script);
+        Assert.Contains("if (faceplateOpen) {", DashboardPage.Script);
+        Assert.Contains("addedUtc: mapping.addedUtc ?? mapping.AddedUtc ?? null", DashboardPage.Script);
+        Assert.Contains("el('fpAdded').value = formatAddedUtc(", DashboardPage.Script);
     }
 
     private static int CountOccurrences(string haystack, string needle)

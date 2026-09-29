@@ -4,7 +4,7 @@ namespace OpcBridge.App;
 // Do NOT rename without updating tests:
 //   data-tab="influx", id="view-influx", id="fpInfluxEnabled", id="influxUrl", id="influxWritten"
 //   function loadInfluxConfig/loadInfluxStatus/saveInflux/connectInflux/disconnectInflux
-//   /api/influx/config, influxEnabled: el('fpInfluxEnabled').checked, if (name === 'influx')
+//   /api/influx/config, if (faceplateOpen) { payload.influxEnabled = el('fpInfluxEnabled').checked;, if (name === 'influx')
 //   id="pApps", text "Apps", "pApps" in script, "detectedCount" in script
 //   text "Interlinks", id="btnClearLinkSelection"
 //   text "Clear Selection", text "Delete Saved Link", function clearInterlinkDraftSelection
@@ -33,6 +33,11 @@ namespace OpcBridge.App;
 //   faceplate: id="fpSubscription"/"fpSubscriptionField", function fpSubscriptionOptions(/updateFpRateEnabled(
 //   id="mapTypeTabs", data-map-type="opc-da|opc-ua|drivers", function setMapType(/opcDaSources(/mapTypeSources(
 //   tags/maps/opc-da, tags/maps/opc-ua, tags/maps/drivers
+//   Maps import from file (#30): id="btnImportTags"/"importTagsFile"/"importTagsOverlay"/"importTagsPick"/
+//   "importTagsSource"/"importTagsGroup"/"importTagsSummary"/"importTagsList"/"importTagsMessage"/
+//   "importTagsAddAll"/"importTagsUpdateAll", function openImportTags(/closeImportTags(/renderImportTags(/
+//   readImportTagsFile(/addImportRows(/updateImportRows(, /api/mappings/import/preview,
+//   data-action="import-add"/"import-update", faceplate id="fpAdded" carries the added stamp
 //   Tag Browser search (#24): id="tagSearch"/"tagSearchStatus", function applyTagFilter(/tagSearchKey(/clearTagSearch(,
 //   tag-tree rows carry data-search (display name + item ID) and data-pin="1" on the ".." row
 //   Diagram: tab text "Source→UA", function diagSourceKind(= sourceTypeLabel( + sourceSubtitle()
@@ -1806,6 +1811,11 @@ internal static class DashboardPage
                     <button class="btn" type="button" id="manualAdd">Add Mapping</button>
                     <span class="msg">Or browse tags above and click Add.</span>
                 </div>
+                <div class="field" style="margin-bottom:0">
+                    <button class="btn ghost" type="button" id="btnImportTags" title="Bulk-load a tag list into this source from a file">Import from file…</button>
+                    <input type="file" id="importTagsFile" accept=".csv,text/csv" aria-label="Tag list file to import" style="display:none">
+                    <span class="msg">Compare a tag list (MX OPC Configurator CSV) with this source before adding it.</span>
+                </div>
             </div>
             <div class="hint" id="mappingMessage" role="status" style="margin-bottom:10px">Click a tag to open its faceplate. Disable a tag to stop publishing it, or set a manual value to override the source.</div>
             <div class="mapping-toolbar">
@@ -1878,6 +1888,7 @@ internal static class DashboardPage
                 <div class="field"><label class="fl" for="fpDaItemId">Item ID</label><input type="text" id="fpDaItemId" readonly style="flex:1;opacity:.72"></div>
                 <div class="field"><label class="fl" for="fpUaNodeId">UA Node</label><input type="text" id="fpUaNodeId" readonly style="flex:1;opacity:.72"></div>
                 <div class="field"><label class="fl" for="fpDescription">Description</label><input type="text" id="fpDescription" placeholder="Operator notes / tag description (optional)" style="flex:1"></div>
+                <div class="field"><label class="fl" for="fpAdded">Added <span class="info" data-tip="When this tag was first mapped. An edit keeps the original stamp — only a new mapping records a new one.">i</span></label><input type="text" id="fpAdded" readonly style="flex:1;opacity:.72"></div>
             </div>
             <div class="fp-tabpane" id="fp-pane-setup" style="display:none">
                 <div class="field"><label class="fl" for="fpAccess">Access Rights <span class="info" data-tip="Direction of this mapping. Read = source to UA only, Read-Write = both ways, Write = UA to source only. A tag used as an interlink provider needs Read, a consumer needs Write.">i</span></label><select id="fpAccess" data-action="tag-access"><option value="Read">Read (Source → UA)</option><option value="Read-Write">Read-Write (Source ↔ UA)</option><option value="Write">Write (UA → Source)</option></select></div>
@@ -1915,6 +1926,35 @@ internal static class DashboardPage
             <span class="msg" id="fpMessage" role="status"></span>
             <button class="btn ghost" type="button" id="fpRemove" data-action="remove-mapping">Remove</button>
             <button class="btn" type="button" id="fpApply" data-action="save-tag">Apply</button>
+        </div>
+    </div>
+</div>
+<div class="modal-overlay" id="importTagsOverlay" onclick="if(event.target===this)closeImportTags()">
+    <div class="modal" style="width:min(940px,94vw);max-width:940px">
+        <div class="modal-h">
+            <div><div class="n">Import tags from a file</div><div class="p">MX OPC Configurator CSV — tag names and descriptions</div></div>
+            <button class="modal-close" type="button" onclick="closeImportTags()">&times;</button>
+        </div>
+        <div class="modal-b">
+            <div class="field">
+                <label class="fl" for="importTagsPick">File</label>
+                <button class="btn ghost" type="button" id="importTagsPick">Choose CSV file…</button>
+                <span class="msg" id="importTagsFileName">No file chosen.</span>
+            </div>
+            <div class="field">
+                <label class="fl" for="importTagsSource">Into source</label>
+                <span class="pill" id="importTagsSource" style="padding:3px 8px">—</span>
+                <label class="fl" for="importTagsGroup" style="margin-left:14px">PLC / folder</label>
+                <select id="importTagsGroup" style="flex:1;min-width:200px"></select>
+            </div>
+            <div class="hint" id="importTagsSummary" role="status">Choose a file to compare its tags with this source.</div>
+            <div class="list" id="importTagsList" style="max-height:340px"></div>
+        </div>
+        <div class="modal-f">
+            <span class="msg" id="importTagsMessage" role="status"></span>
+            <button class="btn ghost" type="button" id="importTagsUpdateAll" style="display:none">Update descriptions</button>
+            <button class="btn" type="button" id="importTagsAddAll">Add all new</button>
+            <button class="btn ghost" type="button" onclick="closeImportTags()">Close</button>
         </div>
     </div>
 </div>
@@ -2338,6 +2378,16 @@ const state = {
     mappingFilter: '',
     mapType: 'opc-da',
     mapTypePinned: false,
+    // Maps → Import from file (#30): the picked file, its parsed rows and the bridge's
+    // comparison of them with this source (see openImportTags/refreshImportPreview).
+    importSourceId: '',
+    importFileName: '',
+    importText: '',
+    importGroup: '',
+    importRows: [],
+    importSourceChecked: false,
+    importSourceTruncated: false,
+    importSourceError: '',
     mqttConfigured: false,
     mqttState: 'Disconnected',
     mqttConnectionState: 'Disconnected',
@@ -4056,6 +4106,9 @@ function openFaceplate(sourceId, itemId) {
     el('fpDaItemId').value = itemId;
     el('fpUaNodeId').value = node;
     el('fpDescription').value = String(mapping.description ?? mapping.Description ?? '');
+    // Mappings that predate the stamp (or were stored bare on disk) have none: say so rather
+    // than inventing a time.
+    el('fpAdded').value = formatAddedUtc(mapping.addedUtc ?? mapping.AddedUtc) || 'not recorded';
     el('fpAccess').value = access;
     el('fpEnabled').checked = enabled;
     el('fpSimulated').checked = simulated;
@@ -7277,10 +7330,13 @@ function getMapping(sourceId, itemId) {
 
 
 
-async function updateMapping(sourceId, itemId, mutate) {
-    const mapping = getMapping(sourceId, itemId);
-    if (!mapping) throw new Error('Mapping not found.');
-    const payload = {
+// Full-replace payload for POST /api/mappings/update, read from the stored mapping alone.
+// updateMapping() overlays the faceplate's inputs for the fields that surface owns (MQTT,
+// Influx, Unit); a caller with the faceplate closed — the Maps import dialog updating a
+// description — must not read those inputs, or the untouched settings of the tag would be
+// written away.
+function mappingReplacePayload(mapping, sourceId, itemId) {
+    return {
         sourceId,
         itemId: itemId,
         displayName: mapping.displayName || mapping.DisplayName || itemId,
@@ -7297,17 +7353,32 @@ async function updateMapping(sourceId, itemId, mutate) {
         deadbandPct: Number(mapping.deadbandPct ?? mapping.DeadbandPct ?? 0),
         writeable: (mapping.writeable ?? mapping.Writeable) === true,
         accessRights: mapping.accessRights || mapping.AccessRights || 'Read',
-        mqttEnabled: el('fpMqttEnabled').checked,
-        mqttTopic: el('fpMqttTopic').value.trim() || null,
-        influxEnabled: el('fpInfluxEnabled').checked,
-        unit: el('fpUnit').value.trim() || null,
+        mqttEnabled: (mapping.mqttEnabled ?? mapping.MqttEnabled) === true,
+        mqttTopic: mapping.mqttTopic ?? mapping.MqttTopic ?? null,
+        influxEnabled: (mapping.influxEnabled ?? mapping.InfluxEnabled) === true,
+        unit: mapping.unit ?? mapping.Unit ?? null,
         rangeMin: (mapping.rangeMin ?? mapping.RangeMin) ?? null,
         rangeMax: (mapping.rangeMax ?? mapping.RangeMax) ?? null,
         trendStyle: mapping.trendStyle || mapping.TrendStyle || 'Continuous',
         digital: (mapping.digital ?? mapping.Digital) ?? null,
         onText: (mapping.onText ?? mapping.OnText) ?? null,
-        offText: (mapping.offText ?? mapping.OffText) ?? null
+        offText: (mapping.offText ?? mapping.OffText) ?? null,
+        // Echoed so a caller that edits a mapping keeps the original add stamp; the store
+        // preserves it either way (an update never re-adds a tag).
+        addedUtc: mapping.addedUtc ?? mapping.AddedUtc ?? null
     };
+}
+async function updateMapping(sourceId, itemId, mutate) {
+    const mapping = getMapping(sourceId, itemId);
+    if (!mapping) throw new Error('Mapping not found.');
+    const payload = mappingReplacePayload(mapping, sourceId, itemId);
+    if (faceplateOpen) {
+        // The faceplate's own inputs are the live edit for these four fields.
+        payload.mqttEnabled = el('fpMqttEnabled').checked;
+        payload.mqttTopic = el('fpMqttTopic').value.trim() || null;
+        payload.influxEnabled = el('fpInfluxEnabled').checked;
+        payload.unit = el('fpUnit').value.trim() || null;
+    }
     mutate(payload);
     const r = await fetch('/api/mappings/update', {
         method: 'POST',
@@ -8853,6 +8924,264 @@ async function removeMapping(sourceId, itemId) {
     await loadMappings();
     await refresh();
 }
+// ---------------------------------------------------------------------------
+// Maps → Import from file (issue #30)
+// The file is parsed and compared on the bridge (POST /api/mappings/import/preview): every row
+// comes back as new / already mapped / description differs, together with whether the source
+// really exposes that tag name, so a name the server does not have is visible before anything is
+// added. Adding reuses the ordinary insert-only add endpoint, one row or all of them; updating a
+// description reuses the ordinary update endpoint with the stored mapping echoed in full.
+// ---------------------------------------------------------------------------
+const IMPORT_ROWS_CAP = 300;
+
+function setImportMessage(text) {
+    const node = el('importTagsMessage');
+    if (node) node.textContent = text || '';
+}
+// A stamp travels as UTC and is printed in the browser's own time zone, like every other
+// timestamp on the page.
+function formatAddedUtc(value) {
+    if (!value) return '';
+    const stamp = new Date(value);
+    return Number.isNaN(stamp.getTime()) ? '' : stamp.toLocaleString();
+}
+function openImportTags() {
+    const source = currentSource();
+    if (!source) return;
+    state.importSourceId = source.sourceId;
+    state.importFileName = '';
+    state.importText = '';
+    state.importGroup = '';
+    state.importRows = [];
+    state.importSourceChecked = false;
+    state.importSourceTruncated = false;
+    state.importSourceError = '';
+    el('importTagsSource').textContent = source.displayName || source.sourceId;
+    el('importTagsFileName').textContent = 'No file chosen.';
+    el('importTagsGroup').innerHTML = '';
+    el('importTagsList').innerHTML = '';
+    el('importTagsSummary').className = 'hint';
+    el('importTagsSummary').textContent = 'Choose a file to compare its tags with this source.';
+    el('importTagsAddAll').textContent = 'Add all new';
+    el('importTagsAddAll').disabled = true;
+    el('importTagsUpdateAll').style.display = 'none';
+    setImportMessage('');
+    el('importTagsOverlay').classList.add('open');
+    el('importTagsPick').focus();
+}
+function closeImportTags() {
+    el('importTagsOverlay').classList.remove('open');
+    state.importRows = [];
+    state.importText = '';
+}
+async function readImportTagsFile(file) {
+    if (!file) return;
+    el('importTagsFileName').textContent = file.name;
+    el('importTagsSummary').className = 'hint';
+    el('importTagsSummary').textContent = 'Reading and comparing…';
+    setImportMessage('');
+    try {
+        state.importText = await file.text();
+        state.importFileName = file.name;
+        state.importGroup = '';
+        await refreshImportPreview();
+        setImportMessage('✓ ' + state.importRows.length + ' tags read from ' + file.name + '.');
+    } catch (e) {
+        state.importText = '';
+        state.importRows = [];
+        el('importTagsSummary').className = 'hint warn';
+        el('importTagsSummary').textContent = '✗ ' + e.message;
+    }
+}
+async function refreshImportPreview() {
+    if (!state.importText) return;
+    const r = await fetch('/api/mappings/import/preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourceId: state.importSourceId, text: state.importText })
+    });
+    const p = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
+    state.importRows = Array.isArray(p.rows) ? p.rows : [];
+    state.importSourceChecked = p.sourceChecked === true;
+    state.importSourceTruncated = p.sourceTruncated === true;
+    state.importSourceError = p.sourceError || '';
+    renderImportTags();
+}
+// The file's own grouping (MX keeps tags under \Address Space\<PLC>\<folder>) decides what the
+// dialog shows at once: the same tag name exists on several PLCs, so the group is what makes an
+// import unambiguous.
+function importGroups(rows) {
+    const groups = [];
+    const byKey = new Map();
+    (rows || []).forEach(row => {
+        const key = String(row.group || '');
+        if (!byKey.has(key)) {
+            const group = { key: key, count: 0 };
+            byKey.set(key, group);
+            groups.push(group);
+        }
+        byKey.get(key).count++;
+    });
+    return groups;
+}
+function importGroupLabel(path) {
+    const parts = String(path || '').split(/[\\/]+/).map(p => p.trim()).filter(Boolean);
+    const keep = parts.filter(p => !/^address space$/i.test(p));
+    const shown = keep.length ? keep : parts;
+    return shown.length ? shown.join(' / ') : 'All tags';
+}
+// Default to the group that names the selected source (a source called DRYEND_PLC opens on that
+// PLC's folder); anything else falls back to the first group in the file.
+function defaultImportGroup(groups) {
+    const source = state.sources.find(s => s.sourceId === state.importSourceId) || {};
+    const needle = String(source.displayName || source.sourceId || '').toLowerCase();
+    const match = needle ? groups.find(group => group.key.toLowerCase().includes(needle)) : null;
+    return match ? match.key : (groups.length ? groups[0].key : '');
+}
+function importTagRowsFor(key) {
+    return (state.importRows || []).filter(row => String(row.group || '') === key);
+}
+// What the Add-all button would do with the rows on screen, and how the rest break down.
+function importRowCounts(rows) {
+    const counts = { total: 0, addable: 0, mapped: 0, differs: 0, duplicate: 0, missing: 0 };
+    (rows || []).forEach(row => {
+        counts.total++;
+        if (row.status === 'mapped') { counts.mapped++; return; }
+        if (row.status === 'differs') { counts.differs++; return; }
+        if (row.status === 'duplicate') { counts.duplicate++; return; }
+        // Rows the source does not expose stay out of Add all — the source check exists to keep
+        // a typo in the file from becoming a dead mapping. A single Add is still allowed.
+        if (row.onSource === false) { counts.missing++; return; }
+        counts.addable++;
+    });
+    return counts;
+}
+function importTagStatusChip(row) {
+    if (row.status === 'duplicate') return '<span class="pill" title="Listed more than once in this file">repeat in file</span>';
+    if (row.status === 'differs') return '<span class="pill" title="Already mapped with a different description">desc differs</span>';
+    if (row.status === 'mapped') return '<span class="mapped-badge" title="Already mapped on this source">Mapped</span>';
+    if (row.onSource === false) return '<span class="pill" title="The source does not expose this tag name">not on source</span>';
+    return '<span class="pill">new</span>';
+}
+function importTagRowHtml(row) {
+    const description = String(row.description || '');
+    const existing = String(row.existingDescription || '');
+    const added = formatAddedUtc(row.addedUtc);
+    const detail = [
+        description ? '“' + description + '”' : 'no description in file',
+        added ? 'added ' + added : null,
+        row.status === 'differs' && existing ? 'mapped as “' + existing + '”' : null
+    ].filter(Boolean).join(' · ');
+    const action = row.status === 'new'
+        ? `<button class="btn ghost" type="button" data-action="import-add" data-item-id="${attr(row.itemId)}">Add</button>`
+        : row.status === 'differs'
+            ? `<button class="btn ghost" type="button" data-action="import-update" data-item-id="${attr(row.itemId)}">Update</button>`
+            : '';
+    return `<div class="li" role="listitem"><div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="n">${esc(row.itemId)}</span> <span class="p">${esc(detail)}</span></div><div class="li-actions">${importTagStatusChip(row)}${action}</div></div>`;
+}
+function renderImportTags() {
+    const groups = importGroups(state.importRows);
+    if (!groups.some(group => group.key === state.importGroup)) {
+        state.importGroup = defaultImportGroup(groups);
+    }
+    const select = el('importTagsGroup');
+    select.innerHTML = groups
+        .map(group => `<option value="${attr(group.key)}"${group.key === state.importGroup ? ' selected' : ''}>${esc(importGroupLabel(group.key))} (${group.count})</option>`)
+        .join('');
+    select.disabled = groups.length === 0;
+
+    const rows = importTagRowsFor(state.importGroup);
+    const counts = importRowCounts(rows);
+    const parts = [
+        counts.total + (counts.total === 1 ? ' tag' : ' tags') + ' in this group',
+        counts.addable + ' new',
+        counts.mapped + ' mapped',
+        counts.differs + ' with a different description',
+        counts.duplicate + ' repeated in the file',
+        counts.missing + ' not on the source'
+    ];
+    const notes = [];
+    if (!state.importSourceChecked) {
+        // The server's reason belongs inside the sentence: drop its full stop.
+        const reason = String(state.importSourceError || 'no tag list available').replace(/\.$/, '');
+        notes.push('the source\'s tags could not be read (' + reason
+            + '), so rows are checked against your mappings only');
+    } else if (state.importSourceTruncated) {
+        notes.push('the source has more tags than the walk read, so "not on the source" is only checked against what was read');
+    }
+    el('importTagsSummary').className = counts.missing || notes.length ? 'hint warn' : 'hint';
+    el('importTagsSummary').textContent = parts.join(' · ') + (notes.length ? ' — ' + notes.join('; ') + '.' : '.');
+
+    const shown = rows.slice(0, IMPORT_ROWS_CAP);
+    el('importTagsList').innerHTML = rows.length
+        ? shown.map(importTagRowHtml).join('') + (rows.length > IMPORT_ROWS_CAP
+            ? `<span class="msg">… showing the first ${IMPORT_ROWS_CAP} of ${rows.length} tags. Add all still adds every new tag in this group.</span>`
+            : '')
+        : '<span class="msg">No tags in this group.</span>';
+
+    el('importTagsAddAll').textContent = 'Add all new (' + counts.addable + ')';
+    el('importTagsAddAll').disabled = counts.addable === 0;
+    el('importTagsUpdateAll').style.display = counts.differs ? '' : 'none';
+    el('importTagsUpdateAll').textContent = 'Update descriptions (' + counts.differs + ')';
+}
+// One add call for the rows the dialog adds — a single row or the whole group. Names come from
+// the file, and so do descriptions; the endpoint is insert-only, so a tag that appeared while
+// the dialog was open is skipped and reported like any other duplicate.
+async function postImportedTags(rows) {
+    const r = await fetch('/api/mappings/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            tags: rows.map(row => ({
+                sourceId: state.importSourceId,
+                itemId: row.itemId,
+                displayName: row.itemId,
+                description: row.description || null,
+                dataType: 'Auto',
+                uaNodeId: defaultUaNodeId(state.importSourceId, row.itemId)
+            }))
+        })
+    });
+    const p = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
+    return p;
+}
+async function addImportRows(rows, label) {
+    const p = await postImportedTags(rows);
+    await loadMappings();
+    await refresh();
+    reportMappingAdd(p, label);
+    const added = Number(p.added) || 0;
+    const skipped = Number(p.skippedExisting) || 0;
+    setImportMessage('✓ ' + added + (added === 1 ? ' tag added' : ' tags added') + ' at ' + new Date().toLocaleTimeString()
+        + (skipped ? ' · ' + skipped + ' already mapped, skipped' : ''));
+    await refreshImportPreview();
+}
+// The update endpoint replaces the whole mapping, so each row is sent as its stored mapping with
+// the file's description applied. Built from the mapping alone: the faceplate is closed here, so
+// its inputs hold nothing to echo.
+async function updateImportRows(rows) {
+    let updated = 0;
+    for (const row of rows) {
+        const mapping = getMapping(state.importSourceId, row.itemId);
+        if (!mapping) continue;
+        const payload = mappingReplacePayload(mapping, state.importSourceId, row.itemId);
+        payload.description = row.description || null;
+        const r = await fetch('/api/mappings/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tag: payload })
+        });
+        const p = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
+        updated++;
+    }
+    await loadMappings();
+    await refresh();
+    await refreshImportPreview();
+    setImportMessage('✓ ' + updated + (updated === 1 ? ' description updated' : ' descriptions updated') + '.');
+}
 function toggleLiveValues() {
     state.liveValuesEnabled = !state.liveValuesEnabled;
     updateLiveValuesUi();
@@ -9301,6 +9630,49 @@ document.addEventListener('DOMContentLoaded', async () => {
             await refresh();
         } catch (err) { el('configMessage').textContent = '✗ ' + err.message; }
         e.target.value = '';
+    });
+    // Maps → Import from file (#30): the dialog owns its own overlay and its rows are rebuilt
+    // from every preview, so the row buttons are delegated off the overlay.
+    el('btnImportTags').addEventListener('click', openImportTags);
+    el('importTagsPick').addEventListener('click', () => el('importTagsFile').click());
+    el('importTagsFile').addEventListener('change', async e => {
+        const file = e.target.files[0];
+        e.target.value = ''; // so re-picking the same file fires change again
+        await readImportTagsFile(file);
+    });
+    el('importTagsGroup').addEventListener('change', e => {
+        state.importGroup = e.target.value;
+        renderImportTags();
+    });
+    el('importTagsAddAll').addEventListener('click', () => {
+        const rows = importTagRowsFor(state.importGroup).filter(row => row.status === 'new' && row.onSource !== false);
+        if (!rows.length) return;
+        setImportMessage('Adding ' + rows.length + (rows.length === 1 ? ' tag…' : ' tags…'));
+        addImportRows(rows, rows.length === 1 ? rows[0].itemId : rows.length + ' tags').catch(e => setImportMessage('✗ ' + e.message));
+    });
+    el('importTagsUpdateAll').addEventListener('click', () => {
+        const rows = importTagRowsFor(state.importGroup).filter(row => row.status === 'differs');
+        if (!rows.length) return;
+        setImportMessage('Updating ' + rows.length + (rows.length === 1 ? ' description…' : ' descriptions…'));
+        updateImportRows(rows).catch(e => setImportMessage('✗ ' + e.message));
+    });
+    el('importTagsOverlay').addEventListener('click', event => {
+        const button = event.target.closest('button[data-action]');
+        if (!button) return;
+        const itemId = button.dataset.itemId || '';
+        if (button.dataset.action === 'import-add') {
+            const row = importTagRowsFor(state.importGroup).find(r => r.itemId === itemId);
+            if (!row) return;
+            setImportMessage('Adding ' + itemId + '…');
+            addImportRows([row], itemId).catch(e => setImportMessage('✗ ' + e.message));
+            return;
+        }
+        if (button.dataset.action === 'import-update') {
+            const row = importTagRowsFor(state.importGroup).find(r => r.itemId === itemId);
+            if (!row) return;
+            setImportMessage('Updating ' + itemId + '…');
+            updateImportRows([row]).catch(e => setImportMessage('✗ ' + e.message));
+        }
     });
     const ioModeSel = el('cfgIoMode');
     if (ioModeSel) ioModeSel.addEventListener('change', async () => {

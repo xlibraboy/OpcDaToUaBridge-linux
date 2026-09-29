@@ -21,7 +21,7 @@ collapsed and open on click — selecting a page in one of them (or following a 
 that lands there) opens its group for you:
 
 - **Sources** — Sources (status, + Add Source wizard), OPC DA (connection config, credentials, default rate, subscriptions, discover, backup), DA Groups (per-rate COM groups, per-group I/O mode), OPC UA (client sources) — external UA servers the bridge connects out to, UA Subs (named UA subscriptions and their publish rates), Drivers (PLC serial: Mitsubishi A3N RS-232, Siemens S7-200 PPI)
-- **Tags** — Maps (OPC DA / OPC UA / Drivers sub-tabs: browse, search the tag list, map to UA, faceplate), Interlinks (tag-to-tag forwarding across sources)
+- **Tags** — Maps (OPC DA / OPC UA / Drivers sub-tabs: browse, search the tag list, map to UA, import a tag list from a file, faceplate), Interlinks (tag-to-tag forwarding across sources)
 - **IoT** — MQTT (broker config), Traffic (publish/subscribe monitor)
 - **Historian** — InfluxDB (config, write status, per-tag enable via faceplate)
 - **Ops** — Monitor (status, resources), Diagnostics (bridge vitals: uptime, values/sec, poll duration), Live Values (live tag values), Sessions (DA source diagnostics, time sync, UA sessions/subscriptions, bandwidth), Logs, Diagram
