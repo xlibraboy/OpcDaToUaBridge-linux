@@ -13,8 +13,8 @@ public enum MelsecNumberBase
 /// <summary>
 /// One row of the accepted-device table shown on the dashboard: what a device means,
 /// how its numbers are written, and the inclusive numeric range this app accepts.
-/// Limits here are the app's enforced caps (A3N brief), shared by the serial driver
-/// and MX Component — <see cref="MelsecAddressParser"/> reads them from this catalog
+/// Limits here are the app's enforced caps (A3N brief) — <see cref="MelsecAddressParser"/>
+/// reads them from this catalog
 /// so displayed ranges can never drift from enforced validation.
 /// </summary>
 public sealed record MelsecDeviceRange(

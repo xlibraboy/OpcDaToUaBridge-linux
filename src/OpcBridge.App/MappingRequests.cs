@@ -22,7 +22,6 @@ public sealed record MappingTagDto(
     double? RangeMin = null,
     double? RangeMax = null,
     string? Subscription = null,
-    string? PlcGroup = null,
     string? TrendStyle = null,
     bool? Digital = null,
     string? OnText = null,

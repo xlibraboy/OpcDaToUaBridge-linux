@@ -11,7 +11,7 @@ public sealed class HmiTagDto
     public string SourceName { get; set; } = string.Empty;
 
     /// <summary>
-    /// Source type (OpcDa, OpcUa, MelsecA3n, S7200Ppi, MxComponent). Empty when the source
+    /// Source type (OpcDa, OpcUa, MelsecA3n, S7200Ppi). Empty when the source
     /// is no longer in the bridge registry.
     /// </summary>
     public string SourceType { get; set; } = string.Empty;

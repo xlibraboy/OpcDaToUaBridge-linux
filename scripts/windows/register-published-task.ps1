@@ -3,8 +3,8 @@ param(
     [string]$HealthUrl = '',
     [int]$ProbeSeconds = 20,
     # S4U runs the bridge in session 0 (no interactive desktop). Use 'Interactive'
-    # when a source needs an interactive session — e.g. MELSOFT MX Component
-    # talking to GX Simulator, whose shared memory is session-bound.
+    # when a source needs an interactive session — e.g. an OPC DA server backed by
+    # GX Simulator, whose shared memory is session-bound.
     [ValidateSet('S4U', 'Interactive')]
     [string]$LogonType = 'S4U'
 )

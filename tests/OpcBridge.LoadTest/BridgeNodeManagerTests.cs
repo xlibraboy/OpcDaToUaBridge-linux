@@ -81,9 +81,9 @@ public sealed class BridgeNodeManagerTests
 
     public static TheoryData<object?> AutoTypedValues() => new()
     {
-        true,          // an MX Component bit tag (M/X/Y, TS/TC/CS/CC, D-bit) — the reported shape
+        true,          // an A3N bit tag (M/X/Y, TS/TC/CS/CC, D-bit) — the reported shape
         false,
-        (short)-12,    // an MX Component word tag (D/TN/CN)
+        (short)-12,    // an A3N word tag (D/TN/CN)
         7,
         1.5,
         "RUN",

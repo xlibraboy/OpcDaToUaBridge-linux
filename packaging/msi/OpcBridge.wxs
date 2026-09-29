@@ -22,7 +22,7 @@
   Three selectable features (WixUI_FeatureTree shows the tree):
     - OpcBridge Server: self-contained win-x86 app installed as a Windows service.
       x86 because a 64-bit process cannot load 32-bit OPC DA COM servers (Matrikon,
-      MX Component) without DCOM surrogate setup.
+      Kepware) without DCOM surrogate setup.
     - OpcBridge HMI Runtime: self-contained win-x64 Avalonia app (operator client).
     - OpcBridge HMI Designer: self-contained win-x64 Avalonia app (display authoring).
 

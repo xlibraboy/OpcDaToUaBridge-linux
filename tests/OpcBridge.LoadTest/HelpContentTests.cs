@@ -96,7 +96,6 @@ public sealed class HelpContentTests
         Assert.Contains("InfluxDB (Historical Logging)", features);
         Assert.Contains("OPC DA Server Discovery", features);
         Assert.Contains("PLC Drivers (Mitsubishi A3N)", features);
-        Assert.Contains("PLC Drivers (Mitsubishi A3N — MX Component 4)", features);
         Assert.Contains("PLC Drivers (Siemens S7-200 PPI)", features);
 
         var reference = Sections(groups[2]).Select(SectionTitle).ToArray();
@@ -111,15 +110,6 @@ public sealed class HelpContentTests
     }
 
     [Fact]
-    public void HelpText_DescribesPlcGroups()
-    {
-        Assert.Contains("## PLC Groups (MX Component)", HelpContent.Markdown);
-        Assert.Contains("group rate wins", HelpContent.Markdown);
-        Assert.Contains("/api/plc/groups", HelpContent.Markdown);
-        Assert.Contains("Sources → PLC Groups", HelpContent.Markdown);
-    }
-
-    [Fact]
     public void HelpText_DocumentsWindowsSessions()
     {
         var md = HelpContent.Markdown;
@@ -127,7 +117,7 @@ public sealed class HelpContentTests
         Assert.Contains("DCOM starts the server process in the caller's session", md);
         Assert.Contains("session-scoped shared memory", md);
 
-        // Symptom decoder: the two MX Component failure signatures and their causes
+        // Symptom decoder: the COM bitness and shared-memory failure signatures and their causes
         Assert.Contains("0x80040154", md);
         Assert.Contains("32-bit-only", md);
         Assert.Contains("0x0180800E", md);
@@ -149,7 +139,7 @@ public sealed class HelpContentTests
         var end = md.IndexOf("\n# ", start, StringComparison.Ordinal);
         var nav = md[start..end];
 
-        foreach (var page in new[] { "DA Groups", "OPC UA", "UA Subs", "MX Component", "Diagnostics", "Sessions" })
+        foreach (var page in new[] { "DA Groups", "OPC UA", "UA Subs", "Diagnostics", "Sessions" })
             Assert.Contains(page, nav);
 
         // The stale sidebar ASCII block must not resurrect the old "Connectivity" label

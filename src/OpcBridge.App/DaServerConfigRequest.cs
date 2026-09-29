@@ -33,14 +33,9 @@ public sealed record DaServerConfigRequest(
     string? IoMode = null,
     int UpdateRateMs = 0,
     int? WatchdogTimeoutMs = null,
-    int LogicalStationNumber = 0,
     IReadOnlyList<DaGroupIoModeRequest>? Groups = null);
 
 public sealed record DaSourceIoModeRequest(string SourceId, string IoMode);
-
-/// <summary>Temporary runtime pause of a source so another program can take its
-/// upstream connection (e.g. the PLC's COM port).</summary>
-public sealed record DaSourcePauseRequest(string SourceId, bool Paused);
 
 public sealed record DaGroupIoModeRequest(string SourceId, string Name, int Rate, string IoMode, string? RenameFrom = null);
 
@@ -73,9 +68,3 @@ public sealed record S7200TestConnectionRequest(
     int? RetryCount = null);
 
 public sealed record S7200ParseAddressRequest(string Address);
-
-public sealed record MxComponentTestConnectionRequest(
-    string? SourceId = null,
-    int? LogicalStationNumber = null,
-    int? TimeoutMs = null,
-    int? RetryCount = null);

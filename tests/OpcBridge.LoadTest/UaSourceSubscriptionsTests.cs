@@ -34,7 +34,7 @@ public sealed class UaSourceSubscriptionsTests : IDisposable
         new DaSourceRuntimeSettings(id, id, SourceTypes.OpcUa, 1000, true, 10000,
             OpcDa: null,
             OpcUa: new OpcUaSourceOptions("opc.tcp://127.0.0.1:49321/x", "None", "None", null, null, 60000, 5000),
-            Melsec: null, S7200: null, MxComponent: null),
+            Melsec: null, S7200: null),
         1000);
 
     [Fact]
@@ -91,7 +91,7 @@ public sealed class UaSourceSubscriptionsTests : IDisposable
         DaSourceRuntimeSettings da = SourceConfigMigration.Normalize(
             new DaSourceRuntimeSettings("opc-vm", "opc-vm", SourceTypes.OpcDa, 1000, true, 10000,
             OpcDa: new OpcDaSourceOptions("Matrikon.OPC.Simulation.1", "localhost", null, null, null),
-            OpcUa: null, Melsec: null, S7200: null, MxComponent: null), 1000);
+            OpcUa: null, Melsec: null, S7200: null), 1000);
         settings.RestoreFromSnapshot(new DaRuntimeSettingsSnapshot(1000, true, new List<DaSourceRuntimeSettings> { da }, 0));
 
         Assert.Throws<ArgumentException>(() => settings.UpsertUaSubscription("opc-vm", "Fast", 250));

@@ -6,7 +6,7 @@ namespace OpcBridge.LoadTest;
 
 /// <summary>
 /// The device catalog is what the dashboard shows as "accepted PLC addresses" for
-/// MELSEC sources (serial + MX Component). These tests pin two contracts:
+/// MELSEC sources (the serial driver). These tests pin two contracts:
 /// 1. the catalog rows themselves (what the UI will render), and
 /// 2. parser ↔ catalog consistency — the ranges shown must be exactly the ranges
 ///    MelsecAddressParser enforces, at both boundaries.

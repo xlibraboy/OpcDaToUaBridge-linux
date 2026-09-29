@@ -31,7 +31,7 @@ public sealed class DashboardPageTests
     {
         // Both endpoints are picked from tags already defined in Maps, so every
         // saved interlink can actually carry values; sources of any linkable
-        // type (OPC DA / OPC UA / MX Component) are offered per side.
+        // type (OPC DA / OPC UA) are offered per side.
         Assert.Contains("/api/interlinks", DashboardPage.Script);
         Assert.Contains("function isLinkableInterlinkSource(", DashboardPage.Script);
         Assert.Contains("function renderInterlinkPickers(", DashboardPage.Script);
@@ -101,26 +101,6 @@ public sealed class DashboardPageTests
         {
             Assert.Contains($"id=\"{id}\"", DashboardPage.Html);
         }
-    }
-
-    [Fact]
-    public void Html_HasDedicatedMxComponentSectionSeparateFromDrivers()
-    {
-        // MX Component connections live on their own page, not in the serial-drivers section.
-        Assert.Contains("data-tab=\"mx-component\"", DashboardPage.Html);
-        Assert.Contains("id=\"view-mx-component\"", DashboardPage.Html);
-        Assert.Contains("id=\"mxStation\"", DashboardPage.Html);
-        Assert.Contains("id=\"mxList\"", DashboardPage.Html);
-        Assert.Contains("'connectivity/mx-component': 'mx-component'", DashboardPage.Script);
-        Assert.Contains("function renderMx(", DashboardPage.Script);
-        Assert.Contains("function saveMxSource(", DashboardPage.Script);
-        Assert.Contains("/api/drivers/mx-component/test-connection", DashboardPage.Script);
-        // MX is no longer offered in the serial-driver wizard, and isDriverSource is serial-only.
-        Assert.DoesNotContain("<option value=\"MxComponent\">", DashboardPage.Html);
-        Assert.DoesNotContain("drvMxStation", DashboardPage.Html);
-        Assert.Contains("function isDriverSource(source) { return isMelsecSource(source) || isS7Source(source); }", DashboardPage.Script);
-        Assert.Contains("if (type === 'mx') return mxSources();", DashboardPage.Script);
-        Assert.Contains("data-map-type=\"mx\"", DashboardPage.Html);
     }
 
     [Fact]
@@ -270,40 +250,10 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
-    public void Script_SourcePauseControl_IsMxComponentOnly()
-    {
-        // Temporary pause (#5) exists for MX Component — its COM port is what a
-        // second program (e.g. GX Works) needs back — so only that list offers it.
-        Assert.Contains("async function toggleSourcePause(", DashboardPage.Script);
-        Assert.Contains("'/api/da/sources/pause'", DashboardPage.Script);
-        Assert.Contains("data-action=\"toggle-source-pause\"", DashboardPage.Script);
-        Assert.Contains("function sourcePauseButton(", DashboardPage.Script);
-        Assert.Contains("function sourcePauseChip(", DashboardPage.Script);
-        // Paused rows render with the badge and a Resume action.
-        Assert.Contains("source.paused === true ? ' ' + badge('Paused', 'warn') : ''", DashboardPage.Script);
-        Assert.Contains("${paused ? 'Resume' : 'Pause'}", DashboardPage.Script);
-        // The MX list renders the control and the status line…
-        Assert.Contains("id=\"mxPauseMsg\"", DashboardPage.Html);
-        string script = DashboardPage.Script;
-        string renderMx = FunctionBody(script, "function renderMx(");
-        Assert.Contains("${sourcePauseChip(source)}", renderMx);
-        Assert.Contains("${sourcePauseButton(source)}", renderMx);
-        // …and no other list does: one delegated handler (the MX list), no DA/UA
-        // message slots, and no pause control in their rows.
-        Assert.Equal(1, CountOccurrences(script, "closest('button[data-action=\"toggle-source-pause\"]')"));
-        Assert.DoesNotContain("sourcesPauseMsg", DashboardPage.Html);
-        Assert.DoesNotContain("uaSourcesPauseMsg", DashboardPage.Html);
-        Assert.DoesNotContain("sourcesPauseMsg", script);
-        string renderSources = FunctionBody(script, "function renderSources(");
-        Assert.DoesNotContain("sourcePauseChip(source)", renderSources);
-        Assert.DoesNotContain("sourcePauseButton(source)", renderSources);
-    }
-
-    [Fact]
     public void Script_RefreshMergesLiveSourceStatus()
     {
         // A reconnected source must stop showing the state it had when the config rows
-        // were last loaded: a resumed MX source kept reading "Reconnecting" long after
+        // were last loaded: a resumed source kept reading "Reconnecting" long after
         // it had connected, because only loadSources() merged the live status (#5).
         string script = DashboardPage.Script;
         Assert.Contains("function applyBridgeSourceStatus(", script);
@@ -313,18 +263,6 @@ public sealed class DashboardPageTests
 
         // One merge implementation, used by both the config load and every refresh tick.
         Assert.Equal(1, CountOccurrences(script, "const statusBySource"));
-    }
-
-    [Fact]
-    public void Script_MxEndpointSummary_NeverInventsStationZero()
-    {
-        // The roster can render from the live status payload, which carries no station
-        // number; printing "MX station 0" for a station-1 source read as if the
-        // configuration had changed. An unknown station must not print a number at all.
-        string summary = FunctionBody(DashboardPage.Script, "function sourceEndpointSummary(");
-        Assert.Contains("MX station ", summary);
-        Assert.Contains("'MX Component'", summary);
-        Assert.DoesNotContain("?? 0", summary);
     }
 
     private static string FunctionBody(string script, string signature)
@@ -377,7 +315,7 @@ public sealed class DashboardPageTests
     [Fact]
     public void Script_InterlinksNoLongerRestrictedToDaSources()
     {
-        // Interlinks span OPC DA, OPC UA and MX Component sources, so the old
+        // Interlinks span OPC DA and OPC UA sources, so the old
         // OPC-DA-only browse guards must be gone entirely.
         Assert.DoesNotContain("browse OPC DA sources only", DashboardPage.Script);
         Assert.DoesNotContain("require an OPC DA source", DashboardPage.Script);
@@ -462,7 +400,7 @@ public sealed class DashboardPageTests
     [Fact]
     public void Script_ManualMappingAddsOnEnter()
     {
-        // Address-based sources (MX Component, Drivers) have no browse tree, so the
+        // Address-based sources (Drivers) have no browse tree, so the
         // manual box is the only add path: Enter in either field must submit the
         // same add the button runs.
         Assert.Contains("el('manualAdd').addEventListener('click', submitManual)", DashboardPage.Script);
@@ -758,8 +696,8 @@ public sealed class DashboardPageTests
         Assert.Contains("payload.subscription", DashboardPage.Script);
         // updateMapping preserves the stored assignment for callers that don't touch it.
         Assert.Contains("subscription: mapping.subscription ?? mapping.Subscription ?? '',", DashboardPage.Script);
-        // PLC Group shares the same rate-lock gate (Task 11): one lock authority.
-        Assert.Contains("rate.disabled = subLocked || !!grpName;", DashboardPage.Script);
+        // A named subscription locks the per-tag rate input: one lock authority.
+        Assert.Contains("rate.disabled = subLocked;", DashboardPage.Script);
         Assert.Contains("const subBadge = subName ?", DashboardPage.Script);
         Assert.Contains("title=\"UA subscription\"", DashboardPage.Script);
     }
@@ -1239,72 +1177,6 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
-    public void Html_ContainsPlcGroupsTab_AndRoute()
-    {
-        Assert.Contains("data-route=\"connectivity/plc-groups\"", DashboardPage.Html);
-        Assert.Contains("id=\"view-plc-groups\"", DashboardPage.Html);
-        Assert.Contains(">PLC Groups</button>", DashboardPage.Html);
-    }
-
-    [Fact]
-    public void Html_PlcGroupRate_IsSelectionNotFreeText()
-    {
-        // The group rate must be a dropdown on the shared ladder, not a typed number.
-        Assert.Contains("<select id=\"plcGroupRate\"", DashboardPage.Html);
-        Assert.DoesNotContain("id=\"plcGroupRate\" type=\"number\"", DashboardPage.Html);
-        foreach (string rate in new[] { "100 ms", "250 ms", "500 ms", "1 s", "2 s", "5 s", "10 s" })
-        {
-            int selectStart = DashboardPage.Html.IndexOf("<select id=\"plcGroupRate\"", StringComparison.Ordinal);
-            int selectEnd = DashboardPage.Html.IndexOf("</select>", selectStart, StringComparison.Ordinal);
-            Assert.True(selectEnd > selectStart, "plcGroupRate select not found");
-            Assert.Contains(rate, DashboardPage.Html[selectStart..selectEnd]);
-        }
-    }
-
-    [Fact]
-    public void Html_PlcGroupsTab_WiresCrudFunctions()
-    {
-        // JS lives in the Script block (DashboardPage.Html = markup only), so the
-        // wiring assertions target Script like every other script-contract test.
-        Assert.Contains("function loadPlcGroups(", DashboardPage.Script);
-        Assert.Contains("function plcGroupModalSave(", DashboardPage.Script);
-        Assert.Contains("function deletePlcGroup(", DashboardPage.Script);
-        Assert.Contains("/api/plc/groups/remove", DashboardPage.Script);
-        Assert.Contains("/api/plc/groups", DashboardPage.Script);
-    }
-
-    [Fact]
-    public void Script_PlcGroupSave_DefaultsToTheOneSecondRate()
-    {
-        // An unreadable dropdown value must not fall back to the 100 ms floor: the modal
-        // opens at 1 s, and the server's own default for a rate left out is 1 s too.
-        Assert.Contains("parseInt(el('plcGroupRate').value, 10) || 1000", DashboardPage.Script);
-    }
-
-    [Fact]
-    public void Html_Faceplate_HasPlcGroupField_AndBuilder()
-    {
-        Assert.Contains("id=\"fpPlcGroupField\"", DashboardPage.Html);
-        Assert.Contains("id=\"fpPlcGroup\"", DashboardPage.Html);
-        // JS lives in the Script block; DashboardPage.Html is markup only.
-        Assert.Contains("function fpPlcGroupOptions(", DashboardPage.Script);
-    }
-
-    [Fact]
-    public void Script_FaceplatePlcGroup_WiresVisibilitySaveAndRateLock()
-    {
-        // MX-only visibility: the open faceplate records its source id for the
-        // option builder and gates the field on the MxComponent source type.
-        Assert.Contains("id=\"fpPlcGroupHint\"", DashboardPage.Html);
-        Assert.Contains("window.__fpSourceId = sourceId", DashboardPage.Script);
-        Assert.Contains("isMxSource(state.sources.find(s => s.sourceId === sourceId)", DashboardPage.Script);
-        // Saving sends plcGroup in the update payload.
-        Assert.Contains("payload.plcGroup = el('fpPlcGroup').value.trim()", DashboardPage.Script);
-        // Grouped tags lock the rate input with the "set by group" hint.
-        Assert.Contains("set by group '", DashboardPage.Script);
-    }
-
-    [Fact]
     public void Html_FaceplateSimulation_WarnsWhenManualValueWontParse()
     {
         // A warning slot under the Manual Value input in the Simulation tab.
@@ -1476,17 +1348,17 @@ public sealed class DashboardPageTests
         Assert.Contains("id=\"srcPagerNext\"", DashboardPage.Html);
         Assert.Contains("id=\"srcPagerCount\"", DashboardPage.Html);
         Assert.Contains("class=\"pager-btn\"", DashboardPage.Html);
-        // Four pages: OPC DA + DA Groups, OPC UA + UA Subs, Drivers, MX Component +
-        // PLC Groups. Sources is pinned above the carousel, not a page of it.
+        // Three pages: OPC DA + DA Groups, OPC UA + UA Subs, Drivers.
+        // Sources is pinned above the carousel, not a page of it.
         Assert.Contains("class=\"pager-pinned\"", DashboardPage.Html);
-        Assert.Contains("data-page=\"3\"", DashboardPage.Html);
+        Assert.Contains("data-page=\"2\"", DashboardPage.Html);
         Assert.Contains("data-state=\"opc-da\"", DashboardPage.Html);
         // Geometry of the two lines: the source sits at 28px with its 8px state
         // square, and the sub-page hangs off the rail at 31px on a deeper indent.
         Assert.Contains(".nav-group .pager-parent { padding-left: 28px; }", DashboardPage.Html);
         Assert.Contains(".nav-group .pager-child::before { left: 31px; }", DashboardPage.Html);
         Assert.Contains(".pager-state { width: 8px; height: 8px; flex: none; }", DashboardPage.Html);
-        foreach (var route in new[] { "connectivity/sources", "connectivity/opc-da", "connectivity/opc-da-groups", "connectivity/opc-ua", "connectivity/ua-subs", "connectivity/drivers", "connectivity/mx-component", "connectivity/plc-groups" })
+        foreach (var route in new[] { "connectivity/sources", "connectivity/opc-da", "connectivity/opc-da-groups", "connectivity/opc-ua", "connectivity/ua-subs", "connectivity/drivers" })
         {
             Assert.Contains($"data-route=\"{route}\"", DashboardPage.Html);
         }

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OpcBridge.Core;
 using OpcBridge.Da;
@@ -13,17 +14,13 @@ public sealed class DaRuntimeSettings
 
     private readonly object sync_ = new();
     private readonly string persist_path_;
+    private readonly ILogger<DaRuntimeSettings>? logger_;
     private DaRuntimeSettingsSnapshot snapshot_;
 
-    // Runtime-only pause set. A paused source releases its upstream connection
-    // (PLC COM port / UA session) so another program can take it over, but the
-    // flag is never written to sources.json: it is an operator's temporary
-    // action, not saved configuration, so a restart resumes normal polling.
-    private readonly HashSet<string> paused_ = new(StringComparer.OrdinalIgnoreCase);
-
-    public DaRuntimeSettings(IOptions<DaClientOptions> options)
+    public DaRuntimeSettings(IOptions<DaClientOptions> options, ILogger<DaRuntimeSettings>? logger = null)
     {
         persist_path_ = DataDirectory.Combine("sources.json");
+        logger_ = logger;
 
         // Load from sources.json if it exists; otherwise seed from appsettings.json.
         DaRuntimeSettingsSnapshot? loaded = LoadFromDisk();
@@ -79,51 +76,12 @@ public sealed class DaRuntimeSettings
         }
     }
 
-    /// <summary>True when the source is currently paused at runtime (not persisted).</summary>
-    public bool IsPaused(string? sourceId)
-    {
-        string normalizedSourceId = NormalizeSourceId(sourceId);
-        lock (sync_)
-        {
-            return paused_.Contains(normalizedSourceId);
-        }
-    }
-
-    /// <summary>
-    /// Pause or resume a source at runtime. Pausing drops the source's upstream
-    /// connection on the next reconcile pass so a second program (e.g. GX Works)
-    /// can take the PLC's COM port; resuming reconnects on the next pass. The
-    /// flag is deliberately not persisted — see <see cref="paused_"/>.
-    /// </summary>
-    public DaRuntimeSettingsSnapshot SetPaused(string sourceId, bool paused)
-    {
-        string normalizedSourceId = NormalizeSourceId(sourceId);
-
-        lock (sync_)
-        {
-            if (paused)
-            {
-                paused_.Add(normalizedSourceId);
-            }
-            else
-            {
-                paused_.Remove(normalizedSourceId);
-            }
-
-            // Bump the version so the bridge worker reconciles this source on its
-            // next tick (connect/disconnect), without writing sources.json.
-            snapshot_ = snapshot_ with { Version = snapshot_.Version + 1 };
-            return snapshot_;
-        }
-    }
-
     public bool TryRemoveSource(string sourceId, out DaRuntimeSettingsSnapshot snapshot)
     {
         string normalizedSourceId = NormalizeSourceId(sourceId);
 
         lock (sync_)
         {
-            paused_.Remove(normalizedSourceId);
             List<DaSourceRuntimeSettings> sources = snapshot_.Sources
                 .Where(source => !string.Equals(source.SourceId, normalizedSourceId, StringComparison.OrdinalIgnoreCase))
                 .ToList();
@@ -146,7 +104,7 @@ public sealed class DaRuntimeSettings
         }
     }
     /// <summary>The source default update rate is fixed at 1000 ms (1 s). Rate customization
-    /// belongs to named PLC Groups or per-tag PollRateMs overrides.</summary>
+    /// belongs to per-tag PollRateMs overrides and named UA subscriptions.</summary>
     public const int FixedUpdateRateMs = 1000;
 
     public DaRuntimeSettingsSnapshot SetUpdateRate(int updateRateMs)
@@ -301,109 +259,6 @@ public sealed class DaRuntimeSettings
                 Version = snapshot_.Version + 1
             };
 
-            Persist();
-            return snapshot_;
-        }
-    }
-
-    /// <summary>Add or update a named PLC group on an MxComponent source. Throws ArgumentException
-    /// for unknown sources, non-MX sources (PLC Groups are MX Component-only this iteration),
-    /// invalid names, or past the 16-group cap. Clamps the rate to the 100 ms floor (spec §4);
-    /// a rate the caller leaves out takes the 1 s group default.</summary>
-    public DaRuntimeSettingsSnapshot UpsertPlcGroup(string sourceId, string name, int updateRateMs)
-    {
-        string trimmed = (name ?? string.Empty).Trim();
-        if (trimmed.Length == 0 || trimmed.Length > 64)
-        {
-            throw new ArgumentException("PLC group name must be 1-64 characters.", nameof(name));
-        }
-
-        int clampedRate = SourceConfigMigration.NormalizePlcGroupRate(updateRateMs);
-
-        lock (sync_)
-        {
-            List<DaSourceRuntimeSettings> sources = snapshot_.Sources.ToList();
-            int index = sources.FindIndex(source =>
-                string.Equals(source.SourceId, sourceId, StringComparison.OrdinalIgnoreCase));
-
-            if (index < 0)
-            {
-                throw new ArgumentException($"Source '{sourceId}' does not exist.", nameof(sourceId));
-            }
-
-            if (!string.Equals(sources[index].SourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
-            {
-                throw new ArgumentException(
-                    $"Source '{sourceId}' is not an MX Component source; PLC Groups apply to MX Component sources only.",
-                    nameof(sourceId));
-            }
-
-            DaSourceRuntimeSettings current = sources[index];
-            List<PlcGroupSettings> groups = SourceConfigMigration
-                .NormalizePlcGroups(current.PlcGroups)
-                .ToList();
-            PlcGroupSettings updated = new(trimmed, clampedRate);
-            int groupIndex = groups.FindIndex(g => string.Equals(g.Name, trimmed, StringComparison.OrdinalIgnoreCase));
-            if (groupIndex >= 0)
-            {
-                groups[groupIndex] = updated;
-            }
-            else
-            {
-                if (groups.Count >= SourceConfigMigration.MaxPlcGroupsPerSource)
-                {
-                    throw new ArgumentException(
-                        $"Source '{sourceId}' already has the maximum of {SourceConfigMigration.MaxPlcGroupsPerSource} PLC groups.");
-                }
-
-                groups.Add(updated);
-            }
-
-            sources[index] = current with { PlcGroups = groups };
-            snapshot_ = snapshot_ with { Sources = sources, Version = snapshot_.Version + 1 };
-            Persist();
-            return snapshot_;
-        }
-    }
-
-    /// <summary>Remove a named PLC group. Throws ArgumentException when the source/group doesn't exist
-    /// or the source is not MX Component type. Member-tag reassignment runs through MappingStore
-    /// at the API layer (mirrors the UA subscription remove flow).</summary>
-    public DaRuntimeSettingsSnapshot RemovePlcGroup(string sourceId, string name)
-    {
-        string trimmed = (name ?? string.Empty).Trim();
-
-        lock (sync_)
-        {
-            List<DaSourceRuntimeSettings> sources = snapshot_.Sources.ToList();
-            int index = sources.FindIndex(source =>
-                string.Equals(source.SourceId, sourceId, StringComparison.OrdinalIgnoreCase));
-
-            if (index < 0)
-            {
-                throw new ArgumentException($"Source '{sourceId}' does not exist.", nameof(sourceId));
-            }
-
-            if (!string.Equals(sources[index].SourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
-            {
-                throw new ArgumentException(
-                    $"Source '{sourceId}' is not an MX Component source; PLC Groups apply to MX Component sources only.",
-                    nameof(sourceId));
-            }
-
-            DaSourceRuntimeSettings current = sources[index];
-            List<PlcGroupSettings> groups = SourceConfigMigration
-                .NormalizePlcGroups(current.PlcGroups)
-                .ToList();
-            int groupIndex = groups.FindIndex(g => string.Equals(g.Name, trimmed, StringComparison.OrdinalIgnoreCase));
-            if (groupIndex < 0)
-            {
-                throw new ArgumentException($"Source '{sourceId}' has no PLC group named '{trimmed}'.", nameof(name));
-            }
-
-            groups.RemoveAt(groupIndex);
-            sources[index] = current with { PlcGroups = groups };
-            snapshot_ = snapshot_ with { Sources = sources, Version = snapshot_.Version + 1 };
             Persist();
             return snapshot_;
         }
@@ -650,8 +505,7 @@ public sealed class DaRuntimeSettings
             OpcDa: new OpcDaSourceOptions(progId, host, remoteUsername, remotePassword, remoteDomain),
             OpcUa: null,
             Melsec: null,
-            S7200: null,
-            MxComponent: null);
+            S7200: null);
     }
 
     private static DaSourceRuntimeSettings NormalizeSource(DaSourceRuntimeSettings source, int defaultUpdateRate)
@@ -704,9 +558,20 @@ public sealed class DaRuntimeSettings
             if (dto is null) return null;
 
             int defaultRate = NormalizeUpdateRate(dto.UpdateRateMs);
-            List<DaSourceRuntimeSettings> sources = dto.Sources?
-                .Select(s => SourceConfigMigration.FromDto(s, defaultRate))
-                .ToList() ?? new List<DaSourceRuntimeSettings>();
+            List<DaSourceRuntimeSettings> sources = new();
+            foreach (SourceConfigDto sourceDto in dto.Sources ?? new List<SourceConfigDto>())
+            {
+                if (SourceConfigMigration.IsRetiredSourceType(sourceDto.SourceType))
+                {
+                    logger_?.LogWarning(
+                        "Source '{SourceId}' uses the removed '{SourceType}' source type and was dropped from the configuration.",
+                        sourceDto.SourceId ?? DefaultSourceId,
+                        sourceDto.SourceType);
+                    continue;
+                }
+
+                sources.Add(SourceConfigMigration.FromDto(sourceDto, defaultRate));
+            }
 
             return new DaRuntimeSettingsSnapshot(defaultRate, dto.UseSubscriptions, sources, 0);
         }
@@ -720,9 +585,6 @@ public sealed class DaRuntimeSettings
     {
         lock (sync_)
         {
-            // Import replaces configuration wholesale; runtime pause is an operator
-            // action tied to the previous source set, so it is dropped too.
-            paused_.Clear();
             int defaultRate = NormalizeUpdateRate(snapshot.UpdateRateMs);
             IReadOnlyList<DaSourceRuntimeSettings> normalizedSources = snapshot.Sources
                 .Select(source => NormalizeSource(source, defaultRate))
@@ -807,12 +669,6 @@ public sealed record S7200PpiSourceOptions(
     int TimeoutMs,
     int RetryCount);
 
-public sealed record MxComponentSourceOptions(
-    int LogicalStationNumber,
-    int TimeoutMs,
-    int RetryCount);
-
-
 public sealed record DaSourceRuntimeSettings(
     string SourceId,
     string DisplayName,
@@ -824,9 +680,7 @@ public sealed record DaSourceRuntimeSettings(
     OpcUaSourceOptions? OpcUa,
     MelsecA3nSourceOptions? Melsec,
     S7200PpiSourceOptions? S7200,
-    MxComponentSourceOptions? MxComponent,
-    string IoMode = "AutoDetect",
-    IReadOnlyList<PlcGroupSettings>? PlcGroups = null)
+    string IoMode = "AutoDetect")
 {
     // Compat getters — flat access for Program/UI during Phase 1.
     public string ProgId => OpcDa?.ProgId ?? string.Empty;
@@ -842,13 +696,10 @@ public sealed record DaSourceRuntimeSettings(
     public string StopBits => S7200?.StopBits ?? Melsec?.StopBits ?? "One";
     public string StationNo => Melsec?.StationNo ?? "00";
     public string PcNo => Melsec?.PcNo ?? "FF";
-    public int TimeoutMs => S7200?.TimeoutMs ?? Melsec?.TimeoutMs ?? MxComponent?.TimeoutMs ?? 3000;
-    public int RetryCount => S7200?.RetryCount ?? Melsec?.RetryCount ?? MxComponent?.RetryCount ?? 2;
+    public int TimeoutMs => S7200?.TimeoutMs ?? Melsec?.TimeoutMs ?? 3000;
+    public int RetryCount => S7200?.RetryCount ?? Melsec?.RetryCount ?? 2;
     public int LocalPpiAddress => S7200?.LocalPpiAddress ?? 0;
     public int RemotePpiAddress => S7200?.RemotePpiAddress ?? 2;
-    public int LogicalStationNumber => MxComponent?.LogicalStationNumber ?? 0;
-    public int MxComponentTimeoutMs => MxComponent?.TimeoutMs ?? 3000;
-    public int MxComponentRetryCount => MxComponent?.RetryCount ?? 2;
     /// <summary>Per-group I/O mode overrides (rate bucket → mode); empty when none configured.</summary>
     public IReadOnlyList<DaGroupIoMode> GroupIoModes => OpcDa?.GroupIoModes ?? [];
     public string EndpointUrl => OpcUa?.EndpointUrl ?? string.Empty;
@@ -887,40 +738,6 @@ public sealed record DaSourceRuntimeSettings(
             {
                 return false;
             }
-            byName.Remove(key);
-        }
-
-        return byName.Count == 0;
-    }
-
-    /// <summary>Named PLC group definitions; empty for non-MX sources or legacy configs.</summary>
-    public IReadOnlyList<PlcGroupSettings> PlcGroupsList
-        => PlcGroups ?? Array.Empty<PlcGroupSettings>();
-
-    /// <summary>Order-insensitive comparison of named PLC group definitions (case-insensitive names).</summary>
-    public bool PlcGroupsEqual(DaSourceRuntimeSettings other)
-    {
-        IReadOnlyList<PlcGroupSettings> left = PlcGroupsList;
-        IReadOnlyList<PlcGroupSettings> right = other.PlcGroupsList;
-        if (left.Count != right.Count)
-        {
-            return false;
-        }
-
-        Dictionary<string, int> byName = new(StringComparer.OrdinalIgnoreCase);
-        foreach (PlcGroupSettings g in left)
-        {
-            byName[g.Name.Trim()] = g.UpdateRateMs;
-        }
-
-        foreach (PlcGroupSettings g in right)
-        {
-            string key = g.Name.Trim();
-            if (!byName.TryGetValue(key, out int rate) || rate != g.UpdateRateMs)
-            {
-                return false;
-            }
-
             byName.Remove(key);
         }
 
@@ -1011,7 +828,6 @@ public sealed class SourceConfigDto
     public OpcUaSourceOptionsDto? OpcUa { get; set; }
     public MelsecA3nSourceOptionsDto? Melsec { get; set; }
     public S7200PpiSourceOptionsDto? S7200 { get; set; }
-    public MxComponentSourceOptionsDto? MxComponent { get; set; }
 
     // Legacy flat fields (load only)
     public string? ProgId { get; set; }
@@ -1029,7 +845,6 @@ public sealed class SourceConfigDto
     public string? PcNo { get; set; }
     public int TimeoutMs { get; set; }
     public int RetryCount { get; set; }
-    public int LogicalStationNumber { get; set; }
     public string? EndpointUrl { get; set; }
     public string? SecurityMode { get; set; }
     public string? SecurityPolicy { get; set; }
@@ -1038,9 +853,6 @@ public sealed class SourceConfigDto
     public int SessionTimeoutMs { get; set; }
     public int ReconnectDelayMs { get; set; }
     public int? WatchdogTimeoutMs { get; set; }
-
-    // PLC polling groups (MX Component sources)
-    public List<PlcGroupDto>? PlcGroups { get; set; }
 }
 
 public sealed class OpcDaSourceOptionsDto
@@ -1110,19 +922,6 @@ public sealed class S7200PpiSourceOptionsDto
     public int RetryCount { get; set; }
 }
 
-public sealed class MxComponentSourceOptionsDto
-{
-    public int LogicalStationNumber { get; set; }
-    public int TimeoutMs { get; set; }
-    public int RetryCount { get; set; }
-}
-
-public sealed class PlcGroupDto
-{
-    public string? Name { get; set; }
-    public int UpdateRateMs { get; set; }
-}
-
 public static class SourceConfigMigration
 {
     /// <summary>Canonical per-source client I/O mode; unknown values default to AutoDetect.</summary>
@@ -1146,7 +945,6 @@ public static class SourceConfigMigration
         OpcUaSourceOptions? opcUa = null;
         MelsecA3nSourceOptions? melsec = null;
         S7200PpiSourceOptions? s7200 = null;
-        MxComponentSourceOptions? mx = null;
 
         if (dto.OpcDa is not null)
         {
@@ -1257,21 +1055,6 @@ public static class SourceConfigMigration
                 dto.RetryCount);
         }
 
-        if (dto.MxComponent is not null)
-        {
-            mx = new MxComponentSourceOptions(
-                dto.MxComponent.LogicalStationNumber,
-                dto.MxComponent.TimeoutMs,
-                dto.MxComponent.RetryCount);
-        }
-        else if (string.Equals(sourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
-        {
-            mx = new MxComponentSourceOptions(
-                dto.LogicalStationNumber,
-                dto.TimeoutMs,
-                dto.RetryCount);
-        }
-
         // Seed missing nest from flat defaults when type is known but nest empty (legacy partial rows).
         if (string.Equals(sourceType, SourceTypes.OpcDa, StringComparison.OrdinalIgnoreCase) && opcDa is null)
         {
@@ -1322,21 +1105,6 @@ public static class SourceConfigMigration
                 dto.TimeoutMs,
                 dto.RetryCount);
         }
-        else if (string.Equals(sourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase) && mx is null)
-        {
-            mx = new MxComponentSourceOptions(
-                dto.LogicalStationNumber,
-                dto.TimeoutMs,
-                dto.RetryCount);
-        }
-
-        IReadOnlyList<PlcGroupSettings>? plcGroups = null;
-        if (dto.PlcGroups is { Count: > 0 }
-            && string.Equals(sourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
-        {
-            plcGroups = dto.PlcGroups.Select(g => new PlcGroupSettings(g.Name ?? string.Empty, g.UpdateRateMs)).ToList();
-        }
-
         return Normalize(new DaSourceRuntimeSettings(
             dto.SourceId ?? DaRuntimeSettings.DefaultSourceId,
             dto.DisplayName ?? string.Empty,
@@ -1348,9 +1116,7 @@ public static class SourceConfigMigration
             opcUa,
             melsec,
             s7200,
-            mx,
-            NormalizeIoMode(dto.IoMode),
-            plcGroups), defaultUpdateRate);
+            NormalizeIoMode(dto.IoMode)), defaultUpdateRate);
     }
 
     public static SourceConfigDto ToDto(DaSourceRuntimeSettings source)
@@ -1416,15 +1182,6 @@ public static class SourceConfigMigration
                 TimeoutMs = source.S7200.TimeoutMs,
                 RetryCount = source.S7200.RetryCount
             },
-            MxComponent = source.MxComponent is null ? null : new MxComponentSourceOptionsDto
-            {
-                LogicalStationNumber = source.MxComponent.LogicalStationNumber,
-                TimeoutMs = source.MxComponent.TimeoutMs,
-                RetryCount = source.MxComponent.RetryCount
-            },
-            PlcGroups = source.PlcGroupsList.Count == 0
-                ? null
-                : source.PlcGroupsList.Select(g => new PlcGroupDto { Name = g.Name, UpdateRateMs = g.UpdateRateMs }).ToList()
         };
     }
 
@@ -1440,7 +1197,6 @@ public static class SourceConfigMigration
         OpcUaSourceOptions? opcUa = null;
         MelsecA3nSourceOptions? melsec = null;
         S7200PpiSourceOptions? s7200 = null;
-        MxComponentSourceOptions? mx = null;
 
         if (string.Equals(sourceType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
         {
@@ -1516,18 +1272,6 @@ public static class SourceConfigMigration
                 raw.TimeoutMs <= 0 ? 3000 : raw.TimeoutMs,
                 raw.RetryCount <= 0 ? 2 : raw.RetryCount);
         }
-        else if (string.Equals(sourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
-        {
-            MxComponentSourceOptions raw = source.MxComponent ?? new MxComponentSourceOptions(
-                source.LogicalStationNumber,
-                source.TimeoutMs,
-                source.RetryCount);
-
-            mx = new MxComponentSourceOptions(
-                raw.LogicalStationNumber < 0 || raw.LogicalStationNumber > 1023 ? 0 : raw.LogicalStationNumber,
-                raw.TimeoutMs <= 0 ? 3000 : raw.TimeoutMs,
-                raw.RetryCount <= 0 ? 2 : raw.RetryCount);
-        }
         else
         {
             // OpcDa (default / unknown collapsed)
@@ -1547,16 +1291,6 @@ public static class SourceConfigMigration
                 NormalizeGroupIoModes(raw.GroupIoModes));
         }
 
-        IReadOnlyList<PlcGroupSettings>? plcGroups = null;
-        if (string.Equals(sourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
-        {
-            IReadOnlyList<PlcGroupSettings> normalizedGroups = NormalizePlcGroups(source.PlcGroups);
-            if (normalizedGroups.Count > 0)
-            {
-                plcGroups = normalizedGroups;
-            }
-        }
-
         return new DaSourceRuntimeSettings(
             sourceId,
             displayName,
@@ -1568,9 +1302,7 @@ public static class SourceConfigMigration
             opcUa,
             melsec,
             s7200,
-            mx,
-            NormalizeIoMode(source.IoMode),
-            PlcGroups: plcGroups);
+            NormalizeIoMode(source.IoMode));
     }
 
     /// <summary>
@@ -1612,44 +1344,6 @@ public static class SourceConfigMigration
     }
 
     public const int MaxUaSubscriptionsPerSource = 16;
-
-    public const int MaxPlcGroupsPerSource = 16;
-
-    /// <summary>Rate a PLC group takes when no rate is supplied — the dashboard's 1 s default.</summary>
-    public const int DefaultPlcGroupRateMs = 1000;
-
-    /// <summary>PLC group rate rule: a supplied rate keeps the 100 ms floor (spec §4), an omitted
-    /// one (zero or negative) takes <see cref="DefaultPlcGroupRateMs"/> instead of the floor.</summary>
-    public static int NormalizePlcGroupRate(int updateRateMs)
-        => updateRateMs > 0 ? Math.Max(100, updateRateMs) : DefaultPlcGroupRateMs;
-
-    /// <summary>Trim names, dedupe case-insensitively (first wins), clamp rates to >= 100 ms
-    /// (omitted rates default to 1 s), drop blanks.</summary>
-    public static IReadOnlyList<PlcGroupSettings> NormalizePlcGroups(IEnumerable<PlcGroupSettings>? groups)
-    {
-        if (groups is null)
-        {
-            return Array.Empty<PlcGroupSettings>();
-        }
-
-        Dictionary<string, PlcGroupSettings> result = new(StringComparer.OrdinalIgnoreCase);
-        foreach (PlcGroupSettings group in groups)
-        {
-            string name = group.Name?.Trim() ?? string.Empty;
-            if (name.Length == 0)
-            {
-                continue;
-            }
-
-            int rate = NormalizePlcGroupRate(group.UpdateRateMs);
-            if (!result.ContainsKey(name))
-            {
-                result[name] = new PlcGroupSettings(name, rate);
-            }
-        }
-
-        return result.Values.ToList();
-    }
 
     /// <summary>Trim names, dedupe case-insensitively (first wins), clamp rates to >= 100 ms, drop blanks.</summary>
     public static IReadOnlyList<UaSubscriptionSettings> NormalizeUaSubscriptions(
@@ -1708,6 +1402,29 @@ public static class SourceConfigMigration
     private static string? FirstNonEmpty(string? a, string? b) =>
         !string.IsNullOrWhiteSpace(a) ? a : (!string.IsNullOrWhiteSpace(b) ? b : null);
 
+    /// <summary>Source types retired from the product: configs that still carry them are dropped on load.</summary>
+    private static readonly string[] RetiredSourceTypes = { "MxComponent" };
+
+    /// <summary>True when a config row names a source type this build no longer supports.</summary>
+    public static bool IsRetiredSourceType(string? sourceType)
+    {
+        if (string.IsNullOrWhiteSpace(sourceType))
+        {
+            return false;
+        }
+
+        string trimmed = sourceType.Trim();
+        foreach (string retired in RetiredSourceTypes)
+        {
+            if (string.Equals(trimmed, retired, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static string NormalizeSourceType(string? sourceType)
     {
         if (string.IsNullOrWhiteSpace(sourceType))
@@ -1724,11 +1441,6 @@ public static class SourceConfigMigration
         if (string.Equals(trimmed, SourceTypes.S7200Ppi, StringComparison.OrdinalIgnoreCase))
         {
             return SourceTypes.S7200Ppi;
-        }
-
-        if (string.Equals(trimmed, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
-        {
-            return SourceTypes.MxComponent;
         }
 
         if (string.Equals(trimmed, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))

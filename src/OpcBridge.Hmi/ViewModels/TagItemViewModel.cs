@@ -19,7 +19,7 @@ public partial class TagItemViewModel : ObservableObject
     [ObservableProperty]
     private string _sourceName = string.Empty;
 
-    /// <summary>Source type as reported by the bridge (OpcDa, OpcUa, MelsecA3n, S7200Ppi, MxComponent).</summary>
+    /// <summary>Source type as reported by the bridge (OpcDa, OpcUa, MelsecA3n, S7200Ppi).</summary>
     [ObservableProperty]
     private string _sourceType = string.Empty;
 

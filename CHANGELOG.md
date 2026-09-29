@@ -123,8 +123,8 @@ each app shows its own file under Help ▸ Release notes.
 so the rail grew a line for every source added and would keep growing. `Sources` stays
 pinned at the top — it is the overview of every source, not one of them — and everything
 under it is a pager showing one source at a time: its own line and the sub-page beneath it
-(OPC DA with DA Groups, OPC UA with UA Subs, MX Component with PLC Groups), with arrows to
-walk the rest and a counter at the foot (`2 / 4`). Drivers stands on its own. The group
+(OPC DA with DA Groups, OPC UA with UA Subs), with arrows to
+walk the rest and a counter at the foot (`2 / 3`). Drivers stands on its own. The group
 therefore keeps the same height however many sources are configured, and stepping away to
 another group leaves the carousel where it was. Only the pages that own a connection carry
 the 8px state square (green connected, amber degraded, red faulted, grey when the page has
@@ -220,6 +220,31 @@ as a Windows service cannot move itself across sessions, so the button, the endp
 banner stays and names the deployment fix instead: run the published-task deployment with
 `register-published-task.ps1 -LogonType Interactive` (or use a real PLC instead of GX
 Simulator) — the S4U/Interactive choice belongs to install time, not to the dashboard.
+
+**The MX Component source type is gone, and with it PLC Groups and the Pause/Resume control.**
+`MxComponent` was a Windows COM path to a Mitsubishi PLC through MELSOFT MX Component 4
+(`ActUtlType`, logical station numbers 0–1023): its own **Sources → MX Component** page, a
+driver project (`OpcBridge.Drivers.MxComponent`), `sourceType: "MxComponent"` in `sources.json`,
+the `POST /api/drivers/mx-component/test-connection` and `GET …/address-ranges` endpoints, and
+the MX-specific validation and diagnostics branches. It is removed whole (#31): install MX
+Component's runtime **or** the app, not both. Two features built on top of it go with it —
+**PLC Groups** (named polling groups, `sources.json` `PlcGroups` / `mappings.json` `plcGroup`,
+`POST /api/plc/groups[/remove]`, `GET /api/plc/groups`, the PLC Groups page and the faceplate
+group picker) and the **Pause/Resume** control (`POST /api/da/sources/pause`, the runtime-only
+pause flag and the Paused badges), which existed to release the MX Component COM port. The
+sources that replace it are unchanged and fully supported: the serial drivers on **Sources →
+Drivers** (`MelsecA3n`, `S7200Ppi`) and `OpcUa` inbound sources, or plain `OpcDa` — the MX OPC
+server reached as an ordinary OPC DA source still works, GX Simulator session notes included.
+The default update rate stays fixed at 1 s; its message now points at per-tag Update Rates for
+other cadences. **Deployed configs:** a `sources.json` row with `sourceType: "MxComponent"` is
+now dropped at load (and skipped on config import) with a `Source '<id>' uses the removed
+'MxComponent' source type` warning, instead of silently collapsing to a broken OPC DA source;
+`mxComponent` and `plcGroup` keys elsewhere are ignored on load and disappear on the next save.
+Mappings that pointed at a dropped MX source stay in `mappings.json` but are inert — remove them
+from Maps or by source id. Also removed with it: the driver's D-bit/bit-in-word batching, the MX
+effective-rate display (#23), the MX resume classifier (`MxConnectErrorClassifier`, #5), the
+address-range catalog endpoint (re-homed for the serial A3N editor as
+`GET /api/drivers/melsec-a3n/address-ranges`) and `scripts/demo/pause-rig.sh`.
 
 ## [1.3.0] - 2026-09-24
 
