@@ -33,11 +33,14 @@ namespace OpcBridge.App;
 //   faceplate: id="fpSubscription"/"fpSubscriptionField", function fpSubscriptionOptions(/updateFpRateEnabled(
 //   id="mapTypeTabs", data-map-type="opc-da|opc-ua|drivers", function setMapType(/opcDaSources(/mapTypeSources(
 //   tags/maps/opc-da, tags/maps/opc-ua, tags/maps/drivers
-//   Maps import from file (#30): id="btnImportTags"/"importTagsFile"/"importTagsOverlay"/"importTagsPick"/
+//   Maps import from file (#30 rework — source-scan reconciliation, path-qualified item ids): id="btnImportTags" (browser toolbar, beside
+//   Browse All Tags / Browse Folders)/"importTagsFile"/"importTagsOverlay"/"importTagsPick"/
 //   "importTagsSource"/"importTagsGroup"/"importTagsSummary"/"importTagsList"/"importTagsMessage"/
-//   "importTagsAddAll"/"importTagsUpdateAll", function openImportTags(/closeImportTags(/renderImportTags(/
-//   readImportTagsFile(/addImportRows(/updateImportRows(, /api/mappings/import/preview,
-//   data-action="import-add"/"import-update", faceplate id="fpAdded" carries the added stamp
+//   "importTagsSelectAll"/"importTagsSelection"/"importTagsAddAll"/"importTagsAddSelected"/"importTagsUpdateAll",
+//   function openImportTags(/closeImportTags(/renderImportTags(/readImportTagsFile(/addImportRows(/
+//   updateImportRows(/importRowSelectable(/importSourceOnlyHtml(/pruneImportSelection(,
+//   /api/mappings/import/preview, data-action="import-add"/"import-update"/"import-pick",
+//   faceplate id="fpAdded" carries the added stamp
 //   Tag Browser search (#24): id="tagSearch"/"tagSearchStatus", function applyTagFilter(/tagSearchKey(/clearTagSearch(,
 //   tag-tree rows carry data-search (display name + item ID) and data-pin="1" on the ".." row
 //   Diagram: tab text "Source→UA", function diagSourceKind(= sourceTypeLabel( + sourceSubtitle()
@@ -416,6 +419,11 @@ internal static class DashboardPage
         .li .icon.tag { color: var(--ink2); }
         .li .icon.mapped { color: var(--good); }
         .li .li-actions { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+        /* Import dialog row tick (issue #30 rework): the source scan decides whether a row can
+           be mapped, so a row it did not find carries a disabled tick rather than no control. */
+        .import-pick { display: flex; align-items: center; flex-shrink: 0; }
+        .import-pick input { margin: 0; cursor: pointer; }
+        .import-pick input:disabled { cursor: not-allowed; opacity: .45; }
         .li .mapped-badge { font-size: var(--fs-micro); color: var(--good); border: 1px solid var(--good); background: var(--good-bg); padding: 0 5px; border-radius: 2px; font-weight: 700; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: .04em; }
         .add-mapping-box { background: var(--panel2); border: 1px solid var(--border2); border-left: 3px solid var(--text); border-radius: 0; padding: 10px 12px; margin-bottom: 10px; }
         .add-mapping-box .field { margin-bottom: 8px; }
@@ -1791,6 +1799,8 @@ internal static class DashboardPage
             <div class="tag-browser-toolbar" id="mapBrowseToolbar">
                 <button class="btn" id="btnBrowseAllTags" type="button">Browse All Tags</button>
                 <button class="btn ghost" id="btnBrowseTags" type="button">Browse Folders</button>
+                <button class="btn ghost" type="button" id="btnImportTags" title="Compare a tag list file with the tags this source exposes, then map the ones you pick">Import from file…</button>
+                <input type="file" id="importTagsFile" accept=".csv,text/csv" aria-label="Tag list file to import" style="display:none">
                 <span class="msg" id="tagStatus" role="status">Browse all tags, or open folders one level at a time.</span>
             </div>
             <div class="breadcrumb" id="tagBreadcrumb"></div>
@@ -1810,11 +1820,6 @@ internal static class DashboardPage
                 <div class="field" style="margin-bottom:0">
                     <button class="btn" type="button" id="manualAdd">Add Mapping</button>
                     <span class="msg">Or browse tags above and click Add.</span>
-                </div>
-                <div class="field" style="margin-bottom:0">
-                    <button class="btn ghost" type="button" id="btnImportTags" title="Bulk-load a tag list into this source from a file">Import from file…</button>
-                    <input type="file" id="importTagsFile" accept=".csv,text/csv" aria-label="Tag list file to import" style="display:none">
-                    <span class="msg">Compare a tag list (MX OPC Configurator CSV) with this source before adding it.</span>
                 </div>
             </div>
             <div class="hint" id="mappingMessage" role="status" style="margin-bottom:10px">Click a tag to open its faceplate. Disable a tag to stop publishing it, or set a manual value to override the source.</div>
@@ -1932,7 +1937,7 @@ internal static class DashboardPage
 <div class="modal-overlay" id="importTagsOverlay" onclick="if(event.target===this)closeImportTags()">
     <div class="modal" style="width:min(940px,94vw);max-width:940px">
         <div class="modal-h">
-            <div><div class="n">Import tags from a file</div><div class="p">MX OPC Configurator CSV — tag names and descriptions</div></div>
+            <div><div class="n">Import tags from a file</div><div class="p">Compared with the tags the source exposes — pick the ones to map</div></div>
             <button class="modal-close" type="button" onclick="closeImportTags()">&times;</button>
         </div>
         <div class="modal-b">
@@ -1948,12 +1953,17 @@ internal static class DashboardPage
                 <select id="importTagsGroup" style="flex:1;min-width:200px"></select>
             </div>
             <div class="hint" id="importTagsSummary" role="status">Choose a file to compare its tags with this source.</div>
+            <div class="field" style="margin:6px 0 0">
+                <label class="fl" style="width:auto" for="importTagsSelectAll"><input type="checkbox" id="importTagsSelectAll" disabled> Select every not-mapped tag in this group</label>
+                <span class="msg" id="importTagsSelection" style="margin-left:auto"></span>
+            </div>
             <div class="list" id="importTagsList" style="max-height:340px"></div>
         </div>
         <div class="modal-f">
             <span class="msg" id="importTagsMessage" role="status"></span>
             <button class="btn ghost" type="button" id="importTagsUpdateAll" style="display:none">Update descriptions</button>
-            <button class="btn" type="button" id="importTagsAddAll">Add all new</button>
+            <button class="btn ghost" type="button" id="importTagsAddAll">Add all new</button>
+            <button class="btn" type="button" id="importTagsAddSelected">Map selected</button>
             <button class="btn ghost" type="button" onclick="closeImportTags()">Close</button>
         </div>
     </div>
@@ -2385,9 +2395,16 @@ const state = {
     importText: '',
     importGroup: '',
     importRows: [],
+    // Item ids ticked for mapping. Only rows the source really exposes and the bridge does not
+    // map yet can be ticked, so the selection is exactly "not mapped, and on the source".
+    importSelected: new Set(),
     importSourceChecked: false,
     importSourceTruncated: false,
     importSourceError: '',
+    // The comparison's other half: tags the source exposes that the file does not mention.
+    importSourceOnly: [],
+    importSourceOnlyCount: 0,
+    importSourceOnlyTruncated: false,
     mqttConfigured: false,
     mqttState: 'Disconnected',
     mqttConnectionState: 'Disconnected',
@@ -5177,9 +5194,13 @@ function updateMapEmptyBanner() {
 function updateMapBrowseUi() {
     const allBtn = el('btnBrowseAllTags');
     const folderBtn = el('btnBrowseTags');
+    const importBtn = el('btnImportTags');
     const addressBased = state.mapType === 'drivers';
     if (allBtn) allBtn.style.display = addressBased ? 'none' : '';
     if (folderBtn) folderBtn.style.display = addressBased ? 'none' : '';
+    // The import compares tag names against the source's tag list, which only an OPC DA/UA
+    // source has; a driver source is addressed, so a tag-name file would map nothing real.
+    if (importBtn) importBtn.style.display = addressBased ? 'none' : '';
     if (el('tagSearchRow')) el('tagSearchRow').style.display = addressBased ? 'none' : '';
     if (el('manualItem')) {
         el('manualItem').placeholder = state.mapType === 'opc-ua'
@@ -8927,10 +8948,13 @@ async function removeMapping(sourceId, itemId) {
 // ---------------------------------------------------------------------------
 // Maps → Import from file (issue #30)
 // The file is parsed and compared on the bridge (POST /api/mappings/import/preview): every row
-// comes back as new / already mapped / description differs, together with whether the source
-// really exposes that tag name, so a name the server does not have is visible before anything is
-// added. Adding reuses the ordinary insert-only add endpoint, one row or all of them; updating a
-// description reuses the ordinary update endpoint with the stored mapping echoed in full.
+// comes back as not mapped / already mapped / description differs / repeated, together with
+// whether the source really exposes that tag name — the source scan is the basis, so a name the
+// server does not have is shown but can never be mapped. Only rows that are both on the source
+// and unmapped carry a live tick, and the mapping is exactly the ticked selection; the preview
+// also carries the reverse direction, the source's own tags the file leaves out, with their
+// mapped state. Adding reuses the ordinary insert-only add endpoint, one row or all of them;
+// updating a description reuses the ordinary update endpoint with the stored mapping echoed.
 // ---------------------------------------------------------------------------
 const IMPORT_ROWS_CAP = 300;
 
@@ -8953,17 +8977,26 @@ function openImportTags() {
     state.importText = '';
     state.importGroup = '';
     state.importRows = [];
+    state.importSelected = new Set();
     state.importSourceChecked = false;
     state.importSourceTruncated = false;
     state.importSourceError = '';
+    state.importSourceOnly = [];
+    state.importSourceOnlyCount = 0;
+    state.importSourceOnlyTruncated = false;
     el('importTagsSource').textContent = source.displayName || source.sourceId;
     el('importTagsFileName').textContent = 'No file chosen.';
     el('importTagsGroup').innerHTML = '';
     el('importTagsList').innerHTML = '';
     el('importTagsSummary').className = 'hint';
     el('importTagsSummary').textContent = 'Choose a file to compare its tags with this source.';
+    el('importTagsSelectAll').checked = false;
+    el('importTagsSelectAll').disabled = true;
+    el('importTagsSelection').textContent = '';
     el('importTagsAddAll').textContent = 'Add all new';
     el('importTagsAddAll').disabled = true;
+    el('importTagsAddSelected').textContent = 'Map selected';
+    el('importTagsAddSelected').disabled = true;
     el('importTagsUpdateAll').style.display = 'none';
     setImportMessage('');
     el('importTagsOverlay').classList.add('open');
@@ -8972,6 +9005,8 @@ function openImportTags() {
 function closeImportTags() {
     el('importTagsOverlay').classList.remove('open');
     state.importRows = [];
+    state.importSelected = new Set();
+    state.importSourceOnly = [];
     state.importText = '';
 }
 async function readImportTagsFile(file) {
@@ -9006,6 +9041,12 @@ async function refreshImportPreview() {
     state.importSourceChecked = p.sourceChecked === true;
     state.importSourceTruncated = p.sourceTruncated === true;
     state.importSourceError = p.sourceError || '';
+    state.importSourceOnly = Array.isArray(p.sourceOnly) ? p.sourceOnly : [];
+    state.importSourceOnlyCount = Number(p.sourceOnlyCount) || 0;
+    state.importSourceOnlyTruncated = p.sourceOnlyTruncated === true;
+    // A tag that has just been mapped is no longer tickable, so a selection never survives into
+    // a row the source scan or the mapping store has already settled.
+    pruneImportSelection();
     renderImportTags();
 }
 // The file's own grouping (MX keeps tags under \Address Space\<PLC>\<folder>) decides what the
@@ -9042,6 +9083,57 @@ function defaultImportGroup(groups) {
 function importTagRowsFor(key) {
     return (state.importRows || []).filter(row => String(row.group || '') === key);
 }
+// What an import row is allowed to become a mapping from: the source scan is the basis, so a
+// name the server does not expose is never selectable, and a tag the bridge already maps has
+// nothing left to add. "Source not read" (onSource null) is unknown, not missing.
+function importRowSelectable(row) {
+    return row.status === 'new' && row.onSource !== false;
+}
+function importRowsSelectable(rows) {
+    return (rows || []).filter(importRowSelectable);
+}
+// Tick marks live in state by item id, so they survive the re-render that every preview does —
+// but only while the row is still selectable.
+function pruneImportSelection() {
+    const selectable = new Set(importRowsSelectable(state.importRows).map(row => row.itemId));
+    state.importSelected = new Set([...state.importSelected].filter(itemId => selectable.has(itemId)));
+}
+function importSelectedRows(rows) {
+    return importRowsSelectable(rows).filter(row => state.importSelected.has(row.itemId));
+}
+// The tick for one row — disabled, with the reason, when the row cannot be mapped from here.
+function importPickHtml(row) {
+    if (importRowSelectable(row)) {
+        const checked = state.importSelected.has(row.itemId) ? ' checked' : '';
+        return `<input type="checkbox" data-action="import-pick" data-item-id="${attr(row.itemId)}"${checked} title="Map this tag">`;
+    }
+
+    const why = row.onSource === false
+        ? 'The source does not expose this tag name, so it is left out of the selection — a single Add is still allowed.'
+        : row.status === 'duplicate'
+            ? 'Listed more than once in this file.'
+            : 'Already mapped on this source.';
+    return `<input type="checkbox" disabled title="${attr(why)}">`;
+}
+// The comparison's other half, under the file rows: what the source exposes that the file does
+// not list, with the ones the bridge already maps marked. Read-only — this is the reconciliation
+// view, and a tag with no row in the file carries no description to import.
+function importSourceOnlyHtml() {
+    if (!state.importSourceChecked || !state.importSourceOnlyCount) return '';
+    const list = state.importSourceOnly || [];
+    const head = `<div class="li" style="background:var(--panel2)"><div style="flex:1"><span class="n">On the source, not in the file (${state.importSourceOnlyCount})</span></div></div>`;
+    const rows = list.map(tag => {
+        const chip = tag.mapped
+            ? '<span class="mapped-badge" title="Already mapped on this source">Mapped</span>'
+            : '<span class="pill" title="The source exposes this tag but the bridge does not map it">not mapped</span>';
+        const detail = tag.description ? '“' + tag.description + '”' : 'no description';
+        return `<div class="li" role="listitem"><div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="n">${esc(tag.itemId)}</span> <span class="p">${esc(detail)}</span></div><div class="li-actions">${chip}</div></div>`;
+    }).join('');
+    const more = state.importSourceOnlyTruncated
+        ? `<span class="msg">… showing the first ${list.length} of ${state.importSourceOnlyCount}; the rest are counted above.</span>`
+        : '';
+    return head + rows + more;
+}
 // What the Add-all button would do with the rows on screen, and how the rest break down.
 function importRowCounts(rows) {
     const counts = { total: 0, addable: 0, mapped: 0, differs: 0, duplicate: 0, missing: 0 };
@@ -9062,13 +9154,16 @@ function importTagStatusChip(row) {
     if (row.status === 'differs') return '<span class="pill" title="Already mapped with a different description">desc differs</span>';
     if (row.status === 'mapped') return '<span class="mapped-badge" title="Already mapped on this source">Mapped</span>';
     if (row.onSource === false) return '<span class="pill" title="The source does not expose this tag name">not on source</span>';
-    return '<span class="pill">new</span>';
+    return '<span class="pill" title="On the source and not mapped yet — tick it to map it">not mapped</span>';
 }
 function importTagRowHtml(row) {
     const description = String(row.description || '');
     const existing = String(row.existingDescription || '');
     const added = formatAddedUtc(row.addedUtc);
+    // The name is what the operator recognizes; the item id is what the mapping will be keyed by,
+    // so it is always on the row — an MX export distinguishes three PLCs' X000 only by its path.
     const detail = [
+        row.itemId,
         description ? '“' + description + '”' : 'no description in file',
         added ? 'added ' + added : null,
         row.status === 'differs' && existing ? 'mapped as “' + existing + '”' : null
@@ -9078,7 +9173,7 @@ function importTagRowHtml(row) {
         : row.status === 'differs'
             ? `<button class="btn ghost" type="button" data-action="import-update" data-item-id="${attr(row.itemId)}">Update</button>`
             : '';
-    return `<div class="li" role="listitem"><div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="n">${esc(row.itemId)}</span> <span class="p">${esc(detail)}</span></div><div class="li-actions">${importTagStatusChip(row)}${action}</div></div>`;
+    return `<div class="li" role="listitem"><div class="import-pick">${importPickHtml(row)}</div><div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="n">${esc(row.name || row.itemId)}</span> <span class="p">${esc(detail)}</span></div><div class="li-actions">${importTagStatusChip(row)}${action}</div></div>`;
 }
 function renderImportTags() {
     const groups = importGroups(state.importRows);
@@ -9093,14 +9188,16 @@ function renderImportTags() {
 
     const rows = importTagRowsFor(state.importGroup);
     const counts = importRowCounts(rows);
+    const selectedCount = importSelectedRows(rows).length;
     const parts = [
         counts.total + (counts.total === 1 ? ' tag' : ' tags') + ' in this group',
-        counts.addable + ' new',
-        counts.mapped + ' mapped',
+        counts.addable + ' not mapped',
+        counts.mapped + ' already mapped',
         counts.differs + ' with a different description',
         counts.duplicate + ' repeated in the file',
-        counts.missing + ' not on the source'
-    ];
+        counts.missing + ' not on the source',
+        state.importSourceChecked && state.importSourceOnlyCount ? state.importSourceOnlyCount + ' on the source but not in the file' : null
+    ].filter(part => part !== null);
     const notes = [];
     if (!state.importSourceChecked) {
         // The server's reason belongs inside the sentence: drop its full stop.
@@ -9114,14 +9211,27 @@ function renderImportTags() {
     el('importTagsSummary').textContent = parts.join(' · ') + (notes.length ? ' — ' + notes.join('; ') + '.' : '.');
 
     const shown = rows.slice(0, IMPORT_ROWS_CAP);
-    el('importTagsList').innerHTML = rows.length
+    const fileRows = rows.length
         ? shown.map(importTagRowHtml).join('') + (rows.length > IMPORT_ROWS_CAP
             ? `<span class="msg">… showing the first ${IMPORT_ROWS_CAP} of ${rows.length} tags. Add all still adds every new tag in this group.</span>`
             : '')
         : '<span class="msg">No tags in this group.</span>';
+    el('importTagsList').innerHTML = fileRows + importSourceOnlyHtml();
+
+    // The tick-all control works on what this dialog may map at all, so it can never sweep a tag
+    // the source does not expose into the selection.
+    const selectable = importRowsSelectable(rows);
+    const selectAll = el('importTagsSelectAll');
+    selectAll.disabled = selectable.length === 0;
+    selectAll.checked = selectable.length > 0 && selectedCount === selectable.length;
+    el('importTagsSelection').textContent = selectedCount
+        ? selectedCount + ' of ' + selectable.length + ' selected to map'
+        : '';
 
     el('importTagsAddAll').textContent = 'Add all new (' + counts.addable + ')';
     el('importTagsAddAll').disabled = counts.addable === 0;
+    el('importTagsAddSelected').textContent = 'Map selected (' + selectedCount + ')';
+    el('importTagsAddSelected').disabled = selectedCount === 0;
     el('importTagsUpdateAll').style.display = counts.differs ? '' : 'none';
     el('importTagsUpdateAll').textContent = 'Update descriptions (' + counts.differs + ')';
 }
@@ -9136,7 +9246,7 @@ async function postImportedTags(rows) {
             tags: rows.map(row => ({
                 sourceId: state.importSourceId,
                 itemId: row.itemId,
-                displayName: row.itemId,
+                displayName: row.name || row.itemId,
                 description: row.description || null,
                 dataType: 'Auto',
                 uaNodeId: defaultUaNodeId(state.importSourceId, row.itemId)
@@ -9645,10 +9755,32 @@ document.addEventListener('DOMContentLoaded', async () => {
         renderImportTags();
     });
     el('importTagsAddAll').addEventListener('click', () => {
-        const rows = importTagRowsFor(state.importGroup).filter(row => row.status === 'new' && row.onSource !== false);
+        const rows = importRowsSelectable(importTagRowsFor(state.importGroup));
         if (!rows.length) return;
         setImportMessage('Adding ' + rows.length + (rows.length === 1 ? ' tag…' : ' tags…'));
         addImportRows(rows, rows.length === 1 ? rows[0].itemId : rows.length + ' tags').catch(e => setImportMessage('✗ ' + e.message));
+    });
+    // Mapping is selection-driven: tick what the file has that the source exposes and the bridge
+    // does not map yet, then map exactly those.
+    el('importTagsAddSelected').addEventListener('click', () => {
+        const rows = importSelectedRows(importTagRowsFor(state.importGroup));
+        if (!rows.length) return;
+        setImportMessage('Adding ' + rows.length + (rows.length === 1 ? ' tag…' : ' tags…'));
+        addImportRows(rows, rows.length === 1 ? rows[0].itemId : rows.length + ' tags')
+            .then(() => { state.importSelected = new Set(); })
+            .catch(e => setImportMessage('✗ ' + e.message));
+    });
+    el('importTagsSelectAll').addEventListener('change', event => {
+        const rows = importRowsSelectable(importTagRowsFor(state.importGroup));
+        state.importSelected = event.target.checked ? new Set(rows.map(row => row.itemId)) : new Set();
+        renderImportTags();
+    });
+    el('importTagsList').addEventListener('change', event => {
+        const pick = event.target.closest('input[data-action="import-pick"]');
+        if (!pick) return;
+        if (pick.checked) state.importSelected.add(pick.dataset.itemId || '');
+        else state.importSelected.delete(pick.dataset.itemId || '');
+        renderImportTags();
     });
     el('importTagsUpdateAll').addEventListener('click', () => {
         const rows = importTagRowsFor(state.importGroup).filter(row => row.status === 'differs');

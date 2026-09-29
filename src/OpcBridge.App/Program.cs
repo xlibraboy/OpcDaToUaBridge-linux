@@ -1661,6 +1661,11 @@ app.MapPost("/api/mappings/import/preview", async (
 
     List<TagImportRow> rows = TagImportComparer.Compare(imported, mapped, check.Tags);
 
+    // The comparison runs both ways: every file row against the source, and the source's own
+    // tags the file leaves out. The dialog shows the second half so the operator can see what
+    // the server really exposes — and which of those tags the bridge already maps.
+    TagImportReconciliation reconciliation = TagImportComparer.Reconcile(rows, mapped, check.Tags);
+
     return Results.Json(new
     {
         sourceId = source.SourceId,
@@ -1668,9 +1673,28 @@ app.MapPost("/api/mappings/import/preview", async (
         sourceChecked = check.Tags is not null,
         sourceTruncated = check.Truncated,
         sourceError = check.Error,
+        sourceTagCount = check.Tags?.Count ?? 0,
         mappedTags = mapped.Count,
         rowCount = imported.Count,
-        rows
+        rows = rows.Select(row => new
+        {
+            name = row.Name,
+            itemId = row.ItemId,
+            description = row.Description,
+            group = row.Group,
+            status = row.Status,
+            existingDescription = row.ExistingDescription,
+            addedUtc = row.AddedUtc,
+            onSource = row.OnSource
+        }),
+        sourceOnlyCount = reconciliation.SourceOnlyCount,
+        sourceOnlyTruncated = reconciliation.SourceOnlyTruncated,
+        sourceOnly = reconciliation.SourceOnly.Select(tag => new
+        {
+            itemId = tag.ItemId,
+            mapped = tag.Mapped,
+            description = tag.Description
+        })
     });
 });
 

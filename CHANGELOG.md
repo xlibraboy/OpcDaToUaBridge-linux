@@ -81,21 +81,32 @@ with no rebuild and the measured effect transfers to the shipped change. Environ
 are deliberately not used: a service host or Task Scheduler does not pick up a machine variable
 set after boot. `docs/ram-measurement.md` documents the flow and how to read the result.
 
-**Maps can bulk-load a tag list from a file.** Adding a few hundred PLC tags one
-browse-and-Add at a time is not a workflow. **Import from file…** on Maps reads the CSV
-MX OPC Configurator writes (File ▸ Save As ▸ CSV — the `#MX_DataTags` table: tag names and
-descriptions, nothing else), compares every row with the source before anything is stored, and
-then adds the rows you accept — all at once or one by one. Each row shows what it would do
-(new, already mapped, mapped with a different description, listed twice in the file) and
-whether the source really exposes that name, read the way the Tag Browser reads it, so a row
-the server does not have is flagged and left out of *Add all* instead of becoming a dead
-mapping. The file's `\Address Space\<PLC>\<folder>` grouping stays a picker: a list covering
-several PLCs is imported one PLC at a time, and the dialog opens on the group that names the
-selected source. A source that cannot be enumerated — OPC DA browsing is COM, so it needs
-Windows and a reachable server; an OPC UA server is walked up to 20 000 tags and says when the
-walk was cut short; a serial driver has no tag list at all — still gets the mapped comparison,
-with the reason stated instead of guessed. Rows whose description differs can be updated in
-place, and every mapping now records **when it was added** (`addedUtc`, printed in the
+**Maps can bulk-load a tag list from a file — compared with the source first.** Adding a few
+hundred PLC tags one browse-and-Add at a time is not a workflow. **Import from file…** now sits
+in the Tag Browser toolbar beside *Browse All Tags* and *Browse Folders*, and reads the CSV MX
+OPC Configurator writes (File ▸ Save As ▸ CSV — the `#MX_DataTags` table: tag names and
+descriptions, nothing else). Reading a file is a comparison, not an import: the bridge reads the
+tags the source really exposes — the same recursive browse the Tag Browser does — and reports
+both directions, so what you see is the source's address space, not just your saved mappings.
+Every file row is *not mapped* / *already mapped* / *mapped with a different description* /
+*repeated in the file*, plus whether the source exposes that name at all, and **only a row that
+is on the source and not mapped yet can be ticked** — a typo in the file is shown but never
+becomes a mapping. A row maps as the tag's **folder path plus its name** —
+`DRYEND_PLC.Input_X.X000`, with MX's own `\Address Space` root dropped — not the bare name:
+a real plant export carries an X000 under every PLC, and only the path keeps those tags apart
+(both for the comparison and for the mapping that is stored). So reviewing one PLC never strikes
+out another PLC's same-named tag, and the row shows both faces of the tag — the name you
+recognize and the item id it will be keyed by. **Map selected (N)** stores exactly the ticked
+rows, *Add all new* does the same for the whole group, and rows whose description differs can be
+updated in place. Below the file's rows the dialog lists the other half of the reconciliation:
+the tags the source exposes that the file never mentions, each marked with whether the bridge
+already maps it. The file's
+`\Address Space\<PLC>\<folder>` grouping stays a picker: a list covering several PLCs is
+imported one PLC at a time, and the dialog opens on the group that names the selected source. A
+source that cannot be enumerated — OPC DA browsing is COM, so it needs Windows and a reachable
+server; an OPC UA server is walked up to 20 000 tags and says when the walk was cut short; a
+serial driver has no tag list at all — still gets the mapped comparison, with the reason stated
+instead of guessed. Every mapping also records **when it was added** (`addedUtc`, printed in the
 faceplate's Basic tab and kept across edits — a stamp belongs to the insert, not to the last
 save). `POST /api/mappings/import/preview` serves the comparison (#30).
 

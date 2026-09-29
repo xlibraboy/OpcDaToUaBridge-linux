@@ -3,12 +3,15 @@ using OpcBridge.Core;
 namespace OpcBridge.App;
 
 /// <summary>
-/// One tag read out of an import file: the source-side tag name and the description that
-/// travels with it. Everything else such exports carry — device address, data type, access
-/// rights, poll rate — belongs to the exporting tool, not to the bridge, and stays behind
-/// (issue #30: "only get the tags and the description name").
+/// One tag read out of an import file: the tag's own name, the source-side item id it is
+/// addressed by, and the description that travels with it. Everything else such exports carry —
+/// device address, data type, access rights, poll rate — belongs to the exporting tool, not to
+/// the bridge, and stays behind (issue #30: "only get the tags and the description name").
+/// <see cref="Name"/> and <see cref="ItemId"/> differ because an MX export names a tag inside a
+/// folder: three PLCs each carry an X000, so the folder path is what makes the item id unique
+/// (see <see cref="TagImportFile.BuildItemId"/>).
 /// </summary>
-public sealed record ImportedTag(string ItemId, string? Description, string Group);
+public sealed record ImportedTag(string Name, string ItemId, string? Description, string Group);
 
 /// <summary>
 /// Readers for the tag lists the Maps tab can import. Today that is the CSV written by
@@ -26,6 +29,41 @@ public static class TagImportFile
     private const string NameColumn = "Name";
     private const string DescriptionColumn = "Description";
     private const string GroupColumn = "LocationPath";
+
+    /// <summary>MX's own root folder, which is not part of a tag's OPC path.</summary>
+    private const string AddressSpaceRoot = "Address Space";
+
+    /// <summary>
+    /// The OPC item id a tag is addressed by: its folder path below MX's root, then the tag name,
+    /// joined with '.' — an MX export keeps its <c>\Address Space\DRYEND_PLC\Input_X</c> grouping
+    /// separate from the tag name, so <c>X000</c> under that folder becomes
+    /// <c>DRYEND_PLC.Input_X.X000</c>. The path is what keeps the same-named tags of several PLCs
+    /// apart: every PLC in the plant carries its own X000, and a bare name would make them one
+    /// mapping. A tag with no usable path keeps its bare name.
+    /// </summary>
+    public static string BuildItemId(string name, string locationPath)
+    {
+        List<string> segments = new();
+        foreach (string part in (locationPath ?? string.Empty).Split(new[] { '\\', '/' }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            string segment = part.Trim();
+            if (segment.Length == 0)
+            {
+                continue;
+            }
+
+            // The leading "Address Space" is MX's root, not a PLC or folder.
+            if (segments.Count == 0 && string.Equals(segment, AddressSpaceRoot, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            segments.Add(segment);
+        }
+
+        string trimmedName = (name ?? string.Empty).Trim();
+        return segments.Count == 0 ? trimmedName : string.Join('.', segments) + '.' + trimmedName;
+    }
 
     /// <summary>
     /// Reads the tag table of an MX OPC Configurator CSV. Returns false, with a reason the
@@ -81,17 +119,19 @@ public static class TagImportFile
                 break;
             }
 
-            string itemId = Field(record, nameIndex).Trim();
-            if (itemId.Length == 0)
+            string name = Field(record, nameIndex).Trim();
+            if (name.Length == 0)
             {
                 continue;
             }
 
             string description = Field(record, descriptionIndex).Trim();
+            string group = Field(record, groupIndex).Trim();
             tags.Add(new ImportedTag(
-                itemId,
+                name,
+                BuildItemId(name, group),
                 description.Length == 0 ? null : description,
-                Field(record, groupIndex).Trim()));
+                group));
         }
 
         return true;
@@ -224,9 +264,13 @@ public static class TagImportStatus
 
 /// <summary>
 /// One row of the import preview: the file's tag, where it stands, and — when the source was
-/// read — whether the server really exposes it.
+/// read — whether the server really exposes it. <see cref="Name"/> is the tag's own name
+/// ("X000"), <see cref="ItemId"/> the path-qualified id it maps as
+/// ("DRYEND_PLC.Input_X.X000"); the row is keyed by the item id, which is what the source
+/// comparison and the mapping store both use.
 /// </summary>
 public sealed record TagImportRow(
+    string Name,
     string ItemId,
     string? Description,
     string Group,
@@ -240,6 +284,22 @@ public sealed record TagImportRow(
 /// read. <see cref="Tags"/> null means the comparison fell back to the stored mappings alone.
 /// </summary>
 public sealed record SourceTagCheck(IReadOnlySet<string>? Tags, bool Truncated, string? Error);
+
+/// <summary>
+/// A tag the source exposes that the file does not mention — the other half of the comparison.
+/// <see cref="Mapped"/> says whether the bridge already maps it, so the dialog can show what the
+/// source offers that the file does not cover.
+/// </summary>
+public sealed record SourceOnlyTag(string ItemId, bool Mapped, string? Description);
+
+/// <summary>
+/// The reconciliation's reverse direction: the source's tags the file leaves out, capped for the
+/// wire with the real total kept alongside.
+/// </summary>
+public sealed record TagImportReconciliation(
+    IReadOnlyList<SourceOnlyTag> SourceOnly,
+    int SourceOnlyCount,
+    bool SourceOnlyTruncated);
 
 /// <summary>
 /// Compares an imported tag list with what the bridge already has and with the tags the source
@@ -258,6 +318,9 @@ public static class TagImportComparer
         IReadOnlyDictionary<string, TagMapping> mapped,
         IReadOnlySet<string>? sourceTags)
     {
+        // Deduplicated by item id — which, for an MX export, is the PLC/folder path plus the tag
+        // name. Reviewing one PLC at a time must not strike out another PLC's X000: only a true
+        // repeat of the same path and name is a repeat in the file.
         HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
         List<TagImportRow> rows = new(imported.Count);
 
@@ -268,7 +331,7 @@ public static class TagImportComparer
             if (!seen.Add(tag.ItemId))
             {
                 rows.Add(new TagImportRow(
-                    tag.ItemId, tag.Description, tag.Group, TagImportStatus.DuplicateInFile, null, null, onSource));
+                    tag.Name, tag.ItemId, tag.Description, tag.Group, TagImportStatus.DuplicateInFile, null, null, onSource));
                 continue;
             }
 
@@ -281,6 +344,7 @@ public static class TagImportComparer
                 bool differs = tag.Description is not null
                     && !string.Equals(stored, tag.Description, StringComparison.Ordinal);
                 rows.Add(new TagImportRow(
+                    tag.Name,
                     tag.ItemId,
                     tag.Description,
                     tag.Group,
@@ -291,9 +355,74 @@ public static class TagImportComparer
                 continue;
             }
 
-            rows.Add(new TagImportRow(tag.ItemId, tag.Description, tag.Group, TagImportStatus.New, null, null, onSource));
+            rows.Add(new TagImportRow(tag.Name, tag.ItemId, tag.Description, tag.Group, TagImportStatus.New, null, null, onSource));
         }
 
         return rows;
+    }
+
+    /// <summary>
+    /// How many source-only rows travel to the dialog. A source can expose tens of thousands of
+    /// tags, so the dialog lists what fits and reports the rest by count.
+    /// </summary>
+    public const int SourceOnlyCap = 500;
+
+    /// <summary>
+    /// The tags the source exposes that the file does not mention, each with its mapped state —
+    /// the file read the same way the Tag Browser reads it, so the dialog can show what the
+    /// server offers beyond the file. <paramref name="sourceTags"/> null means the source could
+    /// not be read, which is reported as "nothing known", never as "the source has no tags".
+    /// Unmapped tags come first: those are what a reconciliation is for.
+    /// </summary>
+    public static TagImportReconciliation Reconcile(
+        IReadOnlyList<TagImportRow> rows,
+        IReadOnlyDictionary<string, TagMapping> mapped,
+        IReadOnlySet<string>? sourceTags)
+    {
+        if (sourceTags is null || sourceTags.Count == 0)
+        {
+            return new TagImportReconciliation(Array.Empty<SourceOnlyTag>(), 0, SourceOnlyTruncated: false);
+        }
+
+        HashSet<string> inFile = new(StringComparer.OrdinalIgnoreCase);
+        foreach (TagImportRow row in rows)
+        {
+            inFile.Add(row.ItemId);
+        }
+
+        List<string> missing = new();
+        foreach (string itemId in sourceTags)
+        {
+            if (!inFile.Contains(itemId))
+            {
+                missing.Add(itemId);
+            }
+        }
+
+        missing.Sort((left, right) =>
+        {
+            bool leftMapped = mapped.ContainsKey(left);
+            bool rightMapped = mapped.ContainsKey(right);
+            return leftMapped == rightMapped
+                ? string.Compare(left, right, StringComparison.OrdinalIgnoreCase)
+                : (leftMapped ? 1 : -1);
+        });
+
+        List<SourceOnlyTag> sourceOnly = new(Math.Min(missing.Count, SourceOnlyCap));
+        foreach (string itemId in missing)
+        {
+            if (sourceOnly.Count == SourceOnlyCap)
+            {
+                break;
+            }
+
+            mapped.TryGetValue(itemId, out TagMapping? tag);
+            sourceOnly.Add(new SourceOnlyTag(
+                itemId,
+                tag is not null,
+                tag is null || string.IsNullOrWhiteSpace(tag.Description) ? null : tag.Description));
+        }
+
+        return new TagImportReconciliation(sourceOnly, missing.Count, missing.Count > sourceOnly.Count);
     }
 }

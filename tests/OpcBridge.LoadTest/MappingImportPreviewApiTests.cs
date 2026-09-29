@@ -107,23 +107,48 @@ public sealed class MappingImportPreviewApiTests
     public async Task Preview_SeparatesNewMappedAndDifferingRows()
     {
         await using TestAppHandle handle = await TestAppHandle.StartAsync(WriteMinimalAppsettings);
-        // One of the file's tags is already mapped, with a description of its own.
-        await AddTagAsync(handle, "X000", "Old description");
+        // One of the file's tags is already mapped, with a description of its own. The mapping is
+        // keyed by the file's path-qualified item id, not the bare tag name.
+        await AddTagAsync(handle, "DRYEND_PLC.Input_X.X000", "Old description");
 
         JsonElement preview = await PreviewAsync(handle, "default", TwoTagExport);
 
         Assert.Equal("default", preview.GetProperty("sourceId").GetString());
         Assert.Equal(1, preview.GetProperty("mappedTags").GetInt32());
         Assert.Equal(3, preview.GetProperty("rowCount").GetInt32());
-        Assert.Equal("differs", StatusOf(preview, "X000"));
-        Assert.Equal("Old description", RowFor(preview, "X000").GetProperty("existingDescription").GetString());
-        Assert.Equal("new", StatusOf(preview, "X001"));
-        Assert.Equal("Rope", RowFor(preview, "X001").GetProperty("description").GetString());
+        Assert.Equal("differs", StatusOf(preview, "DRYEND_PLC.Input_X.X000"));
+        Assert.Equal("Old description", RowFor(preview, "DRYEND_PLC.Input_X.X000").GetProperty("existingDescription").GetString());
+        Assert.Equal("new", StatusOf(preview, "DRYEND_PLC.Input_X.X001"));
+        Assert.Equal("Rope", RowFor(preview, "DRYEND_PLC.Input_X.X001").GetProperty("description").GetString());
         // A blank description in the file is no opinion about the stored one.
-        Assert.Equal("new", StatusOf(preview, "Y100"));
-        Assert.Equal(JsonValueKind.Null, RowFor(preview, "Y100").GetProperty("description").ValueKind);
-        // Row anchors, so the dialog can group them like MX does.
-        Assert.Equal(@"\Address Space\DRYEND_PLC\Input_X", RowFor(preview, "X001").GetProperty("group").GetString());
+        Assert.Equal("new", StatusOf(preview, "DRYEND_PLC.Output_Y.Y100"));
+        Assert.Equal(JsonValueKind.Null, RowFor(preview, "DRYEND_PLC.Output_Y.Y100").GetProperty("description").ValueKind);
+        // Each row carries both the tag's name and the path-qualified id it maps as, plus the
+        // row anchor the dialog groups by.
+        Assert.Equal("X001", RowFor(preview, "DRYEND_PLC.Input_X.X001").GetProperty("name").GetString());
+        Assert.Equal(@"\Address Space\DRYEND_PLC\Input_X", RowFor(preview, "DRYEND_PLC.Input_X.X001").GetProperty("group").GetString());
+    }
+
+    [Fact]
+    public async Task Preview_ReportsTheSourceTagsTheFileLeavesOut()
+    {
+        await using TestAppHandle handle = await TestAppHandle.StartAsync(WriteMinimalAppsettings);
+
+        JsonElement preview = await PreviewAsync(handle, "default", TwoTagExport);
+
+        // The reconciliation's other half always travels: the source's own tags the file does
+        // not mention, each with its mapped state. A source check that did not run — this host is
+        // not Windows, or the DA server is not reachable — cannot invent any.
+        Assert.Equal(JsonValueKind.Array, preview.GetProperty("sourceOnly").ValueKind);
+        Assert.True(preview.TryGetProperty("sourceOnlyCount", out JsonElement sourceOnlyCount));
+        Assert.True(preview.TryGetProperty("sourceOnlyTruncated", out _));
+        Assert.True(preview.TryGetProperty("sourceTagCount", out JsonElement sourceTagCount));
+        if (!preview.GetProperty("sourceChecked").GetBoolean())
+        {
+            Assert.Equal(0, preview.GetProperty("sourceOnly").GetArrayLength());
+            Assert.Equal(0, sourceOnlyCount.GetInt32());
+            Assert.Equal(0, sourceTagCount.GetInt32());
+        }
     }
 
     [Fact]
@@ -144,7 +169,7 @@ public sealed class MappingImportPreviewApiTests
         else
         {
             Assert.False(string.IsNullOrWhiteSpace(preview.GetProperty("sourceError").GetString()));
-            Assert.Equal(JsonValueKind.Null, RowFor(preview, "X001").GetProperty("onSource").ValueKind);
+            Assert.Equal(JsonValueKind.Null, RowFor(preview, "DRYEND_PLC.Input_X.X001").GetProperty("onSource").ValueKind);
         }
     }
 
@@ -174,7 +199,7 @@ public sealed class MappingImportPreviewApiTests
 
         Assert.False(preview.GetProperty("sourceChecked").GetBoolean());
         Assert.False(string.IsNullOrWhiteSpace(preview.GetProperty("sourceError").GetString()));
-        Assert.Equal("new", StatusOf(preview, "X001"));
+        Assert.Equal("new", StatusOf(preview, "DRYEND_PLC.Input_X.X001"));
     }
 
     [Fact]

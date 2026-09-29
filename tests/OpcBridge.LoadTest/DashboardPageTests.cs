@@ -1508,8 +1508,19 @@ public sealed class DashboardPageTests
         Assert.Contains("id=\"importTagsMessage\" role=\"status\"", DashboardPage.Html);
         Assert.Contains("id=\"importTagsAddAll\"", DashboardPage.Html);
         Assert.Contains("id=\"importTagsUpdateAll\"", DashboardPage.Html);
+        // The rework adds selection-driven mapping and the source-only reconciliation view.
+        Assert.Contains("id=\"importTagsSelectAll\"", DashboardPage.Html);
+        Assert.Contains("id=\"importTagsSelection\"", DashboardPage.Html);
+        Assert.Contains("id=\"importTagsAddSelected\"", DashboardPage.Html);
         // The faceplate carries the mapping's add stamp (issue #30).
         Assert.Contains("id=\"fpAdded\"", DashboardPage.Html);
+        // Import lives beside the browse buttons in the Tag Browser toolbar, so the three ways
+        // to fill Maps — browse all, walk folders, import a list — sit together.
+        int toolbar = DashboardPage.Html.IndexOf("id=\"mapBrowseToolbar\"", StringComparison.Ordinal);
+        int browseAll = DashboardPage.Html.IndexOf("id=\"btnBrowseAllTags\"", StringComparison.Ordinal);
+        int browseFolders = DashboardPage.Html.IndexOf("id=\"btnBrowseTags\"", StringComparison.Ordinal);
+        int importFile = DashboardPage.Html.IndexOf("id=\"btnImportTags\"", StringComparison.Ordinal);
+        Assert.True(toolbar >= 0 && browseAll > toolbar && browseFolders > browseAll && importFile > browseFolders);
     }
 
     [Fact]
@@ -1523,8 +1534,21 @@ public sealed class DashboardPageTests
         Assert.Contains("function updateImportRows(", DashboardPage.Script);
         Assert.Contains("data-action=\"import-add\"", DashboardPage.Script);
         Assert.Contains("data-action=\"import-update\"", DashboardPage.Script);
-        // Rows the source does not expose stay out of Add all; a single Add is still allowed.
-        Assert.Contains("row.status === 'new' && row.onSource !== false", DashboardPage.Script);
+        // Mapping is selection-driven, and the source scan gates what may be selected: only a tag
+        // the source exposes and the bridge does not map yet carries a live tick.
+        Assert.Contains("function importRowSelectable(", DashboardPage.Script);
+        Assert.Contains("function importSelectedRows(", DashboardPage.Script);
+        Assert.Contains("data-action=\"import-pick\"", DashboardPage.Script);
+        Assert.Contains("el('importTagsAddSelected').textContent = 'Map selected (", DashboardPage.Script);
+        Assert.Contains("return row.status === 'new' && row.onSource !== false;", DashboardPage.Script);
+        // A row shows the tag's own name, and the path-qualified item id it will map as, so the
+        // operator can see all three PLCs' X000 as distinct tags (an MX export repeats names).
+        Assert.Contains("${esc(row.name || row.itemId)}", DashboardPage.Script);
+        Assert.Contains("displayName: row.name || row.itemId", DashboardPage.Script);
+        // And the reverse direction is rendered: the source's tags the file leaves out.
+        Assert.Contains("function importSourceOnlyHtml(", DashboardPage.Script);
+        Assert.Contains("On the source, not in the file", DashboardPage.Script);
+        Assert.Contains("sourceOnlyCount", DashboardPage.Script);
         // The dialog opens the shared modal class, never an inline display toggle.
         Assert.Contains("el('importTagsOverlay').classList.add('open')", DashboardPage.Script);
         Assert.DoesNotContain("el('importTagsOverlay').style.display", DashboardPage.Script);
