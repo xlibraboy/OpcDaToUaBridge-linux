@@ -125,7 +125,23 @@
                           Type="ownProcess"
                           ErrorControl="normal"
                           Account="LocalSystem"
-                          Vital="yes" />
+                          Vital="yes">
+            <!-- Restart the service after a crash. The package configured no recovery actions,
+                 so a bridge that died at 09:10 and again at 15:47 on 2026-09-29 stayed down
+                 until a person noticed and rebooted — Service Control Manager logged event 7034
+                 each time and did nothing, because it had been told to do nothing. A plant
+                 mirror that stops silently is worse than one that bounces: the five-second
+                 delay keeps a start-up crash loop from hammering, and the failure count resets
+                 after a day. Nested under ServiceInstall (not the Component) so WiX configures
+                 the service being installed; under the Component it would expect one to exist
+                 already and fail the install. util: rather than the core ServiceConfig element,
+                 which cannot carry failure actions. -->
+            <util:ServiceConfig FirstFailureActionType="restart"
+                                SecondFailureActionType="restart"
+                                ThirdFailureActionType="restart"
+                                RestartServiceDelayInSeconds="5"
+                                ResetPeriodInDays="1" />
+          </ServiceInstall>
           <ServiceControl Id="OpcBridgeServiceControl"
                           Name="OpcBridge"
                           Start="install"

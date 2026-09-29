@@ -110,7 +110,40 @@ instead of guessed. Every mapping also records **when it was added** (`addedUtc`
 faceplate's Basic tab and kept across edits — a stamp belongs to the insert, not to the last
 save). `POST /api/mappings/import/preview` serves the comparison (#30).
 
+**The bridge keeps a log that outlives the process.** The only record of what the bridge was
+doing lived in the bridge: `DashboardLogStore` is a 500-entry ring buffer in memory, and the
+console goes nowhere when the app runs as a Windows service. A service that died therefore took
+its own evidence with it — on 2026-09-29 a plant host's bridge stopped unexpectedly twice
+(Service Control Manager event 7034) and neither stop could be explained. It now writes
+`logs/bridge.log` beside its runtime state (under `OPCBRIDGE_DATA`), rolled by size at 2 MB with
+three files kept so a chatty failure mode cannot fill an industrial PC's disk, and every line is
+written and closed on the spot so the tail survives a process that vanishes mid-sentence. The
+file and the dashboard's Logs panel carry the same events — Information for the bridge's own
+categories, Warning for everything else — and a logger that cannot write is ignored rather than
+fatal.
+
+**A crash leaves a report.** An exception that escapes every managed boundary now writes
+`logs/crash-<stamp>.log` with its type, message and full stack alongside the process, port,
+session and version — exactly the fields the Windows Error Reporting record for the 2026-09-29
+stop lacked, where `e0434352` ("the CLR raised an unhandled managed exception") was all it said.
+`AppDomain.UnhandledException` and `TaskScheduler.UnobservedTaskException` are both hooked, and
+an unobserved task exception is marked observed: letting a lost background operation tear the
+bridge down would turn a hiccup into a plant-wide outage. The crash path deliberately shares no
+lock with the logging pipeline — it may be running on the thread that died holding one.
+
 ### Changed
+
+**The bridge runs on Workstation GC.** `Microsoft.NET.Sdk.Web` hands a web app Server GC, which
+allocates a heap and a dedicated collection thread per core and sizes for throughput — the wrong
+trade for a bridge that is idle most of the time (this app spends about 0.1 s of CPU per ten
+minutes). Measured on the plant host — 4 GB RAM, 4 cores, the x86 install, 2 OPC DA sources,
+259 tags — with both arms freshly restarted over the same window: private bytes 99 → 115 MB and
+still climbing on Server GC against 53.5 → 53.7 MB flat on Workstation, working set 171 MB
+against 115 MB, and **virtual address space 825 MB against 378 MB**. That last figure is the one
+that matters: the process is x86 because a 64-bit one cannot load 32-bit OPC DA COM servers, so
+it has roughly 2 GB to work in and Server GC was holding most of a gigabyte of it. CPU is
+unchanged at ~0.6 s per ten minutes. `docs/ram-measurement.md` carries the full A/B and how to
+re-run it (#27).
 
 **The OPC UA identity no longer carries the `ohmypi` vendor prefix.** The server's
 `ApplicationUri`, `ProductUri` and the tag namespace URI were built from a leftover vendor
@@ -185,6 +218,29 @@ and version handling are untouched, so an installed station picks the new publis
 its next MSI upgrade.
 
 ### Fixed
+
+**The service restarts itself after a crash.** The package configured no recovery actions, so a
+bridge that died stayed down until a person noticed — which is how one host sat without its
+mirror after stopping at 09:10 and again at 15:47 on 2026-09-29, each time logging Service
+Control Manager event 7034 and nothing more. The MSI now sets restart-on-failure for the first
+three failures, with a five-second delay so a start-up crash loop cannot hammer and a one-day
+reset of the failure count.
+
+**The historian no longer ships enabled against a Docker-only hostname.** The stock
+`appsettings.json` enabled InfluxDB pointed at `http://host.docker.internal:8086` — a name that
+resolves inside Docker Desktop and nowhere else — so every install that had never configured a
+historian of its own spent its startup trying that address, landed on Faulted, and stayed there:
+`InfluxWriteDrainAsync` drops every point while the writer is not Connected, so the panel read
+"Faulted" while the tags meant for it were silently discarded, and nothing retried because the
+automatic recovery is armed by a failed *write*, not a failed connect. Auto-connect is off by
+default now and the URL is `http://localhost:8086` — the default `InfluxOptions` already carried
+— so a station that wants a historian opts in and names a server that exists.
+
+**The memory sampler no longer under-reports growth.** `monitor-opcbridge.ps1` called anything
+under 2 MB/min "No growth trend" — but a bridge that is genuinely flat sits at ~0.1 MB/min, and
+the Server GC arm above climbed at +1.71 MB/min while being reported as flat. The bands are
+1.0 MB/min (suspect) and 0.3 MB/min (watch), and a no-growth verdict now quotes the rates it
+measured instead of asserting flatness whatever they were.
 
 **PLC group rate when none is supplied.** Creating a PLC group through `POST
 /api/plc/groups` without an `updateRateMs` landed it on the 100 ms floor, so a group made
