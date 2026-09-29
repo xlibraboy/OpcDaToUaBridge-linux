@@ -9,7 +9,7 @@ public sealed class MultiBridgeTagEntry
     /// <summary>Configured display name of the tag's source (falls back to the source id).</summary>
     public string SourceName { get; set; } = string.Empty;
 
-    /// <summary>Source type (OpcDa, OpcUa, MelsecA3n, S7200Ppi, MxComponent); empty when unknown.</summary>
+    /// <summary>Source type (OpcDa, OpcUa, MelsecA3n, S7200Ppi); empty when unknown.</summary>
     public string SourceType { get; set; } = string.Empty;
 
     public string DisplayName { get; set; } = string.Empty;

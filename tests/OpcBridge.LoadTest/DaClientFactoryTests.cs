@@ -28,8 +28,7 @@ public sealed class DaClientFactoryTests
             60000,
             5000),
         Melsec: null,
-        S7200: null,
-        MxComponent: null);
+        S7200: null);
 
     [Fact]
     public void Create_OpcUa_WithLoggerFactory_WiresLoggerIntoClient()
@@ -83,8 +82,7 @@ public sealed class DaClientFactoryTests
                 60000,
                 5000),
             Melsec: null,
-            S7200: null,
-            MxComponent: null);
+            S7200: null);
         var snapshot = new DaRuntimeSettingsSnapshot(1000, true, new[] { source }, 1);
 
         ISourceClient client = factory.Create(snapshot, source);
@@ -111,8 +109,7 @@ public sealed class DaClientFactoryTests
                 null),
             OpcUa: null,
             Melsec: null,
-            S7200: null,
-            MxComponent: null);
+            S7200: null);
         var snapshot = new DaRuntimeSettingsSnapshot(1000, true, new[] { source }, 1);
 
         ISourceClient client = factory.Create(snapshot, source);
@@ -144,7 +141,6 @@ public sealed class DaClientFactoryTests
         OpcUa: null,
         Melsec: null,
         S7200: null,
-        MxComponent: null,
         IoMode: ioMode);
 
     [Fact]

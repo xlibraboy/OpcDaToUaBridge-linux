@@ -9,7 +9,7 @@ internal static class HelpContent
 
 - Use **Connection** to configure server connections (OPC DA address, credentials, default update rate, and DA subscriptions toggle).
 - Use **Tags** to browse DA items, create DA → OPC UA mappings, and set per-tag Access Rights, Update Rate, Deadband, Description, and Simulation.
-- Use **Tags → Interlinks** to connect tags — a consumer tag receives values from a provider tag in addition to its own source (works across OPC DA, OPC UA and MX Component sources).
+- Use **Tags → Interlinks** to connect tags — a consumer tag receives values from a provider tag in addition to its own source (works across OPC DA and OPC UA sources).
 - Use **Logs** to review warnings and errors from the bridge and UA server.
 
 ---
@@ -20,7 +20,7 @@ The sidebar groups pages by job. The Tags, IoT, Historian, Ops and Help groups s
 collapsed and open on click — selecting a page in one of them (or following a link
 that lands there) opens its group for you:
 
-- **Sources** — Sources (status, + Add Source wizard), OPC DA (connection config, credentials, default rate, subscriptions, discover, backup), DA Groups (per-rate COM groups, per-group I/O mode), OPC UA (client sources) — external UA servers the bridge connects out to, UA Subs (named UA subscriptions and their publish rates), Drivers (PLC serial: Mitsubishi A3N RS-232, Siemens S7-200 PPI), MX Component (Mitsubishi A3N via MELSOFT MX Component 4 COM)
+- **Sources** — Sources (status, + Add Source wizard), OPC DA (connection config, credentials, default rate, subscriptions, discover, backup), DA Groups (per-rate COM groups, per-group I/O mode), OPC UA (client sources) — external UA servers the bridge connects out to, UA Subs (named UA subscriptions and their publish rates), Drivers (PLC serial: Mitsubishi A3N RS-232, Siemens S7-200 PPI)
 - **Tags** — Maps (OPC DA / OPC UA / Drivers sub-tabs: browse, search the tag list, map to UA, faceplate), Interlinks (tag-to-tag forwarding across sources)
 - **IoT** — MQTT (broker config), Traffic (publish/subscribe monitor)
 - **Historian** — InfluxDB (config, write status, per-tag enable via faceplate)
@@ -32,7 +32,7 @@ Use **Sources → OPC DA** to edit ProgID/host, credentials, default rate, subsc
 Use **Sources → OPC UA** to add and configure OPC UA client sources — the bridge connects **out** to external UA servers.
 Use **Sources → DA Groups** to tune COM groups per rate (add/delete groups, set I/O mode per group — applied live).
 Use **Sources → UA Subs** to assign tags to named UA subscriptions with their own publish rates.
-Use **Sources → Drivers** for PLC serial drivers (Mitsubishi A3N, Siemens S7-200) and **Sources → MX Component** for MELSOFT MX Component connections.
+Use **Sources → Drivers** for PLC serial drivers (Mitsubishi A3N, Siemens S7-200).
 Use **IoT → MQTT → Setup Wizard** and **Historian → InfluxDB → Setup Wizard** for first-time broker/historian setup.
 
 ---
@@ -99,7 +99,7 @@ Use **IoT → MQTT → Setup Wizard** and **Historian → InfluxDB → Setup Wiz
   │                                                                      │
   │  Sidebar groups pages by job:                                        │
   │  Sources ──► Sources, OPC DA, DA Groups, OPC UA,                     │
-  │             UA Subs, Drivers, MX Component                           │
+  │             UA Subs, Drivers                                         │
   │  Tags ──► Maps, Interlinks                                           │
   │  IoT ──► MQTT, Traffic                                               │
   │  Historian ──► InfluxDB                                              │
@@ -195,13 +195,13 @@ Set via the faceplate → **Simulation** tab. Independent of Access Rights:
 
 # Interlinks
 
-Interlinks are a **separate subsystem** from DA → UA mappings. A provider change on one source (OPC DA, OPC UA or MX Component) can write directly to a consumer tag on another source through the bridge's shared runtime — sources communicate with each other without changing the mapping payload for that consumer.
+Interlinks are a **separate subsystem** from DA → UA mappings. A provider change on one source (OPC DA or OPC UA) can write directly to a consumer tag on another source through the bridge's shared runtime — sources communicate with each other without changing the mapping payload for that consumer.
 
 ## How it works
 
 - The **provider** tag is read from its source normally and must have Access Rights that include **Read**.
 - The **consumer** tag keeps its own mapping and must have Access Rights that include **Write** or **Read-Write** so the bridge can forward provider changes into its server.
-- Interlinks share the bridge runtime with mappings, so cross-source forwarding works even when the provider and consumer live on different servers or use different protocols (OPC DA ↔ OPC UA ↔ MX Component).
+- Interlinks share the bridge runtime with mappings, so cross-source forwarding works even when the provider and consumer live on different servers or use different protocols (OPC DA ↔ OPC UA).
 - Both endpoints must already exist as enabled tags in **Maps** — the poller reads mapped tags and consumers are looked up in the mapping registry, so a link between unmapped tags could never carry values. The dashboard picks tags straight from Maps, and the API rejects links to unmapped tags.
 - Runtime forwarding is driven by stored `InterlinkRule` entries. Legacy `providerSourceId` / `providerItemId` fields exist only for migration from older mapping files.
 
@@ -216,7 +216,7 @@ Interlinks are a **separate subsystem** from DA → UA mappings. A provider chan
 ## Rules
 
 - Provider and consumer must be on **different sources** — a source can never link to itself.
-- Cross-source, cross-protocol links are supported (OPC DA / OPC UA / MX Component in any combination).
+- Cross-source, cross-protocol links are supported (OPC DA / OPC UA in any combination).
 - Provider and consumer must use the same data type.
 - v1 allows only **one provider per consumer**.
 - Clearing an interlink stops forwarding immediately and leaves the DA → UA mapping unchanged.
@@ -231,7 +231,7 @@ Interlinks are a **separate subsystem** from DA → UA mappings. A provider chan
       ▼                                    ▼
   BridgeWorker poll/subscription      BridgeWorker mapping/runtime state
       │                                    │
-      └── InterlinkRule match ────────────► WriteQueue(B) ──► protocol write (DA async/sync, UA Write, MX protocol write)
+      └── InterlinkRule match ────────────► WriteQueue(B) ──► protocol write (DA async/sync, UA Write)
 ```
 
 ---
@@ -471,78 +471,6 @@ This is separate from **OPC DA** sources and from this process’s **OPC UA serv
 
 ---
 
-# PLC Drivers (Mitsubishi A3N — MX Component 4)
-
-The bridge can poll a Mitsubishi **A3NCPU** through **MELSOFT MX Component 4** (Windows COM,
-`ActUtlType`). MX Component is a local COM driver that owns the physical link to the PLC —
-this option is for hosts that already run MX Component.
-
-1. **On the Windows host**, install MELSOFT MX Component 4 and configure the PLC connection
-   once in its **Communication Settings Utility**, which assigns a **logical station number**
-   (0–1023).
-2. In the bridge, open **Sources → MX Component** (its own section, separate from the
-   serial Drivers page) and add a connection.
-3. Enter the **logical station number** configured in step 1.
-4. Map tags with the same A3N device addresses as the serial driver: `D100`, `M10`, `X20`, `Y0F`, bit-in-word `D100:8`.
-5. Writes on writeable tags go back to the PLC. Bit-in-word uses read-modify-write.
-
-**Setting up the logical station (A3N):** in the Communication Settings Utility, create a new
-logical station, then: **PC side I/F** = RS-232C/RS-422 serial (or Ethernet); **PLC side I/F** =
-built-in CPU port (or an A-series module); **PLC series** = **A series**; **CPU type** = **A3N**
-(AnN/AnU family); **frame** = **1C frame** (A-compatible); then serial port, baud 9600, 8 data
-bits, odd parity, 1 stop bit and the PLC station number. If a given MX Component build does not
-offer "A series" in the wizard, **select an FX-series CPU type instead** — the serial MC framing
-is shared, and it usually still talks to the A3N (verify a couple of addresses first).
-
-**GX Simulator (no hardware):** pick **GX Simulator** as the connection target for a logical
-station in the Communication Settings Utility (set the CPU type you are simulating). The bridge
-connects to it unchanged — ideal for end-to-end testing of the MX Component path before
-connecting a real PLC.
-
-**GX Simulator requires the interactive Windows session.** GX Simulator communication runs over a
-**session-bound shared memory** server (`PROTOCOL_SHAREDMEMORY` — MX Component 4 Programming
-Manual, §4.11 “GX Simulator2 Communication”). The bridge can only reach the simulator when both
-run in the **same logged-in desktop session**. In practice this means:
-
-- The Windows scheduled task that runs the bridge must use **Interactive** logon — register it
-  with `-LogonType Interactive` (see `register-published-task.ps1`). The default **S4U** mode runs
-  the task headless in session 0, where GX Simulator's shared memory is invisible, and the MX
-  source cannot connect (it shows the MX Open error and stays in Reconnecting).
-- The bridge **detects this at startup**: when it is launched into a non-interactive session
-  (session 0) on Windows it logs a warning and shows an amber banner on the dashboard — "this
-  bridge runs in a non-interactive Windows session… session-bound OPC DA servers will not
-  deliver values". The banner is informational: the bridge cannot move itself between sessions,
-  so treat it as the signal to change the deployment — register the scheduled task with
-  `-LogonType Interactive` (a console login, or the published-task deployment) instead of running
-  the service — or to switch to a real PLC.
-- Mitsubishi documents the same constraint for its own OPC server: the MX OPC Server manual
-  states that to use GX Simulator the server *"should NOT BE INSTALLED AS A SERVICE"*.
-- A **console login is required** — after a log-off or reboot the task waits for that user
-  (the account registered in the task, e.g. `DESKTOP-NAME\user`) to log in, then starts
-  automatically.
-- A **locked screen is fine** — the session stays active and the bridge keeps polling.
-- **Connection drops auto-recover** — the bridge re-creates the ActUtlType session and reconnects
-  with backoff; transient MX/COM errors need no login and no manual restart.
-- For **fully headless** operation, use a **real PLC** over serial or Ethernet instead of
-  GX Simulator — Windows sessions are irrelevant for physical links.
-
-**Platform note:** MX Component is a Windows-only COM component — this connection works only on
-Windows hosts. On Linux it shows a clear "requires Windows" error, matching the OPC DA sources.
-The serial A3N driver on the Drivers page works on any platform.
-
-## PLC Groups (MX Component)
-
-Named polling groups give an MX Component source multiple update rates:
-
-- **Manage:** Sources → PLC Groups — pick a source, add/edit/delete groups (name + rate, min 100 ms, up to 16 per source).
-- **Assign:** tag faceplate → PLC Group dropdown. A grouped tag polls at its GROUP's rate ("group rate wins"); removing a tag from a group clears any per-tag numeric rate.
-- **Delete:** deleting a group moves its tags back to the source default rate automatically.
-- **How it works:** MX Component reads are synchronous (ActUtlType COM calls; MELSOFT Programming Manual sh081085 — `EntryDeviceStatus` is alarm monitoring only, ≤20 points, 1–3600 s), so each group is a bridge-side poll loop over the shared logical-station session. All buckets of a source share one link; a slow bucket waits at most one fast batch behind it.
-
-Config keys: `sources.json` → source `PlcGroups`; `mappings.json` → tag `plcGroup` (`""` = default bucket). API: `POST /api/plc/groups`, `POST /api/plc/groups/remove`, `GET /api/plc/groups`.
-
----
-
 # PLC Drivers (Siemens S7-200 PPI)
 
 The bridge can poll a Siemens **S7-200** over a host **PPI** serial cable (pure managed client).
@@ -769,8 +697,8 @@ This creates a Windows Scheduled Task named **OpcBridge** that:
 - Redirects stdout/stderr to `publish\bridge-task-stdout.log` and `bridge-task-stderr.log`
 - The script starts the task immediately and probes health for 20 seconds
 
-**MX Component + GX Simulator:** register the task with **Interactive** logon instead of the
-S4U default: `powershell -ExecutionPolicy Bypass -File scripts\windows\register-published-task.ps1 -LogonType Interactive`. GX Simulator's shared memory is session-bound, so the bridge must run in the logged-in desktop session; S4U (session 0) breaks MX connections to GX Simulator. Trade-off: with Interactive logon the task only runs while that user is logged into the console (it starts automatically at their next logon).
+**GX Simulator via OPC DA:** register the task with **Interactive** logon instead of the
+S4U default: `powershell -ExecutionPolicy Bypass -File scripts\windows\register-published-task.ps1 -LogonType Interactive`. A GX Simulator-backed OPC DA server's shared memory is session-bound, so the bridge must run in the logged-in desktop session; S4U (session 0) breaks connections to GX Simulator. Trade-off: with Interactive logon the task only runs while that user is logged into the console (it starts automatically at their next logon).
 
 ### Step 4 — Verify
 
@@ -848,14 +776,13 @@ The bridge can be deployed in either mode; the table below decides which one you
 |---|---|---|
 | Real PLC via Ethernet/serial (direct or via an OPC DA server) | ✅ | ✅ |
 | OPC DA server installed as a Windows Service | ✅ | ✅ |
-| GX Simulator via MxComponent (`ActUtlType`) | ❌ `0x0180800E` | ✅ |
 | GX Simulator via MXOPC (OPC DA) | ⚠️ connects, one dead snapshot, then a watchdog reconnect loop | ✅ |
 
 ### Symptom decoder
 
-- **`0x80040154 Class not registered`** (MxComponent/ActUtlType) — bitness mismatch: Mitsubishi registers
-  ActUtlType **32-bit-only** (`WOW6432Node`), so a 64-bit bridge process cannot see it. Run the bridge **x86**
-  (the install steps above already use the x86 runtime).
+- **`0x80040154 Class not registered`** (32-bit COM server from a 64-bit bridge) — bitness mismatch: the
+  server is registered **32-bit-only** (`WOW6432Node`), so a 64-bit bridge process cannot see it. Run the
+  bridge **x86** (the install steps above already use the x86 runtime).
 - **`0x0180800E Shared memory open error`** — either GX Simulator is not started, or the bridge runs in a
   different session than the simulator (typical: service-style bridge in session 0, GX Simulator in the desktop).
   Move the bridge into the interactive desktop session.
@@ -879,7 +806,7 @@ Deployment modes:
   SYSTEM/S4U. Starts at boot without login. Use when every source targets real PLC hardware over Ethernet/serial
   or servers installed as services.
 - **Interactive desktop (session 1)** — scheduled task with `-LogonType Interactive`; runs while that user is
-  logged into the console. Required for GX Simulator sources (via MxComponent or MXOPC).
+  logged into the console. Required for GX Simulator sources (via an OPC DA server such as MX OPC).
 
 The mode is decided when the bridge is installed or its task is registered, so switching means
 re-registering the task (or installing the published-task deployment instead of the service) and
@@ -1079,7 +1006,7 @@ Always preserve `pki/` across updates. It's listed in the update guide as "never
 
 - **Da:ProgId** — OPC DA server ProgID (e.g. `Matrikon.OPC.Simulation.1`)
 - **Da:Host** — DA server host (localhost or remote IP)
-- **Da:UpdateRateMs** — fixed at 1000 ms (1 s); not changeable. Use Sources → PLC Groups (named groups per rate) or a per-tag Update Rate for other cadences.
+- **Da:UpdateRateMs** — fixed at 1000 ms (1 s); not changeable. Use a per-tag Update Rate for other cadences.
 - **Da:UseSubscriptions** — use `IOPCDataCallback` subscriptions (default `true`); can be toggled live in Sources → OPC DA → DA Subscriptions
 - **Ua:EndpointUrl** — OPC UA server endpoint (default `opc.tcp://0.0.0.0:4840/OpcBridge`)
 - **Ua:AutoAcceptUntrustedCertificates** — accept untrusted UA client certs (dev/test)

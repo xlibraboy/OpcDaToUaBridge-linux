@@ -4,7 +4,7 @@ namespace OpcBridge.Hmi.Core;
 
 /// <summary>
 /// Short operator-facing label for a bridge source type, matching the dashboard's source
-/// type badges (DA / UA / A3N / S7-200 / MX).
+/// type badges (DA / UA / A3N / S7-200).
 /// </summary>
 public static class SourceTypeLabels
 {
@@ -37,11 +37,6 @@ public static class SourceTypeLabels
         if (string.Equals(type, SourceTypes.S7200Ppi, StringComparison.OrdinalIgnoreCase))
         {
             return "S7-200";
-        }
-
-        if (string.Equals(type, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
-        {
-            return "MX";
         }
 
         return type;

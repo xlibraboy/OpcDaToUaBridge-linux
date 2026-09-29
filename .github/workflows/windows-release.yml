@@ -4,7 +4,7 @@ name: Windows release
 #
 # The installer is built here, on Windows, because WiX cannot link an MSI on Linux (it
 # reports WIX0000 and fails to validate Directory/@Name). It carries the x86 server (a
-# 32-bit process is required to activate 32-bit local OPC DA / MX Component COM servers),
+# 32-bit process is required to activate 32-bit local OPC DA COM servers),
 # plus the x64 HMI runtime and Designer, which only speak HTTP to the bridge.
 #
 # The workflow produces the MSI alone, and the MSI is x86 only: a host whose OPC DA

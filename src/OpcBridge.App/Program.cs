@@ -16,7 +16,6 @@ using OpcBridge.Core;
 using OpcBridge.Da;
 using OpcBridge.Drivers.Melsec;
 using OpcBridge.Drivers.Melsec.Addressing;
-using OpcBridge.Drivers.MxComponent;
 using OpcBridge.Drivers.S7;
 using OpcBridge.Drivers.S7.Addressing;
 using OpcBridge.Mqtt;
@@ -680,8 +679,7 @@ app.MapPost("/api/firewall/apply", async (FirewallApplyRequest request, Cancella
      Dictionary<string, IReadOnlyList<UaSubscriptionSettings>> uaSubscriptionsBySource = daSnapshot.Sources
          .Where(source => source.UaSubscriptions.Count > 0)
          .ToDictionary(source => source.SourceId, source => source.UaSubscriptions, StringComparer.OrdinalIgnoreCase);
-     Dictionary<string, int> updateRateByKey = DashboardValues.BuildUpdateRateLookup(mappings, sourceRates, uaSubscriptionsBySource,
-         sourceId => daSnapshot.GetSource(sourceId)?.PlcGroupsList ?? Array.Empty<PlcGroupSettings>());
+     Dictionary<string, int> updateRateByKey = DashboardValues.BuildUpdateRateLookup(mappings, sourceRates, uaSubscriptionsBySource);
 
      // Per-interlink runtime health: derive each saved rule's status from its
      // endpoints' live state (provider value quality, consumer source connection)
@@ -869,14 +867,14 @@ app.MapGet("/api/da/sources", (DaRuntimeSettings settings) =>
     {
         updateRateMs = snapshot.UpdateRateMs,
         useSubscriptions = snapshot.UseSubscriptions,
-        sources = snapshot.Sources.Select(source => ToSourceApiDto(source, settings.IsPaused(source.SourceId)))
+        sources = snapshot.Sources.Select(ToSourceApiDto)
     });
 });
 app.MapPost("/api/da/update-rate", (DaUpdateRateRequest request, DaRuntimeSettings settings) =>
 {
     if (request.UpdateRateMs != DaRuntimeSettings.FixedUpdateRateMs)
     {
-        return Results.BadRequest(new { error = "Default update rate is fixed at 1000 ms; use PLC Groups or per-tag rates for other cadences." });
+        return Results.BadRequest(new { error = "Default update rate is fixed at 1000 ms; use per-tag rates for other cadences." });
     }
 
     DaRuntimeSettingsSnapshot snapshot = settings.SetUpdateRate(request.UpdateRateMs);
@@ -904,7 +902,7 @@ app.MapPost("/api/da/sources/update-rate", (DaSourceUpdateRateRequest request, D
 
     if (request.UpdateRateMs != DaRuntimeSettings.FixedUpdateRateMs)
     {
-        return Results.BadRequest(new { error = "Default update rate is fixed at 1000 ms; use PLC Groups or per-tag rates for other cadences." });
+        return Results.BadRequest(new { error = "Default update rate is fixed at 1000 ms; use per-tag rates for other cadences." });
     }
 
     DaRuntimeSettingsSnapshot snapshot = settings.SetSourceUpdateRate(request.SourceId, request.UpdateRateMs);
@@ -951,27 +949,6 @@ app.MapPost("/api/da/sources/io-mode", (DaSourceIoModeRequest request, DaRuntime
         version = snapshot.Version,
         sourceId = source.SourceId,
         ioMode = source.IoMode
-    });
-});
-app.MapPost("/api/da/sources/pause", (DaSourcePauseRequest request, DaRuntimeSettings settings) =>
-{
-    if (string.IsNullOrWhiteSpace(request.SourceId))
-    {
-        return Results.BadRequest(new { error = "Source ID is required." });
-    }
-
-    DaSourceRuntimeSettings? source = settings.GetSnapshot().GetSource(request.SourceId);
-    if (source is null)
-    {
-        return Results.BadRequest(new { error = "Source not found." });
-    }
-
-    DaRuntimeSettingsSnapshot snapshot = settings.SetPaused(source.SourceId, request.Paused);
-    return Results.Json(new
-    {
-        version = snapshot.Version,
-        sourceId = source.SourceId,
-        paused = settings.IsPaused(source.SourceId)
     });
 });
 app.MapGet("/api/da/sources/groups", (string? sourceId, DaRuntimeSettings settings, MappingStore mappingStore) =>
@@ -1205,7 +1182,6 @@ app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings
     OpcUaSourceOptions? upsertUa = null;
     MelsecA3nSourceOptions? upsertMelsec = null;
     S7200PpiSourceOptions? upsertS7200 = null;
-    MxComponentSourceOptions? upsertMx = null;
     if (string.Equals(upsertType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
     {
         upsertUa = new OpcUaSourceOptions(
@@ -1246,13 +1222,6 @@ app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings
             request.TimeoutMs,
             request.RetryCount);
     }
-    else if (string.Equals(upsertType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
-    {
-        upsertMx = new MxComponentSourceOptions(
-            request.LogicalStationNumber,
-            request.TimeoutMs,
-            request.RetryCount);
-    }
     else
     {
         upsertDa = new OpcDaSourceOptions(
@@ -1275,11 +1244,7 @@ app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings
         upsertUa,
         upsertMelsec,
         upsertS7200,
-        upsertMx,
-        SourceConfigMigration.NormalizeIoMode(request.IoMode),
-        // The /api/da/sources payload carries no plcGroups field today, so this is
-        // always the carry-over branch (see ResolvePlcGroups below).
-        PlcGroups: ResolvePlcGroups(null, settings, request.SourceId)));
+        SourceConfigMigration.NormalizeIoMode(request.IoMode)));
 
     DaSourceRuntimeSettings source = snapshot.GetSource(request.SourceId)!;
 
@@ -1300,32 +1265,10 @@ app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings
         return existing?.OpcDa?.GroupIoModes;
     }
 
-    // Preserves existing PLC group definitions when the request omits them (same
-    // shape as ResolveGroupIoModes above): an incoming definition list would win
-    // after normalization, otherwise the stored source's definitions are carried
-    // over so source edits (name/timeout/retry) cannot silently wipe group CRUD
-    // state. Normalize() keeps carried-over groups for MxComponent sources only,
-    // so non-MX upserts are unaffected. The request DTO has no plcGroups field
-    // yet, making omit-that-field-means-preserve the whole contract; when a
-    // plcGroups (or UA subscriptions) request field lands, thread it through the
-    // same incoming branch instead of null.
-    static IReadOnlyList<PlcGroupSettings>? ResolvePlcGroups(
-        IReadOnlyList<PlcGroupSettings>? incoming,
-        DaRuntimeSettings settings,
-        string sourceId)
-    {
-        if (incoming is { Count: > 0 })
-        {
-            return SourceConfigMigration.NormalizePlcGroups(incoming);
-        }
-
-        DaSourceRuntimeSettings? existing = settings.GetSnapshot().GetSource(sourceId);
-        return existing?.PlcGroupsList;
-    }
     return Results.Json(new
     {
         version = snapshot.Version,
-        source = ToSourceApiDto(source, settings.IsPaused(source.SourceId))
+        source = ToSourceApiDto(source)
     });
 });
 app.MapPost("/api/da/sources/remove", (DaSourceRemoveRequest request, DaRuntimeSettings settings, MappingStore store, InterlinkStore interlinkStore) =>
@@ -1376,34 +1319,14 @@ app.MapPost("/api/drivers/melsec-a3n/test-connection", async (MelsecTestConnecti
     }
 });
 
-app.MapPost("/api/drivers/mx-component/test-connection", async (MxComponentTestConnectionRequest request, DaRuntimeSettings settings) =>
-{
-    MxComponentClientOptions? options = ResolveMxComponentTestOptions(request, settings);
-    if (options is null)
-    {
-        return Results.Json(new { ok = false, error = "LogicalStationNumber is required, or an existing MxComponent sourceId must be provided." });
-    }
-
-    try
-    {
-        await using MxComponentClient client = new(options);
-        await client.ConnectAsync(CancellationToken.None);
-        return Results.Json(new { ok = true });
-    }
-    catch (Exception ex)
-    {
-        return Results.Json(new { ok = false, error = ex.Message });
-    }
-});
-
-// Accepted PLC device addresses for MELSEC sources. MX Component shares the serial
-// driver's addressing; the table is generated from the same catalog the parser
-// enforces, so what this endpoint reports is exactly what tag upserts accept.
-app.MapGet("/api/drivers/mx-component/address-ranges", () =>
+// Accepted PLC device addresses for the MELSEC serial driver. The table is generated
+// from the same catalog the parser enforces, so what this endpoint reports is exactly
+// what tag upserts accept.
+app.MapGet("/api/drivers/melsec-a3n/address-ranges", () =>
 {
     return Results.Json(new
     {
-        sourceType = SourceTypes.MxComponent,
+        sourceType = SourceTypes.MelsecA3n,
         devices = MelsecDeviceCatalog.Devices.Select(range => new
         {
             device = range.Device,
@@ -1675,10 +1598,9 @@ app.MapPost("/api/mappings/update", (MappingUpdateRequest request, MappingStore 
     TagMapping tag = ToTagMapping(request.Tag);
 
     DaSourceRuntimeSettings? source = daSettings.GetSnapshot().GetSource(tag.SourceId);
-    if (source is not null && (string.Equals(source.SourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase)
-        || string.Equals(source.SourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase)))
+    if (source is not null && string.Equals(source.SourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase))
     {
-        if (!MelsecAddressParser.TryParse(tag.ItemId, XyRadixFor(source), out MelsecAddress address, out string addrError))
+        if (!MelsecAddressParser.TryParse(tag.ItemId, out MelsecAddress address, out string addrError))
         {
             return Results.BadRequest(new { error = $"Invalid Melsec address '{tag.ItemId}': {addrError}" });
         }
@@ -1715,13 +1637,13 @@ app.MapGet("/api/config/export", (DaRuntimeSettings daSettings, MappingStore map
         {
             updateRateMs = daSnapshot.UpdateRateMs,
             useSubscriptions = daSnapshot.UseSubscriptions,
-            sources = daSnapshot.Sources.Select(source => ToSourceApiDto(source, daSettings.IsPaused(source.SourceId)))
+            sources = daSnapshot.Sources.Select(ToSourceApiDto)
         },
         mappings = mappings
     });
 });
 
-app.MapPost("/api/config/import", async (HttpContext context, DaRuntimeSettings daSettings, MappingStore mappingStore) =>
+app.MapPost("/api/config/import", async (HttpContext context, DaRuntimeSettings daSettings, MappingStore mappingStore, ILogger<Program> logger) =>
 {
     try
     {
@@ -1739,6 +1661,16 @@ app.MapPost("/api/config/import", async (HttpContext context, DaRuntimeSettings 
             {
                 foreach (JsonElement s in sourcesEl.EnumerateArray())
                 {
+                    string rawSourceType = s.TryGetProperty("sourceType", out JsonElement rawTypeEl) ? rawTypeEl.GetString() ?? string.Empty : string.Empty;
+                    if (SourceConfigMigration.IsRetiredSourceType(rawSourceType))
+                    {
+                        logger.LogWarning(
+                            "Imported source '{SourceId}' uses the removed '{SourceType}' source type and was skipped.",
+                            s.TryGetProperty("sourceId", out JsonElement skippedId) ? skippedId.GetString() : null,
+                            rawSourceType);
+                        continue;
+                    }
+
                     sources.Add(SourceConfigMigration.FromDto(new SourceConfigDto
                     {
                         SourceId = s.TryGetProperty("sourceId", out JsonElement sid) ? sid.GetString() : "default",
@@ -1759,7 +1691,6 @@ app.MapPost("/api/config/import", async (HttpContext context, DaRuntimeSettings 
                         PcNo = s.TryGetProperty("pcNo", out JsonElement pn) ? pn.GetString() : string.Empty,
                         TimeoutMs = s.TryGetProperty("timeoutMs", out JsonElement to) ? to.GetInt32() : 0,
                         RetryCount = s.TryGetProperty("retryCount", out JsonElement rc) ? rc.GetInt32() : -1,
-                        LogicalStationNumber = s.TryGetProperty("logicalStationNumber", out JsonElement lsn) ? lsn.GetInt32() : 0,
                         EndpointUrl = s.TryGetProperty("endpointUrl", out JsonElement eu) ? eu.GetString() : string.Empty,
                         SecurityMode = s.TryGetProperty("securityMode", out JsonElement sm) ? sm.GetString() : string.Empty,
                         SecurityPolicy = s.TryGetProperty("securityPolicy", out JsonElement sp) ? sp.GetString() : string.Empty,
@@ -1806,14 +1737,6 @@ app.MapPost("/api/config/import", async (HttpContext context, DaRuntimeSettings 
                                 PcNo = melEl.TryGetProperty("pcNo", out JsonElement mpc) ? mpc.GetString() : null,
                                 TimeoutMs = melEl.TryGetProperty("timeoutMs", out JsonElement mto) ? mto.GetInt32() : 0,
                                 RetryCount = melEl.TryGetProperty("retryCount", out JsonElement mrc) ? mrc.GetInt32() : -1
-                            }
-                            : null,
-                        MxComponent = s.TryGetProperty("mxComponent", out JsonElement mxEl) && mxEl.ValueKind == JsonValueKind.Object
-                            ? new MxComponentSourceOptionsDto
-                            {
-                                LogicalStationNumber = mxEl.TryGetProperty("logicalStationNumber", out JsonElement xlsn) ? xlsn.GetInt32() : 0,
-                                TimeoutMs = mxEl.TryGetProperty("timeoutMs", out JsonElement xto) ? xto.GetInt32() : 0,
-                                RetryCount = mxEl.TryGetProperty("retryCount", out JsonElement xrc) ? xrc.GetInt32() : -1
                             }
                             : null
                     }, updateRate));
@@ -2241,95 +2164,6 @@ app.MapPost("/api/ua/subscriptions/remove", (UaSubscriptionRemoveRequest request
     }
 });
 
-app.MapPost("/api/plc/groups", (PlcGroupUpsertRequest request, DaRuntimeSettings settings) =>
-{
-    if (string.IsNullOrWhiteSpace(request.SourceId))
-    {
-        return Results.BadRequest(new { error = "sourceId is required." });
-    }
-
-    try
-    {
-        DaRuntimeSettingsSnapshot snapshot = settings.UpsertPlcGroup(request.SourceId, request.Name, request.UpdateRateMs);
-        return Results.Ok(new { ok = true, version = snapshot.Version });
-    }
-    catch (ArgumentException ex)
-    {
-        return Results.BadRequest(new { error = ex.Message });
-    }
-});
-
-app.MapPost("/api/plc/groups/remove", (PlcGroupRemoveRequest request, DaRuntimeSettings settings, MappingStore store) =>
-{
-    try
-    {
-        DaRuntimeSettingsSnapshot snapshot = settings.RemovePlcGroup(request.SourceId, request.Name);
-        int movedMappings = store.ReassignPlcGroup(request.SourceId, request.Name);
-        return Results.Ok(new { ok = true, version = snapshot.Version, movedMappings });
-    }
-    catch (ArgumentException ex)
-    {
-        return Results.BadRequest(new { error = ex.Message });
-    }
-});
-
-app.MapGet("/api/plc/groups", (DaRuntimeSettings settings, MappingStore store, string? sourceId) =>
-{
-    DaRuntimeSettingsSnapshot snapshot = settings.GetSnapshot();
-    (IReadOnlyList<TagMapping> mappings, _) = store.GetSnapshot();
-
-    var sources = snapshot.Sources
-        .Where(s => string.Equals(s.SourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
-        .Where(s => string.IsNullOrWhiteSpace(sourceId)
-            || string.Equals(s.SourceId, sourceId, StringComparison.OrdinalIgnoreCase))
-        .Select(s =>
-        {
-            List<TagMapping> sourceMappings = mappings
-                .Where(m => string.Equals(m.SourceId, s.SourceId, StringComparison.OrdinalIgnoreCase))
-                .ToList();
-
-            // Effective distinct rates per spec §6: group rate wins, else per-tag, else bridge default.
-            HashSet<int> effectiveRates = new();
-            foreach (TagMapping m in sourceMappings)
-            {
-                string requested = (m.PlcGroup ?? string.Empty).Trim();
-                int rate = m.PollRateMs;
-                if (requested.Length > 0)
-                {
-                    PlcGroupSettings? def = s.PlcGroupsList.FirstOrDefault(g =>
-                        string.Equals(g.Name.Trim(), requested, StringComparison.OrdinalIgnoreCase));
-                    if (def is not null)
-                    {
-                        rate = Math.Max(100, def.UpdateRateMs);
-                    }
-                }
-
-                effectiveRates.Add(rate > 0 ? rate : snapshot.UpdateRateMs);
-            }
-
-            return new
-            {
-                sourceId = s.SourceId,
-                displayName = s.DisplayName,
-                defaultUpdateRateMs = snapshot.UpdateRateMs,
-                effectiveRates = effectiveRates.Order().ToArray(),
-                groups = s.PlcGroupsList
-                    .OrderBy(g => g.Name, StringComparer.OrdinalIgnoreCase)
-                    .Select(g => new
-                    {
-                        name = g.Name,
-                        updateRateMs = g.UpdateRateMs,
-                        memberCount = sourceMappings.Count(m =>
-                            string.Equals((m.PlcGroup ?? string.Empty).Trim(), g.Name, StringComparison.OrdinalIgnoreCase))
-                    })
-                    .ToArray()
-            };
-        })
-        .ToArray();
-
-    return Results.Json(new { sources });
-});
-
 app.MapGet("/api/mqtt/config", (MqttRuntimeSettings settings) =>
 {
     MqttRuntimeSnapshot snapshot = settings.GetSnapshot();
@@ -2691,11 +2525,10 @@ static string NormalizeInterlinkSourceId(string? sourceId)
     return value.Length == 0 ? DaRuntimeSettings.DefaultSourceId : value;
 }
 
-static object ToSourceApiDto(DaSourceRuntimeSettings source, bool paused = false)
+static object ToSourceApiDto(DaSourceRuntimeSettings source)
 {
     return new
     {
-        paused,
         sourceId = source.SourceId,
         displayName = source.DisplayName,
         sourceType = source.SourceType,
@@ -2724,8 +2557,7 @@ static object ToSourceApiDto(DaSourceRuntimeSettings source, bool paused = false
         ioMode = source.IoMode,
         remoteUsername = source.RemoteUsername,
         remoteDomain = source.RemoteDomain,
-        uaUsername = source.UaUsername,
-        logicalStationNumber = source.LogicalStationNumber
+        uaUsername = source.UaUsername
     };
 }
 
@@ -2793,17 +2625,6 @@ static bool TryValidateSourceUpsert(DaServerConfigRequest request, string server
         return true;
     }
 
-    if (string.Equals(sourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
-    {
-        if (request.LogicalStationNumber is < 0 or > 1023)
-        {
-            error = "LogicalStationNumber must be between 0 and 1023 (configure the station in MX Component's Communication Settings Utility).";
-            return false;
-        }
-
-        return true;
-    }
-
     if (string.IsNullOrWhiteSpace(request.ProgId))
     {
         error = "ProgId is required for OPC DA sources.";
@@ -2842,12 +2663,7 @@ static string ResolveApiSourceType(string? sourceType, out string? error)
         return SourceTypes.S7200Ppi;
     }
 
-    if (string.Equals(trimmed, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
-    {
-        return SourceTypes.MxComponent;
-    }
-
-    error = "Source type must be OpcDa, OpcUa, MelsecA3n, S7200Ppi, or MxComponent.";
+    error = "Source type must be OpcDa, OpcUa, MelsecA3n, or S7200Ppi.";
     return string.Empty;
 }
 
@@ -3257,40 +3073,6 @@ static MelsecA3nClientOptions? ResolveMelsecTestOptions(MelsecTestConnectionRequ
     return null;
 }
 
-static MxComponentClientOptions? ResolveMxComponentTestOptions(MxComponentTestConnectionRequest request, DaRuntimeSettings settings)
-{
-    // Prefer explicit body fields (Drivers form always sends them) so unsaved edits are tested.
-    if (request.LogicalStationNumber is not null)
-    {
-        return new MxComponentClientOptions
-        {
-            SourceId = string.IsNullOrWhiteSpace(request.SourceId) ? "test-connection" : request.SourceId.Trim(),
-            LogicalStationNumber = request.LogicalStationNumber.Value,
-            TimeoutMs = request.TimeoutMs is > 0 ? request.TimeoutMs.Value : 3000,
-            RetryCount = request.RetryCount is >= 0 ? request.RetryCount.Value : 0
-        };
-    }
-
-    if (!string.IsNullOrWhiteSpace(request.SourceId))
-    {
-        DaSourceRuntimeSettings? source = settings.GetSnapshot().GetSource(request.SourceId);
-        if (source is null || !string.Equals(source.SourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
-        {
-            return null;
-        }
-
-        return new MxComponentClientOptions
-        {
-            SourceId = source.SourceId,
-            LogicalStationNumber = source.LogicalStationNumber,
-            TimeoutMs = source.MxComponentTimeoutMs,
-            RetryCount = source.MxComponentRetryCount
-        };
-    }
-
-    return null;
-}
-
 static TagMapping ToTagMapping(MappingTagDto tag) => new()
 {
     SourceId = tag.SourceId,
@@ -3317,7 +3099,6 @@ static TagMapping ToTagMapping(MappingTagDto tag) => new()
     OnText = string.IsNullOrWhiteSpace(tag.OnText) ? null : tag.OnText.Trim(),
     OffText = string.IsNullOrWhiteSpace(tag.OffText) ? null : tag.OffText.Trim(),
     Subscription = tag.Subscription ?? string.Empty,
-    PlcGroup = tag.PlcGroup ?? string.Empty,
     TrendStyle = TrendStyleTypes.Normalize(tag.TrendStyle)
 };
 
@@ -3326,17 +3107,17 @@ static bool ValidateMelsecMappings(List<TagMapping> tags, DaRuntimeSettings daSe
     error = string.Empty;
     DaRuntimeSettingsSnapshot snapshot = daSettings.GetSnapshot();
 
-    // Validate + canonicalize ItemId for every MelsecA3n / MxComponent-bound tag (same A3N address space).
+    // Validate + canonicalize ItemId for every MelsecA3n-bound tag.
     for (int i = 0; i < tags.Count; i++)
     {
         TagMapping tag = tags[i];
         DaSourceRuntimeSettings? source = snapshot.GetSource(tag.SourceId);
-        if (source is null || !IsMelsecAddressSource(source))
+        if (source is null || !string.Equals(source.SourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase))
         {
             continue;
         }
 
-        if (!MelsecAddressParser.TryParse(tag.ItemId, XyRadixFor(source), out MelsecAddress address, out string addrError))
+        if (!MelsecAddressParser.TryParse(tag.ItemId, out MelsecAddress address, out string addrError))
         {
             error = $"Invalid Melsec address '{tag.ItemId}': {addrError}";
             return true;
@@ -3346,13 +3127,13 @@ static bool ValidateMelsecMappings(List<TagMapping> tags, DaRuntimeSettings daSe
         tags[i] = tag;
     }
 
-    // Enforce MaxMappedTags per MelsecA3n / MxComponent source (existing + new, de-duplicated by key).
+    // Enforce MaxMappedTags per MelsecA3n source (existing + new, de-duplicated by key).
     Dictionary<string, int> newPerSource = new(StringComparer.OrdinalIgnoreCase);
     HashSet<(string SourceId, string ItemId)> newKeys = new(StringTupleComparerIgnoreCase.Instance);
     foreach (TagMapping tag in tags)
     {
         DaSourceRuntimeSettings? source = snapshot.GetSource(tag.SourceId);
-        if (source is null || !IsMelsecAddressSource(source))
+        if (source is null || !string.Equals(source.SourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase))
         {
             continue;
         }
@@ -3384,26 +3165,6 @@ static bool ValidateMelsecMappings(List<TagMapping> tags, DaRuntimeSettings daSe
 
     return false;
 }
-
-static bool IsMelsecAddressSource(DaSourceRuntimeSettings source)
-{
-    return string.Equals(source.SourceType, SourceTypes.MelsecA3n, StringComparison.OrdinalIgnoreCase)
-        || string.Equals(source.SourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase);
-}
-
-/// <summary>
-/// Radix for reading X/Y device numbers on a MELSEC-family source. The A3NCPU numbers its I/O
-/// in hexadecimal (IB-66543: "X/Y0 to X/Y7FF"), which is how the MX Component driver reads
-/// them; the AnN serial driver keeps its historical octal reading. Validation and the driver
-/// must agree, or a stored address means one point and the read hits another.
-/// </summary>
-static MelsecXyRadix XyRadixFor(DaSourceRuntimeSettings source)
-{
-    return string.Equals(source.SourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase)
-        ? MelsecXyRadix.Hexadecimal
-        : MelsecXyRadix.Octal;
-}
-
 
 static S7200ClientOptions? ResolveS7200TestOptions(S7200TestConnectionRequest request, DaRuntimeSettings settings)
 {

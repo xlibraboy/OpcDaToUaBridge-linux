@@ -34,9 +34,11 @@ Set-ItemProperty HKLM:\...\Winlogon DefaultDomainName DESKTOP-BC2AU7H
 # AutoAdminLogon should be 0/disabled for plant (security).
 ```
 
-* Plant `sources.json` should **not** contain `mx1` `MxComponent Station 0 GX Simulator`. Use either:
+* Plant `sources.json` should **not** contain a GX Simulator-backed source. Use either:
   * `SourceType=OpcDa ProgId=Mitsubishi.MXOPC.6 Host=localhost` with `MX OPC` channel set to **real PLC IP** in `MXConfigurator` (not Simulator), or
   * `SourceType=MelsecA3n` / `S7200Ppi` / `OpcUa` direct drivers (no `MX` at all).
+
+  Note: the `SourceType=MxComponent` source (MELSOFT MX Component COM) was removed in #31. A `sources.json` row that still names it is dropped at bridge start with a `uses the removed 'MxComponent' source type` log line — delete the row and pick one of the two options above.
 
 * Plant `RemoteUsername` only needed for **remote DCOM** (`Host=192.168.x.y` on another PC). For `localhost` leave empty → default credentials (bridge’s `Tested1` token).
 
@@ -67,6 +69,6 @@ The measurement flow is documented in `docs/ram-measurement.md`.
 | Lab `BC2AU7H` | `Interactive` | `1` | **yes** | Hidden | **yes** | yes |
 | Plant | `S4U` | `0` | **no** | none | no | **yes** |
 
-The same `775df67+` binary supports both; re-running the script with `-LogonType Interactive` handles an accidental `S4U` registration in lab. For a new plant VM, just run the `S4U` line above and delete `mx1` from `sources.json`.
+The same `775df67+` binary supports both; re-running the script with `-LogonType Interactive` handles an accidental `S4U` registration in lab. For a new plant VM, just run the `S4U` line above and make sure `sources.json` carries no simulation source (an old `MxComponent` row is dropped on start, #31).
 
 The **MSI installs the bridge as a Windows service** (session 0, `LocalSystem`), so an installed bridge cannot serve GX Simulator sources — for the lab, deploy with this script (published task) instead of the installer.

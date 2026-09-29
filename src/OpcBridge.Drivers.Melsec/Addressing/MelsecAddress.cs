@@ -13,8 +13,8 @@ public sealed record MelsecAddress(
 /// addresses a different point, and the radix is a property of the CPU family:
 /// the A3NCPU numbers its I/O in hexadecimal — A1N/A2N(S1)/A3NCPU User's Manual (IB-66543)
 /// device list: 2048 I/O points, "X/Y0 to X/Y7FF" — while M/L/T/C/D are decimal.
-/// The MX Component driver passes <see cref="Hexadecimal"/>; the AnN serial driver keeps
-/// its historical <see cref="Octal"/> reading.
+/// The serial driver reads X/Y in <see cref="Octal"/> (its historical behaviour);
+/// <see cref="Hexadecimal"/> is available for A3NCPU-style hex numbering.
 /// </summary>
 public enum MelsecXyRadix
 {
@@ -150,7 +150,7 @@ public static class MelsecAddressParser
     /// <summary>
     /// Maps the device prefix of <paramref name="raw"/> (case-insensitive) to a device kind
     /// and returns the remaining number body. Supports 2-character prefixes for
-    /// timers/counters (TS/TC/TN/CS/CC/CN — MX Component Programming Manual §"Device Types")
+    /// timers/counters (TS/TC/TN/CS/CC/CN — MELSEC programming manual §"Device Types")
     /// and single-character aliases T→TN and C→CN (the "present value" a user means by T0/C0).
     /// </summary>
     private static bool TryMapDevice(string raw, out MelsecDeviceKind device, out string body)
@@ -236,9 +236,9 @@ public static class MelsecAddressParser
 
     /// <summary>
     /// X/Y numbers are read in the radix the calling driver asks for.
-    /// <see cref="MelsecXyRadix.Hexadecimal"/> (MX Component / A3NCPU): plain hexadecimal
+    /// <see cref="MelsecXyRadix.Hexadecimal"/> (A3NCPU): plain hexadecimal
     /// digits, so X18 is point 24 and X0B6 is point 182.
-    /// <see cref="MelsecXyRadix.Octal"/> (AnN serial): pure octal digits, with hex-looking
+    /// <see cref="MelsecXyRadix.Octal"/> (serial driver): pure octal digits, with hex-looking
     /// forms such as Y0F (15) accepted when A-F appear; 8/9 are invalid octal digits.
     /// </summary>
     private static bool TryParseXyNumber(

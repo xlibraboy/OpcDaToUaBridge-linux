@@ -12,7 +12,7 @@ using Xunit;
 namespace OpcBridge.LoadTest;
 
 /// <summary>
-/// A non-DA source (MX Component, serial drivers, UA sources) must start a poller for a
+/// A non-DA source (serial drivers, UA sources) must start a poller for a
 /// newly introduced per-tag poll rate, and that poller must run at the tag's rate.
 /// Regression: changing a tag's update rate on the Maps faceplate froze its values,
 /// because only <see cref="OpcDaClient"/> sources had their pollers rebuilt when mappings

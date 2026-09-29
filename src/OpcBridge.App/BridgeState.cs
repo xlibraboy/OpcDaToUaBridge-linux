@@ -290,27 +290,6 @@ public sealed class BridgeState
         }
     }
 
-    /// <summary>Clears a source's last error without touching its connection state
-    /// (used when a source is paused: a stale fault must not linger on a source that
-    /// is intentionally offline).</summary>
-    public void ClearSourceError(string sourceId)
-    {
-        lock (status_lock_)
-        {
-            DaSourceStatusSnapshot[] updated = status_.Sources
-                .Select(source => string.Equals(source.SourceId, sourceId, StringComparison.OrdinalIgnoreCase)
-                    ? source with { LastError = null }
-                    : source)
-                .ToArray();
-
-            status_ = status_ with
-            {
-                DaConnectionState = AggregateConnectionState(updated),
-                Sources = updated
-            };
-        }
-    }
-
     public void SetSourceServerInfo(string sourceId, string serverInfo)
     {
         lock (status_lock_)
@@ -645,11 +624,6 @@ public sealed class BridgeState
             return string.IsNullOrEmpty(port) ? string.Empty : $"{port}@{source.BaudRate}";
         }
 
-        if (string.Equals(source.SourceType, SourceTypes.MxComponent, StringComparison.OrdinalIgnoreCase))
-        {
-            return $"MX station {source.LogicalStationNumber}";
-        }
-
         if (string.Equals(source.SourceType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
         {
             return source.EndpointUrl?.Trim() ?? string.Empty;
@@ -670,16 +644,10 @@ public sealed class BridgeState
         bool anyConnected = false;
         bool anyConnecting = false;
         bool anyFaulted = false;
-        bool allPaused = true;
 
         for (int i = 0; i < sources.Count; i++)
         {
             string state = sources[i].ConnectionState;
-            if (!string.Equals(state, "Paused", StringComparison.OrdinalIgnoreCase))
-            {
-                allPaused = false;
-            }
-
             if (string.Equals(state, "Connected", StringComparison.OrdinalIgnoreCase))
             {
                 anyConnected = true;
@@ -704,9 +672,6 @@ public sealed class BridgeState
         if (anyConnected) return "Connected";
         if (anyConnecting) return "Connecting";
         if (anyFaulted) return "Faulted";
-        // A paused source is intentionally offline, not a failure: only report the
-        // whole bridge as Paused when every source is paused.
-        if (allPaused) return "Paused";
         return "Disconnected";
     }
 
@@ -763,8 +728,8 @@ public sealed record BridgeRuntimeStatus(
 
 /// <summary>
 /// Tags of one source polled at one update rate (a rate bucket). Applies to every
-/// driver; it corresponds to an OPC DA COM group only for OpcDa sources — MX
-/// Component and other native clients batch internally and never create COM groups.
+/// driver; it corresponds to an OPC DA COM group only for OpcDa sources — the
+/// native serial/UA clients batch internally and never create COM groups.
 /// </summary>
 public sealed record RateGroupStatus(
     string SourceId,

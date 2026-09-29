@@ -121,7 +121,6 @@ public sealed class HmiSourceFilterTests
         Assert.Equal("UA", SourceTypeLabels.ShortLabel(SourceTypes.OpcUa));
         Assert.Equal("A3N", SourceTypeLabels.ShortLabel(SourceTypes.MelsecA3n));
         Assert.Equal("S7-200", SourceTypeLabels.ShortLabel(SourceTypes.S7200Ppi));
-        Assert.Equal("MX", SourceTypeLabels.ShortLabel(SourceTypes.MxComponent));
         Assert.Equal(string.Empty, SourceTypeLabels.ShortLabel(null));
         Assert.Equal(string.Empty, SourceTypeLabels.ShortLabel("  "));
     }

@@ -17,14 +17,11 @@ namespace OpcBridge.App;
 //   drvA3nStation/drvA3nPc/drvA3nTimeout/drvA3nRetry/drvA3nRate/drvA3nMaxTags
 //   ROUTE_TO_TAB 'connectivity/drivers': 'drivers', renderDrivers(/saveDriverSource(/testDriverConnection(
 //   sourceType: 'MelsecA3n' save payload, /api/drivers/melsec-a3n/test-connection
-//   data-tab="mx-component", id="view-mx-component", data-route="connectivity/mx-component"
-//   renderMx(/saveMxSource(/testMxConnection(/mxFormBody(, /api/drivers/mx-component/test-connection
-//   MX sources are separate from serial drivers: isDriverSource excludes MxComponent
 //   data-tab="opc-ua", id="view-opc-ua", data-route="connectivity/opc-ua", text "OPC UA"
 //   data-tab="connection", id="view-connection", data-route="connectivity/sources", text "Sources"
 //   Sources rail is a pager: id="srcPager"/"srcPagerPrev"/"srcPagerNext"/"srcPagerCount",
-//   class "pager-line" with data-page 0..3 (OPC DA+DA Groups, OPC UA+UA Subs, Drivers,
-//   MX Component+PLC Groups); the Sources page is pinned above it in class "pager-pinned",
+//   class "pager-line" with data-page 0..2 (OPC DA+DA Groups, OPC UA+UA Subs, Drivers);
+//   the Sources page is pinned above it in class "pager-pinned",
 //   data-state on the source line, state.sourcePage, class "nav-add" (+ Add Source),
 //   function renderSourcePager(/stepSourcePager(/renderSourcePagerStates(
 //   id="sourcesStatusList" (Sources tab status list) survives the Monitor
@@ -33,9 +30,7 @@ namespace OpcBridge.App;
 //   data-tab="ua-subs", id="view-ua-subs", data-route="connectivity/ua-subs", text "UA Subs"
 //   per-source collapsible cards in uaSubsContainer, uaSubModal add/edit, id="subsMsg"
 //   function loadUaSubs(/renderUaSubsForSource(/openUaSubAdd(/openUaSubEdit(/deleteUaSub(/uaSubModalSave(, /api/ua/subscriptions[/remove]
-//   data-tab="plc-groups", id="view-plc-groups", data-route="connectivity/plc-groups", text "PLC Groups", plcGroupSourcePicker/plcGroupsList/plcGroupModal/plcGroupName/plcGroupRate/plcGroupModalSaveBtn/plcMsg
-//   function loadPlcGroups(/renderPlcGroupSourcePicker(/renderPlcGroupsAll(/openPlcGroupAdd(/openPlcGroupEdit(/closePlcGroupModal(/plcGroupModalSave(/deletePlcGroup(, /api/plc/groups[/remove]
-//   faceplate: id="fpSubscription"/"fpSubscriptionField", function fpSubscriptionOptions(/updateFpRateEnabled(, id="fpPlcGroup"/"fpPlcGroupField", function fpPlcGroupOptions(/plcGroupRateFor(
+//   faceplate: id="fpSubscription"/"fpSubscriptionField", function fpSubscriptionOptions(/updateFpRateEnabled(
 //   id="mapTypeTabs", data-map-type="opc-da|opc-ua|drivers", function setMapType(/opcDaSources(/mapTypeSources(
 //   tags/maps/opc-da, tags/maps/opc-ua, tags/maps/drivers
 //   Tag Browser search (#24): id="tagSearch"/"tagSearchStatus", function applyTagFilter(/tagSearchKey(/clearTagSearch(,
@@ -461,7 +456,7 @@ internal static class DashboardPage
         #fp-pane-setup input[type=text] { width: 150px; }
         #fp-pane-setup .field { min-height: 32px; }
         /* The one helper text left in Setup is the per-selection note (a named
-           subscription or PLC group locks the update rate, the Digital picker suggests a
+           subscription locks the update rate, the Digital picker suggests a
            mode). It belongs under the control it explains, in the control column, instead
            of wrapping back to the left margin as an orphan line. Everything static is a
            tooltip on the label. */
@@ -1024,8 +1019,6 @@ internal static class DashboardPage
       <button class="tabbtn pager-line pager-parent" data-page="1" data-state="opc-ua" data-tab="opc-ua" data-route="connectivity/opc-ua" onclick="navigate('connectivity/opc-ua')"><span class="pager-state off" aria-hidden="true"></span>OPC UA</button>
       <button class="tabbtn pager-line pager-child" data-page="1" data-tab="ua-subs" data-route="connectivity/ua-subs" onclick="navigate('connectivity/ua-subs')">UA Subs</button>
       <button class="tabbtn pager-line pager-parent" data-page="2" data-state="drivers" data-tab="drivers" data-route="connectivity/drivers" onclick="navigate('connectivity/drivers')"><span class="pager-state off" aria-hidden="true"></span>Drivers</button>
-      <button class="tabbtn pager-line pager-parent" data-page="3" data-state="mx" data-tab="mx-component" data-route="connectivity/mx-component" onclick="navigate('connectivity/mx-component')"><span class="pager-state off" aria-hidden="true"></span>MX Component</button>
-      <button class="tabbtn pager-line pager-child" data-page="3" data-tab="plc-groups" data-route="connectivity/plc-groups" onclick="navigate('connectivity/plc-groups')">PLC Groups</button>
     </div>
     <div class="pager-foot">
       <button class="pager-btn" id="srcPagerPrev" type="button" title="Previous source" aria-label="Previous source" onclick="stepSourcePager(-1)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
@@ -1305,7 +1298,7 @@ internal static class DashboardPage
 <div class="view" id="view-sessions">
     <h1 class="view-title" tabindex="-1">Sessions</h1>
     <div class="box" style="margin-bottom:14px">
-        <div class="box-h">Source Diagnostics <span class="info" data-tip="Health of every configured source — OPC DA, OPC UA, and driver sources (Melsec, S7, MX Component). Shows connection state, read latency, rate-group budget for polled sources, the last fault reason, and data freshness.">i</span><span class="msg" id="diagDaSummary" style="margin-left:auto"></span></div>
+        <div class="box-h">Source Diagnostics <span class="info" data-tip="Health of every configured source — OPC DA, OPC UA, and driver sources (Melsec, S7). Shows connection state, read latency, rate-group budget for polled sources, the last fault reason, and data freshness.">i</span><span class="msg" id="diagDaSummary" style="margin-left:auto"></span></div>
         <div class="box-b" id="diagDaSources"><span class="msg">Loading source diagnostics…</span></div>
     </div>
     <div class="box" style="margin-bottom:14px">
@@ -1371,8 +1364,8 @@ internal static class DashboardPage
                         <div class="field"><label class="fl" for="cfgUser">User</label><input id="cfgUser" type="text" placeholder="username" aria-label="User name" style="flex:1"><input id="cfgPass" type="password" placeholder="password" aria-label="Password" style="flex:1"><input id="cfgDomain" type="text" placeholder="domain" aria-label="Domain" style="flex:1"></div>
                     </div>
                     <div class="conn-section">
-                        <div class="conn-section-h">Default Update Rate <span class="info" data-tip="Fixed at 1000 ms. This is the fallback rate for tags set to 'Source Default'. For other cadences use Sources → PLC Groups (named groups per rate) or a specific per-tag Update Rate.">i</span></div>
-                        <div class="field"><label class="fl" for="cfgUpdateRate">Rate</label><select id="cfgUpdateRate" disabled><option value="1000">1 s (fixed)</option></select><span class="msg" id="rateMessage" role="status">Fixed at 1 s — use Sources → PLC Groups for other rates.</span></div>
+                        <div class="conn-section-h">Default Update Rate <span class="info" data-tip="Fixed at 1000 ms. This is the fallback rate for tags set to 'Source Default'. For other cadences use a specific per-tag Update Rate.">i</span></div>
+                        <div class="field"><label class="fl" for="cfgUpdateRate">Rate</label><select id="cfgUpdateRate" disabled><option value="1000">1 s (fixed)</option></select><span class="msg" id="rateMessage" role="status">Fixed at 1 s — use per-tag Update Rates for other cadences.</span></div>
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">I/O Mode <span class="info" data-tip="Client-side value-delivery mode for this source, like Matrikon OPC Explorer's per-group I/O selector. AutoDetect I/O: try IOPCDataCallback push, fall back to polling when the server can't. Synchronous I/O: always poll with IOPCSyncIO.Read. Async I/O 2.0: force the push path (even if the global switch is off); falls back to polling with a warning if the server can't provide it. Applied live — no restart.">i</span></div>
@@ -1515,22 +1508,6 @@ internal static class DashboardPage
         </div>
     </div>
 </div>
-<div class="view" id="view-plc-groups">
-    <h1 class="view-title" tabindex="-1">PLC Groups</h1>
-    <div class="box" style="max-width:720px">
-        <div class="box-h">PLC Groups</div>
-        <div class="box-b" style="padding:10px 12px">
-            <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
-                <label class="fl" style="width:auto" for="plcGroupSourcePicker">Source</label>
-                <select id="plcGroupSourcePicker" onchange="renderPlcGroupsAll()" style="max-width:280px;flex:1"></select>
-                <span id="plcMsg" role="status" class="msg"></span>
-                <button class="btn ghost" type="button" style="margin-left:auto" onclick="openPlcGroupAdd(document.getElementById('plcGroupSourcePicker').value)">+ Add Group</button>
-            </div>
-            <div id="plcGroupsList" class="dag-grid"></div>
-            <div class="hint" style="margin-top:8px">Named polling groups for MX Component sources. Each group polls its member tags at its own update rate; tags without a group ride the source default rate. MX Component has no push model — groups are bridge-side timers sharing the PLC link (Programming Manual sh081085 §5.2).</div>
-        </div>
-    </div>
-</div>
 <div class="auth-overlay" id="authOverlay" style="display:none">
     <form class="auth-card" id="authForm" onsubmit="doLogin(); return false;">
         <h1>OPC Bridge</h1>
@@ -1563,17 +1540,6 @@ internal static class DashboardPage
             <div class="msg" id="pwModalMsg" role="status"></div>
         </div>
         <div class="modal-f"><button class="btn ghost" type="button" onclick="closePwModal()">Cancel</button><button class="btn" type="button" id="pwModalSaveBtn" onclick="savePwModal()">Save</button></div>
-    </div>
-</div>
-<div class="modal-overlay" id="plcGroupModal" onclick="if(event.target===this)closePlcGroupModal()">
-    <div class="modal" style="width:min(420px,94vw)">
-        <div class="modal-h"><div class="n" id="plcGroupModalTitle">Add PLC Group</div><button class="modal-close" type="button" onclick="closePlcGroupModal()">×</button></div>
-        <div class="modal-b">
-            <div class="field"><label class="fl">Source</label><span class="msg" id="plcGroupModalSource" style="font-family:'Consolas',monospace"></span></div>
-            <div class="field"><label class="fl" for="plcGroupName">Name</label><input id="plcGroupName" type="text" maxlength="64" placeholder="Fast" style="flex:1"></div>
-            <div class="field"><label class="fl" for="plcGroupRate">Update Rate (ms)</label><select id="plcGroupRate" style="flex:1"><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
-        </div>
-        <div class="modal-f"><button class="btn ghost" type="button" onclick="closePlcGroupModal()">Cancel</button><button class="btn" type="button" id="plcGroupModalSaveBtn" onclick="plcGroupModalSave()">Save</button></div>
     </div>
 </div>
 <div class="modal-overlay" id="dagModal" onclick="if(event.target===this)closeDagModal()">
@@ -1675,59 +1641,6 @@ internal static class DashboardPage
         </div>
     </div>
 </div>
-<div class="view" id="view-mx-component">
-    <h1 class="view-title" tabindex="-1">MX Component</h1>
-    <div class="conn-layout">
-        <div class="conn-main">
-            <div class="box">
-                <div class="box-h">MELSOFT MX Component 4 <button class="btn" type="button" onclick="newMxSource()" style="margin-left:auto">+ Add Connection</button><span class="msg" id="mxMessage" role="status" style="font-weight:400;text-transform:none;letter-spacing:0">Select an MX Component connection or click New.</span></div>
-                <div class="box-b">
-                    <div class="conn-section">
-                        <div class="conn-section-h">Connection <span class="info" data-tip="MX Component is a local COM driver that owns the physical link to the PLC. Configure that link (serial, Ethernet, or GX Simulator) once in MX Component's own Communication Settings Utility — it assigns a logical station number that this app references. GX Simulator note: it uses session-bound shared memory, so the bridge must run in the same logged-in interactive Windows session (Interactive task logon — S4U/service mode cannot reach it).">i</span></div>
-                        <div class="field" style="display:block;background:var(--bg);border:1px solid var(--border2);border-radius:5px;padding:9px 11px;color:var(--muted)">The physical link (serial RS-422/RS-232C, Ethernet, or <b>GX Simulator</b>) is configured <b>once in MX Component's own Communication Settings Utility</b> — this app only needs the <b>logical station number</b> (0–1023) that the utility assigned. For an <b>A3NCPU</b>: pick <b>A series → A3N</b> in the utility's wizard (1C frame); if "A series" is missing, an <b>FX-series CPU type</b> usually still talks to it. <b>GX Simulator</b> is session-bound — the bridge must run in the same logged-in desktop session, so the Windows scheduled task needs <b>Interactive</b> logon (register with <span class="mono">-LogonType Interactive</span>).</div>
-                        <div class="field"><label class="fl" for="mxStation">Logical Station</label><input id="mxStation" type="number" min="0" max="1023" value="0" style="width:90px"><span class="msg">Assigned in the MX Component Communication Settings Utility.</span></div>
-                    </div>
-                    <div class="conn-section">
-                        <div class="conn-section-h">Identity</div>
-                        <div class="field"><label class="fl" for="mxSourceId">Source ID <span class="info" data-tip="Unique key with no spaces. Used internally and in UA Node IDs (ns=2;s={sourceId}/...).">i</span></label><input id="mxSourceId" type="text" placeholder="plc-mx-1" style="flex:1"></div>
-                        <div class="field"><label class="fl" for="mxName">Name <span class="info" data-tip="Friendly label shown in lists and the Tags tab.">i</span></label><input id="mxName" type="text" placeholder="Line 1 PLC" style="flex:1"></div>
-                    </div>
-                    <div class="conn-section">
-                        <div class="conn-section-h">Defaults</div>
-                        <div class="field"><label class="fl" for="mxTimeout">Timeout ms</label><input id="mxTimeout" type="number" min="100" step="100" value="3000" style="width:100px">
-                        <label class="fl" for="mxRetry" style="width:auto">Retries</label><input id="mxRetry" type="number" min="0" max="10" value="2" style="width:70px"></div>
-                        <div class="field"><label class="fl" for="mxRate">Update Rate</label><select id="mxRate" disabled><option value="1000">1 s (fixed)</option></select><span class="msg">Fixed — use Sources → PLC Groups for other rates.</span>
-                        <label class="fl" for="mxMaxTags" style="width:auto">Max tags <span class="info" data-tip="Safety limit on mapped tags for this source; adding mappings beyond it is rejected.">i</span></label><input id="mxMaxTags" type="number" min="1" step="1" value="2000" style="width:90px"></div>
-                    </div>
-                    <div class="toolbar" style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
-                        <button class="btn" id="mxSave" type="button">Save</button>
-                        <button class="btn ghost" id="mxReset" type="button">Reset</button>
-                        <button class="btn ghost" id="mxNew" type="button">New</button>
-                        <button class="btn ghost" id="mxRemove" type="button">Remove</button>
-                        <button class="btn ghost" id="mxTest" type="button">Test connection</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="conn-side">
-            <div class="box">
-                <div class="box-h">MX Component Connections <span class="msg" id="mxCount" style="margin-left:auto"></span></div>
-                <div class="box-b">
-                    <div class="hint" id="mxPauseMsg" role="status"></div>
-                    <div class="list" id="mxList" style="max-height:280px"></div>
-                </div>
-            </div>
-            <div class="box">
-                <div class="box-h">Addressing</div>
-                <div class="box-b">
-                    <div class="hint">Map tags on the Tags page with device addresses, e.g. <span class="mono">D100</span>, <span class="mono">M10</span>, <span class="mono">X20</span>, <span class="mono">D100:8</span>.</div>
-                    <button class="btn ghost" type="button" id="mxRangesToggle" style="margin-top:8px" onclick="toggleAddressRanges('mxAddressRanges', this)">Show accepted addresses ▾</button>
-                    <div id="mxAddressRanges" style="display:none"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
 <div class="view" id="view-drivers">
     <h1 class="view-title" tabindex="-1">Drivers</h1>
     <div class="conn-layout">
@@ -1761,7 +1674,7 @@ internal static class DashboardPage
                         <div class="conn-section-h">Defaults</div>
                         <div class="field"><label class="fl" for="drvA3nTimeout">Timeout ms</label><input id="drvA3nTimeout" type="number" min="100" step="100" value="3000" style="width:100px">
                         <label class="fl" for="drvA3nRetry" style="width:auto">Retries</label><input id="drvA3nRetry" type="number" min="0" max="10" value="2" style="width:70px"></div>
-                        <div class="field"><label class="fl" for="drvA3nRate">Update Rate</label><select id="drvA3nRate" disabled><option value="1000">1 s (fixed)</option></select><span class="msg">Fixed — use Sources → PLC Groups for other rates.</span></div>
+                        <div class="field"><label class="fl" for="drvA3nRate">Update Rate</label><select id="drvA3nRate" disabled><option value="1000">1 s (fixed)</option></select><span class="msg">Fixed — use per-tag Update Rates for other cadences.</span></div>
                         <label class="fl" for="drvA3nMaxTags" style="width:auto">Max tags <span class="info" data-tip="Safety limit on mapped tags for this serial link; adding mappings beyond it is rejected.">i</span></label><input id="drvA3nMaxTags" type="number" min="1" step="1" value="2000" style="width:90px"></div>
                     </div>
                     <div class="toolbar" style="margin-top:14px;border-top:1px solid var(--border);padding-top:12px">
@@ -1805,7 +1718,7 @@ internal static class DashboardPage
         <div class="wizard-body">
             <div class="wzdrv-pane active" data-pane="1">
                 <div class="field"><label class="fl" for="wzDrvType">Driver Type</label><select id="wzDrvType" onchange="wzDrvOnTypeChange()"><option value="MelsecA3n">Mitsubishi Melsec A3N (serial 1C)</option><option value="S7200Ppi">Siemens S7-200 (PPI serial)</option></select></div>
-                <div class="hint">Serial link to the PLC CPU (RS-422/RS-232C, 1C protocol). For MELSOFT MX Component 4, use the MX Component tab — its link is configured in MX Component's own Communication Settings Utility.</div>
+                <div class="hint">Serial link to the PLC CPU (RS-422/RS-232C, 1C protocol).</div>
             </div>
             <div class="wzdrv-pane" data-pane="2">
                 <div class="field"><label class="fl" for="wzDrvSourceId">Source ID</label><input type="text" id="wzDrvSourceId" placeholder="plc-a3n-1"></div>
@@ -1851,7 +1764,6 @@ internal static class DashboardPage
         <button class="map-type-tab active" type="button" data-map-type="opc-da" onclick="setMapType('opc-da')">OPC DA</button>
         <button class="map-type-tab" type="button" data-map-type="opc-ua" onclick="setMapType('opc-ua')">OPC UA</button>
         <button class="map-type-tab" type="button" data-map-type="drivers" onclick="setMapType('drivers')">Drivers</button>
-        <button class="map-type-tab" type="button" data-map-type="mx" onclick="setMapType('mx')">MX</button>
     </div>
     <div class="box" style="margin-bottom:14px">
         <div class="box-h">Tag Browser</div>
@@ -1931,7 +1843,7 @@ internal static class DashboardPage
                 </div>
                 <div class="il-flow" data-tip="Values flow from the Provider into the Consumer: each provider change is written into every consumer linked to it."><span class="il-arrow">⇐</span><span class="il-flow-hint">value flow</span></div>
                 <div class="fp-panel">
-                    <div class="fp-k" id="interlinkProviderSourceLabel">Provider <span class="info" data-tip="Sends the value. Its changes are copied into every consumer linked to it - one provider can feed many consumers across any OPC DA / OPC UA / MX Component source.">i</span></div>
+                    <div class="fp-k" id="interlinkProviderSourceLabel">Provider <span class="info" data-tip="Sends the value. Its changes are copied into every consumer linked to it - one provider can feed many consumers across any OPC DA / OPC UA source.">i</span></div>
                     <select id="interlinkProviderSource" aria-labelledby="interlinkProviderSourceLabel" style="width:100%;margin-bottom:8px" onchange="onInterlinkSourceChange('provider')"></select>
                     <div class="list" id="interlinkProviderList" style="max-height:220px"><span class="msg">Select a source to list its Maps tags.</span></div>
                 </div>
@@ -1940,7 +1852,7 @@ internal static class DashboardPage
                 <button class="btn" type="button" id="btnSetLink">Save Link</button>
                 <button class="btn ghost" type="button" id="btnClearLink">Delete Saved Link</button>
                 <button class="btn ghost" type="button" id="btnClearLinkSelection">Clear Selection</button>
-                <span class="msg" id="interlinkStatus" role="status">Pick both endpoints from Maps tags — OPC DA, OPC UA or MX Component — so every saved interlink can carry values.</span>
+                <span class="msg" id="interlinkStatus" role="status">Pick both endpoints from Maps tags — OPC DA or OPC UA — so every saved interlink can carry values.</span>
             </div>
             <div class="list" id="linksList" style="margin-top:10px"></div>
         </div>
@@ -1971,7 +1883,6 @@ internal static class DashboardPage
                 <div class="field"><label class="fl" for="fpAccess">Access Rights <span class="info" data-tip="Direction of this mapping. Read = source to UA only, Read-Write = both ways, Write = UA to source only. A tag used as an interlink provider needs Read, a consumer needs Write.">i</span></label><select id="fpAccess" data-action="tag-access"><option value="Read">Read (Source → UA)</option><option value="Read-Write">Read-Write (Source ↔ UA)</option><option value="Write">Write (UA → Source)</option></select></div>
                 <div class="field"><label class="fl" for="fpEnabled">Enabled <span class="info" data-tip="When ON the tag is polled or subscribed and served over UA. When OFF the mapping is kept but the tag stops updating. Applies immediately, without Apply, and switches a Manual or Simulated tag back to Source mode.">i</span></label><input type="checkbox" id="fpEnabled" data-action="toggle-tag-enabled"></div>
                 <div class="field" id="fpSubscriptionField" style="display:none"><label class="fl" for="fpSubscription">Subscription <span class="info" data-tip="Named OPC UA subscription this tag joins, or Source Default for the source's own publishing interval. A named subscription supplies the rate, so Update Rate is not used.">i</span></label><select id="fpSubscription"></select><span class="msg" id="fpSubscriptionHint"></span></div>
-                <div class="field" id="fpPlcGroupField" style="display:none"><label class="fl" for="fpPlcGroup">PLC Group <span class="info" data-tip="Named group on the MX Component source. Every tag in the group shares one poll interval, which overrides this tag's Update Rate.">i</span></label><select id="fpPlcGroup"></select><span class="msg" id="fpPlcGroupHint"></span></div>
                 <div class="field"><label class="fl" for="fpPollRate">Update Rate <span class="info" data-tip="Poll or publish interval for this tag. With source subscriptions on, the source pushes changes at this rate when it supports them; with subscriptions off, the bridge polls at this rate. Source Default uses the source's own rate.">i</span></label><select id="fpPollRate" data-action="tag-poll-rate"><option value="0">Source Default</option><option value="100">100 ms</option><option value="250">250 ms</option><option value="500">500 ms</option><option value="1000">1 s</option><option value="2000">2 s</option><option value="5000">5 s</option><option value="10000">10 s</option></select></div>
                 <div class="field" data-fp-gate="deadband"><label class="fl" for="fpDeadband">Deadband % <span class="info" data-tip="Smallest change worth reporting, as a percentage of the tag's range. OPC DA applies it per rate group, using the highest value set on any tag in that group. Only for tags with a numeric range — a Boolean has nothing to filter.">i</span></label><input type="number" id="fpDeadband" min="0" max="100" step="0.1" value="0"></div>
                 <div class="field" data-fp-gate="decimals"><label class="fl" for="fpDecimals">Decimals <span class="info" data-tip="Digits after the decimal point for Float, Double and Decimal values. Blank = full precision, 0 = no decimals. Only for tags with fractional digits — integers and Booleans ignore it.">i</span></label><input type="number" id="fpDecimals" min="0" max="15" step="1" value="" placeholder="off"></div>
@@ -2409,8 +2320,6 @@ const state = {
     editingNewSource: false,
     selectedDriverId: '',
     editingNewDriver: false,
-    selectedMxId: '',
-    editingNewMx: false,
     addressRangesCache: null,
     editingNewUaSource: false,
     liveValuesEnabled: true,
@@ -3551,7 +3460,6 @@ function sourceSubtitle(sourceInfo) {
     if (t.indexOf('opcua') >= 0) return 'OPC UA endpoint';
     if (t.indexOf('melsec') >= 0) return 'Melsec serial';
     if (t.indexOf('s7200') >= 0) return 'S7-200 PPI';
-    if (t.indexOf('mx') >= 0) return 'MX Component';
     return 'OPC DA server';
 }
 
@@ -3672,7 +3580,7 @@ function linkTagLabel(sourceId, itemId, nameOverride = null) {
 }
 function isLinkableInterlinkSource(source) {
     const t = String(get(source, 'sourceType') || 'OpcDa');
-    return t === 'OpcDa' || t === 'OpcUa' || t === 'MxComponent';
+    return t === 'OpcDa' || t === 'OpcUa';
 }
 function interlinkSideIds() { return ['consumer', 'provider']; }
 function interlinkSourceSelectId(side) { return side === 'consumer' ? 'interlinkConsumerSource' : 'interlinkProviderSource'; }
@@ -4106,7 +4014,7 @@ function renderMappingRows(mappings) {
         : '';
     if (rows.length) return rows.map(renderMappingRow).join('') + note;
     // Empty tab: say where the mappings actually are instead of restating the heading.
-    const tabs = [['opc-da', 'OPC DA'], ['opc-ua', 'OPC UA'], ['drivers', 'Drivers'], ['mx', 'MX']];
+    const tabs = [['opc-da', 'OPC DA'], ['opc-ua', 'OPC UA'], ['drivers', 'Drivers']];
     const current = state.mapType || 'opc-da';
     const others = tabs
         .filter(t => t[0] !== current)
@@ -4135,7 +4043,6 @@ function openFaceplate(sourceId, itemId) {
     if (!mapping) return;
     faceplateOpen = true;
     faceplateKey = valueKey(sourceId, itemId);
-    window.__fpSourceId = sourceId; // used by fpPlcGroupOptions() to find this tag source's groups
     const name = mapping.displayName || mapping.DisplayName || itemId;
     const node = mapping.uaNodeId || mapping.UaNodeId || defaultUaNodeId(sourceId, itemId);
     const mode = mapping.mode || mapping.Mode || 'Source';
@@ -4179,26 +4086,6 @@ function openFaceplate(sourceId, itemId) {
                 if (!faceplateOpen || faceplateKey !== valueKey(sourceId, itemId)) return;
                 const sel2 = el('fpSubscription');
                 if (sel2 && document.activeElement !== sel2) sel2.innerHTML = fpSubscriptionOptions(sourceId, sel2.value || fpSubVal);
-                updateFpRateEnabled();
-            }).catch(() => {});
-        }
-    }
-    // PLC GROUP selector (MX Component sources only): Default plus the source's
-    // named groups from loadPlcGroups(). A non-empty choice locks the per-tag
-    // rate input — rate comes from the group.
-    const pgApplies = isMxSource(state.sources.find(s => s.sourceId === sourceId) || null);
-    const pgField = el('fpPlcGroupField');
-    const pgSel = el('fpPlcGroup');
-    if (pgField && pgSel) {
-        pgField.style.display = pgApplies ? '' : 'none';
-        const pgVal = String(mapping.plcGroup ?? mapping.PlcGroup ?? '');
-        pgSel.innerHTML = fpPlcGroupOptions(pgVal);
-        updateFpRateEnabled();
-        if (pgApplies) {
-            loadPlcGroups().then(() => {
-                if (!faceplateOpen || faceplateKey !== valueKey(sourceId, itemId)) return;
-                const sel2 = el('fpPlcGroup');
-                if (sel2 && document.activeElement !== sel2) sel2.innerHTML = fpPlcGroupOptions(sel2.value || pgVal);
                 updateFpRateEnabled();
             }).catch(() => {});
         }
@@ -4437,7 +4324,7 @@ function updateManualValueHint() {
 // into the sign-in card instead of a wall of failed fetches.
 const ROLE_RANK = { Viewer: 0, Operator: 1, Engineer: 2, Admin: 3 };
 // Sections only Engineer and up may use (configuration editing surfaces).
-const ENGINEER_TABS = ['connection', 'opc-da', 'opc-da-groups', 'opc-ua', 'ua-subs', 'drivers', 'mx-component', 'plc-groups', 'tags', 'interlinks', 'mqtt', 'influx'];
+const ENGINEER_TABS = ['connection', 'opc-da', 'opc-da-groups', 'opc-ua', 'ua-subs', 'drivers', 'tags', 'interlinks', 'mqtt', 'influx'];
 const DEFAULT_ROLES = ['Admin', 'Engineer', 'Operator', 'Viewer'];
 let authSession = { authenticated: false, authEnabled: false, username: '', displayName: '', role: 'Viewer' };
 let authRoles = DEFAULT_ROLES.slice();
@@ -4858,8 +4745,6 @@ const ROUTE_TO_TAB = {
   'connectivity/opc-ua': 'opc-ua',
   'connectivity/ua-subs': 'ua-subs',
   'connectivity/drivers': 'drivers',
-  'connectivity/mx-component': 'mx-component',
-  'connectivity/plc-groups': 'plc-groups',
   'ops/diagnostics': 'diagnostics',
   'connectivity/diagnostics': 'diagnostics',
   'ops/sessions': 'sessions',
@@ -4867,7 +4752,6 @@ const ROUTE_TO_TAB = {
   'tags/maps/opc-da': 'tags',
   'tags/maps/opc-ua': 'tags',
   'tags/maps/drivers': 'tags',
-  'tags/maps/mx': 'tags',
   'tags/interlinks': 'interlinks',
   'tags/links': 'interlinks', // bookmark alias
   'iot/mqtt': 'mqtt',
@@ -4887,7 +4771,7 @@ const DEFAULT_ROUTE = 'ops/monitor';
 
 async function navigate(route) {
   if (route === 'tags/maps') route = 'tags/maps/' + (state.mapType || 'opc-da');
-  else if (route === 'tags/maps/opc-da' || route === 'tags/maps/opc-ua' || route === 'tags/maps/drivers' || route === 'tags/maps/mx') {
+  else if (route === 'tags/maps/opc-da' || route === 'tags/maps/opc-ua' || route === 'tags/maps/drivers') {
     state.mapType = route.slice('tags/maps/'.length);
   }
   const tab = ROUTE_TO_TAB[route] || ROUTE_TO_TAB[DEFAULT_ROUTE];
@@ -4939,7 +4823,6 @@ async function showTab(name, route) {
   if (activeTab === 'about') loadAppInfo().catch(e => el('aboutName').textContent = '✗ ' + e.message);
   if (activeTab === 'changelog') loadChangelog().catch(e => el('changelogBody').innerHTML = '<span class="msg bad" role="alert">✗ ' + escapeHtml(e.message) + '</span>');
   if (activeTab === 'help') loadHelp().catch(e => { const c = el('helpLayout1'); if (c) c.innerHTML = '<span class="msg bad" role="alert">✗ ' + esc(e.message) + '</span>'; });
-  if (activeTab === 'mx-component') { renderMx(); }
   if (activeTab === 'mqtt') { await loadMqtt(); }
   if (activeTab === 'iot-traffic') { await loadMqttValues(); }
   if (name === 'influx') { await loadInflux(); }
@@ -4957,9 +4840,6 @@ async function showTab(name, route) {
      await loadSources().catch(e => console.warn(e));
      await loadDaGroupsTab().catch(e => console.warn(e));
    }
-  if (activeTab === 'plc-groups') {
-    await loadPlcGroups().catch(e => el('plcMsg').textContent = '✗ ' + e.message);
-  }
   if (activeTab === 'tags') {
     await loadSources().catch(e => console.warn(e));
     await loadMappings().catch(e => console.warn(e));
@@ -4994,8 +4874,7 @@ async function showTab(name, route) {
 const SOURCE_PAGE_SOURCES = {
     'opc-da': () => opcDaSources(),
     'opc-ua': () => uaSources(),
-    'drivers': () => driverSources(),
-    'mx': () => mxSources()
+    'drivers': () => driverSources()
 };
 const SOURCE_PAGE_STATE_WORDS = { good: 'connected', warn: 'degraded', bad: 'faulted', off: 'no sources configured' };
 function sourcePagerLines() {
@@ -5125,15 +5004,13 @@ function isUaSource(source) {
 }
 function isMelsecSource(source) { return String(get(source, 'sourceType') || 'OpcDa') === 'MelsecA3n'; }
 function isS7Source(source) { return String(get(source, 'sourceType') || 'OpcDa') === 'S7200Ppi'; }
-function isMxSource(source) { return String(get(source, 'sourceType') || 'OpcDa') === 'MxComponent'; }
-// Serial PLC drivers (configured in-app). MX Component sources live on their own tab.
+// Serial PLC drivers (configured in-app).
 function isDriverSource(source) { return isMelsecSource(source) || isS7Source(source); }
-function opcDaSources() { return state.sources.filter(s => !isUaSource(s) && !isDriverSource(s) && !isMxSource(s)); }
+function opcDaSources() { return state.sources.filter(s => !isUaSource(s) && !isDriverSource(s)); }
 function mapTypeSources(type) {
     type = type || state.mapType || 'opc-da';
     if (type === 'opc-ua') return uaSources();
     if (type === 'drivers') return driverSources();
-    if (type === 'mx') return mxSources();
     return opcDaSources();
 }
 function sourceMatchesMapType(source, type) {
@@ -5141,22 +5018,19 @@ function sourceMatchesMapType(source, type) {
     if (!source) return false;
     if (type === 'opc-ua') return isUaSource(source);
     if (type === 'drivers') return isDriverSource(source);
-    if (type === 'mx') return isMxSource(source);
-    return !isUaSource(source) && !isDriverSource(source) && !isMxSource(source);
+    return !isUaSource(source) && !isDriverSource(source);
 }
 function mapTypeRoute(type) { return 'tags/maps/' + (type || state.mapType || 'opc-da'); }
 function mapTypeLabel(type) {
     type = type || state.mapType || 'opc-da';
     if (type === 'opc-ua') return 'OPC UA';
     if (type === 'drivers') return 'Drivers';
-    if (type === 'mx') return 'MX Component';
     return 'OPC DA';
 }
 function mapTypeConnectivityRoute(type) {
     type = type || state.mapType || 'opc-da';
     if (type === 'opc-ua') return 'connectivity/opc-ua';
     if (type === 'drivers') return 'connectivity/drivers';
-    if (type === 'mx') return 'connectivity/mx-component';
     return 'connectivity/opc-da';
 }
 function syncMapTypeUi() {
@@ -5169,7 +5043,7 @@ function syncMapTypeUi() {
 // always wins, so this only ever fires until their first click.
 function adoptMapTabWithMappings() {
     if (state.mapTypePinned) return;
-    const order = ['opc-da', 'opc-ua', 'drivers', 'mx'];
+    const order = ['opc-da', 'opc-ua', 'drivers'];
     const mapped = type => {
         const ids = new Set(mapTypeSources(type).map(s => s.sourceId));
         return (state.mappings || []).filter(m => ids.has(m.sourceId || m.SourceId || 'default')).length;
@@ -5184,7 +5058,7 @@ function adoptMapTabWithMappings() {
 }
 function setMapType(type, opts) {
     type = type || 'opc-da';
-    if (type !== 'opc-da' && type !== 'opc-ua' && type !== 'drivers' && type !== 'mx') type = 'opc-da';
+    if (type !== 'opc-da' && type !== 'opc-ua' && type !== 'drivers') type = 'opc-da';
     const changed = state.mapType !== type;
     state.mapTypePinned = true;
     state.mapType = type;
@@ -5195,7 +5069,7 @@ function setMapType(type, opts) {
         state.uaBrowseTrail = [];
         if (el('tagTree')) el('tagTree').innerHTML = '';
         if (el('tagBreadcrumb')) el('tagBreadcrumb').innerHTML = '';
-        if (el('tagStatus')) el('tagStatus').textContent = (type === 'drivers' || type === 'mx')
+        if (el('tagStatus')) el('tagStatus').textContent = (type === 'drivers')
             ? 'Enter a device address below, or map from known items.'
             : 'Browse all tags, or open folders one level at a time.';
     }
@@ -5250,7 +5124,7 @@ function updateMapEmptyBanner() {
 function updateMapBrowseUi() {
     const allBtn = el('btnBrowseAllTags');
     const folderBtn = el('btnBrowseTags');
-    const addressBased = state.mapType === 'drivers' || state.mapType === 'mx';
+    const addressBased = state.mapType === 'drivers';
     if (allBtn) allBtn.style.display = addressBased ? 'none' : '';
     if (folderBtn) folderBtn.style.display = addressBased ? 'none' : '';
     if (el('tagSearchRow')) el('tagSearchRow').style.display = addressBased ? 'none' : '';
@@ -5284,26 +5158,18 @@ function wzDrvOnTypeChange() {
 function sourceTypeLabel(source) {
     if (isUaSource(source)) return 'UA';
     if (isMelsecSource(source)) return 'A3N';
-    if (isMxSource(source)) return 'MX';
     if (isS7Source(source)) return 'S7-200';
     return 'DA';
 }
 function sourceTypeBadge(source) {
     if (isUaSource(source)) return badge('UA', 'partial');
     if (isMelsecSource(source)) return badge('A3N', 'partial');
-    if (isMxSource(source)) return badge('MX', 'partial');
     if (isS7Source(source)) return badge('S7-200', 'partial');
     return badge('DA', 'warn');
 }
 function sourceEndpointSummary(source) {
     if (isUaSource(source)) {
         return esc(source.endpointUrl || source.EndpointUrl || '—');
-    }
-    if (isMxSource(source)) {
-        // Never invent a station number: a live-status row carries no station field, and
-        // printing 0 for a station-1 source reads as if the configuration had changed.
-        const station = source.logicalStationNumber ?? source.LogicalStationNumber;
-        return esc(station === null || station === undefined ? 'MX Component' : 'MX station ' + station);
     }
     return `${esc(source.host || 'localhost')} · ${esc(source.progId || '')}`;
 }
@@ -5336,7 +5202,7 @@ function renderMonitorRoster(bridgeSources) {
     // Only the roster's own fields gate a repaint: the signature must not move
     // with the live status tick, or rows would rebuild (and steal scroll) on
     // every refresh even when nothing configured changed.
-    const signature = JSON.stringify(rows.map(s => [s.sourceId, s.displayName, s.sourceType, s.SourceType, s.host, s.progId, s.endpointUrl, s.EndpointUrl, s.logicalStationNumber, s.updateRateMs]));
+    const signature = JSON.stringify(rows.map(s => [s.sourceId, s.displayName, s.sourceType, s.SourceType, s.host, s.progId, s.endpointUrl, s.EndpointUrl, s.updateRateMs]));
     if (state.rosterSignature === signature) return;
     state.rosterSignature = signature;
     host.innerHTML = rows.length
@@ -5345,45 +5211,6 @@ function renderMonitorRoster(bridgeSources) {
 }
 function daSources() { return state.sources.filter(s => !isUaSource(s)); }
 function uaSources() { return state.sources.filter(s => isUaSource(s)); }
-// Temporary pause for MX Component connections: releases the PLC COM port so a
-// second program (e.g. GX Works) can take it over, and keeps it released until
-// Resume. Offered on the MX list only; runtime-only — POST /api/da/sources/pause.
-function sourcePauseChip(source) {
-    return source.paused === true ? ' ' + badge('Paused', 'warn') : '';
-}
-function sourcePauseButton(source) {
-    const paused = source.paused === true;
-    const title = paused
-        ? 'Resume polling this source'
-        : 'Disconnect this source so another program can take its port, without removing it';
-    return `<button class="btn ghost" type="button" data-action="toggle-source-pause" data-source-id="${attr(source.sourceId)}" data-paused="${paused ? 'true' : 'false'}" title="${attr(title)}">${paused ? 'Resume' : 'Pause'}</button>`;
-}
-function setSourcePauseMessage(text) {
-    const node = el('mxPauseMsg');
-    if (node) node.textContent = text || '';
-}
-async function toggleSourcePause(sourceId, paused) {
-    const wanted = paused !== true;
-    setSourcePauseMessage((wanted ? 'Pausing ' : 'Resuming ') + sourceId + '\u2026');
-    try {
-        const r = await fetch('/api/da/sources/pause', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ sourceId: sourceId, paused: wanted })
-        });
-        const p = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
-        setSourcePauseMessage(p.paused
-            ? '\u23f8 ' + sourceId + ' paused \u2014 its connection is released; another program can use it now.'
-            : '\u25b6 ' + sourceId + ' resumed \u2014 reconnecting.');
-    } catch (e) {
-        setSourcePauseMessage('Could not change pause state: ' + e.message);
-    }
-    await refresh();
-    await loadSources();
-    // loadSources refreshes state.sources (which carries `paused`); re-render the MX list.
-    if (el('mxList')) renderMx();
-}
 function renderSources() {
     const select = el('selectedSource');
     const uaSelect = el('uaSelectedSource');
@@ -5439,7 +5266,7 @@ function updateMapSourceHint() {
     const hint = el('mapSourceHint');
     if (!hint) return;
     const source = state.sources.find(s => s.sourceId === state.selectedSourceId);
-    const melsecLike = source && (isMelsecSource(source) || isMxSource(source));
+    const melsecLike = source && isMelsecSource(source);
     hint.textContent = melsecLike ? 'Device address e.g. D100, M10, X20, D100:8' : (source && isS7Source(source) ? 'Siemens address e.g. VW100, I0.0, M10.2, QB0' : '');
     const tgl = el('mapAddressRangesToggle');
     const wrap = el('mapAddressRanges');
@@ -5451,12 +5278,12 @@ function updateMapSourceHint() {
         if (btn) btn.textContent = 'Show accepted addresses ▾';
     }
 }
-// Accepted PLC address ranges (MELSEC devices shared by serial + MX Component drivers).
-// Served by GET /api/drivers/mx-component/address-ranges from the same catalog the
+// Accepted PLC address ranges (MELSEC devices on the serial A3N driver).
+// Served by GET /api/drivers/melsec-a3n/address-ranges from the same catalog the
 // parser enforces, so the table always matches what tag upserts accept.
 async function ensureAddressRanges() {
     if (!state.addressRangesCache) {
-        const r = await fetch('/api/drivers/mx-component/address-ranges');
+        const r = await fetch('/api/drivers/melsec-a3n/address-ranges');
         if (!r.ok) throw new Error('HTTP ' + r.status);
         const p = await r.json();
         state.addressRangesCache = p.devices || [];
@@ -5567,9 +5394,7 @@ function loadSelectedSourceForm() {
     }
     el('cfgMessage').textContent = (isMelsecSource(source) || isS7Source(source))
         ? 'Serial driver source — edit it on the Drivers page.'
-        : (isMxSource(source)
-            ? 'MX Component source — edit it on the MX Component page.'
-            : 'Editing ' + (source.displayName || source.sourceId) + '.');
+        : 'Editing ' + (source.displayName || source.sourceId) + '.';
     updateCfgServerInfo(source);
     loadGroupsSection();
     hideSaveReset();
@@ -6319,7 +6144,6 @@ function flowLinkStatus(bridgeState, uaState) {
 }
 function flowKindShort(source) {
     if (isUaSource(source)) return 'OPC UA';
-    if (isMxSource(source)) return 'MX Component';
     if (isMelsecSource(source)) return 'Melsec A3N';
     if (isS7Source(source)) return 'S7-200 PPI';
     return 'OPC DA';
@@ -7470,7 +7294,6 @@ async function updateMapping(sourceId, itemId, mutate) {
         decimals: (mapping.decimals ?? mapping.Decimals) ?? null,
         daGroup: mapping.daGroup ?? mapping.DaGroup ?? null,
         subscription: mapping.subscription ?? mapping.Subscription ?? '',
-        plcGroup: mapping.plcGroup ?? mapping.PlcGroup ?? '',
         deadbandPct: Number(mapping.deadbandPct ?? mapping.DeadbandPct ?? 0),
         writeable: (mapping.writeable ?? mapping.Writeable) === true,
         accessRights: mapping.accessRights || mapping.AccessRights || 'Read',
@@ -7531,10 +7354,6 @@ async function saveSource() {
         el('cfgMessage').textContent = 'Serial driver source — edit it on the Drivers page.';
         return;
     }
-    if (existing && isMxSource(existing)) {
-        el('cfgMessage').textContent = 'MX Component source — edit it on the MX Component page.';
-        return;
-    }
     const body = {
         sourceId,
         displayName: el('cfgDisplayName').value.trim() || null,
@@ -7560,7 +7379,7 @@ async function loadGroupsSection() {
     const container = el('cfgGroups');
     if (!container) return;
     const source = currentSource();
-    if (!source || isUaSource(source) || isMelsecSource(source) || isS7Source(source) || isMxSource(source)) {
+    if (!source || isUaSource(source) || isMelsecSource(source) || isS7Source(source)) {
         container.innerHTML = '';
         const msg = el('cfgGroupsMsg'); if (msg) msg.textContent = '';
         return;
@@ -7609,7 +7428,7 @@ async function loadDaGroupsTab() {
     container.innerHTML = '<div class="hint">Loading DA groups…</div>';
     if (msg) msg.textContent = '';
     try {
-        const opcDaSrcs = state.sources.filter(s => !isUaSource(s) && !isDriverSource(s) && !isMxSource(s));
+        const opcDaSrcs = state.sources.filter(s => !isUaSource(s) && !isDriverSource(s));
         if (opcDaSrcs.length === 0) {
             container.innerHTML = '<div class="hint">No OPC DA sources — add one in <a href="#/connectivity/opc-da" onclick="navigate(\'connectivity/opc-da\');return false;">OPC DA</a>.</div>';
             return;
@@ -7737,42 +7556,16 @@ function fpSubscriptionOptions(sourceId, selected) {
     const defRate = src ? src.defaultUpdateRateMs : ((state.sources.find(s => s.sourceId === sourceId) || {}).updateRateMs ?? 0);
     return `<option value=""${matched ? '' : ' selected'}>Source Default (${formatMs(defRate)})</option>` + html;
 }
-// A named subscription or PLC group owns the tag's rate: lock the per-tag
-// Update Rate input while one is chosen, unlock when back on the default.
+// A named subscription owns the tag's rate: lock the per-tag Update Rate input
+// while one is chosen, unlock when back on the default.
 function updateFpRateEnabled() {
     const subSel = el('fpSubscription');
-    const grpField = el('fpPlcGroupField');
-    const grpSel = el('fpPlcGroup');
     const rate = el('fpPollRate');
     const hint = el('fpSubscriptionHint');
-    const grpHint = el('fpPlcGroupHint');
     if (!rate) return;
     const subLocked = !!(subSel && subSel.value);
-    const grpVisible = !!(grpField && grpField.style.display !== 'none');
-    const grpName = grpVisible && grpSel ? String(grpSel.value || '').trim() : '';
-    rate.disabled = subLocked || !!grpName;
+    rate.disabled = subLocked;
     if (hint) hint.textContent = subLocked ? 'Rate comes from the named subscription.' : '';
-    if (grpHint) grpHint.textContent = grpName ? "set by group '" + grpName + "'" : '';
-}
-// PLC GROUP selector (MX Component sources): Default plus one option per named
-// group with its update rate. Matching is case-insensitive, mirroring the
-// server-side group-name comparisons. Reads the open faceplate's source id.
-function fpPlcGroupOptions(selected) {
-    const sid = window.__fpSourceId || '';
-    const src = (typeof plcGroupsCache !== 'undefined' ? plcGroupsCache : []).find(s => s.sourceId === sid);
-    const opts = ['<option value="">Default</option>'];
-    if (src) for (const g of (src.groups || [])) {
-        opts.push('<option value="' + esc(g.name) + '"' + (String(selected || '').toLowerCase() === String(g.name).toLowerCase() ? ' selected' : '') + '>' + esc(g.name) + ' (' + g.updateRateMs + ' ms)</option>');
-    }
-    else if (selected) opts.push('<option value="' + esc(selected) + '" selected>' + esc(selected) + '</option>');
-    return opts.join('');
-}
-// Update rate of a source's named PLC group, for storing the effective rate on
-// save (same pattern as daGroupRateFor). 0 when unknown — cache not loaded yet.
-function plcGroupRateFor(sourceId, name) {
-    const src = (typeof plcGroupsCache !== 'undefined' ? plcGroupsCache : []).find(s => s.sourceId === sourceId);
-    const g = src ? (src.groups || []).find(x => String(x.name ?? '').toLowerCase() === String(name ?? '').toLowerCase()) : null;
-    return g ? (Number(g.updateRateMs) || 0) : 0;
 }
 function renderDaGroupsForSource(sourceId, groups, sourceIoMode) {
     const hint = document.getElementById('daGroupsHint-' + sourceId);
@@ -7897,8 +7690,8 @@ function collapseAllDaGroups() {
     document.querySelectorAll('#daGroupsContainer .box-h .toggle').forEach(t => t.textContent = '▶');
 }
 async function saveUpdateRate() {
-    // Fixed policy: the default update rate is pinned to 1000 ms; PLC Groups and
-    // per-tag rates own every other cadence. Kept as a no-op guard for old callers.
+    // Fixed policy: the default update rate is pinned to 1000 ms; per-tag rates
+    // own every other cadence. Kept as a no-op guard for old callers.
     el('rateMessage').textContent = 'Default update rate is fixed at 1 s.';
 }
 async function removeSelectedSource() {
@@ -8112,225 +7905,7 @@ async function deleteUaSub(sourceId, name) {
     }
 }
 
-// --- PLC polling groups (PLC Groups tab, MX Component sources) ---
-// Named bridge-side poll timers sharing each MX Component PLC link: GET lists
-// per-source groups plus effective rates; POST upserts; /remove deletes and its
-// tags fall back to the source default rate.
-let plcGroupsCache = [];
-function setPlcMsg(t) {
-    const m = el('plcMsg');
-    if (m) m.textContent = t;
-}
-async function loadPlcGroups() {
-    const r = await fetch('/api/plc/groups', { cache: 'no-store' });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const data = await r.json();
-    plcGroupsCache = data.sources || [];
-    renderPlcGroupSourcePicker();
-    renderPlcGroupsAll();
-}
-function renderPlcGroupSourcePicker() {
-    const sel = el('plcGroupSourcePicker'); if (!sel) return;
-    sel.innerHTML = plcGroupsCache.map(s => '<option value="' + esc(s.sourceId) + '">' + esc(s.displayName || s.sourceId) + '</option>').join('');
-}
-function renderPlcGroupsAll() {
-    const host = el('plcGroupsList');
-    if (!host) return;
-    const sid = el('plcGroupSourcePicker')?.value;
-    const src = (plcGroupsCache || []).find(s => s.sourceId === sid);
-    if (!src) { host.innerHTML = '<p class="hint">No MX Component sources configured — add one in MX Component.</p>'; return; }
-    const gidA = esc(src.sourceId).replace(/'/g, "\\'");
-    const ratesTxt = esc((src.effectiveRates || []).join(', '));
-    const rows = (src.groups || []).map(g => {
-        const gnA = esc(g.name).replace(/'/g, "\\'");
-        return '<div class="dag-card" data-name="' + attr(g.name) + '">' +
-            '<div class="n">' + esc(g.name) + '</div>' +
-            '<div class="dag-badges"><span class="dag-badge accent">' + esc(formatMs(g.updateRateMs)) + '</span></div>' +
-            '<div class="dag-meta">' + g.memberCount + ' tag' + (g.memberCount === 1 ? '' : 's') +
-            ' · effective rates: ' + ratesTxt + ' ms</div>' +
-            '<div class="dag-actions">' +
-                '<button class="btn ghost" type="button" onclick="openPlcGroupEdit(\'' + gidA + '\', \'' + gnA + '\', ' + g.updateRateMs + ')">Edit</button>' +
-                '<button class="btn ghost" type="button" onclick="deletePlcGroup(\'' + gidA + '\', \'' + gnA + '\', ' + g.memberCount + ')">Delete</button>' +
-            '</div>' +
-        '</div>';
-    }).join('');
-    host.innerHTML = rows || '<p class="hint">No groups yet — click + Add Group.</p>';
-}
-function setPlcGroupRateSelection(rateMs) {
-    // Dropdown ladder; keeps any previously-configured off-ladder rate selectable.
-    const sel = el('plcGroupRate');
-    const v = String(rateMs || 1000);
-    if (!sel.querySelector('option[value="' + v + '"]')) {
-        const opt = document.createElement('option');
-        opt.value = v;
-        opt.textContent = v + ' ms';
-        sel.appendChild(opt);
-    }
-    sel.value = v;
-}
-function openPlcGroupAdd(sourceId) {
-    el('plcGroupModalTitle').textContent = 'Add PLC Group';
-    el('plcGroupModalSource').textContent = sourceId || '';
-    el('plcGroupName').value = '';
-    setPlcGroupRateSelection(1000);
-    el('plcGroupName').dataset.editFrom = '';
-    el('plcGroupName').dataset.sourceId = sourceId || '';
-    setPlcMsg('');
-    const b = el('plcGroupModalSaveBtn'); if (b) b.disabled = false;
-    const m = el('plcGroupModal'); if (m) m.classList.add('open');
-    setTimeout(() => { const n = el('plcGroupName'); if (n) n.focus(); }, 50);
-}
-function openPlcGroupEdit(sourceId, name, rate) {
-    el('plcGroupModalTitle').textContent = 'Edit PLC Group';
-    el('plcGroupModalSource').textContent = sourceId || '';
-    el('plcGroupName').value = name;
-    setPlcGroupRateSelection(rate);
-    el('plcGroupName').dataset.editFrom = name;
-    el('plcGroupName').dataset.sourceId = sourceId;
-    setPlcMsg('');
-    const b = el('plcGroupModalSaveBtn'); if (b) b.disabled = false;
-    const m = el('plcGroupModal'); if (m) m.classList.add('open');
-}
-function closePlcGroupModal() {
-    const m = el('plcGroupModal'); if (m) m.classList.remove('open');
-}
-async function plcGroupModalSave() {
-    const b = el('plcGroupModalSaveBtn'); if (b) b.disabled = true;
-    try {
-        const sourceId = el('plcGroupName').dataset.sourceId;
-        const name = el('plcGroupName').value.trim();
-        const rate = parseInt(el('plcGroupRate').value, 10) || 1000;
-        if (!sourceId) throw new Error('Pick a source first.');
-        if (!name) throw new Error('Name is required.');
-        if (rate < 100) throw new Error('Update rate must be at least 100 ms.');
-        const r = await fetch('/api/plc/groups', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId, name, updateRateMs: rate }) });
-        const p = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
-        closePlcGroupModal();
-        setPlcMsg('✓ Saved ' + name + '.');
-        await loadPlcGroups();
-    } catch (e) {
-        el('plcMsg').textContent = '✗ ' + e.message;
-        const bb = el('plcGroupModalSaveBtn'); if (bb) bb.disabled = false;
-    }
-}
-async function deletePlcGroup(sourceId, name, memberCount) {
-    if (memberCount > 0 && !confirm(memberCount + ' tag(s) will move to the source default rate. Delete "' + name + '" for ' + sourceId + '?')) return;
-    try {
-        const r = await fetch('/api/plc/groups/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId, name }) });
-        const p = await r.json().catch(() => ({}));
-        if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
-        setPlcMsg('Deleted ' + name + '.' + ((p.movedMappings ?? 0) > 0 ? ' ' + p.movedMappings + ' tag(s) moved to default.' : ''));
-        await loadPlcGroups();
-    } catch (e) {
-        setPlcMsg('✗ Delete failed: ' + e.message);
-    }
-}
-
 // --- PLC driver sources (Melsec A3N) ---
-function mxSources() { return state.sources.filter(s => isMxSource(s)); }
-function currentMx() { return state.editingNewMx ? null : mxSources().find(s => s.sourceId === state.selectedMxId) || null; }
-function renderMx() {
-    const sources = mxSources();
-    if (!state.editingNewMx && !sources.some(s => s.sourceId === state.selectedMxId)) {
-        state.selectedMxId = sources.length ? sources[0].sourceId : '';
-    }
-    el('mxCount').textContent = sources.length + ' connection' + (sources.length !== 1 ? 's' : '');
-    el('mxList').innerHTML = sources.length ? sources.map(source =>
-        `<div class="li source-row"><div><div class="n">${esc(source.displayName || source.sourceId)} ${sourceTypeBadge(source)}${sourcePauseChip(source)}</div><div class="p">${esc(source.sourceId)} · MX station ${esc(String(source.logicalStationNumber ?? 0))} · ${formatMs(source.updateRateMs)}</div></div><span style="display:flex;gap:4px"><button class="btn ghost" data-action="select-mx" data-source-id="${attr(source.sourceId)}">Select</button>${sourcePauseButton(source)}</span></div>`
-    ).join('') : '<span class="msg">No MX Component connections configured. Click + Add Connection.</span>';
-    loadMxForm();
-}
-function pickMxSource(sourceId) {
-    state.selectedMxId = sourceId;
-    state.editingNewMx = false;
-    renderMx();
-}
-function loadMxForm() {
-    const source = currentMx();
-    if (!source) return;
-    state.editingNewMx = false;
-    el('mxSourceId').value = source.sourceId || '';
-    el('mxSourceId').disabled = true;
-    el('mxName').value = source.displayName || '';
-    el('mxStation').value = String(source.logicalStationNumber ?? 0);
-    el('mxTimeout').value = String(source.timeoutMs || 3000);
-    el('mxRetry').value = String(source.retryCount ?? 2);
-    el('mxRate').value = String(source.updateRateMs || 1000);
-    el('mxMaxTags').value = String(source.maxMappedTags || 2000);
-    el('mxMessage').textContent = 'Editing ' + (source.displayName || source.sourceId) + '.';
-}
-function newMxSource() {
-    state.selectedMxId = '';
-    state.editingNewMx = true;
-    el('mxSourceId').disabled = false;
-    el('mxSourceId').value = '';
-    el('mxName').value = '';
-    el('mxStation').value = '0';
-    el('mxTimeout').value = '3000';
-    el('mxRetry').value = '2';
-    el('mxRate').value = '1000';
-    el('mxMaxTags').value = '2000';
-    el('mxMessage').textContent = 'Enter a unique Source ID and the logical station number assigned in MX Component.';
-}
-function resetMx() {
-    if (state.editingNewMx) { newMxSource(); return; }
-    loadMxForm();
-    el('mxMessage').textContent = 'Reverted to saved values.';
-}
-function mxFormBody() {
-    return {
-        sourceId: el('mxSourceId').value.trim(),
-        displayName: el('mxName').value.trim() || null,
-        sourceType: 'MxComponent',
-        logicalStationNumber: Number(el('mxStation').value) || 0,
-        timeoutMs: Number(el('mxTimeout').value) || 3000,
-        retryCount: Number(el('mxRetry').value) || 0,
-        maxMappedTags: Number(el('mxMaxTags').value) || 2000,
-        updateRateMs: Number(el('mxRate').value) || 1000
-    };
-}
-async function saveMxSource() {
-    const body = mxFormBody();
-    if (!body.sourceId) {
-        el('mxMessage').textContent = '✗ Source ID is required.';
-        return false;
-    }
-    if (/\s/.test(body.sourceId)) {
-        el('mxMessage').textContent = '✗ Source ID must not contain spaces.';
-        return false;
-    }
-    const r = await fetch('/api/da/sources', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    const p = await r.json();
-    if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
-    state.selectedMxId = p.source?.sourceId || body.sourceId;
-    state.editingNewMx = false;
-    await loadSources();
-    await refresh();
-    renderMx();
-    el('mxMessage').textContent = 'MX Component connection saved.';
-    return true;
-}
-async function removeMxSource() {
-    const source = currentMx();
-    if (!source || state.editingNewMx) return;
-    if (!confirm('Remove MX Component connection "' + source.sourceId + '" and its tag mappings?')) return;
-    const r = await fetch('/api/da/sources/remove', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceId: source.sourceId }) });
-    const p = await r.json();
-    if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
-    state.selectedMxId = '';
-    await loadSources();
-    await loadMappings();
-    await refresh();
-    renderMx();
-    el('mxMessage').textContent = 'MX Component connection removed.';
-}
-async function testMxConnection() {
-    el('mxMessage').textContent = 'Testing connection…';
-    const r = await fetch('/api/drivers/mx-component/test-connection', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(mxFormBody()) });
-    const p = await r.json();
-    el('mxMessage').textContent = p.ok ? '✓ Connection OK — MX Component opened the station.' : '✗ ' + (p.error || ('HTTP ' + r.status));
-}
 function driverSources() { return state.sources.filter(s => isDriverSource(s)); }
 function currentDriver() { return state.editingNewDriver ? null : driverSources().find(s => s.sourceId === state.selectedDriverId) || null; }
 function renderDrivers() {
@@ -9440,16 +9015,6 @@ function bindDynamicButtons() {
                 if (el('fpSubscriptionField') && el('fpSubscriptionField').style.display !== 'none' && el('fpSubscription')) {
                     payload.subscription = el('fpSubscription').value.trim(); // '' = source default
                 }
-                if (el('fpPlcGroupField') && el('fpPlcGroupField').style.display !== 'none' && el('fpPlcGroup')) {
-                    payload.plcGroup = el('fpPlcGroup').value.trim(); // '' = Default (server zeroes PollRateMs)
-                    if (payload.plcGroup) {
-                        // Keep the effective rate on the tag like named DA groups do;
-                        // unassigning later lets the server zero it.
-                        const pgSrcId = el('fpApply').dataset.sourceId || sourceId;
-                        payload.pollRateMs = plcGroupRateFor(pgSrcId, payload.plcGroup) || 1000;
-                        payload.daGroup = null;
-                    }
-                }
                 payload.deadbandPct = Math.max(0, Math.min(100, Number.parseFloat(el('fpDeadband').value) || 0));
                 {
                     const raw = el('fpDecimals').value.trim();
@@ -9508,9 +9073,6 @@ function bindDynamicButtons() {
             updateManualInputState();
         }
         if (target.id === 'fpSubscription') {
-            updateFpRateEnabled();
-        }
-        if (target.id === 'fpPlcGroup') {
             updateFpRateEnabled();
         }
     });
@@ -9669,23 +9231,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     el('drvA3nNew').addEventListener('click', newDriver);
     el('drvA3nRemove').addEventListener('click', () => removeDriver().catch(e => el('drvA3nMessage').textContent = '✗ ' + e.message));
     el('drvA3nTest').addEventListener('click', () => testDriverConnection().catch(e => el('drvA3nMessage').textContent = '✗ ' + e.message));
-    if (el('mxSave')) el('mxSave').addEventListener('click', () => saveMxSource().catch(e => el('mxMessage').textContent = '✗ ' + e.message));
-    if (el('mxReset')) el('mxReset').addEventListener('click', resetMx);
-    if (el('mxNew')) el('mxNew').addEventListener('click', newMxSource);
-    if (el('mxRemove')) el('mxRemove').addEventListener('click', () => removeMxSource().catch(e => el('mxMessage').textContent = '✗ ' + e.message));
-    if (el('mxTest')) el('mxTest').addEventListener('click', () => testMxConnection().catch(e => el('mxMessage').textContent = '✗ ' + e.message));
-    if (el('mxList')) {
-        el('mxList').addEventListener('click', event => {
-            const pauseButton = event.target.closest('button[data-action="toggle-source-pause"]');
-            if (pauseButton) {
-                toggleSourcePause(pauseButton.dataset.sourceId || '', pauseButton.dataset.paused === 'true');
-                return;
-            }
-            const button = event.target.closest('button[data-action="select-mx"]');
-            if (!button) return;
-            pickMxSource(button.dataset.sourceId || '');
-        });
-    }
     if (el('btnDrvScanPorts')) el('btnDrvScanPorts').addEventListener('click', () => scanSerialPorts('drvA3nPort', 'listDrvPorts', 'msgDrvPorts').catch(e => el('msgDrvPorts').textContent = '✗ ' + e.message));
     if (el('btnWzDrvScanPorts')) el('btnWzDrvScanPorts').addEventListener('click', () => scanSerialPorts('wzDrvPort', 'listWzDrvPorts', 'msgWzDrvPorts').catch(e => el('msgWzDrvPorts').textContent = '✗ ' + e.message));
     const onUseSerialPort = event => {
@@ -9808,7 +9353,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const submitManual = () => addManual().catch(e => alert('Add failed: ' + e.message));
     el('manualAdd').addEventListener('click', submitManual);
     // The global Enter/Space activation skips inputs, and address-based sources
-    // (MX Component, Drivers) have no browse tree, so both manual fields submit
+    // (Drivers) have no browse tree, so both manual fields submit
     // the same add the button runs.
     for (const manualField of ['manualItem', 'manualUaNodeId']) {
         el(manualField).addEventListener('keydown', event => {
