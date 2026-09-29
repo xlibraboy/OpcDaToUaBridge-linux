@@ -98,6 +98,14 @@ public sealed class TagMapping
     /// </summary>
     [JsonPropertyName("subscription")]
     public string Subscription { get; set; } = string.Empty;
+
+    /// <summary>
+    /// When this mapping was first inserted (UTC). Written once by <c>MappingStore.Add</c> and
+    /// carried over by updates, which only edit a mapping — so an edit can never look like a
+    /// later add. null for mappings that predate the field (or a mapping stored bare on disk).
+    /// The Maps import dialog shows it for a tag that is already mapped (issue #30).
+    /// </summary>
+    public DateTime? AddedUtc { get; set; }
 }
 public static class TagMode
 {

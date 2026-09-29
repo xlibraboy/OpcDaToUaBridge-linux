@@ -25,10 +25,18 @@ public sealed record MappingTagDto(
     string? TrendStyle = null,
     bool? Digital = null,
     string? OnText = null,
-    string? OffText = null);
+    string? OffText = null,
+    DateTime? AddedUtc = null);
 
 public sealed record MappingAddRequest(List<MappingTagDto>? Tags);
 
 public sealed record MappingRemoveRequest(string SourceId, string ItemId);
 
 public sealed record MappingUpdateRequest(MappingTagDto Tag);
+
+/// <summary>
+/// A tag list to compare with a source before anything is added: the raw text of the file the
+/// operator picked, exactly as read (the bridge parses it, so every entry point agrees on what
+/// the file means).
+/// </summary>
+public sealed record MappingImportPreviewRequest(string SourceId, string Text);

@@ -1624,6 +1624,55 @@ app.MapPost("/api/mappings/remove", (MappingRemoveRequest request, MappingStore 
     long version = store.Remove(request.SourceId, request.ItemId);
     return Results.Json(new { version });
 });
+app.MapPost("/api/mappings/import/preview", async (
+    MappingImportPreviewRequest request,
+    MappingStore store,
+    DaRuntimeSettings settings,
+    OpcUaBrowseService uaBrowse,
+    CancellationToken cancellationToken) =>
+{
+    if (string.IsNullOrWhiteSpace(request.SourceId))
+    {
+        return Results.BadRequest(new { error = "Source ID is required." });
+    }
+
+    DaSourceRuntimeSettings? source = settings.GetSnapshot().GetSource(request.SourceId);
+    if (source is null)
+    {
+        return Results.BadRequest(new { error = $"Source '{request.SourceId}' was not found." });
+    }
+
+    if (!TagImportFile.TryParseMxOpcTags(request.Text, out List<ImportedTag> imported, out string parseError))
+    {
+        return Results.BadRequest(new { error = parseError });
+    }
+
+    // The comparison baseline is the tag list the source really exposes, read the same way the
+    // Tag Browser reads it. A source that cannot be enumerated — no DA COM on this host, server
+    // down, a driver source with no tag list — still gets the mapped/description comparison, and
+    // the dialog says the source check was skipped rather than guessing at "not on the source".
+    SourceTagCheck check = await ReadSourceTagsAsync(source, uaBrowse, settings, cancellationToken).ConfigureAwait(false);
+
+    Dictionary<string, TagMapping> mapped = new(StringComparer.OrdinalIgnoreCase);
+    foreach (TagMapping tag in store.GetBySource(source.SourceId))
+    {
+        mapped[tag.ItemId] = tag;
+    }
+
+    List<TagImportRow> rows = TagImportComparer.Compare(imported, mapped, check.Tags);
+
+    return Results.Json(new
+    {
+        sourceId = source.SourceId,
+        sourceName = source.DisplayName,
+        sourceChecked = check.Tags is not null,
+        sourceTruncated = check.Truncated,
+        sourceError = check.Error,
+        mappedTags = mapped.Count,
+        rowCount = imported.Count,
+        rows
+    });
+});
 
 app.MapGet("/api/config/export", (DaRuntimeSettings daSettings, MappingStore mappingStore) =>
 {
@@ -2384,6 +2433,85 @@ static OpcTagBrowseResult BrowseDaTags(DaTagBrowseRequest request)
 }
 
 /// <summary>
+/// The tag list a source really exposes, for the Maps import dialog's comparison. An OPC DA
+/// server is read with the recursive browse the Tag Browser's "Browse All Tags" uses; an OPC UA
+/// server is walked (bounded — <see cref="OpcUaBrowseService.TagListMaxNodes"/>), which reports
+/// truncation instead of pretending a cut-short list is complete. A driver source has no tag
+/// list to read at all, so the import compares against the stored mappings alone and says why.
+/// </summary>
+static async Task<SourceTagCheck> ReadSourceTagsAsync(
+    DaSourceRuntimeSettings source,
+    OpcUaBrowseService uaBrowse,
+    DaRuntimeSettings settings,
+    CancellationToken cancellationToken)
+{
+    if (string.Equals(source.SourceType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
+    {
+        if (!TryResolveUaConnection(source.SourceId, null, null, null, null, null, settings, out OpcUaSourceClientOptions? options, out string? resolveError))
+        {
+            return new SourceTagCheck(null, Truncated: false, Error: resolveError);
+        }
+
+        UaTagListResult walk = await uaBrowse
+            .ListVariableNodeIdsAsync(options!, rootNodeId: null, OpcUaBrowseService.TagListMaxNodes, cancellationToken)
+            .ConfigureAwait(false);
+
+        return walk.Error is not null
+            ? new SourceTagCheck(null, Truncated: false, Error: walk.Error)
+            : new SourceTagCheck(new HashSet<string>(walk.NodeIds, StringComparer.OrdinalIgnoreCase), walk.Truncated, Error: null);
+    }
+
+    if (!string.Equals(source.SourceType, SourceTypes.OpcDa, StringComparison.OrdinalIgnoreCase))
+    {
+        return new SourceTagCheck(
+            null,
+            Truncated: false,
+            Error: "This source type has no tag list to read, so the file is compared with the tags already mapped.");
+    }
+
+    if (!OperatingSystem.IsWindows())
+    {
+        return new SourceTagCheck(null, Truncated: false, Error: "OPC DA browsing requires Windows.");
+    }
+
+    try
+    {
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        cts.CancelAfter(TimeSpan.FromSeconds(30));
+        OpcTagBrowseResult result = await Task.Run(
+            () => BrowseDaTags(new DaTagBrowseRequest(
+                source.SourceId,
+                source.ProgId,
+                string.IsNullOrWhiteSpace(source.Host) ? "localhost" : source.Host,
+                Path: null,
+                Recursive: true,
+                source.RemoteUsername,
+                source.RemotePassword,
+                source.RemoteDomain)),
+            cts.Token).ConfigureAwait(false);
+
+        HashSet<string> tags = new(StringComparer.OrdinalIgnoreCase);
+        foreach (OpcTagNode tag in result.Tags)
+        {
+            if (!string.IsNullOrWhiteSpace(tag.ItemId))
+            {
+                tags.Add(tag.ItemId.Trim());
+            }
+        }
+
+        return new SourceTagCheck(tags, Truncated: false, Error: null);
+    }
+    catch (OperationCanceledException)
+    {
+        return new SourceTagCheck(null, Truncated: false, Error: "Tag browse timed out. Check the server and DCOM settings.");
+    }
+    catch (Exception exception)
+    {
+        return new SourceTagCheck(null, Truncated: false, Error: exception.Message);
+    }
+}
+
+/// <summary>
 /// Applies one Windows Firewall rule and turns any failure into a result object — a firewall
 /// problem must never fail a port save. The platform guard keeps the Windows-only call honest
 /// elsewhere; callers check the platform too, so it is unreachable on other hosts.
@@ -3099,7 +3227,8 @@ static TagMapping ToTagMapping(MappingTagDto tag) => new()
     OnText = string.IsNullOrWhiteSpace(tag.OnText) ? null : tag.OnText.Trim(),
     OffText = string.IsNullOrWhiteSpace(tag.OffText) ? null : tag.OffText.Trim(),
     Subscription = tag.Subscription ?? string.Empty,
-    TrendStyle = TrendStyleTypes.Normalize(tag.TrendStyle)
+    TrendStyle = TrendStyleTypes.Normalize(tag.TrendStyle),
+    AddedUtc = tag.AddedUtc
 };
 
 static bool ValidateMelsecMappings(List<TagMapping> tags, DaRuntimeSettings daSettings, MappingStore store, out string error)

@@ -81,6 +81,24 @@ with no rebuild and the measured effect transfers to the shipped change. Environ
 are deliberately not used: a service host or Task Scheduler does not pick up a machine variable
 set after boot. `docs/ram-measurement.md` documents the flow and how to read the result.
 
+**Maps can bulk-load a tag list from a file.** Adding a few hundred PLC tags one
+browse-and-Add at a time is not a workflow. **Import from file…** on Maps reads the CSV
+MX OPC Configurator writes (File ▸ Save As ▸ CSV — the `#MX_DataTags` table: tag names and
+descriptions, nothing else), compares every row with the source before anything is stored, and
+then adds the rows you accept — all at once or one by one. Each row shows what it would do
+(new, already mapped, mapped with a different description, listed twice in the file) and
+whether the source really exposes that name, read the way the Tag Browser reads it, so a row
+the server does not have is flagged and left out of *Add all* instead of becoming a dead
+mapping. The file's `\Address Space\<PLC>\<folder>` grouping stays a picker: a list covering
+several PLCs is imported one PLC at a time, and the dialog opens on the group that names the
+selected source. A source that cannot be enumerated — OPC DA browsing is COM, so it needs
+Windows and a reachable server; an OPC UA server is walked up to 20 000 tags and says when the
+walk was cut short; a serial driver has no tag list at all — still gets the mapped comparison,
+with the reason stated instead of guessed. Rows whose description differs can be updated in
+place, and every mapping now records **when it was added** (`addedUtc`, printed in the
+faceplate's Basic tab and kept across edits — a stamp belongs to the insert, not to the last
+save). `POST /api/mappings/import/preview` serves the comparison (#30).
+
 ### Changed
 
 **The OPC UA identity no longer carries the `ohmypi` vendor prefix.** The server's

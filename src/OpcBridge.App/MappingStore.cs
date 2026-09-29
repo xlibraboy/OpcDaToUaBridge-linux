@@ -88,6 +88,10 @@ public sealed class MappingStore
                     continue;
                 }
 
+                // Stamp the insert here, not in Normalize: a mapping loaded from disk or
+                // re-sent by an edit keeps the moment it was really added (issue #30).
+                normalized.AddedUtc ??= DateTime.UtcNow;
+
                 mappings_.Add(normalized);
                 added++;
                 changed = true;
@@ -132,6 +136,10 @@ public sealed class MappingStore
                 version = version_;
                 return false;
             }
+
+            // An update edits a mapping, it never re-adds it: a caller that does not echo the
+            // stamp (the faceplate's Apply does not) must not wipe the add time (issue #30).
+            normalized.AddedUtc ??= mappings_[index].AddedUtc;
 
             mappings_[index] = normalized;
             version_++;
@@ -409,7 +417,9 @@ public sealed class MappingStore
             OnText = string.IsNullOrWhiteSpace(tag.OnText) ? null : tag.OnText.Trim(),
             OffText = string.IsNullOrWhiteSpace(tag.OffText) ? null : tag.OffText.Trim(),
             Subscription = (tag.Subscription ?? string.Empty).Trim(),
-            TrendStyle = TrendStyleTypes.Normalize(tag.TrendStyle)
+            TrendStyle = TrendStyleTypes.Normalize(tag.TrendStyle),
+            // Carried through as-is: the stamp belongs to the insert (see Add/TryUpdate).
+            AddedUtc = tag.AddedUtc
         };
     }
 
