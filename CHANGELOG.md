@@ -18,6 +18,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+**Import from file can take a mis-picked mapping back.** Importing a tag list is quick to get
+wrong — an MX export repeats the same name under every PLC, and a row added by mistake stayed
+mapped until the faceplate's own Remove was dug out. Every import row that already holds a
+mapping now carries an **Un-map** button beside its status chip: it removes that one mapping
+behind the same warning the faceplate shows, then compares the file with the source again so
+the row comes back as *not mapped* with its description and tick — map the right row in its
+place, or re-add this one deliberately (#32).
+
 **Credentials for external OPC UA clients.** The built-in UA server could already
 enforce a username and password, but nothing exposed the setting and nothing enforced
 it either — the check sat on an overload the stack no longer calls, so with the

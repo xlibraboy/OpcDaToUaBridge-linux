@@ -130,6 +130,28 @@ public sealed class MappingImportPreviewApiTests
     }
 
     [Fact]
+    public async Task RemovedMapping_ComesBackAsANewRowInTheComparison()
+    {
+        await using TestAppHandle handle = await TestAppHandle.StartAsync(WriteMinimalAppsettings);
+        // An import that mapped the wrong row is undone with the ordinary remove (#32 — the
+        // dialog's Un-map posts exactly this): the comparison must then show the tag as new
+        // again, with no add stamp, so it can be ticked and mapped afresh.
+        await AddTagAsync(handle, "DRYEND_PLC.Input_X.X000", "Stretch");
+
+        JsonElement before = await PreviewAsync(handle, "default", TwoTagExport);
+        Assert.Equal("mapped", StatusOf(before, "DRYEND_PLC.Input_X.X000"));
+
+        using HttpResponseMessage removed = await handle.Client.PostAsync(
+            "/api/mappings/remove",
+            JsonBody(new { sourceId = "default", itemId = "DRYEND_PLC.Input_X.X000" }));
+        Assert.Equal(HttpStatusCode.OK, removed.StatusCode);
+
+        JsonElement after = await PreviewAsync(handle, "default", TwoTagExport);
+        Assert.Equal("new", StatusOf(after, "DRYEND_PLC.Input_X.X000"));
+        Assert.Equal(JsonValueKind.Null, RowFor(after, "DRYEND_PLC.Input_X.X000").GetProperty("addedUtc").ValueKind);
+    }
+
+    [Fact]
     public async Task Preview_ReportsTheSourceTagsTheFileLeavesOut()
     {
         await using TestAppHandle handle = await TestAppHandle.StartAsync(WriteMinimalAppsettings);
