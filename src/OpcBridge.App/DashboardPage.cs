@@ -38,8 +38,8 @@ namespace OpcBridge.App;
 //   "importTagsSource"/"importTagsGroup"/"importTagsSummary"/"importTagsList"/"importTagsMessage"/
 //   "importTagsSelectAll"/"importTagsSelection"/"importTagsAddAll"/"importTagsAddSelected"/"importTagsUpdateAll",
 //   function openImportTags(/closeImportTags(/renderImportTags(/readImportTagsFile(/addImportRows(/
-//   updateImportRows(/importRowSelectable(/importSourceOnlyHtml(/pruneImportSelection(,
-//   /api/mappings/import/preview, data-action="import-add"/"import-update"/"import-pick",
+//   updateImportRows(/unmapImportRow(/importRowSelectable(/importSourceOnlyHtml(/pruneImportSelection(,
+//   /api/mappings/import/preview, data-action="import-add"/"import-update"/"import-unmap"/"import-pick",
 //   faceplate id="fpAdded" carries the added stamp
 //   Tag Browser search (#24): id="tagSearch"/"tagSearchStatus", function applyTagFilter(/tagSearchKey(/clearTagSearch(,
 //   tag-tree rows carry data-search (display name + item ID) and data-pin="1" on the ".." row
@@ -8954,7 +8954,9 @@ async function removeMapping(sourceId, itemId) {
 // and unmapped carry a live tick, and the mapping is exactly the ticked selection; the preview
 // also carries the reverse direction, the source's own tags the file leaves out, with their
 // mapped state. Adding reuses the ordinary insert-only add endpoint, one row or all of them;
-// updating a description reuses the ordinary update endpoint with the stored mapping echoed.
+// updating a description reuses the ordinary update endpoint with the stored mapping echoed; a
+// mis-picked row is taken back with the ordinary remove endpoint and the file is compared again,
+// so the row returns as "not mapped" and the right one can be mapped in its place (#32).
 // ---------------------------------------------------------------------------
 const IMPORT_ROWS_CAP = 300;
 
@@ -9168,11 +9170,17 @@ function importTagRowHtml(row) {
         added ? 'added ' + added : null,
         row.status === 'differs' && existing ? 'mapped as “' + existing + '”' : null
     ].filter(Boolean).join(' · ');
+    // A row that already holds a mapping can take it back (#32) — a mis-picked import row is
+    // noticed in this very list, so Un-map removes the mapping and the compare drops the row back
+    // to "not mapped", ready to be ticked. A differing description keeps Update beside it.
+    const unmap = `<button class="btn ghost" type="button" data-action="import-unmap" data-item-id="${attr(row.itemId)}">Un-map</button>`;
     const action = row.status === 'new'
         ? `<button class="btn ghost" type="button" data-action="import-add" data-item-id="${attr(row.itemId)}">Add</button>`
         : row.status === 'differs'
-            ? `<button class="btn ghost" type="button" data-action="import-update" data-item-id="${attr(row.itemId)}">Update</button>`
-            : '';
+            ? `<button class="btn ghost" type="button" data-action="import-update" data-item-id="${attr(row.itemId)}">Update</button>` + unmap
+            : row.status === 'mapped'
+                ? unmap
+                : '';
     return `<div class="li" role="listitem"><div class="import-pick">${importPickHtml(row)}</div><div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="n">${esc(row.name || row.itemId)}</span> <span class="p">${esc(detail)}</span></div><div class="li-actions">${importTagStatusChip(row)}${action}</div></div>`;
 }
 function renderImportTags() {
@@ -9291,6 +9299,14 @@ async function updateImportRows(rows) {
     await refresh();
     await refreshImportPreview();
     setImportMessage('✓ ' + updated + (updated === 1 ? ' description updated' : ' descriptions updated') + '.');
+}
+// Taking a mis-picked mapping back (#32): the same remove the faceplate performs, then the
+// comparison again — the row returns as "not mapped" with its description and tick, so the right
+// row can be mapped in its place, or this one re-added deliberately.
+async function unmapImportRow(row) {
+    await removeMapping(state.importSourceId, row.itemId);
+    await refreshImportPreview();
+    setImportMessage('✓ mapping removed for ' + row.itemId + '.');
 }
 function toggleLiveValues() {
     state.liveValuesEnabled = !state.liveValuesEnabled;
@@ -9804,6 +9820,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (!row) return;
             setImportMessage('Updating ' + itemId + '…');
             updateImportRows([row]).catch(e => setImportMessage('✗ ' + e.message));
+            return;
+        }
+        if (button.dataset.action === 'import-unmap') {
+            const row = importTagRowsFor(state.importGroup).find(r => r.itemId === itemId);
+            if (!row) return;
+            // The faceplate's own warning, word for word: the same stored settings are lost.
+            if (!confirm('Remove mapping "' + (row.name || itemId) + '"? Its unit, deadband, update rate and MQTT/Influx settings are lost.')) return;
+            setImportMessage('Removing ' + itemId + '…');
+            unmapImportRow(row).catch(e => setImportMessage('✗ ' + e.message));
         }
     });
     const ioModeSel = el('cfgIoMode');

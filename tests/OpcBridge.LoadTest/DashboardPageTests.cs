@@ -1555,6 +1555,20 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
+    public void Script_MapsImportCanTakeAMisPickedMappingBack()
+    {
+        // #32: a row that already holds a mapping offers Un-map beside its chip — the same remove
+        // the faceplate performs, behind the same warning — and the dialog compares the file again
+        // so the row returns as not mapped and can be ticked and re-added.
+        Assert.Contains("data-action=\"import-unmap\"", DashboardPage.Script);
+        Assert.Contains(">Un-map</button>", DashboardPage.Script);
+        Assert.Contains("function unmapImportRow(", DashboardPage.Script);
+        Assert.Contains("if (button.dataset.action === 'import-unmap')", DashboardPage.Script);
+        Assert.Contains("await removeMapping(state.importSourceId, row.itemId);", DashboardPage.Script);
+        Assert.Contains("Its unit, deadband, update rate and MQTT/Influx settings are lost.'", DashboardPage.Script);
+    }
+
+    [Fact]
     public void Script_MappingUpdateEchoesTheStoredMapping()
     {
         // The import dialog updates a description with the faceplate closed: the full-replace
