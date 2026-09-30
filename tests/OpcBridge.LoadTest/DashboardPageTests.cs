@@ -282,6 +282,7 @@ public sealed class DashboardPageTests
     {
         Assert.Contains("/api/da/tags", DashboardPage.Script);
         Assert.Contains("function browseTags(", DashboardPage.Script);
+        Assert.Contains("p.warnings", DashboardPage.Script);
     }
 
     [Fact]

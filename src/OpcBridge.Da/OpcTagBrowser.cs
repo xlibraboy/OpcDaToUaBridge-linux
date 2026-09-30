@@ -5,7 +5,9 @@ namespace OpcBridge.Da;
 
 /// <summary>
 /// Browses the address space of an OPC DA server using IOPCBrowseServerAddressSpace.
-/// Supports both hierarchical and flat address spaces.
+/// Supports both hierarchical and flat address spaces. Servers differ in how faithfully they
+/// implement browsing, so a failure inside one browse call becomes a warning on the result
+/// instead of vanishing — the Tag Browser shows it and the log carries it.
 /// </summary>
 public static class OpcTagBrowser
 {
@@ -21,6 +23,12 @@ public static class OpcTagBrowser
 
     // Namespace organization
     private const int OpcNsFlat = 2;
+
+    // How many names an enumerator is asked for per COM call.
+    private const int EnumerationBatchSize = 64;
+
+    // A recursive browse of a messy server can collect a warning per folder; keep the payload sane.
+    private const int MaxWarnings = 25;
 
     /// <summary>
     /// Browse the address space at <paramref name="path" />.
@@ -66,36 +74,52 @@ public static class OpcTagBrowser
 
         object? groupObject = null;
         int serverGroupHandle = 0;
+        List<string> warnings = new();
         try
         {
             if (serverObject is not IOPCBrowseServerAddressSpace browse)
                 throw new InvalidOperationException(
                     "This OPC DA server does not support address-space browsing (IOPCBrowseServerAddressSpace).");
 
-            IOPCItemMgt? itemManagement = TryCreateMetadataItemManagement(serverObject, out groupObject, out serverGroupHandle);
+            IOPCItemMgt? itemManagement = TryCreateMetadataItemManagement(serverObject, out groupObject, out serverGroupHandle, warnings);
 
-            browse.QueryOrganization(out int organization);
+            int organization = 0;
+            try
+            {
+                browse.QueryOrganization(out organization);
+            }
+            catch (Exception exception)
+            {
+                warnings.Add($"QueryOrganization failed ({Describe(exception)}); assuming a hierarchical address space.");
+            }
+
+            string normalizedPath = NormalizePath(path);
 
             if (organization == OpcNsFlat)
             {
-                List<OpcTagNode> flatTags = EnumerateLeaves(browse, itemManagement, OpcFlat, string.Empty);
-                return new OpcTagBrowseResult([], flatTags);
+                List<OpcTagNode> flatTags = EnumerateLeaves(browse, itemManagement, OpcFlat, string.Empty, warnings);
+                return new OpcTagBrowseResult([], flatTags, CapWarnings(warnings));
             }
 
-            MoveToRoot(browse);
-            MoveToPath(browse, path);
+            MoveToRoot(browse, warnings);
+            MoveToPath(browse, normalizedPath);
 
             if (recursive)
             {
                 List<OpcTagNode> allTags = new();
-                CollectLeavesRecursive(browse, itemManagement, NormalizePath(path), allTags, new HashSet<string>(StringComparer.OrdinalIgnoreCase));
-                return new OpcTagBrowseResult([], allTags);
+                CollectLeavesRecursive(browse, itemManagement, normalizedPath, allTags, new HashSet<string>(StringComparer.OrdinalIgnoreCase), warnings);
+
+                return allTags.Count == 0 && normalizedPath.Length == 0
+                    ? WithFlatFallback(browse, itemManagement, allTags, warnings)
+                    : new OpcTagBrowseResult([], allTags, CapWarnings(warnings));
             }
 
-            List<string> branches = EnumerateBranches(browse);
-            List<OpcTagNode> tags = EnumerateLeaves(browse, itemManagement, OpcLeaf, NormalizePath(path));
+            List<string> branches = EnumerateBranches(browse, warnings);
+            List<OpcTagNode> tags = EnumerateLeaves(browse, itemManagement, OpcLeaf, normalizedPath, warnings);
 
-            return new OpcTagBrowseResult(branches, tags);
+            return branches.Count == 0 && tags.Count == 0 && normalizedPath.Length == 0
+                ? WithFlatFallback(browse, itemManagement, tags, warnings)
+                : new OpcTagBrowseResult(branches, tags, CapWarnings(warnings));
         }
         finally
         {
@@ -104,13 +128,37 @@ public static class OpcTagBrowser
         }
     }
 
+    /// <summary>
+    /// A server that reports a hierarchical address space but returns nothing at its root may
+    /// really only support flat browsing, so try OPC_FLAT before reporting an empty namespace.
+    /// </summary>
     [SupportedOSPlatform("windows")]
-    private static void MoveToRoot(IOPCBrowseServerAddressSpace browse)
+    private static OpcTagBrowseResult WithFlatFallback(
+        IOPCBrowseServerAddressSpace browse, IOPCItemMgt? itemManagement, List<OpcTagNode> found, List<string> warnings)
+    {
+        List<OpcTagNode> flatTags = EnumerateLeaves(browse, itemManagement, OpcFlat, string.Empty, warnings);
+        if (flatTags.Count == 0)
+        {
+            return new OpcTagBrowseResult([], found, CapWarnings(warnings));
+        }
+
+        warnings.Add("Hierarchical browse returned no items; used OPC_FLAT instead.");
+        return new OpcTagBrowseResult([], flatTags, CapWarnings(warnings));
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static void MoveToRoot(IOPCBrowseServerAddressSpace browse, List<string> warnings)
     {
         int hr = browse.ChangeBrowsePosition(OpcBrowseTo, string.Empty);
         if (hr < 0)
         {
-            Marshal.ThrowExceptionForHR(hr);
+            hr = browse.ChangeBrowsePosition(OpcBrowseTo, null);
+        }
+
+        if (hr < 0)
+        {
+            // A fresh activation starts at the root, so this is only worth a note, not a failure.
+            warnings.Add($"ChangeBrowsePosition(OPC_BROWSE_TO root) failed: HRESULT 0x{hr:X8}; browsing from the server's current position.");
         }
     }
 
@@ -135,34 +183,46 @@ public static class OpcTagBrowser
     }
 
     [SupportedOSPlatform("windows")]
-    private static List<string> EnumerateBranches(IOPCBrowseServerAddressSpace browse)
+    private static List<string> EnumerateBranches(IOPCBrowseServerAddressSpace browse, List<string> warnings)
     {
         List<string> names = new();
         try
         {
             browse.BrowseOPCItemIDs(OpcBranch, string.Empty, 0, 0, out IEnumString enumerator);
-            CollectStrings(enumerator, names);
+            DrainEnumerator(enumerator, names, warnings, "OPC_BRANCH enumeration");
         }
-        catch { /* no branches */ }
+        catch (Exception exception)
+        {
+            warnings.Add($"OPC_BRANCH browse failed: {Describe(exception)}");
+        }
         return names;
     }
 
     [SupportedOSPlatform("windows")]
-    private static List<OpcTagNode> EnumerateLeaves(IOPCBrowseServerAddressSpace browse, IOPCItemMgt? itemManagement, int browseType, string path)
+    private static List<OpcTagNode> EnumerateLeaves(IOPCBrowseServerAddressSpace browse, IOPCItemMgt? itemManagement, int browseType, string path, List<string> warnings)
     {
         List<string> names = new();
         try
         {
             browse.BrowseOPCItemIDs(browseType, string.Empty, 0, 0, out IEnumString enumerator);
-            CollectStrings(enumerator, names);
+            DrainEnumerator(enumerator, names, warnings, $"{BrowseTypeName(browseType)} enumeration");
         }
-        catch { /* none */ }
+        catch (Exception exception)
+        {
+            warnings.Add($"{BrowseTypeName(browseType)} browse failed: {Describe(exception)}");
+        }
 
         string[] itemIds = new string[names.Count];
+        int getItemIdFailures = 0;
         for (int i = 0; i < names.Count; i++)
         {
             itemIds[i] = names[i];
-            try { browse.GetItemID(names[i], out itemIds[i]); } catch { /* keep */ }
+            try { browse.GetItemID(names[i], out itemIds[i]); } catch { getItemIdFailures++; }
+        }
+
+        if (getItemIdFailures > 0)
+        {
+            warnings.Add($"GetItemID failed for {getItemIdFailures} of {names.Count} item(s); showing the browse names as item IDs.");
         }
 
         OpcTagMetadata[] metadata = ReadNativeMetadata(itemManagement, itemIds);
@@ -177,27 +237,28 @@ public static class OpcTagBrowser
     }
 
     [SupportedOSPlatform("windows")]
-    private static void CollectLeavesRecursive(IOPCBrowseServerAddressSpace browse, IOPCItemMgt? itemManagement, string path, List<OpcTagNode> tags, HashSet<string> visitedPaths)
+    private static void CollectLeavesRecursive(IOPCBrowseServerAddressSpace browse, IOPCItemMgt? itemManagement, string path, List<OpcTagNode> tags, HashSet<string> visitedPaths, List<string> warnings)
     {
         if (!visitedPaths.Add(path))
         {
             return;
         }
 
-        tags.AddRange(EnumerateLeaves(browse, itemManagement, OpcLeaf, path));
+        tags.AddRange(EnumerateLeaves(browse, itemManagement, OpcLeaf, path, warnings));
 
-        foreach (string branch in EnumerateBranches(browse))
+        foreach (string branch in EnumerateBranches(browse, warnings))
         {
             string childPath = path.Length == 0 ? branch : string.Concat(path, ".", branch);
             int downHr = browse.ChangeBrowsePosition(OpcBrowseDown, branch);
             if (downHr < 0)
             {
+                warnings.Add($"Skipped folder '{childPath}': OPC_BROWSE_DOWN failed: HRESULT 0x{downHr:X8}.");
                 continue;
             }
 
             try
             {
-                CollectLeavesRecursive(browse, itemManagement, childPath, tags, visitedPaths);
+                CollectLeavesRecursive(browse, itemManagement, childPath, tags, visitedPaths, warnings);
             }
             finally
             {
@@ -211,28 +272,63 @@ public static class OpcTagBrowser
     }
 
     [SupportedOSPlatform("windows")]
-    private static void CollectStrings(IEnumString enumerator, List<string> output)
+    private static void DrainEnumerator(IEnumString enumerator, List<string> output, List<string> warnings, string context)
     {
         if (enumerator is null) return;
-        string[] batch = new string[1];
+
+        try
+        {
+            DrainStrings(EnumerationBatchSize, (batch, fetched) => enumerator.Next(batch.Length, batch, fetched), output, warnings, context);
+        }
+        finally
+        {
+            Marshal.FinalReleaseComObject(enumerator);
+        }
+    }
+
+    /// <summary>
+    /// Drains an OPC enumerator in batches. Every item a call reports is consumed, including the
+    /// ones some servers hand back together with S_FALSE — the loop only stops at the end of the
+    /// sequence or a hard failure, never on an HRESULT that still carries data.
+    /// </summary>
+    internal static void DrainStrings(int batchSize, Func<string[], int[], int> next, List<string> output, List<string> warnings, string context)
+    {
+        string[] batch = new string[batchSize];
         int[] fetched = new int[1];
+
         while (true)
         {
-            int hr = enumerator.Next(1, batch, fetched);
-            if (fetched[0] == 0 || hr != 0) break;
-            if (!string.IsNullOrEmpty(batch[0])) output.Add(batch[0]);
+            int hr = next(batch, fetched);
+            for (int i = 0; i < fetched[0] && i < batch.Length; i++)
+            {
+                if (!string.IsNullOrEmpty(batch[i]))
+                {
+                    output.Add(batch[i]);
+                }
+            }
+
+            if (hr < 0)
+            {
+                warnings.Add($"{context} failed: HRESULT 0x{hr:X8}.");
+                break;
+            }
+
+            if (fetched[0] == 0)
+            {
+                break;
+            }
         }
-        Marshal.FinalReleaseComObject(enumerator);
     }
 
     [SupportedOSPlatform("windows")]
-    private static IOPCItemMgt? TryCreateMetadataItemManagement(object serverObject, out object? groupObject, out int serverGroupHandle)
+    private static IOPCItemMgt? TryCreateMetadataItemManagement(object serverObject, out object? groupObject, out int serverGroupHandle, List<string> warnings)
     {
         groupObject = null;
         serverGroupHandle = 0;
 
         if (serverObject is not IOPCServer server)
         {
+            warnings.Add("The server does not expose IOPCServer; data types and access rights are unavailable.");
             return null;
         }
 
@@ -252,8 +348,18 @@ public static class OpcTagBrowser
                 out _,
                 ref itemManagementGuid,
                 out groupObject);
-            if (hresult < 0 || groupObject is not IOPCItemMgt itemManagement)
+            if (hresult < 0)
             {
+                warnings.Add($"The metadata group could not be created (HRESULT 0x{hresult:X8}); data types and access rights are unavailable.");
+                ReleaseMetadataItemManagement(server, groupObject, serverGroupHandle);
+                groupObject = null;
+                serverGroupHandle = 0;
+                return null;
+            }
+
+            if (groupObject is not IOPCItemMgt itemManagement)
+            {
+                warnings.Add("The server's group does not expose IOPCItemMgt; data types and access rights are unavailable.");
                 ReleaseMetadataItemManagement(server, groupObject, serverGroupHandle);
                 groupObject = null;
                 serverGroupHandle = 0;
@@ -262,8 +368,9 @@ public static class OpcTagBrowser
 
             return itemManagement;
         }
-        catch
+        catch (Exception exception)
         {
+            warnings.Add($"The metadata group could not be created ({Describe(exception)}); data types and access rights are unavailable.");
             ReleaseMetadataItemManagement(server, groupObject, serverGroupHandle);
             groupObject = null;
             serverGroupHandle = 0;
@@ -399,6 +506,35 @@ public static class OpcTagBrowser
 
     private readonly record struct OpcTagMetadata(short? CanonicalDataType, int? AccessRights);
 
+    private static string Describe(Exception exception) => $"HRESULT 0x{exception.HResult:X8}: {exception.Message}";
+
+    private static string BrowseTypeName(int browseType) => browseType switch
+    {
+        OpcBranch => "OPC_BRANCH",
+        OpcLeaf => "OPC_LEAF",
+        OpcFlat => "OPC_FLAT",
+        _ => $"browse type {browseType}"
+    };
+
+    private static IReadOnlyList<string> CapWarnings(List<string> warnings)
+    {
+        if (warnings.Count == 0)
+        {
+            return Array.Empty<string>();
+        }
+
+        List<string> distinct = warnings.Distinct(StringComparer.Ordinal).ToList();
+        if (distinct.Count <= MaxWarnings)
+        {
+            return distinct;
+        }
+
+        string trailer = $"…{distinct.Count - MaxWarnings} more warning(s) not shown.";
+        List<string> capped = distinct.Take(MaxWarnings).ToList();
+        capped.Add(trailer);
+        return capped;
+    }
+
     private static string NormalizePath(string? path)
     {
         return path?.Trim().Trim('.') ?? string.Empty;
@@ -504,7 +640,7 @@ public static class OpcTagBrowser
     private interface IOPCBrowseServerAddressSpace
     {
         void QueryOrganization(out int nameSpaceType);
-        [PreserveSig] int ChangeBrowsePosition(int browseDirection, [MarshalAs(UnmanagedType.LPWStr)] string itemId);
+        [PreserveSig] int ChangeBrowsePosition(int browseDirection, [MarshalAs(UnmanagedType.LPWStr)] string? itemId);
         void BrowseOPCItemIDs(int browseFilterType,
             [MarshalAs(UnmanagedType.LPWStr)] string filterCriteria,
             short variantDataTypeFilter, int accessRightsFilter,
@@ -534,4 +670,5 @@ public sealed record OpcTagNode(string Name, string ItemId, short? CanonicalData
 
 public sealed record OpcTagBrowseResult(
     IReadOnlyList<string> Branches,
-    IReadOnlyList<OpcTagNode> Tags);
+    IReadOnlyList<OpcTagNode> Tags,
+    IReadOnlyList<string>? Warnings = null);

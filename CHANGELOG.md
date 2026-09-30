@@ -250,6 +250,18 @@ its next MSI upgrade.
 
 ### Fixed
 
+**A vendor's browse quirks no longer look like an empty address space.** The Tag Browser treated
+any non-zero HRESULT from an address-space enumerator as the end of the list, yet a server may
+legally return the last names together with `S_FALSE` — one server answering that way browsed as
+empty while a better-behaved server on the same machine listed its tags, and a failed
+`OPC_BRANCH` / `OPC_LEAF` call, a refused `GetItemID`, a folder that cannot be entered or a root
+move the server does not implement all vanished behind the same empty result. Browsing now
+consumes every item each reply reports, tolerates the root-move and organization differences,
+and falls back to a flat (`OPC_FLAT`) browse when a hierarchical walk of the root finds nothing.
+What still fails is named: warnings print above the tag tree in the Tag Browser and are logged
+as a Warning, so a server that cannot be browsed says which call was refused and with which
+HRESULT instead of showing *No tags or folders here*.
+
 **The service restarts itself after a crash.** The package configured no recovery actions, so a
 bridge that died stayed down until a person noticed — which is how one host sat without its
 mirror after stopping at 09:10 and again at 15:47 on 2026-09-29, each time logging Service

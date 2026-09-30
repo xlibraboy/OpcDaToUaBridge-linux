@@ -8807,6 +8807,7 @@ async function browseTags(path, recursive = false) {
     if (p.error) throw new Error(p.error);
     const branches = p.branches || [];
     const tags = p.tags || [];
+    const warnings = p.warnings || [];
     const mappedKeys = new Set((state.mappings || []).map(m => valueKey(m.sourceId || m.SourceId || 'default', m.itemId || m.ItemId || m.daItemId || m.DaItemId)));
     const rows = [];
     if (state.tagPath) {
@@ -8823,7 +8824,12 @@ async function browseTags(path, recursive = false) {
         const isMapped = mappedKeys.has(valueKey(source.sourceId, itemId));
         rows.push(`<div class="li" data-search="${attr((name + ' ' + itemId).toLowerCase())}"><span class="icon tag">&#9878;</span><div style="flex:1"><div class="n">${esc(name)}</div><div class="p">${esc(itemId)}</div></div><div class="li-actions">${isMapped ? '<span class="mapped-badge">Mapped</span>' : ''}<button class="btn ghost" data-action="add-tag" data-source-id="${attr(source.sourceId)}" data-item-id="${attr(itemId)}" data-name="${attr(name)}">Add</button></div></div>`);
     }
-    el('tagTree').innerHTML = rows.length ? rows.join('') : '<span class="msg">No tags or folders here.</span>';
+    // A browse that hit a server quirk still returns what it could — put the warnings above the
+    // rows (or above the empty message) so an empty tree is never unexplained.
+    const warnHtml = warnings.length
+        ? `<div class="alarm-bar warning" style="margin:8px 10px">${warnings.map(w => esc(w)).join('<br>')}</div>`
+        : '';
+    el('tagTree').innerHTML = warnHtml + (rows.length ? rows.join('') : '<span class="msg">No tags or folders here.</span>');
     applyTagFilter();
     el('tagStatus').textContent = branches.length + ' folders · ' + tags.length + ' tags';
 }

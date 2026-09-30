@@ -1428,7 +1428,7 @@ app.MapPost("/api/da/servers", async (DaServerBrowseRequest request) =>
         return Results.Json(new { error = exception.Message, servers = Array.Empty<object>() });
     }
 });
-app.MapPost("/api/da/tags", async (DaTagBrowseRequest request) =>
+app.MapPost("/api/da/tags", async (DaTagBrowseRequest request, ILogger<Program> logger) =>
 {
     if (!OperatingSystem.IsWindows())
     {
@@ -1439,6 +1439,15 @@ app.MapPost("/api/da/tags", async (DaTagBrowseRequest request) =>
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         OpcTagBrowseResult result = await Task.Run(() => BrowseDaTags(request), cts.Token);
+        if (result.Warnings is { Count: > 0 })
+        {
+            // Warning, not Debug: the dashboard log store drops Debug for the Program category, and a
+            // browse that came back empty *because* of a server quirk must be findable in the logs.
+            logger.LogWarning(
+                "OPC DA browse {ProgId}@{Host}: {Folders} folder(s), {Tags} tag(s), warnings: {Warnings}",
+                request.ProgId, request.Host, result.Branches.Count, result.Tags.Count, result.Warnings);
+        }
+
         return Results.Json(new
         {
             branches = result.Branches,
@@ -1448,15 +1457,18 @@ app.MapPost("/api/da/tags", async (DaTagBrowseRequest request) =>
                 itemId = tag.ItemId,
                 canonicalDataType = tag.CanonicalDataType,
                 accessRights = tag.AccessRights
-            })
+            }),
+            warnings = result.Warnings ?? Array.Empty<string>()
         });
     }
     catch (OperationCanceledException)
     {
+        logger.LogWarning("OPC DA browse {ProgId}@{Host} timed out after 15s.", request.ProgId, request.Host);
         return Results.Json(new { error = "Tag browse timed out. Check the server and DCOM settings.", branches = Array.Empty<object>(), tags = Array.Empty<object>() });
     }
     catch (Exception exception)
     {
+        logger.LogWarning(exception, "OPC DA browse {ProgId}@{Host} failed.", request.ProgId, request.Host);
         return Results.Json(new { error = exception.Message, branches = Array.Empty<object>(), tags = Array.Empty<object>() });
     }
 });
