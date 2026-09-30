@@ -1288,6 +1288,7 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
     private static bool SourceSettingsEquals(DaSourceRuntimeSettings a, DaSourceRuntimeSettings b)
         => a.UpdateRateMs == b.UpdateRateMs
             && a.UseSubscriptions == b.UseSubscriptions
+            && a.WatchdogTimeoutMs == b.WatchdogTimeoutMs
             && a.MaxMappedTags == b.MaxMappedTags
             && string.Equals(a.DisplayName, b.DisplayName, StringComparison.Ordinal)
             && SourceConnectionEquals(a, b);

@@ -1243,7 +1243,8 @@ app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings
             request.RemoteUsername,
             request.RemotePassword,
             request.RemoteDomain,
-            ResolveGroupIoModes(request.Groups, settings, request.SourceId));
+            ResolveGroupIoModes(request.Groups, settings, request.SourceId),
+            ResolveWatchdogTimeoutMs(request.WatchdogTimeoutMs, settings, request.SourceId));
     }
 
     DaRuntimeSettingsSnapshot snapshot = settings.UpsertSource(new DaSourceRuntimeSettings(
@@ -1276,6 +1277,22 @@ app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings
 
         DaSourceRuntimeSettings? existing = settings.GetSnapshot().GetSource(sourceId);
         return existing?.OpcDa?.GroupIoModes;
+    }
+
+    // The dashboard's source form does not carry the watchdog timeout yet, so an omitted
+    // value keeps whatever the source already had instead of resetting it.
+    static int ResolveWatchdogTimeoutMs(
+        int? requested,
+        DaRuntimeSettings settings,
+        string sourceId)
+    {
+        if (requested is not null)
+        {
+            return Math.Max(0, requested.Value);
+        }
+
+        DaSourceRuntimeSettings? existing = settings.GetSnapshot().GetSource(sourceId);
+        return existing?.OpcDa?.WatchdogTimeoutMs ?? 60000;
     }
 
     return Results.Json(new
@@ -2452,7 +2469,25 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapAuth();
 app.MapHub<HmiHub>("/hmi");
 
-await app.RunAsync().ConfigureAwait(false);
+try
+{
+    await app.RunAsync().ConfigureAwait(false);
+}
+catch (OperationCanceledException)
+{
+    // WindowsServiceLifetime.StopAsync raises this when the host's stop window
+    // (HostOptions.ShutdownTimeout) elapses while a source is still being torn down — a slow
+    // OPC shutdown must not be recorded as a crash. The exit is the intended one; note it on
+    // the durable log (not the logging pipeline, which may be the thing that is stuck) and leave.
+    try
+    {
+        new FileLogStore().Append(
+            "[INFO] Host shutdown did not finish within HostOptions.ShutdownTimeout; exiting.");
+    }
+    catch
+    {
+    }
+}
 
 static IReadOnlyList<OpcServerInfo> EnumerateDaServers(string? host, string? username, string? password, string? domain)
 {
@@ -2729,6 +2764,7 @@ static object ToSourceApiDto(DaSourceRuntimeSettings source)
         updateRateMs = source.UpdateRateMs,
         sessionTimeoutMs = source.SessionTimeoutMs,
         reconnectDelayMs = source.ReconnectDelayMs,
+        watchdogTimeoutMs = source.WatchdogTimeoutMs,
         maxMappedTags = source.MaxMappedTags,
         useSubscriptions = source.UseSubscriptions,
         ioMode = source.IoMode,

@@ -125,12 +125,12 @@ public sealed class DaClientFactoryTests
         return ((OpcDaClient)client).Options;
     }
 
-    private static DaSourceRuntimeSettings DaSource(string ioMode) => new(
+    private static DaSourceRuntimeSettings DaSource(string ioMode, bool useSubscriptions = true) => new(
         SourceId: "line1",
         DisplayName: "Line 1",
         SourceType: SourceTypes.OpcDa,
         UpdateRateMs: 500,
-        UseSubscriptions: true,
+        UseSubscriptions: useSubscriptions,
         MaxMappedTags: 50000,
         OpcDa: new OpcDaSourceOptions(
             "Matrikon.OPC.Simulation.1",
@@ -154,6 +154,17 @@ public sealed class DaClientFactoryTests
     {
         Assert.True(GetDaOptions(DaSource("AutoDetect"), globalUseSubscriptions: true).UseSubscriptions);
         Assert.False(GetDaOptions(DaSource("AutoDetect"), globalUseSubscriptions: false).UseSubscriptions);
+    }
+
+    [Fact]
+    public void Create_OpcDa_AutoDetect_PerSourceSwitchOff_DisablesSubscriptions()
+    {
+        // The per-source switch must be able to veto the attempt on its own. A DA source
+        // saved with UseSubscriptions off kept subscribing while AutoDetect consulted the
+        // global switch alone (field report from PRW11709, 2026-09-30).
+        Assert.False(
+            GetDaOptions(DaSource("AutoDetect", useSubscriptions: false), globalUseSubscriptions: true)
+                .UseSubscriptions);
     }
 
     [Fact]

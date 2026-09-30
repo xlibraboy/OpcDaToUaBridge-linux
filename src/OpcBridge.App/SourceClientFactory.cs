@@ -36,9 +36,12 @@ public class SourceClientFactory
         }
 
         // Per-source client I/O mode decides whether this DA source attempts the push
-        // path: Sync never does, AutoDetect follows the global master switch, and
-        // Async20 forces the attempt regardless of the global switch.
-        bool attemptSubscriptions = ResolveSubscriptionAttempt(source.IoMode, settings.UseSubscriptions);
+        // path: Sync never does, Async20 forces the attempt regardless of the switches,
+        // and AutoDetect follows the global master switch AND the source's own switch —
+        // the same combination the UA path applies in ToUaOptions.
+        bool attemptSubscriptions = ResolveSubscriptionAttempt(
+            source.IoMode,
+            settings.UseSubscriptions && source.UseSubscriptions);
         return new OpcDaClient(source.ToOptions(attemptSubscriptions, source.IoMode));
     }
 

@@ -632,7 +632,8 @@ public sealed record OpcDaSourceOptions(
     string? RemoteUsername,
     string? RemotePassword,
     string? RemoteDomain,
-    IReadOnlyList<DaGroupIoMode>? GroupIoModes = null);
+    IReadOnlyList<DaGroupIoMode>? GroupIoModes = null,
+    int WatchdogTimeoutMs = 60000);
 
 public sealed record OpcUaSourceOptions(
     string EndpointUrl,
@@ -709,7 +710,7 @@ public sealed record DaSourceRuntimeSettings(
     public string? UaPassword => OpcUa?.Password;
     public int SessionTimeoutMs => OpcUa?.SessionTimeoutMs ?? 60000;
     public int ReconnectDelayMs => OpcUa?.ReconnectDelayMs ?? 5000;
-    public int WatchdogTimeoutMs => OpcUa?.WatchdogTimeoutMs ?? 60000;
+    public int WatchdogTimeoutMs => OpcUa?.WatchdogTimeoutMs ?? OpcDa?.WatchdogTimeoutMs ?? 60000;
 
     /// <summary>Named UA subscription definitions; empty for non-UA sources or legacy configs.</summary>
     public IReadOnlyList<UaSubscriptionSettings> UaSubscriptions
@@ -863,6 +864,7 @@ public sealed class OpcDaSourceOptionsDto
     public string? RemotePassword { get; set; }
     public string? RemoteDomain { get; set; }
     public List<DaGroupIoModeDto>? Groups { get; set; }
+    public int? WatchdogTimeoutMs { get; set; }
 }
 
 public sealed class DaGroupIoModeDto
@@ -954,7 +956,8 @@ public static class SourceConfigMigration
                 dto.OpcDa.RemoteUsername,
                 dto.OpcDa.RemotePassword,
                 dto.OpcDa.RemoteDomain,
-                NormalizeGroupIoModes(dto.OpcDa.Groups?.Select(g => new DaGroupIoMode(g.Name ?? $"OpcBridge_{g.Rate}", g.Rate, g.IoMode ?? string.Empty))));
+                NormalizeGroupIoModes(dto.OpcDa.Groups?.Select(g => new DaGroupIoMode(g.Name ?? $"OpcBridge_{g.Rate}", g.Rate, g.IoMode ?? string.Empty))),
+                dto.OpcDa.WatchdogTimeoutMs ?? 60000);
         }
         else if (HasFlatDa(dto))
         {
@@ -963,7 +966,8 @@ public static class SourceConfigMigration
                 dto.Host ?? string.Empty,
                 dto.RemoteUsername,
                 dto.RemotePassword,
-                dto.RemoteDomain);
+                dto.RemoteDomain,
+                WatchdogTimeoutMs: dto.WatchdogTimeoutMs ?? 60000);
         }
 
         if (dto.OpcUa is not null)
@@ -1064,7 +1068,8 @@ public static class SourceConfigMigration
                 dto.RemoteUsername,
                 dto.RemotePassword,
                 dto.RemoteDomain,
-                NormalizeGroupIoModes(dto.OpcDa?.Groups?.Select(g => new DaGroupIoMode(g.Name ?? $"OpcBridge_{g.Rate}", g.Rate, g.IoMode ?? string.Empty))));
+                NormalizeGroupIoModes(dto.OpcDa?.Groups?.Select(g => new DaGroupIoMode(g.Name ?? $"OpcBridge_{g.Rate}", g.Rate, g.IoMode ?? string.Empty))),
+                dto.OpcDa?.WatchdogTimeoutMs ?? dto.WatchdogTimeoutMs ?? 60000);
         }
         else if (string.Equals(sourceType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase) && opcUa is null)
         {
@@ -1138,6 +1143,7 @@ public static class SourceConfigMigration
                 RemoteUsername = source.OpcDa.RemoteUsername,
                 RemotePassword = source.OpcDa.RemotePassword,
                 RemoteDomain = source.OpcDa.RemoteDomain,
+                WatchdogTimeoutMs = source.OpcDa.WatchdogTimeoutMs,
                 Groups = source.OpcDa.GroupIoModes is null || source.OpcDa.GroupIoModes.Count == 0
                     ? null
                     : source.OpcDa.GroupIoModes.Select(g => new DaGroupIoModeDto { Name = g.Name, Rate = g.Rate, IoMode = g.IoMode }).ToList()
@@ -1288,7 +1294,8 @@ public static class SourceConfigMigration
                 string.IsNullOrWhiteSpace(raw.RemoteUsername) ? null : raw.RemoteUsername.Trim(),
                 string.IsNullOrWhiteSpace(raw.RemotePassword) ? null : raw.RemotePassword,
                 string.IsNullOrWhiteSpace(raw.RemoteDomain) ? null : raw.RemoteDomain.Trim(),
-                NormalizeGroupIoModes(raw.GroupIoModes));
+                NormalizeGroupIoModes(raw.GroupIoModes),
+                raw.WatchdogTimeoutMs < 0 ? 0 : raw.WatchdogTimeoutMs);
         }
 
         return new DaSourceRuntimeSettings(

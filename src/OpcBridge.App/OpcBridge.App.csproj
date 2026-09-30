@@ -17,6 +17,13 @@
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="10.0.9" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.9" />
     <PackageReference Include="System.IO.Ports" Version="8.0.0" />
+    <!-- A Windows service logs through the Event Log (the default builder adds the EventLog
+         provider for a service), and System.Diagnostics.EventLog reaches for
+         System.Threading.AccessControl the first time it writes to a source. A self-contained
+         publish does not carry that assembly unless it is referenced here — without it every
+         EventLog write throws FileNotFoundException, so a harmless Kestrel log line ends up
+         as a crash report (seen on PRW11709, 2026-09-30). -->
+    <PackageReference Include="System.Threading.AccessControl" Version="10.0.9" />
   </ItemGroup>
 
   <ItemGroup>

@@ -262,6 +262,31 @@ What still fails is named: warnings print above the tag tree in the Tag Browser 
 as a Warning, so a server that cannot be browsed says which call was refused and with which
 HRESULT instead of showing *No tags or folders here*.
 
+**The OPC DA per-source subscription switch is honoured.** A DA source saved with its
+Subscription switch off still subscribed to its server: with I/O mode *AutoDetect* the
+decision consulted the global master switch alone, so the per-source flag only took effect
+after switching the source to *Sync* — the workaround one plant host needed before its
+PMD server stopped receiving callbacks. *AutoDetect* now combines both switches, the same
+way the OPC UA path always has.
+
+**The OPC DA watchdog timeout is configurable per source.** It was fixed at 60 s, so a
+subscription source whose tags legitimately update less often than a minute was torn down
+and reconnected on every scan — the flap the watchdog exists to avoid for everything else.
+The nested `OpcDa` block now carries `watchdogTimeoutMs` (0 disables the watchdog),
+defaulting to the same 60 s when unset like the UA side.
+
+**A slow service stop is no longer reported as a crash.** When the host's stop window
+(`HostOptions.ShutdownTimeout`) elapsed while an OPC source was still being torn down,
+`WindowsServiceLifetime.StopAsync` threw `OperationCanceledException` out of `Main`: every
+controlled stop wrote a `crash-*.log` and exited through the unhandled-exception path. The
+shutdown now notes the timeout on the durable log and exits quietly.
+
+**Event Log logging works in the self-contained Windows build.** `System.Diagnostics.EventLog`
+loads `System.Threading.AccessControl` when it first writes to a source, and the publish did
+not carry that assembly — so every Event Log write failed with `FileNotFoundException` and a
+harmless event (a client resetting a Kestrel connection) surfaced as an error and a crash
+report. The assembly is now referenced by the app.
+
 **The service restarts itself after a crash.** The package configured no recovery actions, so a
 bridge that died stayed down until a person noticed — which is how one host sat without its
 mirror after stopping at 09:10 and again at 15:47 on 2026-09-29, each time logging Service

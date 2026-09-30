@@ -170,6 +170,29 @@ public sealed class DaRecoveryCoordinatorTests
             () => client.ConnectAsync(cts.Token));
     }
 
+    [Fact]
+    public void ScanWatchdog_DaSource_UsesPerSourceTimeout()
+    {
+        BridgeWorker worker = CreateWorker(seedSource: true);
+        SetActivity(worker, "recover", DateTime.UtcNow.AddSeconds(-120));
+
+        // 120 s of quiet under a 300 s per-source limit is fine for a slow plant tag.
+        Assert.True(RunScan(worker, watchdogTimeoutMs: 300000, daSource: true).IsEmpty);
+
+        // The same staleness under the 60 s default must reconnect.
+        ConcurrentQueue<string> queue = RunScan(worker, watchdogTimeoutMs: 60000, daSource: true);
+        Assert.True(queue.TryDequeue(out string? id), "stale DA source should be enqueued");
+        Assert.Equal("recover", id);
+    }
+
+    [Fact]
+    public void ScanWatchdog_DaSourceDisabledTimeout_NotEnqueued()
+    {
+        BridgeWorker worker = CreateWorker(seedSource: true);
+        SetActivity(worker, "recover", DateTime.UtcNow.AddSeconds(-120));
+        Assert.True(RunScan(worker, watchdogTimeoutMs: 0, daSource: true).IsEmpty);
+    }
+
     // --- harness ---
     private static BridgeWorker CreateWorker(
         bool seedSource = false,
@@ -224,28 +247,44 @@ public sealed class DaRecoveryCoordinatorTests
         field!.SetValue(worker, activity);
     }
 
-    private static ConcurrentQueue<string> RunScan(BridgeWorker worker, int watchdogTimeoutMs = 60000, bool subscriptionActive = true)
+    private static ConcurrentQueue<string> RunScan(
+        BridgeWorker worker,
+        int watchdogTimeoutMs = 60000,
+        bool subscriptionActive = true,
+        bool daSource = false)
     {
-        var source = new DaSourceRuntimeSettings(
-            "recover",
-            "Recover",
-            SourceTypes.OpcUa,
-            1000,
-            true,
-            50000,
-            null,
-            new OpcUaSourceOptions(
-                "opc.tcp://127.0.0.1:1/opcuasim/",
-                "None",
-                "None",
+        DaSourceRuntimeSettings source = daSource
+            ? new DaSourceRuntimeSettings(
+                "recover",
+                "Recover",
+                SourceTypes.OpcDa,
+                1000,
+                true,
+                50000,
+                new OpcDaSourceOptions("Test.Server.1", "localhost", null, null, null, null, watchdogTimeoutMs),
                 null,
                 null,
-                60000,
-                5000,
-                watchdogTimeoutMs),
-            null,
-            null,
-            null);
+                null)
+            : new DaSourceRuntimeSettings(
+                "recover",
+                "Recover",
+                SourceTypes.OpcUa,
+                1000,
+                true,
+                50000,
+                null,
+                new OpcUaSourceOptions(
+                    "opc.tcp://127.0.0.1:1/opcuasim/",
+                    "None",
+                    "None",
+                    null,
+                    null,
+                    60000,
+                    5000,
+                    watchdogTimeoutMs),
+                null,
+                null,
+                null);
         var sessions = new Dictionary<string, BridgeWorker.SourceSession>(StringComparer.OrdinalIgnoreCase)
         {
             ["recover"] = new BridgeWorker.SourceSession(source, new SubscriptionSourceClient(subscriptionActive))
