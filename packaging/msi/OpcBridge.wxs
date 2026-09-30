@@ -3,11 +3,21 @@
 
   Built by .github/workflows/windows-release.yml on a Windows runner, which supplies:
     -define MsiVersion=<x.y.z>   from Directory.Build.props (must equal the newest release in the server's CHANGELOG.md)
+    -arch x86|x64                package architecture; also selects the server payload (see below)
     -d HttpPort=<port>           bridge HTTP port (default 8080)
     -d UaPort=<port>             bridge OPC UA port (default 4840)
-    build/wix/AppFiles-x86.wxs          harvested OpcBridge.App (server) files
+    build/wix/AppFiles-<arch>.wxs       harvested OpcBridge.App (server) files, one file per architecture
     build/wix/HmiFiles.wxs              harvested OpcBridge.Hmi (runtime) files
     build/wix/DesignerFiles.wxs         harvested OpcBridge.Hmi.Designer files
+
+  One source builds both installers, one `wix build` per architecture. `-arch x86|x64` sets
+  the package itself (Program Files vs Program Files (x86)) and, through WiX's own
+  $(sys.BUILDARCH), the server files and the Apps & features name inside it — the
+  architecture is never passed twice, so the payload cannot end up disagreeing with the
+  package it is in. Which one a host takes is decided by its OPC DA servers, not its
+  Windows: x86 is the default because a 64-bit process cannot load 32-bit DA COM servers,
+  and the x64 package is for a host whose DA servers are 64-bit only. Nothing else differs
+  — the HMI runtime and designer are win-x64 in both.
 
   The harvested files come from scripts/msi/harvest.py.
 
@@ -20,9 +30,9 @@
   to the port it bound — see src/OpcBridge.App/DashboardShortcut.cs.
 
   Three selectable features (WixUI_FeatureTree shows the tree):
-    - OpcBridge Server: self-contained win-x86 app installed as a Windows service.
-      x86 because a 64-bit process cannot load 32-bit OPC DA COM servers (Matrikon,
-      Kepware) without DCOM surrogate setup.
+    - OpcBridge Server: self-contained win-x86 or win-x64 app (per MsiArch) installed as a
+      Windows service. x86 by default because a 64-bit process cannot load 32-bit OPC DA
+      COM servers (Matrikon, Kepware) without DCOM surrogate setup.
     - OpcBridge HMI Runtime: self-contained win-x64 Avalonia app (operator client).
     - OpcBridge HMI Designer: self-contained win-x64 Avalonia app (display authoring).
 
@@ -36,12 +46,25 @@
   Build-time note: File/@Source paths are relative to the repository root, because the
   wix build always runs from there (see .github/workflows/windows-release.yml).
 -->
+
+<!-- What -arch selects: the server publish the harvest fragment was built from, and the name
+     the machine shows in Apps & features, so a station knows which build it holds. Read from
+     WiX's built-in $(sys.BUILDARCH) rather than a second, hand-passed define, so the two can
+     never disagree. -->
+<?if $(sys.BUILDARCH) = "x64" ?>
+  <?define ProductName = "OpcBridge (64-bit)" ?>
+  <?define ServerPublishDir = "build\publish-x64" ?>
+<?else ?>
+  <?define ProductName = "OpcBridge" ?>
+  <?define ServerPublishDir = "build\publish-x86" ?>
+<?endif ?>
+
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
      xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util"
      xmlns:fw="http://wixtoolset.org/schemas/v4/wxs/firewall"
      xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
 
-  <Package Name="OpcBridge"
+  <Package Name="$(ProductName)"
            Manufacturer="AM2-DEV51"
            Version="$(MsiVersion)"
            UpgradeCode="6D9C5284-357E-4709-BB37-E51F6992000D"
@@ -53,7 +76,18 @@
 
     <SummaryInformation Description="OpcBridge — OPC DA to OPC UA bridge, HMI runtime and designer" />
 
-    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed. Uninstall it first." />
+    <!-- The two packages share this UpgradeCode, so only one of them is ever installed:
+         they both own the OpcBridge Windows service, the C:\ProgramData\OpcBridge data
+         directory and the Start Menu folder, so a second install beside the first could
+         only collide. AllowSameVersionUpgrades is what makes the switch work at the same
+         version — without it, installing the other architecture of the release already on
+         the machine fails with "another version of this product is already installed"
+         (error 1638), because Windows Installer treats one UpgradeCode + one version as one
+         product. With it, installing the other package removes the installed one and
+         installs itself, which is how a station changes architecture: runtime state under
+         C:\ProgramData is outside both packages and survives. -->
+    <MajorUpgrade AllowSameVersionUpgrades="yes"
+                  DowngradeErrorMessage="A newer version of [ProductName] is already installed. Uninstall it first." />
     <MediaTemplate EmbedCab="yes" />
 
     <!-- Icon for the Apps & features entry. The three apps carry their own icon inside
@@ -116,7 +150,7 @@
           </Component>
         </Directory>
         <Component Id="AppExe" Guid="2382C016-392A-4372-9766-E06798F71068">
-          <File Id="OpcBridgeAppExe" Source="build\publish-x86\OpcBridge.App.exe" KeyPath="yes" />
+          <File Id="OpcBridgeAppExe" Source="$(ServerPublishDir)\OpcBridge.App.exe" KeyPath="yes" />
           <ServiceInstall Id="OpcBridgeService"
                           Name="OpcBridge"
                           DisplayName="OpcBridge"

@@ -5,8 +5,9 @@ verifiable without touching the code:
 
 - `Microsoft.NET.Sdk.Web` sets **`System.GC.Server: true`**, so the bridge runs with **Server
   GC** — one heap per core, sized for throughput, not for the small footprint of a bridge.
-- The MSI ships **x86 only** (a 64-bit process cannot load 32-bit OPC DA COM servers), so the
-  process has a ~2 GB address space to work in.
+- The station install is **x86** (a 64-bit process cannot load 32-bit OPC DA COM servers; the
+  MSI also ships x64 for 64-bit-only DA hosts), so the process has a ~2 GB address space to
+  work in.
 
 The measurement path below A/Bs exactly that, on a deployed host, without a rebuild.
 

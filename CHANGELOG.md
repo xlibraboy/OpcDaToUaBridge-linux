@@ -139,6 +139,18 @@ an unobserved task exception is marked observed: letting a lost background opera
 bridge down would turn a hiccup into a plant-wide outage. The crash path deliberately shares no
 lock with the logging pipeline — it may be running on the thread that died holding one.
 
+**The Release carries a 64-bit installer too.** The MSI's server is 32-bit because a 64-bit
+process cannot activate 32-bit OPC DA COM servers, which left a host whose DA servers are
+64-bit only with no installer at all — only the portable win-x64 zip. That host now has one:
+both architectures ship as an MSI (`OpcBridge-<version>-win-x86.msi` and `-win-x64.msi`), built
+from the same package source and carrying the same service, firewall rules, `OPCBRIDGE_DATA`
+layout and HMI apps, only with that architecture's server. The two share one UpgradeCode, so
+installing one over the other replaces it — at the same version too, instead of failing with
+*another version of this product is already installed* on the service and data directory both
+would own — which makes installing the other package how a station changes architecture, with
+its runtime state under `C:\ProgramData\OpcBridge` surviving. Apps & features names the 64-bit
+install **OpcBridge (64-bit)**, so which build a host holds is readable on the machine.
+
 ### Changed
 
 **The Release carries the Windows portable builds.** The GitHub Release shipped the x86 MSI
