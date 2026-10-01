@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text;
 using System.Text.Json;
 using Xunit;
 
@@ -47,5 +48,31 @@ public sealed class WorkersApiTests
         using HttpResponseMessage response = await handle.Client.PostAsync("/api/workers/own:pmd/kill", null);
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Upsert_WithAWorkerBlock_PersistsTheModeAndNeverEchoesThePassword()
+    {
+        await using TestAppHandle handle = await TestAppHandle.StartAsync(_ => { });
+
+        using (HttpResponseMessage save = await handle.Client.PostAsync(
+            "/api/da/sources",
+            new StringContent(
+                """{"sourceId":"pmd-worker-test","sourceType":"OpcDa","progId":"PMD.DDT_OPCDataServer.1","host":"localhost","worker":{"mode":"own","runAsUser":".\\mesadm1","runAsPassword":"secret"}}""",
+                Encoding.UTF8,
+                "application/json")))
+        {
+            Assert.Equal(HttpStatusCode.OK, save.StatusCode);
+        }
+
+        using HttpResponseMessage read = await handle.Client.GetAsync("/api/da/sources");
+        using JsonDocument document = JsonDocument.Parse(await read.Content.ReadAsStringAsync());
+        JsonElement source = document.RootElement.GetProperty("sources").EnumerateArray()
+            .First(entry => entry.GetProperty("sourceId").GetString() == "pmd-worker-test");
+
+        Assert.Equal("own", source.GetProperty("workerMode").GetString());
+        Assert.Equal(".\\mesadm1", source.GetProperty("workerRunAsUser").GetString());
+        Assert.True(source.GetProperty("workerRunAsPasswordSet").GetBoolean());
+        Assert.False(source.TryGetProperty("workerRunAsPassword", out _));
     }
 }

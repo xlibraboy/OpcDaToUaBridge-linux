@@ -56,6 +56,9 @@ namespace OpcBridge.App;
 //   Workers (Admin only): data-tab="workers", id="view-workers", id="navWorkers",
 //   function loadWorkers(/renderWorkers(/renderWorkerCard(/restartWorker(/killWorker(/workerAction(,
 //   /api/workers[/restart|/kill]
+//   Worker fields in the OPC DA form: id="cfgWorkerMode"/"cfgWorkerUser"/"cfgWorkerPass"/
+//   "cfgWorkerDomain"/"cfgWorkerHint", function updateWorkerFields(/buildWorkerPayload(,
+//   worker block in the /api/da/sources save payload
 internal static class DashboardPage
 {
     public const string Html = """
@@ -1385,6 +1388,12 @@ internal static class DashboardPage
                     <div class="conn-section">
                         <div class="conn-section-h">Credentials <span class="info" data-tip="Only required for remote DCOM with specific user accounts, or to access OPC DA servers registered in another user's profile.">i</span></div>
                         <div class="field"><label class="fl" for="cfgUser">User</label><input id="cfgUser" type="text" placeholder="username" aria-label="User name" style="flex:1"><input id="cfgPass" type="password" placeholder="password" aria-label="Password" style="flex:1"><input id="cfgDomain" type="text" placeholder="domain" aria-label="Domain" style="flex:1"></div>
+                    </div>
+                    <div class="conn-section">
+                        <div class="conn-section-h">Worker Process <span class="info" data-tip="Run this source in its own supervised process, so a fault in a vendor in-proc server kills only its worker — values, writes and the watchdog behave the same. 'Group' shares one worker per run-as account (all group sources must use the same account). The run-as account must match the bridge's own account until the privileged spawn path ships.">i</span></div>
+                        <div class="field"><label class="fl" for="cfgWorkerMode">Mode</label><select id="cfgWorkerMode" onchange="updateWorkerFields()"><option value="inProcess">In process</option><option value="own">Own worker</option><option value="group">Group worker (per account)</option></select></div>
+                        <div class="field"><label class="fl" for="cfgWorkerUser">Account</label><input id="cfgWorkerUser" type="text" placeholder="run-as account (optional)" aria-label="Run-as account" style="flex:1"><input id="cfgWorkerPass" type="password" placeholder="password" aria-label="Run-as password" style="flex:1"><input id="cfgWorkerDomain" type="text" placeholder="domain" aria-label="Run-as domain" style="flex:1"></div>
+                        <div class="field"><span class="msg" id="cfgWorkerHint" role="status" style="font-weight:400;text-transform:none;letter-spacing:0"></span></div>
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">Default Update Rate <span class="info" data-tip="Fixed at 1000 ms. This is the fallback rate for tags set to 'Source Default'. For other cadences use a specific per-tag Update Rate.">i</span></div>
@@ -5502,6 +5511,11 @@ function loadSelectedSourceForm() {
         el('cfgUser').value = '';
         el('cfgPass').value = '';
         el('cfgDomain').value = '';
+        if (el('cfgWorkerMode')) el('cfgWorkerMode').value = 'inProcess';
+        el('cfgWorkerUser').value = '';
+        el('cfgWorkerPass').value = '';
+        el('cfgWorkerDomain').value = '';
+        updateWorkerFields();
         if (el('cfgIoMode')) el('cfgIoMode').value = 'AutoDetect';
         const ioModeHint = el('ioModeHint'); if (ioModeHint) ioModeHint.textContent = '';
         el('cfgMessage').textContent = source
@@ -5519,6 +5533,12 @@ function loadSelectedSourceForm() {
     el('cfgUser').value = source.remoteUsername || '';
     el('cfgPass').value = '';
     el('cfgDomain').value = source.remoteDomain || '';
+    el('cfgWorkerMode').value = source.workerMode || 'inProcess';
+    el('cfgWorkerUser').value = source.workerRunAsUser || '';
+    el('cfgWorkerPass').value = '';
+    el('cfgWorkerPass').placeholder = source.workerRunAsPasswordSet ? 'password (set — blank keeps)' : 'password';
+    el('cfgWorkerDomain').value = source.workerRunAsDomain || '';
+    updateWorkerFields();
     if (el('cfgIoMode')) {
         el('cfgIoMode').value = (source.ioMode === 'Sync' || source.ioMode === 'Async20') ? source.ioMode : 'AutoDetect';
         const ioModeHint = el('ioModeHint');
@@ -7676,6 +7696,34 @@ function pickSource(sourceId, opts) {
         else navigate('connectivity/opc-da');
     }
 }
+// Worker-process fields: the account inputs only matter for own/group modes; a blank
+// password means "no change" (the server keeps the stored one, same as the UA fields).
+function updateWorkerFields() {
+    const mode = el('cfgWorkerMode') ? el('cfgWorkerMode').value : 'inProcess';
+    [el('cfgWorkerUser'), el('cfgWorkerPass'), el('cfgWorkerDomain')].forEach(field => {
+        if (field) field.disabled = mode === 'inProcess';
+    });
+    const hint = el('cfgWorkerHint');
+    if (hint) {
+        hint.textContent = mode === 'group'
+            ? 'Group: every source with this account shares one worker process.'
+            : mode === 'own'
+                ? 'Own worker: a dedicated process for this source (account optional).'
+                : 'Runs inside the bridge process.';
+    }
+}
+
+function buildWorkerPayload() {
+    const mode = el('cfgWorkerMode').value;
+    if (mode === 'inProcess') return { mode: 'inProcess' };
+    return {
+        mode,
+        runAsUser: el('cfgWorkerUser').value.trim() || null,
+        runAsPassword: el('cfgWorkerPass').value || null,
+        runAsDomain: el('cfgWorkerDomain').value.trim() || null
+    };
+}
+
 async function saveSource() {
     const sourceId = el('cfgSourceId').value.trim();
     if (!sourceId) {
@@ -7700,7 +7748,8 @@ async function saveSource() {
         remoteUsername: el('cfgUser').value.trim() || null,
         remotePassword: el('cfgPass').value || null,
         remoteDomain: el('cfgDomain').value.trim() || null,
-        ioMode: el('cfgIoMode') ? el('cfgIoMode').value : undefined
+        ioMode: el('cfgIoMode') ? el('cfgIoMode').value : undefined,
+        worker: el('cfgWorkerMode') ? buildWorkerPayload() : undefined
     };
     const r = await fetch('/api/da/sources', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const p = await r.json();

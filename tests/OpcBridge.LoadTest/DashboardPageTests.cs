@@ -1633,6 +1633,23 @@ public sealed class DashboardPageTests
         Assert.Contains("document.querySelector('#view-workers.active')", DashboardPage.Script, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Html_ShipsWorkerFieldsInTheOpcDaSourceForm()
+    {
+        // Sources → OPC DA → Worker Process: mode + run-as account, saved through the
+        // worker block on /api/da/sources (blank password = keep the stored one).
+        Assert.Contains("id=\"cfgWorkerMode\"", DashboardPage.FullHtml, StringComparison.Ordinal);
+        Assert.Contains("id=\"cfgWorkerUser\"", DashboardPage.FullHtml, StringComparison.Ordinal);
+        Assert.Contains("id=\"cfgWorkerPass\"", DashboardPage.FullHtml, StringComparison.Ordinal);
+        Assert.Contains("id=\"cfgWorkerDomain\"", DashboardPage.FullHtml, StringComparison.Ordinal);
+        Assert.Contains("id=\"cfgWorkerHint\"", DashboardPage.FullHtml, StringComparison.Ordinal);
+        Assert.Contains("onchange=\"updateWorkerFields()\"", DashboardPage.Html, StringComparison.Ordinal);
+        Assert.Contains("function updateWorkerFields(", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("function buildWorkerPayload(", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("worker: el('cfgWorkerMode') ? buildWorkerPayload() : undefined", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("workerRunAsPasswordSet", DashboardPage.Script, StringComparison.Ordinal);
+    }
+
     private static int CountOccurrences(string haystack, string needle)
     {
         int count = 0, index = 0;
