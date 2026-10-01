@@ -26,6 +26,7 @@ public static class WorkerFrameTypes
     public const string Heartbeat = "heartbeat";
     public const string Pong = "pong";
     public const string Fatal = "fatal";
+    public const string Ack = "ack";
 
     // parent -> worker
     public const string Connect = "connect";
@@ -86,15 +87,19 @@ public sealed record WorkerReady(string ProtocolVersion, int Pid, string Account
 /// whether to retry (SourceConnectionLostException) or fault the source.</summary>
 public sealed record WorkerStateChange(string SourceId, string State, string? Error, bool Transient);
 
-public sealed record WorkerValues(IReadOnlyList<WireValue> Values);
+public sealed record WorkerValues(string SourceId, IReadOnlyList<WireValue> Values);
 
-public sealed record WorkerReadResult(IReadOnlyList<WireValue> Values, string? Error);
+public sealed record WorkerReadResult(IReadOnlyList<WireValue> Values, string? Error = null, bool Transient = false);
 
-public sealed record WorkerWriteResult(bool Ok, string? Error);
+public sealed record WorkerWriteResult(bool Ok, string? Error = null, bool Transient = false);
+
+/// <summary>Generic response for operations without a payload (connect, disconnect, upsert,
+/// remove): <paramref name="Transient"/> tells the parent whether to retry.</summary>
+public sealed record WorkerAck(bool Ok, string? Error = null, bool Transient = false);
 
 public sealed record WorkerMetadataEntry(string ItemId, short? CanonicalDataType, int? AccessRights);
 
-public sealed record WorkerMetadataResult(bool Found, short? CanonicalDataType, int? AccessRights);
+public sealed record WorkerMetadataResult(bool Found, short? CanonicalDataType = null, int? AccessRights = null);
 
 public sealed record WorkerMetadataDump(IReadOnlyList<WorkerMetadataEntry> Entries);
 
@@ -102,7 +107,7 @@ public sealed record WorkerNotice(string Level, string Message);
 
 public sealed record WorkerHeartbeat(int SourceCount, long UptimeMs, long PushSeq);
 
-public sealed record WorkerFatal(string Message, string? Detail);
+public sealed record WorkerFatal(string Message, string? Detail = null);
 
 public sealed record WorkerPong(long WorkerSeq);
 
@@ -116,12 +121,12 @@ public sealed record WorkerUpsertSource(WorkerSourceConfig Config);
 
 public sealed record WorkerRemoveSource(string SourceId);
 
-public sealed record WorkerTagRef(string ItemId);
+public sealed record WorkerTagRef(string ItemId, int PollRateMs = 0);
 
-public sealed record WorkerReadRequest(IReadOnlyList<WorkerTagRef> Tags);
+public sealed record WorkerReadRequest(string SourceId, IReadOnlyList<WorkerTagRef> Tags);
 
-public sealed record WorkerWriteRequest(string ItemId, string Type, JsonElement Value);
+public sealed record WorkerWriteRequest(string SourceId, string ItemId, string Type, JsonElement Value);
 
-public sealed record WorkerMetadataRequest(string ItemId);
+public sealed record WorkerMetadataRequest(string SourceId, string ItemId);
 
 public sealed record WorkerShutdownRequest(int GraceMs);

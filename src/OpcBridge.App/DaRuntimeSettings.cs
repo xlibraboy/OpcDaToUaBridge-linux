@@ -1051,7 +1051,7 @@ public static class SourceConfigMigration
                 NormalizeGroupIoModes(dto.OpcDa.Groups?.Select(g => new DaGroupIoMode(g.Name ?? $"OpcBridge_{g.Rate}", g.Rate, g.IoMode ?? string.Empty))),
                 dto.OpcDa.WatchdogTimeoutMs ?? 60000,
                 NormalizeWorkerOptions(new DaWorkerOptions(
-                    dto.OpcDa.Worker?.Mode,
+                    dto.OpcDa.Worker?.Mode ?? DaWorkerModes.InProcess,
                     dto.OpcDa.Worker?.RunAsUser,
                     SecretProtector.Unprotect(dto.OpcDa.Worker?.RunAsPassword),
                     dto.OpcDa.Worker?.RunAsDomain)));

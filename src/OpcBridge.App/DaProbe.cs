@@ -237,19 +237,5 @@ public static class DaProbe
     };
 
     private static (string FileName, List<string> Arguments) ResolveChildCommand()
-    {
-        string? processPath = Environment.ProcessPath;
-        List<string> arguments = new();
-        if (!string.IsNullOrWhiteSpace(processPath)
-            && string.Equals(Path.GetFileNameWithoutExtension(processPath), "OpcBridge.App", StringComparison.OrdinalIgnoreCase))
-        {
-            arguments.Add(ModeArgument);
-            return (processPath!, arguments);
-        }
-
-        // Hosted by another executable (dotnet, test host): run this assembly with its host.
-        arguments.Add(Assembly.GetExecutingAssembly().Location);
-        arguments.Add(ModeArgument);
-        return (string.IsNullOrWhiteSpace(processPath) ? "dotnet" : processPath!, arguments);
-    }
+        => DaChildProcess.Resolve(ModeArgument);
 }

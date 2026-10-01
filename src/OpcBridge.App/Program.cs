@@ -39,6 +39,16 @@ if (DaProbe.IsProbeInvocation(args))
     return;
 }
 
+// DA worker (child mode): a long-lived copy of this executable that hosts OPC DA source
+// clients in its own process, so a fault in a vendor in-proc server kills only the worker.
+// It runs before the crash handlers, the lock and the web host, like the probe above; the
+// parent spawns it and talks over a named pipe (bootstrap + credentials on stdin).
+if (DaWorkerHost.IsWorkerInvocation(args))
+{
+    Environment.ExitCode = DaWorkerHost.Run();
+    return;
+}
+
 // Registered before anything else can throw, so a startup failure is reported too. A bridge that
 // dies must leave a reason behind — see CrashLog for the two unexplained stops that motivated it.
 CrashLog.Install();
