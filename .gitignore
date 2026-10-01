@@ -34,6 +34,7 @@ Thumbs.db
 # Publish output (build artifacts)
 publish/
 publish.tmp/
+publish-branch/
 publish.bak.*/
 publish*.tar.gz
 

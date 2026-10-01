@@ -10002,7 +10002,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!button) return;
         pickDriver(button.dataset.sourceId || '');
     });
-    ['cfgSourceId','cfgDisplayName','cfgProgId','cfgHost','cfgUser','cfgPass','cfgDomain'].forEach(id => {
+    ['cfgSourceId','cfgDisplayName','cfgProgId','cfgHost','cfgUser','cfgPass','cfgDomain',
+     'cfgWorkerMode','cfgWorkerUser','cfgWorkerPass','cfgWorkerDomain'].forEach(id => {
         el(id).addEventListener('input', () => { if (!state.editingNewSource) showSaveReset(); });
     });
     el('uaCfgApply').addEventListener('click', () => saveUaSource().catch(e => el('uaCfgMessage').textContent = '✗ ' + e.message));

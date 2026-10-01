@@ -1648,6 +1648,12 @@ public sealed class DashboardPageTests
         Assert.Contains("function buildWorkerPayload(", DashboardPage.Script, StringComparison.Ordinal);
         Assert.Contains("worker: el('cfgWorkerMode') ? buildWorkerPayload() : undefined", DashboardPage.Script, StringComparison.Ordinal);
         Assert.Contains("workerRunAsPasswordSet", DashboardPage.Script, StringComparison.Ordinal);
+        // Editing a worker field must reveal Save/Reset like every other form field; leaving
+        // them off the dirty-tracking list made the buttons unreachable (field report).
+        Assert.Contains(
+            "'cfgWorkerMode','cfgWorkerUser','cfgWorkerPass','cfgWorkerDomain'",
+            DashboardPage.Script,
+            StringComparison.Ordinal);
     }
 
     private static int CountOccurrences(string haystack, string needle)
