@@ -1600,6 +1600,39 @@ public sealed class DashboardPageTests
         Assert.Contains("el('navTroubleshoot').style.display = authSession.role === 'Admin'", DashboardPage.Script, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Html_ShipsTheWorkersView()
+    {
+        // Ops ▸ Workers (Admin only): the worker process family and its lifecycle timeline.
+        Assert.Contains("data-tab=\"workers\"", DashboardPage.FullHtml, StringComparison.Ordinal);
+        Assert.Contains("data-route=\"ops/workers\"", DashboardPage.FullHtml, StringComparison.Ordinal);
+        Assert.Contains("id=\"view-workers\"", DashboardPage.FullHtml, StringComparison.Ordinal);
+        Assert.Contains("id=\"navWorkers\"", DashboardPage.FullHtml, StringComparison.Ordinal);
+        Assert.Contains("style=\"display:none\" onclick=\"navigate('ops/workers')\"", DashboardPage.Html, StringComparison.Ordinal);
+        Assert.Contains("id=\"workersList\"", DashboardPage.FullHtml, StringComparison.Ordinal);
+        Assert.Contains("id=\"workersParent\"", DashboardPage.FullHtml, StringComparison.Ordinal);
+        Assert.Contains("id=\"workersHistory\"", DashboardPage.FullHtml, StringComparison.Ordinal);
+        Assert.Contains("id=\"workersMessage\"", DashboardPage.FullHtml, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Script_Workers_LoadsAndControlsWorkerProcesses()
+    {
+        Assert.Contains("'ops/workers': 'workers'", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("function loadWorkers(", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("function renderWorkers(", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("function renderWorkerCard(", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("function restartWorker(", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("function killWorker(", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("function workerAction(", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("fetch('/api/workers', { cache: 'no-store' })", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("'/api/workers/' + encodeURIComponent(workerId) + '/' + action", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("?confirm=true", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("el('navWorkers').style.display = authSession.role === 'Admin'", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("tab === 'troubleshoot' || tab === 'workers'", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("document.querySelector('#view-workers.active')", DashboardPage.Script, StringComparison.Ordinal);
+    }
+
     private static int CountOccurrences(string haystack, string needle)
     {
         int count = 0, index = 0;
