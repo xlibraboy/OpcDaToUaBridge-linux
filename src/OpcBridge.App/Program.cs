@@ -218,7 +218,9 @@ builder.Logging.Services.AddSingleton<ILoggerProvider, FileLogProvider>();
 
 
 builder.Services.AddSingleton<DaRuntimeSettings>();
-builder.Services.AddSingleton<SourceClientFactory>();
+builder.Services.AddSingleton<DaWorkerSupervisor>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<DaWorkerSupervisor>());
+builder.Services.AddSingleton<SourceClientFactory>(sp => new RoutingSourceClientFactory(sp.GetRequiredService<DaWorkerSupervisor>()));
 builder.Services.AddSingleton<BridgeState>();
 builder.Services.AddSingleton<MappingStore>();
 builder.Services.AddSingleton<InterlinkStore>();

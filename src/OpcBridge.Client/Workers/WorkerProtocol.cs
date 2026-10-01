@@ -94,8 +94,9 @@ public sealed record WorkerReadResult(IReadOnlyList<WireValue> Values, string? E
 public sealed record WorkerWriteResult(bool Ok, string? Error = null, bool Transient = false);
 
 /// <summary>Generic response for operations without a payload (connect, disconnect, upsert,
-/// remove): <paramref name="Transient"/> tells the parent whether to retry.</summary>
-public sealed record WorkerAck(bool Ok, string? Error = null, bool Transient = false);
+/// remove): <paramref name="Transient"/> tells the parent whether to retry, and a connect ack
+/// carries whether the source ended up on the push (subscription) path.</summary>
+public sealed record WorkerAck(bool Ok, string? Error = null, bool Transient = false, bool SubscriptionActive = false);
 
 public sealed record WorkerMetadataEntry(string ItemId, short? CanonicalDataType, int? AccessRights);
 

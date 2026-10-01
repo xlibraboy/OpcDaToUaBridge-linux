@@ -187,7 +187,9 @@ internal sealed class DaWorkerSession : IAsyncDisposable
         try
         {
             await ConnectSourceAsync(request.SourceId).ConfigureAwait(false);
-            Send(Reply(frame, WorkerFrameTypes.Ack, new WorkerAck(true)));
+            bool subscriptionActive = sources_.TryGetValue(request.SourceId, out WorkerSource? connected)
+                && connected.Client is ISubscriptionActiveSource { IsSubscriptionActive: true };
+            Send(Reply(frame, WorkerFrameTypes.Ack, new WorkerAck(true, SubscriptionActive: subscriptionActive)));
         }
         catch (SourceConnectionLostException ex)
         {

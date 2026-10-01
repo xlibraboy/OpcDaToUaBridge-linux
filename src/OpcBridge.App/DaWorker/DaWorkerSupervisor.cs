@@ -1,0 +1,325 @@
+using System.Collections.Concurrent;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using OpcBridge.Client.Workers;
+
+namespace OpcBridge.App;
+
+/// <summary>Snapshot of one worker for the Workers board and diagnostics.</summary>
+internal sealed record DaWorkerStatus(
+    string WorkerId,
+    string Account,
+    int Pid,
+    bool Running,
+    bool Quarantined,
+    int ClientCount,
+    IReadOnlyList<string> Sources,
+    long WorkingSetBytes,
+    long PrivateBytes,
+    int Handles,
+    DateTime? StartedUtc,
+    long HeartbeatAgeMs,
+    int RestartCount,
+    int? LastExitCode,
+    DateTime? LastExitUtc,
+    string? LastError);
+
+/// <summary>
+/// Owns the worker processes: spawns one per placement key on demand, tracks crashes and
+/// quarantine, forwards worker stderr into the bridge log, samples memory, and tears a worker
+/// down when its last source disconnects. Proxies ask it for a channel on every (re)connect,
+/// so BridgeWorker's existing retry loop drives the restarts.
+/// </summary>
+internal sealed class DaWorkerSupervisor : BackgroundService, IWorkerHost
+{
+    private readonly DaRuntimeSettings settings_;
+    private readonly ILogger<DaWorkerSupervisor> logger_;
+    private readonly ConcurrentDictionary<string, Entry> workers_ = new(StringComparer.Ordinal);
+
+    private sealed class Entry
+    {
+        public int ClientCount;
+        public DaWorkerProcess? Process;
+        public readonly List<DateTime> CrashesUtc = new();
+        public DateTime? LastExitUtc;
+        public int? LastExitCode;
+        public string? LastError;
+        public bool Quarantined;
+        public DateTime LastHeartbeatUtc = DateTime.UtcNow;
+        public readonly SemaphoreSlim Gate = new(1, 1);
+    }
+
+    public DaWorkerSupervisor(DaRuntimeSettings settings, ILogger<DaWorkerSupervisor> logger)
+    {
+        settings_ = settings;
+        logger_ = logger;
+    }
+
+    /// <summary>Creates the proxy for one source and counts it against the worker.</summary>
+    public WorkerSourceClient CreateClient(string workerKey, DaSourceRuntimeSettings source)
+    {
+        Entry entry = workers_.GetOrAdd(workerKey, _ => new Entry());
+        Interlocked.Increment(ref entry.ClientCount);
+        return new WorkerSourceClient(this, workerKey, source.SourceId);
+    }
+
+    public async Task<IWorkerChannel> EnsureChannelAsync(string workerKey, CancellationToken cancellationToken)
+    {
+        Entry entry = workers_.GetOrAdd(workerKey, _ => new Entry());
+        await entry.Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            DaWorkerProcess? process = entry.Process;
+            if (process is not null && !process.HasExited && process.Connection.ClosedReason is null)
+            {
+                return process.Connection;
+            }
+
+            if (process is not null)
+            {
+                RecordExit(entry, process);
+                entry.Process = null;
+            }
+
+            if (entry.Quarantined)
+            {
+                throw new InvalidOperationException(
+                    $"Worker '{workerKey}' is quarantined after repeated crashes " +
+                    $"({entry.LastError ?? "unknown error"}). Restart it from Ops ▸ Workers.");
+            }
+
+            TimeSpan backoff = WorkerLifecyclePolicy.BackoffForAttempt(entry.CrashesUtc.Count);
+            if (backoff > TimeSpan.Zero)
+            {
+                await Task.Delay(backoff, cancellationToken).ConfigureAwait(false);
+            }
+
+            DaRuntimeSettingsSnapshot snapshot = settings_.GetSnapshot();
+            List<DaSourceRuntimeSettings> placed = WorkerPlacement.SourcesFor(snapshot, workerKey).ToList();
+            if (placed.Count == 0)
+            {
+                throw new InvalidOperationException($"No sources are placed on worker '{workerKey}'.");
+            }
+
+            List<WorkerSourceConfig> configs = placed
+                .Select(source => ToSourceConfig(source, snapshot.UseSubscriptions))
+                .ToList();
+
+            DaWorkerProcess started = await DaWorkerProcess
+                .StartAsync(workerKey, placed[0].Worker, configs, cancellationToken)
+                .ConfigureAwait(false);
+
+            started.LogLine += line => logger_.LogInformation(
+                "[worker {WorkerKey} pid {Pid}] {Line}",
+                workerKey,
+                started.Pid,
+                line);
+            started.Connection.PushReceived += frame =>
+            {
+                if (frame.Type == WorkerFrameTypes.Heartbeat)
+                {
+                    entry.LastHeartbeatUtc = DateTime.UtcNow;
+                }
+            };
+            started.Connection.Closed += reason =>
+            {
+                logger_.LogWarning(
+                    "Worker {WorkerKey} (pid {Pid}) disconnected: {Reason}",
+                    workerKey,
+                    started.Pid,
+                    reason?.Message ?? "pipe closed");
+
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        using var wait = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                        await started.WaitForExitAsync(wait.Token).ConfigureAwait(false);
+                    }
+                    catch
+                    {
+                    }
+
+                    RecordExit(entry, started);
+                });
+            };
+
+            entry.Process = started;
+            logger_.LogInformation(
+                "Started DA worker {WorkerKey} (pid {Pid}, {Count} source(s))",
+                workerKey,
+                started.Pid,
+                configs.Count);
+            return started.Connection;
+        }
+        finally
+        {
+            entry.Gate.Release();
+        }
+    }
+
+    public void ReleaseClient(string workerKey)
+    {
+        if (!workers_.TryGetValue(workerKey, out Entry? entry))
+        {
+            return;
+        }
+
+        if (Interlocked.Decrement(ref entry.ClientCount) > 0)
+        {
+            return;
+        }
+
+        _ = Task.Run(() => StopWorkerAsync(workerKey, entry, removeEntry: true));
+    }
+
+    public IReadOnlyList<DaWorkerStatus> GetStatus()
+    {
+        DaRuntimeSettingsSnapshot snapshot = settings_.GetSnapshot();
+        return workers_.Select(pair =>
+        {
+            Entry entry = pair.Value;
+            DaWorkerProcess? process = entry.Process;
+            List<DaSourceRuntimeSettings> placed = WorkerPlacement.SourcesFor(snapshot, pair.Key).ToList();
+            bool running = process is not null && !process.HasExited;
+            return new DaWorkerStatus(
+                pair.Key,
+                placed.FirstOrDefault()?.Worker.RunAsUser ?? "(bridge identity)",
+                running ? process!.Pid : 0,
+                running,
+                entry.Quarantined,
+                entry.ClientCount,
+                placed.Select(source => source.SourceId).ToList(),
+                process?.WorkingSetBytes ?? 0,
+                process?.PrivateBytes ?? 0,
+                process?.HandleCount ?? 0,
+                process?.StartedUtc,
+                running ? (long)(DateTime.UtcNow - entry.LastHeartbeatUtc).TotalMilliseconds : -1,
+                entry.CrashesUtc.Count,
+                entry.LastExitCode,
+                entry.LastExitUtc,
+                entry.LastError);
+        }).ToList();
+    }
+
+    /// <summary>Kills the worker; its sources reconnect through the coordinator on the next pass.</summary>
+    public async Task<bool> KillAsync(string workerKey)
+    {
+        if (!workers_.TryGetValue(workerKey, out Entry? entry))
+        {
+            return false;
+        }
+
+        await StopWorkerAsync(workerKey, entry, removeEntry: false).ConfigureAwait(false);
+        return true;
+    }
+
+    /// <summary>Clears quarantine and stops the worker so the next connect attempt spawns one.</summary>
+    public async Task<bool> RestartAsync(string workerKey)
+    {
+        if (!workers_.TryGetValue(workerKey, out Entry? entry))
+        {
+            return false;
+        }
+
+        entry.Quarantined = false;
+        entry.CrashesUtc.Clear();
+        await StopWorkerAsync(workerKey, entry, removeEntry: false).ConfigureAwait(false);
+        return true;
+    }
+
+    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    {
+        try
+        {
+            await Task.Delay(Timeout.Infinite, stoppingToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        foreach (var pair in workers_.ToArray())
+        {
+            await StopWorkerAsync(pair.Key, pair.Value, removeEntry: true).ConfigureAwait(false);
+        }
+
+        await base.StopAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task StopWorkerAsync(string workerKey, Entry entry, bool removeEntry)
+    {
+        await entry.Gate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            DaWorkerProcess? process = entry.Process;
+            entry.Process = null;
+            if (process is not null)
+            {
+                process.MarkStopping();
+                await process.ShutdownAsync().ConfigureAwait(false);
+                RecordExit(entry, process);
+                await process.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex)
+        {
+            logger_.LogWarning(ex, "Stopping worker {WorkerKey} failed", workerKey);
+        }
+        finally
+        {
+            entry.Gate.Release();
+        }
+
+        if (removeEntry)
+        {
+            workers_.TryRemove(workerKey, out _);
+        }
+    }
+
+    private void RecordExit(Entry entry, DaWorkerProcess process)
+    {
+        if (process.ExitRecorded)
+        {
+            return;
+        }
+
+        process.ExitRecorded = true;
+        DateTime now = DateTime.UtcNow;
+        entry.LastExitUtc = now;
+        entry.LastExitCode = process.HasExited ? process.ExitCode : 0;
+        entry.LastError = process.Connection.ClosedReason?.Message;
+
+        if (process.Stopping)
+        {
+            return;
+        }
+
+        entry.CrashesUtc.Add(now);
+        entry.CrashesUtc.RemoveAll(crash => now - crash > WorkerLifecyclePolicy.QuarantineWindow);
+        if (WorkerLifecyclePolicy.ShouldQuarantine(entry.CrashesUtc, now))
+        {
+            entry.Quarantined = true;
+            logger_.LogError(
+                "Worker {WorkerKey} quarantined after {Count} crashes within {Window}",
+                process.WorkerId,
+                entry.CrashesUtc.Count,
+                WorkerLifecyclePolicy.QuarantineWindow);
+        }
+    }
+
+    private static WorkerSourceConfig ToSourceConfig(DaSourceRuntimeSettings source, bool globalUseSubscriptions) => new(
+        source.SourceId,
+        source.ProgId,
+        source.Host,
+        source.RemoteUsername,
+        source.RemotePassword,
+        source.RemoteDomain,
+        SourceConfigMigration.NormalizeIoMode(source.IoMode),
+        source.UpdateRateMs,
+        globalUseSubscriptions && source.UseSubscriptions,
+        source.GroupIoModes.Select(group => new WorkerGroupIoMode(group.Name, group.Rate, group.IoMode)).ToList(),
+        source.WatchdogTimeoutMs);
+}

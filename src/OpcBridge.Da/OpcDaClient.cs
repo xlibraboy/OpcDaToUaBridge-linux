@@ -7,7 +7,7 @@ using OpcBridge.Core;
 
 namespace OpcBridge.Da;
 
-public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISubscriptionActiveSource
+public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISubscriptionActiveSource, IRateGroupBoundSource
 {
     private const int OpcDataSourceDevice = 2;
     private static readonly int ItemStateSize = Marshal.SizeOf<OpcItemState>();

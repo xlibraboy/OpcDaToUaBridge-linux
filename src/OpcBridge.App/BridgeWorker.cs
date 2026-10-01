@@ -266,7 +266,7 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
                                 HashSet<string> daDirty = new(StringComparer.OrdinalIgnoreCase);
                                 foreach (SourceSession session in sessions.Values)
                                 {
-                                    if (session.Client is OpcDaClient)
+                                    if (session.Client is IRateGroupBoundSource)
                                     {
                                         daDirty.Add(session.Source.SourceId);
                                     }
@@ -312,7 +312,7 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
                                 HashSet<string> nonDaDirty = new(StringComparer.OrdinalIgnoreCase);
                                 foreach (SourceSession session in sessions.Values)
                                 {
-                                    if (session.Client is OpcDaClient)
+                                    if (session.Client is IRateGroupBoundSource)
                                     {
                                         continue;
                                     }
