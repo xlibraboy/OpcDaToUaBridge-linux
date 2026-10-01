@@ -1536,6 +1536,100 @@ app.MapPost("/api/da/tags", async (DaTagBrowseRequest request, ILogger<Program> 
         return Results.Json(new { error = exception.Message, branches = Array.Empty<object>(), tags = Array.Empty<object>() });
     }
 });
+// Ops ▸ Workers: the worker process family — the parent bridge plus every supervised DA
+// worker — with memory, crash counts and the lifecycle timeline. Reading is open to any
+// signed-in user; restart/kill are Admin (AuthPolicy).
+app.MapGet("/api/workers", (DaWorkerSupervisor workers) =>
+{
+    if (!OperatingSystem.IsWindows())
+    {
+        return Results.Json(new
+        {
+            supported = false,
+            platform = "non-windows",
+            workers = Array.Empty<object>(),
+            history = Array.Empty<object>(),
+            message = "OPC DA workers require Windows."
+        });
+    }
+
+    System.Diagnostics.Process self = System.Diagnostics.Process.GetCurrentProcess();
+    return Results.Json(new
+    {
+        supported = true,
+        platform = "windows",
+        parent = new
+        {
+            pid = Environment.ProcessId,
+            uptimeSeconds = (long)(DateTime.UtcNow - self.StartTime.ToUniversalTime()).TotalSeconds,
+            workingSetMb = self.WorkingSet64 / (1024 * 1024),
+            privateMb = self.PrivateMemorySize64 / (1024 * 1024),
+            handleCount = self.HandleCount
+        },
+        workers = workers.GetStatus().Select(status => new
+        {
+            workerId = status.WorkerId,
+            mode = status.WorkerId.StartsWith(WorkerPlacement.OwnPrefix, StringComparison.Ordinal) ? "own" : "group",
+            pid = status.Pid,
+            account = status.Account,
+            state = status.Quarantined ? "quarantined" : status.Running ? "running" : "stopped",
+            sources = status.Sources,
+            rssMb = status.WorkingSetBytes / (1024 * 1024),
+            privateMb = status.PrivateBytes / (1024 * 1024),
+            handleCount = status.Handles,
+            startedUtc = status.StartedUtc,
+            restarts = status.RestartCount,
+            lastExitCode = status.LastExitCode,
+            lastExitUtc = status.LastExitUtc,
+            lastError = status.LastError,
+            heartbeatAgeMs = status.HeartbeatAgeMs
+        }),
+        history = workers.GetHistory().Select(entry => new
+        {
+            utc = entry.Utc,
+            workerId = entry.WorkerId,
+            @event = entry.Event,
+            exitCode = entry.ExitCode,
+            message = entry.Message
+        })
+    });
+});
+
+app.MapPost("/api/workers/{workerId}/restart", async (string workerId, DaWorkerSupervisor workers) =>
+{
+    if (!OperatingSystem.IsWindows())
+    {
+        return Results.BadRequest(new { error = "OPC DA workers require Windows." });
+    }
+
+    if (!await workers.RestartAsync(workerId))
+    {
+        return Results.NotFound(new { error = $"Worker '{workerId}' not found." });
+    }
+
+    return Results.Json(new { ok = true, workerId });
+});
+
+app.MapPost("/api/workers/{workerId}/kill", async (string workerId, bool? confirm, DaWorkerSupervisor workers) =>
+{
+    if (!OperatingSystem.IsWindows())
+    {
+        return Results.BadRequest(new { error = "OPC DA workers require Windows." });
+    }
+
+    if (confirm != true)
+    {
+        return Results.BadRequest(new { error = "Killing a worker requires ?confirm=true." });
+    }
+
+    if (!await workers.KillAsync(workerId))
+    {
+        return Results.NotFound(new { error = $"Worker '{workerId}' not found." });
+    }
+
+    return Results.Json(new { ok = true, workerId });
+});
+
 // OPC DA troubleshoot (Admin only): read-only registration analysis of the
 // ProgID → CLSID → server-path chain, plus an optional activation probe run in a
 // separate process so a faulty in-proc server DLL cannot take the bridge down.

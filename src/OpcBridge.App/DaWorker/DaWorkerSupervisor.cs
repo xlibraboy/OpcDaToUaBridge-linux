@@ -24,6 +24,9 @@ internal sealed record DaWorkerStatus(
     DateTime? LastExitUtc,
     string? LastError);
 
+/// <summary>One worker lifecycle event for the Workers board's crash timeline.</summary>
+internal sealed record DaWorkerEvent(DateTime Utc, string WorkerId, string Event, int? ExitCode, string? Message);
+
 /// <summary>
 /// Owns the worker processes: spawns one per placement key on demand, tracks crashes and
 /// quarantine, forwards worker stderr into the bridge log, samples memory, and tears a worker
@@ -32,9 +35,12 @@ internal sealed record DaWorkerStatus(
 /// </summary>
 internal sealed class DaWorkerSupervisor : BackgroundService, IWorkerHost
 {
+    private const int HistoryLimit = 50;
+
     private readonly DaRuntimeSettings settings_;
     private readonly ILogger<DaWorkerSupervisor> logger_;
     private readonly ConcurrentDictionary<string, Entry> workers_ = new(StringComparer.Ordinal);
+    private readonly Queue<DaWorkerEvent> history_ = new();
 
     private sealed class Entry
     {
@@ -145,6 +151,7 @@ internal sealed class DaWorkerSupervisor : BackgroundService, IWorkerHost
             };
 
             entry.Process = started;
+            AddHistory(workerKey, "started", null, $"pid {started.Pid}, {configs.Count} source(s)");
             logger_.LogInformation(
                 "Started DA worker {WorkerKey} (pid {Pid}, {Count} source(s))",
                 workerKey,
@@ -210,6 +217,7 @@ internal sealed class DaWorkerSupervisor : BackgroundService, IWorkerHost
             return false;
         }
 
+        AddHistory(workerKey, "killed", null, "operator request");
         await StopWorkerAsync(workerKey, entry, removeEntry: false).ConfigureAwait(false);
         return true;
     }
@@ -222,6 +230,7 @@ internal sealed class DaWorkerSupervisor : BackgroundService, IWorkerHost
             return false;
         }
 
+        AddHistory(workerKey, "restart-requested", null, "operator request");
         entry.Quarantined = false;
         entry.CrashesUtc.Clear();
         await StopWorkerAsync(workerKey, entry, removeEntry: false).ConfigureAwait(false);
@@ -294,19 +303,48 @@ internal sealed class DaWorkerSupervisor : BackgroundService, IWorkerHost
 
         if (process.Stopping)
         {
+            AddHistory(process.WorkerId, "stopped", entry.LastExitCode, entry.LastError);
             return;
         }
+
+        AddHistory(
+            process.WorkerId,
+            "crashed",
+            entry.LastExitCode,
+            entry.LastError ?? WorkerLifecyclePolicy.ClassifyExit(entry.LastExitCode ?? 0));
 
         entry.CrashesUtc.Add(now);
         entry.CrashesUtc.RemoveAll(crash => now - crash > WorkerLifecyclePolicy.QuarantineWindow);
         if (WorkerLifecyclePolicy.ShouldQuarantine(entry.CrashesUtc, now))
         {
             entry.Quarantined = true;
+            AddHistory(process.WorkerId, "quarantined", null, $"{entry.CrashesUtc.Count} crashes within {WorkerLifecyclePolicy.QuarantineWindow}");
             logger_.LogError(
                 "Worker {WorkerKey} quarantined after {Count} crashes within {Window}",
                 process.WorkerId,
                 entry.CrashesUtc.Count,
                 WorkerLifecyclePolicy.QuarantineWindow);
+        }
+    }
+
+    /// <summary>Newest-last lifecycle events, capped at <see cref="HistoryLimit"/>.</summary>
+    public IReadOnlyList<DaWorkerEvent> GetHistory()
+    {
+        lock (history_)
+        {
+            return history_.ToArray();
+        }
+    }
+
+    private void AddHistory(string workerId, string @event, int? exitCode, string? message)
+    {
+        lock (history_)
+        {
+            history_.Enqueue(new DaWorkerEvent(DateTime.UtcNow, workerId, @event, exitCode, message));
+            while (history_.Count > HistoryLimit)
+            {
+                history_.Dequeue();
+            }
         }
     }
 
