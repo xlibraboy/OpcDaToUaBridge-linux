@@ -1317,8 +1317,15 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
             && string.Equals(a.RemotePassword, b.RemotePassword, StringComparison.Ordinal)
             && string.Equals(a.RemoteDomain, b.RemoteDomain, StringComparison.OrdinalIgnoreCase)
             && string.Equals(a.IoMode, b.IoMode, StringComparison.Ordinal)
-            && DaGroupIoModesEqual(a, b);
+            && DaGroupIoModesEqual(a, b)
+            && DaWorkerEquals(a.Worker, b.Worker);
     }
+
+    private static bool DaWorkerEquals(DaWorkerOptions left, DaWorkerOptions right)
+        => string.Equals(left.Mode, right.Mode, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(left.RunAsUser, right.RunAsUser, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(left.RunAsDomain, right.RunAsDomain, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(left.RunAsPassword, right.RunAsPassword, StringComparison.Ordinal);
 
     private static bool DaGroupIoModesEqual(DaSourceRuntimeSettings a, DaSourceRuntimeSettings b)
     {

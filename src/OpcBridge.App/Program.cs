@@ -1203,6 +1203,28 @@ app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings
     }
 
     string upsertType = request.SourceType ?? string.Empty;
+
+    // Worker isolation is optional: when the form omits it, an existing source keeps its
+    // options; a blank password field means "no change" (same rule as the UA credentials).
+    DaSourceRuntimeSettings? existingSource = settings.GetSnapshot().GetSource(request.SourceId);
+    DaWorkerOptions? requestedWorker = request.Worker is null
+        ? existingSource?.OpcDa?.Worker
+        : new DaWorkerOptions(
+            request.Worker.Mode ?? DaWorkerModes.InProcess,
+            request.Worker.RunAsUser,
+            string.IsNullOrWhiteSpace(request.Worker.RunAsPassword)
+                ? existingSource?.Worker.RunAsPassword
+                : request.Worker.RunAsPassword,
+            request.Worker.RunAsDomain);
+
+    string workerSourceType = string.IsNullOrWhiteSpace(upsertType) ? SourceTypes.OpcDa : upsertType;
+    if (DaWorkerOptionsValidator.Validate(workerSourceType, requestedWorker ?? new DaWorkerOptions()) is { } workerValidationError)
+    {
+        return Results.BadRequest(new { error = workerValidationError });
+    }
+
+    DaWorkerOptions? upsertWorker = SourceConfigMigration.NormalizeWorkerOptions(requestedWorker);
+
     OpcDaSourceOptions? upsertDa = null;
     OpcUaSourceOptions? upsertUa = null;
     MelsecA3nSourceOptions? upsertMelsec = null;
@@ -1256,7 +1278,8 @@ app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings
             request.RemotePassword,
             request.RemoteDomain,
             ResolveGroupIoModes(request.Groups, settings, request.SourceId),
-            ResolveWatchdogTimeoutMs(request.WatchdogTimeoutMs, settings, request.SourceId));
+            ResolveWatchdogTimeoutMs(request.WatchdogTimeoutMs, settings, request.SourceId),
+            upsertWorker);
     }
 
     DaRuntimeSettingsSnapshot snapshot = settings.UpsertSource(new DaSourceRuntimeSettings(
@@ -2847,6 +2870,10 @@ static object ToSourceApiDto(DaSourceRuntimeSettings source)
         ioMode = source.IoMode,
         remoteUsername = source.RemoteUsername,
         remoteDomain = source.RemoteDomain,
+        workerMode = DaWorkerModes.Normalize(source.Worker.Mode),
+        workerRunAsUser = source.Worker.RunAsUser,
+        workerRunAsDomain = source.Worker.RunAsDomain,
+        workerRunAsPasswordSet = !string.IsNullOrEmpty(source.Worker.RunAsPassword),
         uaUsername = source.UaUsername
     };
 }
