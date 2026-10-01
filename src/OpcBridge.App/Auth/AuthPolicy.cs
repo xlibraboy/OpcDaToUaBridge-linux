@@ -42,6 +42,7 @@ public static class AuthPolicy
     {
         ("/api/auth/users", null, UserRole.Admin),
         ("/api/issues", null, UserRole.Admin),
+        ("/api/da/troubleshoot", "POST", UserRole.Admin),
         ("/api/hmi/write", "POST", UserRole.Operator),
         ("/api/hmi/displays", "PUT", UserRole.Engineer),
         ("/api/hmi/displays", "DELETE", UserRole.Engineer)

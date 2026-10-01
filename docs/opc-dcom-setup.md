@@ -6,6 +6,11 @@ research-derived from primary sources (Microsoft Learn / Microsoft Support, OPC 
 canonical Matrikon / Kepware DCOM guides); every claim carries its source inline. Nothing in this
 document executes on either machine — it is a configuration reference for an engineer at the console.
 
+> Before walking this by hand, try the built-in check: **Ops ▸ Troubleshoot** in the dashboard
+> reads the registration chain on the machine it runs on (ProgID → CLSID → server path, both
+> bitness views) and can run an isolated activation probe. This document covers what a **remote**
+> connection needs on top — the DCOM configuration on the server's host.
+
 > Why this is hard at all: OPC Classic (OPC DA) is defined on Microsoft COM/DCOM, so a remote OPC DA
 > connection *is* a DCOM activation plus a stream of DCOM calls, and every one of the many security
 > layers can return `0x80070005 E_ACCESSDENIED` ([OPC Foundation — Classic](https://opcfoundation.org/about/opc-technologies/opc-classic/), [Microsoft — Security in COM](https://learn.microsoft.com/en-us/windows/win32/com/security-in-com)).

@@ -51,6 +51,7 @@ public sealed class AuthPolicyTests
     [InlineData("GET", "/api/da/sources", UserRole.Viewer)]
     [InlineData("GET", "/api/auth/users", UserRole.Admin)]
     [InlineData("GET", "/api/issues", UserRole.Admin)]
+    [InlineData("POST", "/api/da/troubleshoot", UserRole.Admin)]
     [InlineData("POST", "/api/auth/users", UserRole.Admin)]
     [InlineData("POST", "/api/auth/users/remove", UserRole.Admin)]
     [InlineData("POST", "/api/hmi/write", UserRole.Operator)]

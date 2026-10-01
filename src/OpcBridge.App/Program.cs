@@ -29,6 +29,16 @@ using DataDirectory = OpcBridge.App.DataDirectory;
 // poll cycle; beyond this many values it freezes browsers. UI shows total separately.
 const int DashboardValuesLimit = 2000;
 
+// OPC DA activation probe (child mode): a short-lived copy of this executable that only
+// activates one COM server and prints the result. It must run before the crash handlers,
+// the single-instance lock and the port/appsettings setup — it works while the service is
+// running, and a native fault in an in-proc vendor DLL kills only this child process.
+if (DaProbe.IsProbeInvocation(args))
+{
+    Environment.ExitCode = DaProbe.RunChild();
+    return;
+}
+
 // Registered before anything else can throw, so a startup failure is reported too. A bridge that
 // dies must leave a reason behind — see CrashLog for the two unexplained stops that motivated it.
 CrashLog.Install();
@@ -1489,6 +1499,71 @@ app.MapPost("/api/da/tags", async (DaTagBrowseRequest request, ILogger<Program> 
     {
         logger.LogWarning(exception, "OPC DA browse {ProgId}@{Host} failed.", request.ProgId, request.Host);
         return Results.Json(new { error = exception.Message, branches = Array.Empty<object>(), tags = Array.Empty<object>() });
+    }
+});
+// OPC DA troubleshoot (Admin only): read-only registration analysis of the
+// ProgID → CLSID → server-path chain, plus an optional activation probe run in a
+// separate process so a faulty in-proc server DLL cannot take the bridge down.
+app.MapPost("/api/da/troubleshoot", async (DaTroubleshootRequest request, DaRuntimeSettings settings) =>
+{
+    if (!OperatingSystem.IsWindows())
+    {
+        return Results.Json(new { ok = false, error = "OPC DA diagnostics require Windows." });
+    }
+
+    string progId;
+    string host;
+    string? username;
+    string? password;
+    string? domain;
+
+    if (!string.IsNullOrWhiteSpace(request.SourceId))
+    {
+        DaSourceRuntimeSettings? source = settings.GetSnapshot().GetSource(request.SourceId);
+        if (source is null || !string.Equals(source.SourceType, SourceTypes.OpcDa, StringComparison.OrdinalIgnoreCase))
+        {
+            return Results.Json(new { ok = false, error = $"Source '{request.SourceId}' is not a configured OPC DA source." });
+        }
+
+        progId = source.ProgId;
+        host = source.Host;
+        username = source.RemoteUsername;
+        password = source.RemotePassword;
+        domain = source.RemoteDomain;
+    }
+    else
+    {
+        progId = request.ProgId?.Trim() ?? string.Empty;
+        host = request.Host?.Trim() ?? string.Empty;
+        username = request.Username;
+        password = request.Password;
+        domain = request.Domain;
+    }
+
+    if (progId.Length == 0)
+    {
+        return Results.Json(new { ok = false, error = "A source or a ProgID is required." });
+    }
+
+    try
+    {
+        DaRegistrationDiagnostics.DaRegistrationReport report = await Task.Run(
+            () => OperatingSystem.IsWindows()
+                ? DaRegistrationDiagnostics.Diagnose(progId, host, username, password, domain)
+                : throw new PlatformNotSupportedException("OPC DA diagnostics require Windows.")).ConfigureAwait(false);
+
+        DaProbeResult? probe = null;
+        if (request.IncludeProbe)
+        {
+            probe = await DaProbe.RunAsync(new DaProbeRequest(progId, host, username, password, domain), CancellationToken.None)
+                .ConfigureAwait(false);
+        }
+
+        return Results.Json(new { ok = true, report, probe });
+    }
+    catch (Exception exception)
+    {
+        return Results.Json(new { ok = false, error = exception.Message });
     }
 });
 app.MapGet("/api/interlinks", (InterlinkStore store) =>

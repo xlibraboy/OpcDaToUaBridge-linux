@@ -51,6 +51,8 @@ namespace OpcBridge.App;
 //   /api/ports/config, /api/ports/probe, /api/firewall/status, /api/firewall/apply
 //   Issues (#34, Admin only): data-tab="issues", id="view-issues", id="navIssues",
 //   function loadIssues(, /api/issues
+//   Troubleshoot (Admin only): data-tab="troubleshoot", id="view-troubleshoot", id="navTroubleshoot",
+//   function loadTroubleshoot(/runDaTroubleshoot(/renderDaTroubleshoot(, /api/da/troubleshoot
 internal static class DashboardPage
 {
     public const string Html = """
@@ -1072,6 +1074,7 @@ internal static class DashboardPage
     <button class="tabbtn" data-tab="diagram" data-route="ops/diagram" onclick="navigate('ops/diagram')">Diagram</button>
     <button class="tabbtn" data-tab="users" data-route="ops/users" id="navUsers" style="display:none" onclick="navigate('ops/users')">Users</button>
     <button class="tabbtn" data-tab="issues" data-route="ops/issues" id="navIssues" style="display:none" onclick="navigate('ops/issues')">Issues</button>
+    <button class="tabbtn" data-tab="troubleshoot" data-route="ops/troubleshoot" id="navTroubleshoot" style="display:none" onclick="navigate('ops/troubleshoot')">Troubleshoot</button>
     </div>
   </div>
   <div class="nav-group">
@@ -2019,6 +2022,22 @@ internal static class DashboardPage
         <div class="box-h">Known Issues <span class="msg" id="issuesMessage" role="status" style="margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0">Real issues recorded in this build's ISSUES.md.</span></div>
         <div class="box-b">
             <div class="help-body" id="issuesBody"><span class="msg">Loading issues…</span></div>
+        </div>
+    </div>
+</div>
+<div class="view" id="view-troubleshoot">
+    <h1 class="view-title" tabindex="-1">Troubleshoot</h1>
+    <div class="box">
+        <div class="box-h">OPC DA Registration <span class="msg" id="tsMessage" role="status" style="margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0">Checks the ProgID → CLSID → server-path chain. The activation probe runs in a separate process so a faulty server DLL cannot take the bridge down.</span></div>
+        <div class="box-b">
+            <div class="toolbar">
+                <label class="fl" for="tsSource" style="width:auto">Source</label>
+                <select id="tsSource" style="min-width:240px"><option value="">— select a source —</option></select>
+                <button class="btn" id="tsRun" type="button">Run checks</button>
+                <button class="btn ghost" id="tsProbe" type="button" title="Activates the server in a separate process (up to 25 s).">Run activation probe</button>
+            </div>
+            <div class="field"><label class="fl" for="tsProgId">ProgID <span class="info" data-tip="For an ad-hoc check when no source is configured — e.g. PMD.DDT_OPCDataServer.1.">i</span></label><input id="tsProgId" type="text" placeholder="PMD.DDT_OPCDataServer.1" style="flex:1"><label class="fl" for="tsHost" style="margin-left:12px">Host</label><input id="tsHost" type="text" placeholder="localhost" style="width:180px"></div>
+            <div id="tsReport" style="margin-top:8px"><span class="msg">Select a source (or type a ProgID) and run the checks.</span></div>
         </div>
     </div>
 </div>
@@ -4484,12 +4503,13 @@ function applyRoleUi() {
     });
     el('navUsers').style.display = authSession.role === 'Admin' ? '' : 'none';
     el('navIssues').style.display = authSession.role === 'Admin' ? '' : 'none';
+    el('navTroubleshoot').style.display = authSession.role === 'Admin' ? '' : 'none';
 }
 
 // A bookmarked route may point at a section this role cannot open.
 function routeAllowed(route) {
     const tab = ROUTE_TO_TAB[route] || ROUTE_TO_TAB[DEFAULT_ROUTE];
-    if (tab === 'users' || tab === 'issues') return authSession.role === 'Admin';
+    if (tab === 'users' || tab === 'issues' || tab === 'troubleshoot') return authSession.role === 'Admin';
     return ENGINEER_TABS.includes(tab) ? isEngineer() : true;
 }
 
@@ -4846,6 +4866,7 @@ const ROUTE_TO_TAB = {
   'ops/logs': 'logs',
   'ops/users': 'users',
   'ops/issues': 'issues',
+  'ops/troubleshoot': 'troubleshoot',
   'ops/diagram': 'diagram',
   'help/guide': 'help',
   'help/about': 'about',
@@ -4907,6 +4928,7 @@ async function showTab(name, route) {
   if (activeTab === 'about') loadAppInfo().catch(e => el('aboutName').textContent = '✗ ' + e.message);
   if (activeTab === 'changelog') loadChangelog().catch(e => el('changelogBody').innerHTML = '<span class="msg bad" role="alert">✗ ' + escapeHtml(e.message) + '</span>');
   if (activeTab === 'issues') loadIssues().catch(e => el('issuesBody').innerHTML = '<span class="msg bad" role="alert">✗ ' + escapeHtml(e.message) + '</span>');
+  if (activeTab === 'troubleshoot') { loadTroubleshoot().catch(e => el('tsMessage').textContent = '✗ ' + e.message); }
   if (activeTab === 'help') loadHelp().catch(e => { const c = el('helpLayout1'); if (c) c.innerHTML = '<span class="msg bad" role="alert">✗ ' + esc(e.message) + '</span>'; });
   if (activeTab === 'mqtt') { await loadMqtt(); }
   if (activeTab === 'iot-traffic') { await loadMqttValues(); }
@@ -6025,6 +6047,88 @@ async function loadIssues() {
     if (!body) return;
     body.innerHTML = renderMarkdown(reflowWrappedLines(p.markdown || ''));
     issuesLoaded = true;
+}
+
+// OPC DA registration troubleshooter (Admin only): read-only chain checks (ProgID →
+// CLSID → server path) plus an isolated activation probe. The probe runs in a separate
+// process — a faulty in-proc server DLL kills only that child, never the bridge.
+let troubleshootSourcesLoaded = false;
+async function loadTroubleshoot() {
+    if (troubleshootSourcesLoaded) return;
+    const payload = await (await fetch('/api/da/sources', { cache: 'no-store' })).json();
+    const select = el('tsSource');
+    (payload.sources || []).filter(s => String(s.sourceType || 'OpcDa').toLowerCase() === 'opcda').forEach(s => {
+        const option = document.createElement('option');
+        option.value = s.sourceId;
+        option.textContent = (s.displayName || s.sourceId) + (s.progId ? ' — ' + s.progId : '');
+        select.appendChild(option);
+    });
+    troubleshootSourcesLoaded = true;
+}
+
+async function runDaTroubleshoot(includeProbe) {
+    const sourceId = el('tsSource').value;
+    const progId = el('tsProgId').value.trim();
+    if (!sourceId && !progId) {
+        el('tsMessage').textContent = 'Select a source or type a ProgID first.';
+        return;
+    }
+
+    const button = includeProbe ? el('tsProbe') : el('tsRun');
+    button.disabled = true;
+    el('tsMessage').textContent = includeProbe
+        ? 'Running checks and activation probe (up to ~25 s)…'
+        : 'Running checks…';
+    try {
+        const response = await fetch('/api/da/troubleshoot', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                sourceId: sourceId || null,
+                progId: progId || null,
+                host: el('tsHost').value.trim() || null,
+                includeProbe: !!includeProbe
+            })
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || (payload.ok === false && payload.error)) {
+            el('tsMessage').textContent = '✗ ' + (payload.error || ('HTTP ' + response.status));
+            el('tsReport').innerHTML = '';
+            return;
+        }
+
+        const report = payload.report || {};
+        el('tsMessage').textContent = (report.verdict === 'ok' ? '✓ ' : '') + (report.summary || '');
+        renderDaTroubleshoot(payload);
+    } finally {
+        button.disabled = false;
+    }
+}
+
+function renderDaTroubleshoot(payload) {
+    const severityClass = { fail: 'bad', warn: 'warn', ok: 'good', info: 'partial' };
+    const severityLabel = { fail: 'FAIL', warn: 'WARN', ok: 'OK', info: 'INFO' };
+    const report = payload.report || {};
+    let html = (report.findings || []).map(f =>
+        '<div style="padding:6px 0;border-bottom:1px solid var(--line)">' +
+        badge(severityLabel[f.severity] || f.severity, severityClass[f.severity] || 'partial') + ' ' +
+        '<strong>' + esc(f.title) + '</strong>' +
+        (f.detail ? '<div class="msg" style="display:block;margin-top:2px">' + esc(f.detail) + '</div>' : '') +
+        (f.remediation ? '<div class="msg" style="display:block">→ ' + esc(f.remediation) + '</div>' : '') +
+        '</div>').join('');
+
+    const probe = payload.probe;
+    if (probe) {
+        const hex = probe.hresult ? '0x' + (probe.hresult >>> 0).toString(16).toUpperCase() : '';
+        const text = probe.ok
+            ? 'Activated: ' + (probe.serverInfo || 'connected')
+            : 'Not activated: ' + (probe.error || 'unknown error') + (hex ? ' (' + hex + ')' : '') +
+              (probe.classification ? ' — ' + probe.classification : '');
+        html += '<div style="padding:6px 0">' + badge('ACTIVATION PROBE', probe.ok ? 'good' : 'bad') + ' ' +
+            '<strong>' + esc(text) + '</strong></div>';
+    }
+
+    el('tsReport').innerHTML = html || '<span class="msg">No findings.</span>';
 }
 
 async function loadHelp() {
@@ -9718,6 +9822,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     el('drvA3nNew').addEventListener('click', newDriver);
     el('drvA3nRemove').addEventListener('click', () => removeDriver().catch(e => el('drvA3nMessage').textContent = '✗ ' + e.message));
     el('drvA3nTest').addEventListener('click', () => testDriverConnection().catch(e => el('drvA3nMessage').textContent = '✗ ' + e.message));
+    el('tsRun').addEventListener('click', () => runDaTroubleshoot(false).catch(e => el('tsMessage').textContent = '✗ ' + e.message));
+    el('tsProbe').addEventListener('click', () => runDaTroubleshoot(true).catch(e => el('tsMessage').textContent = '✗ ' + e.message));
     if (el('btnDrvScanPorts')) el('btnDrvScanPorts').addEventListener('click', () => scanSerialPorts('drvA3nPort', 'listDrvPorts', 'msgDrvPorts').catch(e => el('msgDrvPorts').textContent = '✗ ' + e.message));
     if (el('btnWzDrvScanPorts')) el('btnWzDrvScanPorts').addEventListener('click', () => scanSerialPorts('wzDrvPort', 'listWzDrvPorts', 'msgWzDrvPorts').catch(e => el('msgWzDrvPorts').textContent = '✗ ' + e.message));
     const onUseSerialPort = event => {

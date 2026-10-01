@@ -6,8 +6,8 @@ namespace OpcBridge.Da;
 
 public static class OpcServerEnumerator
 {
-    // OPC DA 2.0 category GUID
-    private const string OpcDaCategoryGuid = "{63D5F430-CFE4-11D1-B2C8-0060083BA1FB}";
+    // OPC DA 2.0 category GUID (shared with DaRegistrationDiagnostics)
+    internal const string OpcDaCategoryGuid = "{63D5F430-CFE4-11D1-B2C8-0060083BA1FB}";
 
     /// <summary>
     /// Enumerates registered OPC DA servers. For local hosts, scans both HKLM

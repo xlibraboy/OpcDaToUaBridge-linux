@@ -159,6 +159,20 @@ would own — which makes installing the other package how a station changes arc
 its runtime state under `C:\ProgramData\OpcBridge` surviving. Apps & features names the 64-bit
 install **OpcBridge (64-bit)**, so which build a host holds is readable on the machine.
 
+**OPC DA troubleshooting tells you why a source cannot connect.** The PRW11709 session fixed a
+host by hand — the 32-bit COM registration pointed at a build-machine path (`F:\SetUpWork\…`)
+that does not exist on the plant machine — and the same class of defect (ProgID → CLSID mapping,
+missing `InprocServer32`/`LocalServer32` path, the 32-vs-64-bit registry view a 32-bit bridge
+actually reads, discovery keys) now diagnoses itself. **Ops ▸ Troubleshoot** (Admin, matching
+Ops ▸ Issues) walks the chain read-only and reports each hop with the registry view, the raw path
+and the fix; **Run activation probe** additionally asks the real question — can this identity
+activate the server — in a **separate child process**, so a faulty in-proc server DLL (the PMD
+crash class, still open) kills only the probe and reads as a failed probe, never a failed bridge.
+When a DA source fails to connect, the read-only checks also run once automatically and note a
+deduplicated verdict on the durable log, so the next incident leaves its explanation in
+`logs/bridge.log`. Honeywell PMD ProgIDs additionally compare the registered DLL against the
+installed Honeywell location and point at the field notes.
+
 ### Changed
 
 **The Release carries the Windows portable builds.** The GitHub Release shipped the x86 MSI

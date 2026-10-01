@@ -457,6 +457,29 @@ The bridge can discover OPC DA servers installed on the **local machine** or on 
 
 ---
 
+# Troubleshooting an OPC DA Registration (Ops → Troubleshoot)
+
+When a DA source will not connect, **Ops → Troubleshoot** (Admin only) walks the exact chain a
+local connect takes — account for the bridge's own bitness, since a 32-bit bridge only sees the
+32-bit (`WOW6432Node`) registrations — and reports every hop:
+
+| Check | Fails when | Fix |
+|-------|-----------|-----|
+| ProgID → CLSID | no `CLSID` mapping under the ProgID in the relevant view | install/register the server, or correct the ProgID |
+| CLSID registration | the mapped CLSID has no `InprocServer32`/`LocalServer32` | re-register with `regsvr32` on the installed DLL |
+| Server path | the registered path does not exist — a build-machine path (like `F:\…`) is the classic | repoint the registration to the installed DLL |
+| Discovery keys | OPC DA category or reverse ProgID missing — scans will not list the server | re-register; connecting by ProgID still works |
+
+- **Run activation probe** additionally activates the server in a **separate process** (up to
+  25 s). A faulty in-proc server DLL kills only the probe — never the bridge — and a probe that
+  dies is itself a diagnosis.
+- When a DA source fails to connect, the read-only checks run **automatically once** and note a
+  verdict on the durable log — search `logs/bridge.log` for `OPC DA registration verdict`.
+- Remote sources: the ProgID mapping is resolved on the bridge's machine; the server path and
+  DCOM settings that matter are on the remote host. See `docs/opc-dcom-setup.md`.
+
+---
+
 # PLC Drivers (Mitsubishi A3N)
 
 The bridge can poll a Mitsubishi **A3NCPU** over **RS-232** using MELSEC **A-compatible 1C Frame**

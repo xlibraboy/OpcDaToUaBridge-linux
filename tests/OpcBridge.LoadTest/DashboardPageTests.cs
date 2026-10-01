@@ -1582,6 +1582,24 @@ public sealed class DashboardPageTests
         Assert.Contains("el('fpAdded').value = formatAddedUtc(", DashboardPage.Script);
     }
 
+    [Fact]
+    public void Html_ShipsTheTroubleshootView()
+    {
+        // Ops ▸ Troubleshoot (Admin only): the DA registration report and the isolated probe.
+        Assert.Contains("data-tab=\"troubleshoot\"", DashboardPage.FullHtml, StringComparison.Ordinal);
+        Assert.Contains("data-route=\"ops/troubleshoot\"", DashboardPage.FullHtml, StringComparison.Ordinal);
+        Assert.Contains("id=\"view-troubleshoot\"", DashboardPage.FullHtml, StringComparison.Ordinal);
+        Assert.Contains("id=\"navTroubleshoot\"", DashboardPage.FullHtml, StringComparison.Ordinal);
+        Assert.Contains("id=\"tsRun\"", DashboardPage.FullHtml, StringComparison.Ordinal);
+        Assert.Contains("id=\"tsProbe\"", DashboardPage.FullHtml, StringComparison.Ordinal);
+        Assert.Contains("id=\"tsReport\"", DashboardPage.FullHtml, StringComparison.Ordinal);
+        Assert.Contains("function loadTroubleshoot(", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("function runDaTroubleshoot(", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("function renderDaTroubleshoot(", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("/api/da/troubleshoot", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("el('navTroubleshoot').style.display = authSession.role === 'Admin'", DashboardPage.Script, StringComparison.Ordinal);
+    }
+
     private static int CountOccurrences(string haystack, string needle)
     {
         int count = 0, index = 0;

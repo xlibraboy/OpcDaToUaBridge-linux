@@ -27,6 +27,9 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
     private readonly ILogger<BridgeWorker> logger_;
     private readonly IReadOnlyDictionary<int, int> rate_limits_;
     private readonly ConcurrentDictionary<string, DateTime> watchdog_activity_ = new(StringComparer.OrdinalIgnoreCase);
+    // Last printed registration verdict per source; a retry loop must not repeat it. Cleared on
+    // a successful connect so a later failure says its piece again.
+    private readonly Dictionary<string, string> da_registration_verdicts_ = new(StringComparer.OrdinalIgnoreCase);
     private int backoffMs_ = 1000;
     private WriteQueue? write_queue_;
     private volatile Dictionary<string, SourceSession>? active_sessions_;
@@ -1134,6 +1137,7 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
                 sessions[source.SourceId] = new SourceSession(source, client);
                 sessionRegistered = true;
                 bridge_state_.SetSourceConnectionState(source.SourceId, "Connected");
+                da_registration_verdicts_.Remove(source.SourceId);
 
                 if (client is OpcDaClient connectedDaClient)
                 {
@@ -1171,6 +1175,7 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
                 bridge_state_.SetSourceConnectionState(source.SourceId, "Reconnecting");
                 bridge_state_.SetSourceError(source.SourceId, ex);
                 logger_.LogWarning(ex, "Source {SourceId} connection lost; will retry", source.SourceId);
+                LogDaRegistrationVerdict(source);
                 connectionFailures = true;
                 watchdog_activity_.TryRemove(source.SourceId, out _);
             }
@@ -1179,6 +1184,7 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
                 bridge_state_.SetSourceConnectionState(source.SourceId, "Faulted");
                 bridge_state_.SetSourceError(source.SourceId, ex);
                 logger_.LogWarning(ex, "Source {SourceId} connection failed", source.SourceId);
+                LogDaRegistrationVerdict(source);
                 changed.Add(source.SourceId);
             }
             finally
@@ -1200,6 +1206,56 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
         }
 
         return (changed, connectionFailures);
+    }
+
+    /// <summary>
+    /// On a DA connect failure, runs the read-only registration checks once and notes a verdict
+    /// on the durable log: the next incident of this class (a registered path from a machine the
+    /// server was never installed on — the PRW11709 case) explains itself instead of waiting for
+    /// a field session. Deduplicated per source until a connect succeeds, and never allowed to
+    /// disturb the coordinator.
+    /// </summary>
+    private void LogDaRegistrationVerdict(DaSourceRuntimeSettings source)
+    {
+        if (!OperatingSystem.IsWindows()
+            || !string.Equals(source.SourceType, SourceTypes.OpcDa, StringComparison.OrdinalIgnoreCase)
+            || string.IsNullOrWhiteSpace(source.ProgId))
+        {
+            return;
+        }
+
+        DaRegistrationDiagnostics.DaRegistrationReport report;
+        try
+        {
+            report = DaRegistrationDiagnostics.Diagnose(
+                source.ProgId,
+                source.Host,
+                source.RemoteUsername,
+                source.RemotePassword,
+                source.RemoteDomain);
+        }
+        catch (Exception diagnosticException)
+        {
+            logger_.LogDebug(diagnosticException, "OPC DA registration check for {SourceId} failed to run", source.SourceId);
+            return;
+        }
+
+        string signature = report.Verdict + "|" + report.Summary;
+        if (da_registration_verdicts_.TryGetValue(source.SourceId, out string? previous)
+            && string.Equals(previous, signature, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        da_registration_verdicts_[source.SourceId] = signature;
+        if (string.Equals(report.Verdict, DaRegistrationDiagnostics.SeverityOk, StringComparison.Ordinal))
+        {
+            logger_.LogInformation("OPC DA registration verdict for {SourceId}: {Summary}", source.SourceId, report.Summary);
+        }
+        else
+        {
+            logger_.LogWarning("OPC DA registration verdict for {SourceId}: {Summary}", source.SourceId, report.Summary);
+        }
     }
 
     internal static bool SourceConnectionEquals(DaSourceRuntimeSettings a, DaSourceRuntimeSettings b)
