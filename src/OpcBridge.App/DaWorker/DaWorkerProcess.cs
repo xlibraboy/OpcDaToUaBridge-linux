@@ -1,16 +1,14 @@
 using System.Diagnostics;
 using System.IO.Pipes;
-using System.Runtime.Versioning;
-using System.Security.Principal;
 using System.Text.Json;
 using OpcBridge.Client.Workers;
 
 namespace OpcBridge.App;
 
 /// <summary>
-/// One worker child process: spawn (under the bridge identity — a differing run-as account is
-/// rejected until the privileged spawn path lands), bootstrap on stdin, named-pipe channel,
-/// stderr forwarding into the bridge log, resource sampling and the shutdown/kill sequence.
+/// One worker child process: spawn under the configured run-as account (or the bridge's own —
+/// see <see cref="DaWorkerIdentity"/>), bootstrap on stdin, named-pipe channel, stderr
+/// forwarding into the bridge log, resource sampling and the shutdown/kill sequence.
 /// </summary>
 internal sealed class DaWorkerProcess : IAsyncDisposable
 {
@@ -18,16 +16,18 @@ internal sealed class DaWorkerProcess : IAsyncDisposable
     private const int ShutdownGraceMs = 5_000;
     private static readonly TimeSpan SampleInterval = TimeSpan.FromSeconds(5);
 
+    private readonly DaWorkerChild child_;
     private readonly Process process_;
     private readonly Timer sampleTimer_;
     private readonly Task stderrPump_;
     private int stopping_;
 
-    private DaWorkerProcess(string workerId, string account, Process process, WorkerConnection connection)
+    private DaWorkerProcess(string workerId, string account, DaWorkerChild child, WorkerConnection connection)
     {
         WorkerId = workerId;
         Account = account;
-        process_ = process;
+        child_ = child;
+        process_ = child.Process;
         Connection = connection;
         StartedUtc = DateTime.UtcNow;
         sampleTimer_ = new Timer(_ => Sample(), null, SampleInterval, SampleInterval);
@@ -66,8 +66,6 @@ internal sealed class DaWorkerProcess : IAsyncDisposable
         IReadOnlyList<WorkerSourceConfig> sources,
         CancellationToken cancellationToken)
     {
-        EnsureSameIdentityOrThrow(workerOptions);
-
         string pipeName = "opcbridge-da-worker-" + Guid.NewGuid().ToString("N");
         var pipe = new NamedPipeServerStream(
             pipeName,
@@ -77,24 +75,10 @@ internal sealed class DaWorkerProcess : IAsyncDisposable
             PipeOptions.Asynchronous);
 
         (string fileName, List<string> arguments) = DaChildProcess.Resolve(DaWorkerHost.ModeArgument);
-        ProcessStartInfo startInfo = new()
-        {
-            FileName = fileName,
-            UseShellExecute = false,
-            RedirectStandardInput = true,
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            CreateNoWindow = true
-        };
-        foreach (string argument in arguments)
-        {
-            startInfo.ArgumentList.Add(argument);
-        }
-
-        Process process = new() { StartInfo = startInfo };
+        DaWorkerChild child;
         try
         {
-            process.Start();
+            child = DaWorkerIdentity.Start(fileName, arguments, workerOptions);
         }
         catch
         {
@@ -105,14 +89,14 @@ internal sealed class DaWorkerProcess : IAsyncDisposable
         try
         {
             WorkerBootstrap bootstrap = new(WorkerProtocol.Version, workerId, pipeName, Environment.ProcessId, sources);
-            await process.StandardInput
+            await child.StandardInput
                 .WriteLineAsync(JsonSerializer.Serialize(bootstrap, WorkerProtocol.JsonOptions))
                 .ConfigureAwait(false);
-            process.StandardInput.Close();
+            child.StandardInput.Close();
 
             // The worker writes nothing to stdout (diagnostics go to stderr), but a redirected
             // stream nobody drains would eventually block it.
-            _ = process.StandardOutput.ReadToEndAsync();
+            _ = child.StandardOutput.CopyToAsync(Stream.Null);
 
             using var connectTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             connectTimeout.CancelAfter(PipeConnectTimeoutMs);
@@ -127,13 +111,16 @@ internal sealed class DaWorkerProcess : IAsyncDisposable
             }
 
             var connection = new WorkerConnection(pipe);
-            return new DaWorkerProcess(workerId, CurrentAccountName(), process, connection);
+            return new DaWorkerProcess(workerId, DaWorkerIdentity.CurrentAccountName(), child, connection);
         }
         catch
         {
-            TryKill(process);
+            TryKill(child.Process);
+            child.StandardInput.Dispose();
+            child.StandardError.Dispose();
+            child.StandardOutput.Dispose();
             await pipe.DisposeAsync().ConfigureAwait(false);
-            process.Dispose();
+            child.Process.Dispose();
             throw;
         }
     }
@@ -194,6 +181,9 @@ internal sealed class DaWorkerProcess : IAsyncDisposable
         {
         }
 
+        child_.StandardInput.Dispose();
+        child_.StandardError.Dispose();
+        child_.StandardOutput.Dispose();
         process_.Dispose();
     }
 
@@ -202,7 +192,7 @@ internal sealed class DaWorkerProcess : IAsyncDisposable
         try
         {
             string? line;
-            while ((line = await process_.StandardError.ReadLineAsync().ConfigureAwait(false)) is not null)
+            while ((line = await child_.StandardError.ReadLineAsync().ConfigureAwait(false)) is not null)
             {
                 if (!string.IsNullOrWhiteSpace(line))
                 {
@@ -230,49 +220,6 @@ internal sealed class DaWorkerProcess : IAsyncDisposable
             // The process may have exited between the timer tick and the read.
         }
     }
-
-    private static void EnsureSameIdentityOrThrow(DaWorkerOptions workerOptions)
-    {
-        if (!OperatingSystem.IsWindows())
-        {
-            throw new PlatformNotSupportedException("OPC DA workers require Windows.");
-        }
-
-        if (string.IsNullOrWhiteSpace(workerOptions.RunAsUser))
-        {
-            return;
-        }
-
-        if (!IsCurrentIdentity(workerOptions.RunAsUser!, workerOptions.RunAsDomain))
-        {
-            throw new NotSupportedException(
-                $"Worker run-as account '{workerOptions.RunAsUser}' differs from the bridge identity " +
-                $"('{CurrentAccountName()}'); spawning under another account is not implemented yet. " +
-                "Run the bridge as that account, or leave the run-as account empty.");
-        }
-    }
-
-    private static bool IsCurrentIdentity(string user, string? domain)
-    {
-        string candidate = user.Trim();
-        if (candidate.StartsWith(".\\", StringComparison.Ordinal))
-        {
-            candidate = Environment.MachineName + candidate[1..];
-        }
-        else if (!candidate.Contains('\\'))
-        {
-            string prefix = string.IsNullOrWhiteSpace(domain) ? Environment.MachineName : domain.Trim();
-            candidate = prefix + "\\" + candidate;
-        }
-
-        return string.Equals(CurrentAccountName(), candidate, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string CurrentAccountName()
-        => OperatingSystem.IsWindows() ? CurrentWindowsAccountName() : Environment.UserName;
-
-    [SupportedOSPlatform("windows")]
-    private static string CurrentWindowsAccountName() => WindowsIdentity.GetCurrent().Name;
 
     private static void TryKill(Process process)
     {
