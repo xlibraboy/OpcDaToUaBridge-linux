@@ -38,6 +38,12 @@
     <EmbeddedResource Include="..\..\CHANGELOG.md" LogicalName="OpcBridge.App.CHANGELOG.md" />
   </ItemGroup>
 
+  <!-- The issues record is shipped inside the assembly and served at /api/issues
+       (Admin only), so every released bridge carries the issues known at that release. -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\ISSUES.md" LogicalName="OpcBridge.App.ISSUES.md" />
+  </ItemGroup>
+
   <ItemGroup>
     <InternalsVisibleTo Include="OpcBridge.LoadTest" />
   </ItemGroup>

@@ -873,6 +873,8 @@ app.MapGet("/api/changelog", () => Results.Json(new
     markdown = ChangelogContent.Markdown,
     version = ChangelogContent.LatestVersion
 }));
+// Issues: the embedded ISSUES.md, rendered by the dashboard's Ops > Issues view (Admin only).
+app.MapGet("/api/issues", () => Results.Json(new { markdown = IssuesContent.Markdown }));
 app.MapGet("/api/da/sources", (DaRuntimeSettings settings) =>
 {
     DaRuntimeSettingsSnapshot snapshot = settings.GetSnapshot();

@@ -223,6 +223,23 @@ public sealed class AuthApiTests
     }
 
     [Fact]
+    public async Task IssuesEndpoint_IsAdminOnly()
+    {
+        await using TestAppHandle handle = await TestAppHandle.StartAsync(dir => WriteAuthAppsettings(dir));
+        using Session admin = await Session.SignInAsync(handle.Client.BaseAddress!, "admin", "admin");
+        await CreateUserAsync(admin, "viewer-issues", "secret", "Viewer");
+
+        using (HttpResponseMessage adminRead = await admin.Client.GetAsync("/api/issues"))
+        {
+            Assert.Equal(HttpStatusCode.OK, adminRead.StatusCode);
+        }
+
+        using Session viewer = await Session.SignInAsync(handle.Client.BaseAddress!, "viewer-issues", "secret");
+        using HttpResponseMessage viewerRead = await viewer.Client.GetAsync("/api/issues");
+        Assert.Equal(HttpStatusCode.Forbidden, viewerRead.StatusCode);
+    }
+
+    [Fact]
     public async Task Operator_MayWriteTagValues_ButNotConfigure()
     {
         await using TestAppHandle handle = await TestAppHandle.StartAsync(dir => WriteAuthAppsettings(dir));

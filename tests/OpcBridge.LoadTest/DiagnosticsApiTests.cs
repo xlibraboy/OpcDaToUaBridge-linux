@@ -8,6 +8,7 @@ namespace OpcBridge.LoadTest;
 /// Diagnostics tab: runtime summary, UA server totals, uptime, MQTT/InfluxDB
 /// integration health, and problem lists. Shares one app instance for speed.
 /// </summary>
+[Collection(nameof(InterlinkApiAppCollection))]
 public sealed class DiagnosticsApiTests : IAsyncLifetime
 {
     private TestAppHandle? app_;

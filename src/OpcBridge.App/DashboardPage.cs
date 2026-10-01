@@ -49,6 +49,8 @@ namespace OpcBridge.App;
 //   "portsMsg"/"fwSection"/"fwState"/"fwRules"/"btnApplyFirewall"/"fwMsg"/"portCmdHint",
 //   function loadPortConfig(/checkPort(/useSuggestedPort(/savePorts(/loadFirewall(/applyFirewall(,
 //   /api/ports/config, /api/ports/probe, /api/firewall/status, /api/firewall/apply
+//   Issues (#34, Admin only): data-tab="issues", id="view-issues", id="navIssues",
+//   function loadIssues(, /api/issues
 internal static class DashboardPage
 {
     public const string Html = """
@@ -1069,6 +1071,7 @@ internal static class DashboardPage
     <button class="tabbtn" data-tab="logs" data-route="ops/logs" onclick="navigate('ops/logs')">Logs</button>
     <button class="tabbtn" data-tab="diagram" data-route="ops/diagram" onclick="navigate('ops/diagram')">Diagram</button>
     <button class="tabbtn" data-tab="users" data-route="ops/users" id="navUsers" style="display:none" onclick="navigate('ops/users')">Users</button>
+    <button class="tabbtn" data-tab="issues" data-route="ops/issues" id="navIssues" style="display:none" onclick="navigate('ops/issues')">Issues</button>
     </div>
   </div>
   <div class="nav-group">
@@ -2007,6 +2010,15 @@ internal static class DashboardPage
                 <button class="btn" id="btnAddUser" type="button" onclick="openUserModal()">Add user…</button>
             </div>
             <div class="users-list" id="usersList"><span class="msg">Loading users…</span></div>
+        </div>
+    </div>
+</div>
+<div class="view" id="view-issues">
+    <h1 class="view-title" tabindex="-1">Issues</h1>
+    <div class="box">
+        <div class="box-h">Known Issues <span class="msg" id="issuesMessage" role="status" style="margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0">Real issues recorded in this build's ISSUES.md.</span></div>
+        <div class="box-b">
+            <div class="help-body" id="issuesBody"><span class="msg">Loading issues…</span></div>
         </div>
     </div>
 </div>
@@ -4471,12 +4483,13 @@ function applyRoleUi() {
         group.style.display = anyVisible ? '' : 'none';
     });
     el('navUsers').style.display = authSession.role === 'Admin' ? '' : 'none';
+    el('navIssues').style.display = authSession.role === 'Admin' ? '' : 'none';
 }
 
 // A bookmarked route may point at a section this role cannot open.
 function routeAllowed(route) {
     const tab = ROUTE_TO_TAB[route] || ROUTE_TO_TAB[DEFAULT_ROUTE];
-    if (tab === 'users') return authSession.role === 'Admin';
+    if (tab === 'users' || tab === 'issues') return authSession.role === 'Admin';
     return ENGINEER_TABS.includes(tab) ? isEngineer() : true;
 }
 
@@ -4832,6 +4845,7 @@ const ROUTE_TO_TAB = {
   'ops/values': 'values', // bookmark alias
   'ops/logs': 'logs',
   'ops/users': 'users',
+  'ops/issues': 'issues',
   'ops/diagram': 'diagram',
   'help/guide': 'help',
   'help/about': 'about',
@@ -4892,6 +4906,7 @@ async function showTab(name, route) {
   if (activeTab === 'users') { await loadUsers().catch(e => { el('usersMessage').textContent = '✗ ' + e.message; }); }
   if (activeTab === 'about') loadAppInfo().catch(e => el('aboutName').textContent = '✗ ' + e.message);
   if (activeTab === 'changelog') loadChangelog().catch(e => el('changelogBody').innerHTML = '<span class="msg bad" role="alert">✗ ' + escapeHtml(e.message) + '</span>');
+  if (activeTab === 'issues') loadIssues().catch(e => el('issuesBody').innerHTML = '<span class="msg bad" role="alert">✗ ' + escapeHtml(e.message) + '</span>');
   if (activeTab === 'help') loadHelp().catch(e => { const c = el('helpLayout1'); if (c) c.innerHTML = '<span class="msg bad" role="alert">✗ ' + esc(e.message) + '</span>'; });
   if (activeTab === 'mqtt') { await loadMqtt(); }
   if (activeTab === 'iot-traffic') { await loadMqttValues(); }
@@ -5999,6 +6014,17 @@ async function loadChangelog() {
     body.innerHTML = renderMarkdown(reflowWrappedLines(p.markdown || ''));
     el('changelogVersion').textContent = p.version ? 'Version ' + p.version : '';
     changelogLoaded = true;
+}
+// The issues record is embedded in the bridge (ISSUES.md), so a deployed bridge always
+// shows the issues known at the release it is actually running.
+let issuesLoaded = false;
+async function loadIssues() {
+    if (issuesLoaded) return;
+    const p = await (await fetch('/api/issues', { cache: 'no-store' })).json();
+    const body = el('issuesBody');
+    if (!body) return;
+    body.innerHTML = renderMarkdown(reflowWrappedLines(p.markdown || ''));
+    issuesLoaded = true;
 }
 
 async function loadHelp() {
@@ -9948,7 +9974,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       diagram: 'ops/diagram',
       help: 'help/guide',
       about: 'help/about',
-      changelog: 'help/release-notes'
+      changelog: 'help/release-notes',
+      issues: 'ops/issues'
     };
     const initHashRaw = location.hash.replace(/^#\/?/, '');
     let initRoute = Object.prototype.hasOwnProperty.call(ROUTE_TO_TAB, initHashRaw) ? initHashRaw

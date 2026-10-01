@@ -13,6 +13,7 @@ namespace OpcBridge.LoadTest;
 /// itself is pinned in <see cref="PortHelperTests"/>; here the contract the dashboard reads — and
 /// what a save persists for the next start — is what matters.
 /// </summary>
+[Collection(nameof(InterlinkApiAppCollection))]
 public sealed class PortsApiTests : IAsyncLifetime
 {
     private TestAppHandle? app_;

@@ -18,6 +18,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+**The bridge keeps a record of real issues.** Every release now embeds `ISSUES.md` beside the
+changelog: one section per real issue — from a plant host, a field report or development —
+stating what broke, where it was seen and how it ended, newest first, written by the AI agents
+that investigate them. Admin users read it in the dashboard under **Ops ▸ Issues**
+(`GET /api/issues`), so a deployed host can answer "is this a known problem?" without opening
+the repository; the file already records the 2026-09-30 PRW11709 session, including the
+still-open native crash of the in-proc PMD server under DA subscriptions (#34).
+
 **Import from file can take a mis-picked mapping back.** Importing a tag list is quick to get
 wrong — an MX export repeats the same name under every PLC, and a row added by mistake stayed
 mapped until the faceplate's own Remove was dug out. Every import row that already holds a

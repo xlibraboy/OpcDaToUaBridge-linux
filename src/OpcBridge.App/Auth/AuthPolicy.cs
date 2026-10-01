@@ -41,6 +41,7 @@ public static class AuthPolicy
     private static readonly (string Path, string? Method, UserRole Role)[] Overrides =
     {
         ("/api/auth/users", null, UserRole.Admin),
+        ("/api/issues", null, UserRole.Admin),
         ("/api/hmi/write", "POST", UserRole.Operator),
         ("/api/hmi/displays", "PUT", UserRole.Engineer),
         ("/api/hmi/displays", "DELETE", UserRole.Engineer)
