@@ -173,6 +173,29 @@ deduplicated verdict on the durable log, so the next incident leaves its explana
 `logs/bridge.log`. Honeywell PMD ProgIDs additionally compare the registered DLL against the
 installed Honeywell location and point at the field notes.
 
+**An OPC DA source can run in its own worker process.** A vendor server registered as an
+in-proc COM server loads its DLL into the bridge, so a fault there takes the whole bridge
+down — Honeywell PMD's subscription crash is the open case. A DA source now opts into
+isolation under **Sources → OPC DA → Worker Process**: **Own worker** (a dedicated child
+process) or **Group worker** (every source with the same run-as account shares one process).
+The worker logs on as the configured account — the plant case where the vendor DCOM stack only
+serves `.\mesadm1` — through a real Windows logon (the account needs *Log on as a batch job*)
+when the bridge runs as LocalSystem, or as the bridge's own identity otherwise; credentials
+reach the worker on stdin, never in its command line, and the stored run-as password is
+protected with DPAPI. **Ops ▸ Workers** (Admin) lists the parent and every worker — pid,
+account, sources, memory, restarts, last exit — with **Restart**/**Kill** and the crash
+timeline; a worker that crashes five times in ten minutes is quarantined instead of spinning.
+Values, writes, metadata, the watchdog, MQTT/Influx and the dashboard behave exactly as for an
+in-process source — the difference is where the vendor DLL lives.
+
+**Host tools for a faulting in-proc DA server.** Two reversible scripts accompany the worker
+feature for hosts that cannot isolate a source: `scripts/windows/enable-wer-localdumps.ps1`
+enables Windows Error Reporting dumps for `OpcBridge.App.exe`/`DllHost.exe` (the native fault
+left no `crash-*.log`), and `scripts/windows/enable-pmd-surrogate.ps1` can run an in-proc
+server out of process in the system COM surrogate (`dllhost.exe`) under a run-as account, with
+a registry-export rollback written before any change. The PMD procedure, verification and
+rollback live in the field notes.
+
 ### Changed
 
 **The Release carries the Windows portable builds.** The GitHub Release shipped the x86 MSI

@@ -37,6 +37,13 @@ stayed up and answered `died: true` — a probe that dies is a trustworthy verdi
 bridge's own process never loads the vendor DLL. That does not close this issue: the
 subscription-lifecycle crash itself still needs the dump.
 
+Two containment paths now ship for this fault class, neither of which changes the root cause:
+a PMD source can be **isolated in a worker process** (Sources → OPC DA → Worker Process;
+kills only the worker, values keep flowing through the bridge), and a host that cannot isolate
+can run the in-proc server **in the system COM surrogate** with
+`scripts/windows/enable-pmd-surrogate.ps1` (plus `enable-wer-localdumps.ps1` to finally capture
+the dump). See `docs/da-worker-isolation.md` and the field notes.
+
 ---
 
 ## A DA source subscribed although its Subscription switch was off

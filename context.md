@@ -1,6 +1,6 @@
 # context.md — OpcBridge
 
-Instruction file for AI agents working in this repo. All facts below are verified against committed code on `main` as of 2026-09-26 (`275a433`).
+Instruction file for AI agents working in this repo. All facts below are verified against committed code as of 2026-10-01 (branch `feature/da-containment-and-workers`, `b2ce3aa`; the worker-isolation feature is not merged to `main` yet).
 
 ## What this project is
 
@@ -122,6 +122,8 @@ When `TagMapping.Mode == "Manual"`, `BridgeWorker.ApplyManualMappings` synthesiz
 - `OpcDaClient.Warning` event surfaces non-fatal operational warnings — subscription setup failure → polling fallback, per-item AddItems failures, item recovery; `BridgeWorker` subscribes and logs them, so operators see why a source is polling instead of receiving callbacks.
 - `DaConnectErrorClassifier` (`OpcBridge.Da`, internal, unit-tested) classifies server-activation failures for the coordinator: registered-but-dead servers (RPC unavailable, crash on start) and unreachable hosts throw `SourceConnectionLostException` so the coordinator retries with backoff; local config errors (class not registered `0x80040154`, logon failure) stay terminal Faulted.
 - All COM-touching methods are `[SupportedOSPlatform("windows")]`; non-Windows calls throw `PlatformNotSupportedException`. `OperatingSystem.IsWindows()` guards in `Program.cs` keep browse/enumerate endpoints from invoking COM on Linux.
+
+**Source workers (isolation).** A DA source can opt into a worker process (`DaWorkerOptions` on the source: mode `inProcess`/`group`/`own`, run-as account, DPAPI-protected password). `WorkerPlacement` computes keys (`own:{sourceId}` / `acct:{account}`); `DaWorkerSupervisor` (hosted service) spawns one child per key on demand through `DaWorkerIdentity`, and `RoutingSourceClientFactory` returns a `WorkerSourceClient` proxy (implementing `ISourceClient`/`ISubscribableSourceClient`/`ISubscriptionActiveSource`/`IRateGroupBoundSource`) instead of the in-process client. The proxy speaks a length-prefixed JSON protocol (`OpcBridge.Client.Workers`) over a named pipe; the child (`OpcBridge.App --da-worker`, dispatched before CrashLog/lock/web host like `--da-probe`) hosts real `OpcDaClient`s and streams values back. Same identity spawns with `Process.Start`; a different run-as account uses `LogonUser` (batch) + `DuplicateTokenEx` + `CreateProcessAsUser` with inherited pipes. Crashes back off 1/2/5/10/30 s and quarantine after 5 in 10 minutes; **Ops ▸ Workers** (`GET /api/workers`, actions Admin) shows the family, memory, restarts and the lifecycle history. See `docs/da-worker-isolation.md`.
 
 ## UA server
 

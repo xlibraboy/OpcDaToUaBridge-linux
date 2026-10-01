@@ -71,4 +71,6 @@ The measurement flow is documented in `docs/ram-measurement.md`.
 
 The same `775df67+` binary supports both; re-running the script with `-LogonType Interactive` handles an accidental `S4U` registration in lab. For a new plant VM, just run the `S4U` line above and make sure `sources.json` carries no simulation source (an old `MxComponent` row is dropped on start, #31).
 
+**A source whose vendor DLL crashes the bridge can be isolated instead of moving the whole deployment.** Per-source worker processes (Sources → OPC DA → Worker Process) keep the bridge in session 0 under its normal logon — `LocalSystem` is then the *preferred* parent, because it can spawn a worker under the vendor's required plant account (the worker logs on via a real Windows logon; that account needs *Log on as a batch job*). The service no longer has to run as the plant account itself. See `docs/da-worker-isolation.md`.
+
 The **MSI installs the bridge as a Windows service** (session 0, `LocalSystem`), so an installed bridge cannot serve GX Simulator sources — for the lab, deploy with this script (published task) instead of the installer.
