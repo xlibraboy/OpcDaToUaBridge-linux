@@ -97,10 +97,11 @@ public sealed class BridgeState
                     : BuildDisconnectedSnapshot(source))
                 .ToArray();
 
-            // A retry tick must not demote a live bridge to "Starting": the state
-            // only returns to "Running" on the next successful read, so a source
-            // left down made the badge blink Running/Starting for as long as it
-            // retried. Only a bridge that is actually starting reports "Starting".
+            // A retry tick must not demote a live bridge to "Starting", and the
+            // last-read/last-write counters and bridge error are liveness, not
+            // configuration: blanking them while running made the rail blink
+            // "just now" / "-" for as long as any source retried. Only a bridge
+            // that is actually starting resets them.
             bool wasRunning = string.Equals(status_.BridgeState, "Running", StringComparison.Ordinal);
             status_ = status_ with
             {
@@ -108,13 +109,13 @@ public sealed class BridgeState
                 UpdateRateMs = updateRateMs,
                 MappingCount = mappingCount,
                 DaConnectionState = AggregateConnectionState(sourceStatuses),
-                LastDaReadUtc = null,
-                LastDaReadCount = 0,
-                LastUaWriteUtc = null,
-                LastUaWriteCount = 0,
-                LastPollDurationMs = 0,
-                LastPollValueRate = 0,
-                LastError = null,
+                LastDaReadUtc = wasRunning ? status_.LastDaReadUtc : null,
+                LastDaReadCount = wasRunning ? status_.LastDaReadCount : 0,
+                LastUaWriteUtc = wasRunning ? status_.LastUaWriteUtc : null,
+                LastUaWriteCount = wasRunning ? status_.LastUaWriteCount : 0,
+                LastPollDurationMs = wasRunning ? status_.LastPollDurationMs : 0,
+                LastPollValueRate = wasRunning ? status_.LastPollValueRate : 0,
+                LastError = wasRunning ? status_.LastError : null,
                 Sources = sourceStatuses,
                 SessionId = SessionId,
                 InteractiveSession = InteractiveSession

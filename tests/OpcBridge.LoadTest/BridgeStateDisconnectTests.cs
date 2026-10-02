@@ -54,6 +54,35 @@ public sealed class BridgeStateDisconnectTests
         Assert.Equal("Running", state.GetStatus().BridgeState);
     }
 
+    [Fact]
+    public void Configure_KeepsLastReadAndLastWrite_OnRetryTicks()
+    {
+        BridgeState state = CreateState();
+        DaSourceRuntimeSettings[] sources =
+        [
+            CreateDaSource("default"),
+            CreateDaSource("mxopc-plc-mhi")
+        ];
+
+        state.Configure(1000, 0, sources);
+        state.UpdateDaRead("default", Array.Empty<BridgeValue>(), TimeSpan.FromMilliseconds(2));
+        state.MarkUaWrite(3, TimeSpan.FromMilliseconds(4));
+
+        BridgeRuntimeStatus before = state.GetStatus();
+        Assert.NotNull(before.LastDaReadUtc);
+        Assert.NotNull(before.LastUaWriteUtc);
+
+        // The coordinator re-runs Configure on every retry tick while a source is
+        // down; a running bridge must keep its last-read/last-write stamps.
+        state.Configure(1000, 0, sources);
+
+        BridgeRuntimeStatus after = state.GetStatus();
+        Assert.Equal(before.LastDaReadUtc, after.LastDaReadUtc);
+        Assert.Equal(before.LastUaWriteUtc, after.LastUaWriteUtc);
+        Assert.Equal(3, after.LastUaWriteCount);
+        Assert.Equal(4, after.LastPollDurationMs);
+    }
+
     private static DaSourceRuntimeSettings CreateDaSource(string sourceId) => new(
         sourceId,
         sourceId,
