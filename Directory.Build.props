@@ -12,7 +12,7 @@
     carry only the releases that changed them; the version stays shared.
   -->
   <PropertyGroup>
-    <Version>1.3.0</Version>
+    <Version>1.4.0</Version>
     <InformationalVersion>$(Version)</InformationalVersion>
     <Product>OpcBridge</Product>
   </PropertyGroup>

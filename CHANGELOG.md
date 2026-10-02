@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-10-02
+
 ### Added
 
 **The bridge keeps a record of real issues.** Every release now embeds `ISSUES.md` beside the
