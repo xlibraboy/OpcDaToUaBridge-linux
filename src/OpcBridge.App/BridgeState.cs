@@ -71,45 +71,31 @@ public sealed class BridgeState
 
     public void Configure(int updateRateMs, int mappingCount, IReadOnlyList<DaSourceRuntimeSettings> sources)
     {
-        DaSourceStatusSnapshot[] sourceStatuses = sources
-            .Select(BuildDisconnectedSnapshot)
-            .ToArray();
-
         rate_groups_.Clear();
         lock (status_lock_)
         {
-            // Detection must survive a status reset. Configure() runs on every
+            // Live state must survive a status reset. Configure() runs on every
             // reconfigure tick while a source is in retry (or whenever the source
-            // set changes), so without this the detected server info set right
-            // after connect would be wiped on the very next tick. Preserve the
-            // previously detected info for sources that are still configured.
-            Dictionary<string, string> previousServerInfo = status_.Sources
-                .Where(source => !string.IsNullOrEmpty(source.ServerInfo))
-                .ToDictionary(source => source.SourceId, source => source.ServerInfo, StringComparer.OrdinalIgnoreCase);
-            Dictionary<string, string> previousReadMode = status_.Sources
-                .Where(source => !string.IsNullOrEmpty(source.ReadMode))
-                .ToDictionary(source => source.SourceId, source => source.ReadMode, StringComparer.OrdinalIgnoreCase);
-            Dictionary<string, string> previousWriteMode = status_.Sources
-                .Where(source => !string.IsNullOrEmpty(source.WriteMode))
-                .ToDictionary(source => source.SourceId, source => source.WriteMode, StringComparer.OrdinalIgnoreCase);
-
-            for (int i = 0; i < sourceStatuses.Length; i++)
-            {
-                if (previousServerInfo.TryGetValue(sourceStatuses[i].SourceId, out string? serverInfo))
-                {
-                    sourceStatuses[i] = sourceStatuses[i] with { ServerInfo = serverInfo };
-                }
-
-                if (previousReadMode.TryGetValue(sourceStatuses[i].SourceId, out string? readMode))
-                {
-                    sourceStatuses[i] = sourceStatuses[i] with { ReadMode = readMode };
-                }
-
-                if (previousWriteMode.TryGetValue(sourceStatuses[i].SourceId, out string? writeMode))
-                {
-                    sourceStatuses[i] = sourceStatuses[i] with { WriteMode = writeMode };
-                }
-            }
+            // set changes); rebuilding snapshots from scratch made healthy sources
+            // blink "Disconnected" on every retry tick of an unrelated source —
+            // their state is only rewritten by their next poll. Preserve the
+            // previous snapshot for sources that are still configured and refresh
+            // only the config-derived fields (detection info included).
+            Dictionary<string, DaSourceStatusSnapshot> previous = status_.Sources
+                .ToDictionary(source => source.SourceId, StringComparer.OrdinalIgnoreCase);
+            DaSourceStatusSnapshot[] sourceStatuses = sources
+                .Select(source => previous.TryGetValue(source.SourceId, out DaSourceStatusSnapshot? existing)
+                    ? existing with
+                    {
+                        DisplayName = source.DisplayName,
+                        Host = source.Host,
+                        ProgId = source.ProgId,
+                        UpdateRateMs = source.UpdateRateMs,
+                        SourceType = source.SourceType,
+                        EndpointSummary = BuildEndpointSummary(source)
+                    }
+                    : BuildDisconnectedSnapshot(source))
+                .ToArray();
 
             status_ = status_ with
             {
