@@ -1572,7 +1572,11 @@ app.MapGet("/api/workers", (DaWorkerSupervisor workers) =>
             mode = status.WorkerId.StartsWith(WorkerPlacement.OwnPrefix, StringComparison.Ordinal) ? "own" : "group",
             pid = status.Pid,
             account = status.Account,
-            state = status.Quarantined ? "quarantined" : status.Running ? "running" : "stopped",
+            state = status.Quarantined
+                ? "quarantined"
+                : status.Running
+                    ? "running"
+                    : status.OperatorStopped ? "operator-stopped" : "stopped",
             sources = status.Sources,
             rssMb = status.WorkingSetBytes / (1024 * 1024),
             privateMb = status.PrivateBytes / (1024 * 1024),

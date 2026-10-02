@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using OpcBridge.Client.Workers;
+using OpcBridge.Da;
 
 namespace OpcBridge.App;
 
@@ -12,6 +13,7 @@ internal sealed record DaWorkerStatus(
     int Pid,
     bool Running,
     bool Quarantined,
+    bool OperatorStopped,
     int ClientCount,
     IReadOnlyList<string> Sources,
     long WorkingSetBytes,
@@ -51,9 +53,17 @@ internal sealed class DaWorkerSupervisor : BackgroundService, IWorkerHost
         public int? LastExitCode;
         public string? LastError;
         public bool Quarantined;
+        // Operator Kill is sticky: the worker stays down until Restart on the Workers board
+        // or a settings change (which bumps the version and releases the stop).
+        public bool OperatorStopped;
+        public long OperatorStoppedVersion;
         public DateTime LastHeartbeatUtc = DateTime.UtcNow;
         public readonly SemaphoreSlim Gate = new(1, 1);
     }
+
+    // How long a worker may stay up after its last client released it, so a session rebuild
+    // (dispose + recreate in the same pass) can re-attach instead of racing a teardown.
+    private static readonly TimeSpan ReapGrace = TimeSpan.FromSeconds(2);
 
     public DaWorkerSupervisor(DaRuntimeSettings settings, ILogger<DaWorkerSupervisor> logger)
     {
@@ -94,13 +104,28 @@ internal sealed class DaWorkerSupervisor : BackgroundService, IWorkerHost
                     $"({entry.LastError ?? "unknown error"}). Restart it from Ops ▸ Workers.");
             }
 
+            DaRuntimeSettingsSnapshot snapshot = settings_.GetSnapshot();
+
+            if (entry.OperatorStopped)
+            {
+                if (snapshot.Version == entry.OperatorStoppedVersion)
+                {
+                    // Transient so the source keeps retrying with backoff: pressing Restart
+                    // (or changing the source's worker settings) lets the very next pass in.
+                    throw new SourceConnectionLostException(
+                        $"Worker '{workerKey}' was stopped by the operator. " +
+                        "Press Restart on Ops ▸ Workers to run it again.");
+                }
+
+                entry.OperatorStopped = false;
+            }
+
             TimeSpan backoff = WorkerLifecyclePolicy.BackoffForAttempt(entry.CrashesUtc.Count);
             if (backoff > TimeSpan.Zero)
             {
                 await Task.Delay(backoff, cancellationToken).ConfigureAwait(false);
             }
 
-            DaRuntimeSettingsSnapshot snapshot = settings_.GetSnapshot();
             List<DaSourceRuntimeSettings> placed = WorkerPlacement.SourcesFor(snapshot, workerKey).ToList();
             if (placed.Count == 0)
             {
@@ -177,7 +202,68 @@ internal sealed class DaWorkerSupervisor : BackgroundService, IWorkerHost
             return;
         }
 
-        _ = Task.Run(() => StopWorkerAsync(workerKey, entry, removeEntry: true));
+        _ = Task.Run(() => ReapWorkerAsync(workerKey, entry, entry.Process));
+    }
+
+    /// <summary>
+    /// Stops a worker whose last client just left — unless a session rebuild re-attached in
+    /// the meantime. The rebuild path disposes the old proxy and creates the new one in the
+    /// same pass, so an unguarded teardown raced ahead and killed the fresh worker (and once
+    /// removed the entry while its process was still serving values: no board row, dead Kill).
+    /// </summary>
+    private async Task ReapWorkerAsync(string workerKey, Entry entry, DaWorkerProcess? released)
+    {
+        try
+        {
+            await Task.Delay(ReapGrace).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            return;
+        }
+
+        await entry.Gate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (Volatile.Read(ref entry.ClientCount) > 0
+                || !ReferenceEquals(entry.Process, released))
+            {
+                return;
+            }
+
+            DaWorkerProcess? process = entry.Process;
+            if (process is null)
+            {
+                // Nothing to stop. Keep entries that carry operator or crash state — the
+                // board row, the stop flag and the crash timeline must outlive the process,
+                // unless the worker no longer has any sources placed on it at all.
+                bool placementGone = WorkerPlacement.SourcesFor(settings_.GetSnapshot(), workerKey).Count == 0;
+                if ((entry.OperatorStopped || entry.Quarantined) && !placementGone)
+                {
+                    return;
+                }
+            }
+            else
+            {
+                entry.Process = null;
+                process.MarkStopping();
+                await process.ShutdownAsync().ConfigureAwait(false);
+                RecordExit(entry, process);
+                await process.DisposeAsync().ConfigureAwait(false);
+            }
+
+            // Never remove an entry a caller is holding on to: only this exact instance goes.
+            ((ICollection<KeyValuePair<string, Entry>>)workers_).Remove(
+                new KeyValuePair<string, Entry>(workerKey, entry));
+        }
+        catch (Exception ex)
+        {
+            logger_.LogWarning(ex, "Reaping worker {WorkerKey} failed", workerKey);
+        }
+        finally
+        {
+            entry.Gate.Release();
+        }
     }
 
     public IReadOnlyList<DaWorkerStatus> GetStatus()
@@ -195,6 +281,7 @@ internal sealed class DaWorkerSupervisor : BackgroundService, IWorkerHost
                 running ? process!.Pid : 0,
                 running,
                 entry.Quarantined,
+                entry.OperatorStopped,
                 entry.ClientCount,
                 placed.Select(source => source.SourceId).ToList(),
                 process?.WorkingSetBytes ?? 0,
@@ -209,7 +296,10 @@ internal sealed class DaWorkerSupervisor : BackgroundService, IWorkerHost
         }).ToList();
     }
 
-    /// <summary>Kills the worker; its sources reconnect through the coordinator on the next pass.</summary>
+    /// <summary>
+    /// Operator Kill: stops the worker and keeps it down. Without the stop flag the source's
+    /// retry loop respawned a worker within a second, so "kill" looked like it never happened.
+    /// </summary>
     public async Task<bool> KillAsync(string workerKey)
     {
         if (!workers_.TryGetValue(workerKey, out Entry? entry))
@@ -218,11 +308,14 @@ internal sealed class DaWorkerSupervisor : BackgroundService, IWorkerHost
         }
 
         AddHistory(workerKey, "killed", null, "operator request");
+        entry.OperatorStopped = true;
+        entry.OperatorStoppedVersion = settings_.GetSnapshot().Version;
         await StopWorkerAsync(workerKey, entry, removeEntry: false).ConfigureAwait(false);
         return true;
     }
 
-    /// <summary>Clears quarantine and stops the worker so the next connect attempt spawns one.</summary>
+    /// <summary>Clears quarantine and the operator stop, then stops the worker so the next
+    /// connect attempt spawns a fresh one.</summary>
     public async Task<bool> RestartAsync(string workerKey)
     {
         if (!workers_.TryGetValue(workerKey, out Entry? entry))
@@ -232,6 +325,7 @@ internal sealed class DaWorkerSupervisor : BackgroundService, IWorkerHost
 
         AddHistory(workerKey, "restart-requested", null, "operator request");
         entry.Quarantined = false;
+        entry.OperatorStopped = false;
         entry.CrashesUtc.Clear();
         await StopWorkerAsync(workerKey, entry, removeEntry: false).ConfigureAwait(false);
         return true;

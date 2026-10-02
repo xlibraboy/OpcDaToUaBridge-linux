@@ -11,6 +11,16 @@ internal interface IWorkerChannel
     Task<WorkerFrame> RequestAsync(string type, object payload, TimeSpan timeout, CancellationToken cancellationToken);
 
     event Action<WorkerFrame>? PushReceived;
+
+    /// <summary>
+    /// Raised once when the pipe closes (worker exit, operator kill, transport failure).
+    /// Proxies subscribe so a dead worker surfaces immediately instead of leaving the
+    /// source looking connected until its next request happens to fail.
+    /// </summary>
+    event Action<Exception?>? Closed;
+
+    /// <summary>Why the channel closed, or null while it is open.</summary>
+    Exception? ClosedReason { get; }
 }
 
 /// <summary>

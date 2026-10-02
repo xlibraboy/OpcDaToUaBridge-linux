@@ -31,6 +31,14 @@ internal sealed class NullWorkerChannel : IWorkerChannel
         remove { }
     }
 
+    public event Action<Exception?>? Closed
+    {
+        add { }
+        remove { }
+    }
+
+    public Exception? ClosedReason => null;
+
     public Task<WorkerFrame> RequestAsync(string type, object payload, TimeSpan timeout, CancellationToken cancellationToken)
         => Task.FromResult(WorkerFrame.Create(type, 1, payload));
 }

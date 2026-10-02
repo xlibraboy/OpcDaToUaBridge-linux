@@ -13,6 +13,34 @@ open issue is updated to **Fixed in <version>** once its fix ships.
 
 ---
 
+## Killing a worker left its source "Connected" on stale values (fixed on the isolation branch)
+
+**Status:** Fixed (unreleased, `feature/da-containment-and-workers`) · **Found:** 2026-10-02 ·
+**Where:** live branch build; Matrikon simulation source in `own` worker mode · **Area:** OPC DA / Workers
+
+Field report: after **Kill** on Ops ▸ Workers the source kept reporting *Connected* while values
+stopped arriving, the coordinator respawned the worker almost at once, and the board's worker row
+could disappear entirely so Kill answered 404. Three stacked causes, all in the new isolation code:
+
+- **Kill was undone by the retry loop.** The process died, the next poll failed, and a fresh
+  worker existed ~0.4 s later — the source never visibly left *Connected*. Operator Kill is now
+  sticky: the worker reports `operator-stopped` and the supervisor refuses new channels until
+  **Restart** or a change to the source's worker settings (the settings version releases it).
+- **A dead worker was invisible to a push-only source.** With subscriptions active the proxy
+  receives pushes and issues no requests, so a closed pipe surfaced only when some later request
+  happened to fail. The proxy now watches the transport's `Closed` event
+  (`IConnectionLostSource`) and the coordinator reconnects the source immediately.
+- **Teardown raced the session rebuild.** Disposing the old proxy and creating the new one in
+  the same pass let the "last client released" teardown kill the freshly attached worker — and
+  remove the entry while its process was still streaming (row gone, Kill 404, values still
+  flowing). Teardown is now a deferred reap that re-checks the client count and the exact
+  process instance, and entries carrying operator or crash state are kept.
+
+Verified on the branch build: kill → `STOPPED BY OPERATOR`, values stop, no respawn across 40 s;
+**Restart** → new worker pid, values resume. Full suite 1181 green.
+
+---
+
 ## Honeywell PMD crashes the bridge during DA subscriptions (open)
 
 **Status:** Open · **Found:** 2026-09-30 · **Where:** PRW11709 (Honeywell
@@ -39,8 +67,8 @@ subscription-lifecycle crash itself still needs the dump.
 
 Two containment paths now ship for this fault class, neither of which changes the root cause:
 a PMD source can be **isolated in a worker process** (Sources → OPC DA → Worker Process;
-kills only the worker, values keep flowing through the bridge), and a host that cannot isolate
-can run the in-proc server **in the system COM surrogate** with
+a fault kills only the worker — the source reconnects, the bridge process is untouched), and a
+host that cannot isolate can run the in-proc server **in the system COM surrogate** with
 `scripts/windows/enable-pmd-surrogate.ps1` (plus `enable-wer-localdumps.ps1` to finally capture
 the dump). See `docs/da-worker-isolation.md` and the field notes.
 

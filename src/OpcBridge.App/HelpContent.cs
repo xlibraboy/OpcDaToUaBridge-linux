@@ -498,7 +498,9 @@ instead:
   account holding *SeAssignPrimaryToken*/*SeIncreaseQuota*) and the target account needs the
   **Log on as a batch job** right. The worker's start failure names the missing piece.
 - **Ops → Workers** (Admin) shows the parent and every worker — pid, account, sources, memory,
-  restarts, last exit — with **Restart**/**Kill** and the lifecycle timeline. A worker that
+  restarts, last exit — with **Restart**/**Kill** and the lifecycle timeline. **Kill** stops the
+  worker and keeps it down (`stopped by operator`; its source says *Reconnecting* and names the
+  reason) until you press **Restart** or change the source's worker settings. A worker that
   crashes **five times in ten minutes is quarantined** (no automatic restart; **Restart**
   clears it and spawns a fresh worker).
 - Behaviour is the same as an in-process source: values, writes, tag metadata, the watchdog,

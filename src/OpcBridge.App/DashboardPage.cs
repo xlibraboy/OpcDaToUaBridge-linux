@@ -6224,13 +6224,17 @@ function renderWorkers(payload) {
 }
 
 function renderWorkerCard(w) {
-    const stateClass = w.state === 'running' ? 'good' : w.state === 'quarantined' ? 'warn' : 'partial';
+    const stateClass = w.state === 'running' ? 'good'
+        : w.state === 'quarantined' ? 'warn'
+        : w.state === 'operator-stopped' ? 'warn'
+        : 'partial';
+    const stateLabel = w.state === 'operator-stopped' ? 'STOPPED BY OPERATOR' : String(w.state || '').toUpperCase();
     const last = w.lastExitUtc
         ? ' · last exit ' + esc(String(w.lastExitCode !== null && w.lastExitCode !== undefined ? w.lastExitCode : '?')) + ' ' + esc(relTime(w.lastExitUtc))
         : '';
     return '<div class="li" style="display:block">' +
         '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
-        badge(String(w.state || '').toUpperCase(), stateClass) +
+        badge(stateLabel, stateClass) +
         '<strong>' + esc(w.workerId || '') + '</strong>' +
         '<span class="msg">' + esc(w.mode || '') + ' · ' + (w.pid ? 'pid ' + esc(String(w.pid)) : 'not running') + ' · ' + esc(w.account || '') + '</span>' +
         '<span style="margin-left:auto"></span>' +
@@ -6248,7 +6252,7 @@ async function restartWorker(workerId) {
 }
 
 async function killWorker(workerId) {
-    if (!window.confirm('Kill worker ' + workerId + '? Its sources reconnect automatically.')) return;
+    if (!window.confirm('Kill worker ' + workerId + '? It stays down until you press Restart (or the source\u2019s worker settings change).')) return;
     await workerAction(workerId, 'kill', true);
 }
 

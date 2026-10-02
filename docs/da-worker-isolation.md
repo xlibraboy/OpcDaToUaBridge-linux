@@ -43,10 +43,11 @@ sources, rss/private memory, handles, restarts, last exit code and time, last er
 age, and the last 50 lifecycle events (`started`, `stopped`, `crashed`, `quarantined`,
 `killed`, `restart-requested`). Two actions, both Admin:
 
-- **Restart** — clears quarantine (if any) and stops the worker; the next coordinator pass
-  spawns a fresh one.
-- **Kill** — stops the worker (confirmation required). Its sources go to *Reconnecting* and
-  return on the normal retry loop.
+- **Restart** — clears quarantine and any operator stop, then stops the worker; the next
+  coordinator pass spawns a fresh one.
+- **Kill** — stops the worker (confirmation required) and keeps it down: the worker reports
+  `operator-stopped`, its sources go to *Reconnecting* with the reason, and nothing respawns
+  it until **Restart** or a change to the source's worker settings (mode, account).
 
 `GET /api/workers` is readable by any signed-in user; the actions are Admin-only.
 
@@ -57,7 +58,13 @@ age, and the last 50 lifecycle events (`started`, `stopped`, `crashed`, `quarant
   sources stay faulted, and the board says why. **Restart** clears it. This is deliberate — a
   crash-looping vendor DLL must not spin forever, and the operator should look at the crash
   evidence first.
-- A kill issued from the board is not counted as a crash.
+- A kill issued from the board is not counted as a crash, and it is sticky (see **Kill** above):
+  the retry loop asks for a channel every backoff tick and the supervisor refuses with
+  `stopped by the operator` until Restart or a settings change.
+- A worker death is reported to its source immediately (the proxy watches the channel's
+  `Closed` event), so the source reconnects at once instead of waiting for its next read to
+  fail — and a source that only receives pushes can no longer sit on stale values looking
+  connected.
 
 ## What the worker account sees
 
@@ -87,7 +94,7 @@ identity or that are known to fault; everything else can stay in process.
 | `run-as account … needs a password` | Account set without a password | Enter the password, or clear the account |
 | Worker missing from the board entirely | The source is not placed: `inProcess`, or `group` without an account (normalized to in-process) | Check the source's Worker mode |
 | Worker appears, dies every ~1 minute, board shows repeated crashes | The vendor DLL is faulting in the worker (contained) | Capture a dump (see below), run the source in **Sync** mode, or report to the vendor |
-| Source reconnects after a **Kill** but the board shows it stopped | Expected — the next coordinator pass respawns it within seconds | None |
+| **Kill** left the source on stale values while it still said *Connected* | Worker death was invisible to a push-only proxy (no request in flight) | Fixed — the proxy now watches the channel and the coordinator reconnects immediately |
 
 ## Related host-side tools
 

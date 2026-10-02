@@ -15,13 +15,24 @@ internal interface IWorkerHost
 }
 
 /// <summary>
+/// A client whose transport can die while the session is idle. Subscription-mode sources
+/// receive pushes and issue no requests, so a worker that exits is otherwise invisible:
+/// the source kept reporting "Connected" with its last values until some request happened
+/// to fail. BridgeWorker subscribes and reconnects as soon as the transport reports loss.
+/// </summary>
+internal interface IConnectionLostSource
+{
+    event Action<Exception>? ConnectionLost;
+}
+
+/// <summary>
 /// Parent-side proxy for a source hosted in a DA worker process. Implements the same client
 /// seam as the in-process <c>OpcDaClient</c> (ISourceClient, ISubscribableSourceClient,
 /// ISubscriptionActiveSource, IRateGroupBoundSource), so BridgeWorker treats an isolated
 /// source like any other source and its retry/watchdog logic drives worker restarts through
 /// <see cref="IWorkerHost"/>.
 /// </summary>
-internal sealed class WorkerSourceClient : ISourceClient, ISubscribableSourceClient, ISubscriptionActiveSource, IRateGroupBoundSource
+internal sealed class WorkerSourceClient : ISourceClient, ISubscribableSourceClient, ISubscriptionActiveSource, IRateGroupBoundSource, IConnectionLostSource
 {
     private static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(20);
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(15);
@@ -44,6 +55,8 @@ internal sealed class WorkerSourceClient : ISourceClient, ISubscribableSourceCli
     }
 
     public event Action<IReadOnlyList<BridgeValue>>? ValuesReceived;
+
+    public event Action<Exception>? ConnectionLost;
 
     public bool IsSubscriptionActive => subscriptionActive_;
 
@@ -242,6 +255,14 @@ internal sealed class WorkerSourceClient : ISourceClient, ISubscribableSourceCli
         Detach();
         channel_ = channel;
         channel.PushReceived += OnPush;
+        channel.Closed += OnChannelClosed;
+
+        // The pipe can already be gone by the time the connect ack came back; Closed fires
+        // only on the transition, so a channel that closed first has to be reported here.
+        if (channel.ClosedReason is { } reason)
+        {
+            OnChannelClosed(reason);
+        }
     }
 
     private void Detach()
@@ -249,8 +270,16 @@ internal sealed class WorkerSourceClient : ISourceClient, ISubscribableSourceCli
         if (channel_ is not null)
         {
             channel_.PushReceived -= OnPush;
+            channel_.Closed -= OnChannelClosed;
             channel_ = null;
         }
+    }
+
+    private void OnChannelClosed(Exception? reason)
+    {
+        subscriptionActive_ = false;
+        ConnectionLost?.Invoke(new SourceConnectionLostException(
+            $"Worker source '{sourceId_}': {reason?.Message ?? "worker connection closed."}"));
     }
 
     private void OnPush(WorkerFrame frame)

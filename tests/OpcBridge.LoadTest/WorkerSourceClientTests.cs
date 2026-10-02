@@ -199,6 +199,45 @@ public sealed class WorkerSourceClientTests
         Assert.Equal(1, host.Released);
     }
 
+    [Fact]
+    public async Task ChannelClosed_WhileConnected_RaisesConnectionLost()
+    {
+        (WorkerSourceClient client, FakeWorker worker, _) = CreateClient(
+            _ => (WorkerFrameTypes.Ack, (object)new WorkerAck(true)));
+        await client.ConnectAsync(CancellationToken.None);
+
+        var lost = new TaskCompletionSource<Exception>(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.ConnectionLost += error => lost.TrySetResult(error);
+
+        worker.Close();
+
+        Exception error = await lost.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.IsType<SourceConnectionLostException>(error);
+        Assert.Contains("pmd", error.Message, StringComparison.Ordinal);
+        Assert.False(client.IsSubscriptionActive);
+        await client.DisposeAsync();
+    }
+
+    [Fact]
+    public async Task Dispose_DoesNotRaiseConnectionLost()
+    {
+        (WorkerSourceClient client, _, _) = CreateClient(frame => frame.Type switch
+        {
+            WorkerFrameTypes.Connect => (WorkerFrameTypes.Ack, (object)new WorkerAck(true)),
+            WorkerFrameTypes.Disconnect => (WorkerFrameTypes.Ack, (object)new WorkerAck(true)),
+            _ => null
+        });
+        await client.ConnectAsync(CancellationToken.None);
+
+        bool raised = false;
+        client.ConnectionLost += _ => raised = true;
+
+        await client.DisposeAsync();
+        await Task.Delay(100);
+
+        Assert.False(raised);
+    }
+
     private static (WorkerSourceClient Client, FakeWorker Worker, TestWorkerHost Host) CreateClient(
         Func<WorkerFrame, (string Type, object Payload)?> responder)
     {
@@ -288,6 +327,17 @@ public sealed class WorkerSourceClientTests
         public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
 
         public override void SetLength(long value) => throw new NotSupportedException();
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _write.Dispose();
+                _read.Dispose();
+            }
+
+            base.Dispose(disposing);
+        }
     }
 
     private sealed class FakeWorker
@@ -318,6 +368,9 @@ public sealed class WorkerSourceClientTests
         }
 
         public Task SendAsync(WorkerFrame frame) => FrameCodec.WriteAsync(_stream, frame);
+
+        /// <summary>Simulates the worker process dying: the pipe closes under the parent.</summary>
+        public void Close() => _stream.Dispose();
 
         private async Task LoopAsync()
         {
