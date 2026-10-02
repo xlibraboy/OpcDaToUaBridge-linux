@@ -1626,6 +1626,62 @@ public sealed class DashboardPageTests
         Assert.Contains("value.serverTimestampUtc || value.ServerTimestampUtc", DashboardPage.Script);
     }
 
+    [Fact]
+    public void Html_ShipsTheWorkersView()
+    {
+        // Ops ▸ Workers (Admin only): the worker process family and its lifecycle timeline.
+        Assert.Contains("data-tab=\"workers\"", DashboardPage.FullHtml, StringComparison.Ordinal);
+        Assert.Contains("data-route=\"ops/workers\"", DashboardPage.FullHtml, StringComparison.Ordinal);
+        Assert.Contains("id=\"view-workers\"", DashboardPage.FullHtml, StringComparison.Ordinal);
+        Assert.Contains("id=\"navWorkers\"", DashboardPage.FullHtml, StringComparison.Ordinal);
+        Assert.Contains("style=\"display:none\" onclick=\"navigate('ops/workers')\"", DashboardPage.Html, StringComparison.Ordinal);
+        Assert.Contains("id=\"workersList\"", DashboardPage.FullHtml, StringComparison.Ordinal);
+        Assert.Contains("id=\"workersParent\"", DashboardPage.FullHtml, StringComparison.Ordinal);
+        Assert.Contains("id=\"workersHistory\"", DashboardPage.FullHtml, StringComparison.Ordinal);
+        Assert.Contains("id=\"workersMessage\"", DashboardPage.FullHtml, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Script_Workers_LoadsAndControlsWorkerProcesses()
+    {
+        Assert.Contains("'ops/workers': 'workers'", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("function loadWorkers(", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("function renderWorkers(", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("function renderWorkerCard(", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("function restartWorker(", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("function killWorker(", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("function workerAction(", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("fetch('/api/workers', { cache: 'no-store' })", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("'/api/workers/' + encodeURIComponent(workerId) + '/' + action", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("?confirm=true", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("el('navWorkers').style.display = authSession.role === 'Admin'", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("tab === 'troubleshoot' || tab === 'workers'", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("document.querySelector('#view-workers.active')", DashboardPage.Script, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Html_ShipsWorkerFieldsInTheOpcDaSourceForm()
+    {
+        // Sources → OPC DA → Worker Process: mode + run-as account, saved through the
+        // worker block on /api/da/sources (blank password = keep the stored one).
+        Assert.Contains("id=\"cfgWorkerMode\"", DashboardPage.FullHtml, StringComparison.Ordinal);
+        Assert.Contains("id=\"cfgWorkerUser\"", DashboardPage.FullHtml, StringComparison.Ordinal);
+        Assert.Contains("id=\"cfgWorkerPass\"", DashboardPage.FullHtml, StringComparison.Ordinal);
+        Assert.Contains("id=\"cfgWorkerDomain\"", DashboardPage.FullHtml, StringComparison.Ordinal);
+        Assert.Contains("id=\"cfgWorkerHint\"", DashboardPage.FullHtml, StringComparison.Ordinal);
+        Assert.Contains("onchange=\"updateWorkerFields()\"", DashboardPage.Html, StringComparison.Ordinal);
+        Assert.Contains("function updateWorkerFields(", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("function buildWorkerPayload(", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("worker: el('cfgWorkerMode') ? buildWorkerPayload() : undefined", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("workerRunAsPasswordSet", DashboardPage.Script, StringComparison.Ordinal);
+        // Editing a worker field must reveal Save/Reset like every other form field; leaving
+        // them off the dirty-tracking list made the buttons unreachable (field report).
+        Assert.Contains(
+            "'cfgWorkerMode','cfgWorkerUser','cfgWorkerPass','cfgWorkerDomain'",
+            DashboardPage.Script,
+            StringComparison.Ordinal);
+    }
+
     private static int CountOccurrences(string haystack, string needle)
     {
         int count = 0, index = 0;

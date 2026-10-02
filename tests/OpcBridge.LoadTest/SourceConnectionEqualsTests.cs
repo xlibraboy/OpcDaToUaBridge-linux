@@ -33,7 +33,7 @@ public sealed class SourceConnectionEqualsTests
         Melsec: null,
         S7200: null);
 
-    private static DaSourceRuntimeSettings DaSource(int updateRateMs) => new(
+    private static DaSourceRuntimeSettings DaSource(int updateRateMs, DaWorkerOptions? worker = null) => new(
         SourceId: "da1",
         DisplayName: "DA Demo",
         SourceType: SourceTypes.OpcDa,
@@ -45,7 +45,8 @@ public sealed class SourceConnectionEqualsTests
             "localhost",
             null,
             null,
-            null),
+            null,
+            Worker: worker),
         OpcUa: null,
         Melsec: null,
         S7200: null);
@@ -80,5 +81,37 @@ public sealed class SourceConnectionEqualsTests
         // DA clients build rate groups per read cycle; a rate change only needs the
         // poller-restart path and must not tear down the COM session.
         Assert.True(BridgeWorker.SourceConnectionEquals(DaSource(1000), DaSource(250)));
+    }
+
+    [Fact]
+    public void DaSource_DefaultWorkerAndNoWorker_AreEqual()
+    {
+        Assert.True(BridgeWorker.SourceConnectionEquals(DaSource(1000), DaSource(1000, new DaWorkerOptions())));
+    }
+
+    [Fact]
+    public void DaSource_WorkerIsolationChange_IsConnectionChange()
+    {
+        // Switching a source between in-process and a worker must rebuild the session; the
+        // client itself changes (proxy instead of a real OpcDaClient).
+        Assert.False(BridgeWorker.SourceConnectionEquals(
+            DaSource(1000),
+            DaSource(1000, new DaWorkerOptions(DaWorkerModes.Own, ".\\mesadm1", "pw"))));
+    }
+
+    [Fact]
+    public void DaSource_WorkerAccountOrPasswordChange_IsConnectionChange()
+    {
+        DaSourceRuntimeSettings baseline = DaSource(1000, new DaWorkerOptions(DaWorkerModes.Group, ".\\mesadm1", "pw"));
+
+        Assert.False(BridgeWorker.SourceConnectionEquals(
+            baseline,
+            DaSource(1000, new DaWorkerOptions(DaWorkerModes.Group, ".\\opcu1", "pw"))));
+        Assert.False(BridgeWorker.SourceConnectionEquals(
+            baseline,
+            DaSource(1000, new DaWorkerOptions(DaWorkerModes.Group, ".\\mesadm1", "other"))));
+        Assert.True(BridgeWorker.SourceConnectionEquals(
+            baseline,
+            DaSource(1000, new DaWorkerOptions(DaWorkerModes.Group, ".\\mesadm1", "pw"))));
     }
 }

@@ -480,6 +480,37 @@ local connect takes — account for the bridge's own bitness, since a 32-bit bri
 
 ---
 
+# Isolating a Crash-Prone DA Server (Ops → Workers)
+
+A vendor OPC DA server registered as an **in-proc** COM server loads its DLL into the bridge
+process, so a fault in that DLL takes the whole bridge down (the Honeywell PMD subscription
+crash is the recorded case — see Ops → Issues). Such a source can run in a **worker process**
+instead:
+
+- **Sources → OPC DA → Worker Process**: **Own worker** gives the source a dedicated process;
+  **Group worker** shares one process between every source with the same run-as account. The
+  default, **In process**, is unchanged.
+- **Account** is the identity the worker logs on as — set it when the vendor's DCOM stack only
+  serves a specific plant account (the PMD case: `.\mesadm1`). Leave it blank to inherit the
+  bridge's identity, or set it to the bridge's own account (the common plant setup) and no
+  extra rights are needed.
+- When the account differs from the bridge's, the bridge must run as `LocalSystem` (or an
+  account holding *SeAssignPrimaryToken*/*SeIncreaseQuota*) and the target account needs the
+  **Log on as a batch job** right. The worker's start failure names the missing piece.
+- **Ops → Workers** (Admin) shows the parent and every worker — pid, account, sources, memory,
+  restarts, last exit — with **Restart**/**Kill** and the lifecycle timeline. **Kill** stops the
+  worker and keeps it down (`stopped by operator`; its source says *Reconnecting* and names the
+  reason) until you press **Restart** or change the source's worker settings. A worker that
+  crashes **five times in ten minutes is quarantined** (no automatic restart; **Restart**
+  clears it and spawns a fresh worker).
+- Behaviour is the same as an in-process source: values, writes, tag metadata, the watchdog,
+  MQTT/Influx and the dashboard all flow through the bridge. Only the vendor DLL moved — a
+  fault in it now kills the worker, and the source reconnects through the normal retry loop.
+- The run-as password is stored protected (DPAPI) and sent to the worker on stdin, never in
+  its command line. Per-worker memory and crash evidence are on the Workers board.
+
+---
+
 # PLC Drivers (Mitsubishi A3N)
 
 The bridge can poll a Mitsubishi **A3NCPU** over **RS-232** using MELSEC **A-compatible 1C Frame**

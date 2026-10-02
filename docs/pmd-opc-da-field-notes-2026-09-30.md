@@ -84,3 +84,63 @@ subscription mode. Until that is understood, run Honeywell PMD sources in `Sync`
   Event Log packaging defect fixed above.
 * The 7031 loop itself left **no** crash report — a native fault inside the in-proc PMD
   server during the subscription lifecycle.
+
+## Containment procedures shipped in `scripts/windows/` (added 2026-10-01)
+
+Two host-side tools cover this fault class; neither needs an application change. Both must run
+from an **elevated, 64-bit PowerShell** and both print a JSON summary of what they changed.
+Lab results from this procedure are to be recorded in this section when they exist.
+
+### Capture the native fault — `enable-wer-localdumps.ps1`
+
+WER LocalDumps writes the dump at the OS level, which is the only way to see the native stack:
+a natively-killed process never writes `crash-*.log` (see above).
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\enable-wer-localdumps.ps1 -ProcessName OpcBridge.App.exe,DllHost.exe -GrantUser '.\mesadm1'
+```
+
+* Dumps land in `C:\ProgramData\OpcBridge\dumps` (full dumps, five kept per executable); the
+  per-executable keys live under
+  `HKLM\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\<exe>`.
+* `DllHost.exe` is included because the surrogate procedure below moves the fault there.
+* Analyse with WinDbg: `windbg -z <dump>`, then `!analyze -v` (FAULTING module / native stack)
+  and `lm` / `k` for the loaded vendor module.
+* Remove with `-Remove`; dumps already written are left on disk.
+
+### Contain the in-proc server — `enable-pmd-surrogate.ps1`
+
+The PMD server is registered with `InprocServer32`, so its DLL loads into the bridge and a
+fault takes the bridge down. Setting `DllSurrogate` on the server's AppID makes COM activate
+it inside `dllhost.exe` instead — the fault then kills only the surrogate.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\enable-pmd-surrogate.ps1 -RunAsPassword '<mesadm1 password>'
+```
+
+* Changes, in the 32-bit registry view by default (the x86 bridge reads `Wow6432Node`):
+  `AppID` on the CLSID (created if absent), `DllSurrogate = ""` (the system surrogate) and
+  `RunAs = ".\mesadm1,<password>"` on the AppID key.
+* A rollback record (`reg export` + the previous values as JSON) is written under
+  `C:\ProgramData\OpcBridge\rollback\` before anything changes; `-Rollback` restores the
+  newest record.
+* Preconditions checked and reported: the account needs **Log on as a batch job**
+  (`SeBatchLogonRight`); a `LocalServer32` on the CLSID refuses the change (the server already
+  runs out of process). Without `-RunAsPassword` the script changes nothing and prints the
+  manual `reg add` lines.
+* Verification after the change: the Troubleshoot activation probe succeeds;
+  `(Get-Process dllhost).Modules | Where-Object ModuleName -match 'PMD'` lists the vendor DLL;
+  running the source with subscriptions for **more than five minutes** with the bridge PID and
+  `/health` unchanged proves containment. The running bridge keeps its old session until the
+  source reconnects (or the bridge restarts).
+* Risk: not every in-proc server tolerates surrogate isolation, and `IOPCDataCallback`
+  callbacks now cross a marshalling boundary. If PMD misbehaves under it, roll back and use the
+  worker-process design instead.
+
+| Change | Where | Rollback |
+| --- | --- | --- |
+| WER LocalDumps for `OpcBridge.App.exe` / `DllHost.exe` | `HKLM\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps` | `enable-wer-localdumps.ps1 -Remove` |
+| PMD activation via `dllhost.exe` as `.\mesadm1` | 32-bit `AppID` of CLSID `{A2152446-…}` | `enable-pmd-surrogate.ps1 -Rollback` |
+
+**Lab result (to fill in):** containment proven / not tolerated / still crashing — evidence,
+dump name, and the final `ISSUES.md` status.

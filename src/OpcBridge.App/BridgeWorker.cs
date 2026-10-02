@@ -27,6 +27,9 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
     private readonly ILogger<BridgeWorker> logger_;
     private readonly IReadOnlyDictionary<int, int> rate_limits_;
     private readonly ConcurrentDictionary<string, DateTime> watchdog_activity_ = new(StringComparer.OrdinalIgnoreCase);
+    // Sources whose transport died or went quiet, drained by the coordinator while it holds
+    // the session set. A field (not a loop local) so client callbacks can enqueue into it.
+    private readonly ConcurrentQueue<string> failed_source_queue_ = new();
     // Last printed registration verdict per source; a retry loop must not repeat it. Cleared on
     // a successful connect so a later failure says its piece again.
     private readonly Dictionary<string, string> da_registration_verdicts_ = new(StringComparer.OrdinalIgnoreCase);
@@ -136,7 +139,7 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
             Dictionary<string, SourceSession> sessions = new(StringComparer.OrdinalIgnoreCase);
             Dictionary<string, Task> pollers = new(StringComparer.OrdinalIgnoreCase);
             SharedCacheHolder cacheHolder = new(sourceMappingCache);
-            ConcurrentQueue<string> failedSourceQueue = new();
+            ConcurrentQueue<string> failedSourceQueue = failed_source_queue_;
 
             mqtt_bridge_.SetMessageSink(OnMqttInboundAsync);
             mqtt_bridge_.StateChanged += state =>
@@ -266,7 +269,7 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
                                 HashSet<string> daDirty = new(StringComparer.OrdinalIgnoreCase);
                                 foreach (SourceSession session in sessions.Values)
                                 {
-                                    if (session.Client is OpcDaClient)
+                                    if (session.Client is IRateGroupBoundSource)
                                     {
                                         daDirty.Add(session.Source.SourceId);
                                     }
@@ -312,7 +315,7 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
                                 HashSet<string> nonDaDirty = new(StringComparer.OrdinalIgnoreCase);
                                 foreach (SourceSession session in sessions.Values)
                                 {
-                                    if (session.Client is OpcDaClient)
+                                    if (session.Client is IRateGroupBoundSource)
                                     {
                                         continue;
                                     }
@@ -1121,6 +1124,13 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
                     subscribable.ValuesReceived += values => OnSubscriptionValues(values);
                 }
 
+                // A worker proxy reports a dead pipe here. Without it a push-only source
+                // sits "Connected" on stale values until some request happens to fail.
+                if (client is IConnectionLostSource lossSource)
+                {
+                    lossSource.ConnectionLost += error => OnSourceConnectionLost(source.SourceId, error);
+                }
+
                 if (client is OpcDaClient daClient)
                 {
                     daClient.Warning += message =>
@@ -1317,8 +1327,15 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
             && string.Equals(a.RemotePassword, b.RemotePassword, StringComparison.Ordinal)
             && string.Equals(a.RemoteDomain, b.RemoteDomain, StringComparison.OrdinalIgnoreCase)
             && string.Equals(a.IoMode, b.IoMode, StringComparison.Ordinal)
-            && DaGroupIoModesEqual(a, b);
+            && DaGroupIoModesEqual(a, b)
+            && DaWorkerEquals(a.Worker, b.Worker);
     }
+
+    private static bool DaWorkerEquals(DaWorkerOptions left, DaWorkerOptions right)
+        => string.Equals(left.Mode, right.Mode, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(left.RunAsUser, right.RunAsUser, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(left.RunAsDomain, right.RunAsDomain, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(left.RunAsPassword, right.RunAsPassword, StringComparison.Ordinal);
 
     private static bool DaGroupIoModesEqual(DaSourceRuntimeSettings a, DaSourceRuntimeSettings b)
     {
@@ -1408,6 +1425,17 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
         return string.Equals(sourceType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase)
             ? "sync (UA Write)"
             : "sync (protocol write)";
+    }
+
+    /// <summary>
+    /// A live session's transport died (worker process gone, pipe broken). Enqueue the source
+    /// for teardown so the coordinator reconnects with backoff — the same handling the
+    /// subscription watchdog uses, but immediate and independent of value traffic.
+    /// </summary>
+    private void OnSourceConnectionLost(string sourceId, Exception error)
+    {
+        logger_.LogWarning(error, "Source {SourceId} connection lost; will retry", sourceId);
+        failed_source_queue_.Enqueue(sourceId);
     }
 
     private void OnSubscriptionValues(IReadOnlyList<BridgeValue> values)

@@ -297,6 +297,42 @@ public sealed class DaRuntimeSettings
     }
 
     /// <summary>
+    /// Sets the per-source worker-process isolation (mode and run-as account). The options
+    /// are canonicalized; a group without an account falls back to in-process. Returns the
+    /// updated snapshot, or the unchanged snapshot when the source does not exist.
+    /// </summary>
+    public DaRuntimeSettingsSnapshot SetSourceWorker(string sourceId, DaWorkerOptions options)
+    {
+        DaWorkerOptions? normalized = SourceConfigMigration.NormalizeWorkerOptions(options);
+
+        lock (sync_)
+        {
+            List<DaSourceRuntimeSettings> sources = snapshot_.Sources.ToList();
+            int index = sources.FindIndex(source =>
+                string.Equals(source.SourceId, sourceId, StringComparison.OrdinalIgnoreCase));
+
+            if (index < 0)
+            {
+                return snapshot_;
+            }
+
+            DaSourceRuntimeSettings current = sources[index];
+            sources[index] = current with
+            {
+                OpcDa = current.OpcDa is null ? null : current.OpcDa with { Worker = normalized }
+            };
+            snapshot_ = snapshot_ with
+            {
+                Sources = sources,
+                Version = snapshot_.Version + 1
+            };
+
+            Persist();
+            return snapshot_;
+        }
+    }
+
+    /// <summary>
     /// Sets the per-group I/O mode override (AutoDetect | Sync | Async20) for a rate
     /// bucket of an OPC DA source, upserting by rate. Invalid modes normalize to
     /// AutoDetect; rates below the OPC DA minimum (100 ms) are rejected.
@@ -626,6 +662,50 @@ public sealed record DaRuntimeSettingsSnapshot(
 /// </summary>
 public sealed record DaGroupIoMode(string Name, int Rate, string IoMode);
 
+/// <summary>Worker-process isolation modes for an OPC DA source.</summary>
+public static class DaWorkerModes
+{
+    public const string InProcess = "inProcess";
+    public const string Group = "group";
+    public const string Own = "own";
+
+    public static string Normalize(string? mode)
+    {
+        string trimmed = mode?.Trim() ?? string.Empty;
+        if (string.Equals(trimmed, Group, StringComparison.OrdinalIgnoreCase))
+        {
+            return Group;
+        }
+
+        if (string.Equals(trimmed, Own, StringComparison.OrdinalIgnoreCase))
+        {
+            return Own;
+        }
+
+        return InProcess;
+    }
+}
+
+/// <summary>
+/// Per-source worker-process isolation: <c>inProcess</c> (default), <c>group</c> (join the
+/// shared worker for the run-as account) or <c>own</c> (dedicated worker). The run-as account
+/// is the Windows identity the worker process logs on as; its password is persisted protected
+/// (DPAPI) on disk. An <c>own</c> worker without an account inherits the bridge's identity.
+/// </summary>
+public sealed record DaWorkerOptions(
+    string Mode = DaWorkerModes.InProcess,
+    string? RunAsUser = null,
+    string? RunAsPassword = null,
+    string? RunAsDomain = null)
+{
+    /// <summary>True when these options mean "run in the bridge process" (nothing to spawn).</summary>
+    public bool IsDefault =>
+        string.Equals(DaWorkerModes.Normalize(Mode), DaWorkerModes.InProcess, StringComparison.Ordinal)
+        && string.IsNullOrWhiteSpace(RunAsUser)
+        && string.IsNullOrWhiteSpace(RunAsPassword)
+        && string.IsNullOrWhiteSpace(RunAsDomain);
+}
+
 public sealed record OpcDaSourceOptions(
     string ProgId,
     string Host,
@@ -633,7 +713,8 @@ public sealed record OpcDaSourceOptions(
     string? RemotePassword,
     string? RemoteDomain,
     IReadOnlyList<DaGroupIoMode>? GroupIoModes = null,
-    int WatchdogTimeoutMs = 60000);
+    int WatchdogTimeoutMs = 60000,
+    DaWorkerOptions? Worker = null);
 
 public sealed record OpcUaSourceOptions(
     string EndpointUrl,
@@ -689,6 +770,8 @@ public sealed record DaSourceRuntimeSettings(
     public string? RemoteUsername => OpcDa?.RemoteUsername;
     public string? RemotePassword => OpcDa?.RemotePassword;
     public string? RemoteDomain => OpcDa?.RemoteDomain;
+    /// <summary>Worker-process isolation options; in-process defaults when unset.</summary>
+    public DaWorkerOptions Worker => OpcDa?.Worker ?? new DaWorkerOptions();
     public string Transport => S7200?.Transport ?? Melsec?.Transport ?? "Serial";
     public string SerialPortName => S7200?.SerialPortName ?? Melsec?.SerialPortName ?? string.Empty;
     public int BaudRate => S7200?.BaudRate ?? Melsec?.BaudRate ?? 9600;
@@ -865,6 +948,15 @@ public sealed class OpcDaSourceOptionsDto
     public string? RemoteDomain { get; set; }
     public List<DaGroupIoModeDto>? Groups { get; set; }
     public int? WatchdogTimeoutMs { get; set; }
+    public DaWorkerOptionsDto? Worker { get; set; }
+}
+
+public sealed class DaWorkerOptionsDto
+{
+    public string? Mode { get; set; }
+    public string? RunAsUser { get; set; }
+    public string? RunAsPassword { get; set; }
+    public string? RunAsDomain { get; set; }
 }
 
 public sealed class DaGroupIoModeDto
@@ -957,7 +1049,12 @@ public static class SourceConfigMigration
                 dto.OpcDa.RemotePassword,
                 dto.OpcDa.RemoteDomain,
                 NormalizeGroupIoModes(dto.OpcDa.Groups?.Select(g => new DaGroupIoMode(g.Name ?? $"OpcBridge_{g.Rate}", g.Rate, g.IoMode ?? string.Empty))),
-                dto.OpcDa.WatchdogTimeoutMs ?? 60000);
+                dto.OpcDa.WatchdogTimeoutMs ?? 60000,
+                NormalizeWorkerOptions(new DaWorkerOptions(
+                    dto.OpcDa.Worker?.Mode ?? DaWorkerModes.InProcess,
+                    dto.OpcDa.Worker?.RunAsUser,
+                    SecretProtector.Unprotect(dto.OpcDa.Worker?.RunAsPassword),
+                    dto.OpcDa.Worker?.RunAsDomain)));
         }
         else if (HasFlatDa(dto))
         {
@@ -1144,6 +1241,15 @@ public static class SourceConfigMigration
                 RemotePassword = source.OpcDa.RemotePassword,
                 RemoteDomain = source.OpcDa.RemoteDomain,
                 WatchdogTimeoutMs = source.OpcDa.WatchdogTimeoutMs,
+                Worker = source.OpcDa.Worker is { } worker && !worker.IsDefault
+                    ? new DaWorkerOptionsDto
+                    {
+                        Mode = DaWorkerModes.Normalize(worker.Mode),
+                        RunAsUser = worker.RunAsUser,
+                        RunAsPassword = SecretProtector.Protect(worker.RunAsPassword),
+                        RunAsDomain = worker.RunAsDomain
+                    }
+                    : null,
                 Groups = source.OpcDa.GroupIoModes is null || source.OpcDa.GroupIoModes.Count == 0
                     ? null
                     : source.OpcDa.GroupIoModes.Select(g => new DaGroupIoModeDto { Name = g.Name, Rate = g.Rate, IoMode = g.IoMode }).ToList()
@@ -1295,7 +1401,8 @@ public static class SourceConfigMigration
                 string.IsNullOrWhiteSpace(raw.RemotePassword) ? null : raw.RemotePassword,
                 string.IsNullOrWhiteSpace(raw.RemoteDomain) ? null : raw.RemoteDomain.Trim(),
                 NormalizeGroupIoModes(raw.GroupIoModes),
-                raw.WatchdogTimeoutMs < 0 ? 0 : raw.WatchdogTimeoutMs);
+                raw.WatchdogTimeoutMs < 0 ? 0 : raw.WatchdogTimeoutMs,
+                NormalizeWorkerOptions(raw.Worker));
         }
 
         return new DaSourceRuntimeSettings(
@@ -1310,6 +1417,40 @@ public static class SourceConfigMigration
             melsec,
             s7200,
             NormalizeIoMode(source.IoMode));
+    }
+
+    /// <summary>
+    /// Canonicalizes worker-isolation options: mode to inProcess | group | own (unknown values
+    /// fall back to inProcess), trimmed account/domain, and a password only when an account
+    /// exists. A group without an account cannot run anywhere and falls back to in-process.
+    /// Returns null when nothing remains so configs stay clean on disk.
+    /// </summary>
+    public static DaWorkerOptions? NormalizeWorkerOptions(DaWorkerOptions? worker)
+    {
+        if (worker is null)
+        {
+            return null;
+        }
+
+        string mode = DaWorkerModes.Normalize(worker.Mode);
+        string? user = string.IsNullOrWhiteSpace(worker.RunAsUser) ? null : worker.RunAsUser.Trim();
+        string? domain = string.IsNullOrWhiteSpace(worker.RunAsDomain) ? null : worker.RunAsDomain.Trim();
+        string? password = string.IsNullOrEmpty(worker.RunAsPassword) ? null : worker.RunAsPassword;
+
+        if (user is null)
+        {
+            // Nothing to run as: a password is meaningless, and a group worker needs an
+            // account to join. An own worker is still valid - it inherits the bridge identity.
+            password = null;
+            domain = null;
+            if (string.Equals(mode, DaWorkerModes.Group, StringComparison.Ordinal))
+            {
+                mode = DaWorkerModes.InProcess;
+            }
+        }
+
+        var normalized = new DaWorkerOptions(mode, user, password, domain);
+        return normalized.IsDefault ? null : normalized;
     }
 
     /// <summary>

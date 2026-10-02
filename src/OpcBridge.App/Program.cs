@@ -39,6 +39,16 @@ if (DaProbe.IsProbeInvocation(args))
     return;
 }
 
+// DA worker (child mode): a long-lived copy of this executable that hosts OPC DA source
+// clients in its own process, so a fault in a vendor in-proc server kills only the worker.
+// It runs before the crash handlers, the lock and the web host, like the probe above; the
+// parent spawns it and talks over a named pipe (bootstrap + credentials on stdin).
+if (DaWorkerHost.IsWorkerInvocation(args))
+{
+    Environment.ExitCode = DaWorkerHost.Run();
+    return;
+}
+
 // Registered before anything else can throw, so a startup failure is reported too. A bridge that
 // dies must leave a reason behind — see CrashLog for the two unexplained stops that motivated it.
 CrashLog.Install();
@@ -208,7 +218,9 @@ builder.Logging.Services.AddSingleton<ILoggerProvider, FileLogProvider>();
 
 
 builder.Services.AddSingleton<DaRuntimeSettings>();
-builder.Services.AddSingleton<SourceClientFactory>();
+builder.Services.AddSingleton<DaWorkerSupervisor>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<DaWorkerSupervisor>());
+builder.Services.AddSingleton<SourceClientFactory>(sp => new RoutingSourceClientFactory(sp.GetRequiredService<DaWorkerSupervisor>()));
 builder.Services.AddSingleton<BridgeState>();
 builder.Services.AddSingleton<MappingStore>();
 builder.Services.AddSingleton<InterlinkStore>();
@@ -1204,6 +1216,28 @@ app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings
     }
 
     string upsertType = request.SourceType ?? string.Empty;
+
+    // Worker isolation is optional: when the form omits it, an existing source keeps its
+    // options; a blank password field means "no change" (same rule as the UA credentials).
+    DaSourceRuntimeSettings? existingSource = settings.GetSnapshot().GetSource(request.SourceId);
+    DaWorkerOptions? requestedWorker = request.Worker is null
+        ? existingSource?.OpcDa?.Worker
+        : new DaWorkerOptions(
+            request.Worker.Mode ?? DaWorkerModes.InProcess,
+            request.Worker.RunAsUser,
+            string.IsNullOrWhiteSpace(request.Worker.RunAsPassword)
+                ? existingSource?.Worker.RunAsPassword
+                : request.Worker.RunAsPassword,
+            request.Worker.RunAsDomain);
+
+    string workerSourceType = string.IsNullOrWhiteSpace(upsertType) ? SourceTypes.OpcDa : upsertType;
+    if (DaWorkerOptionsValidator.Validate(workerSourceType, requestedWorker ?? new DaWorkerOptions()) is { } workerValidationError)
+    {
+        return Results.BadRequest(new { error = workerValidationError });
+    }
+
+    DaWorkerOptions? upsertWorker = SourceConfigMigration.NormalizeWorkerOptions(requestedWorker);
+
     OpcDaSourceOptions? upsertDa = null;
     OpcUaSourceOptions? upsertUa = null;
     MelsecA3nSourceOptions? upsertMelsec = null;
@@ -1257,7 +1291,8 @@ app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings
             request.RemotePassword,
             request.RemoteDomain,
             ResolveGroupIoModes(request.Groups, settings, request.SourceId),
-            ResolveWatchdogTimeoutMs(request.WatchdogTimeoutMs, settings, request.SourceId));
+            ResolveWatchdogTimeoutMs(request.WatchdogTimeoutMs, settings, request.SourceId),
+            upsertWorker);
     }
 
     DaRuntimeSettingsSnapshot snapshot = settings.UpsertSource(new DaSourceRuntimeSettings(
@@ -1502,6 +1537,104 @@ app.MapPost("/api/da/tags", async (DaTagBrowseRequest request, ILogger<Program> 
         return Results.Json(new { error = exception.Message, branches = Array.Empty<object>(), tags = Array.Empty<object>() });
     }
 });
+// Ops ▸ Workers: the worker process family — the parent bridge plus every supervised DA
+// worker — with memory, crash counts and the lifecycle timeline. Reading is open to any
+// signed-in user; restart/kill are Admin (AuthPolicy).
+app.MapGet("/api/workers", (DaWorkerSupervisor workers) =>
+{
+    if (!OperatingSystem.IsWindows())
+    {
+        return Results.Json(new
+        {
+            supported = false,
+            platform = "non-windows",
+            workers = Array.Empty<object>(),
+            history = Array.Empty<object>(),
+            message = "OPC DA workers require Windows."
+        });
+    }
+
+    System.Diagnostics.Process self = System.Diagnostics.Process.GetCurrentProcess();
+    return Results.Json(new
+    {
+        supported = true,
+        platform = "windows",
+        parent = new
+        {
+            pid = Environment.ProcessId,
+            uptimeSeconds = (long)(DateTime.UtcNow - self.StartTime.ToUniversalTime()).TotalSeconds,
+            workingSetMb = self.WorkingSet64 / (1024 * 1024),
+            privateMb = self.PrivateMemorySize64 / (1024 * 1024),
+            handleCount = self.HandleCount
+        },
+        workers = workers.GetStatus().Select(status => new
+        {
+            workerId = status.WorkerId,
+            mode = status.WorkerId.StartsWith(WorkerPlacement.OwnPrefix, StringComparison.Ordinal) ? "own" : "group",
+            pid = status.Pid,
+            account = status.Account,
+            state = status.Quarantined
+                ? "quarantined"
+                : status.Running
+                    ? "running"
+                    : status.OperatorStopped ? "operator-stopped" : "stopped",
+            sources = status.Sources,
+            rssMb = status.WorkingSetBytes / (1024 * 1024),
+            privateMb = status.PrivateBytes / (1024 * 1024),
+            handleCount = status.Handles,
+            startedUtc = status.StartedUtc,
+            restarts = status.RestartCount,
+            lastExitCode = status.LastExitCode,
+            lastExitUtc = status.LastExitUtc,
+            lastError = status.LastError,
+            heartbeatAgeMs = status.HeartbeatAgeMs
+        }),
+        history = workers.GetHistory().Select(entry => new
+        {
+            utc = entry.Utc,
+            workerId = entry.WorkerId,
+            @event = entry.Event,
+            exitCode = entry.ExitCode,
+            message = entry.Message
+        })
+    });
+});
+
+app.MapPost("/api/workers/{workerId}/restart", async (string workerId, DaWorkerSupervisor workers) =>
+{
+    if (!OperatingSystem.IsWindows())
+    {
+        return Results.BadRequest(new { error = "OPC DA workers require Windows." });
+    }
+
+    if (!await workers.RestartAsync(workerId))
+    {
+        return Results.NotFound(new { error = $"Worker '{workerId}' not found." });
+    }
+
+    return Results.Json(new { ok = true, workerId });
+});
+
+app.MapPost("/api/workers/{workerId}/kill", async (string workerId, bool? confirm, DaWorkerSupervisor workers) =>
+{
+    if (!OperatingSystem.IsWindows())
+    {
+        return Results.BadRequest(new { error = "OPC DA workers require Windows." });
+    }
+
+    if (confirm != true)
+    {
+        return Results.BadRequest(new { error = "Killing a worker requires ?confirm=true." });
+    }
+
+    if (!await workers.KillAsync(workerId))
+    {
+        return Results.NotFound(new { error = $"Worker '{workerId}' not found." });
+    }
+
+    return Results.Json(new { ok = true, workerId });
+});
+
 // OPC DA troubleshoot (Admin only): read-only registration analysis of the
 // ProgID → CLSID → server-path chain, plus an optional activation probe run in a
 // separate process so a faulty in-proc server DLL cannot take the bridge down.
@@ -2848,6 +2981,10 @@ static object ToSourceApiDto(DaSourceRuntimeSettings source)
         ioMode = source.IoMode,
         remoteUsername = source.RemoteUsername,
         remoteDomain = source.RemoteDomain,
+        workerMode = DaWorkerModes.Normalize(source.Worker.Mode),
+        workerRunAsUser = source.Worker.RunAsUser,
+        workerRunAsDomain = source.Worker.RunAsDomain,
+        workerRunAsPasswordSet = !string.IsNullOrEmpty(source.Worker.RunAsPassword),
         uaUsername = source.UaUsername
     };
 }

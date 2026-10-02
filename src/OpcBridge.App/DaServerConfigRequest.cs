@@ -33,7 +33,19 @@ public sealed record DaServerConfigRequest(
     string? IoMode = null,
     int UpdateRateMs = 0,
     int? WatchdogTimeoutMs = null,
-    IReadOnlyList<DaGroupIoModeRequest>? Groups = null);
+    IReadOnlyList<DaGroupIoModeRequest>? Groups = null,
+    DaWorkerRequest? Worker = null);
+
+/// <summary>
+/// Worker-process isolation for an OPC DA source. A blank RunAsPassword means "no change" for
+/// an existing source (the same rule as the UA password fields); the stored password is never
+/// echoed back by the API.
+/// </summary>
+public sealed record DaWorkerRequest(
+    string? Mode = null,
+    string? RunAsUser = null,
+    string? RunAsPassword = null,
+    string? RunAsDomain = null);
 
 public sealed record DaSourceIoModeRequest(string SourceId, string IoMode);
 

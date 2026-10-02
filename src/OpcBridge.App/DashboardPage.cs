@@ -55,6 +55,12 @@ namespace OpcBridge.App;
 //   function loadTroubleshoot(/runDaTroubleshoot(/renderDaTroubleshoot(, /api/da/troubleshoot
 //   Live Values timestamps: th text "Source Timestamp"/"Server Timestamp", colspan="8",
 //   script reads serverTimestampUtc, function formatTimestampDelta(, faceplate text "Source: "/"Server: "
+//   Workers (Admin only): data-tab="workers", id="view-workers", id="navWorkers",
+//   function loadWorkers(/renderWorkers(/renderWorkerCard(/restartWorker(/killWorker(/workerAction(,
+//   /api/workers[/restart|/kill]
+//   Worker fields in the OPC DA form: id="cfgWorkerMode"/"cfgWorkerUser"/"cfgWorkerPass"/
+//   "cfgWorkerDomain"/"cfgWorkerHint", function updateWorkerFields(/buildWorkerPayload(,
+//   worker block in the /api/da/sources save payload
 internal static class DashboardPage
 {
     public const string Html = """
@@ -1077,6 +1083,7 @@ internal static class DashboardPage
     <button class="tabbtn" data-tab="users" data-route="ops/users" id="navUsers" style="display:none" onclick="navigate('ops/users')">Users</button>
     <button class="tabbtn" data-tab="issues" data-route="ops/issues" id="navIssues" style="display:none" onclick="navigate('ops/issues')">Issues</button>
     <button class="tabbtn" data-tab="troubleshoot" data-route="ops/troubleshoot" id="navTroubleshoot" style="display:none" onclick="navigate('ops/troubleshoot')">Troubleshoot</button>
+    <button class="tabbtn" data-tab="workers" data-route="ops/workers" id="navWorkers" style="display:none" onclick="navigate('ops/workers')">Workers</button>
     </div>
   </div>
   <div class="nav-group">
@@ -1383,6 +1390,12 @@ internal static class DashboardPage
                     <div class="conn-section">
                         <div class="conn-section-h">Credentials <span class="info" data-tip="Only required for remote DCOM with specific user accounts, or to access OPC DA servers registered in another user's profile.">i</span></div>
                         <div class="field"><label class="fl" for="cfgUser">User</label><input id="cfgUser" type="text" placeholder="username" aria-label="User name" style="flex:1"><input id="cfgPass" type="password" placeholder="password" aria-label="Password" style="flex:1"><input id="cfgDomain" type="text" placeholder="domain" aria-label="Domain" style="flex:1"></div>
+                    </div>
+                    <div class="conn-section">
+                        <div class="conn-section-h">Worker Process <span class="info" data-tip="Run this source in its own supervised process, so a fault in a vendor in-proc server kills only its worker — values, writes and the watchdog behave the same. 'Group' shares one worker per run-as account (all group sources must use the same account). The run-as account must match the bridge's own account until the privileged spawn path ships.">i</span></div>
+                        <div class="field"><label class="fl" for="cfgWorkerMode">Mode</label><select id="cfgWorkerMode" onchange="updateWorkerFields()"><option value="inProcess">In process</option><option value="own">Own worker</option><option value="group">Group worker (per account)</option></select></div>
+                        <div class="field"><label class="fl" for="cfgWorkerUser">Account</label><input id="cfgWorkerUser" type="text" placeholder="run-as account (optional)" aria-label="Run-as account" style="flex:1"><input id="cfgWorkerPass" type="password" placeholder="password" aria-label="Run-as password" style="flex:1"><input id="cfgWorkerDomain" type="text" placeholder="domain" aria-label="Run-as domain" style="flex:1"></div>
+                        <div class="field"><span class="msg" id="cfgWorkerHint" role="status" style="font-weight:400;text-transform:none;letter-spacing:0"></span></div>
                     </div>
                     <div class="conn-section">
                         <div class="conn-section-h">Default Update Rate <span class="info" data-tip="Fixed at 1000 ms. This is the fallback rate for tags set to 'Source Default'. For other cadences use a specific per-tag Update Rate.">i</span></div>
@@ -2040,6 +2053,20 @@ internal static class DashboardPage
             </div>
             <div class="field"><label class="fl" for="tsProgId">ProgID <span class="info" data-tip="For an ad-hoc check when no source is configured — e.g. PMD.DDT_OPCDataServer.1.">i</span></label><input id="tsProgId" type="text" placeholder="PMD.DDT_OPCDataServer.1" style="flex:1"><label class="fl" for="tsHost" style="margin-left:12px">Host</label><input id="tsHost" type="text" placeholder="localhost" style="width:180px"></div>
             <div id="tsReport" style="margin-top:8px"><span class="msg">Select a source (or type a ProgID) and run the checks.</span></div>
+        </div>
+    </div>
+</div>
+<div class="view" id="view-workers">
+    <h1 class="view-title" tabindex="-1">Workers</h1>
+    <div class="box">
+        <div class="box-h">Source Workers <span class="msg" id="workersMessage" role="status" style="margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0">Isolated OPC DA sources run in their own process, so a faulty server DLL kills only its worker.</span></div>
+        <div class="box-b">
+            <div class="toolbar">
+                <button class="btn ghost" id="workersRefresh" type="button" onclick="loadWorkers()">Refresh</button>
+            </div>
+            <div id="workersParent" style="margin-bottom:8px"></div>
+            <div id="workersList"><span class="msg">Loading workers…</span></div>
+            <div id="workersHistory" style="margin-top:10px"></div>
         </div>
     </div>
 </div>
@@ -4510,12 +4537,13 @@ function applyRoleUi() {
     el('navUsers').style.display = authSession.role === 'Admin' ? '' : 'none';
     el('navIssues').style.display = authSession.role === 'Admin' ? '' : 'none';
     el('navTroubleshoot').style.display = authSession.role === 'Admin' ? '' : 'none';
+    el('navWorkers').style.display = authSession.role === 'Admin' ? '' : 'none';
 }
 
 // A bookmarked route may point at a section this role cannot open.
 function routeAllowed(route) {
     const tab = ROUTE_TO_TAB[route] || ROUTE_TO_TAB[DEFAULT_ROUTE];
-    if (tab === 'users' || tab === 'issues' || tab === 'troubleshoot') return authSession.role === 'Admin';
+    if (tab === 'users' || tab === 'issues' || tab === 'troubleshoot' || tab === 'workers') return authSession.role === 'Admin';
     return ENGINEER_TABS.includes(tab) ? isEngineer() : true;
 }
 
@@ -4873,6 +4901,7 @@ const ROUTE_TO_TAB = {
   'ops/users': 'users',
   'ops/issues': 'issues',
   'ops/troubleshoot': 'troubleshoot',
+  'ops/workers': 'workers',
   'ops/diagram': 'diagram',
   'help/guide': 'help',
   'help/about': 'about',
@@ -4935,6 +4964,7 @@ async function showTab(name, route) {
   if (activeTab === 'changelog') loadChangelog().catch(e => el('changelogBody').innerHTML = '<span class="msg bad" role="alert">✗ ' + escapeHtml(e.message) + '</span>');
   if (activeTab === 'issues') loadIssues().catch(e => el('issuesBody').innerHTML = '<span class="msg bad" role="alert">✗ ' + escapeHtml(e.message) + '</span>');
   if (activeTab === 'troubleshoot') { loadTroubleshoot().catch(e => el('tsMessage').textContent = '✗ ' + e.message); }
+  if (activeTab === 'workers') { loadWorkers().catch(e => el('workersMessage').textContent = '✗ ' + e.message); }
   if (activeTab === 'help') loadHelp().catch(e => { const c = el('helpLayout1'); if (c) c.innerHTML = '<span class="msg bad" role="alert">✗ ' + esc(e.message) + '</span>'; });
   if (activeTab === 'mqtt') { await loadMqtt(); }
   if (activeTab === 'iot-traffic') { await loadMqttValues(); }
@@ -5500,6 +5530,11 @@ function loadSelectedSourceForm() {
         el('cfgUser').value = '';
         el('cfgPass').value = '';
         el('cfgDomain').value = '';
+        if (el('cfgWorkerMode')) el('cfgWorkerMode').value = 'inProcess';
+        el('cfgWorkerUser').value = '';
+        el('cfgWorkerPass').value = '';
+        el('cfgWorkerDomain').value = '';
+        updateWorkerFields();
         if (el('cfgIoMode')) el('cfgIoMode').value = 'AutoDetect';
         const ioModeHint = el('ioModeHint'); if (ioModeHint) ioModeHint.textContent = '';
         el('cfgMessage').textContent = source
@@ -5517,6 +5552,12 @@ function loadSelectedSourceForm() {
     el('cfgUser').value = source.remoteUsername || '';
     el('cfgPass').value = '';
     el('cfgDomain').value = source.remoteDomain || '';
+    el('cfgWorkerMode').value = source.workerMode || 'inProcess';
+    el('cfgWorkerUser').value = source.workerRunAsUser || '';
+    el('cfgWorkerPass').value = '';
+    el('cfgWorkerPass').placeholder = source.workerRunAsPasswordSet ? 'password (set — blank keeps)' : 'password';
+    el('cfgWorkerDomain').value = source.workerRunAsDomain || '';
+    updateWorkerFields();
     if (el('cfgIoMode')) {
         el('cfgIoMode').value = (source.ioMode === 'Sync' || source.ioMode === 'Async20') ? source.ioMode : 'AutoDetect';
         const ioModeHint = el('ioModeHint');
@@ -6148,6 +6189,104 @@ function renderDaTroubleshoot(payload) {
     }
 
     el('tsReport').innerHTML = html || '<span class="msg">No findings.</span>';
+}
+
+// Ops ▸ Workers (Admin only): the worker process family — the parent bridge plus each
+// supervised DA worker, with memory, crash counts and the lifecycle timeline. Reading is
+// open to any signed-in user; restart/kill are Admin-gated server-side too.
+async function loadWorkers(options) {
+    const silent = !!(options && options.silent);
+    try {
+        const response = await fetch('/api/workers', { cache: 'no-store' });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            el('workersMessage').textContent = '✗ ' + (payload.error || ('HTTP ' + response.status));
+            return;
+        }
+        if (payload.supported === false) {
+            el('workersMessage').textContent = payload.message || 'Workers require Windows.';
+            el('workersParent').innerHTML = '';
+            el('workersList').innerHTML = '<span class="msg">' + esc(payload.message || 'Not supported on this platform.') + '</span>';
+            el('workersHistory').innerHTML = '';
+            return;
+        }
+        renderWorkers(payload);
+        const count = (payload.workers || []).length;
+        el('workersMessage').textContent = count === 1 ? '1 worker.' : count + ' workers.';
+    } catch (e) {
+        if (!silent) el('workersMessage').textContent = '✗ ' + e.message;
+    }
+}
+
+function renderWorkers(payload) {
+    const parent = payload.parent || {};
+    el('workersParent').innerHTML =
+        '<div class="li"><span><strong>OpcBridge</strong> <span class="msg">(this process)</span></span>' +
+        '<span class="msg" style="margin-left:auto">pid ' + esc(String(parent.pid || '')) +
+        ' · ' + esc(String(parent.workingSetMb || 0)) + ' MB · ' + esc(String(parent.handleCount || 0)) + ' handles</span></div>';
+
+    const workers = payload.workers || [];
+    el('workersList').innerHTML = workers.length
+        ? workers.map(renderWorkerCard).join('')
+        : '<span class="msg">No isolated sources yet. Set a source\'s worker mode (Sources → OPC DA → worker) to run it in its own process.</span>';
+
+    const history = (payload.history || []).slice(-20).reverse();
+    el('workersHistory').innerHTML = history.length
+        ? '<div class="box-h" style="border:0;padding-left:0">Timeline</div>' +
+          history.map(h => '<div class="li"><span class="msg" style="min-width:86px">' + esc(relTime(h.utc)) + '</span>' +
+            badge(String(h.event || '').toUpperCase(), h.event === 'crashed' ? 'bad' : h.event === 'quarantined' ? 'warn' : 'partial') +
+            '<span style="margin-left:6px">' + esc(h.workerId || '') + '</span>' +
+            (h.message ? '<span class="msg" style="margin-left:6px">' + esc(h.message) + '</span>' : '') +
+            (h.exitCode !== null && h.exitCode !== undefined ? '<span class="msg" style="margin-left:6px">exit ' + esc(String(h.exitCode)) + '</span>' : '') +
+            '</div>').join('')
+        : '';
+}
+
+function renderWorkerCard(w) {
+    const stateClass = w.state === 'running' ? 'good'
+        : w.state === 'quarantined' ? 'warn'
+        : w.state === 'operator-stopped' ? 'warn'
+        : 'partial';
+    const stateLabel = w.state === 'operator-stopped' ? 'STOPPED BY OPERATOR' : String(w.state || '').toUpperCase();
+    const last = w.lastExitUtc
+        ? ' · last exit ' + esc(String(w.lastExitCode !== null && w.lastExitCode !== undefined ? w.lastExitCode : '?')) + ' ' + esc(relTime(w.lastExitUtc))
+        : '';
+    return '<div class="li" style="display:block">' +
+        '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
+        badge(stateLabel, stateClass) +
+        '<strong>' + esc(w.workerId || '') + '</strong>' +
+        '<span class="msg">' + esc(w.mode || '') + ' · ' + (w.pid ? 'pid ' + esc(String(w.pid)) : 'not running') + ' · ' + esc(w.account || '') + '</span>' +
+        '<span style="margin-left:auto"></span>' +
+        '<button class="btn ghost" type="button" data-worker="' + attr(w.workerId) + '" onclick="restartWorker(this.dataset.worker)">Restart</button>' +
+        '<button class="btn ghost" type="button" data-worker="' + attr(w.workerId) + '" onclick="killWorker(this.dataset.worker)">Kill</button>' +
+        '</div>' +
+        '<div class="msg" style="display:block;margin-top:2px">sources: ' + esc((w.sources || []).join(', ') || '—') + '</div>' +
+        '<div class="msg" style="display:block">rss ' + esc(String(w.rssMb || 0)) + ' MB · private ' + esc(String(w.privateMb || 0)) + ' MB · ' + esc(String(w.handleCount || 0)) + ' handles · restarts ' + esc(String(w.restarts || 0)) + last + '</div>' +
+        (w.lastError ? '<div class="msg bad" style="display:block">' + esc(w.lastError) + '</div>' : '') +
+        '</div>';
+}
+
+async function restartWorker(workerId) {
+    await workerAction(workerId, 'restart', false);
+}
+
+async function killWorker(workerId) {
+    if (!window.confirm('Kill worker ' + workerId + '? It stays down until you press Restart (or the source\u2019s worker settings change).')) return;
+    await workerAction(workerId, 'kill', true);
+}
+
+async function workerAction(workerId, action, withConfirm) {
+    try {
+        const response = await fetch('/api/workers/' + encodeURIComponent(workerId) + '/' + action + (withConfirm ? '?confirm=true' : ''), { method: 'POST' });
+        const payload = await response.json().catch(() => ({}));
+        el('workersMessage').textContent = response.ok
+            ? '✓ ' + action + ' requested for ' + workerId
+            : '✗ ' + (payload.error || ('HTTP ' + response.status));
+    } catch (e) {
+        el('workersMessage').textContent = '✗ ' + e.message;
+    } finally {
+        await loadWorkers({ silent: true });
+    }
 }
 
 async function loadHelp() {
@@ -7583,6 +7722,34 @@ function pickSource(sourceId, opts) {
         else navigate('connectivity/opc-da');
     }
 }
+// Worker-process fields: the account inputs only matter for own/group modes; a blank
+// password means "no change" (the server keeps the stored one, same as the UA fields).
+function updateWorkerFields() {
+    const mode = el('cfgWorkerMode') ? el('cfgWorkerMode').value : 'inProcess';
+    [el('cfgWorkerUser'), el('cfgWorkerPass'), el('cfgWorkerDomain')].forEach(field => {
+        if (field) field.disabled = mode === 'inProcess';
+    });
+    const hint = el('cfgWorkerHint');
+    if (hint) {
+        hint.textContent = mode === 'group'
+            ? 'Group: every source with this account shares one worker process.'
+            : mode === 'own'
+                ? 'Own worker: a dedicated process for this source (account optional).'
+                : 'Runs inside the bridge process.';
+    }
+}
+
+function buildWorkerPayload() {
+    const mode = el('cfgWorkerMode').value;
+    if (mode === 'inProcess') return { mode: 'inProcess' };
+    return {
+        mode,
+        runAsUser: el('cfgWorkerUser').value.trim() || null,
+        runAsPassword: el('cfgWorkerPass').value || null,
+        runAsDomain: el('cfgWorkerDomain').value.trim() || null
+    };
+}
+
 async function saveSource() {
     const sourceId = el('cfgSourceId').value.trim();
     if (!sourceId) {
@@ -7607,7 +7774,8 @@ async function saveSource() {
         remoteUsername: el('cfgUser').value.trim() || null,
         remotePassword: el('cfgPass').value || null,
         remoteDomain: el('cfgDomain').value.trim() || null,
-        ioMode: el('cfgIoMode') ? el('cfgIoMode').value : undefined
+        ioMode: el('cfgIoMode') ? el('cfgIoMode').value : undefined,
+        worker: el('cfgWorkerMode') ? buildWorkerPayload() : undefined
     };
     const r = await fetch('/api/da/sources', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const p = await r.json();
@@ -9860,7 +10028,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!button) return;
         pickDriver(button.dataset.sourceId || '');
     });
-    ['cfgSourceId','cfgDisplayName','cfgProgId','cfgHost','cfgUser','cfgPass','cfgDomain'].forEach(id => {
+    ['cfgSourceId','cfgDisplayName','cfgProgId','cfgHost','cfgUser','cfgPass','cfgDomain',
+     'cfgWorkerMode','cfgWorkerUser','cfgWorkerPass','cfgWorkerDomain'].forEach(id => {
         el(id).addEventListener('input', () => { if (!state.editingNewSource) showSaveReset(); });
     });
     el('uaCfgApply').addEventListener('click', () => saveUaSource().catch(e => el('uaCfgMessage').textContent = '✗ ' + e.message));
@@ -10132,6 +10301,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     setInterval(refresh, 1000);
     setInterval(() => { if (el('logAutoRefresh')?.checked && document.querySelector('#view-logs.active')) { state.logsLoaded = false; loadLogs(true).catch(() => {}); } }, 3000);
     setInterval(() => { if (diagnosticsActive) loadDiagnostics().catch(() => {}); }, 2000);
+    setInterval(() => { if (document.querySelector('#view-workers.active')) loadWorkers({ silent: true }).catch(() => {}); }, 3000);
     setInterval(() => {
         if (document.querySelector('#view-mqtt.active')) {
             loadMqttStatus().catch(() => {});

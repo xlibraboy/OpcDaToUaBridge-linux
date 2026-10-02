@@ -257,6 +257,35 @@ public sealed class AuthApiTests
     }
 
     [Fact]
+    public async Task WorkerActions_AreAdminOnly_WhileTheBoardIsReadable()
+    {
+        await using TestAppHandle handle = await TestAppHandle.StartAsync(dir => WriteAuthAppsettings(dir));
+        using Session admin = await Session.SignInAsync(handle.Client.BaseAddress!, "admin", "admin");
+        await CreateUserAsync(admin, "viewer-workers", "secret", "Viewer");
+
+        // Reading the process family is Viewer work (the board page itself is Admin-only UI).
+        using (HttpResponseMessage adminRead = await admin.Client.GetAsync("/api/workers"))
+        {
+            Assert.Equal(HttpStatusCode.OK, adminRead.StatusCode);
+        }
+
+        // An admin request gets through the gate (the non-Windows host then answers 400).
+        using (HttpResponseMessage adminPost = await admin.Client.PostAsync("/api/workers/own:pmd/restart", null))
+        {
+            Assert.NotEqual(HttpStatusCode.Forbidden, adminPost.StatusCode);
+        }
+
+        using Session viewer = await Session.SignInAsync(handle.Client.BaseAddress!, "viewer-workers", "secret");
+        using (HttpResponseMessage viewerRead = await viewer.Client.GetAsync("/api/workers"))
+        {
+            Assert.Equal(HttpStatusCode.OK, viewerRead.StatusCode);
+        }
+
+        using HttpResponseMessage viewerPost = await viewer.Client.PostAsync("/api/workers/own:pmd/restart", null);
+        Assert.Equal(HttpStatusCode.Forbidden, viewerPost.StatusCode);
+    }
+
+    [Fact]
     public async Task Operator_MayWriteTagValues_ButNotConfigure()
     {
         await using TestAppHandle handle = await TestAppHandle.StartAsync(dir => WriteAuthAppsettings(dir));
