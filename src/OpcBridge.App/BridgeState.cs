@@ -97,9 +97,14 @@ public sealed class BridgeState
                     : BuildDisconnectedSnapshot(source))
                 .ToArray();
 
+            // A retry tick must not demote a live bridge to "Starting": the state
+            // only returns to "Running" on the next successful read, so a source
+            // left down made the badge blink Running/Starting for as long as it
+            // retried. Only a bridge that is actually starting reports "Starting".
+            bool wasRunning = string.Equals(status_.BridgeState, "Running", StringComparison.Ordinal);
             status_ = status_ with
             {
-                BridgeState = "Starting",
+                BridgeState = wasRunning ? "Running" : "Starting",
                 UpdateRateMs = updateRateMs,
                 MappingCount = mappingCount,
                 DaConnectionState = AggregateConnectionState(sourceStatuses),
