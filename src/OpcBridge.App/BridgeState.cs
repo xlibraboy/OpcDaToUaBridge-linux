@@ -190,13 +190,16 @@ public sealed class BridgeState
     }
     public void SetValue(BridgeValue value)
     {
+        // ServerTimestampUtc records when the bridge accepted the value (bridge clock),
+        // beside the source-preferred TimestampUtc.
         values_by_key_[NormalizeKey(value.SourceId, value.ItemId)] = new BridgeValueSnapshot(
             value.SourceId,
             value.ItemId,
             value.Value,
             value.TimestampUtc,
             value.DaQuality,
-            value.IsGood);
+            value.IsGood,
+            DateTime.UtcNow);
 
         ValueUpdated?.Invoke(value);
     }
@@ -358,7 +361,8 @@ public sealed class BridgeState
                 value.Value,
                 value.TimestampUtc,
                 value.DaQuality,
-                value.IsGood);
+                value.IsGood,
+                readTime);
 
             // Compute clock offset from the first good value: bridge time − DA server time
             if (clockOffsetMs is null && value.IsGood && value.TimestampUtc > DateTime.MinValue)
@@ -764,4 +768,5 @@ public sealed record BridgeValueSnapshot(
     object? Value,
     DateTime TimestampUtc,
     int DaQuality,
-    bool IsGood);
+    bool IsGood,
+    DateTime ServerTimestampUtc);

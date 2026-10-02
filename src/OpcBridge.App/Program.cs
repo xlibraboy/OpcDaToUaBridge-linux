@@ -754,6 +754,7 @@ app.MapPost("/api/firewall/apply", async (FirewallApplyRequest request, Cancella
              itemId = value.ItemId,
              value = value.Value,
              timestampUtc = value.TimestampUtc,
+             serverTimestampUtc = value.ServerTimestampUtc,
              daQuality = value.DaQuality,
              isGood = value.IsGood,
              dataType = DashboardValues.ResolveDataType(value.Value, dataTypeByKey, value.SourceId, value.ItemId),

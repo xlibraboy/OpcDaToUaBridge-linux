@@ -1600,6 +1600,32 @@ public sealed class DashboardPageTests
         Assert.Contains("el('navTroubleshoot').style.display = authSession.role === 'Admin'", DashboardPage.Script, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Html_LiveValuesShowsSourceAndServerTimestampColumns()
+    {
+        // OPC UA carries two stamps per value: the source stamp and the server stamp.
+        // Live Values labels the value's own time as Source Timestamp and adds the
+        // bridge receive time as Server Timestamp, so the pair reads like UaExpert's.
+        Assert.Contains(">Source Timestamp</th>", DashboardPage.Html);
+        Assert.Contains(">Server Timestamp</th>", DashboardPage.Html);
+        Assert.Contains("colspan=\"8\"", DashboardPage.Html);
+        Assert.Contains(".values-table { table-layout: fixed; min-width: 860px; }", DashboardPage.Html);
+    }
+
+    [Fact]
+    public void Script_RendersBothValueTimestamps()
+    {
+        Assert.Contains("rec.set.serverStamp(shortTime(get(it, 'serverTimestampUtc')));", DashboardPage.Script);
+        Assert.Contains("rec.td[7].title = locTime(get(it, 'serverTimestampUtc'));", DashboardPage.Script);
+        // Faceplate live panel labels the pair and shows the signed gap.
+        Assert.Contains("function formatTimestampDelta(", DashboardPage.Script);
+        Assert.Contains("const serverTimestamp = get(value, 'serverTimestampUtc');", DashboardPage.Script);
+        Assert.Contains("Source: ${esc(locTime(sourceTimestamp))}", DashboardPage.Script);
+        Assert.Contains("Server: ${esc(locTime(serverTimestamp))}", DashboardPage.Script);
+        // Topology freshness follows the bridge's own clock, not a possibly skewed source clock.
+        Assert.Contains("value.serverTimestampUtc || value.ServerTimestampUtc", DashboardPage.Script);
+    }
+
     private static int CountOccurrences(string haystack, string needle)
     {
         int count = 0, index = 0;

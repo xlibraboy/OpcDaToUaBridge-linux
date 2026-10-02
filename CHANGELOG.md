@@ -173,6 +173,17 @@ deduplicated verdict on the durable log, so the next incident leaves its explana
 `logs/bridge.log`. Honeywell PMD ProgIDs additionally compare the registered DLL against the
 installed Honeywell location and point at the field notes.
 
+**Live Values and the faceplate show both value timestamps.** OPC UA stamps every value twice —
+the source stamp (when the device, DA server or upstream UA server produced it) and the server
+stamp (when the server accepted it) — and UaExpert shows both; the dashboard collapsed them into
+one. **Ops ▸ Live Values** now labels the value's own time **Source Timestamp** and adds
+**Server Timestamp** beside it: the bridge's own receive time, the same clock the bridge's UA
+server reports to its clients, with the full local time in the cell tooltip. The tag faceplate's
+live panel labels both and adds the signed gap (`+3 ms`), which is transport latency plus any
+source/bridge clock offset. Topology freshness reads the bridge receive time too, so a DA
+server whose clock is skewed no longer paints fresh tags yellow. MQTT payloads and InfluxDB
+points are unchanged: `t` and the point time stay the source stamp.
+
 ### Changed
 
 **The installer's license page names AM2-DEV51, not a person.** The license agreement every

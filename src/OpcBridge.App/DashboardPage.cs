@@ -53,6 +53,8 @@ namespace OpcBridge.App;
 //   function loadIssues(, /api/issues
 //   Troubleshoot (Admin only): data-tab="troubleshoot", id="view-troubleshoot", id="navTroubleshoot",
 //   function loadTroubleshoot(/runDaTroubleshoot(/renderDaTroubleshoot(, /api/da/troubleshoot
+//   Live Values timestamps: th text "Source Timestamp"/"Server Timestamp", colspan="8",
+//   script reads serverTimestampUtc, function formatTimestampDelta(, faceplate text "Source: "/"Server: "
 internal static class DashboardPage
 {
     public const string Html = """
@@ -384,7 +386,7 @@ internal static class DashboardPage
         .badge.partial { color: var(--info); background: var(--info-bg); }
         table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
         .values-wrap { overflow-x: auto; }
-        .values-table { table-layout: fixed; min-width: 720px; }
+        .values-table { table-layout: fixed; min-width: 860px; }
         .values-table th { padding: 7px 10px; font-size: var(--fs-micro); position: sticky; top: 0; background: var(--panel); z-index: 1; }
         .values-table td { padding: 6px 10px; font-size: var(--fs-body); line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
         .values-table code, .values-table .mono { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-body); }
@@ -1238,9 +1240,9 @@ internal static class DashboardPage
         <div class="box-b" style="padding:0">
             <div class="values-wrap">
                 <table class="values-table">
-                    <colgroup><col style="width:11%"><col style="width:23%"><col style="width:20%"><col style="width:9%"><col style="width:9%"><col style="width:10%"><col style="width:18%"></colgroup>
-                    <thead><tr><th>Source</th><th>Item ID</th><th>Value</th><th>Type</th><th>Rate</th><th>Quality</th><th>Timestamp</th></tr></thead>
-                    <tbody id="values"><tr><td colspan="7" class="msg">Waiting for values&#8230;</td></tr></tbody>
+                    <colgroup><col style="width:10%"><col style="width:20%"><col style="width:16%"><col style="width:8%"><col style="width:8%"><col style="width:9%"><col style="width:14%"><col style="width:15%"></colgroup>
+                    <thead><tr><th>Source</th><th>Item ID</th><th>Value</th><th>Type</th><th>Rate</th><th>Quality</th><th title="Time the value was stamped at its source (device / DA / upstream UA server clock)">Source Timestamp</th><th title="Time the bridge received the value (bridge clock)">Server Timestamp</th></tr></thead>
+                    <tbody id="values"><tr><td colspan="8" class="msg">Waiting for values&#8230;</td></tr></tbody>
                 </table>
             </div>
         </div>
@@ -3502,7 +3504,9 @@ function getTagStatus(tag) {
     if (!value) return 'off';
 
     const isGood = value.isGood === true || value.IsGood === true;
-    const timestamp = new Date(value.timestampUtc || value.TimestampUtc || 0);
+    // Age against the bridge's receive time: a skewed source clock would otherwise
+    // mark every fresh value as stale.
+    const timestamp = new Date(value.serverTimestampUtc || value.ServerTimestampUtc || value.timestampUtc || value.TimestampUtc || 0);
     const age = Date.now() - timestamp.getTime();
     const pollRate = Number(tag.pollRateMs || tag.PollRateMs || 1000) || 1000;
 
@@ -3666,9 +3670,11 @@ function renderLiveValue(value, fallbackType) {
     const text = String(get(value, 'value') ?? '');
     const quality = get(value, 'daQuality');
     const isGood = !!get(value, 'isGood');
-    const timestamp = locTime(get(value, 'timestampUtc'));
+    const sourceTimestamp = get(value, 'timestampUtc');
+    const serverTimestamp = get(value, 'serverTimestampUtc');
+    const delta = formatTimestampDelta(sourceTimestamp, serverTimestamp);
     const type = get(value, 'dataType') || fallbackType || '—';
-    return `<div class="fp-v mono" title="${attr(text)}">${esc(text)}</div><div class="fp-meta"><span class="pill" style="padding:1px 6px;font-size:var(--fs-micro)" title="Data type">${esc(type)}</span><span>${badge(isGood ? 'Good' : 'Bad', isGood ? 'good' : 'bad')} <span class="${isGood ? 'good' : 'bad'}">(${esc(String(quality ?? '—'))})</span></span><span class="timestamp">${esc(timestamp)}</span></div>`;
+    return `<div class="fp-v mono" title="${attr(text)}">${esc(text)}</div><div class="fp-meta"><span class="pill" style="padding:1px 6px;font-size:var(--fs-micro)" title="Data type">${esc(type)}</span><span>${badge(isGood ? 'Good' : 'Bad', isGood ? 'good' : 'bad')} <span class="${isGood ? 'good' : 'bad'}">(${esc(String(quality ?? '—'))})</span></span><span title="Time the value was stamped at its source (device / DA / upstream UA server clock)">Source: ${esc(locTime(sourceTimestamp))}</span><span title="Time the bridge received the value (bridge clock)">Server: ${esc(locTime(serverTimestamp))}${delta ? ' <span class="msg">(' + esc(delta) + ')</span>' : ''}</span></div>`;
 }
 
 function linkTagLabel(sourceId, itemId, nameOverride = null) {
@@ -5101,6 +5107,19 @@ function shortTime(u) {
 function locTime(u) {
     if (!u) return '—';
     return new Date(u).toLocaleString([], { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', fractionalSecondDigits: 3 });
+}
+// Signed gap between the source stamp and the bridge's receive stamp: transport latency
+// plus any source/bridge clock offset. Shown only when both stamps parse.
+function formatTimestampDelta(source, server) {
+    if (!source || !server) return '';
+    const deltaMs = new Date(server).getTime() - new Date(source).getTime();
+    if (!Number.isFinite(deltaMs)) return '';
+    const abs = Math.abs(deltaMs);
+    const sign = deltaMs < 0 ? '−' : '+';
+    if (abs < 1000) return sign + Math.round(abs) + ' ms';
+    if (abs < 60000) return sign + (abs / 1000).toFixed(1) + ' s';
+    const totalSeconds = Math.round(abs / 1000);
+    return sign + Math.floor(totalSeconds / 60) + 'm ' + (totalSeconds % 60) + 's';
 }
 function get(o, k) { return o?.[k] ?? o?.[k[0].toUpperCase() + k.slice(1)]; }
 function currentSource() { return state.editingNewSource ? null : state.sources.find(s => s.sourceId === state.selectedSourceId) || null; }
@@ -6801,7 +6820,7 @@ function gridTextCell(node) {
 function buildValuesRow() {
     const tr = document.createElement('tr');
     tr.setAttribute('data-vrow', '1');
-    tr.innerHTML = '<td><code></code></td><td><code></code></td><td class="mono"></td><td class="msg"></td><td class="msg"></td><td></td><td class="msg timestamp"></td>';
+    tr.innerHTML = '<td><code></code></td><td><code></code></td><td class="mono"></td><td class="msg"></td><td class="msg"></td><td></td><td class="msg timestamp"></td><td class="msg timestamp"></td>';
     const td = tr.children;
     return {
         tr,
@@ -6812,7 +6831,8 @@ function buildValuesRow() {
             value: gridTextCell(td[2]),
             type: gridTextCell(td[3]),
             rate: gridTextCell(td[4]),
-            stamp: gridTextCell(td[6])
+            stamp: gridTextCell(td[6]),
+            serverStamp: gridTextCell(td[7])
         },
         quality: ''
     };
@@ -6830,12 +6850,14 @@ function updateValuesRow(rec, it) {
     rec.td[3].title = dataType;
     rec.td[5].title = quality;
     rec.td[6].title = locTime(get(it, 'timestampUtc'));
+    rec.td[7].title = locTime(get(it, 'serverTimestampUtc'));
     rec.set.source(sourceId);
     rec.set.item(itemId);
     rec.set.value(value);
     rec.set.type(dataType);
     rec.set.rate(formatMs(get(it, 'updateRate')));
     rec.set.stamp(shortTime(get(it, 'timestampUtc')));
+    rec.set.serverStamp(shortTime(get(it, 'serverTimestampUtc')));
     // The quality stamp only rewrites its cell when the state actually flips.
     const qKey = (good ? 'good' : 'bad') + '|' + quality;
     if (rec.quality !== qKey) {
@@ -6850,7 +6872,7 @@ function setValuesMessage(cls, text) {
     state.valuesRows = new Map();
     state.valuesOrder = [];
     const body = el('values');
-    if (body) body.innerHTML = '<tr><td colspan="7" class="' + cls + '">' + esc(text) + '</td></tr>';
+    if (body) body.innerHTML = '<tr><td colspan="8" class="' + cls + '">' + esc(text) + '</td></tr>';
 }
 function renderValuesRows(vs) {
     const body = el('values');
