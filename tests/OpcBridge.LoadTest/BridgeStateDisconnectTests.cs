@@ -33,6 +33,27 @@ public sealed class BridgeStateDisconnectTests
         Assert.Equal("Partial", state.GetStatus().DaConnectionState);
     }
 
+    [Fact]
+    public void Configure_KeepsRunningBridgeState_OnRetryTicks()
+    {
+        BridgeState state = CreateState();
+        DaSourceRuntimeSettings[] sources =
+        [
+            CreateDaSource("default"),
+            CreateDaSource("mxopc-plc-mhi")
+        ];
+
+        state.Configure(1000, 0, sources);
+        Assert.Equal("Starting", state.GetStatus().BridgeState);
+
+        state.UpdateDaRead("default", Array.Empty<BridgeValue>(), TimeSpan.FromMilliseconds(1));
+        Assert.Equal("Running", state.GetStatus().BridgeState);
+
+        // A retry tick while another source is down must not demote the badge (#35).
+        state.Configure(1000, 0, sources);
+        Assert.Equal("Running", state.GetStatus().BridgeState);
+    }
+
     private static DaSourceRuntimeSettings CreateDaSource(string sourceId) => new(
         sourceId,
         sourceId,
