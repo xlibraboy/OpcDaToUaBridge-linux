@@ -4,7 +4,8 @@
 Emits one file with two fragments:
   - the directory tree under INSTALLFOLDER (subdirectories such as runtimes/), and
   - a ComponentGroup named AppFiles with one component per file, referenced by the
-    main package (packaging/msi/OpcBridge.wxs) via <ComponentGroupRef>.
+    app's package source (packaging/msi/OpcBridge.wxs, OpcBridge.Hmi.wxs,
+    OpcBridge.Designer.wxs) via <ComponentGroupRef>.
 
 File sources are written relative to the repository root, because the wix build is
 launched from there (natively on Windows, or under Wine in a container).

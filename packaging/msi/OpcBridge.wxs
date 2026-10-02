@@ -1,5 +1,12 @@
 <!--
-  OpcBridge Windows installer (WiX v5 schema, built with the `wix` dotnet tool).
+  OpcBridge Server installer (WiX v5 schema, built with the `wix` dotnet tool).
+
+  One of three package sources — one installer per app. This one carries the bridge
+  alone; packaging/msi/OpcBridge.Hmi.wxs carries the HMI runtime and
+  packaging/msi/OpcBridge.Designer.wxs the designer. Each is its own product with its
+  own UpgradeCode, so the three install, upgrade and uninstall independently: a server
+  upgrade never removes the desktop apps, and the desktop apps install on a host that
+  runs no bridge.
 
   Built by .github/workflows/windows-release.yml on a Windows runner, which supplies:
     -define MsiVersion=<x.y.z>   from Directory.Build.props (must equal the newest release in the server's CHANGELOG.md)
@@ -7,17 +14,18 @@
     -d HttpPort=<port>           bridge HTTP port (default 8080)
     -d UaPort=<port>             bridge OPC UA port (default 4840)
     build/wix/AppFiles-<arch>.wxs       harvested OpcBridge.App (server) files, one file per architecture
-    build/wix/HmiFiles.wxs              harvested OpcBridge.Hmi (runtime) files
-    build/wix/DesignerFiles.wxs         harvested OpcBridge.Hmi.Designer files
 
-  One source builds both installers, one `wix build` per architecture. `-arch x86|x64` sets
-  the package itself (Program Files vs Program Files (x86)) and, through WiX's own
+  One source builds both bridge installers, one `wix build` per architecture. `-arch x86|x64`
+  sets the package itself (Program Files vs Program Files (x86)) and, through WiX's own
   $(sys.BUILDARCH), the server files and the Apps & features name inside it — the
   architecture is never passed twice, so the payload cannot end up disagreeing with the
   package it is in. Which one a host takes is decided by its OPC DA servers, not its
   Windows: x86 is the default because a 64-bit process cannot load 32-bit DA COM servers,
-  and the x64 package is for a host whose DA servers are 64-bit only. Nothing else differs
-  — the HMI runtime and designer are win-x64 in both.
+  and the x64 package is for a host whose DA servers are 64-bit only. The two share this
+  package's UpgradeCode, so installing one over the other — even at the same version —
+  replaces it instead of colliding on the Windows service and data directory both own;
+  the HMI and Designer installers carry their own UpgradeCodes and never take part in
+  that swap, so a station changes architecture by installing the other bridge package.
 
   The harvested files come from scripts/msi/harvest.py.
 
@@ -29,19 +37,17 @@
   as LocalSystem, so it can), and the bridge rewrites the shortcut's URL on every start
   to the port it bound — see src/OpcBridge.App/DashboardShortcut.cs.
 
-  Three selectable features (WixUI_FeatureTree shows the tree):
-    - OpcBridge Server: self-contained win-x86 or win-x64 app (per MsiArch) installed as a
-      Windows service. x86 by default because a 64-bit process cannot load 32-bit OPC DA
-      COM servers (Matrikon, Kepware) without DCOM surrogate setup.
-    - OpcBridge HMI Runtime: self-contained win-x64 Avalonia app (operator client).
-    - OpcBridge HMI Designer: self-contained win-x64 Avalonia app (display authoring).
+  Upgrading from the earlier combined installer (one MSI that offered the bridge, HMI
+  runtime and designer as features of one product): the shared UpgradeCode replaces it
+  with this package, which carries the bridge only — reinstall the desktop apps from
+  their own installers afterwards.
 
-  The service component lives in the Server feature, so an HMI-only station installs
-  nothing that runs. Runtime state goes to C:\ProgramData\OpcBridge (OPCBRIDGE_DATA
-  machine environment variable) so upgrades replace binaries and never touch
-  users.json, mappings.json, sources.json, displays or the PKI store. The HMI apps
-  keep per-user config under %APPDATA%\OpcBridge.Hmi (hmi-config.json, trend groups)
-  because Program Files is read-only for normal users.
+  The service component installs the bridge as a Windows service that starts at boot.
+  Runtime state goes to C:\ProgramData\OpcBridge (OPCBRIDGE_DATA machine environment
+  variable) so upgrades replace binaries and never touch users.json, mappings.json,
+  sources.json, displays or the PKI store. The desktop apps keep per-user config under
+  %APPDATA%\OpcBridge.Hmi (hmi-config.json, trend groups) because Program Files is
+  read-only for normal users.
 
   Build-time note: File/@Source paths are relative to the repository root, because the
   wix build always runs from there (see .github/workflows/windows-release.yml).
@@ -74,24 +80,25 @@
            Codepage="1252"
            InstallerVersion="500">
 
-    <SummaryInformation Description="OpcBridge — OPC DA to OPC UA bridge, HMI runtime and designer" />
+    <SummaryInformation Description="OpcBridge — OPC DA to OPC UA bridge and web dashboard" />
 
-    <!-- The two packages share this UpgradeCode, so only one of them is ever installed:
-         they both own the OpcBridge Windows service, the C:\ProgramData\OpcBridge data
-         directory and the Start Menu folder, so a second install beside the first could
+    <!-- The two bridge packages share this UpgradeCode, so only one of them is ever
+         installed: they both own the OpcBridge Windows service, the C:\ProgramData\OpcBridge
+         data directory and the Start Menu folder, so a second install beside the first could
          only collide. AllowSameVersionUpgrades is what makes the switch work at the same
          version — without it, installing the other architecture of the release already on
          the machine fails with "another version of this product is already installed"
          (error 1638), because Windows Installer treats one UpgradeCode + one version as one
          product. With it, installing the other package removes the installed one and
          installs itself, which is how a station changes architecture: runtime state under
-         C:\ProgramData is outside both packages and survives. -->
+         C:\ProgramData is outside both packages and survives. The HMI and Designer packages
+         have their own UpgradeCodes (see their sources), so this swap never involves them. -->
     <MajorUpgrade AllowSameVersionUpgrades="yes"
                   DowngradeErrorMessage="A newer version of [ProductName] is already installed. Uninstall it first." />
     <MediaTemplate EmbedCab="yes" />
 
-    <!-- Icon for the Apps & features entry. The three apps carry their own icon inside
-         their exe (ApplicationIcon in each csproj), which is what the advertised Start
+    <!-- Icon for the Apps & features entry. Each of the three apps carries its own icon
+         inside its exe (ApplicationIcon in each csproj), which is what the advertised Start
          Menu shortcuts resolve against — but the dashboard entry is a .url, which has no
          target exe to take one from, so it pins its icon to the bridge exe below. This
          Icon only covers the product itself, which is the bridge. Generated by
@@ -99,7 +106,8 @@
     <Icon Id="ProductIcon" SourceFile="src/OpcBridge.App/Assets/opcbridge-server.ico" />
     <Property Id="ARPPRODUCTICON" Value="ProductIcon" />
 
-    <!-- Feature tree in the installer: pick which of the three apps to install. -->
+    <!-- One feature: this package is the bridge alone (the HMI runtime and the designer
+         are separate products with their own installers and UpgradeCodes). -->
     <ui:WixUI Id="WixUI_FeatureTree" />
     <WixVariable Id="WixUILicenseRtf" Value="packaging/msi/License.rtf" />
 
@@ -115,40 +123,8 @@
       <ComponentRef Id="DashboardShortcut" />
     </Feature>
 
-    <Feature Id="HmiRuntime"
-             Title="OpcBridge HMI Runtime"
-             Description="Avalonia operator runtime: process displays, live values, trend groups, faceplates. Connects to bridges over HTTP/SignalR only."
-             Level="1"
-             InstallDefault="local">
-      <ComponentGroupRef Id="HmiFiles" />
-      <ComponentRef Id="HmiExe" />
-    </Feature>
-
-    <Feature Id="HmiDesigner"
-             Title="OpcBridge HMI Designer"
-             Description="Standalone authoring tool for process displays; saves them to the primary bridge's display store."
-             Level="1"
-             InstallDefault="local">
-      <ComponentGroupRef Id="DesignerFiles" />
-      <ComponentRef Id="DesignerExe" />
-    </Feature>
-
     <StandardDirectory Id="ProgramFilesFolder">
       <Directory Id="INSTALLFOLDER" Name="OpcBridge">
-        <Directory Id="HmiFolder" Name="Hmi">
-          <Component Id="HmiExe" Guid="3F5A8D24-C19B-4E27-8E93-7A06F4B52E9D">
-            <File Id="HmiAppExe" Source="build\publish-hmi\OpcBridge.Hmi.exe" KeyPath="yes">
-              <Shortcut Id="HmiStartShortcut" Directory="MenuFolder" Name="OpcBridge HMI" Advertise="yes" />
-            </File>
-          </Component>
-        </Directory>
-        <Directory Id="DesignerFolder" Name="Designer">
-          <Component Id="DesignerExe" Guid="B7E2C95F-64A1-4F0C-8D3E-52A09C7E31B8">
-            <File Id="DesignerAppExe" Source="build\publish-designer\OpcBridge.Hmi.Designer.exe" KeyPath="yes">
-              <Shortcut Id="DesignerStartShortcut" Directory="MenuFolder" Name="OpcBridge Designer" Advertise="yes" />
-            </File>
-          </Component>
-        </Directory>
         <Component Id="AppExe" Guid="2382C016-392A-4372-9766-E06798F71068">
           <File Id="OpcBridgeAppExe" Source="$(ServerPublishDir)\OpcBridge.App.exe" KeyPath="yes" />
           <ServiceInstall Id="OpcBridgeService"
@@ -239,7 +215,9 @@
                IconFile is a formatted field, so [#OpcBridgeAppExe] resolves to the
                installed bridge exe. A .url without one is drawn by Windows through the
                default browser's handler — a blank page icon on a Windows 10 Start Menu
-               with Edge — and this is the only Start Menu entry the Server feature adds. -->
+               with Edge — and this is the only Start Menu entry the Server feature adds.
+               The HMI and Designer installers add their shortcuts to this same folder,
+               each owning only its own. -->
           <util:InternetShortcut Id="DashboardUrlShortcut"
                                  Name="OpcBridge Dashboard"
                                  Target="http://localhost:$(HttpPort)/"

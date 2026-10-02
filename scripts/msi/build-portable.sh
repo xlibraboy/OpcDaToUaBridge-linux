@@ -3,13 +3,14 @@
 #   dist/OpcBridge-<version>-win-x86.zip   portable self-contained server build
 #   dist/OpcBridge-<version>-win-x64.zip   portable self-contained server build (64-bit)
 #
-# The .msi installer is NOT built here: WiX cannot link an MSI on Linux (it reports
-# WIX0000 and then fails to validate Directory/@Name), so the installer is built
-# natively on a Windows runner by .github/workflows/windows-release.yml. That workflow
-# also produces these same zips, so this script is for local iteration. The installer
-# is x86 only — a 64-bit process cannot load 32-bit OPC DA COM servers (Matrikon,
-# Kepware) without DCOM surrogate setup — which is why the x64 build ships as a
-# portable zip for hosts that only use 64-bit or out-of-proc DA servers.
+# The .msi installers are NOT built here: WiX cannot link an MSI on Linux (it reports
+# WIX0000 and then fails to validate Directory/@Name), so the installers are built
+# natively on a Windows runner by .github/workflows/windows-release.yml. The Release
+# carries those installers only (one per app; see packaging/msi/), so this script is how
+# the portable zips are produced, for hosts deployed by extraction. The x86/x64 split
+# follows the same rule as the installers: a 64-bit process cannot load 32-bit OPC DA
+# COM servers, so a host whose DA servers are 32-bit takes win-x86 and a 64-bit-only
+# host takes win-x64.
 #
 # Requirements: docker (no local dotnet SDK — see context.md), python3, the
 # ~/.nuget-cache cache directory.

@@ -1,0 +1,86 @@
+<!--
+  OpcBridge HMI Designer installer (WiX v5 schema, built with the `wix` dotnet tool).
+
+  One of three package sources — one installer per app. This one carries the standalone
+  display authoring tool alone (the bridge is packaging/msi/OpcBridge.wxs, the runtime
+  packaging/msi/OpcBridge.Hmi.wxs). Its UpgradeCode is its own, so the app installs,
+  upgrades and uninstalls independently of the other two, and the bridge's x86↔x64
+  replacement swap (those two packages share one UpgradeCode) never touches it.
+
+  Built by .github/workflows/windows-release.yml on a Windows runner, which supplies:
+    -define MsiVersion=<x.y.z>   from Directory.Build.props (shared by all three apps)
+    build/wix/DesignerFiles.wxs  harvested OpcBridge.Hmi.Designer files (root DesignerFolder, group DesignerFiles)
+
+  The designer is win-x64 self-contained in every case — it speaks HTTP + SignalR to a
+  bridge and holds no COM — so there is one package and no per-architecture loop. It
+  installs into its own Program Files folder and adds one Start Menu shortcut to the
+  OpcBridge folder, which the bridge package shares; this package creates that folder
+  itself, so the shortcut works on a host that has no bridge installed.
+
+  The harvested files come from scripts/msi/harvest.py. Per-user config lives under
+  %APPDATA%\OpcBridge.Hmi, so Program Files stays read-only for normal users and an
+  upgrade replaces binaries only.
+-->
+
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+
+  <Package Name="OpcBridge Designer"
+           Manufacturer="AM2-DEV51"
+           Version="$(MsiVersion)"
+           UpgradeCode="27F92515-9224-4F25-8EDB-6F24704D0D79"
+           Scope="perMachine"
+           Compressed="yes"
+           Language="1033"
+           Codepage="1252"
+           InstallerVersion="500">
+
+    <SummaryInformation Description="OpcBridge Designer — display authoring tool" />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed. Uninstall it first." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="ProductIcon" SourceFile="src/OpcBridge.Hmi.Designer/Assets/opcbridge-designer.ico" />
+    <Property Id="ARPPRODUCTICON" Value="ProductIcon" />
+
+    <ui:WixUI Id="WixUI_FeatureTree" />
+    <WixVariable Id="WixUILicenseRtf" Value="packaging/msi/License.rtf" />
+
+    <Feature Id="HmiDesigner"
+             Title="OpcBridge HMI Designer"
+             Description="Standalone authoring tool for process displays; saves them to the primary bridge's display store."
+             Level="1"
+             InstallDefault="local">
+      <ComponentGroupRef Id="DesignerFiles" />
+      <ComponentRef Id="DesignerExe" />
+      <ComponentRef Id="StartMenuFolder" />
+    </Feature>
+
+    <StandardDirectory Id="ProgramFilesFolder">
+      <Directory Id="DesignerFolder" Name="OpcBridge Designer">
+        <Component Id="DesignerExe" Guid="00D6906E-B1FD-4D65-9E37-F639D86AAE22">
+          <File Id="DesignerAppExe" Source="build\publish-designer\OpcBridge.Hmi.Designer.exe" KeyPath="yes">
+            <Shortcut Id="DesignerStartShortcut" Directory="MenuFolder" Name="OpcBridge Designer" Advertise="yes" />
+          </File>
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <!-- Created by this package, not inherited from the bridge's install: the designer
+           installs and uninstalls on its own. The bridge package declares the same
+           folder, and the last of the installed apps to go removes it. -->
+      <Directory Id="MenuFolder" Name="OpcBridge">
+        <Component Id="StartMenuFolder" Guid="7A41B583-6A52-4414-9A8E-27DA49B36D8B">
+          <CreateFolder />
+          <RegistryValue Root="HKLM"
+                         Key="Software\OpcBridge"
+                         Name="DesignerStartMenuFolder"
+                         Type="integer"
+                         Value="1"
+                         KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+  </Package>
+</Wix>

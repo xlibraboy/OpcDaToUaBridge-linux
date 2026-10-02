@@ -1,33 +1,29 @@
 name: Windows release
 
-# Builds the Windows release artifacts: the x86 and x64 .msi installers and the portable
-# server zips (win-x86 + win-x64).
+# Builds the Windows release artifacts: four .msi installers, one per app —
+#   OpcBridge-<version>-win-x86.msi           the bridge (server), 32-bit
+#   OpcBridge-<version>-win-x64.msi           the bridge (server), 64-bit
+#   OpcBridge-HMI-<version>-win-x64.msi       the HMI runtime
+#   OpcBridge-Designer-<version>-win-x64.msi  the HMI designer
 #
 # The installers are built here, on Windows, because WiX cannot link an MSI on Linux (it
-# reports WIX0000 and fails to validate Directory/@Name). One package source
-# (packaging/msi/OpcBridge.wxs) builds both, one `wix build` per architecture, and each
-# carries that architecture's server — a 32-bit process is required to activate 32-bit
-# local OPC DA COM servers, and a host whose DA servers are 64-bit only cannot activate
-# them from a 32-bit bridge — plus the x64 HMI runtime and Designer, which only speak
-# HTTP to the bridge.
+# reports WIX0000 and fails to validate Directory/@Name).
 #
-# Which installer a host takes is decided by its OPC DA servers, not its Windows: x86 is
-# the default and x64 is the 64-bit-only case. Both share one UpgradeCode, so installing
-# one over the other — even at the same version — replaces it instead of colliding on the
-# Windows service and data directory both own; a station switches architecture by
-# installing the other package (see packaging/msi/OpcBridge.wxs).
+# One package source per app (packaging/msi/OpcBridge.wxs for the bridge, OpcBridge.Hmi.wxs
+# and OpcBridge.Designer.wxs beside it), and each is its own product with its own
+# UpgradeCode: the three install, upgrade and uninstall independently, and the Release is
+# what builds them together. The bridge package is built once per architecture, because a
+# 32-bit process is required to activate 32-bit local OPC DA COM servers and a host whose
+# DA servers are 64-bit only cannot activate them from a 32-bit bridge: x86 is the default
+# and x64 is the 64-bit-only case. Those two share one UpgradeCode, so installing one over
+# the other — even at the same version — replaces it instead of colliding on the Windows
+# service and data directory both own; a station switches architecture by installing the
+# other package (see packaging/msi/OpcBridge.wxs). The HMI runtime and designer are
+# self-contained win-x64 apps that only speak HTTP to the bridge, so each has one package.
 #
-# The same two servers ship as portable zips as well, for hosts deployed by extraction —
-# the publish scripts/msi/build-portable.sh makes locally, made here so every release
-# carries them. Both filter through publish_skip.py, exactly like the MSI harvest, so a
-# host's live config can never ship inside one.
-#
-# Each installer is a feature tree: server, HMI runtime and HMI designer are
-# individually selectable at install time.
-#
-# A `v*` tag push also publishes a GitHub Release carrying both installers and both zips;
-# a manual workflow_dispatch run stops at the uploaded artifacts, because there is
-# no tag to release against.
+# A `v*` tag push also publishes a GitHub Release carrying the four installers; a manual
+# workflow_dispatch run stops at the uploaded artifact, because there is no tag to
+# release against.
 
 on:
   workflow_dispatch:
@@ -76,9 +72,9 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          # Each app's exe is skipped here and declared in OpcBridge.wxs, which is where
-          # the service (server) and the Start Menu shortcuts (HMI/Designer) attach to it.
-          # The server is harvested once per architecture; the package built for an
+          # Each app's exe is skipped here and declared in that app's package source, which
+          # is where the service (server) and the Start Menu shortcuts (all three) attach to
+          # it. The server is harvested once per architecture; the package built for an
           # architecture links the matching one below, so the two AppFiles fragments — which
           # declare the same element ids, hashed from the same relative paths — never meet in
           # one package.
@@ -99,15 +95,15 @@ jobs:
           wix extension add --global WixToolset.Firewall.wixext/5.0.2
           wix extension add --global WixToolset.UI.wixext/5.0.2
 
-      - name: Build installers (win-x86 + win-x64)
+      - name: Build installers (bridge win-x86 + win-x64, HMI, Designer)
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $env:PATH = "$env:PATH;$env:USERPROFILE\.dotnet\tools"
           $version = '${{ steps.version.outputs.version }}'
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          # One package source, one build per architecture: -arch sets the package itself
-          # (Program Files vs Program Files (x86)) and, through the package's own
+          # Bridge: one package source, one build per architecture. -arch sets the package
+          # itself (Program Files vs Program Files (x86)) and, through the package's own
           # $(sys.BUILDARCH), the server payload and the Apps & features name that go in it.
           # Both share the package's UpgradeCode, so a station moves between them by
           # installing the other one.
@@ -121,33 +117,32 @@ jobs:
               -d UaPort=4840 `
               packaging/msi/OpcBridge.wxs `
               "build/wix/AppFiles-$arch.wxs" `
-              build/wix/HmiFiles.wxs `
-              build/wix/DesignerFiles.wxs `
               -o "dist/OpcBridge-$version-win-$arch.msi"
             if ($LASTEXITCODE -ne 0) { throw "wix build failed for win-$arch" }
           }
-
-      - name: Build portable zips
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          # Same filter the installer harvest runs (publish_skip.py through make-zip.py),
-          # so a host's live mappings, sources, users or PKI never ship inside a zip.
-          python scripts/msi/make-zip.py build/publish-x86 "dist/OpcBridge-${{ steps.version.outputs.version }}-win-x86.zip"
-          python scripts/msi/make-zip.py build/publish-x64 "dist/OpcBridge-${{ steps.version.outputs.version }}-win-x64.zip"
+          # HMI runtime and designer: win-x64-only single-app products, each its own package
+          # source, UpgradeCode and harvest fragment. The UI extension is the only one they
+          # need — no firewall rules or InternetShortcut in either.
+          wix build -arch x64 `
+            -ext WixToolset.UI.wixext `
+            -define "MsiVersion=$version" `
+            packaging/msi/OpcBridge.Hmi.wxs `
+            build/wix/HmiFiles.wxs `
+            -o "dist/OpcBridge-HMI-$version-win-x64.msi"
+          if ($LASTEXITCODE -ne 0) { throw 'wix build failed for the HMI installer' }
+          wix build -arch x64 `
+            -ext WixToolset.UI.wixext `
+            -define "MsiVersion=$version" `
+            packaging/msi/OpcBridge.Designer.wxs `
+            build/wix/DesignerFiles.wxs `
+            -o "dist/OpcBridge-Designer-$version-win-x64.msi"
+          if ($LASTEXITCODE -ne 0) { throw 'wix build failed for the designer installer' }
 
       - name: Upload installers
         uses: actions/upload-artifact@v4
         with:
           name: OpcBridge-${{ steps.version.outputs.version }}-msi
           path: dist/*.msi
-          if-no-files-found: error
-
-      - name: Upload portable zips
-        uses: actions/upload-artifact@v4
-        with:
-          name: OpcBridge-${{ steps.version.outputs.version }}-portable-zips
-          path: dist/*.zip
           if-no-files-found: error
 
       # Only a tagged run has something to release; a workflow_dispatch run stops above.
@@ -194,13 +189,13 @@ jobs:
           $notes | Set-Content -Path build/release-notes.md -Encoding utf8
 
           # The assets are named from Directory.Build.props, not the tag, so they always
-          # match what the steps above produced: the installers put the station on a host —
-          # win-x86 where its DA servers are 32-bit, win-x64 where they are 64-bit only —
-          # and the two zips are those same servers without the installer.
+          # match what the steps above produced: one installer per app — the bridge's
+          # x86/x64 pair (win-x86 where its DA servers are 32-bit, win-x64 where they are
+          # 64-bit only), the HMI runtime and the designer.
           gh release create $env:TAG `
             "dist/OpcBridge-$version-win-x86.msi" `
             "dist/OpcBridge-$version-win-x64.msi" `
-            "dist/OpcBridge-$version-win-x86.zip" `
-            "dist/OpcBridge-$version-win-x64.zip" `
+            "dist/OpcBridge-HMI-$version-win-x64.msi" `
+            "dist/OpcBridge-Designer-$version-win-x64.msi" `
             --title "OpcBridge $version" `
             --notes-file build/release-notes.md

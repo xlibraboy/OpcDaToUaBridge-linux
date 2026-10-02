@@ -1,0 +1,86 @@
+<!--
+  OpcBridge HMI Runtime installer (WiX v5 schema, built with the `wix` dotnet tool).
+
+  One of three package sources — one installer per app. This one carries the Avalonia
+  operator runtime alone (the bridge is packaging/msi/OpcBridge.wxs, the designer
+  packaging/msi/OpcBridge.Designer.wxs). Its UpgradeCode is its own, so the app
+  installs, upgrades and uninstalls independently of the other two, and the bridge's
+  x86↔x64 replacement swap (those two packages share one UpgradeCode) never touches it.
+
+  Built by .github/workflows/windows-release.yml on a Windows runner, which supplies:
+    -define MsiVersion=<x.y.z>   from Directory.Build.props (shared by all three apps)
+    build/wix/HmiFiles.wxs       harvested OpcBridge.Hmi files (root HmiFolder, group HmiFiles)
+
+  The runtime is win-x64 self-contained in every case — it speaks HTTP + SignalR to a
+  bridge and holds no COM — so there is one package and no per-architecture loop. It
+  installs into its own Program Files folder and adds one Start Menu shortcut to the
+  OpcBridge folder, which the bridge package shares; this package creates that folder
+  itself, so the shortcut works on a host that has no bridge installed.
+
+  The harvested files come from scripts/msi/harvest.py. Per-user config
+  (hmi-config.json, trend groups) lives under %APPDATA%\OpcBridge.Hmi, so Program
+  Files stays read-only for normal users and an upgrade replaces binaries only.
+-->
+
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+
+  <Package Name="OpcBridge HMI"
+           Manufacturer="AM2-DEV51"
+           Version="$(MsiVersion)"
+           UpgradeCode="2B18F49D-3B4A-47CD-B9BD-6D9FC7F8715F"
+           Scope="perMachine"
+           Compressed="yes"
+           Language="1033"
+           Codepage="1252"
+           InstallerVersion="500">
+
+    <SummaryInformation Description="OpcBridge HMI — Avalonia operator runtime" />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed. Uninstall it first." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="ProductIcon" SourceFile="src/OpcBridge.Hmi/Assets/opcbridge-hmi.ico" />
+    <Property Id="ARPPRODUCTICON" Value="ProductIcon" />
+
+    <ui:WixUI Id="WixUI_FeatureTree" />
+    <WixVariable Id="WixUILicenseRtf" Value="packaging/msi/License.rtf" />
+
+    <Feature Id="HmiRuntime"
+             Title="OpcBridge HMI Runtime"
+             Description="Avalonia operator runtime: process displays, live values, trend groups, faceplates. Connects to bridges over HTTP/SignalR only."
+             Level="1"
+             InstallDefault="local">
+      <ComponentGroupRef Id="HmiFiles" />
+      <ComponentRef Id="HmiExe" />
+      <ComponentRef Id="StartMenuFolder" />
+    </Feature>
+
+    <StandardDirectory Id="ProgramFilesFolder">
+      <Directory Id="HmiFolder" Name="OpcBridge HMI">
+        <Component Id="HmiExe" Guid="058B7893-D5A7-4B89-A7A6-519E43CFC5E5">
+          <File Id="HmiAppExe" Source="build\publish-hmi\OpcBridge.Hmi.exe" KeyPath="yes">
+            <Shortcut Id="HmiStartShortcut" Directory="MenuFolder" Name="OpcBridge HMI" Advertise="yes" />
+          </File>
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <!-- Created by this package, not inherited from the bridge's install: the runtime
+           installs and uninstalls on its own. The bridge package declares the same
+           folder, and the last of the installed apps to go removes it. -->
+      <Directory Id="MenuFolder" Name="OpcBridge">
+        <Component Id="StartMenuFolder" Guid="B81BBDED-1875-4629-9427-3FBA8B03B03C">
+          <CreateFolder />
+          <RegistryValue Root="HKLM"
+                         Key="Software\OpcBridge"
+                         Name="HmiStartMenuFolder"
+                         Type="integer"
+                         Value="1"
+                         KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+  </Package>
+</Wix>
