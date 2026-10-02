@@ -175,6 +175,12 @@ installed Honeywell location and point at the field notes.
 
 ### Changed
 
+**The installer's license page names AM2-DEV51, not a person.** The license agreement every
+MSI shows still read `Copyright (c) Budi Kurniawan. All rights reserved.` — the publisher fix
+(#28) changed the maker Windows lists, but the page the installer itself displays kept the
+author's name. `packaging/msi/License.rtf`, shared by all three packages, now reads
+`Copyright (c) AM2-DEV51. All rights reserved.` (#33).
+
 **The Release carries one installer per app.** The MSI was one product offering the bridge,
 HMI runtime and designer as features of a single feature tree, so a station could not install
 or upgrade one without the others. Each app now has its own installer — the bridge at
