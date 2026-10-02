@@ -122,7 +122,13 @@ public sealed record WorkerUpsertSource(WorkerSourceConfig Config);
 
 public sealed record WorkerRemoveSource(string SourceId);
 
-public sealed record WorkerTagRef(string ItemId, int PollRateMs = 0);
+/// <summary>
+/// One tag in a worker read request. <see cref="DataType"/> is the mapping's configured
+/// type ("Auto" = native source type); the worker rebuilds its <c>TagMapping</c> from this
+/// ref, so dropping the type here would force every item to the TagMapping default
+/// ("Double" → VT_R8) and coerce booleans/strings into doubles.
+/// </summary>
+public sealed record WorkerTagRef(string ItemId, int PollRateMs = 0, string DataType = "Auto");
 
 public sealed record WorkerReadRequest(string SourceId, IReadOnlyList<WorkerTagRef> Tags);
 

@@ -217,6 +217,23 @@ public sealed class DaWorkerProtocolTests
         Assert.Null(frame.PayloadAs<WorkerPong>());
     }
 
+    [Fact]
+    public void WorkerTagRef_WithoutADataType_DefaultsToAuto()
+    {
+        // The worker rebuilds its TagMapping from the ref, so a frame that predates the
+        // field (or omits it) must default to Auto — the native source type — and never
+        // inherit the TagMapping initializer "Double", which coerces every DA item to VT_R8.
+        WorkerFrame frame = WorkerFrame.Create(
+            WorkerFrameTypes.Read,
+            9,
+            new { sourceId = "pmd", tags = new[] { new { itemId = "Tag1", pollRateMs = 100 } } });
+
+        WorkerReadRequest? request = frame.PayloadAs<WorkerReadRequest>();
+
+        Assert.NotNull(request);
+        Assert.Equal("Auto", Assert.Single(request!.Tags).DataType);
+    }
+
     private static WireValue Value(string itemId, object? value)
     {
         (string type, JsonElement json) = WireValueCodec.Encode(value);
