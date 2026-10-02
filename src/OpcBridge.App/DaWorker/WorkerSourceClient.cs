@@ -105,7 +105,7 @@ internal sealed class WorkerSourceClient : ISourceClient, ISubscribableSourceCli
         }
 
         List<WorkerTagRef> tags = mappings
-            .Select(mapping => new WorkerTagRef(mapping.ItemId, mapping.PollRateMs))
+            .Select(mapping => new WorkerTagRef(mapping.ItemId, mapping.PollRateMs, mapping.DataType))
             .ToList();
 
         WorkerFrame response = await RequestAsync(

@@ -47,7 +47,7 @@ public sealed class WorkerSourceClientTests
 
         await client.ConnectAsync(CancellationToken.None);
         IReadOnlyList<BridgeValue> values = await client.ReadAsync(
-            new[] { new TagMapping { ItemId = "Tag1", PollRateMs = 500 } },
+            new[] { new TagMapping { ItemId = "Tag1", PollRateMs = 500, DataType = "Boolean" } },
             CancellationToken.None);
 
         BridgeValue value = Assert.Single(values);
@@ -56,10 +56,14 @@ public sealed class WorkerSourceClientTests
         Assert.Equal(12.5d, value.Value);
         Assert.True(value.IsGood);
 
-        // The request carries the tag's poll rate so the worker keeps its rate groups.
+        // The request carries the tag's poll rate (worker rate groups) and configured type:
+        // without the type the worker rebuilds the mapping as "Double" and asks the DA server
+        // to convert every item to VT_R8, so booleans arrive as doubles.
         WorkerFrame read = Assert.Single(worker.Received, frame => frame.Type == WorkerFrameTypes.Read);
         WorkerReadRequest request = read.PayloadAs<WorkerReadRequest>()!;
-        Assert.Equal(500, Assert.Single(request.Tags).PollRateMs);
+        WorkerTagRef tag = Assert.Single(request.Tags);
+        Assert.Equal(500, tag.PollRateMs);
+        Assert.Equal("Boolean", tag.DataType);
         await client.DisposeAsync();
     }
 

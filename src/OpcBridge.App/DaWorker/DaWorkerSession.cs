@@ -276,7 +276,7 @@ internal sealed class DaWorkerSession : IAsyncDisposable
 
         IReadOnlyList<WorkerTagRef> tags = request.Tags ?? Array.Empty<WorkerTagRef>();
         List<TagMapping> mappings = tags
-            .Select(tag => new TagMapping { ItemId = tag.ItemId, PollRateMs = tag.PollRateMs })
+            .Select(tag => new TagMapping { ItemId = tag.ItemId, PollRateMs = tag.PollRateMs, DataType = tag.DataType })
             .ToList();
 
         try
