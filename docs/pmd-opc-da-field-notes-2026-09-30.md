@@ -128,7 +128,7 @@ powershell -ExecutionPolicy Bypass -File .\enable-pmd-surrogate.ps1 -RunAsPasswo
   (`SeBatchLogonRight`); a `LocalServer32` on the CLSID refuses the change (the server already
   runs out of process). Without `-RunAsPassword` the script changes nothing and prints the
   manual `reg add` lines.
-* Verification after the change: the Troubleshoot activation probe succeeds;
+* Verification after the change: the PMD source connects;
   `(Get-Process dllhost).Modules | Where-Object ModuleName -match 'PMD'` lists the vendor DLL;
   running the source with subscriptions for **more than five minutes** with the bridge PID and
   `/health` unchanged proves containment. The running bridge keeps its old session until the

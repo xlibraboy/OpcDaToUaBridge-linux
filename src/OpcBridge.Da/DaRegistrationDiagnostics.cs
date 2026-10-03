@@ -9,8 +9,8 @@ namespace OpcBridge.Da;
 /// Read-only registration diagnostics for an OPC DA server: walks the chain a local connect
 /// takes — ProgID → CLSID in the registry views this process can see, CLSID → the
 /// InprocServer32/LocalServer32 path, and the path → a file that exists on this machine.
-/// It never writes registry values and never loads the server; activation is the isolated
-/// probe's job (the 2026-09-30 PMD session showed a fault in an in-proc server takes the
+/// It never writes registry values and never loads the server; activation is the source
+/// client's job (the 2026-09-30 PMD session showed a fault in an in-proc server takes the
 /// host process down with it — see docs/pmd-opc-da-field-notes-2026-09-30.md).
 /// <see cref="Capture"/> is Windows-only; <see cref="Analyze"/> is pure, so the reasoning
 /// is testable everywhere the suite runs.

@@ -2043,13 +2043,12 @@ internal static class DashboardPage
 <div class="view" id="view-troubleshoot">
     <h1 class="view-title" tabindex="-1">Troubleshoot</h1>
     <div class="box">
-        <div class="box-h">OPC DA Registration <span class="msg" id="tsMessage" role="status" style="margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0">Checks the ProgID → CLSID → server-path chain. The activation probe runs in a separate process so a faulty server DLL cannot take the bridge down.</span></div>
+        <div class="box-h">OPC DA Registration <span class="msg" id="tsMessage" role="status" style="margin-left:auto;font-weight:400;text-transform:none;letter-spacing:0">Checks the ProgID → CLSID → server-path chain.</span></div>
         <div class="box-b">
             <div class="toolbar">
                 <label class="fl" for="tsSource" style="width:auto">Source</label>
                 <select id="tsSource" style="min-width:240px"><option value="">— select a source —</option></select>
                 <button class="btn" id="tsRun" type="button">Run checks</button>
-                <button class="btn ghost" id="tsProbe" type="button" title="Activates the server in a separate process (up to 25 s).">Run activation probe</button>
             </div>
             <div class="field"><label class="fl" for="tsProgId">ProgID <span class="info" data-tip="For an ad-hoc check when no source is configured — e.g. PMD.DDT_OPCDataServer.1.">i</span></label><input id="tsProgId" type="text" placeholder="PMD.DDT_OPCDataServer.1" style="flex:1"><label class="fl" for="tsHost" style="margin-left:12px">Host</label><input id="tsHost" type="text" placeholder="localhost" style="width:180px"></div>
             <div id="tsReport" style="margin-top:8px"><span class="msg">Select a source (or type a ProgID) and run the checks.</span></div>
@@ -6110,8 +6109,7 @@ async function loadIssues() {
 }
 
 // OPC DA registration troubleshooter (Admin only): read-only chain checks (ProgID →
-// CLSID → server path) plus an isolated activation probe. The probe runs in a separate
-// process — a faulty in-proc server DLL kills only that child, never the bridge.
+// CLSID → server path).
 let troubleshootSourcesLoaded = false;
 async function loadTroubleshoot() {
     if (troubleshootSourcesLoaded) return;
@@ -6126,7 +6124,7 @@ async function loadTroubleshoot() {
     troubleshootSourcesLoaded = true;
 }
 
-async function runDaTroubleshoot(includeProbe) {
+async function runDaTroubleshoot() {
     const sourceId = el('tsSource').value;
     const progId = el('tsProgId').value.trim();
     if (!sourceId && !progId) {
@@ -6134,11 +6132,9 @@ async function runDaTroubleshoot(includeProbe) {
         return;
     }
 
-    const button = includeProbe ? el('tsProbe') : el('tsRun');
+    const button = el('tsRun');
     button.disabled = true;
-    el('tsMessage').textContent = includeProbe
-        ? 'Running checks and activation probe (up to ~25 s)…'
-        : 'Running checks…';
+    el('tsMessage').textContent = 'Running checks…';
     try {
         const response = await fetch('/api/da/troubleshoot', {
             method: 'POST',
@@ -6146,8 +6142,7 @@ async function runDaTroubleshoot(includeProbe) {
             body: JSON.stringify({
                 sourceId: sourceId || null,
                 progId: progId || null,
-                host: el('tsHost').value.trim() || null,
-                includeProbe: !!includeProbe
+                host: el('tsHost').value.trim() || null
             })
         });
         const payload = await response.json().catch(() => ({}));
@@ -6176,17 +6171,6 @@ function renderDaTroubleshoot(payload) {
         (f.detail ? '<div class="msg" style="display:block;margin-top:2px">' + esc(f.detail) + '</div>' : '') +
         (f.remediation ? '<div class="msg" style="display:block">→ ' + esc(f.remediation) + '</div>' : '') +
         '</div>').join('');
-
-    const probe = payload.probe;
-    if (probe) {
-        const hex = probe.hresult ? '0x' + (probe.hresult >>> 0).toString(16).toUpperCase() : '';
-        const text = probe.ok
-            ? 'Activated: ' + (probe.serverInfo || 'connected')
-            : 'Not activated: ' + (probe.error || 'unknown error') + (hex ? ' (' + hex + ')' : '') +
-              (probe.classification ? ' — ' + probe.classification : '');
-        html += '<div style="padding:6px 0">' + badge('ACTIVATION PROBE', probe.ok ? 'good' : 'bad') + ' ' +
-            '<strong>' + esc(text) + '</strong></div>';
-    }
 
     el('tsReport').innerHTML = html || '<span class="msg">No findings.</span>';
 }
@@ -10012,8 +9996,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     el('drvA3nNew').addEventListener('click', newDriver);
     el('drvA3nRemove').addEventListener('click', () => removeDriver().catch(e => el('drvA3nMessage').textContent = '✗ ' + e.message));
     el('drvA3nTest').addEventListener('click', () => testDriverConnection().catch(e => el('drvA3nMessage').textContent = '✗ ' + e.message));
-    el('tsRun').addEventListener('click', () => runDaTroubleshoot(false).catch(e => el('tsMessage').textContent = '✗ ' + e.message));
-    el('tsProbe').addEventListener('click', () => runDaTroubleshoot(true).catch(e => el('tsMessage').textContent = '✗ ' + e.message));
+    el('tsRun').addEventListener('click', () => runDaTroubleshoot().catch(e => el('tsMessage').textContent = '✗ ' + e.message));
     if (el('btnDrvScanPorts')) el('btnDrvScanPorts').addEventListener('click', () => scanSerialPorts('drvA3nPort', 'listDrvPorts', 'msgDrvPorts').catch(e => el('msgDrvPorts').textContent = '✗ ' + e.message));
     if (el('btnWzDrvScanPorts')) el('btnWzDrvScanPorts').addEventListener('click', () => scanSerialPorts('wzDrvPort', 'listWzDrvPorts', 'msgWzDrvPorts').catch(e => el('msgWzDrvPorts').textContent = '✗ ' + e.message));
     const onUseSerialPort = event => {

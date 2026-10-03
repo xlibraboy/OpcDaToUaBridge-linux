@@ -8,8 +8,8 @@ document executes on either machine — it is a configuration reference for an e
 
 > Before walking this by hand, try the built-in check: **Ops ▸ Troubleshoot** in the dashboard
 > reads the registration chain on the machine it runs on (ProgID → CLSID → server path, both
-> bitness views) and can run an isolated activation probe. This document covers what a **remote**
-> connection needs on top — the DCOM configuration on the server's host.
+> bitness views). This document covers what a **remote** connection needs on top — the DCOM
+> configuration on the server's host.
 
 > Why this is hard at all: OPC Classic (OPC DA) is defined on Microsoft COM/DCOM, so a remote OPC DA
 > connection *is* a DCOM activation plus a stream of DCOM calls, and every one of the many security
