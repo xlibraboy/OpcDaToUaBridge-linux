@@ -38,6 +38,15 @@ internal static class DaWorkerIdentity
     private const int StartfUseStdHandles = 0x00000100;
     private const int CreateNoWindow = 0x08000000;
 
+    /// <summary>
+    /// UTF-8 without a byte-order mark, for the bootstrap line written to the worker's stdin.
+    /// <see cref="Encoding.UTF8"/> carries a BOM and <see cref="StreamWriter"/> writes it; a
+    /// BOM is not valid JSON, and System.Text.Json rejects it ("0xEF is an invalid start of a
+    /// value"), so the child exited before it ever reached its pipe — every run-as worker
+    /// failed to start, and the parent reported only its 10 s connect timeout.
+    /// </summary>
+    internal static readonly Encoding BootstrapStdinEncoding = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+
     internal static DaWorkerChild Start(string fileName, IReadOnlyList<string> arguments, DaWorkerOptions options)
     {
         bool differentAccount = !string.IsNullOrWhiteSpace(options.RunAsUser)
@@ -246,7 +255,7 @@ internal static class DaWorkerIdentity
                 var child = new DaWorkerChild
                 {
                     Process = process,
-                    StandardInput = new StreamWriter(new FileStream(parentStdinWrite, FileAccess.Write), Encoding.UTF8)
+                    StandardInput = new StreamWriter(new FileStream(parentStdinWrite, FileAccess.Write), BootstrapStdinEncoding)
                     {
                         AutoFlush = true
                     },

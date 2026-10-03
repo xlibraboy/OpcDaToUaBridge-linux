@@ -14,7 +14,9 @@ internal sealed class DaWorkerProcess : IAsyncDisposable
 {
     private const int PipeConnectTimeoutMs = 10_000;
     private const int ShutdownGraceMs = 5_000;
+    private const int MaxDiagnosticsChars = 2_000;
     private static readonly TimeSpan SampleInterval = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan DiagnosticsTimeout = TimeSpan.FromMilliseconds(500);
 
     private readonly DaWorkerChild child_;
     private readonly Process process_;
@@ -113,15 +115,23 @@ internal sealed class DaWorkerProcess : IAsyncDisposable
             var connection = new WorkerConnection(pipe);
             return new DaWorkerProcess(workerId, DaWorkerIdentity.CurrentAccountName(), child, connection);
         }
-        catch
+        catch (Exception ex)
         {
             TryKill(child.Process);
+            string diagnostics = await TryReadChildDiagnosticsAsync(child, DiagnosticsTimeout).ConfigureAwait(false);
             child.StandardInput.Dispose();
             child.StandardError.Dispose();
             child.StandardOutput.Dispose();
             await pipe.DisposeAsync().ConfigureAwait(false);
             child.Process.Dispose();
-            throw;
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                // The bridge is stopping; a start-failure verdict would be noise.
+                throw;
+            }
+
+            throw new WorkerStartException(DescribeStartFailure(workerId, ex, diagnostics), ex);
         }
     }
 
@@ -219,6 +229,35 @@ internal sealed class DaWorkerProcess : IAsyncDisposable
         {
             // The process may have exited between the timer tick and the read.
         }
+    }
+
+    /// <summary>
+    /// Best-effort read of the child's stderr after a failed start. stderr is the only channel
+    /// a worker has before its pipe is up; without this the line that names the reason
+    /// ("bad bootstrap: …", "could not reach the parent pipe: …") was disposed unread and the
+    /// operator saw only the parent's connect timeout.
+    /// </summary>
+    internal static async Task<string> TryReadChildDiagnosticsAsync(DaWorkerChild child, TimeSpan timeout)
+    {
+        try
+        {
+            using var cancellation = new CancellationTokenSource(timeout);
+            string text = (await child.StandardError.ReadToEndAsync(cancellation.Token).ConfigureAwait(false)).Trim();
+            return text.Length <= MaxDiagnosticsChars
+                ? text
+                : string.Concat(text.AsSpan(0, MaxDiagnosticsChars), "… [truncated]");
+        }
+        catch
+        {
+            return string.Empty;
+        }
+    }
+
+    /// <summary>Start-failure message carrying both the plumbing error and the child's own words.</summary>
+    internal static string DescribeStartFailure(string workerId, Exception exception, string diagnostics)
+    {
+        string message = $"Worker '{workerId}' failed to start: {exception.Message}";
+        return diagnostics.Length == 0 ? message : $"{message} Worker output: {diagnostics}";
     }
 
     private static void TryKill(Process process)

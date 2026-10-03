@@ -1,4 +1,5 @@
 using System.IO.Pipes;
+using System.Text;
 using System.Text.Json;
 using OpcBridge.Client.Workers;
 
@@ -39,7 +40,7 @@ internal static class DaWorkerHost
         WorkerBootstrap? bootstrap;
         try
         {
-            bootstrap = JsonSerializer.Deserialize<WorkerBootstrap>(Console.In.ReadToEnd(), WorkerProtocol.JsonOptions);
+            bootstrap = JsonSerializer.Deserialize<WorkerBootstrap>(ReadBootstrapText(Console.OpenStandardInput()), WorkerProtocol.JsonOptions);
         }
         catch (JsonException ex)
         {
@@ -88,6 +89,21 @@ internal static class DaWorkerHost
             Console.Error.WriteLine($"OpcBridge worker: fatal: {ex}");
             return ExitProtocolError;
         }
+    }
+
+    /// <summary>
+    /// Reads the parent's bootstrap line as UTF-8 — deliberately not <c>Console.In</c>, which
+    /// decodes with the console code page (not necessarily UTF-8 on a service host), and with
+    /// byte-order-mark detection on so a stray mark can never reach the JSON parse. A BOM is
+    /// not valid JSON: a parent that wrote one made every run-as worker exit here.
+    /// </summary>
+    internal static string ReadBootstrapText(Stream stdin)
+    {
+        using var reader = new StreamReader(
+            stdin,
+            new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+            detectEncodingFromByteOrderMarks: true);
+        return reader.ReadToEnd();
     }
 
     private static async Task<int> RunSessionAsync(WorkerBootstrap bootstrap, Stream pipe)
