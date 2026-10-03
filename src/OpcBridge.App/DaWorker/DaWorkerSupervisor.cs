@@ -136,9 +136,22 @@ internal sealed class DaWorkerSupervisor : BackgroundService, IWorkerHost
                 .Select(source => ToSourceConfig(source, snapshot.UseSubscriptions))
                 .ToList();
 
-            DaWorkerProcess started = await DaWorkerProcess
-                .StartAsync(workerKey, placed[0].Worker, configs, cancellationToken)
-                .ConfigureAwait(false);
+            DaWorkerProcess started;
+            try
+            {
+                started = await DaWorkerProcess
+                    .StartAsync(workerKey, placed[0].Worker, configs, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (WorkerStartException ex)
+            {
+                // A worker that never reached its pipe counts like a crash — for any vendor
+                // server hosted in a worker: the source keeps retrying with the same backoff,
+                // and a start that cannot succeed is quarantined instead of faulting the
+                // source on the first attempt.
+                RecordStartFailure(entry, workerKey, ex.Message);
+                throw new SourceConnectionLostException(ex.Message, ex);
+            }
 
             started.LogLine += line => logger_.LogInformation(
                 "[worker {WorkerKey} pid {Pid}] {Line}",
@@ -390,8 +403,7 @@ internal sealed class DaWorkerSupervisor : BackgroundService, IWorkerHost
         }
 
         process.ExitRecorded = true;
-        DateTime now = DateTime.UtcNow;
-        entry.LastExitUtc = now;
+        entry.LastExitUtc = DateTime.UtcNow;
         entry.LastExitCode = process.HasExited ? process.ExitCode : 0;
         entry.LastError = process.Connection.ClosedReason?.Message;
 
@@ -401,21 +413,38 @@ internal sealed class DaWorkerSupervisor : BackgroundService, IWorkerHost
             return;
         }
 
-        AddHistory(
+        NoteCrash(
+            entry,
             process.WorkerId,
-            "crashed",
             entry.LastExitCode,
             entry.LastError ?? WorkerLifecyclePolicy.ClassifyExit(entry.LastExitCode ?? 0));
+    }
 
+    /// <summary>A failed start belongs on the same crash timeline and quarantine budget.</summary>
+    private void RecordStartFailure(Entry entry, string workerKey, string message)
+    {
+        entry.LastExitUtc = DateTime.UtcNow;
+        entry.LastExitCode = null;
+        entry.LastError = message;
+        logger_.LogWarning("Worker {WorkerKey} failed to start: {Message}", workerKey, message);
+        NoteCrash(entry, workerKey, null, message);
+    }
+
+    /// <summary>Records one crash on the worker's timeline and quarantines after too many.</summary>
+    private void NoteCrash(Entry entry, string workerKey, int? exitCode, string? message)
+    {
+        AddHistory(workerKey, "crashed", exitCode, message);
+
+        DateTime now = DateTime.UtcNow;
         entry.CrashesUtc.Add(now);
         entry.CrashesUtc.RemoveAll(crash => now - crash > WorkerLifecyclePolicy.QuarantineWindow);
         if (WorkerLifecyclePolicy.ShouldQuarantine(entry.CrashesUtc, now))
         {
             entry.Quarantined = true;
-            AddHistory(process.WorkerId, "quarantined", null, $"{entry.CrashesUtc.Count} crashes within {WorkerLifecyclePolicy.QuarantineWindow}");
+            AddHistory(workerKey, "quarantined", null, $"{entry.CrashesUtc.Count} crashes within {WorkerLifecyclePolicy.QuarantineWindow}");
             logger_.LogError(
                 "Worker {WorkerKey} quarantined after {Count} crashes within {Window}",
-                process.WorkerId,
+                workerKey,
                 entry.CrashesUtc.Count,
                 WorkerLifecyclePolicy.QuarantineWindow);
         }

@@ -16,6 +16,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+**Run-as workers start again — the bootstrap no longer carries a UTF-8 BOM.** The parent wrote
+the worker's startup JSON on the child's stdin with `Encoding.UTF8`, which `StreamWriter`
+prefixes with a byte-order mark — and `System.Text.Json` rejects a BOM. The child exited
+(`bad bootstrap`) before it reached its pipe, the parent discarded the child's stderr, and the
+operator saw only `did not connect to its pipe within 10 s`; the source was then faulted for
+good on the first attempt. Every worker isolated under a *different* run-as account failed this
+way — for any vendor server whose DCOM stack needs a plant identity — while the same-identity
+path was unaffected because `Process.StandardInput` writes no BOM. The bootstrap is now written
+and read as BOM-less UTF-8, a failed start folds the child's stderr into its message, and it is
+retried with the crash backoff — quarantined after five attempts like any crash loop — instead
+of faulting the source.
+
 ## [1.6.0] - 2026-10-03
 
 ### Added

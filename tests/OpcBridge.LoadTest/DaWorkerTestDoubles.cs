@@ -13,12 +13,17 @@ internal sealed class TestWorkerHost : IWorkerHost
 
     public IWorkerChannel? Channel { get; set; }
 
+    /// <summary>When set, the host fails the channel request with this exception instead.</summary>
+    public Exception? EnsureError { get; set; }
+
     public int Released => Volatile.Read(ref _released);
 
     public Task<IWorkerChannel> EnsureChannelAsync(string workerKey, CancellationToken cancellationToken)
-        => Channel is null
-            ? Task.FromException<IWorkerChannel>(new InvalidOperationException($"No channel for '{workerKey}'."))
-            : Task.FromResult(Channel);
+        => EnsureError is not null
+            ? Task.FromException<IWorkerChannel>(EnsureError)
+            : Channel is null
+                ? Task.FromException<IWorkerChannel>(new InvalidOperationException($"No channel for '{workerKey}'."))
+                : Task.FromResult(Channel);
 
     public void ReleaseClient(string workerKey) => Interlocked.Increment(ref _released);
 }

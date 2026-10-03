@@ -13,6 +13,27 @@ open issue is updated to **Fixed in <version>** once its fix ships.
 
 ---
 
+## A run-as worker never started: the bootstrap carried a UTF-8 BOM
+
+**Status:** Fixed in [Unreleased] · **Found:** 2026-10-03 · **Where:** PRW11709 (bridge 1.6.0,
+OPC DA source hosted in an `own` worker under a plant run-as account) · **Area:** OPC DA / Workers
+
+After the 1.6.0 upgrade the source stayed down with one log line — `connection failed: Worker
+'own:…' did not connect to its pipe within 10 s` — and no crash file, because the child exited
+before `CrashLog` installed. The parent wrote the bootstrap JSON on the child's stdin with
+`Encoding.UTF8`, which `StreamWriter` prefixes with a byte-order mark; `System.Text.Json`
+rejects a BOM, so the child printed `bad bootstrap` and exited before it ever reached the pipe.
+The parent then disposed the child's stderr unread — the one line that named the cause never
+reached the log — and the timeout was not classified as transient, so the source faulted and
+was never retried. The same-identity worker path is unaffected (`Process.StandardInput` writes
+no BOM), which is why worker isolation passed its lab verification and failed only under a
+run-as account — the shape any vendor server needs when its DCOM stack requires a plant
+identity. The bootstrap is now written and read BOM-less, a failed start carries the child's
+stderr in its message, and it is retried with the crash backoff (quarantined after five
+attempts) instead of faulting the source.
+
+---
+
 ## Killing a worker left its source "Connected" on stale values (fixed on the isolation branch)
 
 **Status:** Fixed (unreleased, `feature/da-containment-and-workers`) · **Found:** 2026-10-02 ·

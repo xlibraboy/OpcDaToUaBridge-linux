@@ -53,7 +53,10 @@ age, and the last 50 lifecycle events (`started`, `stopped`, `crashed`, `quarant
 
 ## Failure policy
 
-- A crashed worker is respawned with backoff **1/2/5/10/30 s**.
+- A crashed worker is respawned with backoff **1/2/5/10/30 s**. A worker that **fails to
+  start** — spawned but never reached its pipe — counts the same way, and its stderr is folded
+  into the failure message, so a transient spawn problem recovers on its own. These rules are
+  vendor-agnostic: they apply to any OPC DA server isolated in a worker.
 - **Five crashes inside ten minutes → quarantined**: no automatic restart, the affected
   sources stay faulted, and the board says why. **Restart** clears it. This is deliberate — a
   crash-looping vendor DLL must not spin forever, and the operator should look at the crash
@@ -93,6 +96,7 @@ identity or that are known to fault; everything else can stay in process.
 | `Win32 error 1314` when starting a worker under another account | The bridge account cannot create processes as another user | Run the bridge service as `LocalSystem` (or grant the two privileges) |
 | `run-as account … needs a password` | Account set without a password | Enter the password, or clear the account |
 | Worker missing from the board entirely | The source is not placed: `inProcess`, or `group` without an account (normalized to in-process) | Check the source's Worker mode |
+| Source faulted, message `Worker '…' failed to start: … Worker output: …` | The child process was spawned but never reached its pipe; the message carries the child's own stderr | Fix what the worker output names — the child's line is the diagnosis |
 | Worker appears, dies every ~1 minute, board shows repeated crashes | The vendor DLL is faulting in the worker (contained) | Capture a dump (see below), run the source in **Sync** mode, or report to the vendor |
 | **Kill** left the source on stale values while it still said *Connected* | Worker death was invisible to a push-only proxy (no request in flight) | Fixed — the proxy now watches the channel and the coordinator reconnects immediately |
 
