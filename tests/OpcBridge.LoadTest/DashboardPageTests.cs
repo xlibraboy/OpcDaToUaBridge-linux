@@ -439,6 +439,21 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
+    public void Script_MappingListFollowsSelectedSource()
+    {
+        // The Source dropdown scopes the mapped list, not just the tag browser: picking a
+        // source shows only that source's mappings, with the text filter and sort applying
+        // on top. When a lane is (re)entered without a valid source, prefer one that
+        // already has mappings so the tab does not open on an empty list.
+        Assert.Contains("function mappingsForSelectedSource(", DashboardPage.Script);
+        Assert.Contains("let view = mappingsForSelectedSource(mappingsForMapType(mappings));", DashboardPage.Script);
+        Assert.Contains("const withMappings = sources.find(s => mappedIds.has(s.sourceId));", DashboardPage.Script);
+        Assert.Contains("No mappings for this source yet.", DashboardPage.Script);
+        Assert.Contains("No mappings match the filter.", DashboardPage.Script);
+        Assert.Contains("if (document.getElementById('view-tags')?.classList.contains('active')) rerenderMappings();", DashboardPage.Script);
+    }
+
+    [Fact]
     public void Script_MappingRowsShowDataTypePill()
     {
         // Maps tab rows carry a type pill: runtime type from the live value when

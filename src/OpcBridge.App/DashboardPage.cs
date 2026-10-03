@@ -4143,7 +4143,11 @@ function renderMappingRows(mappings) {
         ? `<span class="msg">… showing first ${MAPPING_ROWS_CAP} of ${mappings.length} mappings — use the search box to filter</span>`
         : '';
     if (rows.length) return rows.map(renderMappingRow).join('') + note;
-    // Empty tab: say where the mappings actually are instead of restating the heading.
+    // A filter that matches nothing is neither an empty tab nor an unmapped source.
+    if ((state.mappingFilter || '').trim()) {
+        return '<span class="msg">No mappings match the filter.</span>';
+    }
+    // Empty view: say where the mappings actually are instead of restating the heading.
     const tabs = [['opc-da', 'OPC DA'], ['opc-ua', 'OPC UA'], ['drivers', 'Drivers']];
     const current = state.mapType || 'opc-da';
     const others = tabs
@@ -4159,7 +4163,8 @@ function renderMappingRows(mappings) {
         : others.length
             ? ' ' + others.map(o => o.label + ' (' + o.count + ')').join(' and ') + ' already have mappings.'
             : '';
-    return '<span class="msg">No mappings on this tab yet.' + hint + ' Browse this source\'s tags above, or switch tabs, then add one.</span>' + note;
+    const laneHasMappings = mappingsForMapType(state.mappings || []).length > 0;
+    return '<span class="msg">' + (laneHasMappings ? 'No mappings for this source yet.' : 'No mappings on this tab yet.') + hint + ' Browse this source\'s tags above, or switch tabs, then add one.</span>' + note;
 }
 
 let faceplateOpen = false;
@@ -5249,7 +5254,11 @@ function ensureMapSourceSelection() {
     if (!sources.length) return;
     const current = state.sources.find(s => s.sourceId === state.selectedSourceId);
     if (!current || !sourceMatchesMapType(current)) {
-        state.selectedSourceId = sources[0].sourceId;
+        // The list is scoped to the selected source, so land on one that has mappings —
+        // opening the tab on an empty source while another holds the work reads as empty.
+        const mappedIds = new Set((state.mappings || []).map(m => m.sourceId || m.SourceId || 'default'));
+        const withMappings = sources.find(s => mappedIds.has(s.sourceId));
+        state.selectedSourceId = (withMappings || sources[0]).sourceId;
     }
 }
 function renderMapSourceSelect() {
@@ -5300,6 +5309,13 @@ function updateMapBrowseUi() {
 function mappingsForMapType(mappings) {
     const ids = new Set(mapTypeSources().map(s => s.sourceId));
     return (mappings || []).filter(m => ids.has(m.sourceId || m.SourceId || 'default'));
+}
+// The Maps list follows the Source dropdown: a picked source narrows the list to its own
+// mappings before the text filter and sort run.
+function mappingsForSelectedSource(mappings) {
+    const selected = state.selectedSourceId;
+    if (!selected) return mappings || [];
+    return (mappings || []).filter(m => (m.sourceId || m.SourceId || 'default') === selected);
 }
 function setDriverFormType(type) {
     state.driverFormType = type || 'MelsecA3n';
@@ -7553,7 +7569,7 @@ async function disconnectInflux() {
 }
 function applyMappingView(mappings) {
     const filter = (state.mappingFilter || '').trim().toLowerCase();
-    let view = mappingsForMapType(mappings);
+    let view = mappingsForSelectedSource(mappingsForMapType(mappings));
     if (filter) {
         view = view.filter(m => {
             const sourceId = m.sourceId || m.SourceId || 'default';
@@ -7699,6 +7715,9 @@ function pickSource(sourceId, opts) {
     el('tagStatus').textContent = 'Browse all tags, or open folders one level at a time.';
     renderCrumb();
     renderSources();
+    // The mapped list follows the source selection — repaint it now instead of waiting
+    // for the next refresh tick.
+    if (document.getElementById('view-tags')?.classList.contains('active')) rerenderMappings();
     if (document.getElementById('view-interlinks')?.classList.contains('active')) renderInterlinksView();
     if (opts && opts.openConfig) {
         const src = state.sources.find(s => s.sourceId === sourceId);
