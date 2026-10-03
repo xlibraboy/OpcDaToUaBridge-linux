@@ -847,8 +847,10 @@ public sealed class DashboardPageTests
     public void Script_SessionsDaRowsShowLastErrorAndReadAge()
     {
         // Sessions DA rows must surface the per-source fault reason and data
-        // freshness — previously only Monitor showed the lastError text.
-        Assert.Contains("relTime(get(src,'lastDaReadUtc'))", DashboardPage.Script);
+        // freshness — previously only Monitor showed the lastError text. The freshness
+        // age is classed against the source's subscription watchdog.
+        Assert.Contains("freshText = 'last value ' + relTime(lastUtc);", DashboardPage.Script);
+        Assert.Contains("ageMs > watchdogMs", DashboardPage.Script);
         Assert.Contains("get(src,'lastError')", DashboardPage.Script);
     }
 

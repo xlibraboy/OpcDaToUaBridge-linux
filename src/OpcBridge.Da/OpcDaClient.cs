@@ -25,6 +25,13 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISub
     private bool subscriptions_active_;
     private readonly HashSet<int> subscription_fallback_warned_rates_ = new();
 
+    // Subscription health counters for Diagnostics ▸ STA Thread Health. The fallback set
+    // holds the rate groups currently on polling fallback (the server refused the callback
+    // subscription); a later successful Advise removes its rate again.
+    private long subscription_callbacks_;
+    private long last_subscription_callback_ticks_;
+    private readonly ConcurrentDictionary<int, byte> subscription_fallback_rates_ = new();
+
     /// <summary>
     /// Raised when a DA subscription delivers values via IOPCDataCallback.
     /// Subscribed to once per session by BridgeWorker via <see cref="ISubscribableSourceClient"/>.
@@ -69,6 +76,25 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISub
         }
 
         return com_thread_?.GetStats();
+    }
+
+    /// <summary>
+    /// Subscription health counters: value-bearing IOPCDataCallback notifications (data
+    /// change / read complete), the most recent one's time, and the number of rate groups
+    /// currently on polling fallback. Null on non-Windows (no COM, no subscriptions).
+    /// </summary>
+    public (long Callbacks, DateTime? LastCallbackUtc, int PollFallbackGroups)? GetSubscriptionStats()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return null;
+        }
+
+        long ticks = Interlocked.Read(ref last_subscription_callback_ticks_);
+        return (
+            Interlocked.Read(ref subscription_callbacks_),
+            ticks > 0 ? new DateTime(ticks, DateTimeKind.Utc) : null,
+            subscription_fallback_rates_.Count);
     }
 
     [SupportedOSPlatform("windows")]
@@ -764,6 +790,7 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISub
                 return false;
             }
 
+            subscription_fallback_rates_.TryAdd(group.Rate, 0);
             Warning?.Invoke(message);
             return true;
         }
@@ -800,7 +827,15 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISub
                 handleMap[i + 1] = group.Bindings[i].ItemId;
             }
 
-            Action<IReadOnlyList<BridgeValue>> handler = ValuesReceived ?? (_ => { });
+            // Count value-bearing callbacks and stamp their time for the dashboard's
+            // subscription health view (Diagnostics ▸ STA Thread Health).
+            Action<IReadOnlyList<BridgeValue>> valuesReceived = ValuesReceived ?? (_ => { });
+            Action<IReadOnlyList<BridgeValue>> handler = values =>
+            {
+                Interlocked.Increment(ref subscription_callbacks_);
+                Interlocked.Exchange(ref last_subscription_callback_ticks_, DateTime.UtcNow.Ticks);
+                valuesReceived(values);
+            };
             OpcDaCallbackSink sink = new(
                 options_.SourceId,
                 $"OpcBridge_{group.Rate}",
@@ -827,6 +862,7 @@ public sealed class OpcDaClient : ISourceClient, ISubscribableSourceClient, ISub
             group.ConnectionPoint = cp;
             group.CallbackCookie = cookie;
             subscriptions_active_ = true;
+            subscription_fallback_rates_.TryRemove(group.Rate, out _);
 
             IOTrace?.Invoke(
                 $"OPC DA group 'OpcBridge_{group.Rate}': subscription active (Advise cookie {cookie}).");

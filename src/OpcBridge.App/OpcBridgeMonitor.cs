@@ -6,9 +6,10 @@ using OpcBridge.Core;
 namespace OpcBridge.App;
 
 /// <summary>
-/// Polls native process resource counters (handles, GDI objects, USER objects)
-/// every 5 seconds and publishes them via <see cref="BridgeState"/>.
-/// On non-Windows hosts, reports <see cref="ResourceSnapshot.Unsupported"/>.
+/// Polls native process resource counters (handles, GDI objects, USER objects,
+/// working set, private bytes, threads) every 5 seconds and publishes them via
+/// <see cref="BridgeState"/>. On non-Windows hosts, reports
+/// <see cref="ResourceSnapshot.Unsupported"/>.
 /// </summary>
 public sealed class OpcBridgeMonitor : BackgroundService
 {
@@ -46,7 +47,18 @@ public sealed class OpcBridgeMonitor : BackgroundService
             : 0;
         int gdi = GetGuiResources(handle, GR_GDIOBJECTS);
         int user = GetGuiResources(handle, GR_USEROBJECTS);
-        return new ResourceSnapshot(true, handles, gdi, user);
+
+        // Memory/threads come from the same sample so Monitor ▸ Resources can show the
+        // figures docs/ram-measurement.md measures (working set vs private bytes, and a
+        // thread count for the thread-leak check).
+        return new ResourceSnapshot(
+            true,
+            handles,
+            gdi,
+            user,
+            process.WorkingSet64,
+            process.PrivateMemorySize64,
+            process.Threads.Count);
     }
 
     private const int GR_GDIOBJECTS = 0;
@@ -61,8 +73,17 @@ public sealed class OpcBridgeMonitor : BackgroundService
 
 /// <summary>
 /// Snapshot of native resource counters. <see cref="Supported"/> is false on non-Windows.
+/// Memory fields are bytes; <see cref="ThreadCount"/> covers the native thread-leak check
+/// (a managed Thread shows up as one OS thread).
 /// </summary>
-public sealed record ResourceSnapshot(bool Supported, int HandleCount, int GdiObjects, int UserObjects)
+public sealed record ResourceSnapshot(
+    bool Supported,
+    int HandleCount,
+    int GdiObjects,
+    int UserObjects,
+    long WorkingSetBytes = 0,
+    long PrivateBytes = 0,
+    int ThreadCount = 0)
 {
     public static ResourceSnapshot Unsupported { get; } = new(false, 0, 0, 0);
 }

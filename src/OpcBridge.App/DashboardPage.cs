@@ -1178,9 +1178,11 @@ internal static class DashboardPage
             <div class="stat"><div class="k">OPC UA</div><div class="v" id="uaPortVal">&#8212;</div><div class="s" id="uaPortNote">UA server endpoint</div></div>
         </div>
         <div class="mon-stat-group">
-            <div class="mon-stat-group-h">Resources <span class="info" data-tip="Native Windows process counters sampled every 5s. A steady or slowly growing count is normal; a steady upward trend signals a handle or COM object leak.">i</span></div>
+            <div class="mon-stat-group-h">Resources <span class="info" data-tip="Native Windows process counters sampled every 5s: handles, GDI/USER objects, memory and threads. A steady or slowly growing count is normal; a steady upward trend signals a leak.">i</span></div>
             <div class="stat"><div class="k">Handles <span class="info" data-tip="Total OS handles (files, registry keys, threads, events, COM objects) held by the process via GetProcessHandleCount. Typical idle: 300-800; investigate if it grows unbounded over time.">i</span></div><div class="v" id="resHandles">&#8212;</div></div>
             <div class="stat"><div class="k">GDI / USER <span class="info" data-tip="GDI objects (pens, brushes, fonts, bitmaps) and USER objects (windows, menus, hooks) via GetGuiResources. Each has a per-process limit of 10,000; approaching it indicates a GDI/USER leak.">i</span></div><div class="v" id="resGdiUser">&#8212;</div></div>
+            <div class="stat"><div class="k">Memory <span class="info" data-tip="Working set (resident) and private bytes, sampled every 5s. From the memory work: private growing ~1.0 MB/min is suspect managed growth, ~0.3 MB/min is worth watching; a working set falling with private flat is the GC returning memory, not a leak.">i</span></div><div class="v" id="resMemory">&#8212;</div><div class="s" id="resMemoryNote"></div></div>
+            <div class="stat"><div class="k">Threads <span class="info" data-tip="OS thread count of the bridge process (managed threads included). A steady upward trend past ~15% signals a thread leak — the process previously leaked one thread per failed connection retry.">i</span></div><div class="v" id="resThreads">&#8212;</div><div class="s" id="resThreadsNote"></div></div>
             <div class="stat"><div class="k">Assessment</div><div class="v" id="resAssessment">&#8212;</div><div class="s" id="resAssessmentDetail">Awaiting data…</div></div>
         </div>
         </div>
@@ -2506,6 +2508,11 @@ const state = {
     handleBaseline: null,
     gdiHistory: [],
     userHistory: [],
+    // Windows resource-sample histories: distinct 5s samples (deduped) for growth verdicts.
+    threadHistory: [],
+    memorySamples: [],
+    // Per-source rate-group breakdown, refreshed from /api/dashboard for the Sessions view.
+    rateGroups: [],
     diagramTab: 'all',
     diagramLoaded: false,
     diagramZoom: 1,
@@ -5765,6 +5772,17 @@ function fmtUptime(sec) {
     return s + 's';
 }
 
+// Compact age from a millisecond duration: now · 5s ago · 3m 10s ago · 2h 4m ago.
+function fmtAgeMs(ms) {
+    ms = Math.max(0, Math.floor(Number(ms) || 0));
+    if (ms < 1000) return 'now';
+    const s = Math.floor(ms / 1000);
+    if (s < 60) return s + 's ago';
+    const m = Math.floor(s / 60);
+    if (m < 60) return m + 'm ' + (s % 60) + 's ago';
+    return Math.floor(m / 60) + 'h ' + (m % 60) + 'm ago';
+}
+
 // Shared renderer for the MQTT / InfluxDB integration cards on the Diagnostics tab.
 // d: { enabled, state, lastError, ...counters }. Colors: connected/running=good,
 // error/fault=bad, everything else live=warn, disabled=muted.
@@ -5911,9 +5929,15 @@ function renderDiagnostics(p) {
     // last error live there; repeating them here would double-display data).
     const rt = p.runtime || {};
     el('diagUptime').textContent = fmtUptime(p.uptimeSeconds);
-    const vrate = Number(rt.lastPollValueRate || 0);
+    // Measured source-value flow (poll and callback paths alike). The fallback keeps the
+    // card alive against an older payload: runtime.lastPollValueRate is the last poll
+    // cycle's rate and reads 0 for subscription-delivered values.
+    const measuredFlow = p.bridge ? Number(p.bridge.valuesPerSec) : NaN;
+    const vrate = Number.isFinite(measuredFlow) ? measuredFlow : Number(rt.lastPollValueRate || 0);
     el('diagValueRate').textContent = vrate > 0 ? vrate.toFixed(1) : '0';
-    el('diagUpdateRate').textContent = rt.updateRateMs ? 'update ' + formatMs(rt.updateRateMs) : '';
+    const valuesTotal = p.bridge ? Number(p.bridge.valuesTotal || 0) : 0;
+    el('diagUpdateRate').textContent = (rt.updateRateMs ? 'update ' + formatMs(rt.updateRateMs) : '')
+        + (valuesTotal > 0 ? (rt.updateRateMs ? ' · ' : '') + valuesTotal.toLocaleString() + ' total' : '');
     el('diagPollDuration').textContent = formatMs(rt.lastPollDurationMs);
     el('diagSessionId').textContent = rt.sessionId != null && rt.sessionId > 0 ? String(rt.sessionId) : '—';
     el('diagInteractive').textContent = rt.interactiveSession ? 'interactive' : '';
@@ -5966,20 +5990,33 @@ function renderDiagnostics(p) {
         const srcGroups = rateGroups.filter(g => g.sourceId === sid);
         const totalTags = srcGroups.reduce((sum, g) => sum + (g.tagCount || 0), 0);
         const endpoint = get(src, 'endpointSummary') || '';
+        const readMode = get(src, 'readMode') || '';
+        const serverInfo = get(src, 'serverInfo') || '';
         const groupRows = srcGroups.length ? srcGroups.map(g => {
             const budget = Math.round(g.cycleBudgetPct || 0);
             const budgetCls = budget >= 80 ? 'bad' : (budget >= 50 ? 'warn' : 'good');
             return `<div class="li"><div style="flex:1"><div class="n">${formatMs(g.rateMs)} · ${g.tagCount} tags</div><div class="p">budget <span class="${budgetCls}">${budget}%</span> · limit ${g.tagLimit || '—'}</div></div></div>`;
         }).join('') : '<span class="msg">No rate groups.</span>';
-        const lastRead = get(src,'lastDaReadUtc') ? 'last read ' + relTime(get(src,'lastDaReadUtc')) : 'no reads yet';
+        // Data freshness: the last value-bearing update, classed against the source's
+        // subscription watchdog — a connected source silent past it is being reconnected.
+        const lastUtc = get(src, 'lastDaReadUtc');
+        const watchdogMs = Number(get(src, 'watchdogTimeoutMs') || 60000);
+        let freshText = 'no values yet';
+        let freshCls = 'msg';
+        if (lastUtc) {
+            const ageMs = Date.now() - new Date(lastUtc).getTime();
+            freshText = 'last value ' + relTime(lastUtc);
+            freshCls = ageMs > watchdogMs ? 'bad' : (ageMs > watchdogMs / 2 ? 'warn' : 'good');
+        }
         const srcErr = get(src,'lastError');
-        return `<div class="li"><div style="flex:1"><div class="n">${esc(get(src,'displayName') || sid)} ${sourceTypeBadge(src)} ${badge(conn, stateClass(conn))}</div><div class="p">${endpoint ? esc(endpoint) + ' · ' : ''}Latency: ${latency} · ${totalTags} tags in ${srcGroups.length} rate group(s)</div><div class="p">${lastRead}${srcErr ? ' · <span class="bad" title="Last source error">' + esc(srcErr) + '</span>' : ''}</div></div></div>${groupRows}`;
+        return `<div class="li"><div style="flex:1"><div class="n">${esc(get(src,'displayName') || sid)} ${sourceTypeBadge(src)} ${badge(conn, stateClass(conn))}</div><div class="p">${endpoint ? esc(endpoint) + ' · ' : ''}Latency: ${latency}${readMode ? ' · ' + esc(readMode) : ''} · ${totalTags} tags in ${srcGroups.length} rate group(s)</div><div class="p"><span class="${freshCls}">${freshText}</span>${serverInfo ? ' · ' + esc(serverInfo) : ''}${srcErr ? ' · <span class="bad" title="Last source error">' + esc(srcErr) + '</span>' : ''}</div></div></div>${groupRows}`;
     }).join('') : '<span class="msg">No sources configured.</span>';
     el('diagDaSources').innerHTML = daHtml;
     el('diagDaSummary').textContent = sources.length + ' source' + (sources.length !== 1 ? 's' : '');
 
-    // Time Sync — DA server clock vs bridge clock
-    const timeSyncHtml = sources.length ? sources.map(src => {
+    // Time Sync — DA server clock vs bridge clock (OPC DA sources only)
+    const daOnlySources = sources.filter(s => String(get(s, 'sourceType') || 'OpcDa').toLowerCase() === 'opcda');
+    const timeSyncHtml = daOnlySources.length ? daOnlySources.map(src => {
         const sid = get(src, 'sourceId') || 'default';
         const name = get(src, 'displayName') || sid;
         const offset = get(src, 'daClockOffsetMs');
@@ -5993,7 +6030,7 @@ function renderDiagnostics(p) {
         }
         const bridgeTime = get(src, 'lastDaReadUtc') ? shortTime(get(src, 'lastDaReadUtc')) : '—';
         return `<div class="li"><div style="flex:1"><div class="n">${esc(name)}</div><div class="p">DA server clock offset: <span class="${offsetCls}">${offsetText}</span> · bridge read at ${bridgeTime}</div></div></div>`;
-    }).join('') : '<span class="msg">No sources.</span>';
+    }).join('') : '<span class="msg">No OPC DA sources.</span>';
     el('diagTimeSync').innerHTML = timeSyncHtml;
 
 
@@ -6033,11 +6070,18 @@ function renderDiagnostics(p) {
     // STA Thread Health
     const sta = (p.bridge && p.bridge.staThreads) || [];
     el('diagStaThreads').innerHTML = sta.length ? sta.map(t => {
-        const aliveCls = t.alive ? 'good' : 'bad';
         const aliveBadge = t.alive ? badge('Alive', 'good') : badge('Dead', 'bad');
         const last = t.lastActionUtc ? relTime(t.lastActionUtc) : 'never';
         const qCls = t.queuedItems >= 50 ? 'bad' : (t.queuedItems >= 10 ? 'warn' : 'good');
-        return `<div class="li"><div style="flex:1"><div class="n">${esc(t.sourceId)} ${aliveBadge}</div><div class="p">queued: <span class="${qCls}">${t.queuedItems}</span> · last action ${last}</div></div></div>`;
+        // Subscription health: callbacks prove the push path is alive ("Connected" on its
+        // own does not — a silent subscription is exactly the PMD failure mode).
+        const cb = Number(t.callbacks || 0);
+        const cbLast = t.lastCallbackUtc ? relTime(t.lastCallbackUtc) : 'never';
+        const fallbackCount = Number(t.pollFallbackGroups || 0);
+        const fallback = fallbackCount > 0
+            ? ` · <span class="warn" title="The server refused the callback subscription for these rate groups; they read by polling instead.">poll fallback ×${fallbackCount}</span>`
+            : '';
+        return `<div class="li"><div style="flex:1"><div class="n">${esc(t.sourceId)} ${aliveBadge} <span class="msg">${esc(t.readMode || 'sync (polling)')}</span></div><div class="p">queued: <span class="${qCls}">${t.queuedItems}</span> · last action ${last} · callbacks ${cb.toLocaleString()} (last ${cbLast})${fallback}</div></div></div>`;
     }).join('') : '<span class="msg">No STA threads (non-Windows or no sources connected).</span>';
 }
 
@@ -6247,10 +6291,12 @@ async function loadWorkers(options) {
 
 function renderWorkers(payload) {
     const parent = payload.parent || {};
+    const parentUp = Number(parent.uptimeSeconds || 0) > 0 ? ' · up ' + esc(fmtUptime(parent.uptimeSeconds)) : '';
     el('workersParent').innerHTML =
         '<div class="li"><span><strong>OpcBridge</strong> <span class="msg">(this process)</span></span>' +
         '<span class="msg" style="margin-left:auto">pid ' + esc(String(parent.pid || '')) +
-        ' · ' + esc(String(parent.workingSetMb || 0)) + ' MB · ' + esc(String(parent.handleCount || 0)) + ' handles</span></div>';
+        ' · WS ' + esc(String(parent.workingSetMb || 0)) + ' MB · private ' + esc(String(parent.privateMb || 0)) + ' MB' +
+        ' · ' + esc(String(parent.handleCount || 0)) + ' handles' + parentUp + '</span></div>';
 
     const workers = payload.workers || [];
     el('workersList').innerHTML = workers.length
@@ -6278,6 +6324,18 @@ function renderWorkerCard(w) {
     const last = w.lastExitUtc
         ? ' · last exit ' + esc(String(w.lastExitCode !== null && w.lastExitCode !== undefined ? w.lastExitCode : '?')) + ' ' + esc(relTime(w.lastExitUtc))
         : '';
+    const running = w.state === 'running';
+    // Heartbeat age is the "worker alive" signal beyond pid/pipe state: the child sends one
+    // every 2s, so a stale age means a hung process whose pipe is still open.
+    let heartbeat = '';
+    if (running && w.heartbeatAgeMs !== null && w.heartbeatAgeMs !== undefined && Number(w.heartbeatAgeMs) >= 0) {
+        const ageMs = Number(w.heartbeatAgeMs);
+        const hbCls = ageMs > 15000 ? 'bad' : (ageMs > 6000 ? 'warn' : 'msg');
+        heartbeat = ' · heartbeat <span class="' + hbCls + '">' + esc(fmtAgeMs(ageMs)) + '</span>';
+    }
+    const uptime = running && w.startedUtc
+        ? ' · up ' + esc(fmtUptime((Date.now() - new Date(w.startedUtc).getTime()) / 1000))
+        : '';
     return '<div class="li" style="display:block">' +
         '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
         badge(stateLabel, stateClass) +
@@ -6288,7 +6346,7 @@ function renderWorkerCard(w) {
         '<button class="btn ghost" type="button" data-worker="' + attr(w.workerId) + '" onclick="killWorker(this.dataset.worker)">Kill</button>' +
         '</div>' +
         '<div class="msg" style="display:block;margin-top:2px">sources: ' + esc((w.sources || []).join(', ') || '—') + '</div>' +
-        '<div class="msg" style="display:block">rss ' + esc(String(w.rssMb || 0)) + ' MB · private ' + esc(String(w.privateMb || 0)) + ' MB · ' + esc(String(w.handleCount || 0)) + ' handles · restarts ' + esc(String(w.restarts || 0)) + last + '</div>' +
+        '<div class="msg" style="display:block">rss ' + esc(String(w.rssMb || 0)) + ' MB · private ' + esc(String(w.privateMb || 0)) + ' MB · ' + esc(String(w.handleCount || 0)) + ' handles · restarts ' + esc(String(w.restarts || 0)) + heartbeat + uptime + last + '</div>' +
         (w.lastError ? '<div class="msg bad" style="display:block">' + esc(w.lastError) + '</div>' : '') +
         '</div>';
 }
@@ -6743,6 +6801,16 @@ function applyBridgeSourceStatus(sources) {
         source.serverInfo = get(status, 'serverInfo');
         source.readMode = get(status, 'readMode') || '';
         source.writeMode = get(status, 'writeMode') || '';
+        // Read telemetry lives only on the live bridge snapshot, not on /api/da/sources:
+        // Sessions ▸ Source Diagnostics and Time Sync read these fields.
+        const endpoint = get(status, 'endpointSummary');
+        if (endpoint !== undefined) source.endpointSummary = endpoint;
+        const duration = get(status, 'lastDaReadDurationMs');
+        if (duration !== undefined) source.lastDaReadDurationMs = duration;
+        const lastRead = get(status, 'lastDaReadUtc');
+        if (lastRead !== undefined) source.lastDaReadUtc = lastRead;
+        const offset = get(status, 'daClockOffsetMs');
+        if (offset !== undefined) source.daClockOffsetMs = offset;
     });
 }
 async function refresh() {
@@ -6819,10 +6887,12 @@ async function refresh() {
         el('updateRate').textContent = updateRateMs + ' ms';
         el('pollUtilizationFill').style.width = pollUtilization.width;
         el('pollUtilizationFill').className = pollUtilization.className;
+        el('pollUtilizationText').textContent = pollUtilization.text;
         el('uaEndpoint').textContent = get(ua, 'endpointUrl') || '—';
         el('uaConnectUrl').textContent = get(ua, 'connectUrl') || get(ua, 'endpointUrl') || '—';
         el('uaDiagnostics').textContent = formatUaDiagnostics(ua);
         el('pollSaturation').className = pollSaturation.className;
+        el('pollSaturation').textContent = pollSaturation.text;
         if (document.activeElement !== el('cfgUpdateRate')) el('cfgUpdateRate').value = String(updateRateMs);
         el('mappingCount').textContent = (get(b, 'mappingCount') ?? 0) + ' tags';
         refreshPortsInfo();
@@ -6868,6 +6938,9 @@ async function refresh() {
         if (sourceMix) sourceMix.textContent = sourceMixText(sources);
         requestAnimationFrame(drawFlowWires);
         const rateGroups = get(b, 'rateGroups') || [];
+        // Keep the per-source rate-group breakdown for Ops ▸ Sessions ▸ Source Diagnostics
+        // (that view renders from state, not from this payload directly).
+        state.rateGroups = rateGroups;
         const alarmBar = el('rateAlarmBar');
         if (alarmBar) {
             const problems = rateGroups.filter(g => g.status === 'limit-exceeded' || g.status === 'saturated');
@@ -6890,28 +6963,91 @@ async function refresh() {
         }
         const res = get(b, 'resources');
         const resH = el('resHandles'); const resGU = el('resGdiUser');
+        const resM = el('resMemory'); const resMN = el('resMemoryNote');
+        const resT = el('resThreads'); const resTN = el('resThreadsNote');
         const resA = el('resAssessment'); const resAD = el('resAssessmentDetail');
         if (resH && resGU) {
             if (res && res.supported) {
                 resH.textContent = String(res.handleCount ?? '—');
                 resGU.textContent = (res.gdiObjects ?? '—') + ' / ' + (res.userObjects ?? '—');
 
-                // Track handle history for leak detection (keep last 60 samples ≈ 5 min at 5s intervals)
+                // Histories hold distinct 5s server samples (the 1s dash refresh used to
+                // push duplicates): 60 entries ≈ 5 min. Growth is judged on those windows.
                 const hc = Number(res.handleCount ?? 0);
                 if (hc > 0) {
                     if (state.handleBaseline === null) state.handleBaseline = hc;
-                    state.handleHistory.push(hc);
-                    if (state.handleHistory.length > 60) state.handleHistory.shift();
+                    if (state.handleHistory[state.handleHistory.length - 1] !== hc) {
+                        state.handleHistory.push(hc);
+                        if (state.handleHistory.length > 60) state.handleHistory.shift();
+                    }
                 }
                 const gdiN = Number(res.gdiObjects ?? 0);
                 const userN = Number(res.userObjects ?? 0);
-                if (gdiN > 0) {
+                if (gdiN > 0 && state.gdiHistory[state.gdiHistory.length - 1] !== gdiN) {
                     state.gdiHistory.push(gdiN);
                     if (state.gdiHistory.length > 60) state.gdiHistory.shift();
                 }
-                if (userN > 0) {
+                if (userN > 0 && state.userHistory[state.userHistory.length - 1] !== userN) {
                     state.userHistory.push(userN);
                     if (state.userHistory.length > 60) state.userHistory.shift();
+                }
+                const wsBytes = Number(res.workingSetBytes ?? 0);
+                const privBytes = Number(res.privateBytes ?? 0);
+                const threadN = Number(res.threadCount ?? 0);
+                if (threadN > 0 && state.threadHistory[state.threadHistory.length - 1] !== threadN) {
+                    state.threadHistory.push(threadN);
+                    if (state.threadHistory.length > 60) state.threadHistory.shift();
+                }
+                // One memory sample per distinct server reading, plus a keep-alive sample a
+                // minute apart so a flat process still yields a measurable window (120 ≈ 10 min).
+                if (wsBytes > 0 || privBytes > 0) {
+                    const lastSample = state.memorySamples[state.memorySamples.length - 1];
+                    const nowMs = Date.now();
+                    if (!lastSample || lastSample.w !== wsBytes || lastSample.p !== privBytes
+                        || lastSample.n !== threadN || nowMs - lastSample.t > 60000) {
+                        state.memorySamples.push({ t: nowMs, w: wsBytes, p: privBytes, n: threadN });
+                        if (state.memorySamples.length > 120) state.memorySamples.shift();
+                    }
+                }
+
+                // Private-bytes growth in MB/min over the sample window (needs ≥1 min).
+                let memPerMin = null;
+                let wsPerMin = null;
+                if (state.memorySamples.length >= 2) {
+                    const firstSample = state.memorySamples[0];
+                    const newestSample = state.memorySamples[state.memorySamples.length - 1];
+                    const spanMin = (newestSample.t - firstSample.t) / 60000;
+                    if (spanMin >= 1) {
+                        memPerMin = (newestSample.p - firstSample.p) / (1024 * 1024) / spanMin;
+                        wsPerMin = (newestSample.w - firstSample.w) / (1024 * 1024) / spanMin;
+                    }
+                }
+
+                if (resM && resMN) {
+                    if (wsBytes <= 0 && privBytes <= 0) {
+                        resM.textContent = '—';
+                        resMN.textContent = '';
+                    } else {
+                        resM.textContent = formatBytes(wsBytes) + ' WS / ' + formatBytes(privBytes) + ' private';
+                        if (memPerMin === null) {
+                            resMN.textContent = 'collecting trend…';
+                            resMN.className = 's';
+                        } else {
+                            resMN.textContent = 'private ' + (memPerMin >= 0 ? '+' : '') + memPerMin.toFixed(2) + ' MB/min';
+                            resMN.className = 's' + (memPerMin >= 1.0 ? ' bad' : (memPerMin >= 0.3 ? ' warn' : ''));
+                        }
+                    }
+                }
+                if (resT && resTN) {
+                    resT.textContent = threadN > 0 ? String(threadN) : '—';
+                    const threadTrend = windowTrendPct(state.threadHistory);
+                    if (threadTrend === null) {
+                        resTN.textContent = threadN > 0 ? 'collecting trend…' : '';
+                        resTN.className = 's';
+                    } else {
+                        resTN.textContent = threadTrend > 15 ? '+' + Math.round(threadTrend) + '% trend' : 'stable';
+                        resTN.className = 's' + (threadTrend > 15 ? ' warn' : '');
+                    }
                 }
 
                 if (resA && resAD) {
@@ -6922,11 +7058,12 @@ async function refresh() {
                     const gdiPct = (gdi / 10000) * 100;
                     const userPct = (user / 10000) * 100;
 
-                    // Growth trends from history (handles + GDI + USER)
+                    // Growth trends from history (handles + GDI + USER + threads)
                     const trendPct = windowTrendPct(state.handleHistory) ?? 0;
                     const trend = trendPct > 15 ? 'rising' : (trendPct < -5 ? 'falling' : 'stable');
                     const gdiTrend = windowTrendPct(state.gdiHistory) ?? 0;
                     const userTrend = windowTrendPct(state.userHistory) ?? 0;
+                    const threadTrend = windowTrendPct(state.threadHistory) ?? 0;
 
                     let verdict, cls, detail;
                     if (gdiPct >= 80 || userPct >= 80) {
@@ -6935,19 +7072,32 @@ async function refresh() {
                     } else if (gdiPct >= 50 || userPct >= 50) {
                         verdict = 'Warning'; cls = 'warn';
                         detail = 'GDI/USER above 50% of the 10,000 per-process limit.';
-                    } else if ((drift > 200 && trend === 'rising') || gdiTrend > 15 || userTrend > 15) {
+                    } else if (memPerMin !== null && memPerMin >= 1.0) {
+                        verdict = 'Watch'; cls = 'warn';
+                        detail = 'Private bytes +' + memPerMin.toFixed(2) + ' MB/min — suspect managed growth (band ≥ 1.0 MB/min).';
+                    } else if (memPerMin !== null && memPerMin >= 0.3) {
+                        verdict = 'Watch'; cls = 'warn';
+                        detail = 'Private bytes +' + memPerMin.toFixed(2) + ' MB/min — watch band (≥ 0.3 MB/min).';
+                    } else if ((drift > 200 && trend === 'rising') || gdiTrend > 15 || userTrend > 15 || threadTrend > 15) {
                         verdict = 'Watch'; cls = 'warn';
                         const parts = [];
                         if (drift > 200 && trend === 'rising') parts.push('handles +' + Math.round(trendPct) + '% trend, +' + drift + ' since start');
                         if (gdiTrend > 15) parts.push('GDI +' + Math.round(gdiTrend) + '% trend');
                         if (userTrend > 15) parts.push('USER +' + Math.round(userTrend) + '% trend');
+                        if (threadTrend > 15) parts.push('threads +' + Math.round(threadTrend) + '% trend');
                         detail = parts.join('; ') + ' — possible leak.';
                     } else if (drift > 500) {
                         verdict = 'Watch'; cls = 'warn';
                         detail = 'Handle count +' + drift + ' above baseline. Monitor for continued growth.';
                     } else {
                         verdict = 'Normal'; cls = 'good';
-                        detail = 'Handles stable (baseline ' + baseline + ', drift ' + (drift >= 0 ? '+' : '') + drift + '). GDI/USER within safe range.';
+                        const memText = memPerMin === null ? ''
+                            : ' Private ' + (memPerMin >= 0 ? '+' : '') + memPerMin.toFixed(2) + ' MB/min.';
+                        // Working set falling while private is flat is the GC returning memory,
+                        // not a leak (docs/ram-measurement.md reading rule).
+                        const gcNote = (wsPerMin !== null && wsPerMin < -0.5 && (memPerMin === null || memPerMin < 0.3))
+                            ? ' Working set falling with private flat — GC returning memory.' : '';
+                        detail = 'Handles stable (baseline ' + baseline + ', drift ' + (drift >= 0 ? '+' : '') + drift + '). GDI/USER within safe range.' + memText + gcNote;
                     }
 
                     resA.innerHTML = '<span class="' + cls + '">' + verdict + '</span>';
@@ -6955,6 +7105,10 @@ async function refresh() {
                 }
             } else {
                 resH.textContent = '—'; resGU.textContent = 'n/a (non-Windows)';
+                if (resM) resM.textContent = '—';
+                if (resMN) resMN.textContent = 'Windows-only';
+                if (resT) resT.textContent = '—';
+                if (resTN) resTN.textContent = 'Windows-only';
                 if (resA) resA.innerHTML = '<span class="msg">n/a</span>';
                 if (resAD) resAD.textContent = 'Resource counters are Windows-only.';
             }

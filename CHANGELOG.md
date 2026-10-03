@@ -16,6 +16,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+**Ops ▸ Sessions shows its read telemetry again.** Source Diagnostics read a `state.rateGroups`
+list that nothing ever assigned and never merged the read snapshot (`endpointSummary`,
+`lastDaReadDurationMs`, `lastDaReadUtc`, `daClockOffsetMs`) onto the source rows — so rate
+groups always read "No rate groups." and "0 tags in 0 rate group(s)", Latency and "last read"
+always "—", and the Time Sync card was empty. The merge now carries the read telemetry, the
+rate-group breakdown is kept from `/api/dashboard`, each row adds the read mode and the
+server's identity line, and Time Sync lists OPC DA sources only (as its tooltip always said)
+with the freshness of the last value — a source silent past its subscription watchdog is
+marked instead of looking healthy until the 60 s reconnect.
+
+**Empty poll passes no longer erase DA read stats.** A subscription-mode poll cycle returns
+only unbound items, and callback batches carry no device-read duration — both overwrote
+`lastDaReadCount` (0), `lastDaReadDurationMs` (0) and `daClockOffsetMs` (null), racing the
+callback update, so Sessions latency/time sync misreported healthy subscribed sources and
+Monitor's Last Write flickered between "0 values · 0/s" and the real figure. Read stats now
+update only from value-bearing batches (connection and bridge state still advance on every
+pass), and Monitor ▸ Cycle Budget shows its percent and saturation text the formatter
+computed but the dashboard never wrote.
+
+**Ops ▸ Workers shows heartbeat age and uptime.** `/api/workers` already returned
+`heartbeatAgeMs`, `startedUtc` and the parent's private bytes/uptime; the cards now render
+them — a hung worker whose pipe is still open shows a stale heartbeat (warn > 6 s, bad > 15 s,
+the child beats every 2 s) instead of looking "running".
+
+### Added
+
+**Diagnostics ▸ Bridge Vitals shows a measured values/sec.** The card used the last poll
+cycle's rate, which reads 0.0 while values arrive via DA subscriptions; a monotonic flow
+counter (poll and callback paths alike, windowed per second, decaying when quiet) now feeds
+the card, with the total beside it.
+
+**Diagnostics ▸ STA Thread Health shows DA subscription health.** Each in-process DA source
+reports its value-callback count and last callback time, plus a `poll fallback ×N` marker
+when the server refused the callback subscription for N rate groups (the group is polling
+instead). Worker-isolated sources don't carry these counters — their freshness shows on
+Sessions.
+
+**Monitor ▸ Resources shows Windows memory and threads.** The 5-second sampler now also
+reads working set, private bytes and thread count, and the card reports private growth in
+MB/min with the memory-work bands (≥1.0 suspect, ≥0.3 watch; a falling working set with flat
+private means the GC is returning memory) and a thread trend for the thread-leak check.
+
 ## [1.6.1] - 2026-10-03
 
 ### Fixed

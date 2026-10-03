@@ -1873,12 +1873,17 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
                 if (session.Client is OpcDaClient daClient)
                 {
                     var stats = daClient.GetStaThreadStats();
+                    var subscriptions = daClient.GetSubscriptionStats();
                     staThreads.Add(new
                     {
                         sourceId,
                         alive = stats?.Alive ?? false,
                         queuedItems = stats?.QueuedItems ?? 0,
-                        lastActionUtc = stats?.LastActionUtc
+                        lastActionUtc = stats?.LastActionUtc,
+                        readMode = ResolveReadMode(session.Client),
+                        callbacks = subscriptions?.Callbacks ?? 0,
+                        lastCallbackUtc = subscriptions?.LastCallbackUtc,
+                        pollFallbackGroups = subscriptions?.PollFallbackGroups ?? 0
                     });
                 }
             }
@@ -1902,10 +1907,16 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
         // real byte size, so the byte rate is measured rather than notifications/sec × a guess.
         UaBandwidthMetrics bandwidth = ua_server_.GetBandwidthMetrics();
 
+        // Measured source-value flow (poll and callback paths alike) — the last poll cycle's
+        // rate reads 0 for subscription-delivered values, so Diagnostics ▸ Values/sec uses this.
+        (long valuesTotal, double valuesPerSec) = bridge_state_.GetSourceValueFlow();
+
         return new
         {
             staThreads,
             writeQueue,
+            valuesTotal,
+            valuesPerSec,
             uaBandwidth = new
             {
                 totalNotifications = bandwidth.TotalNotifications,

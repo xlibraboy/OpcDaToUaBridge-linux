@@ -13,6 +13,13 @@ public sealed class BridgeState
     private readonly object status_lock_ = new();
     private readonly ConcurrentDictionary<string, InterlinkStats> link_stats_ = new(StringComparer.OrdinalIgnoreCase);
 
+    // Measured source-value flow for Diagnostics ▸ Values/sec: a monotonic total plus a
+    // ≈1-second window, mirroring the UA bandwidth window (BridgeNodeManager). Empty poll
+    // passes and quiet subscriptions leave the rate to decay instead of reporting a 0.
+    private long source_values_total_;
+    private long value_window_start_ticks_ = DateTime.UtcNow.Ticks;
+    private long value_window_count_;
+
     public BridgeState(IOptions<BridgeOptions> options)
     {
         int expectedTagCount = options?.Value.ExpectedTagCount ?? 1000;
@@ -363,6 +370,17 @@ public sealed class BridgeState
             }
         }
 
+        // Read stats belong to value-bearing updates only: subscription callbacks pass
+        // TimeSpan.Zero (there is no device read), and in subscription mode the poll cycle
+        // returns only unbound items — an empty pass must not reset the count, blank the
+        // duration, or drop the clock offset a callback batch just measured. The bridge
+        // and connection state still advance on every pass.
+        bool hasValues = values.Count > 0;
+        if (hasValues)
+        {
+            RecordSourceValues(values.Count);
+        }
+
         lock (status_lock_)
         {
             DaSourceStatusSnapshot[] updated = status_.Sources
@@ -370,11 +388,13 @@ public sealed class BridgeState
                     ? source with
                     {
                         ConnectionState = "Connected",
-                        LastDaReadUtc = readTime,
-                        LastDaReadCount = values.Count,
-                        LastDaReadDurationMs = ToMilliseconds(readDuration),
+                        LastDaReadUtc = hasValues ? readTime : source.LastDaReadUtc,
+                        LastDaReadCount = hasValues ? values.Count : source.LastDaReadCount,
+                        LastDaReadDurationMs = hasValues && readDuration > TimeSpan.Zero
+                            ? ToMilliseconds(readDuration)
+                            : source.LastDaReadDurationMs,
                         LastError = null,
-                        DaClockOffsetMs = clockOffsetMs
+                        DaClockOffsetMs = clockOffsetMs ?? source.DaClockOffsetMs
                     }
                     : source)
                 .ToArray();
@@ -384,8 +404,8 @@ public sealed class BridgeState
             {
                 BridgeState = "Running",
                 DaConnectionState = AggregateConnectionState(updated),
-                LastDaReadUtc = readTime,
-                LastDaReadCount = values.Count,
+                LastDaReadUtc = hasValues ? readTime : status_.LastDaReadUtc,
+                LastDaReadCount = hasValues ? values.Count : status_.LastDaReadCount,
                 LastError = anyFaulted ? status_.LastError : null,
                 Sources = updated
             };
@@ -399,12 +419,53 @@ public sealed class BridgeState
             double durationMs = ToMilliseconds(pollDuration);
             status_ = status_ with
             {
-                LastUaWriteUtc = DateTime.UtcNow,
-                LastUaWriteCount = valueCount,
+                // The duration describes the cycle that just ran (valid for an empty
+                // subscription pass); the write counters describe the last cycle that
+                // actually carried values, so quiet cycles no longer flicker 0 values
+                // and a 0/s rate.
                 LastPollDurationMs = durationMs,
-                LastPollValueRate = CalculateValueRate(valueCount, pollDuration)
+                LastUaWriteUtc = valueCount > 0 ? DateTime.UtcNow : status_.LastUaWriteUtc,
+                LastUaWriteCount = valueCount > 0 ? valueCount : status_.LastUaWriteCount,
+                LastPollValueRate = valueCount > 0 ? CalculateValueRate(valueCount, pollDuration) : status_.LastPollValueRate
             };
         }
+    }
+
+    /// <summary>
+    /// Records source-read values for the measured flow counters. The window resets on the
+    /// first value after roughly a second, and <see cref="GetSourceValueFlow"/> divides by
+    /// the window's own elapsed time, so the rate decays when the flow stops.
+    /// </summary>
+    private void RecordSourceValues(int count)
+    {
+        Interlocked.Add(ref source_values_total_, count);
+
+        long nowTicks = DateTime.UtcNow.Ticks;
+        if (nowTicks - Interlocked.Read(ref value_window_start_ticks_) >= TimeSpan.TicksPerSecond)
+        {
+            Interlocked.Exchange(ref value_window_start_ticks_, nowTicks);
+            Interlocked.Exchange(ref value_window_count_, 0);
+        }
+
+        Interlocked.Add(ref value_window_count_, count);
+    }
+
+    /// <summary>
+    /// Measured source-value flow: the monotonic total and the current window's values per
+    /// second (window count over its own elapsed time, floored at 1 s).
+    /// </summary>
+    public (long Total, double PerSecond) GetSourceValueFlow()
+    {
+        long total = Interlocked.Read(ref source_values_total_);
+        long count = Interlocked.Read(ref value_window_count_);
+        long startTicks = Interlocked.Read(ref value_window_start_ticks_);
+        double elapsedSeconds = (DateTime.UtcNow - new DateTime(startTicks, DateTimeKind.Utc)).TotalSeconds;
+        if (elapsedSeconds < 1.0)
+        {
+            elapsedSeconds = 1.0;
+        }
+
+        return (total, Math.Round(count / elapsedSeconds, 1));
     }
 
     public void UpdateRateGroup(string sourceId, int rateMs, int tagCount, int tagLimit, TimeSpan readDuration)
