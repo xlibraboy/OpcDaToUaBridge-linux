@@ -81,6 +81,16 @@ internal static class DashboardPage
             pref === 'light' || pref === 'dark' ? pref : (dark ? 'dark' : 'light'));
     })();
     </script>
+    <script>
+    /* Hold the shell behind the sign-in gate until sign-in is settled. The gate is a
+       network call to /api/auth/me, so the server cannot decide this while rendering:
+       serving the app first would paint the whole dashboard, then cover it. The stylesheet
+       hides the shell only while the value stays 'pending', so a JS error that never
+       resolves it leaves the sign-in card up rather than a dashboard nobody signed in for. */
+    (function () {
+        document.documentElement.setAttribute('data-auth-gate', 'pending');
+    })();
+    </script>
     <style>
         /* ============================================================
            INSTRUMENT LEDGER
@@ -984,6 +994,17 @@ internal static class DashboardPage
             .info::after { content: ''; position: absolute; inset: -7px; }
         }
         /* ---- Dashboard sign-in gate + user administration ---- */
+        /* Until the gate is answered the dashboard has never been on screen, so a refresh
+           without a session cannot flash it before the sign-in card covers it: only the
+           sign-in card and the page background paint. The nav rail is named alongside the
+           topbar because .tabbar is a sibling of #main, not a child, so the #main rule
+           cannot reach it. Once the answer arrives every rule here stops matching and the
+           shell lays out exactly as it always did. */
+        :root[data-auth-gate='pending'] .skip-link,
+        :root[data-auth-gate='pending'] .topbar,
+        :root[data-auth-gate='pending'] .tabbar,
+        :root[data-auth-gate='pending'] .app-shell > #main > * { display: none; }
+        :root[data-auth-gate='pending'] { background: var(--bg); }
         .auth-overlay { position: fixed; inset: 0; z-index: 900; display: flex; align-items: center; justify-content: center; background: var(--bg); padding: 16px; }
         .auth-card { background: var(--panel); border: 1px solid var(--text); border-top: 3px solid var(--text); padding: 20px 22px; width: min(360px, 92vw); }
         .auth-card h1 { font-size: var(--fs-title); margin: 0 0 4px; letter-spacing: -.01em; }
@@ -4485,11 +4506,15 @@ window.fetch = async (input, init) => {
 };
 
 function showAuthOverlay(message) {
+    document.documentElement.setAttribute('data-auth-gate', 'signed-out');
     el('authOverlay').style.display = 'flex';
     el('authError').textContent = message || '';
 }
 
-function hideAuthOverlay() { el('authOverlay').style.display = 'none'; }
+function hideAuthOverlay() {
+    document.documentElement.setAttribute('data-auth-gate', 'signed-in');
+    el('authOverlay').style.display = 'none';
+}
 
 async function initAuth() {
     let payload = {};
@@ -4505,6 +4530,8 @@ async function initAuth() {
         role: payload.role || 'Viewer'
     };
 
+    // One of the two branches always resolves the gate the head marked pending, so the
+    // shell is never left hidden once the answer is known.
     const signedIn = authSession.authenticated || !authSession.authEnabled;
     if (!signedIn) {
         // An idle sign-out reloads the page: show its reason once, then forget it.
@@ -9992,6 +10019,11 @@ function bindOverlayA11y() {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+    // Settle the sign-in gate first, before the ~250 lines of element binding below. The
+    // head marks the shell hidden until this resolves, so any handler that throws on a
+    // missing element would otherwise leave the page blank instead of on the sign-in card.
+    // Authentication is opt-in (Auth:Enabled): nothing is fetched until sign-in succeeds.
+    if (!await initAuth()) return;
     initTheme();
     bindKeyboardActivation();
     bindOverlayA11y();
@@ -10279,9 +10311,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     const initHashRaw = location.hash.replace(/^#\/?/, '');
     let initRoute = Object.prototype.hasOwnProperty.call(ROUTE_TO_TAB, initHashRaw) ? initHashRaw
       : (LEGACY_TAB_TO_ROUTE[initHashRaw] || DEFAULT_ROUTE);
-    // Authentication is opt-in (Auth:Enabled). Until sign-in succeeds, do not fetch
-    // anything: the gate answers 401 and the card is already on screen.
-    if (!await initAuth()) return;
     if (!routeAllowed(initRoute)) initRoute = DEFAULT_ROUTE;
     // A deep link asks for a specific page, so its group opens; a plain boot
     // (no hash) stays fully collapsed (issue #11: "by default all close").

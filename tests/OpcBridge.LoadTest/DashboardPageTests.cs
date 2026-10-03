@@ -1344,6 +1344,42 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
+    public void Html_SignInGateHidesTheShellUntilTheCheckAnswers()
+    {
+        // Refreshing without a session used to paint the whole dashboard and only then
+        // cover it with the sign-in card, because the card appeared after the
+        // /api/auth/me round trip. The head now marks the gate pending before first paint
+        // and the stylesheet keeps the shell off screen until an answer changes the value.
+        Assert.Contains("document.documentElement.setAttribute('data-auth-gate', 'pending')", DashboardPage.Html);
+
+        // The guard is keyed on the pending value, not on the attribute merely being
+        // absent: the head sets pending before the body parses, so only this value hides.
+        Assert.Contains(":root[data-auth-gate='pending'] .topbar", DashboardPage.Html);
+        Assert.Contains(":root[data-auth-gate='pending'] .skip-link", DashboardPage.Html);
+        Assert.Contains(":root[data-auth-gate='pending'] .tabbar", DashboardPage.Html);
+        Assert.Contains(":root[data-auth-gate='pending'] .app-shell > #main > * { display: none; }", DashboardPage.Html);
+
+        // #main holds the views, the sign-in card and the modal stack, so one rule covers
+        // them. The nav rail cannot come from it: .tabbar is a sibling of #main, not one
+        // of its children, and it is a clickable navigation tree that must not be visible
+        // to a caller who has not signed in.
+        Assert.Contains("<div class=\"content\" id=\"main\" role=\"main\"", DashboardPage.Html);
+        Assert.Contains("<div class=\"tabbar\" role=\"navigation\"", DashboardPage.Html);
+
+        // Exactly two outcomes, and both resolve the value the head marked pending.
+        Assert.Contains("document.documentElement.setAttribute('data-auth-gate', 'signed-out');", DashboardPage.Script);
+        Assert.Contains("document.documentElement.setAttribute('data-auth-gate', 'signed-in');", DashboardPage.Script);
+
+        // The gate is settled before the element binding, so a handler that throws on a
+        // missing element lands on the sign-in card instead of a blank page.
+        Assert.Contains("if (!await initAuth()) return;", DashboardPage.Script);
+        Assert.True(
+            DashboardPage.Script.IndexOf("if (!await initAuth()) return;", StringComparison.Ordinal)
+            < DashboardPage.Script.IndexOf("el('cfgApply').addEventListener", StringComparison.Ordinal),
+            "initAuth must run before the element binding.");
+    }
+
+    [Fact]
     public void Script_DiagramColorsReadTheThemeTokens()
     {
         // The schematic draws from live tokens, so a theme switch repaints it.

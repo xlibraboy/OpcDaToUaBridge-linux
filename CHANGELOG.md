@@ -16,6 +16,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+**The dashboard no longer flashes before the sign-in card on refresh.** Signing out and
+refreshing painted the whole dashboard — nav rail, status pills, the Monitor page and its data
+flow — and only then covered it with the sign-in card, because the card appeared after the
+`/api/auth/me` round trip returned. Anyone could read the layout, the section tree and the last
+known state of the bridge before being asked to sign in. The shell is now held off screen while
+the check is in flight: a second inline script in the head marks the gate `pending` before the
+body is parsed — the same trick that keeps the stored theme from flashing — and the stylesheet
+keeps the topbar, the nav rail and every view hidden until an answer sets `signed-in` or
+`signed-out`. A check that never returns, or an engine that never runs the script, therefore
+leaves the sign-in card up rather than the dashboard. The card and the modal stack are untouched
+by the guard, so an expired session or an idle sign-out still re-opens the card over what is on
+screen rather than blanking the page.
+
 ## [1.5.0] - 2026-10-02
 
 ### Added
