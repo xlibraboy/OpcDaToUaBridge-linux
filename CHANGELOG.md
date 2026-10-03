@@ -16,7 +16,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-10-03
+
+### Added
+
+**Tags ▸ Maps follows the Source dropdown.** The dropdown only drove the tag browser, so the
+mapping list below it kept showing every mapping of the active tab and switching source never
+changed the list. The list now narrows to the selected source before the text filter and sort,
+the count keeps reading "shown / tab total", and the empty states tell apart a source with no
+mappings yet, an empty tab, and a filter that matched nothing. Entering a tab lands on a source
+that has mappings where one exists, so the list does not open empty while another source holds
+the work.
+
+### Changed
+
+**Ops ▸ Troubleshoot no longer offers a redundant activation probe.** Every connect already
+activates the server, the registration verdict runs automatically on failure, and worker mode
+gives permanent process isolation — so the manual probe only duplicated paths that already
+exist. Run checks stays; what is gone is the isolated ad-hoc activation test for a ProgID that
+is not a configured source (#36).
+
 ### Fixed
+
+**A worker-isolated source no longer reads every tag as a Double.** Worker-isolated OPC DA
+sources rebuilt their tag mapping from a worker reference carrying only the item id and the poll
+rate, so the data type fell back to the initializer default `Double`: every read asked the DA
+server for `VT_R8` and booleans and strings arrived as doubles, which Live Values and the
+dashboard faceplate then displayed as Double. The worker reference now carries the mapping's
+data type (defaulting to `Auto`, the native source type) and the worker session rebuilds the
+mapping with it, so worker reads no longer coerce types that were never configured.
+
+**Live source status no longer blinks between retry ticks.** `BridgeState.Configure()` rebuilt
+every source snapshot from scratch as *Disconnected*, and the coordinator re-runs it on every
+retry tick while any source is down. A healthy source next to a retrying one therefore blinked
+*Disconnected* each backoff cycle, and a bridge that was already running was pushed back to
+*Starting* for as long as one of its sources retried — the "another source shows disconnected"
+report (#35). Configure now merges the previous snapshot for configured sources and keeps the
+connection state, errors and detection info of live sessions, and the bridge keeps *Running*
+rather than falling back to *Starting*. For the same reason the LAST READ / LAST WRITE indicators
+no longer alternate between "just now" and "–" while a source retries: while the bridge is
+running, those liveness fields survive a reconfigure tick and are cleared only when it is
+actually starting.
 
 **The dashboard no longer flashes before the sign-in card on refresh.** Signing out and
 refreshing painted the whole dashboard — nav rail, status pills, the Monitor page and its data
