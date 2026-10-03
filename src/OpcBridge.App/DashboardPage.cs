@@ -6521,14 +6521,15 @@ function flowSourceStatus(connectionState) {
     return cls === 'partial' ? 'warn' : cls;
 }
 // Bridge → UA is live whenever both ends run. A faulted source degrades what
-// crosses, but it never paints the server itself as down.
-function flowLinkStatus(bridgeState, uaState) {
-    if (!bridgeState || !uaState) return 'off';
-    const down = s => s === 'stopped' || s === 'faulted' || s === 'disconnected';
-    const bs = String(bridgeState || '').toLowerCase();
-    const us = String(uaState || '').toLowerCase();
-    if (down(bs) || down(us)) return 'bad';
-    if (bs === 'running' && us === 'running') return 'good';
+// crosses, but it never paints the server itself as down. Callers pass node
+// state classes (good/warn/bad/off), not raw status words.
+function flowLinkStatus(bridgeClass, uaClass) {
+    if (!bridgeClass || !uaClass) return 'off';
+    const bs = String(bridgeClass).toLowerCase();
+    const us = String(uaClass).toLowerCase();
+    if (bs === 'off' || us === 'off') return 'off';
+    if (bs === 'bad' || us === 'bad') return 'bad';
+    if (bs === 'good' && us === 'good') return 'good';
     return 'warn';
 }
 function flowKindShort(source) {

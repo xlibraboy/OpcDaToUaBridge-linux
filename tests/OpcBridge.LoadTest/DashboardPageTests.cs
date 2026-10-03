@@ -900,6 +900,19 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
+    public void Script_MonitorFlowLinkComparesNodeStateClasses()
+    {
+        // The BRIDGE → OPC UA wire is fed the node state classes (good/warn/bad/off)
+        // hanging off dataset.state, never raw status words. Comparing raw words
+        // (running/stopped/...) here made the wire read "degraded" on every render.
+        Assert.Contains("function flowLinkStatus(bridgeClass, uaClass)", DashboardPage.Script);
+        Assert.Contains("if (bs === 'off' || us === 'off') return 'off';", DashboardPage.Script);
+        Assert.Contains("if (bs === 'bad' || us === 'bad') return 'bad';", DashboardPage.Script);
+        Assert.Contains("if (bs === 'good' && us === 'good') return 'good';", DashboardPage.Script);
+        Assert.DoesNotContain("const down = s => s === 'stopped'", DashboardPage.Script);
+    }
+
+    [Fact]
     public void Script_RendersExtendedDiagnosticsPayload()
     {
         // renderDiagnostics consumes the diagnostics sections it renders.
