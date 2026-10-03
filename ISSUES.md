@@ -57,12 +57,11 @@ Until a post-mortem dump pins the native fault down, run Honeywell PMD sources i
 mode (`IoMode: "Sync"`, no subscriptions). Next step: enable WER LocalDumps for
 `OpcBridge.App.exe` on a lab host and run the PMD source in subscription mode.
 
-The **activation probe** added alongside those fixes is the tool for this fault class, and
-its isolation has since been lab-verified on the Windows 11 host (2026-10-01): with an
-injected fault-on-activation in-proc COM server the probe's child died alone (exit
-`0x80131623`; WER 1000/1025/1001 name the child PID, no `crash-*.log`) while the bridge
-stayed up and answered `died: true` — a probe that dies is a trustworthy verdict, and the
-bridge's own process never loads the vendor DLL. That does not close this issue: the
+Process isolation for this fault class has since been lab-verified on the Windows 11 host
+(2026-10-01): with an injected fault-on-activation in-proc COM server the isolated child
+died alone (exit `0x80131623`; WER 1000/1025/1001 name the child PID, no `crash-*.log`)
+while the bridge stayed up — a child that dies is a trustworthy verdict, and the bridge's
+own process never loads the vendor DLL. That does not close this issue: the
 subscription-lifecycle crash itself still needs the dump.
 
 Two containment paths now ship for this fault class, neither of which changes the root cause:

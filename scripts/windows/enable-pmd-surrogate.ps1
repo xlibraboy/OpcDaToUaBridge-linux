@@ -44,7 +44,7 @@ $ErrorActionPreference = 'Stop'
 #   powershell -ExecutionPolicy Bypass -File .\enable-pmd-surrogate.ps1 -Rollback
 #
 # Verification (see the field notes):
-#   1. Ops > Troubleshoot > activation probe succeeds.
+#   1. The PMD source connects (Ops > Troubleshoot's checks pass).
 #   2. (Get-Process dllhost).Modules | Where-Object ModuleName -match 'PMD' lists the vendor DLL.
 #   3. Run the source with subscriptions for > 5 minutes: if dllhost dies/restarts while the
 #      bridge PID and /health stay unchanged, containment is proven.

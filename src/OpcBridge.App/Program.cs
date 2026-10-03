@@ -29,20 +29,10 @@ using DataDirectory = OpcBridge.App.DataDirectory;
 // poll cycle; beyond this many values it freezes browsers. UI shows total separately.
 const int DashboardValuesLimit = 2000;
 
-// OPC DA activation probe (child mode): a short-lived copy of this executable that only
-// activates one COM server and prints the result. It must run before the crash handlers,
-// the single-instance lock and the port/appsettings setup — it works while the service is
-// running, and a native fault in an in-proc vendor DLL kills only this child process.
-if (DaProbe.IsProbeInvocation(args))
-{
-    Environment.ExitCode = DaProbe.RunChild();
-    return;
-}
-
 // DA worker (child mode): a long-lived copy of this executable that hosts OPC DA source
 // clients in its own process, so a fault in a vendor in-proc server kills only the worker.
-// It runs before the crash handlers, the lock and the web host, like the probe above; the
-// parent spawns it and talks over a named pipe (bootstrap + credentials on stdin).
+// It runs before the crash handlers, the lock and the web host; the parent spawns it and
+// talks over a named pipe (bootstrap + credentials on stdin).
 if (DaWorkerHost.IsWorkerInvocation(args))
 {
     Environment.ExitCode = DaWorkerHost.Run();
@@ -1636,8 +1626,7 @@ app.MapPost("/api/workers/{workerId}/kill", async (string workerId, bool? confir
 });
 
 // OPC DA troubleshoot (Admin only): read-only registration analysis of the
-// ProgID → CLSID → server-path chain, plus an optional activation probe run in a
-// separate process so a faulty in-proc server DLL cannot take the bridge down.
+// ProgID → CLSID → server-path chain.
 app.MapPost("/api/da/troubleshoot", async (DaTroubleshootRequest request, DaRuntimeSettings settings) =>
 {
     if (!OperatingSystem.IsWindows())
@@ -1686,14 +1675,7 @@ app.MapPost("/api/da/troubleshoot", async (DaTroubleshootRequest request, DaRunt
                 ? DaRegistrationDiagnostics.Diagnose(progId, host, username, password, domain)
                 : throw new PlatformNotSupportedException("OPC DA diagnostics require Windows.")).ConfigureAwait(false);
 
-        DaProbeResult? probe = null;
-        if (request.IncludeProbe)
-        {
-            probe = await DaProbe.RunAsync(new DaProbeRequest(progId, host, username, password, domain), CancellationToken.None)
-                .ConfigureAwait(false);
-        }
-
-        return Results.Json(new { ok = true, report, probe });
+        return Results.Json(new { ok = true, report });
     }
     catch (Exception exception)
     {

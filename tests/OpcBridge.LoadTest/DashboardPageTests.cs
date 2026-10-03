@@ -1585,13 +1585,12 @@ public sealed class DashboardPageTests
     [Fact]
     public void Html_ShipsTheTroubleshootView()
     {
-        // Ops ▸ Troubleshoot (Admin only): the DA registration report and the isolated probe.
+        // Ops ▸ Troubleshoot (Admin only): the DA registration report.
         Assert.Contains("data-tab=\"troubleshoot\"", DashboardPage.FullHtml, StringComparison.Ordinal);
         Assert.Contains("data-route=\"ops/troubleshoot\"", DashboardPage.FullHtml, StringComparison.Ordinal);
         Assert.Contains("id=\"view-troubleshoot\"", DashboardPage.FullHtml, StringComparison.Ordinal);
         Assert.Contains("id=\"navTroubleshoot\"", DashboardPage.FullHtml, StringComparison.Ordinal);
         Assert.Contains("id=\"tsRun\"", DashboardPage.FullHtml, StringComparison.Ordinal);
-        Assert.Contains("id=\"tsProbe\"", DashboardPage.FullHtml, StringComparison.Ordinal);
         Assert.Contains("id=\"tsReport\"", DashboardPage.FullHtml, StringComparison.Ordinal);
         Assert.Contains("function loadTroubleshoot(", DashboardPage.Script, StringComparison.Ordinal);
         Assert.Contains("function runDaTroubleshoot(", DashboardPage.Script, StringComparison.Ordinal);

@@ -470,9 +470,6 @@ local connect takes — account for the bridge's own bitness, since a 32-bit bri
 | Server path | the registered path does not exist — a build-machine path (like `F:\…`) is the classic | repoint the registration to the installed DLL |
 | Discovery keys | OPC DA category or reverse ProgID missing — scans will not list the server | re-register; connecting by ProgID still works |
 
-- **Run activation probe** additionally activates the server in a **separate process** (up to
-  25 s). A faulty in-proc server DLL kills only the probe — never the bridge — and a probe that
-  dies is itself a diagnosis.
 - When a DA source fails to connect, the read-only checks run **automatically once** and note a
   verdict on the durable log — search `logs/bridge.log` for `OPC DA registration verdict`.
 - Remote sources: the ProgID mapping is resolved on the bridge's machine; the server path and

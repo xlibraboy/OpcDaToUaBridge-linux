@@ -12,7 +12,7 @@ public sealed class DaWorkerHostTests
         Assert.True(DaWorkerHost.IsWorkerInvocation(new[] { "--da-worker" }));
         Assert.False(DaWorkerHost.IsWorkerInvocation(Array.Empty<string>()));
         Assert.False(DaWorkerHost.IsWorkerInvocation(new[] { "--da-worker", "--extra" }));
-        Assert.False(DaWorkerHost.IsWorkerInvocation(new[] { "--da-probe" }));
+        Assert.False(DaWorkerHost.IsWorkerInvocation(new[] { "--other" }));
         Assert.False(DaWorkerHost.IsWorkerInvocation(new[] { "--DA-WORKER" }));
     }
 

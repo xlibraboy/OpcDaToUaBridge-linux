@@ -3,7 +3,7 @@ using System.Reflection;
 namespace OpcBridge.App;
 
 /// <summary>
-/// Re-launches this application in one of its child modes (<c>--da-probe</c>, <c>--da-worker</c>).
+/// Re-launches this application in its DA worker child mode (<c>--da-worker</c>).
 /// A published app runs its own executable; when hosted by another executable (dotnet, the
 /// test host) the assembly path is passed to that host instead.
 /// </summary>

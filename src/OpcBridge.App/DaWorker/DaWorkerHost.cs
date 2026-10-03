@@ -8,8 +8,8 @@ namespace OpcBridge.App;
 /// DA worker child mode (<c>OpcBridge.App --da-worker</c>): hosts one or more OPC DA source
 /// clients in a separate process, so a fault in a vendor in-proc server kills only this
 /// process instead of the bridge. The parent spawns it, writes one bootstrap JSON line on
-/// stdin (credentials never in argv) and then talks over a named pipe. Like the activation
-/// probe it runs before the crash handlers, the instance lock and the web host (Program.cs).
+/// stdin (credentials never in argv) and then talks over a named pipe. It runs before the
+/// crash handlers, the instance lock and the web host (Program.cs).
 /// </summary>
 internal static class DaWorkerHost
 {
