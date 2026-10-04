@@ -65,7 +65,10 @@ public sealed class BridgeStateDisconnectTests
         ];
 
         state.Configure(1000, 0, sources);
-        state.UpdateDaRead("default", Array.Empty<BridgeValue>(), TimeSpan.FromMilliseconds(2));
+        state.UpdateDaRead(
+            "default",
+            new[] { new BridgeValue("default", "tag", 1.0, DateTime.UtcNow, 192, true) },
+            TimeSpan.FromMilliseconds(2));
         state.MarkUaWrite(3, TimeSpan.FromMilliseconds(4));
 
         BridgeRuntimeStatus before = state.GetStatus();
