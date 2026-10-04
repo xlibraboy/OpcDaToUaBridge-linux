@@ -9,7 +9,7 @@
   runs no bridge.
 
   Built by .github/workflows/windows-release.yml on a Windows runner, which supplies:
-    -define MsiVersion=<x.y.z>   from Directory.Build.props (must equal the newest release in the server's CHANGELOG.md)
+    -define MsiVersion=<x.y.z>   from ServerVersion in Directory.Build.props (must equal the newest release in the server's CHANGELOG.md)
     -arch x86|x64                package architecture; also selects the server payload (see below)
     -d HttpPort=<port>           bridge HTTP port (default 8080)
     -d UaPort=<port>             bridge OPC UA port (default 4840)

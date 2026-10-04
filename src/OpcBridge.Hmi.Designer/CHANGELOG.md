@@ -4,15 +4,22 @@ All notable changes to the OpcBridge HMI Designer are documented in this file. T
 designer ships this file inside its assembly and shows it under **Help ▸ Release
 notes**, so what you read in the app is exactly what is written here.
 
-Only releases that changed this app are listed; a release that ships the designer
-unchanged appears only in the server's changelog (`CHANGELOG.md`). The version number
-is the shared OpcBridge version from `Directory.Build.props`, the same one the bridge,
-the runtime and the designer report.
+The designer versions and releases on its own: this file is its release authority, and
+its newest section is the `DesignerVersion` the app reports and the `designer-v*`
+installer is stamped with (`Directory.Build.props`). A release that changes only the
+bridge or the runtime does not touch the designer's version, tag or release.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [1.7.0] - 2026-10-04
+
+**The designer now versions and releases on its own.** It carries the product version it
+already shipped with — 1.7.0, the v1.7.0 release included the designer installer — and
+moves on its own cadence from here: only designer changes bump `DesignerVersion` and
+produce a `designer-v*` tag and release.
 
 ## [1.4.0] - 2026-10-02
 
