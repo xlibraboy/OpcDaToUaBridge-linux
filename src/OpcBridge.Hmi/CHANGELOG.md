@@ -20,18 +20,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 display store, name) were only written to the client's local configuration when a connect
 succeeded, so a prepared or edited list was lost on exit and there was no way to keep a
 name or address change on its own. A Save button next to Connect now persists the rows and
-reports the result in the status bar; it compares the rows with the saved configuration,
-so it greys out while they match — including when an edit is reverted. Connect keeps
-saving the list it connected with, as before.
+reports the result in the status bar; it compares the rows — name included — with the saved
+configuration, so it greys out while they match — including when an edit is reverted.
+Connect keeps saving the list it connected with, as before.
 
 ### Fixed
 
-**Connect is no longer greyed out after editing the bridge list while connected.** The
-button was only enabled while disconnected, so adding or changing an OPC Bridge address
-could not be applied without disconnecting first. Connect now compares the rows with the
-live connection: an edit that makes them differ — adding, removing or changing an
-address, store or name — re-enables it, and reverting the edit greys it out again.
-Clicking Connect tears the live sessions down and rebuilds them from the rows.
+**Saving the client config no longer builds a relative path when the app-data folder is
+missing.** On Linux, `Environment.GetFolderPath(ApplicationData)` verifies the folder and
+returns an empty string while it does not exist — in a container whose home had no
+`.config` yet, the runtime then built `OpcBridge.Hmi/hmi-config.json` relative to the
+working directory, where the `OpcBridge.Hmi` apphost file made every save fail with "The
+file '/app/OpcBridge.Hmi' already exists". The folder is now requested with
+`SpecialFolderOption.Create` (and falls back to the temp directory when none can be
+created), so Save and Connect persist the bridge list — and the trend groups beside it —
+again.
+
+**Connect is no longer greyed out after changing a bridge address while connected.** The
+button was only enabled while disconnected, so a changed or added OPC Bridge address could
+not be applied without disconnecting first. Connect now compares the connection targets —
+each row's address and display store — with the live connection: adding, removing or
+changing one re-enables it, and reverting the edit greys it out again. Renaming a bridge
+is a save-only change and leaves Connect alone. Clicking Connect tears the live sessions
+down and rebuilds them from the rows.
 
 ## [1.7.0] - 2026-10-04
 

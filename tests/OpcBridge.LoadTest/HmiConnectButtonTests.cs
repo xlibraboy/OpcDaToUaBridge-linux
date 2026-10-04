@@ -52,10 +52,11 @@ public sealed class HmiConnectButtonTests
             Assert.False(vm.ConnectCommand.CanExecute(null));
             Assert.False(vm.SaveConfigCommand.CanExecute(null));
 
-            // Reverting an edit back to the connected values greys both buttons out again.
+            // Renaming a bridge is a save-only change: Connect stays greyed out, and reverting
+            // the name greys Save out again.
             string originalName = vm.BridgeRows[0].Name;
             vm.BridgeRows[0].Name = "renamed";
-            Assert.True(vm.ConnectCommand.CanExecute(null));
+            Assert.False(vm.ConnectCommand.CanExecute(null));
             Assert.True(vm.SaveConfigCommand.CanExecute(null));
             vm.BridgeRows[0].Name = originalName;
             Assert.False(vm.ConnectCommand.CanExecute(null));

@@ -48,12 +48,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         connections_ = connections;
         popups_ = popups;
         ownsServices_ = ownsServices;
-        configPath_ = string.IsNullOrWhiteSpace(configPath)
-            ? Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "OpcBridge.Hmi",
-                "hmi-config.json")
-            : configPath!;
+        configPath_ = string.IsNullOrWhiteSpace(configPath) ? DefaultConfigPath() : configPath!;
         trendGroupsPath_ = TrendGroupStore.DefaultPath(configPath_);
         DisplaySurface = new DisplaySurfaceViewModel(
             connections_.Cache,
@@ -472,14 +467,46 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    // Connect stays available while connected whenever the rows differ from the live
-    // connection: the connect path tears the live sessions down and rebuilds them from the rows.
-    private bool CanConnect() => !IsConnected || !RowsMatch(connectedConfig_);
+    // Connect stays available while connected whenever the connection targets differ from the
+    // live connection: the connect path tears the live sessions down and rebuilds them from the
+    // rows. Renaming a bridge is a save-only change and deliberately leaves Connect alone.
+    private bool CanConnect() => !IsConnected || !ConnectionTargetsMatch(connectedConfig_);
+
+    /// <summary>
+    /// True when the bridge rows connect to the same targets as <paramref name="config"/>:
+    /// each row's address and display store, in order. Names are not a connection target.
+    /// </summary>
+    private bool ConnectionTargetsMatch(HmiClientConfig? config)
+    {
+        if (config is null)
+        {
+            return false;
+        }
+
+        HmiClientConfig current = BuildConfigFromRows(BridgeRows);
+        if (current.Bridges.Count != config.Bridges.Count)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < current.Bridges.Count; i++)
+        {
+            HmiBridgeEndpoint a = current.Bridges[i];
+            HmiBridgeEndpoint b = config.Bridges[i];
+            if (!string.Equals(a.BaseUrl, b.BaseUrl, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(a.DisplayStoreUrl, b.DisplayStoreUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     /// <summary>
     /// True when the bridge rows build the same config as <paramref name="config"/> — the
-    /// comparison ignores fields the rows cannot change (like the startup display). Connect
-    /// and Save use it so reverting an edit greys their buttons out again.
+    /// comparison ignores fields the rows cannot change (like the startup display). Save uses
+    /// it so reverting an edit greys the button out again.
     /// </summary>
     private bool RowsMatch(HmiClientConfig? config)
     {
@@ -1288,6 +1315,34 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         storeClients_.Clear();
         OnPropertyChanged(nameof(TagCount));
+    }
+
+    /// <summary>
+    /// Path of the HMI client config in the user's application data folder. On Linux,
+    /// <see cref="Environment.GetFolderPath(Environment.SpecialFolder)"/> verifies the folder
+    /// exists and returns an empty string when it does not, so the folder must be requested
+    /// with <see cref="Environment.SpecialFolderOption.Create"/> — otherwise a relative path
+    /// is built, which lands beside the executable and collides with its apphost file. Falls
+    /// back to the temp directory when no application data folder can be created at all.
+    /// </summary>
+    public static string DefaultConfigPath()
+    {
+        try
+        {
+            string folder = Environment.GetFolderPath(
+                Environment.SpecialFolder.ApplicationData,
+                Environment.SpecialFolderOption.Create);
+            if (!string.IsNullOrWhiteSpace(folder))
+            {
+                return Path.Combine(folder, "OpcBridge.Hmi", "hmi-config.json");
+            }
+        }
+        catch
+        {
+            // no creatable application data folder: use the temp directory below
+        }
+
+        return Path.Combine(Path.GetTempPath(), "OpcBridge.Hmi", "hmi-config.json");
     }
 
     private void LoadLocalConfig()

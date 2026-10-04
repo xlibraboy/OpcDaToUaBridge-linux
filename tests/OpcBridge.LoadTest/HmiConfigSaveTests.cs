@@ -13,6 +13,16 @@ namespace OpcBridge.LoadTest;
 public sealed class HmiConfigSaveTests
 {
     [Fact]
+    public void DefaultConfigPath_IsAbsolute_SoSavingNeverLandsBesideTheExecutable()
+    {
+        string path = MainViewModel.DefaultConfigPath();
+
+        Assert.True(Path.IsPathRooted(path), $"config path must be absolute, got '{path}'");
+        Assert.Equal("hmi-config.json", Path.GetFileName(path));
+        Assert.Equal("OpcBridge.Hmi", Path.GetFileName(Path.GetDirectoryName(path)));
+    }
+
+    [Fact]
     public async Task Save_WritesTheEditedRows_AndFollowsThemBackAndForth()
     {
         string configPath = Path.Combine(
