@@ -26,6 +26,8 @@ namespace OpcBridge.App;
 //   function renderSourcePager(/stepSourcePager(/renderSourcePagerStates(
 //   id="sourcesStatusList" (Sources tab status list) survives the Monitor
 //   panel's rename to id="sourceRosterList": the tab markup and tests pin it.
+//   function renderSourcesStatusList(/sourceStatusRowHtml( fill it with every
+//   configured source; data-action="select-source-status" opens its config tab.
 //   id="uaCfgEndpointUrl", id="uaCfgSourceId", function saveUaSource/testUaConnection
 //   data-tab="ua-subs", id="view-ua-subs", data-route="connectivity/ua-subs", text "UA Subs"
 //   per-source collapsible cards in uaSubsContainer, uaSubModal add/edit, id="subsMsg"
@@ -1381,7 +1383,7 @@ internal static class DashboardPage
     <div class="box">
         <div class="box-h">Sources <button class="btn" type="button" onclick="openAddSourceWizard()" style="margin-left:auto">+ Add Source</button></div>
         <div class="box-b">
-            <div class="hint" id="sourcesStatusHint">Select a source to open its OPC DA or OPC UA configuration.</div>
+            <div class="hint" id="sourcesStatusHint">All configured sources — select one to open its OPC DA, OPC UA, or driver configuration.</div>
             <div class="list" id="sourcesStatusList" style="max-height:none"></div>
         </div>
     </div>
@@ -5380,6 +5382,9 @@ function sourceEndpointSummary(source) {
     if (isUaSource(source)) {
         return esc(source.endpointUrl || source.EndpointUrl || '—');
     }
+    if (isDriverSource(source)) {
+        return esc(source.serialPortName || '—');
+    }
     return `${esc(source.host || 'localhost')} · ${esc(source.progId || '')}`;
 }
 // ---------------------------------------------------------------------------
@@ -5417,6 +5422,42 @@ function renderMonitorRoster(bridgeSources) {
     host.innerHTML = rows.length
         ? rows.map((s, i) => sourceRosterRowHtml(s, i)).join('')
         : '<span class="msg">No sources configured. Add one under Sources.</span>';
+}
+// ---------------------------------------------------------------------------
+// Sources tab status list (#sourcesStatusList)
+// The tab shows every configured source in one list — OPC DA, OPC UA and
+// driver sources alike — with its live connection state; one click opens the
+// configuration tab that edits it. Configured order first, so a source that
+// has not been polled yet still appears from config alone.
+// ---------------------------------------------------------------------------
+// Unlike the Monitor roster, this list is the live view, so the state badge and
+// last error belong on the row.
+function sourceStatusRowHtml(source, pos) {
+    const id = String(source.sourceId || '');
+    const st = get(source, 'connectionState') || '';
+    const err = get(source, 'lastError') || '';
+    const errBit = err ? ` · <span class="bad">${esc(err)}</span>` : '';
+    return `<div class="li source-row" role="listitem"><div><div class="n"><span class="msg" style="font-weight:400">${pos + 1}.</span> ${esc(source.displayName || id)} ${sourceTypeBadge(source)} ${st ? badge(st, stateClass(st)) : ''}</div><div class="p">${esc(id)} · ${sourceEndpointSummary(source)} · ${formatMs(source.updateRateMs)}${errBit}</div></div><button class="btn ghost" type="button" data-action="select-source-status" data-source-id="${attr(id)}" title="Open ${attr(source.displayName || id)} settings">Open</button></div>`;
+}
+function renderSourcesStatusList(bridgeSources) {
+    const host = el('sourcesStatusList');
+    if (!host) return;
+    const seen = new Map();
+    (state.sources || []).forEach(s => seen.set(String(s.sourceId || ''), s));
+    (bridgeSources || []).forEach(s => {
+        const id = String(get(s, 'sourceId') || '');
+        if (id && !seen.has(id)) seen.set(id, Object.assign({}, s));
+    });
+    const rows = Array.from(seen.values());
+    // The rows carry live state, so the signature includes it: a status flip or a
+    // new last error repaints, but the once-a-second tick with unchanged values
+    // does not (a rebuild would steal the list's scroll).
+    const signature = JSON.stringify(rows.map(s => [s.sourceId, s.displayName, s.sourceType, s.SourceType, s.host, s.progId, s.endpointUrl, s.EndpointUrl, s.serialPortName, s.updateRateMs, get(s, 'connectionState'), get(s, 'lastError')]));
+    if (state.sourcesStatusSignature === signature) return;
+    state.sourcesStatusSignature = signature;
+    host.innerHTML = rows.length
+        ? rows.map((s, i) => sourceStatusRowHtml(s, i)).join('')
+        : '<span class="msg">No sources configured. Click + Add Source.</span>';
 }
 function daSources() { return state.sources.filter(s => !isUaSource(s)); }
 function uaSources() { return state.sources.filter(s => isUaSource(s)); }
@@ -5466,6 +5507,7 @@ function renderSources() {
         ).join('') : '<span class="msg">No OPC UA sources configured.</span>';
     }
     renderMonitorRoster(state.sources);
+    renderSourcesStatusList(state.bridgeSources);
     updateMapSourceHint();
     updateMapBrowseUi();
     loadSelectedSourceForm();
@@ -6917,7 +6959,7 @@ async function refresh() {
         }
         // Refresh live connection status on the Connectivity status list too.
         if (document.getElementById('view-connection')?.classList.contains('active')) {
-            renderMonitorRoster(sources);
+            renderSourcesStatusList(sources);
         }
         // Keep the config forms' Detected Server / Read Mode lines live.
         const activeView = document.querySelector('.view.active')?.id || '';
@@ -7904,6 +7946,7 @@ function pickSource(sourceId, opts) {
     if (opts && opts.openConfig) {
         const src = state.sources.find(s => s.sourceId === sourceId);
         if (src && isUaSource(src)) navigate('connectivity/opc-ua');
+        else if (src && isDriverSource(src)) { state.selectedDriverId = sourceId; navigate('connectivity/drivers'); }
         else navigate('connectivity/opc-da');
     }
 }
@@ -9837,6 +9880,16 @@ function bindDynamicButtons() {
         if (!button) return;
         pickSource(button.dataset.sourceId || '');
     });
+    // The Sources tab list is rebuilt from a signature, so its clicks are
+    // delegated: one press opens the config tab for that source's type.
+    const statusList = el('sourcesStatusList');
+    if (statusList) {
+        statusList.addEventListener('click', event => {
+            const button = event.target.closest('button[data-action="select-source-status"]');
+            if (!button) return;
+            pickSource(button.dataset.sourceId || '', { openConfig: true });
+        });
+    }
     // The roster is rebuilt from signatures, so its clicks are delegated too:
     // one press opens the same config the Sources tabs edit.
     const roster = el('sourceRosterList');

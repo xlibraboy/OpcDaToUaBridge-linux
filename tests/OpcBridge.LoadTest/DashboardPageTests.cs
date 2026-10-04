@@ -1445,6 +1445,45 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
+    public void Script_SourcesTabListsEverySourceWithLiveStatus()
+    {
+        // The Sources tab shows every configured source in one list — OPC DA,
+        // OPC UA and driver sources alike — with a live state badge and last
+        // error, and one click opens the config tab for the row's own type.
+        string script = DashboardPage.Script;
+        Assert.Contains("id=\"sourcesStatusList\"", DashboardPage.Html);
+        Assert.Contains("function renderSourcesStatusList(", script);
+        Assert.Contains("function sourceStatusRowHtml(", script);
+
+        // The renderer reads all of state.sources plus the live bridge snapshot —
+        // no per-type filtering (the OPC DA / OPC UA / Drivers tabs keep their own lists).
+        string statusList = FunctionBody(script, "function renderSourcesStatusList(");
+        Assert.Contains("el('sourcesStatusList')", statusList);
+        Assert.Contains("state.sources", statusList);
+        Assert.Contains("bridgeSources", statusList);
+        Assert.DoesNotContain("opcDaSources(", statusList);
+        Assert.DoesNotContain("uaSources(", statusList);
+        Assert.DoesNotContain("driverSources(", statusList);
+        // The live view carries the state and the last error on the row.
+        string row = FunctionBody(script, "function sourceStatusRowHtml(");
+        Assert.Contains("connectionState", row);
+        Assert.Contains("lastError", row);
+
+        // It repaints on load and on every live tick while the tab is open.
+        string renderSources = FunctionBody(script, "function renderSources(");
+        Assert.Contains("renderSourcesStatusList(state.bridgeSources)", renderSources);
+        string refresh = FunctionBody(script, "async function refresh(");
+        Assert.Contains("renderSourcesStatusList(sources)", refresh);
+
+        // Delegated clicks open the matching config tab; drivers land on Drivers.
+        Assert.Contains("data-action=\"select-source-status\"", script);
+        Assert.Contains("pickSource(button.dataset.sourceId || '', { openConfig: true })", script);
+        string pick = FunctionBody(script, "function pickSource(");
+        Assert.Contains("isDriverSource(src)", pick);
+        Assert.Contains("navigate('connectivity/drivers')", pick);
+    }
+
+    [Fact]
     public void Html_CollapsibleGroups_FiveToggleHeaders_SourcesUntouched()
     {
         // Issue #11: Tags/IoT/Historian/Ops/Help fold; Sources keeps its pager.
