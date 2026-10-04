@@ -123,7 +123,7 @@ public sealed class InfluxFluxTrendQuery : IInfluxTrendQuery
   |> range(start: time(v: ""{start}""), stop: time(v: ""{stop}""))
   |> filter(fn: (r) => r._measurement == ""{m}"")
   |> filter(fn: (r) => r.source_id == ""{s}"" and r.da_item_id == ""{d}"")
-  |> filter(fn: (r) => r._field == ""value"" or r._field == ""quality"" or r._field == ""is_good"")
+  |> filter(fn: (r) => r._field == ""value"" or r._field == ""value_int"" or r._field == ""value_bool"" or r._field == ""value_str"" or r._field == ""quality"" or r._field == ""is_good"")
   |> pivot(rowKey: [""_time""], columnKey: [""_field""], valueColumn: ""_value"")
   |> sort(columns: [""_time""], desc: true)
   |> limit(n: {maxPoints.ToString(CultureInfo.InvariantCulture)})
@@ -157,7 +157,12 @@ public sealed class InfluxFluxTrendQuery : IInfluxTrendQuery
                     continue;
                 }
 
-                object? value = GetRecordValue(record, "value");
+                // Values are stored in type-stable fields (value / value_int / value_bool /
+                // value_str); history written before the split lives in "value" alone.
+                object? value = GetRecordValue(record, "value")
+                    ?? GetRecordValue(record, "value_int")
+                    ?? GetRecordValue(record, "value_bool")
+                    ?? GetRecordValue(record, "value_str");
                 object? qualityObj = GetRecordValue(record, "quality");
                 object? goodObj = GetRecordValue(record, "is_good");
 
