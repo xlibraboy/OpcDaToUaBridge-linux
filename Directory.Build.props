@@ -15,7 +15,7 @@
     InformationalVersion.
   -->
   <PropertyGroup>
-    <ServerVersion>1.7.0</ServerVersion>
+    <ServerVersion>1.7.1</ServerVersion>
     <HmiVersion>1.7.0</HmiVersion>
     <DesignerVersion>1.7.0</DesignerVersion>
     <Version>$(ServerVersion)</Version>
