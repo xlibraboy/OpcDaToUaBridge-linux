@@ -1,0 +1,140 @@
+name: Windows release (designer)
+
+# Builds the HMI designer's Windows installer and — on a designer-v* tag — publishes the
+# designer's GitHub Release:
+#   OpcBridge-Designer-<version>-win-x64.msi
+#
+# The designer is a product of its own: it versions with DesignerVersion in
+# Directory.Build.props, releases on designer-v* tags and carries
+# src/OpcBridge.Hmi.Designer/CHANGELOG.md, which is the designer's release authority. A
+# release that changes only the bridge or the runtime does not touch it — that is the
+# point of the per-app versions. Its package source is packaging/msi/OpcBridge.Designer.wxs,
+# and its UpgradeCode is its own, so the designer installs, upgrades and uninstalls
+# independently of the bridge and the runtime.
+#
+# The installer is built here, on Windows, because WiX cannot link an MSI on Linux (it
+# reports WIX0000 and fails to validate Directory/@Name). It is win-x64 self-contained in
+# every case — the designer speaks HTTP + SignalR to a bridge and holds no COM — so there
+# is one package and no per-architecture loop.
+#
+# A designer-v* tag push publishes a GitHub Release carrying the installer; a manual
+# workflow_dispatch run stops at the uploaded artifact, because there is no tag to
+# release against.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'designer-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  msi:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version from Directory.Build.props
+        id: version
+        shell: pwsh
+        run: |
+          $match = Select-String -Path Directory.Build.props -Pattern '<DesignerVersion>([^<]+)</DesignerVersion>'
+          if (-not $match) { throw 'no <DesignerVersion> in Directory.Build.props' }
+          $version = $match.Matches[0].Groups[1].Value
+          # A tag names the release; it must agree with the version the package is stamped
+          # from, or the Release page would carry a label the asset does not.
+          if ($env:GITHUB_REF -like 'refs/tags/*' -and $env:GITHUB_REF_NAME -ne "designer-v$version") {
+            throw "tag '$env:GITHUB_REF_NAME' does not match designer version $version (expected designer-v$version)"
+          }
+          Write-Host "version=$version"
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Publish (designer win-x64)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet publish src/OpcBridge.Hmi.Designer/OpcBridge.Hmi.Designer.csproj -c Release -r win-x64 --self-contained true -o build/publish-designer
+
+      - name: Harvest the publish dir into WiX fragments
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # The exe is skipped here and declared in the package source, which is where the
+          # Start Menu shortcut attaches to it.
+          python scripts/msi/harvest.py build/publish-designer build/wix/DesignerFiles.wxs DesignerFolder DesignerFiles OpcBridge.Hmi.Designer.exe
+
+      - name: Install WiX 5.0.2 and its extensions
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet tool install --global wix --version 5.0.2
+          $env:PATH = "$env:PATH;$env:USERPROFILE\.dotnet\tools"
+          # Extensions must match the tool version. Unpinned resolves to 7.x, which
+          # WiX 5 rejects with WIX6101 (and 6+ additionally requires an OSMF licence).
+          # The designer's package needs the UI extension only — no firewall rules or
+          # InternetShortcut in it.
+          wix extension add --global WixToolset.UI.wixext/5.0.2
+
+      - name: Build the installer (designer win-x64)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PATH = "$env:PATH;$env:USERPROFILE\.dotnet\tools"
+          $version = '${{ steps.version.outputs.version }}'
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          wix build -arch x64 `
+            -ext WixToolset.UI.wixext `
+            -define "MsiVersion=$version" `
+            packaging/msi/OpcBridge.Designer.wxs `
+            build/wix/DesignerFiles.wxs `
+            -o "dist/OpcBridge-Designer-$version-win-x64.msi"
+          if ($LASTEXITCODE -ne 0) { throw 'wix build failed for the designer installer' }
+
+      - name: Upload the installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpcBridge-Designer-${{ steps.version.outputs.version }}-msi
+          path: dist/*.msi
+          if-no-files-found: error
+
+      # Only a tagged run has something to release; a workflow_dispatch run stops above.
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = '${{ steps.version.outputs.version }}'
+
+          # The notes are the newest released section of the designer's changelog, which is
+          # its release authority and must carry it. -Encoding utf8 is required: without it
+          # Get-Content reads UTF-8 as ANSI and mangles every em dash in the file.
+          $lines = Get-Content -Path src/OpcBridge.Hmi.Designer/CHANGELOG.md -Encoding utf8
+          $start = ($lines | Select-String -Pattern "^## \[$([regex]::Escape($version))\]").LineNumber
+          if (-not $start) { throw "src/OpcBridge.Hmi.Designer/CHANGELOG.md has no '## [$version]' section" }
+          # LineNumber is 1-based, so $lines[$start] is the line after the heading and the
+          # body ends on the line before the next released heading.
+          $next = ($lines | Select-String -Pattern '^## \[' | Where-Object { $_.LineNumber -gt $start } | Select-Object -First 1).LineNumber
+          $end = if ($next) { $next - 1 } else { $lines.Count }
+          $body = if ($end -gt $start) { @($lines[$start..($end - 1)]) } else { @() }
+          $body | Set-Content -Path build/release-notes.md -Encoding utf8
+
+          # The asset is named from Directory.Build.props, not the tag, so it always
+          # matches what the steps above produced.
+          gh release create $env:TAG `
+            "dist/OpcBridge-Designer-$version-win-x64.msi" `
+            --title "OpcBridge Designer $version" `
+            --notes-file build/release-notes.md

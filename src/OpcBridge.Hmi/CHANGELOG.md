@@ -4,15 +4,22 @@ All notable changes to the OpcBridge HMI Runtime are documented in this file. Th
 runtime ships this file inside its assembly and shows it under **Help ▸ Release
 notes**, so what an operator reads in the app is exactly what is written here.
 
-Only releases that changed this app are listed; a release that ships the runtime
-unchanged appears only in the server's changelog (`CHANGELOG.md`). The version number
-is the shared OpcBridge version from `Directory.Build.props`, the same one the bridge,
-the runtime and the designer report.
+The runtime versions and releases on its own: this file is its release authority, and
+its newest section is the `HmiVersion` the app reports and the `hmi-v*` installer is
+stamped with (`Directory.Build.props`). A release that changes only the bridge or the
+designer does not touch the runtime's version, tag or release.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [1.7.0] - 2026-10-04
+
+**The runtime now versions and releases on its own.** It carries the product version it
+already shipped with — 1.7.0, the v1.7.0 release included the runtime installer — and
+moves on its own cadence from here: only runtime changes bump `HmiVersion` and produce
+an `hmi-v*` tag and release.
 
 ## [1.4.0] - 2026-10-02
 

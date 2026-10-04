@@ -1,0 +1,15 @@
+<Project>
+
+  <!--
+    InformationalVersion must be the app's final <Version>: the two desktop app
+    csprojs override <Version> after Directory.Build.props is imported, and a
+    targets file is evaluated after the whole project body, so $(Version) is
+    final here and the override is picked up. The explicit assignment (instead
+    of the SDK default) keeps the "+<commit>" source-revision suffix out of the
+    version the apps report.
+  -->
+  <PropertyGroup>
+    <InformationalVersion Condition="'$(InformationalVersion)' == ''">$(Version)</InformationalVersion>
+  </PropertyGroup>
+
+</Project>

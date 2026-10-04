@@ -7,8 +7,8 @@
   installs, upgrades and uninstalls independently of the other two, and the bridge's
   x86↔x64 replacement swap (those two packages share one UpgradeCode) never touches it.
 
-  Built by .github/workflows/windows-release.yml on a Windows runner, which supplies:
-    -define MsiVersion=<x.y.z>   from Directory.Build.props (shared by all three apps)
+  Built by .github/workflows/hmi-release.yml on a Windows runner, which supplies:
+    -define MsiVersion=<x.y.z>   from HmiVersion in Directory.Build.props
     build/wix/HmiFiles.wxs       harvested OpcBridge.Hmi files (root HmiFolder, group HmiFiles)
 
   The runtime is win-x64 self-contained in every case — it speaks HTTP + SignalR to a

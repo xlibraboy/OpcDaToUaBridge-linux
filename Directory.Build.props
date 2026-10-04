@@ -1,19 +1,24 @@
 <Project>
 
   <!--
-    Single source of truth for the product version. Every project (App, Ua, Da,
-    Mqtt, Influx, Client, Hmi, Hmi.Designer, drivers, tests) inherits it, so the
-    version reported by /api/version, /api/app-info, the assembly metadata and the
-    Windows publish all agree without being edited per project.
+    Per-app product versions. The server — the bridge and the shared libraries
+    (Core, Client) — versions with ServerVersion and releases on a v* tag. The
+    two desktop apps override <Version> in their own csproj (HmiVersion,
+    DesignerVersion), so each is bumped, tagged and released on its own:
+    hmi-v* and designer-v* tags, its own GitHub Release. Shared libraries stay
+    on ServerVersion — they are not products of their own.
 
-    Bump this together with the newest released section of the server's
-    CHANGELOG.md — tests/OpcBridge.LoadTest/ChangelogTests.cs fails if the two
-    drift apart. The per-app changelogs (OpcBridge.Hmi, OpcBridge.Hmi.Designer)
-    carry only the releases that changed them; the version stays shared.
+    Bump an app's version together with the newest released section of its own
+    changelog (server: CHANGELOG.md, apps: their CHANGELOG.md sections) —
+    tests/OpcBridge.LoadTest/ChangelogTests.cs fails if the two drift apart.
+    Directory.Build.targets turns each app's final <Version> into its
+    InformationalVersion.
   -->
   <PropertyGroup>
-    <Version>1.7.0</Version>
-    <InformationalVersion>$(Version)</InformationalVersion>
+    <ServerVersion>1.7.0</ServerVersion>
+    <HmiVersion>1.7.0</HmiVersion>
+    <DesignerVersion>1.7.0</DesignerVersion>
+    <Version>$(ServerVersion)</Version>
     <Product>OpcBridge</Product>
   </PropertyGroup>
 

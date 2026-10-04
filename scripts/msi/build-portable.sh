@@ -18,7 +18,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 SDK_IMAGE="mcr.microsoft.com/dotnet/sdk:8.0"
-VERSION="$(python3 -c "import re;print(re.search(r'<Version>([^<]+)</Version>', open('Directory.Build.props').read()).group(1))")"
+VERSION="$(python3 -c "import re;print(re.search(r'<ServerVersion>([^<]+)</ServerVersion>', open('Directory.Build.props').read()).group(1))")"
 echo "==> Building OpcBridge $VERSION portable artifacts for Windows"
 
 run_docker() {

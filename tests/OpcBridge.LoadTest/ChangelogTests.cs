@@ -8,10 +8,12 @@ using Xunit;
 namespace OpcBridge.LoadTest;
 
 /// <summary>
-/// Release notes are per-app files sharing one version: the server's CHANGELOG.md (the
-/// release authority, served at /api/changelog) and one file per desktop app, each
-/// embedded in its own assembly and listing only the releases that changed it. These
-/// tests fail if the files, the shipped copies or the reported version drift apart.
+/// Release notes are per-app files, each app versioning and releasing on its own: the
+/// server's CHANGELOG.md (the server's release authority, served at /api/changelog and
+/// reported by the bridge) on ServerVersion, and one file per desktop app embedded in
+/// its own assembly and stamped with its own version (HmiVersion, DesignerVersion).
+/// These tests fail if a file, the shipped copy or the version its assembly reports
+/// drift apart.
 /// </summary>
 public sealed class ChangelogTests
 {
@@ -40,13 +42,6 @@ public sealed class ChangelogTests
     private static string OnDisk(string relativePath) =>
         File.ReadAllText(Path.Combine(RepoRoot(), relativePath)).Replace("\r\n", "\n");
 
-    private static Dictionary<string, string> ReleasedVersions(string markdown) =>
-        ReleasedSection.Matches(markdown)
-            .ToDictionary(match => match.Groups[1].Value, match => match.Groups[2].Value);
-
-    private static Version Newest(IEnumerable<string> versions) =>
-        versions.Select(version => new Version(version)).OrderByDescending(version => version).First();
-
     [Theory]
     [MemberData(nameof(ChangelogFiles))]
     public void Changelog_FollowsKeepAChangelog(string relativePath)
@@ -66,8 +61,8 @@ public sealed class ChangelogTests
 
         Assert.True(released.Count >= 2, $"expected at least the 1.0.0 baseline and the current release, got {released.Count}");
 
-        // Newest first: the top released section is the current version.
-        Assert.Equal("1.7.0", released[0].Groups[1].Value);
+        // Newest first: the top released section is the version the server assembly reports.
+        Assert.Equal(ReleaseNotes.InformationalVersion(typeof(AppInfoSnapshot).Assembly), released[0].Groups[1].Value);
         Assert.Equal("1.0.0", released[^1].Groups[1].Value);
     }
 
@@ -86,24 +81,26 @@ public sealed class ChangelogTests
     }
 
     [Fact]
-    public void AppChangelogs_OnlyCarryVersionsReleasedByTheServer()
+    public void EachApp_ReportsItsOwnVersion()
     {
-        Dictionary<string, string> server = ReleasedVersions(OnDisk(ServerFile));
+        // Each app's newest changelog section is the version its own assembly reports:
+        // ServerVersion, HmiVersion and DesignerVersion in Directory.Build.props.
+        AssertChangelogMatchesAssembly(ServerFile, typeof(AppInfoSnapshot).Assembly);
+        AssertChangelogMatchesAssembly(HmiFile, typeof(OpcBridge.Hmi.Views.MainWindow).Assembly);
+        AssertChangelogMatchesAssembly(DesignerFile, typeof(OpcBridge.Hmi.Designer.Views.DesignerWindow).Assembly);
+    }
 
-        foreach (string file in new[] { HmiFile, DesignerFile })
-        {
-            Dictionary<string, string> app = ReleasedVersions(OnDisk(file));
-            Assert.NotEmpty(app);
+    private static void AssertChangelogMatchesAssembly(string relativePath, Assembly assembly)
+    {
+        string changelogVersion = ReleaseNotes.ParseLatestVersion(OnDisk(relativePath));
+        Assert.False(string.IsNullOrEmpty(changelogVersion), $"{relativePath} has no released version section");
 
-            foreach ((string version, string date) in app)
-            {
-                Assert.True(server.ContainsKey(version), $"{file} carries version {version}, which {ServerFile} does not have");
-                Assert.Equal(server[version], date);
-            }
+        // The version the app shows under Help ▸ Release notes and reports to callers.
+        Assert.Equal(changelogVersion, ReleaseNotes.InformationalVersion(assembly));
 
-            // An app may trail the product version — it just may not lead it.
-            Assert.True(Newest(app.Keys) <= Newest(server.Keys), $"{file} leads {ServerFile}");
-        }
+        // And the raw assembly version (Major.Minor.Build).
+        Version assemblyVersion = assembly.GetName().Version!;
+        Assert.Equal(changelogVersion, $"{assemblyVersion.Major}.{assemblyVersion.Minor}.{assemblyVersion.Build}");
     }
 
     [Fact]
@@ -138,18 +135,6 @@ public sealed class ChangelogTests
         // And the raw assembly version (Major.Minor.Build).
         Version assemblyVersion = typeof(AppInfoSnapshot).Assembly.GetName().Version!;
         Assert.Equal(changelogVersion, $"{assemblyVersion.Major}.{assemblyVersion.Minor}.{assemblyVersion.Build}");
-    }
-
-    [Fact]
-    public void EveryApp_ReportsTheSharedVersion()
-    {
-        string changelogVersion = ChangelogContent.ParseLatestVersion(OnDisk(ServerFile));
-
-        // The same version names all three apps (Directory.Build.props), which is what the
-        // release-notes window title and the installer carry.
-        Assert.Equal(changelogVersion, ReleaseNotes.InformationalVersion(typeof(AppInfoSnapshot).Assembly));
-        Assert.Equal(changelogVersion, ReleaseNotes.InformationalVersion(typeof(OpcBridge.Hmi.Views.MainWindow).Assembly));
-        Assert.Equal(changelogVersion, ReleaseNotes.InformationalVersion(typeof(OpcBridge.Hmi.Designer.Views.DesignerWindow).Assembly));
     }
 
     [Fact]
