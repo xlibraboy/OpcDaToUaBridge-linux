@@ -12,7 +12,8 @@
         Width="1280"
         Height="800"
         MinWidth="1120"
-        MinHeight="640">
+        MinHeight="640"
+        WindowState="FullScreen">
   <DockPanel>
     <!-- ======== Menu bar ======== -->
     <Menu DockPanel.Dock="Top">
