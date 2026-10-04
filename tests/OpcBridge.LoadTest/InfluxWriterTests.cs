@@ -70,11 +70,20 @@ public sealed class InfluxWriterTests
     }
 
     [Theory]
-    [InlineData(true, "bool")]
-    [InlineData((long)42, "long")]
-    [InlineData(3.5, "double")]
-    [InlineData("hi", "string")]
-    public void InfluxPointBuilder_Types_ValueField(object raw, string kind)
+    [InlineData(true, "value_bool")]
+    [InlineData((byte)7, "value_int")]
+    [InlineData((sbyte)7, "value_int")]
+    [InlineData((short)7, "value_int")]
+    [InlineData((ushort)7, "value_int")]
+    [InlineData(7, "value_int")]
+    [InlineData(7U, "value_int")]
+    [InlineData((long)7, "value_int")]
+    [InlineData(7UL, "value_int")]
+    [InlineData(3.5f, "value")]
+    [InlineData(3.5, "value")]
+    [InlineData("hi", "value_str")]
+    [InlineData('x', "value_str")]
+    public void InfluxPointBuilder_Types_MapToTypeStableValueField(object raw, string fieldName)
     {
         InfluxOptions options = new() { Measurement = "opc_tags" };
         BridgeValue value = new("src", "item.1", raw, DateTime.UtcNow, 192, true);
@@ -83,9 +92,60 @@ public sealed class InfluxWriterTests
         Assert.Equal("src", point.Tags["source_id"]);
         Assert.Equal("item.1", point.Tags["da_item_id"]);
         Assert.Equal("Name", point.Tags["display_name"]);
-        Assert.Equal(kind, point.ValueFieldKind);
+        Assert.Equal(fieldName, point.ValueFieldName);
         Assert.Equal(192, point.Quality);
         Assert.True(point.IsGood);
+    }
+
+    [Fact]
+    public void InfluxPointBuilder_Decimal_StoresAsDouble()
+    {
+        InfluxOptions options = new();
+        BridgeValue value = new("src", "item.1", 1.25m, DateTime.UtcNow, 192, true);
+        InfluxPointModel point = InfluxPointBuilder.Build(options, value, null);
+        Assert.Equal("value", point.ValueFieldName);
+        Assert.Equal(1.25, Assert.IsType<double>(point.ValueField));
+    }
+
+    [Fact]
+    public void InfluxPointBuilder_UlongBeyondInt64_FallsToTheDoubleField()
+    {
+        InfluxOptions options = new();
+        BridgeValue value = new("src", "item.1", ulong.MaxValue, DateTime.UtcNow, 192, true);
+        InfluxPointModel point = InfluxPointBuilder.Build(options, value, null);
+        Assert.Equal("value", point.ValueFieldName);
+        Assert.Equal((double)ulong.MaxValue, Assert.IsType<double>(point.ValueField));
+    }
+
+    [Fact]
+    public void InfluxPointBuilder_ByteString_StoresBase64()
+    {
+        InfluxOptions options = new();
+        BridgeValue value = new("src", "item.1", new byte[] { 1, 2, 3 }, DateTime.UtcNow, 192, true);
+        InfluxPointModel point = InfluxPointBuilder.Build(options, value, null);
+        Assert.Equal("value_str", point.ValueFieldName);
+        Assert.Equal("AQID", Assert.IsType<string>(point.ValueField));
+    }
+
+    [Fact]
+    public void InfluxPointBuilder_DateTime_StoresIsoString()
+    {
+        InfluxOptions options = new();
+        DateTime utc = new(2026, 1, 2, 3, 4, 5, DateTimeKind.Utc);
+        BridgeValue value = new("src", "item.1", utc, DateTime.UtcNow, 192, true);
+        InfluxPointModel point = InfluxPointBuilder.Build(options, value, null);
+        Assert.Equal("value_str", point.ValueFieldName);
+        Assert.Equal("2026-01-02T03:04:05.0000000Z", Assert.IsType<string>(point.ValueField));
+    }
+
+    [Fact]
+    public void InfluxPointBuilder_NoValue_OmitsTheValueField()
+    {
+        InfluxOptions options = new();
+        BridgeValue value = new("src", "item.1", null, DateTime.UtcNow, 0, false);
+        InfluxPointModel point = InfluxPointBuilder.Build(options, value, null);
+        Assert.Equal(string.Empty, point.ValueFieldName);
+        Assert.Null(point.ValueField);
     }
 
     [Fact]

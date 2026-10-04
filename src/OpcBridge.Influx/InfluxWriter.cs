@@ -157,13 +157,16 @@ public sealed class InfluxWriter : IInfluxWriter
             point = point.Tag(key, tagValue);
         }
 
-        point = model.ValueFieldKind switch
+        // Field names are type-stable (see InfluxPointBuilder): InfluxDB rejects a point whose
+        // field type differs from the one already stored for the measurement, so tags of
+        // different value types must never share one field name.
+        point = model.ValueFieldName switch
         {
-            "bool" => point.Field("value", (bool)model.ValueField!),
-            "long" => point.Field("value", (long)model.ValueField!),
-            "double" => point.Field("value", Convert.ToDouble(model.ValueField!)),
-            "string" => point.Field("value", model.ValueField?.ToString() ?? string.Empty),
-            _ => point // null kind: omit value field
+            "value_bool" => point.Field("value_bool", (bool)model.ValueField!),
+            "value_int" => point.Field("value_int", (long)model.ValueField!),
+            "value" => point.Field("value", Convert.ToDouble(model.ValueField!)),
+            "value_str" => point.Field("value_str", model.ValueField?.ToString() ?? string.Empty),
+            _ => point // empty name: omit the value field
         };
 
         point = point

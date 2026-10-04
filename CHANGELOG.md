@@ -17,6 +17,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+**Mixed tag data types share the historian again.** InfluxDB locks a field name to one type per
+measurement, and the writer stored every value in a single `value` field — so the first boolean
+(or integer, or text) tag to log faulted the writer in a retry loop and silently rejected every
+point of the other types; a boolean tag stopped an analog tag from logging at all. Each value
+now lands in its type-stable field: `value` (float64 — Float, Double, Decimal), `value_int`
+(the integer family, `UInt64` while it fits), `value_bool`, and `value_str` (String, DateTime
+as ISO-8601, ByteString as Base64 — a byte array no longer serializes as the literal
+`System.Byte[]` text). Any mix of tag data types can share one measurement, and the HMI trend
+proxy reads all four fields, so existing `value` history stays readable.
+
 ## [1.7.0] - 2026-10-04
 
 ### Fixed
