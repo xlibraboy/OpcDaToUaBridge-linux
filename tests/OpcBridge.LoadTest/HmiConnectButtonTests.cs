@@ -34,20 +34,48 @@ public sealed class HmiConnectButtonTests
             await vm.ConnectCommand.ExecuteAsync(null);
             Assert.True(vm.IsConnected);
             Assert.False(vm.ConnectCommand.CanExecute(null));
+            // Connecting saves the rows it connected with, so there is nothing left to save.
+            Assert.False(vm.SaveConfigCommand.CanExecute(null));
 
             vm.AddBridgeCommand.Execute(null);
             BridgeRow added = vm.BridgeRows[^1];
-            Assert.True(vm.ConnectCommand.CanExecute(null));
+            // An empty row builds no bridge, so the config is still the connected one.
+            Assert.False(vm.ConnectCommand.CanExecute(null));
+            Assert.False(vm.SaveConfigCommand.CanExecute(null));
 
             added.Address = address;
             Assert.True(vm.ConnectCommand.CanExecute(null));
+            Assert.True(vm.SaveConfigCommand.CanExecute(null));
 
             await vm.ConnectCommand.ExecuteAsync(null);
             Assert.True(vm.IsConnected);
             Assert.False(vm.ConnectCommand.CanExecute(null));
+            Assert.False(vm.SaveConfigCommand.CanExecute(null));
 
-            vm.BridgeRows[0].Address = address + "/";
+            // Reverting an edit back to the connected values greys both buttons out again.
+            string originalName = vm.BridgeRows[0].Name;
+            vm.BridgeRows[0].Name = "renamed";
             Assert.True(vm.ConnectCommand.CanExecute(null));
+            Assert.True(vm.SaveConfigCommand.CanExecute(null));
+            vm.BridgeRows[0].Name = originalName;
+            Assert.False(vm.ConnectCommand.CanExecute(null));
+            Assert.False(vm.SaveConfigCommand.CanExecute(null));
+
+            vm.BridgeRows[0].Address = "http://127.0.0.1:9";
+            Assert.True(vm.ConnectCommand.CanExecute(null));
+            Assert.True(vm.SaveConfigCommand.CanExecute(null));
+            vm.BridgeRows[0].Address = address;
+            Assert.False(vm.ConnectCommand.CanExecute(null));
+            Assert.False(vm.SaveConfigCommand.CanExecute(null));
+
+            // Removing the extra bridge is the same revert through the row list.
+            vm.RemoveBridgeCommand.Execute(added);
+            Assert.True(vm.ConnectCommand.CanExecute(null));
+            Assert.True(vm.SaveConfigCommand.CanExecute(null));
+            vm.AddBridgeCommand.Execute(null);
+            vm.BridgeRows[^1].Address = address;
+            Assert.False(vm.ConnectCommand.CanExecute(null));
+            Assert.False(vm.SaveConfigCommand.CanExecute(null));
         }
         finally
         {

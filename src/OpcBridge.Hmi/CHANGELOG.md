@@ -14,14 +14,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+**The Config page can save the bridge list without connecting.** The bridge rows (address,
+display store, name) were only written to the client's local configuration when a connect
+succeeded, so a prepared or edited list was lost on exit and there was no way to keep a
+name or address change on its own. A Save button next to Connect now persists the rows and
+reports the result in the status bar; it compares the rows with the saved configuration,
+so it greys out while they match — including when an edit is reverted. Connect keeps
+saving the list it connected with, as before.
+
 ### Fixed
 
 **Connect is no longer greyed out after editing the bridge list while connected.** The
 button was only enabled while disconnected, so adding or changing an OPC Bridge address
-could not be applied without disconnecting first. Any bridge-row edit — adding, removing
-or changing an address, store or name — now re-enables Connect, which tears the live
-sessions down and rebuilds them from the rows; the button greys out again once a
-successful connect has applied the edits.
+could not be applied without disconnecting first. Connect now compares the rows with the
+live connection: an edit that makes them differ — adding, removing or changing an
+address, store or name — re-enables it, and reverting the edit greys it out again.
+Clicking Connect tears the live sessions down and rebuilds them from the rows.
 
 ## [1.7.0] - 2026-10-04
 

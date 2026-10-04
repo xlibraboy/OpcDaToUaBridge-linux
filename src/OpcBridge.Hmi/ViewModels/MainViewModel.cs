@@ -28,8 +28,8 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     private readonly bool ownsServices_;
     private CancellationTokenSource? connectCts_;
     private Window? ownerWindow_;
-    private int bridgeConfigVersion_;
-    private int appliedConfigVersion_;
+    private HmiClientConfig? savedConfig_;
+    private HmiClientConfig? connectedConfig_;
     private readonly List<FaceplateViewModel> openFaceplates_ = new();
     private readonly string configPath_;
     private readonly string trendGroupsPath_;
@@ -102,11 +102,11 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
             if (e.PropertyName is nameof(BridgeRow.Address) or nameof(BridgeRow.Name) or nameof(BridgeRow.DisplayStore))
             {
-                MarkBridgeConfigEdited();
+                NotifyBridgeConfigEdited();
             }
         };
         BridgeRows.Add(row);
-        MarkBridgeConfigEdited();
+        NotifyBridgeConfigEdited();
         return row;
     }
 
@@ -360,19 +360,43 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (row is not null)
         {
             BridgeRows.Remove(row);
-            MarkBridgeConfigEdited();
+            NotifyBridgeConfigEdited();
         }
     }
 
     /// <summary>
-    /// Records that the bridge rows no longer match the live connection. The sessions stay
-    /// up — this only re-enables Connect, which tears them down and rebuilds them from the rows.
+    /// Re-evaluates the Connect and Save buttons after a bridge-row edit. Both compare the
+    /// rows with the config they were last built from, so reverting an edit greys them out.
     /// </summary>
-    private void MarkBridgeConfigEdited()
+    private void NotifyBridgeConfigEdited()
     {
-        bridgeConfigVersion_++;
         ConnectCommand.NotifyCanExecuteChanged();
+        SaveConfigCommand.NotifyCanExecuteChanged();
     }
+
+    /// <summary>
+    /// Persists the bridge rows to the client's local config without touching the live
+    /// connection, so a prepared or edited list survives an exit. Connect saves too.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanSaveConfig))]
+    private void SaveConfig()
+    {
+        HmiClientConfig config = BuildConfigFromRows(BridgeRows);
+        string? error = TrySaveLocalConfig(config);
+        if (error is null)
+        {
+            savedConfig_ = config;
+            StatusMessage = $"Configuration saved ({config.Bridges.Count} bridge(s))";
+        }
+        else
+        {
+            StatusMessage = "Save failed: " + error;
+        }
+
+        SaveConfigCommand.NotifyCanExecuteChanged();
+    }
+
+    private bool CanSaveConfig() => !RowsMatch(savedConfig_);
 
     [RelayCommand(CanExecute = nameof(CanConnect))]
     private async Task ConnectAsync()
@@ -388,7 +412,6 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             StatusMessage = string.Empty;
 
             HmiClientConfig config = BuildConfigFromRows(BridgeRows);
-            int configVersion = bridgeConfigVersion_;
             if (config.Bridges.Count == 0)
             {
                 ConnectionState = "Disconnected";
@@ -408,7 +431,11 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             }
 
             await connections_.ConnectAllAsync(config, ct).ConfigureAwait(true);
-            SaveLocalConfig(config);
+            if (TrySaveLocalConfig(config) is null)
+            {
+                savedConfig_ = config;
+            }
+
             RebuildTagsFromCache();
             RefreshTrendGroupRows();
             await RefreshDisplaysAsync().ConfigureAwait(true);
@@ -420,16 +447,16 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
                 addressable[i].IsConnected = connected.Contains(config.Bridges[i].Id, StringComparer.OrdinalIgnoreCase);
             }
 
+            // The rows this connect was built from are the connected config; edits made while
+            // it was in flight keep Connect enabled.
+            connectedConfig_ = config;
             IsConnected = true;
             ConnectionState = "Connected";
             BridgeSummary = string.Join(", ", connected);
             StatusMessage = $"Loaded {Tags.Count} tags from {connected.Count} bridge(s)";
             OnPropertyChanged(nameof(TagCount));
-
-            // Edits made while this connect was in flight are still unapplied, so only the
-            // version the connection was built from counts as applied.
-            appliedConfigVersion_ = configVersion;
             ConnectCommand.NotifyCanExecuteChanged();
+            SaveConfigCommand.NotifyCanExecuteChanged();
         }
         catch (OperationCanceledException)
         {
@@ -445,9 +472,43 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    // Connect stays available while connected whenever a bridge-row edit is waiting to be
-    // applied: the connect path tears the live sessions down and rebuilds them from the rows.
-    private bool CanConnect() => !IsConnected || bridgeConfigVersion_ != appliedConfigVersion_;
+    // Connect stays available while connected whenever the rows differ from the live
+    // connection: the connect path tears the live sessions down and rebuilds them from the rows.
+    private bool CanConnect() => !IsConnected || !RowsMatch(connectedConfig_);
+
+    /// <summary>
+    /// True when the bridge rows build the same config as <paramref name="config"/> — the
+    /// comparison ignores fields the rows cannot change (like the startup display). Connect
+    /// and Save use it so reverting an edit greys their buttons out again.
+    /// </summary>
+    private bool RowsMatch(HmiClientConfig? config)
+    {
+        if (config is null)
+        {
+            return false;
+        }
+
+        HmiClientConfig current = BuildConfigFromRows(BridgeRows);
+        if (current.Bridges.Count != config.Bridges.Count
+            || !string.Equals(current.DisplayStoreUrl, config.DisplayStoreUrl, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        for (int i = 0; i < current.Bridges.Count; i++)
+        {
+            HmiBridgeEndpoint a = current.Bridges[i];
+            HmiBridgeEndpoint b = config.Bridges[i];
+            if (!string.Equals(a.Id, b.Id, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(a.BaseUrl, b.BaseUrl, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(a.DisplayStoreUrl, b.DisplayStoreUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     [RelayCommand(CanExecute = nameof(CanDisconnect))]
     private async Task Disconnect()
@@ -1255,6 +1316,9 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             AddBridgeRow("default", "http://127.0.0.1:8080", string.Empty);
         }
+
+        // The rows as loaded are what is on disk, so Save starts greyed out.
+        savedConfig_ = BuildConfigFromRows(BridgeRows);
     }
 
     public static HmiClientConfig BuildConfigFromRows(IEnumerable<BridgeRow> rows)
@@ -1299,15 +1363,17 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     private static string StoreUrlOf(HmiBridgeEndpoint bridge)
         => string.IsNullOrWhiteSpace(bridge.DisplayStoreUrl) ? bridge.BaseUrl : bridge.DisplayStoreUrl;
 
-    private void SaveLocalConfig(HmiClientConfig config)
+    /// <summary>Writes the local config; returns null on success or the failure message.</summary>
+    private string? TrySaveLocalConfig(HmiClientConfig config)
     {
         try
         {
             config.Save(configPath_);
+            return null;
         }
-        catch
+        catch (Exception ex)
         {
-            // non-fatal
+            return ex.Message;
         }
     }
 
