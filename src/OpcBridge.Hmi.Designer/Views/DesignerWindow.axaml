@@ -9,7 +9,7 @@
         Title="OpcBridge HMI Designer"
         Width="1400"
         Height="860"
-        WindowState="FullScreen">
+        WindowState="Maximized">
   <DockPanel>
     <!-- ======== Menu bar ======== -->
     <Menu DockPanel.Dock="Top">
