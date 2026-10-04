@@ -28,6 +28,8 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     private readonly bool ownsServices_;
     private CancellationTokenSource? connectCts_;
     private Window? ownerWindow_;
+    private int bridgeConfigVersion_;
+    private int appliedConfigVersion_;
     private readonly List<FaceplateViewModel> openFaceplates_ = new();
     private readonly string configPath_;
     private readonly string trendGroupsPath_;
@@ -97,8 +99,14 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             {
                 RefreshPrimaryAddress();
             }
+
+            if (e.PropertyName is nameof(BridgeRow.Address) or nameof(BridgeRow.Name) or nameof(BridgeRow.DisplayStore))
+            {
+                MarkBridgeConfigEdited();
+            }
         };
         BridgeRows.Add(row);
+        MarkBridgeConfigEdited();
         return row;
     }
 
@@ -352,7 +360,18 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (row is not null)
         {
             BridgeRows.Remove(row);
+            MarkBridgeConfigEdited();
         }
+    }
+
+    /// <summary>
+    /// Records that the bridge rows no longer match the live connection. The sessions stay
+    /// up — this only re-enables Connect, which tears them down and rebuilds them from the rows.
+    /// </summary>
+    private void MarkBridgeConfigEdited()
+    {
+        bridgeConfigVersion_++;
+        ConnectCommand.NotifyCanExecuteChanged();
     }
 
     [RelayCommand(CanExecute = nameof(CanConnect))]
@@ -369,6 +388,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             StatusMessage = string.Empty;
 
             HmiClientConfig config = BuildConfigFromRows(BridgeRows);
+            int configVersion = bridgeConfigVersion_;
             if (config.Bridges.Count == 0)
             {
                 ConnectionState = "Disconnected";
@@ -405,6 +425,11 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             BridgeSummary = string.Join(", ", connected);
             StatusMessage = $"Loaded {Tags.Count} tags from {connected.Count} bridge(s)";
             OnPropertyChanged(nameof(TagCount));
+
+            // Edits made while this connect was in flight are still unapplied, so only the
+            // version the connection was built from counts as applied.
+            appliedConfigVersion_ = configVersion;
+            ConnectCommand.NotifyCanExecuteChanged();
         }
         catch (OperationCanceledException)
         {
@@ -420,7 +445,9 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
-    private bool CanConnect() => !IsConnected;
+    // Connect stays available while connected whenever a bridge-row edit is waiting to be
+    // applied: the connect path tears the live sessions down and rebuilds them from the rows.
+    private bool CanConnect() => !IsConnected || bridgeConfigVersion_ != appliedConfigVersion_;
 
     [RelayCommand(CanExecute = nameof(CanDisconnect))]
     private async Task Disconnect()

@@ -14,6 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+**Connect is no longer greyed out after editing the bridge list while connected.** The
+button was only enabled while disconnected, so adding or changing an OPC Bridge address
+could not be applied without disconnecting first. Any bridge-row edit — adding, removing
+or changing an address, store or name — now re-enables Connect, which tears the live
+sessions down and rebuilds them from the rows; the button greys out again once a
+successful connect has applied the edits.
+
 ## [1.7.0] - 2026-10-04
 
 **The runtime now versions and releases on its own.** It carries the product version it
