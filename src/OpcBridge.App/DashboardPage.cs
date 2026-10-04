@@ -1166,7 +1166,7 @@ internal static class DashboardPage
             <div class="stat"><div class="k">Last Write</div><div class="v" id="lastUaWrite">&#8212;</div><div class="s" id="lastUaWriteCount">0 values</div></div>
         </div>
         <div class="mon-stat-group">
-            <div class="mon-stat-group-h">Update Rate</div>
+            <div class="mon-stat-group-h">Update Rate <span class="info" data-tip="Applies to all sources: this is the bridge-wide default poll rate, not a per-source value. Every tag without its own rate is read at this cadence, fixed at 1000 ms. Per-tag Update Rates and named UA subscriptions override it for other cadences.">i</span></div>
                 <div class="stat prime"><div class="k">Default Rate</div><div class="v" id="updateRate">&#8212;</div><div class="s" id="mappingCount">0 tags</div></div>
             <div class="stat"><div class="k">Cycle Budget</div><div class="mini-meter" aria-hidden="true"><div class="mini-meter-track"><div class="mini-meter-fill" id="pollUtilizationFill"></div></div></div><div class="s" id="pollUtilizationText">—</div><div class="s" id="pollSaturation">—</div></div>
         </div>
