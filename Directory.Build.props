@@ -16,7 +16,7 @@
   -->
   <PropertyGroup>
     <ServerVersion>1.7.1</ServerVersion>
-    <HmiVersion>1.7.0</HmiVersion>
+    <HmiVersion>1.8.0</HmiVersion>
     <DesignerVersion>1.7.0</DesignerVersion>
     <Version>$(ServerVersion)</Version>
     <Product>OpcBridge</Product>
