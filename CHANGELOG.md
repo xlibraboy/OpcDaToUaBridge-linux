@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.2] - 2026-10-05
+
 ### Fixed
 
 **HMI trend actions no longer grey out while dashboard authentication is on.** The role
