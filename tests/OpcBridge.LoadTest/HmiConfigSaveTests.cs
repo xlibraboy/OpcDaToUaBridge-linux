@@ -44,7 +44,7 @@ public sealed class HmiConfigSaveTests
             vm.BridgeRows[0].Name = "line-a";
             Assert.True(vm.SaveConfigCommand.CanExecute(null));
 
-            vm.SaveConfigCommand.Execute(null);
+            await vm.SaveConfigCommand.ExecuteAsync(null);
             Assert.False(vm.SaveConfigCommand.CanExecute(null));
             Assert.Contains("saved", vm.StatusMessage, StringComparison.OrdinalIgnoreCase);
 

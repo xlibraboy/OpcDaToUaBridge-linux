@@ -370,25 +370,98 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     }
 
     /// <summary>
-    /// Persists the bridge rows to the client's local config without touching the live
-    /// connection, so a prepared or edited list survives an exit. Connect saves too.
+    /// Persists the bridge rows to the client's local config, so a prepared or edited list
+    /// survives an exit. Connect saves too. While connected, a renamed bridge is reconnected
+    /// under its new name when the list otherwise matches the live connections, so the rename
+    /// takes effect immediately; an address or store change still waits for Connect.
     /// </summary>
     [RelayCommand(CanExecute = nameof(CanSaveConfig))]
-    private void SaveConfig()
+    private async Task SaveConfigAsync()
     {
         HmiClientConfig config = BuildConfigFromRows(BridgeRows);
         string? error = TrySaveLocalConfig(config);
-        if (error is null)
-        {
-            savedConfig_ = config;
-            StatusMessage = $"Configuration saved ({config.Bridges.Count} bridge(s))";
-        }
-        else
+        if (error is not null)
         {
             StatusMessage = "Save failed: " + error;
+            SaveConfigCommand.NotifyCanExecuteChanged();
+            return;
         }
 
+        savedConfig_ = config;
+        string? note = null;
+        if (IsConnected && connectedConfig_ is not null)
+        {
+            if (!ConnectionTargetsMatch(connectedConfig_))
+            {
+                note = "press Connect to apply the changes";
+            }
+            else
+            {
+                try
+                {
+                    int renamed = await ApplyBridgeRenamesAsync(config).ConfigureAwait(true);
+                    if (renamed > 0)
+                    {
+                        connectedConfig_ = config;
+                        note = $"{renamed} bridge(s) renamed live";
+                    }
+                }
+                catch (Exception ex)
+                {
+                    note = "the rename could not be applied: " + ex.Message;
+                }
+            }
+        }
+
+        StatusMessage = note is null
+            ? $"Configuration saved ({config.Bridges.Count} bridge(s))"
+            : $"Configuration saved ({config.Bridges.Count} bridge(s)) — {note}";
         SaveConfigCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>
+    /// Reconnects every bridge whose name changed under its new id, so a rename reaches the
+    /// live connections. Only called after <see cref="ConnectionTargetsMatch(HmiClientConfig)"/>
+    /// confirmed the rows and the live connections agree on addresses and stores, which also
+    /// means the two lists line up row by row.
+    /// </summary>
+    private async Task<int> ApplyBridgeRenamesAsync(HmiClientConfig config)
+    {
+        HmiClientConfig live = connectedConfig_!;
+        List<(string OldId, HmiBridgeEndpoint Bridge)> renames = new();
+        for (int i = 0; i < config.Bridges.Count; i++)
+        {
+            HmiBridgeEndpoint updated = config.Bridges[i];
+            HmiBridgeEndpoint current = live.Bridges[i];
+            if (!string.Equals(updated.Id, current.Id, StringComparison.OrdinalIgnoreCase))
+            {
+                renames.Add((current.Id, updated));
+            }
+        }
+
+        if (renames.Count == 0)
+        {
+            return 0;
+        }
+
+        await connections_.RenameBridgesAsync(renames).ConfigureAwait(true);
+        lock (bridgeInfluxConnected_)
+        {
+            foreach ((string oldId, _) in renames)
+            {
+                bridgeInfluxConnected_.Remove(oldId);
+            }
+        }
+
+        foreach (BridgeRow row in BridgeRows)
+        {
+            row.IsConnected = !string.IsNullOrWhiteSpace(row.Address);
+        }
+
+        BridgeSummary = string.Join(", ", connections_.ConnectedBridgeIds);
+        RebuildTagsFromCache();
+        ConnectCommand.NotifyCanExecuteChanged();
+        return renames.Count;
     }
 
     private bool CanSaveConfig() => !RowsMatch(savedConfig_);
@@ -469,7 +542,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     // Connect stays available while connected whenever the connection targets differ from the
     // live connection: the connect path tears the live sessions down and rebuilds them from the
-    // rows. Renaming a bridge is a save-only change and deliberately leaves Connect alone.
+    // rows. A rename is not a connection target: Save applies it to the renamed bridge alone.
     private bool CanConnect() => !IsConnected || !ConnectionTargetsMatch(connectedConfig_);
 
     /// <summary>

@@ -14,6 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+**Saving a renamed bridge now applies the new name to the live connections.** Save persisted the
+rows but left the running bridges labeled with the names they connected with — a rename never
+appeared in the tag browser, the bridge selectors or the status bar without a restart. Save now
+reconnects a renamed bridge under its new name when the bridge list otherwise matches the live
+connections (that bridge's tags reload immediately) and reports it in the status bar; when an
+address or display store changed too, Connect still applies the whole list.
+
 ## [1.8.0] - 2026-10-04
 
 ### Added

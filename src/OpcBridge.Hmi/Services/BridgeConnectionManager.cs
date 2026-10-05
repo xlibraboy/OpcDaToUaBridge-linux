@@ -131,6 +131,51 @@ public sealed class BridgeConnectionManager : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Re-labels live bridges: every renamed bridge's old session is torn down first, then each
+    /// reconnects under its new id. The two phases keep a rename from colliding with a live id
+    /// another rename is about to vacate (swapped or adopted names), which a per-bridge
+    /// disconnect-then-reconnect would tear down again.
+    /// </summary>
+    public async Task RenameBridgesAsync(IReadOnlyList<(string OldId, HmiBridgeEndpoint Bridge)> renames)
+    {
+        if (renames.Count == 0)
+        {
+            return;
+        }
+
+        List<BridgeSession> retired = new();
+        lock (sync_)
+        {
+            foreach ((string oldId, _) in renames)
+            {
+                if (sessions_.Remove(oldId, out BridgeSession? session) && session is not null)
+                {
+                    retired.Add(session);
+                }
+            }
+        }
+
+        foreach (BridgeSession session in retired)
+        {
+            await session.DisposeAsync().ConfigureAwait(false);
+        }
+
+        foreach ((string oldId, _) in renames)
+        {
+            Cache.ClearBridge(oldId);
+        }
+
+        CacheChanged?.Invoke();
+
+        foreach ((_, HmiBridgeEndpoint bridge) in renames)
+        {
+            await ConnectBridgeAsync(bridge, CancellationToken.None).ConfigureAwait(false);
+        }
+
+        CacheChanged?.Invoke();
+    }
+
     public async Task RefreshBridgeSnapshotAsync(string bridgeId, CancellationToken ct)
     {
         BridgeSession? session;
