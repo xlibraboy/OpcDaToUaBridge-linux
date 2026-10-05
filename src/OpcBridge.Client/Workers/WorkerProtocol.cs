@@ -22,6 +22,7 @@ public static class WorkerFrameTypes
     public const string WriteResult = "writeResult";
     public const string MetadataResult = "metadataResult";
     public const string MetadataDump = "metadataDump";
+    public const string BrowseResult = "browseResult";
     public const string Notice = "notice";
     public const string Heartbeat = "heartbeat";
     public const string Pong = "pong";
@@ -36,6 +37,7 @@ public static class WorkerFrameTypes
     public const string Read = "read";
     public const string Write = "write";
     public const string Metadata = "metadata";
+    public const string Browse = "browse";
     public const string Ping = "ping";
     public const string Shutdown = "shutdown";
 }
@@ -104,6 +106,23 @@ public sealed record WorkerMetadataResult(bool Found, short? CanonicalDataType =
 
 public sealed record WorkerMetadataDump(IReadOnlyList<WorkerMetadataEntry> Entries);
 
+public sealed record WorkerBrowseTag(string Name, string ItemId, short? CanonicalDataType, int? AccessRights);
+
+/// <summary>
+/// One address-space browse response. <see cref="Error"/> is set when the browse itself could
+/// not run (activation, platform, oversized result); otherwise the warnings carry what the
+/// server refused while the lists carry what it did return.
+/// </summary>
+public sealed record WorkerBrowseResult(
+    IReadOnlyList<string> Branches,
+    IReadOnlyList<WorkerBrowseTag> Tags,
+    IReadOnlyList<string> Warnings,
+    string? Error = null)
+{
+    public static WorkerBrowseResult Failed(string error) =>
+        new(Array.Empty<string>(), Array.Empty<WorkerBrowseTag>(), Array.Empty<string>(), error);
+}
+
 public sealed record WorkerNotice(string Level, string Message);
 
 public sealed record WorkerHeartbeat(int SourceCount, long UptimeMs, long PushSeq);
@@ -135,5 +154,12 @@ public sealed record WorkerReadRequest(string SourceId, IReadOnlyList<WorkerTagR
 public sealed record WorkerWriteRequest(string SourceId, string ItemId, string Type, JsonElement Value);
 
 public sealed record WorkerMetadataRequest(string SourceId, string ItemId);
+
+/// <summary>
+/// A tag browse executed inside the worker against the source's stored connection settings,
+/// so the address-space call carries the worker's identity and session — the same context as
+/// the source's data path.
+/// </summary>
+public sealed record WorkerBrowseRequest(string SourceId, string? Path, bool Recursive);
 
 public sealed record WorkerShutdownRequest(int GraceMs);

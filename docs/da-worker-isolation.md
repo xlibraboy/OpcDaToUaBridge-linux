@@ -79,6 +79,12 @@ is the reliable channel. The worker never touches `appsettings.json`, the dashbo
 server. Values, writes, tag metadata, the watchdog, MQTT/Influx and the dashboard behave
 exactly as for an in-process source.
 
+Tag browsing follows the same identity: the dashboard's Tag Browser and the Maps import
+comparison send the browse to the source's worker, so the address-space call runs under the
+worker's account. Browsing a placed source from the bridge would run as the bridge account —
+`LocalSystem` under the MSI — and the vendor stacks that require a plant account refuse
+exactly that.
+
 ## Cost
 
 Each worker is a separate .NET process — roughly the same fixed baseline as the bridge itself

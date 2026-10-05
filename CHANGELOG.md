@@ -29,6 +29,15 @@ picker — even with the writer connected and the tag's "Influx log" enabled. Th
 endpoint (read-only: writer state, last error, counters) now travels with the rest of the
 trusted HMI surface; the token-bearing `/api/influx/config` stays behind the session.
 
+**Browsing a worker-isolated DA source now runs inside its worker.** The Tag Browser and the
+Maps import comparison always activated the OPC DA server in the bridge process — so when a
+source's data path moved into a worker under a plant account (while the service, as the worker
+feature recommends, stayed `LocalSystem`), the vendor stack refused every `OPC_BRANCH` /
+`OPC_LEAF` / `OPC_FLAT` call with `E_FAIL` and the address space looked empty for a source that
+read values perfectly. A browse for a placed source now travels to its worker over the pipe and
+carries the worker's identity, exactly like its reads; in-process sources are unchanged, and a
+result too large for one worker frame answers with a clear error instead of faulting the pipe.
+
 ## [1.7.1] - 2026-10-04
 
 ### Fixed

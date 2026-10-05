@@ -52,6 +52,34 @@ public sealed class DaWorkerProtocolTests
     }
 
     [Fact]
+    public void Frame_RoundTripsABrowseResult()
+    {
+        WorkerFrame frame = WorkerFrame.Create(
+            WorkerFrameTypes.BrowseResult,
+            11,
+            new WorkerBrowseResult(
+                new[] { "Line1", "Line2" },
+                new[] { new WorkerBrowseTag("T1", "Line1.T1", 5, 3) },
+                new[] { "warning" }));
+
+        using var stream = new MemoryStream();
+        FrameCodec.Write(stream, frame);
+        stream.Position = 0;
+        WorkerFrame? read = FrameCodec.Read(stream);
+
+        Assert.NotNull(read);
+        Assert.Equal(WorkerFrameTypes.BrowseResult, read!.Type);
+        WorkerBrowseResult? payload = read.PayloadAs<WorkerBrowseResult>();
+        Assert.NotNull(payload);
+        Assert.Equal(new[] { "Line1", "Line2" }, payload!.Branches);
+        WorkerBrowseTag tag = Assert.Single(payload.Tags);
+        Assert.Equal("Line1.T1", tag.ItemId);
+        Assert.Equal((short)5, tag.CanonicalDataType);
+        Assert.Equal(3, tag.AccessRights);
+        Assert.Null(payload.Error);
+    }
+
+    [Fact]
     public void Frame_RoundTripsThroughChunkedReads()
     {
         WorkerFrame frame = WorkerFrame.Create(WorkerFrameTypes.Heartbeat, 7, new WorkerHeartbeat(2, 1234, 99));
