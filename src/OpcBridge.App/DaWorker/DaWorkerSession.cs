@@ -85,6 +85,7 @@ internal sealed class DaWorkerSession : IAsyncDisposable
             case WorkerFrameTypes.Read:
             case WorkerFrameTypes.Write:
             case WorkerFrameTypes.Metadata:
+            case WorkerFrameTypes.Browse:
                 _ = Task.Run(() => HandleRequestAsync(frame));
                 return true;
 
@@ -157,6 +158,9 @@ internal sealed class DaWorkerSession : IAsyncDisposable
                     return;
                 case WorkerFrameTypes.Metadata:
                     HandleMetadata(frame);
+                    return;
+                case WorkerFrameTypes.Browse:
+                    HandleBrowse(frame);
                     return;
                 default:
                     Send(WorkerFrame.Create(
@@ -343,6 +347,65 @@ internal sealed class DaWorkerSession : IAsyncDisposable
 
         bool found = source.Client.TryGetTagMetadata(request.ItemId, out short? canonicalDataType, out int? accessRights);
         Send(Reply(frame, WorkerFrameTypes.MetadataResult, new WorkerMetadataResult(found, canonicalDataType, accessRights)));
+    }
+
+    /// <summary>
+    /// Browses the source's address space from this process, so the COM call carries the
+    /// worker's identity — the same one the vendor stack accepts for the data path. The
+    /// browse works whether or not the source is connected: it activates its own server
+    /// object, like the in-process Tag Browser does.
+    /// </summary>
+    private void HandleBrowse(WorkerFrame frame)
+    {
+        WorkerBrowseRequest? request = frame.PayloadAs<WorkerBrowseRequest>();
+        if (request is null
+            || string.IsNullOrWhiteSpace(request.SourceId)
+            || !sources_.TryGetValue(request.SourceId, out WorkerSource? source))
+        {
+            Send(Reply(frame, WorkerFrameTypes.BrowseResult, WorkerBrowseResult.Failed($"Unknown source '{request?.SourceId}'.")));
+            return;
+        }
+
+        if (!OperatingSystem.IsWindows())
+        {
+            Send(Reply(frame, WorkerFrameTypes.BrowseResult, WorkerBrowseResult.Failed("OPC DA browsing requires Windows.")));
+            return;
+        }
+
+        try
+        {
+            OpcTagBrowseResult result = OpcTagBrowser.Browse(
+                source.Config.ProgId,
+                source.Config.Host,
+                request.Path ?? string.Empty,
+                request.Recursive,
+                source.Config.RemoteUsername,
+                source.Config.RemotePassword,
+                source.Config.RemoteDomain);
+
+            WorkerBrowseResult payload = new(
+                result.Branches,
+                result.Tags
+                    .Select(tag => new WorkerBrowseTag(tag.Name, tag.ItemId, tag.CanonicalDataType, tag.AccessRights))
+                    .ToList(),
+                result.Warnings ?? Array.Empty<string>());
+
+            // A browse result must fit one frame; letting an oversized tree hit the codec
+            // would fault the writer loop and take the whole worker down with it. Fail the
+            // request with a clear message instead.
+            if (JsonSerializer.SerializeToUtf8Bytes(payload, WorkerProtocol.JsonOptions).Length
+                > FrameCodec.MaxFrameBytes - 4096)
+            {
+                payload = WorkerBrowseResult.Failed(
+                    $"The browse returned {result.Tags.Count} tags — too many for one worker frame; browse a narrower folder.");
+            }
+
+            Send(Reply(frame, WorkerFrameTypes.BrowseResult, payload));
+        }
+        catch (Exception exception)
+        {
+            Send(Reply(frame, WorkerFrameTypes.BrowseResult, WorkerBrowseResult.Failed(exception.Message)));
+        }
     }
 
     private async Task ConnectSourceAsync(string sourceId)

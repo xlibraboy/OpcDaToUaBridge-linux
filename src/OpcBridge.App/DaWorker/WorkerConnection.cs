@@ -30,12 +30,13 @@ internal interface IWorkerChannel
 /// </summary>
 internal sealed class WorkerConnection : IWorkerChannel, IAsyncDisposable
 {
-    private static readonly HashSet<string> ResponseTypes = new(StringComparer.Ordinal)
+    internal static readonly HashSet<string> ResponseTypes = new(StringComparer.Ordinal)
     {
         WorkerFrameTypes.Ack,
         WorkerFrameTypes.ReadResult,
         WorkerFrameTypes.WriteResult,
         WorkerFrameTypes.MetadataResult,
+        WorkerFrameTypes.BrowseResult,
         WorkerFrameTypes.Pong
     };
 

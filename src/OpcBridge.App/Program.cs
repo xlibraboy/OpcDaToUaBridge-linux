@@ -1483,7 +1483,7 @@ app.MapPost("/api/da/servers", async (DaServerBrowseRequest request) =>
         return Results.Json(new { error = exception.Message, servers = Array.Empty<object>() });
     }
 });
-app.MapPost("/api/da/tags", async (DaTagBrowseRequest request, ILogger<Program> logger) =>
+app.MapPost("/api/da/tags", async (DaTagBrowseRequest request, ILogger<Program> logger, DaRuntimeSettings settings, DaWorkerSupervisor workers) =>
 {
     if (!OperatingSystem.IsWindows())
     {
@@ -1493,7 +1493,12 @@ app.MapPost("/api/da/tags", async (DaTagBrowseRequest request, ILogger<Program> 
     try
     {
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
-        OpcTagBrowseResult result = await Task.Run(() => BrowseDaTags(request), cts.Token);
+        OpcTagBrowseResult result = await DaTagBrowseRunner.RunAsync(
+            request,
+            settings.GetSnapshot(),
+            workers,
+            TimeSpan.FromSeconds(20),
+            cts.Token);
         if (result.Warnings is { Count: > 0 })
         {
             // Warning, not Debug: the dashboard log store drops Debug for the Program category, and a
@@ -1864,6 +1869,7 @@ app.MapPost("/api/mappings/import/preview", async (
     MappingStore store,
     DaRuntimeSettings settings,
     OpcUaBrowseService uaBrowse,
+    DaWorkerSupervisor workers,
     CancellationToken cancellationToken) =>
 {
     if (string.IsNullOrWhiteSpace(request.SourceId))
@@ -1886,7 +1892,7 @@ app.MapPost("/api/mappings/import/preview", async (
     // Tag Browser reads it. A source that cannot be enumerated — no DA COM on this host, server
     // down, a driver source with no tag list — still gets the mapped/description comparison, and
     // the dialog says the source check was skipped rather than guessing at "not on the source".
-    SourceTagCheck check = await ReadSourceTagsAsync(source, uaBrowse, settings, cancellationToken).ConfigureAwait(false);
+    SourceTagCheck check = await ReadSourceTagsAsync(source, uaBrowse, settings, workers, cancellationToken).ConfigureAwait(false);
 
     Dictionary<string, TagMapping> mapped = new(StringComparer.OrdinalIgnoreCase);
     foreach (TagMapping tag in store.GetBySource(source.SourceId))
@@ -2692,23 +2698,6 @@ static IReadOnlyList<OpcServerInfo> EnumerateDaServers(string? host, string? use
     return OpcServerEnumerator.Enumerate(host, username, password, domain);
 }
 
-static OpcTagBrowseResult BrowseDaTags(DaTagBrowseRequest request)
-{
-    if (!OperatingSystem.IsWindows())
-    {
-        throw new PlatformNotSupportedException("OPC DA browsing requires Windows.");
-    }
-
-    return OpcTagBrowser.Browse(
-        request.ProgId,
-        request.Host,
-        request.Path ?? string.Empty,
-        request.Recursive,
-        request.RemoteUsername,
-        request.RemotePassword,
-        request.RemoteDomain);
-}
-
 /// <summary>
 /// The tag list a source really exposes, for the Maps import dialog's comparison. An OPC DA
 /// server is read with the recursive browse the Tag Browser's "Browse All Tags" uses; an OPC UA
@@ -2720,6 +2709,7 @@ static async Task<SourceTagCheck> ReadSourceTagsAsync(
     DaSourceRuntimeSettings source,
     OpcUaBrowseService uaBrowse,
     DaRuntimeSettings settings,
+    IWorkerHost workers,
     CancellationToken cancellationToken)
 {
     if (string.Equals(source.SourceType, SourceTypes.OpcUa, StringComparison.OrdinalIgnoreCase))
@@ -2755,8 +2745,8 @@ static async Task<SourceTagCheck> ReadSourceTagsAsync(
     {
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(TimeSpan.FromSeconds(30));
-        OpcTagBrowseResult result = await Task.Run(
-            () => BrowseDaTags(new DaTagBrowseRequest(
+        OpcTagBrowseResult result = await DaTagBrowseRunner.RunAsync(
+            new DaTagBrowseRequest(
                 source.SourceId,
                 source.ProgId,
                 string.IsNullOrWhiteSpace(source.Host) ? "localhost" : source.Host,
@@ -2764,7 +2754,10 @@ static async Task<SourceTagCheck> ReadSourceTagsAsync(
                 Recursive: true,
                 source.RemoteUsername,
                 source.RemotePassword,
-                source.RemoteDomain)),
+                source.RemoteDomain),
+            settings.GetSnapshot(),
+            workers,
+            TimeSpan.FromSeconds(35),
             cts.Token).ConfigureAwait(false);
 
         HashSet<string> tags = new(StringComparer.OrdinalIgnoreCase);
