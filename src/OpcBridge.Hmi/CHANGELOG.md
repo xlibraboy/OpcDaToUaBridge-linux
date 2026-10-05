@@ -14,6 +14,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+**Trend values now show the same digits as the rest of the app.** Hovering or pinning the chart
+echoed the value stored in InfluxDB at full precision, so a tag the bridge rounds to a couple of
+decimals — stored as a widened float, e.g. 12.34 as 12.340000152587891 — read as a long string of
+digits in the value chips and on the Y-axis. The chart (hover chips, pinned readout and axis
+labels) now formats to the same 3-decimal display precision as the pen table, trailing zeros
+trimmed, so those numbers read 12.34 again.
+
 ## [1.8.1] - 2026-10-05
 
 ### Fixed

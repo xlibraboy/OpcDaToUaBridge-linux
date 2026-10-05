@@ -1525,26 +1525,15 @@ public sealed class TrendChartControl : Control
 
     private static string FormatNumber(double value)
     {
-        double rounded = Math.Round(value, 8);
-        if (rounded == 0)
-        {
-            return "0";
-        }
-
-        double magnitude = Math.Abs(rounded);
-        if (magnitude >= 1e15)
+        double rounded = Math.Round(value, TrendNumberFormat.Decimals);
+        if (Math.Abs(rounded) >= 1e15)
         {
             return rounded.ToString("0.###E+0", CultureInfo.InvariantCulture);
         }
 
-        if (rounded == Math.Truncate(rounded))
-        {
-            return rounded.ToString("0", CultureInfo.InvariantCulture);
-        }
-
-        return rounded.ToString("0.########", CultureInfo.InvariantCulture)
-            .TrimEnd('0')
-            .TrimEnd('.');
+        // Same precision as the pen table, so a value read on hover/pin matches the table and
+        // a float widened to float64 in InfluxDB doesn't show its binary noise.
+        return TrendNumberFormat.Format(value);
     }
 
     private static string FormatTime(DateTime tick)

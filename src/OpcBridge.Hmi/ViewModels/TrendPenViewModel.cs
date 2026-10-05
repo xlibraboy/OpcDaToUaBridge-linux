@@ -228,7 +228,7 @@ public partial class TrendPenViewModel : ObservableObject
             }
 
             return Stats is { } stats && double.IsFinite(stats.Minimum)
-                ? Math.Round(stats.Minimum, 3).ToString("0.###", CultureInfo.InvariantCulture)
+                ? TrendNumberFormat.Format(stats.Minimum)
                 : "min";
         }
     }
@@ -244,7 +244,7 @@ public partial class TrendPenViewModel : ObservableObject
             }
 
             return Stats is { } stats && double.IsFinite(stats.Maximum)
-                ? Math.Round(stats.Maximum, 3).ToString("0.###", CultureInfo.InvariantCulture)
+                ? TrendNumberFormat.Format(stats.Maximum)
                 : "max";
         }
     }
@@ -435,7 +435,7 @@ public partial class TrendPenViewModel : ObservableObject
             return "—";
         }
 
-        string text = Math.Round(v, 3).ToString("0.###", CultureInfo.InvariantCulture);
+        string text = TrendNumberFormat.Format(v);
         if (IsBoolean || !includeUnit)
         {
             return text;
