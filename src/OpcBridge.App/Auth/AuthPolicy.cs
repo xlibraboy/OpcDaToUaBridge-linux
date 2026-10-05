@@ -34,7 +34,9 @@ public static class AuthPolicy
         "/api/hmi/tags",
         "/api/hmi/trends",
         "/api/hmi/displays",
-        "/api/hmi/write"
+        "/api/hmi/write",
+        // The runtime polls the live InfluxDB writer state to gate its trend actions.
+        "/api/influx/status"
     };
 
     /// <summary>Minimum role per endpoint, checked before the method default. Null method = any method.</summary>

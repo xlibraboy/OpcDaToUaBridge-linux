@@ -37,12 +37,14 @@ public sealed class AuthPolicyTests
     [InlineData("/api/hmi/displays")]
     [InlineData("/api/hmi/displays/line-1")]
     [InlineData("/api/hmi/write")]
+    [InlineData("/api/influx/status")]
     public void HmiPaths_AreRecognised(string path) => Assert.True(AuthPolicy.IsHmiPath(path));
 
     [Theory]
     [InlineData("/api/hmi/tagsFoo")] // prefix must not leak across a segment boundary
     [InlineData("/api/hmi")]
     [InlineData("/api/mappings")]
+    [InlineData("/api/influx/config")] // token-bearing; must never join the trusted HMI surface
     public void NonHmiPaths_AreNotHmi(string path) => Assert.False(AuthPolicy.IsHmiPath(path));
 
     [Theory]

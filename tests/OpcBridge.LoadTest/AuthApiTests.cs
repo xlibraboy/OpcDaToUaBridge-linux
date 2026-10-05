@@ -394,6 +394,18 @@ public sealed class AuthApiTests
             Assert.Equal(HttpStatusCode.OK, tags.StatusCode);
         }
 
+        // The runtime polls the writer state for its trend gating; the config endpoint
+        // (it carries the token) must stay behind the session.
+        using (HttpResponseMessage influxStatus = await handle.Client.GetAsync("/api/influx/status"))
+        {
+            Assert.Equal(HttpStatusCode.OK, influxStatus.StatusCode);
+        }
+
+        using (HttpResponseMessage influxConfig = await handle.Client.GetAsync("/api/influx/config"))
+        {
+            Assert.Equal(HttpStatusCode.Unauthorized, influxConfig.StatusCode);
+        }
+
         using (HttpResponseMessage negotiate = await handle.Client.PostAsync("/hmi/negotiate?negotiateVersion=1", null))
         {
             Assert.NotEqual(HttpStatusCode.Unauthorized, negotiate.StatusCode);
@@ -409,6 +421,11 @@ public sealed class AuthApiTests
         using (HttpResponseMessage tags = await handle.Client.GetAsync("/api/hmi/tags"))
         {
             Assert.Equal(HttpStatusCode.Unauthorized, tags.StatusCode);
+        }
+
+        using (HttpResponseMessage influxStatus = await handle.Client.GetAsync("/api/influx/status"))
+        {
+            Assert.Equal(HttpStatusCode.Unauthorized, influxStatus.StatusCode);
         }
 
         using Session admin = await Session.SignInAsync(handle.Client.BaseAddress!, "admin", "admin");

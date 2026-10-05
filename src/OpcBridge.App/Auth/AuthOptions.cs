@@ -25,7 +25,8 @@ public sealed class AuthOptions
 
     /// <summary>
     /// Trust the Avalonia HMI apps on the LAN: leave the endpoints they call
-    /// (/hmi hub, /api/hmi/*, /api/values) reachable without a dashboard login.
+    /// (/hmi hub, /api/hmi/*, /api/values, /api/influx/status) reachable without
+    /// a dashboard login.
     /// Set false to require a session for them too (the HMI apps would then need
     /// credentials, which they do not have today).
     /// </summary>

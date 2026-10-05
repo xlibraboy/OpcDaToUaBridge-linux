@@ -17,6 +17,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+**HMI trend actions no longer grey out while dashboard authentication is on.** The role
+policy's trusted-HMI surface (`AuthPolicy.HmiPaths`) lists the endpoints the Avalonia
+runtime calls without credentials — and missed `GET /api/influx/status`, the endpoint the
+runtime polls every 5 seconds per bridge for the live InfluxDB writer state. With auth
+enabled the poll answered "Sign in required.", the runtime treated every bridge as
+Influx-offline and disabled the Trend button, the faceplate's Open trend and the group
+picker — even with the writer connected and the tag's "Influx log" enabled. The status
+endpoint (read-only: writer state, last error, counters) now travels with the rest of the
+trusted HMI surface; the token-bearing `/api/influx/config` stays behind the session.
+
 ## [1.7.1] - 2026-10-04
 
 ### Fixed
