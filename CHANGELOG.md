@@ -40,6 +40,14 @@ A connect that fails is retried with the existing 2 s → 30 s backoff while Aut
 the historian recovers on its own once the bucket, token or measurement is fixed. Probe points are
 ignored by trend queries (they filter by `source_id`/`da_item_id`).
 
+**A mapping add no longer flashes the disconnected badge across the source's rows (#38).** A
+mapping add forces every rate-group-bound source to rebuild — OPC DA and worker-backed DA clients
+bind items into rate groups at connect — and the source briefly reports `Connecting`. The Maps
+list counted any state but `Connected` as down, so every mapping row of that source showed the red
+`Disc` badge for a second or two even though nothing was wrong with the tags. `Connecting` is now
+transient for the row badge, while `Reconnecting`, `Disconnected` and `Faulted` still mark the
+whole source, so a genuine outage looks the same as before.
+
 ## [1.7.2] - 2026-10-05
 
 ### Fixed

@@ -505,10 +505,12 @@ public sealed class DashboardPageTests
     {
         // Disc/Bad badges are driven by server-side signals, never by absence from the
         // capped value window: failed monitored items (auto-retrying), bad-quality values,
-        // and the per-source connection state. The refresh() payload populates the sets.
+        // and the per-source connection state. A source that is merely 'connecting' is not
+        // down: a mapping add rebuilds rate-group sources, and treating that rebuild as down
+        // flashed Disc on every mapping row of the source (issue #38).
         Assert.Contains("state.disconnectedKeys = new Set((p.disconnected || []).map(d => valueKey(get(d, 'sourceId') || '', get(d, 'itemId') || '')));", DashboardPage.Script);
         Assert.Contains("state.badQualityKeys = new Set((p.badQuality || []).map(d => valueKey(get(d, 'sourceId') || '', get(d, 'itemId') || '')));", DashboardPage.Script);
-        Assert.Contains("state.disconnectedSources = new Set((sources || []).filter(s => String(get(s, 'connectionState') || '').toLowerCase() !== 'connected')", DashboardPage.Script);
+        Assert.Contains("state.disconnectedSources = new Set((sources || []).filter(s => { const cs = String(get(s, 'connectionState') || '').toLowerCase(); return cs !== 'connected' && cs !== 'connecting'; }).map(s => String(get(s, 'sourceId') || '')));", DashboardPage.Script);
         Assert.Contains("const sourceDown = enabled && state.disconnectedSources.has(sourceId);", DashboardPage.Script);
         Assert.Contains("const failedItem = enabled && state.disconnectedKeys.has(valueKey(sourceId, item));", DashboardPage.Script);
         Assert.Contains("const badQuality = enabled && state.badQualityKeys.has(valueKey(sourceId, item));", DashboardPage.Script);
