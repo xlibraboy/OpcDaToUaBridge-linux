@@ -1526,7 +1526,12 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
         }
         catch (Exception ex)
         {
-            influx_settings_.SetState("Faulted", ex.Message);
+            influx_settings_.SetState("Faulted", InfluxErrorDescriber.Describe(ex));
+            // A failed connect is retried on its own, like a rejected write: the same backoff brings
+            // the historian back once the bucket, token or field lock is fixed. Auto-connect off
+            // keeps meaning "stay off" (InfluxReconnectLoopAsync clears the flag), and an explicit
+            // Disconnect clears it through the StateChanged handler.
+            influx_retry_needed_ = true;
             logger_.LogWarning(ex, "Influx connect failed");
         }
     }
@@ -1559,7 +1564,7 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
                 // HTTP-based writer gets, and the panel otherwise stays at "Connected / No errors"
                 // while every point is being dropped. The writer is Faulted by now, and
                 // InfluxReconnectLoopAsync is what brings it back without an operator.
-                influx_settings_.SetLastError("Write failed: " + ex.Message);
+                influx_settings_.SetLastError("Write failed: " + InfluxErrorDescriber.Describe(ex));
                 influx_retry_needed_ = true;
                 logger_.LogWarning(ex, "Influx write failed for {SourceId}/{ItemId}", value.SourceId, value.ItemId);
             }

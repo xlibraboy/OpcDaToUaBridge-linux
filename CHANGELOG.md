@@ -28,6 +28,18 @@ old *Own worker* mode again. The stored password is now inherited only while the
 keeps a run-as account in an `own` or `group` mode; switching to in-process — or clearing
 the account — drops it.
 
+**The historian proves a write before it reports Connected — and names why a point was refused.**
+`/api/influx/connect` probed only `/ping`, which answers without a token: a wrong Bucket, a token
+without write permission or a measurement whose fields were locked to other types by pre-1.7.1
+data still read as *Connected* until the first real point was rejected, and the panel then showed
+only the exception's message. Connect now follows the probe with one small write — reserved tags
+`source_id=__opcbridge__`, `da_item_id=probe`, all value fields — into the configured bucket, so a
+bad bucket/token or a legacy field-type lock faults at connect with InfluxDB's own HTTP status and
+message plus a recovery hint; a refused point records the same detail as `Write failed: HTTP 400 …`.
+A connect that fails is retried with the existing 2 s → 30 s backoff while Auto-connect is on, so
+the historian recovers on its own once the bucket, token or measurement is fixed. Probe points are
+ignored by trend queries (they filter by `source_id`/`da_item_id`).
+
 ## [1.7.2] - 2026-10-05
 
 ### Fixed

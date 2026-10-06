@@ -63,12 +63,13 @@ public sealed class InfluxWriter : IInfluxWriter
 
             InfluxDBClient client = new InfluxDBClient(clientOptions);
             WriteApiAsync writeApi = client.GetWriteApiAsync();
+            string measurement = string.IsNullOrWhiteSpace(options.Measurement) ? "opc_tags" : options.Measurement.Trim();
 
             lock (sync_)
             {
                 client_ = client;
                 writeApi_ = writeApi;
-                options_ = CloneOptions(options, url, org, bucket, token!);
+                options_ = CloneOptions(options, url, org, bucket, token!, measurement);
             }
 
             // A constructed client is not a connection: the write API is stateless HTTP and only
@@ -80,6 +81,12 @@ public sealed class InfluxWriter : IInfluxWriter
                 throw new InvalidOperationException(
                     $"InfluxDB at {url} did not answer its /ping probe — check the URL, the port, and that the server is running.");
             }
+
+            // Reachability is not writability: /ping answers without a token and says nothing about
+            // the bucket, the token's write permission or the measurement's field-type locks. One
+            // small probe write earns "Connected" and names a bad bucket or a legacy field-type lock
+            // before any tag value is dropped.
+            await ProbeWritableAsync(writeApi, url, measurement, bucket, org, ct).ConfigureAwait(false);
 
             SetState(InfluxConnectionState.Connected);
             logger_.LogInformation("Influx connected to {Url} org={Org} bucket={Bucket}", url, org, bucket);
@@ -200,7 +207,48 @@ public sealed class InfluxWriter : IInfluxWriter
         }
     }
 
-    private static InfluxOptions CloneOptions(InfluxOptions source, string url, string org, string bucket, string token)
+    /// <summary>
+    /// Writability probe for <see cref="ConnectAsync"/>: /ping answers without a token and proves
+    /// nothing about the bucket, the token's write permission or the field types the measurement
+    /// already holds, so one small point is written with every value field before "Connected" is
+    /// announced. The server's rejection (HTTP status + message) is what the operator reads on the
+    /// Historian panel. Probe points carry the reserved tags source_id=__opcbridge__, da_item_id=probe
+    /// and are invisible to trend queries, which filter by source_id/da_item_id.
+    /// </summary>
+    private static async Task ProbeWritableAsync(
+        WriteApiAsync writeApi,
+        string url,
+        string measurement,
+        string bucket,
+        string org,
+        CancellationToken ct)
+    {
+        PointData probe = BuildProbePointData(measurement);
+        try
+        {
+            await writeApi.WritePointAsync(probe, bucket, org, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                $"InfluxDB at {url} answered /ping but rejected the connectivity probe write: {InfluxErrorDescriber.Describe(ex)}",
+                ex);
+        }
+    }
+
+    internal static PointData BuildProbePointData(string measurement) =>
+        PointData.Measurement(measurement)
+            .Tag("source_id", "__opcbridge__")
+            .Tag("da_item_id", "probe")
+            .Field("value", 0.0)
+            .Field("value_int", 0L)
+            .Field("value_bool", false)
+            .Field("value_str", "probe")
+            .Field("quality", 0)
+            .Field("is_good", true)
+            .Timestamp(DateTime.UtcNow, WritePrecision.Ns);
+
+    private static InfluxOptions CloneOptions(InfluxOptions source, string url, string org, string bucket, string token, string measurement)
     {
         return new InfluxOptions
         {
@@ -209,7 +257,7 @@ public sealed class InfluxWriter : IInfluxWriter
             Org = org,
             Bucket = bucket,
             Token = token,
-            Measurement = string.IsNullOrWhiteSpace(source.Measurement) ? "opc_tags" : source.Measurement.Trim(),
+            Measurement = measurement,
             TimeoutMs = source.TimeoutMs,
             VerifySsl = source.VerifySsl
         };

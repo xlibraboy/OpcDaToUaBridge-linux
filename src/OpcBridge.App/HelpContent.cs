@@ -381,10 +381,13 @@ Minimal JSON. Selectable fields (MQTT Broker → Payload Fields): `v` (value), `
 
 # InfluxDB (Historical Logging)
 
-- External InfluxDB 2.x/3.x server required
+- External InfluxDB 2.x/3.x server required — the bridge does not run InfluxDB and does not create buckets or orgs (create them, and a token with write access, before connecting)
 - Configure URL, Org, Bucket, Token on InfluxDB tab; Save + Connect
 - Enable per tag via faceplate Influx checkbox
-- Points: measurement opc_tags (configurable), tags source_id/da_item_id/display_name, fields value/quality/is_good
+- Points: measurement opc_tags (configurable), tags source_id/da_item_id/display_name, fields value (Float/Double/Decimal), value_int (integer family), value_bool, value_str (String/DateTime/ByteArray), plus quality and is_good — field names are type-stable because InfluxDB locks a field name to one type per measurement
+- Connect proves a write, not just reachability: one probe point (tags source_id `__opcbridge__`, da_item_id `probe`) is written on every connect. If it is rejected, the Historian panel's Last error carries InfluxDB's HTTP status and message plus a hint
+- Points rejected with "field type conflict" mean the measurement already holds another type for that field (legacy data): point the writer at a new Measurement or bucket, or remove the old data. A failed write or connect is retried with backoff while Auto-connect is on
+- Sharing one bucket/measurement between bridges: tag identity is source_id + da_item_id and carries no bridge id, so give each bridge distinct source ids or its own bucket/measurement
 - Outage does not stop the bridge
 
 ---

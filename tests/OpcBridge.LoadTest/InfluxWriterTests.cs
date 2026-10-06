@@ -1,6 +1,5 @@
-using System.Net;
-using System.Net.Sockets;
 using System.Text.Json;
+using InfluxDB.Client.Core.Exceptions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using OpcBridge.App;
@@ -229,7 +228,9 @@ public sealed class InfluxWriterTests
     [Fact]
     public async Task Write_Failure_FaultsTheWriterSoItStopsClaimingConnected()
     {
-        using FailingWriteServer server = FailingWriteServer.Start();
+        // The probe lands (204), the next real point is rejected (401): the shape of a historian
+        // that is up with a token it stopped accepting between connect and the next point.
+        using ScriptedInfluxServer server = ScriptedInfluxServer.Start((204, null), (401, null));
         await using InfluxWriter writer = new(NullLogger<InfluxWriter>.Instance);
         InfluxOptions options = new()
         {
@@ -251,6 +252,117 @@ public sealed class InfluxWriterTests
         // The point never landed, so the link is not usable and the state must not stay Connected:
         // BridgeWorker's reconnect loop is what brings it back.
         Assert.Equal(InfluxConnectionState.Faulted, writer.State);
+    }
+
+    [Fact]
+    public async Task Connect_ProbeWrite_LandsEveryValueFieldInTheConfiguredMeasurement()
+    {
+        using ScriptedInfluxServer server = ScriptedInfluxServer.Start((204, null));
+        await using InfluxWriter writer = new(NullLogger<InfluxWriter>.Instance);
+        InfluxOptions options = new()
+        {
+            Enabled = true,
+            Url = server.Url,
+            Org = "demo-org",
+            Bucket = "demo-bucket",
+            Token = "demo-token",
+            Measurement = "plant_tags",
+            TimeoutMs = 2000,
+            VerifySsl = false
+        };
+
+        await writer.ConnectAsync(options, CancellationToken.None);
+
+        Assert.Equal(InfluxConnectionState.Connected, writer.State);
+        string probe = Assert.Single(server.WriteBodies);
+        Assert.StartsWith("plant_tags,", probe);
+        Assert.Contains("source_id=__opcbridge__", probe);
+        Assert.Contains("da_item_id=probe", probe);
+        Assert.Contains("value=0", probe);
+        Assert.Contains("value_int=0i", probe);
+        Assert.Contains("value_bool=false", probe);
+        Assert.Contains("value_str=\"probe\"", probe);
+        Assert.Contains("quality=0i", probe);
+        Assert.Contains("is_good=true", probe);
+    }
+
+    [Fact]
+    public async Task Connect_ProbeRejectedWithFieldTypeConflict_FaultsWithTheServerMessage()
+    {
+        using ScriptedInfluxServer server = ScriptedInfluxServer.Start((400, ScriptedInfluxServer.FieldTypeConflictBody));
+        await using InfluxWriter writer = new(NullLogger<InfluxWriter>.Instance);
+        List<InfluxConnectionState> seen = new();
+        writer.StateChanged += state => seen.Add(state);
+
+        InfluxOptions options = new()
+        {
+            Enabled = true,
+            Url = server.Url,
+            Org = "demo-org",
+            Bucket = "demo-bucket",
+            Token = "demo-token",
+            TimeoutMs = 2000,
+            VerifySsl = false
+        };
+
+        InvalidOperationException error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => writer.ConnectAsync(options, CancellationToken.None));
+
+        // The operator must read the HTTP status, the server's own message and what to do about it.
+        Assert.Contains("HTTP 400", error.Message);
+        Assert.Contains("field type conflict", error.Message);
+        Assert.Contains("locks a field name to one type per measurement", error.Message);
+        Assert.Equal(InfluxConnectionState.Faulted, writer.State);
+        Assert.DoesNotContain(InfluxConnectionState.Connected, seen);
+    }
+
+    [Fact]
+    public async Task Connect_ProbeRejectedWithMissingBucket_FaultsWithTheBucketHint()
+    {
+        using ScriptedInfluxServer server = ScriptedInfluxServer.Start((
+            404,
+            """
+            {"code":"not found","message":"bucket \"demo-bucket\" not found"}
+            """));
+        await using InfluxWriter writer = new(NullLogger<InfluxWriter>.Instance);
+        InfluxOptions options = new()
+        {
+            Enabled = true,
+            Url = server.Url,
+            Org = "demo-org",
+            Bucket = "demo-bucket",
+            Token = "demo-token",
+            TimeoutMs = 2000,
+            VerifySsl = false
+        };
+
+        InvalidOperationException error = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => writer.ConnectAsync(options, CancellationToken.None));
+
+        Assert.Contains("HTTP 404", error.Message);
+        Assert.Contains("check the Bucket and Org names", error.Message);
+    }
+
+    [Fact]
+    public void InfluxErrorDescriber_TransportFailure_KeepsTheMessage()
+    {
+        string text = InfluxErrorDescriber.Describe(new HttpException("connection refused", 0));
+        Assert.Equal("No response from the server: connection refused", text);
+    }
+
+    [Fact]
+    public void InfluxErrorDescriber_Unauthorized_AddsTheTokenHint()
+    {
+        string text = InfluxErrorDescriber.Describe(new HttpException("unauthorized access", 401));
+        Assert.StartsWith("HTTP 401:", text);
+        Assert.Contains("check the Token", text);
+    }
+
+    [Fact]
+    public void InfluxErrorDescriber_PassesThroughNonInfluxErrors()
+    {
+        string text = InfluxErrorDescriber.Describe(new InvalidOperationException("Influx Url, Org, Bucket, and Token are required."));
+        Assert.Equal("Influx Url, Org, Bucket, and Token are required.", text);
     }
 
     [Fact]
@@ -301,79 +413,5 @@ public sealed class InfluxWriterTests
         Assert.Equal("factory", opts.Org);
         Assert.Equal("tags", opts.Bucket);
         Assert.Equal("secret", opts.Token);
-    }
-
-    /// <summary>
-    /// Answers the readiness probe and rejects every write — the shape of a historian that is up
-    /// with a token it will not accept, or one that died between connect and the next point.
-    /// </summary>
-    private sealed class FailingWriteServer : IDisposable
-    {
-        private readonly HttpListener listener_;
-
-        private FailingWriteServer(HttpListener listener, string url)
-        {
-            listener_ = listener;
-            Url = url;
-        }
-
-        public string Url { get; }
-
-        public static FailingWriteServer Start()
-        {
-            TcpListener probe = new(IPAddress.Loopback, 0);
-            probe.Start();
-            int port = ((IPEndPoint)probe.LocalEndpoint).Port;
-            probe.Stop();
-
-            HttpListener listener = new();
-            listener.Prefixes.Add($"http://127.0.0.1:{port}/");
-            listener.Start();
-
-            FailingWriteServer server = new(listener, $"http://127.0.0.1:{port}");
-            _ = server.ServeAsync();
-            return server;
-        }
-
-        private async Task ServeAsync()
-        {
-            while (listener_.IsListening)
-            {
-                HttpListenerContext context;
-                try
-                {
-                    context = await listener_.GetContextAsync().ConfigureAwait(false);
-                }
-                catch (Exception)
-                {
-                    return; // stopped
-                }
-
-                bool ping = context.Request.Url?.AbsolutePath == "/ping";
-                context.Response.StatusCode = ping ? 204 : 401;
-                context.Response.Headers["X-Influxdb-Version"] = "2.7.0";
-                try
-                {
-                    context.Response.Close();
-                }
-                catch (Exception)
-                {
-                    // client hung up
-                }
-            }
-        }
-
-        public void Dispose()
-        {
-            try
-            {
-                listener_.Stop();
-                listener_.Close();
-            }
-            catch (Exception)
-            {
-                // already down
-            }
-        }
     }
 }
