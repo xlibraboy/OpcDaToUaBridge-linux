@@ -123,10 +123,37 @@ public sealed class MappingImportPreviewApiTests
         // A blank description in the file is no opinion about the stored one.
         Assert.Equal("new", StatusOf(preview, "DRYEND_PLC.Output_Y.Y100"));
         Assert.Equal(JsonValueKind.Null, RowFor(preview, "DRYEND_PLC.Output_Y.Y100").GetProperty("description").ValueKind);
-        // Each row carries both the tag's name and the path-qualified id it maps as, plus the
-        // row anchor the dialog groups by.
-        Assert.Equal("X001", RowFor(preview, "DRYEND_PLC.Input_X.X001").GetProperty("name").GetString());
+        // Without a template the row is named by the item id (#40) — the default the issue asks
+        // for — while the file's own tag name travels alongside, plus the row anchor the dialog
+        // groups by.
+        Assert.Equal("DRYEND_PLC.Input_X.X001", RowFor(preview, "DRYEND_PLC.Input_X.X001").GetProperty("name").GetString());
+        Assert.Equal("X001", RowFor(preview, "DRYEND_PLC.Input_X.X001").GetProperty("fileName").GetString());
         Assert.Equal(@"\Address Space\DRYEND_PLC\Input_X", RowFor(preview, "DRYEND_PLC.Input_X.X001").GetProperty("group").GetString());
+    }
+
+    [Fact]
+    public async Task Preview_RendersTheNameTemplate()
+    {
+        await using TestAppHandle handle = await TestAppHandle.StartAsync(WriteMinimalAppsettings);
+
+        // The name template (#40) decides what an imported tag will be called: the bridge renders
+        // it on every preview with the same code the Add then relies on, and the file's own name
+        // stays in fileName so the dialog can still show it when the template does not.
+        using HttpResponseMessage res = await handle.Client.PostAsync(
+            "/api/mappings/import/preview",
+            JsonBody(new { sourceId = "default", text = TwoTagExport, nameTemplate = "{name} @ {itemId}" }));
+        JsonElement preview = await ReadJsonAsync(res);
+
+        JsonElement row = RowFor(preview, "DRYEND_PLC.Input_X.X001");
+        Assert.Equal("X001 @ DRYEND_PLC.Input_X.X001", row.GetProperty("name").GetString());
+        Assert.Equal("X001", row.GetProperty("fileName").GetString());
+
+        // A blank template means the default, the item id, exactly like the box being cleared.
+        using HttpResponseMessage blank = await handle.Client.PostAsync(
+            "/api/mappings/import/preview",
+            JsonBody(new { sourceId = "default", text = TwoTagExport, nameTemplate = "  " }));
+        JsonElement blankPreview = await ReadJsonAsync(blank);
+        Assert.Equal("DRYEND_PLC.Input_X.X001", RowFor(blankPreview, "DRYEND_PLC.Input_X.X001").GetProperty("name").GetString());
     }
 
     [Fact]

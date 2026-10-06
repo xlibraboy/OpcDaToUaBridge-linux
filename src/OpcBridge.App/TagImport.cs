@@ -14,6 +14,69 @@ namespace OpcBridge.App;
 public sealed record ImportedTag(string Name, string ItemId, string? Description, string Group);
 
 /// <summary>
+/// The name an imported tag is mapped with (issue #40): a template the operator edits in the
+/// import dialog, with <c>{itemId}</c>, <c>{name}</c>, <c>{description}</c> and <c>{group}</c>
+/// tokens. The default is the item id — the path-qualified id is what tells three PLCs' X000
+/// apart (see <see cref="TagImportFile.BuildItemId"/>), so it is the one name an import always
+/// has. A blank template means the default; a token that is not one of the four is left exactly
+/// as typed (it shows up in the preview, where it can be fixed); and a rendering that trims to
+/// nothing falls back to the item id, the same fallback <c>MappingStore</c> applies to a blank
+/// display name.
+/// </summary>
+public static class TagNameTemplate
+{
+    /// <summary>What the dialog starts with, and what an empty box means: the item id.</summary>
+    public const string Default = "{itemId}";
+
+    public static string Apply(string? template, string name, string itemId, string? description, string group)
+    {
+        string text = string.IsNullOrWhiteSpace(template) ? Default : template.Trim();
+        System.Text.StringBuilder rendered = new(text.Length + 16);
+
+        for (int i = 0; i < text.Length; i++)
+        {
+            if (text[i] != '{')
+            {
+                rendered.Append(text[i]);
+                continue;
+            }
+
+            int end = text.IndexOf('}', i + 1);
+            if (end < 0)
+            {
+                rendered.Append(text[i]);
+                continue;
+            }
+
+            // Tokens are matched case-insensitively: the operator may type {ItemId} or {itemId}.
+            string? value = text.Substring(i + 1, end - i - 1).Trim().ToLowerInvariant() switch
+            {
+                "itemid" => itemId,
+                "name" => name,
+                "description" => description ?? string.Empty,
+                "group" => group,
+                _ => null
+            };
+
+            if (value is null)
+            {
+                // Not a token we know: keep it as typed, so the preview shows the mistake.
+                rendered.Append(text, i, end - i + 1);
+            }
+            else
+            {
+                rendered.Append(value);
+            }
+
+            i = end;
+        }
+
+        string result = rendered.ToString().Trim();
+        return result.Length == 0 ? itemId : result;
+    }
+}
+
+/// <summary>
 /// Readers for the tag lists the Maps tab can import. Today that is the CSV written by
 /// MELSOFT MX OPC Configurator, whose tag table is the <c>#MX_DataTags</c> section: a header
 /// row naming the columns, then one quoted row per tag. Only the columns that name a tag and

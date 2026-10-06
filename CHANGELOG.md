@@ -17,6 +17,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+**Import from file can name the tags it maps with an editable template (#40).** The import dialog
+gained a **Name template** box beside the file picker; the bridge renders it into every preview
+row, so what the list shows is exactly the `displayName` an Add stores. The default is the
+path-qualified item id — `{itemId}` — the one name an import always has, since a plant's three
+PLCs each carry an `X000`; `{name}` (the file's own tag name), `{description}` and `{group}` are
+available as well. Tokens are case-insensitive, anything that is not one of the four is left as
+typed so a typo shows in the preview instead of being silently dropped, an emptied box means the
+default, and a rendering that comes out blank falls back to the item id — the same fallback the
+mapping store applies. The template is remembered per browser (`localStorage`, like the theme),
+and the file's own name stays on each row ("in file as “X000”") when the template changed it.
+Editing the template re-renders the preview before any Add can run, so a click right after editing
+cannot map with the previous names. Only new adds use it: *Update descriptions* keeps the stored
+names.
+
 ### Fixed
 
 **Switching a DA source's worker mode back to in-process now sticks.** The source-upsert

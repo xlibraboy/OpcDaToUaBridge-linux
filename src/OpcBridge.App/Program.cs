@@ -1920,7 +1920,11 @@ app.MapPost("/api/mappings/import/preview", async (
         rowCount = imported.Count,
         rows = rows.Select(row => new
         {
-            name = row.Name,
+            // The name this row would be mapped with (#40): the dialog's template, default the
+            // path-qualified item id. The file's own name travels alongside so the dialog can
+            // still show it when the template does not.
+            name = TagNameTemplate.Apply(request.NameTemplate, row.Name, row.ItemId, row.Description, row.Group),
+            fileName = row.Name,
             itemId = row.ItemId,
             description = row.Description,
             group = row.Group,

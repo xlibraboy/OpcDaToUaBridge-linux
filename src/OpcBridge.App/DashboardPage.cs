@@ -1994,6 +1994,11 @@ internal static class DashboardPage
                 <span class="msg" id="importTagsFileName">No file chosen.</span>
             </div>
             <div class="field">
+                <label class="fl" for="importTagsNameTemplate">Name template</label>
+                <input type="text" id="importTagsNameTemplate" value="{itemId}" spellcheck="false" style="flex:1;min-width:200px">
+            </div>
+            <div class="hint">The name each imported tag is mapped with — remembered in this browser. Tokens: <span class="mono">{itemId}</span> — the default — <span class="mono">{name}</span> (the file's tag name), <span class="mono">{description}</span>, <span class="mono">{group}</span>.</div>
+            <div class="field">
                 <label class="fl" for="importTagsSource">Into source</label>
                 <span class="pill" id="importTagsSource" style="padding:3px 8px">—</span>
                 <label class="fl" for="importTagsGroup" style="margin-left:14px">PLC / folder</label>
@@ -2483,6 +2488,9 @@ const state = {
     // Item ids ticked for mapping. Only rows the source really exposes and the bridge does not
     // map yet can be ticked, so the selection is exactly "not mapped, and on the source".
     importSelected: new Set(),
+    // True while an edited name template (#40) is being re-rendered by the bridge: the rows on
+    // screen still carry the old template's names, so every Add is parked until the refresh lands.
+    importNameTemplatePending: false,
     importSourceChecked: false,
     importSourceTruncated: false,
     importSourceError: '',
@@ -9521,9 +9529,23 @@ async function removeMapping(sourceId, itemId) {
 // mapped state. Adding reuses the ordinary insert-only add endpoint, one row or all of them;
 // updating a description reuses the ordinary update endpoint with the stored mapping echoed; a
 // mis-picked row is taken back with the ordinary remove endpoint and the file is compared again,
-// so the row returns as "not mapped" and the right one can be mapped in its place (#32).
+// so the row returns as "not mapped" and the right one can be mapped in its place (#32). The name
+// each imported tag is mapped with is the dialog's editable name template (#40), rendered by the
+// bridge on every preview — default the path-qualified item id — so the list shows exactly the
+// name an Add will store.
 // ---------------------------------------------------------------------------
 const IMPORT_ROWS_CAP = 300;
+// Every preview request takes the next sequence number; only the newest answer may render (#40) —
+// a slow source scan must not let an earlier rendering overwrite a later template's names.
+let importPreviewSeq = 0;
+// The name template (#40) is remembered per browser, like the theme: an operator who names a
+// plant's tags once should not have to type the template again for the next file.
+const IMPORT_NAME_TEMPLATE_KEY = 'opcbridge.importNameTemplate';
+const IMPORT_NAME_TEMPLATE_DEFAULT = '{itemId}';
+function storedImportNameTemplate() {
+    try { return localStorage.getItem(IMPORT_NAME_TEMPLATE_KEY) || IMPORT_NAME_TEMPLATE_DEFAULT; }
+    catch (e) { return IMPORT_NAME_TEMPLATE_DEFAULT; }
+}
 
 function setImportMessage(text) {
     const node = el('importTagsMessage');
@@ -9545,6 +9567,7 @@ function openImportTags() {
     state.importGroup = '';
     state.importRows = [];
     state.importSelected = new Set();
+    state.importNameTemplatePending = false;
     state.importSourceChecked = false;
     state.importSourceTruncated = false;
     state.importSourceError = '';
@@ -9553,6 +9576,7 @@ function openImportTags() {
     state.importSourceOnlyTruncated = false;
     el('importTagsSource').textContent = source.displayName || source.sourceId;
     el('importTagsFileName').textContent = 'No file chosen.';
+    el('importTagsNameTemplate').value = storedImportNameTemplate();
     el('importTagsGroup').innerHTML = '';
     el('importTagsList').innerHTML = '';
     el('importTagsSummary').className = 'hint';
@@ -9573,6 +9597,7 @@ function closeImportTags() {
     el('importTagsOverlay').classList.remove('open');
     state.importRows = [];
     state.importSelected = new Set();
+    state.importNameTemplatePending = false;
     state.importSourceOnly = [];
     state.importText = '';
 }
@@ -9596,13 +9621,23 @@ async function readImportTagsFile(file) {
     }
 }
 async function refreshImportPreview() {
-    if (!state.importText) return;
+    if (!state.importText) return false;
+    const seq = ++importPreviewSeq;
     const r = await fetch('/api/mappings/import/preview', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sourceId: state.importSourceId, text: state.importText })
+        // The template travels with every preview (#40): the bridge renders each row's name
+        // with it, so the list and the Add that follows can never disagree.
+        body: JSON.stringify({
+            sourceId: state.importSourceId,
+            text: state.importText,
+            nameTemplate: el('importTagsNameTemplate').value
+        })
     });
     const p = await r.json().catch(() => ({}));
+    // Superseded while the bridge was comparing: the newer request owns the dialog, so this
+    // answer is dropped rather than rendered out of order.
+    if (seq !== importPreviewSeq) return false;
     if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
     state.importRows = Array.isArray(p.rows) ? p.rows : [];
     state.importSourceChecked = p.sourceChecked === true;
@@ -9615,6 +9650,34 @@ async function refreshImportPreview() {
     // a row the source scan or the mapping store has already settled.
     pruneImportSelection();
     renderImportTags();
+}
+// An edited template (#40) changes what every row's name would be, and an Add sends the name the
+// row currently shows: re-render the preview first and park the dialog's buttons until it lands,
+// so a click right after editing cannot map with the previous template's names. The box is
+// normalized to the default when emptied, so clearing it means "use the item id".
+function applyImportNameTemplate() {
+    const input = el('importTagsNameTemplate');
+    const value = (input.value || '').trim() || IMPORT_NAME_TEMPLATE_DEFAULT;
+    input.value = value;
+    try { localStorage.setItem(IMPORT_NAME_TEMPLATE_KEY, value); } catch (e) { }
+    if (!state.importText) return;
+    state.importNameTemplatePending = true;
+    el('importTagsAddAll').disabled = true;
+    el('importTagsAddSelected').disabled = true;
+    el('importTagsUpdateAll').disabled = true;
+    setImportMessage('Applying the name template…');
+    refreshImportPreview()
+        .then(applied => {
+            // A newer edit already owns the dialog: leave the parking to that request.
+            if (!applied) return;
+            state.importNameTemplatePending = false;
+            setImportMessage('✓ Name template applied.');
+        })
+        .catch(e => {
+            state.importNameTemplatePending = false;
+            renderImportTags();
+            setImportMessage('✗ ' + e.message);
+        });
 }
 // The file's own grouping (MX keeps tags under \Address Space\<PLC>\<folder>) decides what the
 // dialog shows at once: the same tag name exists on several PLCs, so the group is what makes an
@@ -9727,10 +9790,13 @@ function importTagRowHtml(row) {
     const description = String(row.description || '');
     const existing = String(row.existingDescription || '');
     const added = formatAddedUtc(row.addedUtc);
-    // The name is what the operator recognizes; the item id is what the mapping will be keyed by,
-    // so it is always on the row — an MX export distinguishes three PLCs' X000 only by its path.
+    const fileName = String(row.fileName || '');
+    // The name is the template's rendering (#40) — what the mapping will be called; the item id
+    // is what it will be keyed by, so it is always on the row — an MX export distinguishes three
+    // PLCs' X000 only by its path. The file's own name stays visible when the template changed it.
     const detail = [
         row.itemId,
+        fileName && fileName !== row.name ? 'in file as “' + fileName + '”' : null,
         description ? '“' + description + '”' : 'no description in file',
         added ? 'added ' + added : null,
         row.status === 'differs' && existing ? 'mapped as “' + existing + '”' : null
@@ -9807,10 +9873,12 @@ function renderImportTags() {
     el('importTagsAddSelected').disabled = selectedCount === 0;
     el('importTagsUpdateAll').style.display = counts.differs ? '' : 'none';
     el('importTagsUpdateAll').textContent = 'Update descriptions (' + counts.differs + ')';
+    el('importTagsUpdateAll').disabled = counts.differs === 0;
 }
-// One add call for the rows the dialog adds — a single row or the whole group. Names come from
-// the file, and so do descriptions; the endpoint is insert-only, so a tag that appeared while
-// the dialog was open is skipped and reported like any other duplicate.
+// One add call for the rows the dialog adds — a single row or the whole group. The name is the
+// template's rendering (#40) as the preview returned it, the description comes from the file; the
+// endpoint is insert-only, so a tag that appeared while the dialog was open is skipped and
+// reported like any other duplicate.
 async function postImportedTags(rows) {
     const r = await fetch('/api/mappings/add', {
         method: 'POST',
@@ -10352,6 +10420,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         state.importGroup = e.target.value;
         renderImportTags();
     });
+    // The name template (#40) is committed on blur or Enter (change), not on every keystroke —
+    // each commit re-renders the preview on the bridge.
+    el('importTagsNameTemplate').addEventListener('change', () => applyImportNameTemplate());
     el('importTagsAddAll').addEventListener('click', () => {
         const rows = importRowsSelectable(importTagRowsFor(state.importGroup));
         if (!rows.length) return;
@@ -10389,6 +10460,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     el('importTagsOverlay').addEventListener('click', event => {
         const button = event.target.closest('button[data-action]');
         if (!button) return;
+        // Parked while an edited name template is being re-rendered (#40): the row's Add would
+        // still send the previous template's name.
+        if (state.importNameTemplatePending) return;
         const itemId = button.dataset.itemId || '';
         if (button.dataset.action === 'import-add') {
             const row = importTagRowsFor(state.importGroup).find(r => r.itemId === itemId);
