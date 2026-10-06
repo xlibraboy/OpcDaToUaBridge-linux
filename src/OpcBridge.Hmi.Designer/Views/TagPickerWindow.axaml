@@ -1,0 +1,106 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:OpcBridge.Hmi.Designer.ViewModels"
+        xmlns:services="using:OpcBridge.Hmi.Designer.Services"
+        x:Class="OpcBridge.Hmi.Designer.Views.TagPickerWindow"
+        x:DataType="vm:DesignerTagPickerViewModel"
+        Title="{Binding Title}"
+        Width="760"
+        Height="560"
+        MinWidth="560"
+        MinHeight="380"
+        WindowStartupLocation="CenterOwner"
+        KeyDown="OnKeyDown">
+  <DockPanel Margin="12">
+
+    <!-- Confirm bar -->
+    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="8" Margin="0,10,0,0">
+      <Button Classes="primary"
+              Content="Bind tag"
+              Click="OnBindClick"
+              IsEnabled="{Binding CanBind}"
+              IsDefault="True"
+              MinWidth="110" />
+      <Button Content="Cancel" Click="OnCancelClick" IsCancel="True" MinWidth="90" />
+      <TextBlock Classes="hint"
+                 VerticalAlignment="Center"
+                 Text="Only tags mapped on the bridge are listed, so every binding is live." />
+    </StackPanel>
+
+    <!-- Scope + filter -->
+    <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="0,0,0,8">
+      <Grid ColumnDefinitions="Auto,*">
+        <TextBlock Grid.Column="0" Classes="listHeader" Text="SOURCE" VerticalAlignment="Center" Margin="0,0,10,0" />
+        <ComboBox Grid.Column="1"
+                  ItemsSource="{Binding Sources}"
+                  SelectedItem="{Binding SelectedSource}"
+                  HorizontalAlignment="Stretch"
+                  AutomationProperties.Name="Source"
+                  AutomationProperties.HelpText="Pick the source whose tags you want to bind.">
+          <ComboBox.ItemTemplate>
+            <DataTemplate x:DataType="services:BridgeSourceInfo">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <TextBlock Text="{Binding DisplayNameOrId}" />
+                <TextBlock Classes="hint" Text="{Binding TypeLabel}" IsVisible="{Binding HasTypeLabel}" />
+              </StackPanel>
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
+      </Grid>
+      <TextBox x:Name="FilterBox"
+               AutomationProperties.Name="Filter tags"
+               Watermark="Filter tags…"
+               Text="{Binding Filter}" />
+      <Grid ColumnDefinitions="2*,3*,Auto,Auto" IsVisible="{Binding HasRows}">
+        <TextBlock Grid.Column="0" Classes="listHeader" Text="TAG" />
+        <TextBlock Grid.Column="1" Classes="listHeader" Text="ITEM ID" />
+        <TextBlock Grid.Column="2" Classes="listHeader" Text="VALUE" />
+        <TextBlock Grid.Column="3" Classes="listHeader" Text="QUALITY" Margin="12,0,0,0" />
+      </Grid>
+    </StackPanel>
+
+    <!-- Tag list -->
+    <ListBox x:Name="TagList"
+             ItemsSource="{Binding Rows}"
+             SelectedItem="{Binding SelectedRow}"
+             DoubleTapped="OnTagDoubleTapped"
+             AutomationProperties.Name="Tags"
+             AutomationProperties.HelpText="Select a tag, then choose Bind tag. Double-click binds directly.">
+      <ListBox.ItemTemplate>
+        <DataTemplate x:DataType="vm:DesignerTagRow">
+          <Grid ColumnDefinitions="2*,3*,Auto,Auto">
+            <TextBlock Grid.Column="0"
+                       Text="{Binding DisplayName}"
+                       TextTrimming="CharacterEllipsis"
+                       ToolTip.Tip="{Binding DisplayName}" />
+            <TextBlock Grid.Column="1"
+                       Text="{Binding ItemId}"
+                       Margin="0,0,8,0"
+                       TextTrimming="CharacterEllipsis"
+                       ToolTip.Tip="{Binding ItemId}" />
+            <TextBlock Grid.Column="2"
+                       Classes="valueText"
+                       Text="{Binding ValueText}"
+                       MinWidth="80"
+                       TextAlignment="Right"
+                       Margin="0,0,14,0" />
+            <TextBlock Grid.Column="3"
+                       Classes="hint"
+                       Text="{Binding QualityText}"
+                       MinWidth="72" />
+          </Grid>
+        </DataTemplate>
+      </ListBox.ItemTemplate>
+    </ListBox>
+
+    <!-- Empty state -->
+    <TextBlock Classes="hint"
+               TextWrapping="Wrap"
+               HorizontalAlignment="Center"
+               VerticalAlignment="Center"
+               MaxWidth="420"
+               TextAlignment="Center"
+               IsVisible="{Binding !HasRows}"
+               Text="{Binding EmptyMessage}" />
+  </DockPanel>
+</Window>

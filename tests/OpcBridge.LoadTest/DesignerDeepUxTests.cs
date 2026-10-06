@@ -1,6 +1,7 @@
 using System.Text.Json;
 using OpcBridge.Client;
 using OpcBridge.Hmi.Core;
+using OpcBridge.Hmi.Designer.Services;
 using OpcBridge.Hmi.Designer.ViewModels;
 using OpcBridge.Hmi.ViewModels;
 using OpcBridge.Hmi.ViewModels.Widgets;
@@ -293,34 +294,78 @@ public sealed class DesignerDeepUxTests
     }
 
     [Fact]
-    public void SelectedBinding_Edit_BindsAndUnbinds()
+    public void Binding_ChooseTag_BindsAndUnbinds()
     {
-        var vm = new DesignerViewModel();
+        var vm = new DesignerViewModel([], new FakeBridgeClient(), new FakeLiveLink());
         try
         {
             vm.AddWidgetCommand.Execute(null); // numeric default
             var widget = vm.Surface.Widgets[0];
-            vm.Surface.SelectWidget(widget);
+            // Adding selects the new widget, so "Choose tag…" applies to it immediately.
+            Assert.Same(widget, vm.SelectedWidget);
 
-            vm.StagingBindingBridgeId = "b1";
-            vm.StagingBindingSourceId = "s1";
-            vm.StagingBindingDaItemId = "item1";
-            vm.ApplySelectedBindingCommand.Execute(null);
+            vm.BindSelectedTag(TagBindingKey.Create("default", "s1", "item1"));
             Assert.NotNull(widget.Binding);
-            Assert.Equal("b1", widget.Binding!.Value.BridgeId);
+            Assert.Equal("default", widget.Binding!.Value.BridgeId);
+            Assert.Equal("s1", widget.Binding.Value.SourceId);
             Assert.Equal("item1", widget.Binding.Value.DaItemId);
+            Assert.True(vm.HasBoundTag);
+            Assert.True(vm.ShowBindingPanel);
+            // Offline bridge: a binding must not read as "missing" before any snapshot arrives.
+            Assert.False(vm.SelectedBindingMissing);
 
-            // Clearing everything and applying unbinds.
-            vm.StagingBindingBridgeId = string.Empty;
-            vm.StagingBindingSourceId = string.Empty;
-            vm.StagingBindingDaItemId = string.Empty;
-            vm.ApplySelectedBindingCommand.Execute(null);
+            vm.UnbindSelectedCommand.Execute(null);
             Assert.Null(widget.Binding);
+            Assert.False(vm.HasBoundTag);
         }
         finally
         {
             vm.Dispose();
         }
+    }
+
+    private sealed class FakeBridgeClient : IDesignerBridgeClient
+    {
+        public void SetBaseAddress(string baseUrl)
+        {
+        }
+
+        public Task<string?> DetectAsync(CancellationToken ct) => Task.FromResult<string?>(null);
+
+        public Task<BridgeAuthInfo?> GetAuthInfoAsync(CancellationToken ct) =>
+            Task.FromResult<BridgeAuthInfo?>(null);
+
+        public Task<(bool Ok, string? Error)> SignInAsync(string username, string password, CancellationToken ct) =>
+            Task.FromResult((false, (string?)"no bridge"));
+
+        public Task SignOutAsync(CancellationToken ct) => Task.CompletedTask;
+
+        public Task<SourceListResult> GetSourcesAsync(CancellationToken ct) =>
+            Task.FromResult(SourceListResult.Failed("no bridge"));
+
+        public void Dispose()
+        {
+        }
+    }
+
+    private sealed class FakeLiveLink : IDesignerLiveLink
+    {
+        public DesignerLiveState State => DesignerLiveState.Offline;
+
+        public string? LastError => null;
+
+        public event Action? StateChanged
+        {
+            add { }
+            remove { }
+        }
+
+        public Task StartAsync(string baseUrl, string bridgeId, Action onChanged, CancellationToken ct) =>
+            Task.CompletedTask;
+
+        public Task StopAsync() => Task.CompletedTask;
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
     [Fact]

@@ -1,9 +1,11 @@
 using System.Collections.ObjectModel;
 using System.Text.Json;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using OpcBridge.Client;
 using OpcBridge.Hmi.Core;
+using OpcBridge.Hmi.Designer.Services;
 using OpcBridge.Hmi.Services;
 using OpcBridge.Hmi.ViewModels;
 using OpcBridge.Hmi.ViewModels.Widgets;
@@ -17,12 +19,21 @@ public partial class DesignerViewModel : ObservableObject, IDisposable
     private const double NudgeCoarse = SnapGrid;
     private const int UndoLimit = 50;
 
+    /// <summary>The bridge id the runtime's primary bridge uses, so designer bindings resolve there.</summary>
+    public const string PrimaryBridgeId = "default";
+
     private readonly DisplayStoreClient store_ = new();
     private readonly MultiBridgeTagCache cache_ = new();
+    private readonly IDesignerBridgeClient bridge_;
+    private readonly IDesignerLiveLink live_;
+    private readonly CancellationTokenSource lifetime_ = new();
     private readonly List<string> undoStack_ = new();
     private readonly List<string> redoStack_ = new();
     private DisplayWidgetDto? clipboard_;
     private DisplayDocumentDto document_ = NewDocument();
+    private bool connecting_;
+    private bool disposed_;
+    private bool sourcesLoadedFromBridge_;
 
     public DesignerViewModel()
         : this(System.Environment.GetCommandLineArgs().Skip(1).ToArray())
@@ -30,7 +41,16 @@ public partial class DesignerViewModel : ObservableObject, IDisposable
     }
 
     public DesignerViewModel(string[] args)
+        : this(args, null, null)
     {
+    }
+
+    public DesignerViewModel(string[] args, IDesignerBridgeClient? bridge, IDesignerLiveLink? live)
+    {
+        bridge_ = bridge ?? new DesignerBridgeClient();
+        live_ = live ?? new DesignerLiveLink(cache_);
+        live_.StateChanged += OnLiveStateChanged;
+
         StoreUrl = ResolveInitialStoreUrl(args);
         Surface = new DisplaySurfaceViewModel(cache_, _ => { }, (_, _) => Task.FromResult((true, (string?)null)));
         Surface.ApplyDesignMode(true);
@@ -50,26 +70,27 @@ public partial class DesignerViewModel : ObservableObject, IDisposable
 
     private async Task DetectStoreAsync()
     {
-        string? found = await LocalBridgeDetector.DetectAsync().ConfigureAwait(true);
-        if (found is null)
+        string? found = await bridge_.DetectAsync(lifetime_.Token).ConfigureAwait(true);
+        if (found is not null)
         {
-            StatusMessage = "Local OpcBridge not detected — using " + StoreUrl;
-            _ = RefreshListAsync();
-            return;
-        }
-
-        string current = StoreUrl.Trim().TrimEnd('/');
-        if (current is "" or "http://127.0.0.1:8080" or "http://localhost:8080")
-        {
-            StoreUrl = found;
-            StatusMessage = $"Local OpcBridge detected at {found}";
+            string current = StoreUrl.Trim().TrimEnd('/');
+            if (current is "" or "http://127.0.0.1:8080" or "http://localhost:8080")
+            {
+                StoreUrl = found;
+                StatusMessage = $"Local OpcBridge detected at {found}";
+            }
+            else
+            {
+                StatusMessage = $"Using configured store {StoreUrl}";
+            }
         }
         else
         {
-            StatusMessage = $"Using configured store {StoreUrl}";
+            StatusMessage = "Local OpcBridge not detected — using " + StoreUrl;
         }
 
-        _ = RefreshListAsync();
+        await ConnectBridgeAsync().ConfigureAwait(true);
+        await RefreshListAsync().ConfigureAwait(true);
     }
 
     public DisplaySurfaceViewModel Surface { get; }
@@ -136,15 +157,6 @@ public partial class DesignerViewModel : ObservableObject, IDisposable
     private string _statusMessage = "Designer ready — connect store to Open/Save.";
 
     [ObservableProperty]
-    private string _bridgeId = "default";
-
-    [ObservableProperty]
-    private string _sourceId = "default";
-
-    [ObservableProperty]
-    private string _daItemId = string.Empty;
-
-    [ObservableProperty]
     private DisplayListItemDto? _selectedExisting;
 
     [ObservableProperty]
@@ -159,8 +171,474 @@ public partial class DesignerViewModel : ObservableObject, IDisposable
 
     partial void OnSelectedWidgetChanged(WidgetViewModelBase? value)
     {
-        StageBindingFromSelection();
+        RefreshBindingPanel();
         NotifySelectionCommands();
+    }
+
+    // ---- Bridge link (sources, sign-in, live values) ----
+
+    /// <summary>Sources on the connected bridge, with type badge and connection state.</summary>
+    public ObservableCollection<BridgeSourceInfo> BridgeSources { get; } = new();
+
+    /// <summary>The source the tag picker opens on; picking one here also scopes "Choose tag…".</summary>
+    [ObservableProperty]
+    private BridgeSourceInfo? _selectedSource;
+
+    /// <summary>Bridge id written into bindings; the runtime's primary bridge is "default".</summary>
+    [ObservableProperty]
+    private string _defaultBridgeId = PrimaryBridgeId;
+
+    [ObservableProperty]
+    private bool _authEnabled;
+
+    [ObservableProperty]
+    private bool _isSignedIn;
+
+    [ObservableProperty]
+    private string? _signedInAs;
+
+    /// <summary>Why the source list could not be loaded (unreachable, auth wall, …).</summary>
+    [ObservableProperty]
+    private string? _sourcesError;
+
+    public bool HasBridgeSources => BridgeSources.Count > 0;
+
+    public bool HasSourcesError => !string.IsNullOrWhiteSpace(SourcesError);
+
+    /// <summary>The list is shown whenever there is something to pick from.</summary>
+    public bool ShowSourcesList => HasBridgeSources;
+
+    /// <summary>The teach-the-space empty state — only when there is no error to explain first.</summary>
+    public bool ShowSourcesEmpty => !HasBridgeSources && !HasSourcesError;
+
+    /// <summary>Sign-in is only offered while the bridge reports that auth is enabled.</summary>
+    public bool ShowSignIn => AuthEnabled && !IsSignedIn;
+
+    public bool ShowSignedIn => IsSignedIn;
+
+    public DesignerLiveState LiveState => live_.State;
+
+    public bool IsLive => LiveState == DesignerLiveState.Live;
+
+    public bool IsSnapshot => LiveState == DesignerLiveState.Snapshot;
+
+    public bool IsOffline => LiveState == DesignerLiveState.Offline;
+
+    public string LiveStateTooltip => LiveState switch
+    {
+        DesignerLiveState.Live => "Live values are streaming from the bridge.",
+        DesignerLiveState.Snapshot => live_.LastError ?? "Showing the last tag snapshot; live values are not streaming.",
+        _ => live_.LastError ?? "The bridge is not reachable."
+    };
+
+    /// <summary>Raised after live values or the tag snapshot changed (background thread).</summary>
+    public event Action? LiveValuesChanged;
+
+    public async Task ConnectBridgeAsync()
+    {
+        if (disposed_ || connecting_)
+        {
+            return;
+        }
+
+        string url = StoreUrl.Trim().TrimEnd('/');
+        if (url.Length == 0)
+        {
+            StatusMessage = "Enter the bridge address, then Refresh.";
+            return;
+        }
+
+        connecting_ = true;
+        try
+        {
+            bridge_.SetBaseAddress(url);
+            store_.SetBaseAddress(url);
+
+            BridgeAuthInfo? auth = await bridge_.GetAuthInfoAsync(lifetime_.Token).ConfigureAwait(true);
+            if (auth is null)
+            {
+                AuthEnabled = false;
+                IsSignedIn = false;
+                SignedInAs = null;
+                SourcesError = "Bridge not reachable at " + url;
+                ClearSources();
+            }
+            else
+            {
+                AuthEnabled = auth.AuthEnabled;
+                IsSignedIn = auth.Authenticated;
+                SignedInAs = auth.Authenticated ? DescribeUser(auth) : null;
+                await RefreshSourcesCoreAsync().ConfigureAwait(true);
+            }
+
+            await live_.StartAsync(url, PrimaryBridgeId, OnLiveChanged, lifetime_.Token).ConfigureAwait(true);
+            if (LiveState == DesignerLiveState.Offline && SourcesError is null)
+            {
+                SourcesError = live_.LastError ?? "Bridge not reachable.";
+                StatusMessage = SourcesError;
+            }
+        }
+        catch (Exception ex)
+        {
+            SourcesError = "Bridge connect failed: " + ex.Message;
+            StatusMessage = SourcesError;
+        }
+        finally
+        {
+            connecting_ = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task RefreshBridgeAsync()
+    {
+        await ConnectBridgeAsync().ConfigureAwait(true);
+        await RefreshListAsync().ConfigureAwait(true);
+    }
+
+    [RelayCommand]
+    private async Task RefreshSourcesAsync()
+    {
+        if (disposed_)
+        {
+            return;
+        }
+
+        try
+        {
+            bridge_.SetBaseAddress(StoreUrl.Trim().TrimEnd('/'));
+            await RefreshSourcesCoreAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            SourcesError = "Source list failed: " + ex.Message;
+            StatusMessage = SourcesError;
+        }
+    }
+
+    private async Task RefreshSourcesCoreAsync()
+    {
+        SourceListResult result = await bridge_.GetSourcesAsync(lifetime_.Token).ConfigureAwait(true);
+        if (result.Ok)
+        {
+            sourcesLoadedFromBridge_ = true;
+            SourcesError = null;
+            RebuildSources(result.Sources);
+            return;
+        }
+
+        // Signed out (or the list is unavailable): derive what we can from the tag snapshot.
+        sourcesLoadedFromBridge_ = false;
+        SourcesError = result.Error;
+        RebuildSources(DesignerSourceCatalog.Build(cache_.Tags, null));
+    }
+
+    private void RebuildSources(IReadOnlyList<BridgeSourceInfo> sources)
+    {
+        string? selectedId = SelectedSource?.SourceId;
+        BridgeSources.Clear();
+        foreach (BridgeSourceInfo source in sources)
+        {
+            BridgeSources.Add(source);
+        }
+
+        SelectedSource = BridgeSources.FirstOrDefault(
+            source => string.Equals(source.SourceId, selectedId, StringComparison.OrdinalIgnoreCase))
+            ?? BridgeSources.FirstOrDefault();
+        NotifySourcesChanged();
+    }
+
+    private void ClearSources()
+    {
+        BridgeSources.Clear();
+        SelectedSource = null;
+        NotifySourcesChanged();
+    }
+
+    private void NotifySourcesChanged()
+    {
+        OnPropertyChanged(nameof(HasBridgeSources));
+        OnPropertyChanged(nameof(ShowSourcesList));
+        OnPropertyChanged(nameof(ShowSourcesEmpty));
+    }
+
+    public async Task<(bool Ok, string? Error)> SignInAsync(string username, string password)
+    {
+        try
+        {
+            (bool ok, string? error) = await bridge_.SignInAsync(username, password, lifetime_.Token)
+                .ConfigureAwait(true);
+            if (!ok)
+            {
+                return (false, error);
+            }
+        }
+        catch (Exception ex)
+        {
+            return (false, "Sign-in failed: " + ex.Message);
+        }
+
+        BridgeAuthInfo? auth = await bridge_.GetAuthInfoAsync(lifetime_.Token).ConfigureAwait(true);
+        IsSignedIn = auth?.Authenticated ?? true;
+        SignedInAs = auth is not null ? DescribeUser(auth) : username;
+        StatusMessage = $"Signed in as {SignedInAs}";
+        await RefreshSourcesCoreAsync().ConfigureAwait(true);
+        return (true, null);
+    }
+
+    [RelayCommand]
+    private async Task SignOutAsync()
+    {
+        await bridge_.SignOutAsync(lifetime_.Token).ConfigureAwait(true);
+        IsSignedIn = false;
+        SignedInAs = null;
+        StatusMessage = "Signed out";
+        await RefreshSourcesCoreAsync().ConfigureAwait(true);
+    }
+
+    private static string DescribeUser(BridgeAuthInfo auth)
+    {
+        string name = string.IsNullOrWhiteSpace(auth.DisplayName) ? auth.Username ?? "(unknown)" : auth.DisplayName!;
+        return string.IsNullOrWhiteSpace(auth.Role) ? name : $"{name} ({auth.Role})";
+    }
+
+    partial void OnAuthEnabledChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShowSignIn));
+        OnPropertyChanged(nameof(ShowSignedIn));
+    }
+
+    partial void OnIsSignedInChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShowSignIn));
+        OnPropertyChanged(nameof(ShowSignedIn));
+    }
+
+    partial void OnSourcesErrorChanged(string? value)
+    {
+        OnPropertyChanged(nameof(HasSourcesError));
+        OnPropertyChanged(nameof(ShowSourcesEmpty));
+    }
+
+    private void OnLiveStateChanged()
+    {
+        _ = PostToUiAsync(() =>
+        {
+            OnPropertyChanged(nameof(LiveState));
+            OnPropertyChanged(nameof(IsLive));
+            OnPropertyChanged(nameof(IsSnapshot));
+            OnPropertyChanged(nameof(IsOffline));
+            OnPropertyChanged(nameof(LiveStateTooltip));
+            OnPropertyChanged(nameof(SelectedBindingMissing));
+        });
+    }
+
+    /// <summary>Snapshot or value delta arrived on a background thread: surface it on the UI thread.</summary>
+    private void OnLiveChanged()
+    {
+        _ = PostToUiAsync(() =>
+        {
+            Surface.RefreshLiveValues();
+            RefreshBindingPanel();
+            RefreshSourcesFromSnapshotIfNeeded();
+            LiveValuesChanged?.Invoke();
+        });
+    }
+
+    /// <summary>Signed out, the source list lives off the tag snapshot — keep it in step.</summary>
+    private void RefreshSourcesFromSnapshotIfNeeded()
+    {
+        if (sourcesLoadedFromBridge_)
+        {
+            return;
+        }
+
+        IReadOnlyList<BridgeSourceInfo> derived = DesignerSourceCatalog.Build(cache_.Tags, null);
+        // Values arrive many times a second; only touch the collection when the source set changed,
+        // or the list would rebuild (and drop hover/selection) on every delta.
+        if (SameSourceIds(derived, BridgeSources))
+        {
+            return;
+        }
+
+        RebuildSources(derived);
+    }
+
+    private static bool SameSourceIds(
+        IReadOnlyList<BridgeSourceInfo> left,
+        ObservableCollection<BridgeSourceInfo> right)
+    {
+        if (left.Count != right.Count)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < left.Count; i++)
+        {
+            if (!string.Equals(left[i].SourceId, right[i].SourceId, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static Task PostToUiAsync(Action action)
+    {
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            action();
+            return Task.CompletedTask;
+        }
+
+        var tcs = new TaskCompletionSource();
+        Dispatcher.UIThread.Post(() =>
+        {
+            try
+            {
+                action();
+                tcs.SetResult();
+            }
+            catch (Exception ex)
+            {
+                tcs.SetException(ex);
+            }
+        });
+        return tcs.Task;
+    }
+
+    // ---- Tag binding for the selected widget ----
+
+    public bool ShowBindingPanel =>
+        SelectedWidget is not null
+        && !string.Equals(SelectedWidget.Type, DisplayWidgetTypes.Label, StringComparison.OrdinalIgnoreCase);
+
+    public bool HasBoundTag => SelectedWidget?.Binding is not null;
+
+    public string SelectedBindingSourceName
+    {
+        get
+        {
+            TagBindingKey? binding = SelectedWidget?.Binding;
+            if (binding is null)
+            {
+                return string.Empty;
+            }
+
+            BridgeSourceInfo? source = BridgeSources.FirstOrDefault(
+                candidate => string.Equals(candidate.SourceId, binding.Value.SourceId, StringComparison.OrdinalIgnoreCase));
+            if (source is not null)
+            {
+                return source.DisplayNameOrId;
+            }
+
+            return cache_.TryGet(binding.Value, out MultiBridgeTagEntry? entry) && entry is not null
+                ? entry.SourceName
+                : binding.Value.SourceId;
+        }
+    }
+
+    public string SelectedBindingTagName
+    {
+        get
+        {
+            TagBindingKey? binding = SelectedWidget?.Binding;
+            if (binding is null)
+            {
+                return string.Empty;
+            }
+
+            return cache_.TryGet(binding.Value, out MultiBridgeTagEntry? entry) && entry is not null
+                ? entry.DisplayName
+                : binding.Value.DaItemId;
+        }
+    }
+
+    public string SelectedBindingItemId => SelectedWidget?.Binding?.DaItemId ?? string.Empty;
+
+    public string SelectedBindingValueText => SelectedWidget?.ValueText ?? "—";
+
+    public string SelectedBindingQualityText => SelectedWidget?.QualityText ?? string.Empty;
+
+    public bool? SelectedBindingIsGood => SelectedWidget?.IsGood;
+
+    /// <summary>Bound tag that is not in the bridge's mapped-tag snapshot (unmapped, or source down).</summary>
+    public bool SelectedBindingMissing
+    {
+        get
+        {
+            TagBindingKey? binding = SelectedWidget?.Binding;
+            if (binding is null || LiveState == DesignerLiveState.Offline)
+            {
+                return false;
+            }
+
+            return !(cache_.TryGet(binding.Value, out MultiBridgeTagEntry? entry) && entry is not null);
+        }
+    }
+
+    public string SelectedBindingBridgeId => SelectedWidget?.Binding?.BridgeId ?? DefaultBridgeId;
+
+    /// <summary>Builds a picker scoped to the selected widget's source, else the rail's source.</summary>
+    public DesignerTagPickerViewModel CreateTagPicker()
+    {
+        string? sourceId = SelectedWidget?.Binding?.SourceId ?? SelectedSource?.SourceId;
+        return new DesignerTagPickerViewModel(BridgeSources.ToList(), cache_, sourceId);
+    }
+
+    /// <summary>Binds the confirmed picker tag to the selected widget.</summary>
+    public void BindSelectedTag(TagBindingKey key)
+    {
+        if (SelectedWidget is not { } widget)
+        {
+            StatusMessage = "Select a widget on the canvas, then choose a tag.";
+            return;
+        }
+
+        if (string.Equals(widget.Type, DisplayWidgetTypes.Label, StringComparison.OrdinalIgnoreCase))
+        {
+            StatusMessage = "Label widgets render text only; select a data widget to bind a tag.";
+            return;
+        }
+
+        PushUndo();
+        TagBindingKey binding = TagBindingKey.Create(
+            string.IsNullOrWhiteSpace(DefaultBridgeId) ? PrimaryBridgeId : DefaultBridgeId.Trim(),
+            key.SourceId,
+            key.DaItemId);
+        widget.UpdateBinding(binding);
+        RefreshBindingPanel();
+        StatusMessage = $"{widget.Id} bound to {binding.SourceId} · {binding.DaItemId}";
+    }
+
+    [RelayCommand(CanExecute = nameof(HasSelection))]
+    private void UnbindSelected()
+    {
+        if (SelectedWidget is not { } widget || widget.Binding is null)
+        {
+            return;
+        }
+
+        PushUndo();
+        widget.UpdateBinding(null);
+        RefreshBindingPanel();
+        StatusMessage = $"{widget.Id} unbound";
+    }
+
+    private void RefreshBindingPanel()
+    {
+        OnPropertyChanged(nameof(ShowBindingPanel));
+        OnPropertyChanged(nameof(HasBoundTag));
+        OnPropertyChanged(nameof(SelectedBindingSourceName));
+        OnPropertyChanged(nameof(SelectedBindingTagName));
+        OnPropertyChanged(nameof(SelectedBindingItemId));
+        OnPropertyChanged(nameof(SelectedBindingValueText));
+        OnPropertyChanged(nameof(SelectedBindingQualityText));
+        OnPropertyChanged(nameof(SelectedBindingIsGood));
+        OnPropertyChanged(nameof(SelectedBindingMissing));
+        OnPropertyChanged(nameof(SelectedBindingBridgeId));
+        UnbindSelectedCommand.NotifyCanExecuteChanged();
     }
 
     // ---- Undo / redo ----
@@ -193,11 +671,7 @@ public partial class DesignerViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(SelectedUnitSource));
         OnPropertyChanged(nameof(ShowManualUnit));
         OnPropertyChanged(nameof(SelectedUnit));
-        OnPropertyChanged(nameof(StagingBindingBridgeId));
-        OnPropertyChanged(nameof(StagingBindingSourceId));
-        OnPropertyChanged(nameof(StagingBindingDaItemId));
         OnPropertyChanged(nameof(SelectedIsTextLabel));
-        ApplySelectedBindingCommand.NotifyCanExecuteChanged();
     }
 
     /// <summary>Snapshot the current document (surface geometry synced) for undo.</summary>
@@ -301,16 +775,6 @@ public partial class DesignerViewModel : ObservableObject, IDisposable
         else
         {
             widget.Props["label"] = JsonSerializer.SerializeToElement(type);
-            if (!string.IsNullOrWhiteSpace(DaItemId))
-            {
-                widget.Binding = new TagBindingDto
-                {
-                    BridgeId = BridgeId,
-                    SourceId = SourceId,
-                    DaItemId = DaItemId
-                };
-            }
-
             if (type == DisplayWidgetTypes.PushButton)
             {
                 widget.Props["text"] = JsonSerializer.SerializeToElement("Write");
@@ -322,7 +786,8 @@ public partial class DesignerViewModel : ObservableObject, IDisposable
         document_.Name = DocumentName;
         document_.Id = DocumentId;
         ReloadSurface();
-        StatusMessage = $"Added {type} ({widget.Id})";
+        SelectWidgetById(widget.Id);
+        StatusMessage = $"Added {type} ({widget.Id}) — choose a tag to bind";
     }
 
     [RelayCommand(CanExecute = nameof(HasSelection))]
@@ -368,6 +833,7 @@ public partial class DesignerViewModel : ObservableObject, IDisposable
         copy.Y += 16;
         document_.Widgets.Add(copy);
         ReloadSurface();
+        SelectWidgetById(copy.Id);
         StatusMessage = $"Pasted {copy.Type} as {copy.Id}";
     }
 
@@ -381,6 +847,17 @@ public partial class DesignerViewModel : ObservableObject, IDisposable
 
         CopySelected();
         Paste();
+    }
+
+    /// <summary>Selects a widget after add/paste so "Choose tag…" is one click away.</summary>
+    private void SelectWidgetById(string id)
+    {
+        WidgetViewModelBase? widget = Surface.Widgets.FirstOrDefault(
+            candidate => string.Equals(candidate.Id, id, StringComparison.OrdinalIgnoreCase));
+        if (widget is not null)
+        {
+            Surface.SelectWidget(widget);
+        }
     }
 
     public void Nudge(double dx, double dy)
@@ -486,48 +963,6 @@ public partial class DesignerViewModel : ObservableObject, IDisposable
             PushUndo();
             widget.Props["unit"] = System.Text.Json.JsonSerializer.SerializeToElement(value ?? string.Empty);
         }
-    }
-
-    // Staged binding fields, applied with one click (avoids per-keystroke rebuilds).
-
-    [ObservableProperty]
-    private string _stagingBindingBridgeId = string.Empty;
-
-    [ObservableProperty]
-    private string _stagingBindingSourceId = string.Empty;
-
-    [ObservableProperty]
-    private string _stagingBindingDaItemId = string.Empty;
-
-    private void StageBindingFromSelection()
-    {
-        TagBindingKey? binding = SelectedWidget?.Binding;
-        StagingBindingBridgeId = binding?.BridgeId ?? string.Empty;
-        StagingBindingSourceId = binding?.SourceId ?? string.Empty;
-        StagingBindingDaItemId = binding?.DaItemId ?? string.Empty;
-    }
-
-    [RelayCommand(CanExecute = nameof(HasSelection))]
-    private void ApplySelectedBinding()
-    {
-        if (SelectedWidget is not { } widget || widget.Type == DisplayWidgetTypes.Label)
-        {
-            return;
-        }
-
-        PushUndo();
-        if (string.IsNullOrWhiteSpace(StagingBindingBridgeId) && string.IsNullOrWhiteSpace(StagingBindingDaItemId))
-        {
-            widget.UpdateBinding(null);
-            StatusMessage = $"{widget.Id} unbound";
-            return;
-        }
-
-        widget.UpdateBinding(TagBindingKey.Create(
-            string.IsNullOrWhiteSpace(StagingBindingBridgeId) ? "default" : StagingBindingBridgeId.Trim(),
-            string.IsNullOrWhiteSpace(StagingBindingSourceId) ? "default" : StagingBindingSourceId.Trim(),
-            StagingBindingDaItemId.Trim()));
-        StatusMessage = $"{widget.Id} bound to {widget.Binding}";
     }
 
     // ---- Store ----
@@ -676,5 +1111,31 @@ public partial class DesignerViewModel : ObservableObject, IDisposable
         Widgets = new List<DisplayWidgetDto>()
     };
 
-    public void Dispose() => store_.Dispose();
+    public void Dispose()
+    {
+        if (disposed_)
+        {
+            return;
+        }
+
+        disposed_ = true;
+        lifetime_.Cancel();
+        lifetime_.Dispose();
+        live_.StateChanged -= OnLiveStateChanged;
+        _ = DisposeLiveAsync();
+        bridge_.Dispose();
+        store_.Dispose();
+    }
+
+    private async Task DisposeLiveAsync()
+    {
+        try
+        {
+            await live_.DisposeAsync().ConfigureAwait(false);
+        }
+        catch
+        {
+            // Shutdown path: a link that cannot be torn down must not fault the process.
+        }
+    }
 }

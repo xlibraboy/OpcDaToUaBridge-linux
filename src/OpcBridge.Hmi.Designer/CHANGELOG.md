@@ -14,6 +14,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+**Pick a source and bind a tag — no more typing IDs.** The Designer now connects to the
+bridge and lists its configured sources in the rail, with the source type and connection
+state. Select a widget, choose **Choose tag…**, and the picker shows that source's mapped
+tags with their live values: pick one and **Bind tag** — the widget previews the real value
+on the canvas right away. The free-text `bridgeId`/`sourceId`/`daItemId` boxes are gone, and
+the panel warns when a saved binding no longer maps to a tag on the bridge.
+
+**Sign-in for bridges with authentication enabled.** Source listing needs a signed-in user,
+so the rail offers **Sign in…** (username/password, remembered for the session) and shows who
+is signed in; signed out, the Designer still binds tags from the live snapshot.
+
+**Live values while designing.** The Designer follows the same feed the runtime uses
+(SignalR + the HMI tag snapshot), so bound widgets and the tag picker show values and quality
+as they change. The toolbar pill reports the link: **Live**, **Snapshot**, or **Offline**.
+
 ## [1.7.0] - 2026-10-04
 
 **The designer now versions and releases on its own.** It carries the product version it

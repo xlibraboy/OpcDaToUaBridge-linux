@@ -1,6 +1,8 @@
+using System.Diagnostics;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Avalonia.Input;
+using OpcBridge.Hmi.Core;
 using OpcBridge.Hmi.Designer.ViewModels;
 using OpcBridge.Hmi.Views;
 
@@ -30,8 +32,57 @@ public partial class DesignerWindow : Window
     {
         if (ViewModel is { } vm)
         {
-            vm.StatusMessage = "Pick a palette type, Add widget, drag to move, corner handle to resize. "
-                + "Del deletes, Ctrl+C/V/D copy/paste/duplicate, Ctrl+Z/Y undo/redo, Ctrl+S saves, Ctrl+G toggles snap.";
+            vm.StatusMessage = "Pick a widget, Add widget, then Choose tag… to bind it to a mapped bridge tag. "
+                + "Drag to move, corner handle resizes; Ctrl+C/V/D copy/paste/duplicate, Ctrl+Z/Y undo/redo, Ctrl+S saves, F5 reconnects.";
+        }
+    }
+
+    /// <summary>Opens the tag picker for the selected widget and binds the confirmed tag.</summary>
+    private async void OnChooseTagClick(object? sender, RoutedEventArgs e)
+    {
+        if (ViewModel is not { } vm)
+        {
+            return;
+        }
+
+        if (vm.SelectedWidget is null)
+        {
+            vm.StatusMessage = "Select a widget on the canvas, then choose a tag.";
+            return;
+        }
+
+        DesignerTagPickerViewModel picker = vm.CreateTagPicker();
+        TagBindingKey? result = await TagPickerWindow.ShowForAsync(this, picker, vm);
+        if (result is { } key)
+        {
+            vm.BindSelectedTag(key);
+        }
+    }
+
+    private async void OnSignInClick(object? sender, RoutedEventArgs e)
+    {
+        if (ViewModel is not { } vm)
+        {
+            return;
+        }
+
+        await SignInWindow.ShowAsync(this, vm.StoreUrl, vm.SignInAsync);
+    }
+
+    private void OnOpenDashboardClick(object? sender, RoutedEventArgs e)
+    {
+        if (ViewModel is not { } vm)
+        {
+            return;
+        }
+
+        try
+        {
+            Process.Start(new ProcessStartInfo(vm.StoreUrl.TrimEnd('/') + "/") { UseShellExecute = true });
+        }
+        catch (Exception ex)
+        {
+            vm.StatusMessage = "Could not open the dashboard: " + ex.Message;
         }
     }
 
@@ -119,7 +170,7 @@ public partial class DesignerWindow : Window
                     e.Handled = true;
                     break;
                 case Key.F5:
-                    _ = vm.RefreshListCommand.ExecuteAsync(null);
+                    _ = vm.RefreshBridgeCommand.ExecuteAsync(null);
                     e.Handled = true;
                     break;
             }

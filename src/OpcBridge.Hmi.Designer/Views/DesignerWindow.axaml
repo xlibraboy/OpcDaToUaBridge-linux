@@ -2,6 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:OpcBridge.Hmi.Designer.ViewModels"
         xmlns:client="using:OpcBridge.Client"
+        xmlns:services="using:OpcBridge.Hmi.Designer.Services"
         xmlns:controls="using:OpcBridge.Hmi.Controls"
         xmlns:local="using:OpcBridge.Hmi.Designer.Views"
         x:Class="OpcBridge.Hmi.Designer.Views.DesignerWindow"
@@ -16,7 +17,7 @@
       <MenuItem Header="_File">
         <MenuItem Header="New" Command="{Binding NewDisplayCommand}" InputGesture="Ctrl+N" />
         <MenuItem Header="Open…" Command="{Binding OpenSelectedCommand}" InputGesture="Ctrl+O" />
-        <MenuItem Header="Refresh list" Command="{Binding RefreshListCommand}" InputGesture="F5" />
+        <MenuItem Header="Refresh" Command="{Binding RefreshBridgeCommand}" InputGesture="F5" />
         <Separator />
         <MenuItem Header="Save" Command="{Binding SaveCommand}" InputGesture="Ctrl+S" />
         <Separator />
@@ -42,19 +43,33 @@
       </MenuItem>
     </Menu>
 
-    <!-- ======== Store toolbar ======== -->
-    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="12,8,12,4">
-      <TextBlock VerticalAlignment="Center" Classes="hint" Text="Store:" />
-      <TextBox Width="260" Text="{Binding StoreUrl}" />
-      <Button Content="Refresh list" Command="{Binding RefreshListCommand}" />
-      <Button Content="Open" Command="{Binding OpenSelectedCommand}" />
-      <Button Content="New" Command="{Binding NewDisplayCommand}" />
-      <Button Classes="primary" Content="Save" Command="{Binding SaveCommand}" />
-      <Rectangle Classes="vsep" />
-      <TextBlock VerticalAlignment="Center" Text="{Binding DocumentVersion, StringFormat=v{0}}" />
-      <TextBlock VerticalAlignment="Center" Classes="hint"
+    <!-- ======== Bridge toolbar ======== -->
+    <Grid DockPanel.Dock="Top" Margin="12,8,12,4" ColumnDefinitions="Auto,250,Auto,Auto,Auto,Auto,Auto,Auto,*,Auto">
+      <TextBlock Grid.Column="0" VerticalAlignment="Center" Classes="hint" Text="Bridge:" Margin="0,0,6,0" />
+      <TextBox Grid.Column="1" Text="{Binding StoreUrl}" AutomationProperties.Name="Bridge address" />
+      <Button Grid.Column="2" Margin="8,0,0,0" Content="Refresh"
+              Command="{Binding RefreshBridgeCommand}"
+              ToolTip.Tip="Reconnect the bridge and reload the display list (F5)" />
+      <Button Grid.Column="3" Margin="8,0,0,0" Content="Open" Command="{Binding OpenSelectedCommand}" />
+      <Button Grid.Column="4" Margin="8,0,0,0" Content="New" Command="{Binding NewDisplayCommand}" />
+      <Button Grid.Column="5" Margin="8,0,0,0" Classes="primary" Content="Save" Command="{Binding SaveCommand}" />
+      <Rectangle Grid.Column="6" Classes="vsep" />
+      <TextBlock Grid.Column="7" VerticalAlignment="Center" Text="{Binding DocumentVersion, StringFormat=v{0}}" />
+      <TextBlock Grid.Column="8" VerticalAlignment="Center" Classes="hint" Margin="12,0,0,0"
+                 TextTrimming="CharacterEllipsis"
                  Text="Drag to move · corner handle to resize · Del deletes · arrows nudge (Shift = grid)" />
-    </StackPanel>
+      <Panel Grid.Column="9" Margin="8,0,0,0">
+        <Border Classes="pill ok" IsVisible="{Binding IsLive}">
+          <TextBlock Text="Live" ToolTip.Tip="{Binding LiveStateTooltip}" />
+        </Border>
+        <Border Classes="pill warn" IsVisible="{Binding IsSnapshot}">
+          <TextBlock Text="Snapshot" ToolTip.Tip="{Binding LiveStateTooltip}" />
+        </Border>
+        <Border Classes="pill bad" IsVisible="{Binding IsOffline}">
+          <TextBlock Text="Offline" ToolTip.Tip="{Binding LiveStateTooltip}" />
+        </Border>
+      </Panel>
+    </Grid>
 
     <!-- ======== Status bar ======== -->
     <Border DockPanel.Dock="Bottom"
@@ -62,25 +77,87 @@
             BorderBrush="{DynamicResource CardBorderBrush}"
             BorderThickness="0,1,0,0"
             Padding="12,6">
-      <TextBlock Classes="hint" Text="{Binding StatusMessage}" TextTrimming="CharacterEllipsis" />
+      <TextBlock Classes="hint"
+                 AutomationProperties.LiveSetting="Polite"
+                 Text="{Binding StatusMessage}"
+                 TextTrimming="CharacterEllipsis" />
     </Border>
 
     <!-- ======== Work area ======== -->
-    <Grid ColumnDefinitions="220,*,280" Margin="12,4,12,8">
+    <Grid ColumnDefinitions="240,*,300" Margin="12,4,12,8">
 
-      <!-- Palette -->
-      <Border Grid.Column="0" Classes="card" Margin="0,0,8,0">
-        <DockPanel>
-          <TextBlock DockPanel.Dock="Top" Classes="sectionLabel" Text="PALETTE" />
-          <Button DockPanel.Dock="Bottom"
-                  Content="Add widget"
-                  Command="{Binding AddWidgetCommand}"
-                  Margin="0,8,0,0"
-                  HorizontalAlignment="Stretch" />
-          <ListBox ItemsSource="{Binding Palette}"
-                   SelectedItem="{Binding SelectedPaletteType}" />
-        </DockPanel>
-      </Border>
+      <!-- Left rail: palette + bridge sources -->
+      <Grid Grid.Column="0" RowDefinitions="*,*" Margin="0,0,8,0">
+        <Border Grid.Row="0" Classes="card">
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Top" Classes="sectionLabel" Text="PALETTE" />
+            <Button DockPanel.Dock="Bottom"
+                    Content="Add widget"
+                    Command="{Binding AddWidgetCommand}"
+                    Margin="0,8,0,0"
+                    HorizontalAlignment="Stretch" />
+            <ListBox ItemsSource="{Binding Palette}"
+                     SelectedItem="{Binding SelectedPaletteType}"
+                     AutomationProperties.Name="Widget palette" />
+          </DockPanel>
+        </Border>
+
+        <Border Grid.Row="1" Classes="card" Margin="0,8,0,0">
+          <Grid RowDefinitions="Auto,Auto,*,Auto">
+            <Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+              <TextBlock Classes="sectionLabel" Text="SOURCES" VerticalAlignment="Center" Margin="0" />
+              <Button Grid.Column="1" Classes="flat" Content="↻"
+                      Command="{Binding RefreshSourcesCommand}"
+                      AutomationProperties.Name="Refresh sources"
+                      ToolTip.Tip="Reload the source list" />
+            </Grid>
+
+            <TextBlock Grid.Row="1" Classes="hint warn" TextWrapping="Wrap" Margin="0,6,0,0"
+                       IsVisible="{Binding HasSourcesError}"
+                       Text="{Binding SourcesError}" />
+
+            <Panel Grid.Row="2" Margin="0,6,0,0">
+              <ListBox ItemsSource="{Binding BridgeSources}"
+                       SelectedItem="{Binding SelectedSource}"
+                       IsVisible="{Binding ShowSourcesList}"
+                       AutomationProperties.Name="Sources"
+                       AutomationProperties.HelpText="Pick a source to scope the tag picker.">
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="services:BridgeSourceInfo">
+                    <Grid ColumnDefinitions="Auto,*,Auto">
+                      <TextBlock Grid.Column="0" Classes="hint" MinWidth="34"
+                                 Text="{Binding TypeLabel}" IsVisible="{Binding HasTypeLabel}"
+                                 VerticalAlignment="Center" />
+                      <TextBlock Grid.Column="1" Text="{Binding DisplayNameOrId}"
+                                 TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding EndpointSummary}" />
+                      <TextBlock Grid.Column="2" Classes="hint" Margin="8,0,0,0"
+                                 Text="{Binding ConnectionState}" IsVisible="{Binding HasState}" />
+                    </Grid>
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+              <StackPanel IsVisible="{Binding ShowSourcesEmpty}" Spacing="6" VerticalAlignment="Center">
+                <TextBlock Classes="hint" TextWrapping="Wrap"
+                           Text="No sources on this bridge. Add sources in the bridge dashboard, then Refresh." />
+                <Button Content="Open dashboard" Click="OnOpenDashboardClick" HorizontalAlignment="Left" />
+              </StackPanel>
+            </Panel>
+
+            <StackPanel Grid.Row="3" Spacing="6" Margin="0,8,0,0">
+              <StackPanel IsVisible="{Binding ShowSignIn}" Spacing="6">
+                <TextBlock Classes="hint" TextWrapping="Wrap"
+                           Text="Sign in to load the full source list and connection state." />
+                <Button Content="Sign in…" Click="OnSignInClick" HorizontalAlignment="Left" />
+              </StackPanel>
+              <Grid IsVisible="{Binding ShowSignedIn}" ColumnDefinitions="*,Auto">
+                <TextBlock Classes="hint" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                           Text="{Binding SignedInAs, StringFormat=Signed in as {0}}" />
+                <Button Grid.Column="1" Content="Sign out" Command="{Binding SignOutCommand}" />
+              </Grid>
+            </StackPanel>
+          </Grid>
+        </Border>
+      </Grid>
 
       <!-- Canvas -->
       <DockPanel Grid.Column="1" Margin="0,0,8,0">
@@ -116,8 +193,8 @@
           <StackPanel Spacing="10">
 
             <TextBlock Classes="sectionLabel" Text="DOCUMENT" />
-            <TextBox Watermark="Id" Text="{Binding DocumentId}" />
-            <TextBox Watermark="Name" Text="{Binding DocumentName}" />
+            <TextBox Watermark="Id" AutomationProperties.Name="Document id" Text="{Binding DocumentId}" />
+            <TextBox Watermark="Name" AutomationProperties.Name="Document name" Text="{Binding DocumentName}" />
             <TextBlock Classes="hint" Text="{Binding DocumentVersion, StringFormat=Store version: v{0}}" />
 
             <Rectangle Height="1" Fill="{DynamicResource CardBorderBrush}" />
@@ -165,14 +242,63 @@
                            Text="From Dashboard: unit is read from the tag's Unit field (set in the web dashboard). Manual: type a custom unit string." />
               </StackPanel>
 
-              <StackPanel Spacing="4" Margin="0,4,0,0">
-                <TextBlock Classes="cardTitle" Text="Tag binding" />
-                <TextBox Watermark="bridgeId" Text="{Binding StagingBindingBridgeId}" />
-                <TextBox Watermark="sourceId" Text="{Binding StagingBindingSourceId}" />
-                <TextBox Watermark="daItemId" Text="{Binding StagingBindingDaItemId}" />
-                <Button Content="Apply binding" Command="{Binding ApplySelectedBindingCommand}" />
-                <TextBlock Classes="hint" TextWrapping="Wrap"
-                           Text="Clears apply on Apply. Clear both bridge and item, then Apply, to unbind." />
+              <!-- Data binding -->
+              <StackPanel IsVisible="{Binding ShowBindingPanel}" Spacing="6" Margin="0,4,0,0">
+                <TextBlock Classes="cardTitle" Text="Data" />
+
+                <StackPanel IsVisible="{Binding !HasBoundTag}" Spacing="6">
+                  <TextBlock Classes="hint" TextWrapping="Wrap"
+                             Text="No tag bound. Pick a mapped tag from the bridge and this widget reads it live." />
+                  <Button Classes="primary" Content="Choose tag…" Click="OnChooseTagClick"
+                          HorizontalAlignment="Stretch" />
+                </StackPanel>
+
+                <StackPanel IsVisible="{Binding HasBoundTag}" Spacing="6">
+                  <Border Classes="cardDark" Padding="8">
+                    <StackPanel Spacing="2">
+                      <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="{Binding SelectedBindingSourceName}" FontWeight="SemiBold"
+                                   TextTrimming="CharacterEllipsis"
+                                   ToolTip.Tip="{Binding SelectedBindingSourceName}" />
+                        <TextBlock Grid.Column="1" Classes="hint" Margin="8,0,0,0"
+                                   Text="{Binding SelectedBindingBridgeId}" />
+                      </Grid>
+                      <TextBlock Text="{Binding SelectedBindingTagName}" TextTrimming="CharacterEllipsis"
+                                 ToolTip.Tip="{Binding SelectedBindingTagName}" />
+                      <TextBlock Classes="hint" Text="{Binding SelectedBindingItemId}"
+                                 TextTrimming="CharacterEllipsis"
+                                 ToolTip.Tip="{Binding SelectedBindingItemId}" />
+                      <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,0">
+                        <TextBlock Classes="valueText" Text="{Binding SelectedBindingValueText}"
+                                   TextTrimming="CharacterEllipsis" />
+                        <TextBlock Grid.Column="1" Classes="hint" Margin="8,0,0,0"
+                                   Text="{Binding SelectedBindingQualityText}" />
+                      </Grid>
+                    </StackPanel>
+                  </Border>
+
+                  <Border Classes="pill bad" IsVisible="{Binding SelectedBindingMissing}" HorizontalAlignment="Left">
+                    <TextBlock Text="Not on bridge" />
+                  </Border>
+                  <TextBlock Classes="hint warn" TextWrapping="Wrap"
+                             IsVisible="{Binding SelectedBindingMissing}"
+                             Text="This tag is not in the bridge's mapped list (unmapped, or its source is offline). Map it in the dashboard, then Refresh." />
+
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <Button Content="Change tag…" Click="OnChooseTagClick" />
+                    <Button Content="Unbind" Command="{Binding UnbindSelectedCommand}" />
+                  </StackPanel>
+                </StackPanel>
+
+                <StackPanel Spacing="4" Margin="0,2,0,0">
+                  <TextBlock Classes="cardTitle" Text="Bridge id" />
+                  <TextBox Text="{Binding DefaultBridgeId, UpdateSourceTrigger=LostFocus}"
+                           Watermark="default"
+                           AutomationProperties.Name="Bridge id"
+                           ToolTip.Tip="The runtime bridge id this binding resolves against." />
+                  <TextBlock Classes="hint" TextWrapping="Wrap"
+                             Text="The runtime's primary bridge is “default”; change only for a renamed bridge." />
+                </StackPanel>
               </StackPanel>
 
               <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
@@ -183,19 +309,12 @@
               <Rectangle Height="1" Fill="{DynamicResource CardBorderBrush}" Margin="0,4,0,0" />
             </StackPanel>
 
-            <!-- New widget -->
-            <TextBlock Classes="sectionLabel" Text="NEW WIDGET" />
-            <TextBlock Classes="cardTitle" Text="Binding for next widget" />
-            <TextBox Watermark="bridgeId" Text="{Binding BridgeId}" />
-            <TextBox Watermark="sourceId" Text="{Binding SourceId}" />
-            <TextBox Watermark="daItemId" Text="{Binding DaItemId}" />
-
-            <Rectangle Height="1" Fill="{DynamicResource CardBorderBrush}" />
-
+            <!-- Existing displays -->
             <TextBlock Classes="sectionLabel" Text="EXISTING ON STORE" />
             <ListBox Height="200"
                      ItemsSource="{Binding ExistingDisplays}"
-                     SelectedItem="{Binding SelectedExisting}">
+                     SelectedItem="{Binding SelectedExisting}"
+                     AutomationProperties.Name="Saved displays">
               <ListBox.ItemTemplate>
                 <DataTemplate x:DataType="client:DisplayListItemDto">
                   <TextBlock>
