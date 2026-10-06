@@ -49,6 +49,8 @@
   <Color x:Key="OkBg">#223322</Color>
   <Color x:Key="OkBorder">#387D3D</Color>
   <Color x:Key="WarnFg">#E5AC4C</Color>
+  <Color x:Key="WarnBg">#38301D</Color>
+  <Color x:Key="WarnBorder">#A97C2C</Color>
   <Color x:Key="BadFg">#E18883</Color>
   <Color x:Key="BadBg">#3D2322</Color>
   <Color x:Key="BadBorder">#B64242</Color>
@@ -88,6 +90,8 @@
   <SolidColorBrush x:Key="OkBgBrush" Color="{DynamicResource OkBg}" />
   <SolidColorBrush x:Key="OkBorderBrush" Color="{DynamicResource OkBorder}" />
   <SolidColorBrush x:Key="WarnFgBrush" Color="{DynamicResource WarnFg}" />
+  <SolidColorBrush x:Key="WarnBgBrush" Color="{DynamicResource WarnBg}" />
+  <SolidColorBrush x:Key="WarnBorderBrush" Color="{DynamicResource WarnBorder}" />
   <SolidColorBrush x:Key="BadFgBrush" Color="{DynamicResource BadFg}" />
   <SolidColorBrush x:Key="BadBgBrush" Color="{DynamicResource BadBg}" />
   <SolidColorBrush x:Key="BadBorderBrush" Color="{DynamicResource BadBorder}" />

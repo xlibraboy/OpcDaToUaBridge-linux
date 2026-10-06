@@ -37,7 +37,16 @@ public sealed class BridgeApiClient : IDisposable
     public void SetBaseAddress(string baseUrl)
     {
         client_.Dispose();
-        client_ = new HttpClient { BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/") };
+        // Retire pooled sockets and bound every request: the post-reconnect snapshot refresh
+        // must fail fast and retry rather than ride a connection the peer has already dropped.
+        client_ = new HttpClient(new SocketsHttpHandler
+        {
+            PooledConnectionLifetime = TimeSpan.FromMinutes(2)
+        })
+        {
+            BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/"),
+            Timeout = TimeSpan.FromSeconds(15)
+        };
     }
 
     public async Task<HmiTagsResponse> GetTagsAsync(CancellationToken ct)

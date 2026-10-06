@@ -121,6 +121,15 @@
     <Setter Property="Foreground" Value="{DynamicResource BadFgBrush}" />
   </Style>
 
+  <Style Selector="Border.pill.warn">
+    <Setter Property="Background" Value="{DynamicResource WarnBgBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource WarnBorderBrush}" />
+  </Style>
+
+  <Style Selector="Border.pill.warn > TextBlock">
+    <Setter Property="Foreground" Value="{DynamicResource WarnFgBrush}" />
+  </Style>
+
   <Style Selector="Border.pill.muted">
     <Setter Property="Background" Value="Transparent" />
     <Setter Property="BorderBrush" Value="{DynamicResource CardBorderBrush}" />

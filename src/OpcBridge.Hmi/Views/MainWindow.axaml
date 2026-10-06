@@ -55,11 +55,15 @@
             BorderThickness="0,0,0,1"
             Padding="12,6">
       <DockPanel>
-        <Border Classes="pill ok" IsVisible="{Binding IsConnected}">
+        <Border Classes="pill ok" IsVisible="{Binding IsPillOk}">
           <TextBlock Text="{Binding ConnectionState}"
                      AutomationProperties.LiveSetting="Polite" />
         </Border>
-        <Border Classes="pill bad" IsVisible="{Binding !IsConnected}">
+        <Border Classes="pill warn" IsVisible="{Binding IsPillWarn}">
+          <TextBlock Text="{Binding ConnectionState}"
+                     AutomationProperties.LiveSetting="Polite" />
+        </Border>
+        <Border Classes="pill bad" IsVisible="{Binding IsPillBad}">
           <TextBlock Text="{Binding ConnectionState}"
                      AutomationProperties.LiveSetting="Polite" />
         </Border>
@@ -74,6 +78,11 @@
                    Classes="hint"
                    VerticalAlignment="Center"
                    Text="{Binding BridgeSummary, StringFormat=Bridges: {0}}" />
+        <TextBlock Margin="12,0,0,0"
+                   Classes="hint"
+                   VerticalAlignment="Center"
+                   TextTrimming="CharacterEllipsis"
+                   Text="{Binding BridgeStatusSummary}" />
       </DockPanel>
     </Border>
 
@@ -98,7 +107,9 @@
               <TextBlock Classes="cardValue"
                          Text="{Binding BridgeSummary, TargetNullValue=—}"
                          TextTrimming="CharacterEllipsis" />
-              <TextBlock Classes="hint" Text="Connected bridge ids" />
+              <TextBlock Classes="hint"
+                         Text="{Binding BridgeStatusSummary}"
+                         TextTrimming="CharacterEllipsis" />
             </StackPanel>
           </Border>
           <Border Grid.Column="2" Classes="card" Margin="0,0,8,0">
@@ -195,10 +206,14 @@
                                  AutomationProperties.Name="Bridge name"
                                  Watermark="name"
                                  Text="{Binding Name}" />
-                        <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="5" Margin="8,0,8,0" VerticalAlignment="Center">
+                        <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="5" Margin="8,0,8,0" VerticalAlignment="Center"
+                                    ToolTip.Tip="{Binding LinkStateTooltip}">
                           <Ellipse Width="9" Height="9" IsVisible="{Binding IsConnected}" Fill="{DynamicResource OkBorderBrush}" />
-                          <Ellipse Width="9" Height="9" IsVisible="{Binding !IsConnected}" Fill="{DynamicResource CardBorderBrush}" />
-                          <TextBlock Text="{Binding ScopeKind}" FontWeight="SemiBold" />
+                          <Ellipse Width="9" Height="9" IsVisible="{Binding IsReconnecting}" Fill="{DynamicResource WarnFgBrush}" />
+                          <Ellipse Width="9" Height="9" IsVisible="{Binding IsLinkDown}" Fill="{DynamicResource CardBorderBrush}" />
+                          <TextBlock Text="{Binding LinkStateText}" FontWeight="SemiBold"
+                                     AutomationProperties.LiveSetting="Polite" />
+                          <TextBlock Classes="hint" Text="{Binding ScopeKind}" />
                         </StackPanel>
                         <Button Grid.Column="4" Classes="tool" Content="✕"
                                 AutomationProperties.Name="{Binding Address, StringFormat='Remove bridge {0}'}"

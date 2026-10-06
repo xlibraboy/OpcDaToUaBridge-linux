@@ -186,6 +186,29 @@ Opt-in (`Auth:Enabled`, default true in the shipped `appsettings.json`; the test
 
 HMI note: the operator UI is not embedded in the dashboard; run `dotnet run --project src/OpcBridge.Hmi` against the bridge base URL. Historical trends are served only through the bridge proxy; the HMI has no Influx config or token.
 
+### HMI bridge link state (live, per bridge)
+
+The Runtime does not latch "Connected" at connect time: `BridgeConnectionManager` tracks every
+bridge session's live link state (`Connected / Reconnecting / Failed` — `BridgeLinkState` in
+`OpcBridge.Hmi.Core`) from the SignalR lifecycle (`HmiHubClient` surfaces `Reconnecting` and
+`Closed`, not just `Reconnected`) plus connect/retry outcomes. The manager raises
+`LinkStateChanged`; the status strip (ok/warn/bad pill from `BridgeLinkSummary` plus a detail
+line), the Home bridge card and each Config row follow it, and a failed row carries its error as
+the status tooltip.
+
+- **Heartbeats / reconnect:** the server's `AddSignalR` runs a 5 s keep-alive with a 15 s client
+  timeout (`Program.cs`); the client uses a 5 s keep-alive, 15 s server timeout, and retries
+  0/1/2/5 s then every 5 s (`HmiHubTiming`). A silently dropped link is noticed in ~15 s.
+- **Reconnect resync:** after `Reconnected` the manager refetches `GET /api/hmi/tags`
+  (`SnapshotRefresh` retry schedule); if the schedule is exhausted, `NeedsResync` stays set and
+  the housekeeping tick keeps trying until the cache is actually fresh — the UI reports
+  "values refreshed" when it is. Deltas missed while the link was down are covered by this.
+- **Per-bridge isolation:** `ConnectAllAsync` returns `ConnectAllResult` (connected ids + failed
+  statuses) instead of throwing on the first failure; a failed bridge keeps its session, is
+  retried on a 2 s → 30 s backoff by the housekeeping tick, and joins when it comes up. Connect
+  throws only when no bridge can be reached. `BridgeSummary` lists the live bridges,
+  `BridgeStatusSummary` the aggregate detail (e.g. "1/2 bridges connected — failed: b (…)").
+
 ### HMI tag browser (bridge + source separation)
 
 The Runtime tag browser (`src/OpcBridge.Hmi/Views/MainWindow.axaml` + `MainViewModel`) narrows tags with two cascading selectors above the list (branch `feature/separate-source-tags`):
@@ -256,7 +279,7 @@ docker run --rm -v "$PWD/<worktree>":/src -w /src -v "$HOME/.nuget-cache":/home/
   -e HOME=/home/build -e DOTNET_CLI_HOME=/home/build --user "$(id -u):$(id -g)" \
   mcr.microsoft.com/dotnet/sdk:8.0 dotnet test tests/OpcBridge.LoadTest/OpcBridge.LoadTest.csproj
 ```
-`--user` keeps build artifacts iwan-owned (rootful daemon). Full suite: **1028 tests** (xUnit, `tests/OpcBridge.LoadTest`), ~2 min in Docker on this host with `$HOME/.nuget-cache` mounted — trust the run's own total over the wall time. The count dropped from 1113 when the MX Component source (and its PLC Groups and Pause/Resume coverage) was removed (#31), then rose by the Maps import coverage (#30) and its source-scan rework (reconciliation + selection). Known flaky: `InfluxApiTests.InfluxConfig_Post_Persists_EnabledFlag` (historically failed in full-suite order, passes isolated — green in the latest full run).
+`--user` keeps build artifacts iwan-owned (rootful daemon). Full suite: **1250 tests** (xUnit, `tests/OpcBridge.LoadTest`), ~3.5 min in Docker on this host with `$HOME/.nuget-cache` mounted — trust the run's own total over the wall time. The count dropped from 1113 when the MX Component source (and its PLC Groups and Pause/Resume coverage) was removed (#31), then rose by the Maps import coverage (#30) and its source-scan rework (reconciliation + selection) and the HMI link-state coverage. Known flaky: `InfluxApiTests.InfluxConfig_Post_Persists_EnabledFlag` (historically failed in full-suite order, passes isolated — green in the latest full run). Known environmental failure under the `--user $(id -u)` container: `DaWorkerIdentityTests.CurrentAccountName_IsNotEmpty` — the mapped uid has no passwd entry, so `Environment.UserName` is empty; it fails the same way on `main`.
 
 **Worktree workflow (session convention):** fixes live in `git worktree add .worktrees/<branch-slug> -b <branch> main`; one worktree per branch; full suite per branch before merge; merge to main with `--no-ff`; push to origin. **Tool path quirk:** `edit`/`write` with relative `.worktrees/...` paths sometimes land in the main checkout — always use absolute paths and verify with grep after. `.dockerignore` excludes `.worktrees/` (7+ GB) so images can be built from the main checkout.
 

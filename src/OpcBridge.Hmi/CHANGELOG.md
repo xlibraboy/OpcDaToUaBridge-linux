@@ -16,6 +16,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+**The connection state is now live, not latched at connect.** The status pill, the Home bridge
+card and each Config row kept the value the last successful connect produced — pulling the
+network still read "Connected", while the Influx poll was already reporting the outage. The
+runtime now follows the SignalR link itself: a dropped link reads "Reconnecting" on a warning
+pill, a closed one reads "Failed" with the error in the row's tooltip, and a summary line names
+the bridges behind the state. Heartbeats are tuned (5 s keep-alive, 15 s server timeout, retries
+0/1/2/5 s then every 5 s), so a silent drop is noticed within about 15 seconds instead of 30.
+
+**Tag values refresh as soon as the link comes back.** A single un-retried snapshot fetch stood
+between a reconnect and fresh values, and a failure left the pre-outage values on screen. The
+post-reconnect snapshot now retries on its own schedule, and if that schedule is exhausted the
+background tick keeps trying until the values actually land — the status bar says "values
+refreshed" when they have.
+
+**One unreachable bridge no longer fails the whole connect.** A single bridge that could not be
+reached tore every session down. Each bridge now connects independently: an unreachable one
+shows Failed with its error and is retried on a backoff (2 s → 30 s) until it joins, while the
+healthy bridges keep serving tags. Connect still reports failure when no bridge can be reached.
+
 **Trend values now show the same digits as the rest of the app.** Hovering or pinning the chart
 echoed the value stored in InfluxDB at full precision, so a tag the bridge rounds to a couple of
 decimals — stored as a widened float, e.g. 12.34 as 12.340000152587891 — read as a long string of

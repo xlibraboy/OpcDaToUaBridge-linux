@@ -30,6 +30,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     private Window? ownerWindow_;
     private HmiClientConfig? savedConfig_;
     private HmiClientConfig? connectedConfig_;
+    private bool connecting_;
     private readonly List<FaceplateViewModel> openFaceplates_ = new();
     private readonly string configPath_;
     private readonly string trendGroupsPath_;
@@ -57,6 +58,8 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         connections_.CacheChanged += OnCacheChanged;
         connections_.MappingsChanged += OnMappingsChangedAsync;
         connections_.InfluxStatusChanged += OnInfluxStatusChanged;
+        connections_.LinkStateChanged += OnLinkStateChanged;
+        connections_.BridgeReconnected += OnBridgeReconnectedAsync;
         DisplaySurface.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(DisplaySurfaceViewModel.HasDocument) or nameof(DisplaySurfaceViewModel.DisplayName))
@@ -67,6 +70,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         };
         LoadLocalConfig();
         LoadTrendGroups();
+        RecomputeLinkState();
         _ = DetectLocalBridgeAsync();
     }
 
@@ -168,6 +172,22 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     [ObservableProperty]
     private string _connectionState = "Disconnected";
+
+    /// <summary>Live detail of the bridge links behind <see cref="ConnectionState"/>.</summary>
+    [ObservableProperty]
+    private string _bridgeStatusSummary = "Not connected";
+
+    /// <summary>Status strip: every bridge's link is live.</summary>
+    [ObservableProperty]
+    private bool _isPillOk;
+
+    /// <summary>Status strip: at least one bridge is reconnecting after a dropped link.</summary>
+    [ObservableProperty]
+    private bool _isPillWarn;
+
+    /// <summary>Status strip: no live link at all (never connected, all failed, or disconnected).</summary>
+    [ObservableProperty]
+    private bool _isPillBad = true;
 
     [ObservableProperty]
     private string _filter = string.Empty;
@@ -346,6 +366,81 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         });
     }
 
+    /// <summary>
+    /// A bridge's live link changed (dropped, recovered or failed): reflect it on its config row
+    /// and re-derive the status strip. This is what keeps "Connected" from staying latched at
+    /// the value it had when the connect succeeded.
+    /// </summary>
+    private void OnLinkStateChanged(string bridgeId, BridgeLinkState state, string? error)
+    {
+        _ = PostToUiAsync(() =>
+        {
+            BridgeRow? row = BridgeRows.FirstOrDefault(r =>
+                string.Equals(r.BridgeId, bridgeId, StringComparison.OrdinalIgnoreCase));
+            bool wasDown = row?.LinkState is BridgeLinkState.Reconnecting or BridgeLinkState.Failed;
+            if (row is not null)
+            {
+                row.ApplyLinkStatus(new BridgeLinkStatus(bridgeId, state, error));
+            }
+
+            RecomputeLinkState();
+            StatusMessage = state switch
+            {
+                BridgeLinkState.Reconnecting => $"Connection to {bridgeId} lost — reconnecting…",
+                BridgeLinkState.Failed => error is null
+                    ? $"Connection to {bridgeId} failed — retrying"
+                    : $"Connection to {bridgeId} failed — {error} (retrying)",
+                _ when wasDown => $"Connected to {bridgeId} — refreshing values…",
+                _ => StatusMessage
+            };
+        });
+    }
+
+    /// <summary>The link is back and its snapshot landed, so the values on screen are fresh.</summary>
+    private Task OnBridgeReconnectedAsync(string bridgeId) =>
+        PostToUiAsync(() => StatusMessage = $"Reconnected to {bridgeId} — values refreshed");
+
+    /// <summary>Re-derives the status strip from the manager's live bridge link states.</summary>
+    private void RecomputeLinkState()
+    {
+        (BridgeLinkAggregate state, string label, string detail) =
+            BridgeLinkSummary.Build(connections_.LinkStatuses);
+        BridgeStatusSummary = detail;
+        BridgeSummary = string.Join(", ", connections_.ConnectedBridgeIds);
+        if (!connecting_)
+        {
+            ConnectionState = label;
+        }
+
+        IsPillOk = state == BridgeLinkAggregate.Connected;
+        IsPillWarn = state == BridgeLinkAggregate.Reconnecting;
+        IsPillBad = state is BridgeLinkAggregate.Failed or BridgeLinkAggregate.Disconnected;
+    }
+
+    /// <summary>
+    /// Writes the manager's session states onto the bridge rows. Rows line up with
+    /// <paramref name="config"/>'s bridges because empty rows build no bridge.
+    /// </summary>
+    private void ApplyLinkStatuses(HmiClientConfig config)
+    {
+        Dictionary<string, BridgeLinkStatus> byId = connections_.LinkStatuses
+            .ToDictionary(status => status.BridgeId, StringComparer.OrdinalIgnoreCase);
+        List<BridgeRow> addressable = BridgeRows.Where(row => !string.IsNullOrWhiteSpace(row.Address)).ToList();
+        for (int i = 0; i < addressable.Count && i < config.Bridges.Count; i++)
+        {
+            BridgeRow row = addressable[i];
+            row.BridgeId = config.Bridges[i].Id;
+            if (byId.TryGetValue(row.BridgeId, out BridgeLinkStatus? status))
+            {
+                row.ApplyLinkStatus(status);
+            }
+            else
+            {
+                row.ClearLinkStatus();
+            }
+        }
+    }
+
     [RelayCommand]
     private void AddBridge() => AddBridgeRow();
 
@@ -453,12 +548,8 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             }
         }
 
-        foreach (BridgeRow row in BridgeRows)
-        {
-            row.IsConnected = !string.IsNullOrWhiteSpace(row.Address);
-        }
-
-        BridgeSummary = string.Join(", ", connections_.ConnectedBridgeIds);
+        ApplyLinkStatuses(config);
+        RecomputeLinkState();
         RebuildTagsFromCache();
         ConnectCommand.NotifyCanExecuteChanged();
         return renames.Count;
@@ -476,12 +567,14 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         try
         {
+            connecting_ = true;
             ConnectionState = "Connecting";
             StatusMessage = string.Empty;
 
             HmiClientConfig config = BuildConfigFromRows(BridgeRows);
             if (config.Bridges.Count == 0)
             {
+                connecting_ = false;
                 ConnectionState = "Disconnected";
                 StatusMessage = "Add at least one bridge address";
                 return;
@@ -498,7 +591,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
                 }
             }
 
-            await connections_.ConnectAllAsync(config, ct).ConfigureAwait(true);
+            ConnectAllResult result = await connections_.ConnectAllAsync(config, ct).ConfigureAwait(true);
             if (TrySaveLocalConfig(config) is null)
             {
                 savedConfig_ = config;
@@ -508,32 +601,31 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             RefreshTrendGroupRows();
             await RefreshDisplaysAsync().ConfigureAwait(true);
 
-            IReadOnlyCollection<string> connected = connections_.ConnectedBridgeIds;
-            List<BridgeRow> addressable = BridgeRows.Where(r => !string.IsNullOrWhiteSpace(r.Address)).ToList();
-            for (int i = 0; i < addressable.Count && i < config.Bridges.Count; i++)
-            {
-                addressable[i].IsConnected = connected.Contains(config.Bridges[i].Id, StringComparer.OrdinalIgnoreCase);
-            }
-
             // The rows this connect was built from are the connected config; edits made while
             // it was in flight keep Connect enabled.
             connectedConfig_ = config;
+            connecting_ = false;
+            ApplyLinkStatuses(config);
             IsConnected = true;
-            ConnectionState = "Connected";
-            BridgeSummary = string.Join(", ", connected);
-            StatusMessage = $"Loaded {Tags.Count} tags from {connected.Count} bridge(s)";
+            RecomputeLinkState();
+            StatusMessage = result.Failed.Count == 0
+                ? $"Loaded {Tags.Count} tags from {result.Connected.Count} bridge(s)"
+                : $"Loaded {Tags.Count} tags from {result.Connected.Count} bridge(s) — "
+                  + $"{result.Failed.Count} unreachable, retrying: {string.Join(", ", result.Failed.Select(f => f.BridgeId))}";
             OnPropertyChanged(nameof(TagCount));
             ConnectCommand.NotifyCanExecuteChanged();
             SaveConfigCommand.NotifyCanExecuteChanged();
         }
         catch (OperationCanceledException)
         {
+            connecting_ = false;
             await SafeDisconnectAsync().ConfigureAwait(true);
             ConnectionState = "Disconnected";
             StatusMessage = "Connect cancelled";
         }
         catch (Exception ex)
         {
+            connecting_ = false;
             await SafeDisconnectAsync().ConfigureAwait(true);
             ConnectionState = "Disconnected";
             StatusMessage = ex.Message;
@@ -1378,8 +1470,11 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         DisplaySurface.Clear();
         foreach (BridgeRow row in BridgeRows)
         {
-            row.IsConnected = false;
+            row.ClearLinkStatus();
         }
+
+        connecting_ = false;
+        RecomputeLinkState();
 
         foreach (DisplayStoreClient client in storeClients_.Values)
         {
@@ -1578,6 +1673,8 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         connections_.CacheChanged -= OnCacheChanged;
         connections_.MappingsChanged -= OnMappingsChangedAsync;
         connections_.InfluxStatusChanged -= OnInfluxStatusChanged;
+        connections_.LinkStateChanged -= OnLinkStateChanged;
+        connections_.BridgeReconnected -= OnBridgeReconnectedAsync;
         foreach (DisplayStoreClient client in storeClients_.Values)
         {
             client.Dispose();
@@ -1596,6 +1693,10 @@ public sealed partial class BridgeRow : ObservableObject
     [ObservableProperty]
     private string _name = string.Empty;
 
+    /// <summary>Id of the live session this row is showing; set when a connect aligns the rows.</summary>
+    [ObservableProperty]
+    private string _bridgeId = string.Empty;
+
     [ObservableProperty]
     private string _address = string.Empty;
 
@@ -1603,8 +1704,55 @@ public sealed partial class BridgeRow : ObservableObject
     [ObservableProperty]
     private string _displayStore = string.Empty;
 
+    /// <summary>True only while this bridge's link is live.</summary>
     [ObservableProperty]
     private bool _isConnected;
+
+    [ObservableProperty]
+    private bool _isReconnecting;
+
+    /// <summary>Live link state behind the status dot; null = not connected.</summary>
+    [ObservableProperty]
+    private BridgeLinkState? _linkState;
+
+    [ObservableProperty]
+    private string _linkStateText = "Disconnected";
+
+    /// <summary>Why the bridge failed, shown as the status tooltip.</summary>
+    [ObservableProperty]
+    private string? _linkStateTooltip;
+
+    /// <summary>The neutral dot: no live link and no reconnect in progress.</summary>
+    public bool IsLinkDown => !IsConnected && !IsReconnecting;
+
+    partial void OnIsConnectedChanged(bool value) => OnPropertyChanged(nameof(IsLinkDown));
+
+    partial void OnIsReconnectingChanged(bool value) => OnPropertyChanged(nameof(IsLinkDown));
+
+    partial void OnLinkStateChanged(BridgeLinkState? value)
+    {
+        IsConnected = value == BridgeLinkState.Connected;
+        IsReconnecting = value == BridgeLinkState.Reconnecting;
+        LinkStateText = value switch
+        {
+            BridgeLinkState.Connected => "Connected",
+            BridgeLinkState.Reconnecting => "Reconnecting",
+            BridgeLinkState.Failed => "Failed",
+            _ => "Disconnected"
+        };
+    }
+
+    public void ApplyLinkStatus(BridgeLinkStatus status)
+    {
+        LinkState = status.State;
+        LinkStateTooltip = status.State == BridgeLinkState.Failed ? status.Error : null;
+    }
+
+    public void ClearLinkStatus()
+    {
+        LinkState = null;
+        LinkStateTooltip = null;
+    }
 
     public string ScopeKind => IsLocalAddress(Address) ? "Local" : "External";
 
