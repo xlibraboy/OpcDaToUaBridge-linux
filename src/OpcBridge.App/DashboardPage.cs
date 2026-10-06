@@ -1883,6 +1883,7 @@ internal static class DashboardPage
                     <option value="rate">Poll Rate</option>
                     <option value="deadband">Deadband</option>
                     <option value="status">Status (Enabled first)</option>
+                    <option value="added">Last Added (Newest first)</option>
                 </select>
                 <button class="btn ghost" type="button" id="mappingSortDir" title="Toggle sort direction">↑</button>
             </div>
@@ -7812,6 +7813,13 @@ function applyMappingView(mappings) {
         if (mode === 'Manual') return 1;
         return ((m.writeable ?? m.Writeable) === true) ? 2 : 3;
     };
+    // Negative stamps so the default (↑) direction reads newest first, like Status
+    // (Enabled first); mappings that predate the stamp sort last.
+    const addedRank = m => {
+        const raw = m.addedUtc || m.AddedUtc;
+        const ms = raw ? Date.parse(raw) : NaN;
+        return Number.isFinite(ms) ? -ms : 0;
+    };
     const cmp = (a, b) => {
         let av, bv;
         switch (key) {
@@ -7822,6 +7830,7 @@ function applyMappingView(mappings) {
             case 'rate': av = (a.pollRateMs ?? a.PollRateMs ?? 0); bv = (b.pollRateMs ?? b.PollRateMs ?? 0); break;
             case 'deadband': av = Number(a.deadbandPct ?? a.DeadbandPct ?? 0); bv = Number(b.deadbandPct ?? b.DeadbandPct ?? 0); break;
             case 'status': av = ((a.enabled ?? a.Enabled) !== false) ? 0 : 1; bv = ((b.enabled ?? b.Enabled) !== false) ? 0 : 1; break;
+            case 'added': av = addedRank(a); bv = addedRank(b); break;
             case 'description': av = (a.description || a.Description || ''); bv = (b.description || b.Description || ''); break;
             default: av = (a.displayName || a.DisplayName || a.itemId || a.ItemId || a.daItemId || a.DaItemId || ''); bv = (b.displayName || b.DisplayName || b.itemId || b.ItemId || b.daItemId || b.DaItemId || '');
         }

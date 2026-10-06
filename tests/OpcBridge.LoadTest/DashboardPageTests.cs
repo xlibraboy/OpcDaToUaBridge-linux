@@ -1688,6 +1688,16 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
+    public void Script_SortsMappingsByLastAdded()
+    {
+        // Maps ▸ Sort: "Last Added" reads newest first in the default direction; mappings
+        // without a stamp (added before the field existed) sort last.
+        Assert.Contains("<option value=\"added\">Last Added (Newest first)</option>", DashboardPage.Html, StringComparison.Ordinal);
+        Assert.Contains("const addedRank = m => {", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("case 'added': av = addedRank(a); bv = addedRank(b); break;", DashboardPage.Script, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Html_ShipsTheTroubleshootView()
     {
         // Ops ▸ Troubleshoot (Admin only): the DA registration report.
