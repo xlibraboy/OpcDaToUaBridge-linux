@@ -480,7 +480,7 @@ public partial class TrendPenViewModel : ObservableObject
             List<TrendSample> samples = new();
             foreach (HmiTrendPoint point in response.Points ?? Array.Empty<HmiTrendPoint>())
             {
-                if (TryToDouble(point.V, out double y))
+                if (TrendValueCoercion.TryToDouble(point.V, out double y))
                 {
                     samples.Add(new TrendSample(point.T, y));
                 }
@@ -524,38 +524,5 @@ public partial class TrendPenViewModel : ObservableObject
             && string.Equals(value.Trim(), "Step", StringComparison.OrdinalIgnoreCase)
             ? "Step"
             : "Continuous";
-    }
-
-    private static bool TryToDouble(object? value, out double y)
-    {
-        switch (value)
-        {
-            case null:
-                y = 0;
-                return false;
-            case double d:
-                y = d;
-                return true;
-            case float f:
-                y = f;
-                return true;
-            case int i:
-                y = i;
-                return true;
-            case long l:
-                y = l;
-                return true;
-            case System.Text.Json.JsonElement je when je.ValueKind == System.Text.Json.JsonValueKind.Number
-                && je.TryGetDouble(out double jd):
-                y = jd;
-                return true;
-            case string s when double.TryParse(s, System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture, out double sd):
-                y = sd;
-                return true;
-            default:
-                y = 0;
-                return false;
-        }
     }
 }

@@ -1,4 +1,3 @@
-using System.Text.Json;
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -279,7 +278,7 @@ public partial class FaceplateViewModel : ObservableObject, IAsyncDisposable
             List<TrendSample> samples = new();
             foreach (HmiTrendPoint point in response.Points ?? Array.Empty<HmiTrendPoint>())
             {
-                if (TryToDouble(point.V, out double y))
+                if (TrendValueCoercion.TryToDouble(point.V, out double y))
                 {
                     samples.Add(new TrendSample(point.T, y));
                 }
@@ -417,38 +416,6 @@ public partial class FaceplateViewModel : ObservableObject, IAsyncDisposable
         if (isGood == true) return daQuality is null ? "Good" : $"Good ({daQuality})";
         if (isGood == false) return daQuality is null ? "Bad" : $"Bad ({daQuality})";
         return daQuality is null ? string.Empty : daQuality.Value.ToString();
-    }
-
-    private static bool TryToDouble(object? value, out double y)
-    {
-        switch (value)
-        {
-            case null:
-                y = 0;
-                return false;
-            case double d:
-                y = d;
-                return true;
-            case float f:
-                y = f;
-                return true;
-            case int i:
-                y = i;
-                return true;
-            case long l:
-                y = l;
-                return true;
-            case JsonElement je when je.ValueKind == JsonValueKind.Number && je.TryGetDouble(out double jd):
-                y = jd;
-                return true;
-            case string s when double.TryParse(s, System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture, out double sd):
-                y = sd;
-                return true;
-            default:
-                y = 0;
-                return false;
-        }
     }
 
     public async ValueTask DisposeAsync()
