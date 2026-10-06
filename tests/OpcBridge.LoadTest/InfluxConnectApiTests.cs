@@ -91,6 +91,43 @@ public sealed class InfluxConnectApiTests
     }
 
     [Fact]
+    public async Task Connect_ServerThatRejectsTheProbe_ReportsTheInfluxMessage()
+    {
+        using ScriptedInfluxServer server = ScriptedInfluxServer.Start((400, ScriptedInfluxServer.FieldTypeConflictBody));
+        await using TestAppHandle handle = await TestAppHandle.StartAsync(WriteAppsettings);
+
+        using HttpResponseMessage saved = await handle.Client.PostAsync(
+            "/api/influx/config",
+            JsonBody(new
+            {
+                enabled = false,
+                url = server.Url,
+                org = "demo-org",
+                bucket = "demo-bucket",
+                token = "demo-token",
+                measurement = "opc_tags",
+                timeoutMs = 2000,
+                verifySsl = false
+            }));
+        saved.EnsureSuccessStatusCode();
+
+        using HttpResponseMessage connect = await handle.Client.PostAsync("/api/influx/connect", null);
+        using JsonDocument payload = JsonDocument.Parse(await connect.Content.ReadAsStringAsync());
+
+        Assert.Equal("error", payload.RootElement.GetProperty("status").GetString());
+        string? error = payload.RootElement.GetProperty("error").GetString();
+        Assert.NotNull(error);
+        Assert.Contains("HTTP 400", error);
+        Assert.Contains("field type conflict", error);
+
+        using JsonDocument status = await handle.GetJsonAsync("/api/influx/status");
+        Assert.Equal("Faulted", status.RootElement.GetProperty("state").GetString());
+        Assert.Contains(
+            "field type conflict",
+            status.RootElement.GetProperty("lastError").GetString() ?? string.Empty);
+    }
+
+    [Fact]
     public async Task Connect_UnreachableUrl_ThenDisconnect_ReturnsToDisconnected()
     {
         await using TestAppHandle handle = await TestAppHandle.StartAsync(WriteAppsettings);

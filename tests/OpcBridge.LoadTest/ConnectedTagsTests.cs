@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text.Json;
+using InfluxDB.Client.Core.Exceptions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using OpcBridge.App;
@@ -184,17 +185,98 @@ public sealed class ConnectedTagsTests
             "a landed point ends the recovery");
     }
 
+    [Fact]
+    public async Task InfluxWriteFailure_RecordsHttpStatusAndServerMessage()
+    {
+        MappingStore mappingStore = new(Options.Create(new BridgeOptions()));
+        InterlinkStore linkStore = CreateLinkStore();
+        BridgeWorker worker = CreateWorker(mappingStore, linkStore);
+
+        FakeInfluxWriter fake = new()
+        {
+            State = InfluxConnectionState.Connected,
+            WriteFailuresRemaining = 1,
+            WriteFailure = new HttpException(
+                "partial write: field type conflict: input field \"value\" on measurement \"opc_tags\" is type double, already exists as type string dropped=1",
+                400)
+        };
+        SetPrivateField(worker, "influx_writer_", fake);
+        SetPrivateField(worker, "influx_enabled_keys_", new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "default::enabled" });
+        InfluxRuntimeSettings settings = new(Options.Create(new InfluxOptions { Enabled = true }));
+        SetPrivateField(worker, "influx_settings_", settings);
+
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(10));
+        Task drain = (Task)worker.GetType()
+            .GetMethod("InfluxWriteDrainAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(worker, [cts.Token])!;
+
+        InvokePrivateVoid(worker, "OnBridgeValueUpdated", new BridgeValue("default", "enabled", 1L, DateTime.UtcNow, 192, true));
+
+        DateTime failedAt = DateTime.UtcNow.AddSeconds(5);
+        while (fake.WriteFailuresRemaining == 1 && DateTime.UtcNow < failedAt)
+        {
+            await Task.Delay(20, CancellationToken.None);
+        }
+
+        cts.Cancel();
+        try { await drain; } catch (OperationCanceledException) { }
+
+        // The Historian panel must say what InfluxDB said, not just that something failed.
+        InfluxRuntimeSnapshot snapshot = settings.GetSnapshot();
+        Assert.StartsWith("Write failed: HTTP 400: partial write: field type conflict", snapshot.LastError);
+        Assert.Contains("locks a field name to one type per measurement", snapshot.LastError);
+    }
+
+    [Fact]
+    public async Task ConnectInfluxFailure_ArmsTheRetryLoop()
+    {
+        MappingStore mappingStore = new(Options.Create(new BridgeOptions()));
+        InterlinkStore linkStore = CreateLinkStore();
+        BridgeWorker worker = CreateWorker(mappingStore, linkStore);
+
+        FakeInfluxWriter fake = new()
+        {
+            ConnectFailure = new InvalidOperationException(
+                "InfluxDB at http://127.0.0.1:9 answered /ping but rejected the connectivity probe write: HTTP 400: nope")
+        };
+        SetPrivateField(worker, "influx_writer_", fake);
+        InfluxRuntimeSettings settings = new(Options.Create(new InfluxOptions { Enabled = true }));
+        SetPrivateField(worker, "influx_settings_", settings);
+
+        Task connect = (Task)worker.GetType()
+            .GetMethod("ConnectInfluxAsync", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .Invoke(worker, [CancellationToken.None])!;
+        await connect;
+
+        Assert.Equal(1, fake.ConnectCount);
+        Assert.True(
+            GetPrivateField<bool>(worker, "influx_retry_needed_"),
+            "a failed connect must arm the recovery loop like a rejected write");
+        InfluxRuntimeSnapshot snapshot = settings.GetSnapshot();
+        Assert.Equal("Faulted", snapshot.State);
+        Assert.Contains("rejected the connectivity probe write", snapshot.LastError);
+    }
+
     private sealed class FakeInfluxWriter : IInfluxWriter
     {
         public List<BridgeValue> Written { get; } = new();
         public int ConnectCount { get; private set; }
         public int WriteFailuresRemaining { get; set; }
+        public Exception? ConnectFailure { get; set; }
+        public Exception? WriteFailure { get; set; }
         public InfluxConnectionState State { get; set; } = InfluxConnectionState.Disconnected;
         public event Action<InfluxConnectionState>? StateChanged;
 
         public Task ConnectAsync(InfluxOptions options, CancellationToken ct)
         {
             ConnectCount++;
+            if (ConnectFailure is not null)
+            {
+                State = InfluxConnectionState.Faulted;
+                StateChanged?.Invoke(State);
+                throw ConnectFailure;
+            }
+
             State = InfluxConnectionState.Connected;
             StateChanged?.Invoke(State);
             return Task.CompletedTask;
@@ -215,7 +297,7 @@ public sealed class ConnectedTagsTests
                 // Same shape as the real writer: a rejected point marks the link unusable.
                 State = InfluxConnectionState.Faulted;
                 StateChanged?.Invoke(State);
-                throw new InvalidOperationException("historian rejected the point");
+                throw WriteFailure ?? new InvalidOperationException("historian rejected the point");
             }
 
             Written.Add(value);
