@@ -233,7 +233,14 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<BridgeWorker>());
      sp.GetRequiredService<ILogger<BridgeAppDiscovery>>(),
      BridgeState.HttpPort));
  builder.Services.AddHostedService(sp => sp.GetRequiredService<BridgeAppDiscovery>());
-builder.Services.AddSignalR();
+builder.Services.AddSignalR(options =>
+{
+    // Lighter heartbeats keep the HMI's live link state honest: a silently dropped network
+    // trips the client's 15 s server timeout instead of the stock 30 s. ClientTimeoutInterval
+    // must stay at least double the HMI client's 5 s keep-alive.
+    options.KeepAliveInterval = TimeSpan.FromSeconds(5);
+    options.ClientTimeoutInterval = TimeSpan.FromSeconds(15);
+});
 builder.Services.AddSingleton<DisplayStore>();
 builder.Services.AddHostedService<HmiBroadcastService>();
 builder.Services.AddSingleton<IInfluxTrendQuery>(sp =>

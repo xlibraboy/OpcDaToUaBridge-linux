@@ -203,12 +203,12 @@ Operator write → POST /api/hmi/write
 
 | Condition | Behavior |
 |---|---|
-| Wrong URL / bridge down | Connect fails; status Disconnected; grid empty |
-| SignalR disconnect | Auto-reconnect; REST snapshot refresh on rejoin |
+| Wrong URL / bridge down | No bridge reachable: connect fails; status Disconnected; grid empty. With several bridges, an unreachable one shows Failed with its error and is retried on a backoff while the healthy ones keep running |
+| SignalR disconnect | Link state goes Reconnecting at once (15 s client server-timeout, retries 0/1/2/5 s, then every 5 s); status strip, bridge rows and the aggregate follow live. On rejoin the REST snapshot is refetched with retries until it lands, then values are fresh — no Connect needed |
 | Write rejected (read-only / unknown tag) | Faceplate shows error; do not clear live value |
 | Write DA failure | Faceplate shows error from bridge |
 | Mapping removed | Tag disappears on next snapshot / after `mappingsChanged` |
-| Bridge stopping | Hub disconnect; HMI shows disconnected |
+| Bridge stopping | Hub disconnect; the bridge reads Reconnecting/Failed with the error, and a closed hub is rebuilt on the retry schedule |
 
 v1 assumes trusted LAN: no auth. Spec for later: shared token or basic auth on `/api/hmi/*` and hub.
 
