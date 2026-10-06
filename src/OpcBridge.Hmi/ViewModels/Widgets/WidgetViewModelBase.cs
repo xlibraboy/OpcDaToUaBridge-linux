@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using OpcBridge.Client;
+using OpcBridge.Core;
 using OpcBridge.Hmi.Core;
 
 namespace OpcBridge.Hmi.ViewModels.Widgets;
@@ -323,24 +324,9 @@ public sealed partial class BoolIndicatorWidgetViewModel : WidgetViewModelBase
 
     protected override void OnLiveValue(MultiBridgeTagEntry entry)
     {
-        IsOn = CoerceBool(entry.Value);
+        IsOn = TagDigital.CoerceBool(entry.Value);
         ValueText = IsOn ? OnText : OffText;
     }
-
-    private static bool CoerceBool(object? value) => value switch
-    {
-        bool b => b,
-        byte by => by != 0,
-        short s => s != 0,
-        int i => i != 0,
-        long l => l != 0,
-        float f => Math.Abs(f) > double.Epsilon,
-        double d => Math.Abs(d) > double.Epsilon,
-        string s when bool.TryParse(s, out bool b) => b,
-        string s when s == "1" => true,
-        string s when s == "0" => false,
-        _ => false
-    };
 }
 
 public sealed partial class PushButtonWidgetViewModel : WidgetViewModelBase

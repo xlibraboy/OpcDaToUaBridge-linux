@@ -42,6 +42,18 @@ digits in the value chips and on the Y-axis. The chart (hover chips, pinned read
 labels) now formats to the same 3-decimal display precision as the pen table, trailing zeros
 trimmed, so those numbers read 12.34 again.
 
+**Boolean tags now plot in the trend charts.** A Boolean tag with InfluxDB history drew an
+empty chart ("No history") even though its points were stored and served: the runtime
+deserializes history values as JSON, and the numeric converter behind both the trend window
+and the faceplate's 1h chart did not recognise a JSON boolean (`true`/`false`), so every
+sample was dropped before the chart saw it. Booleans now map to the digital strip's 0/1 band
+and draw their square wave like any other digital pen.
+
+**The boolean indicator widget follows live values again.** The widget's own on/off coercion
+missed JSON booleans — the shape the tag cache holds after wire deserialization — so a bound
+lamp stayed on its OFF text whatever the tag read. It now uses the shared coercion the
+faceplate already used.
+
 ## [1.8.1] - 2026-10-05
 
 ### Fixed
