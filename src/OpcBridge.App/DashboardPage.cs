@@ -6913,7 +6913,9 @@ async function refresh() {
         updateDigitalObservations();
         state.disconnectedKeys = new Set((p.disconnected || []).map(d => valueKey(get(d, 'sourceId') || '', get(d, 'itemId') || '')));
         state.badQualityKeys = new Set((p.badQuality || []).map(d => valueKey(get(d, 'sourceId') || '', get(d, 'itemId') || '')));
-        state.disconnectedSources = new Set((sources || []).filter(s => String(get(s, 'connectionState') || '').toLowerCase() !== 'connected').map(s => String(get(s, 'sourceId') || '')));
+        // 'connecting' is transient: a mapping add rebuilds rate-group sources, and treating that
+        // rebuild as down flashed Disc on every mapping row of the source (issue #38).
+        state.disconnectedSources = new Set((sources || []).filter(s => { const cs = String(get(s, 'connectionState') || '').toLowerCase(); return cs !== 'connected' && cs !== 'connecting'; }).map(s => String(get(s, 'sourceId') || '')));
         state.linkStatsById = {};
         (p.linkStats || []).forEach(s => { state.linkStatsById[String(get(s, 'id') || '')] = s; });
         if (document.getElementById('view-values')?.classList.contains('active')) { renderInterlinkFlow(); updateFlowBadge(); }
