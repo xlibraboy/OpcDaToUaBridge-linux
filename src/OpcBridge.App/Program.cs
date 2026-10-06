@@ -1219,13 +1219,7 @@ app.MapPost("/api/da/sources", (DaServerConfigRequest request, DaRuntimeSettings
     DaSourceRuntimeSettings? existingSource = settings.GetSnapshot().GetSource(request.SourceId);
     DaWorkerOptions? requestedWorker = request.Worker is null
         ? existingSource?.OpcDa?.Worker
-        : new DaWorkerOptions(
-            request.Worker.Mode ?? DaWorkerModes.InProcess,
-            request.Worker.RunAsUser,
-            string.IsNullOrWhiteSpace(request.Worker.RunAsPassword)
-                ? existingSource?.Worker.RunAsPassword
-                : request.Worker.RunAsPassword,
-            request.Worker.RunAsDomain);
+        : DaWorkerRequestMerge.Merge(request.Worker, existingSource?.Worker);
 
     string workerSourceType = string.IsNullOrWhiteSpace(upsertType) ? SourceTypes.OpcDa : upsertType;
     if (DaWorkerOptionsValidator.Validate(workerSourceType, requestedWorker ?? new DaWorkerOptions()) is { } workerValidationError)

@@ -17,6 +17,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+**Switching a DA source's worker mode back to in-process now sticks.** The source-upsert
+endpoint carried the source's stored run-as password into any request that arrived without
+one, even when the request named no account — and the dashboard's *In process* choice sends
+only the mode. The merge therefore produced the impossible "password without an account"
+combination, validation answered 400, nothing was saved, and the reloaded form showed the
+old *Own worker* mode again. The stored password is now inherited only while the request
+keeps a run-as account in an `own` or `group` mode; switching to in-process — or clearing
+the account — drops it.
+
 ## [1.7.2] - 2026-10-05
 
 ### Fixed

@@ -13,6 +13,22 @@ open issue is updated to **Fixed in <version>** once its fix ships.
 
 ---
 
+## Worker mode snapped back to Own worker when switching to In process
+
+**Status:** Fixed in [Unreleased] · **Found:** 2026-10-05 · **Where:** issue #39 (dashboard,
+OPC DA source whose own worker was configured with a run-as account) · **Area:** OPC DA / Workers
+
+Field report: changing the worker mode from **Own worker** to **In process** and saving
+appeared to do nothing — after the reload the form showed *Own worker* again. The dashboard
+sends only `{mode:'inProcess'}` for that choice, and the save endpoint merged the source's
+stored run-as password into the request even though no account was sent; validation then
+rejected the impossible "password without an account" combination with 400, so the source
+was never saved. The stored password is now kept only while the request carries a run-as
+account in an `own`/`group` mode, so switching to in-process — and clearing the account —
+save cleanly.
+
+---
+
 ## A run-as worker never started: the bootstrap carried a UTF-8 BOM
 
 **Status:** Fixed in [Unreleased] · **Found:** 2026-10-03 · **Where:** PRW11709 (bridge 1.6.0,
