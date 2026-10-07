@@ -17,6 +17,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+**Historian ▸ InfluxDB shows where this app keeps its settings and where they live on disk (#44).**
+A **Storage** panel under the Influx page reports the instance's own data folder — badged as coming
+from `OPCBRIDGE_DATA` or the application folder — the full path of `influx.json` with its size and
+last-saved time, the destination the writer targets (URL · org · bucket), and the free space of the
+volume holding the data folder. `GET /api/influx/storage` serves it; like the rest of the page it
+needs a session (Viewer), and each bridge reports only its own folder — never another instance's.
+
 ## [1.8.0] - 2026-10-06
 
 ### Added

@@ -82,4 +82,52 @@ public sealed class InfluxApiTests
         using var status = await handle.GetJsonAsync("/api/influx/status");
         Assert.True(status.RootElement.GetProperty("enabled").GetBoolean());
     }
+
+    [Fact]
+    public async Task InfluxStorage_Reports_InstanceDataFolder_AndConfigFile()
+    {
+        await using var handle = await TestAppHandle.StartAsync(WriteAppsettings);
+
+        using var before = await handle.GetJsonAsync("/api/influx/storage");
+        string dataDirectory = before.RootElement.GetProperty("dataDirectory").GetString()!;
+        string configPath = before.RootElement.GetProperty("configPath").GetString()!;
+        Assert.Equal(
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(handle.AppDirectory)),
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(dataDirectory)));
+        Assert.Equal(Path.Combine(dataDirectory, "influx.json"), configPath);
+        Assert.Equal("application folder", before.RootElement.GetProperty("dataDirectorySource").GetString());
+        Assert.False(before.RootElement.GetProperty("configExists").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, before.RootElement.GetProperty("configSizeBytes").ValueKind);
+        Assert.Equal(JsonValueKind.Null, before.RootElement.GetProperty("configLastWriteUtc").ValueKind);
+        if (before.RootElement.GetProperty("totalBytes").ValueKind != JsonValueKind.Null)
+        {
+            long total = before.RootElement.GetProperty("totalBytes").GetInt64();
+            long free = before.RootElement.GetProperty("freeBytes").GetInt64();
+            Assert.True(total > 0);
+            Assert.InRange(free, 0, total);
+        }
+
+        using StringContent body = new(
+            JsonSerializer.Serialize(new
+            {
+                enabled = true,
+                url = "http://influx.example:8086",
+                org = "demo-org",
+                bucket = "demo-bucket",
+                token = "demo-token",
+                measurement = "opc_tags",
+                timeoutMs = 5000,
+                verifySsl = true
+            }),
+            Encoding.UTF8,
+            "application/json");
+        using HttpResponseMessage post = await handle.Client.PostAsync("/api/influx/config", body);
+        Assert.Equal(HttpStatusCode.OK, post.StatusCode);
+
+        using var after = await handle.GetJsonAsync("/api/influx/storage");
+        Assert.True(after.RootElement.GetProperty("configExists").GetBoolean());
+        Assert.True(after.RootElement.GetProperty("configSizeBytes").GetInt64() > 0);
+        DateTime lastWrite = after.RootElement.GetProperty("configLastWriteUtc").GetDateTime();
+        Assert.InRange(lastWrite, DateTime.UtcNow.AddMinutes(-1), DateTime.UtcNow.AddMinutes(1));
+    }
 }

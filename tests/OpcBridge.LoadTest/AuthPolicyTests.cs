@@ -45,6 +45,7 @@ public sealed class AuthPolicyTests
     [InlineData("/api/hmi")]
     [InlineData("/api/mappings")]
     [InlineData("/api/influx/config")] // token-bearing; must never join the trusted HMI surface
+    [InlineData("/api/influx/storage")] // local paths/disk details stay behind a session
     public void NonHmiPaths_AreNotHmi(string path) => Assert.False(AuthPolicy.IsHmiPath(path));
 
     [Theory]
@@ -66,6 +67,7 @@ public sealed class AuthPolicyTests
     [InlineData("POST", "/api/da/sources", UserRole.Engineer)]
     [InlineData("POST", "/api/mqtt/config", UserRole.Engineer)]
     [InlineData("POST", "/api/influx/config", UserRole.Engineer)]
+    [InlineData("GET", "/api/influx/storage", UserRole.Viewer)]
     [InlineData("POST", "/api/config/import", UserRole.Engineer)]
     // Issue #14: the UA server access settings are engineering configuration.
     [InlineData("POST", "/api/ua/settings", UserRole.Engineer)]

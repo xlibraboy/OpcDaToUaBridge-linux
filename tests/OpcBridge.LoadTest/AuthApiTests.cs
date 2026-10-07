@@ -406,6 +406,12 @@ public sealed class AuthApiTests
             Assert.Equal(HttpStatusCode.Unauthorized, influxConfig.StatusCode);
         }
 
+        // Storage reports local paths and disk details; it stays behind the session too.
+        using (HttpResponseMessage influxStorage = await handle.Client.GetAsync("/api/influx/storage"))
+        {
+            Assert.Equal(HttpStatusCode.Unauthorized, influxStorage.StatusCode);
+        }
+
         using (HttpResponseMessage negotiate = await handle.Client.PostAsync("/hmi/negotiate?negotiateVersion=1", null))
         {
             Assert.NotEqual(HttpStatusCode.Unauthorized, negotiate.StatusCode);

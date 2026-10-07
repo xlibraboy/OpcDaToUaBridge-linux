@@ -383,6 +383,7 @@ Minimal JSON. Selectable fields (MQTT Broker → Payload Fields): `v` (value), `
 
 - External InfluxDB 2.x/3.x server required — the bridge does not run InfluxDB and does not create buckets or orgs (create them, and a token with write access, before connecting)
 - Configure URL, Org, Bucket, Token on InfluxDB tab; Save + Connect
+- Storage panel shows where this instance keeps its InfluxDB settings: the data folder (`OPCBRIDGE_DATA` or the app folder), the `influx.json` path with size and last-saved time, the destination (URL · org · bucket), and the free space of the volume holding the data folder
 - Enable per tag via faceplate Influx checkbox
 - Points: measurement opc_tags (configurable), tags source_id/da_item_id/display_name, fields value (Float/Double/Decimal), value_int (integer family), value_bool, value_str (String/DateTime/ByteArray), plus quality and is_good — field names are type-stable because InfluxDB locks a field name to one type per measurement
 - Connect proves a write, not just reachability: one probe point (tags source_id `__opcbridge__`, da_item_id `probe`) is written on every connect. If it is rejected, the Historian panel's Last error carries InfluxDB's HTTP status and message plus a hint

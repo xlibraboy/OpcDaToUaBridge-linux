@@ -5,6 +5,9 @@ namespace OpcBridge.App;
 //   data-tab="influx", id="view-influx", id="fpInfluxEnabled", id="influxUrl", id="influxWritten"
 //   function loadInfluxConfig/loadInfluxStatus/saveInflux/connectInflux/disconnectInflux
 //   /api/influx/config, if (faceplateOpen) { payload.influxEnabled = el('fpInfluxEnabled').checked;, if (name === 'influx')
+//   Influx storage (#44): id="influxStoreDataDir"/"influxStoreSource"/"influxStoreConfigPath"/
+//   "influxStoreConfigSize"/"influxStoreConfigSaved"/"influxStoreDestination"/"influxStoreDisk",
+//   function loadInfluxStorage(, /api/influx/storage
 //   id="pApps", text "Apps", "pApps" in script, "detectedCount" in script
 //   text "Interlinks", id="btnClearLinkSelection"
 //   text "Clear Selection", text "Delete Saved Link", function clearInterlinkDraftSelection
@@ -2314,6 +2317,20 @@ internal static class DashboardPage
             </div>
         </div>
     </div>
+<div class="box" style="margin-top:14px">
+    <div class="box-h">Storage <span class="info" data-tip="Where this OpcBridge app keeps its InfluxDB settings on this machine, and the volume they live on. Each bridge instance has its own data folder — this panel shows only the instance serving this dashboard.">i</span><span class="msg" id="influxStorageMsg" style="margin-left:auto"></span></div>
+    <div class="box-b">
+        <div class="kv">
+            <div class="k">App data</div><div class="v" id="influxStoreDataDir">&#8212;</div>
+            <div class="k">Data folder from</div><div class="v" id="influxStoreSource">&#8212;</div>
+            <div class="k">Config file</div><div class="v" id="influxStoreConfigPath">&#8212;</div>
+            <div class="k">Config size</div><div class="v" id="influxStoreConfigSize">&#8212;</div>
+            <div class="k">Last saved</div><div class="v" id="influxStoreConfigSaved">&#8212;</div>
+            <div class="k">Writes to</div><div class="v" id="influxStoreDestination">&#8212;</div>
+            <div class="k">Disk free</div><div class="v" id="influxStoreDisk">&#8212;</div>
+        </div>
+    </div>
+</div>
 <div class="modal-overlay" id="influxWizard" onclick="if(event.target===this)closeInfluxWizard()">
   <div class="modal wizard" role="dialog" aria-modal="true" aria-labelledby="influxWizardTitle">
     <div class="modal-head">
@@ -5753,7 +5770,9 @@ function formatBytes(value) {
     const n = Number(value ?? 0);
     if (n < 1024) return n.toFixed(0) + ' B';
     if (n < 1024 * 1024) return (n / 1024).toFixed(1) + ' KB';
-    return (n / (1024 * 1024)).toFixed(2) + ' MB';
+    if (n < 1024 * 1024 * 1024) return (n / (1024 * 1024)).toFixed(2) + ' MB';
+    if (n < 1024 * 1024 * 1024 * 1024) return (n / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+    return (n / (1024 * 1024 * 1024 * 1024)).toFixed(2) + ' TB';
 }
 
 function formatUaDiagnostics(ua) {
@@ -7658,6 +7677,7 @@ async function loadInfluxConfig() {
         if (el('influxMeasurement')) el('influxMeasurement').value = cfg.measurement || 'opc_tags';
         if (el('influxTimeoutMs')) el('influxTimeoutMs').value = String(cfg.timeoutMs ?? 5000);
         if (el('influxVerifySsl')) el('influxVerifySsl').checked = cfg.verifySsl !== false;
+        if (el('influxStoreDestination')) el('influxStoreDestination').textContent = [cfg.url, cfg.org, cfg.bucket].filter(Boolean).join(' · ') || '—';
         state.influxConfigured = !!(cfg.enabled || (cfg.url || '').trim() || (cfg.org || '').trim() || (cfg.bucket || '').trim() || (cfg.token || '').trim());
     } catch (e) { /* ignore */ }
 }
@@ -7680,7 +7700,20 @@ async function loadInfluxStatus() {
         }
     } catch (e) { if (el('influxMessage')) el('influxMessage').textContent = '✗ ' + e.message; }
 }
-async function loadInflux() { await Promise.all([loadInfluxConfig(), loadInfluxStatus()]); }
+async function loadInfluxStorage() {
+    const msg = el('influxStorageMsg');
+    try {
+        const s = await (await fetch('/api/influx/storage', { cache: 'no-store' })).json();
+        if (el('influxStoreDataDir')) el('influxStoreDataDir').textContent = s.dataDirectory || '—';
+        if (el('influxStoreSource')) el('influxStoreSource').textContent = s.dataDirectorySource || '—';
+        if (el('influxStoreConfigPath')) el('influxStoreConfigPath').textContent = s.configPath || '—';
+        if (el('influxStoreConfigSize')) el('influxStoreConfigSize').textContent = s.configExists ? formatBytes(s.configSizeBytes) : 'not saved yet';
+        if (el('influxStoreConfigSaved')) el('influxStoreConfigSaved').textContent = s.configLastWriteUtc ? new Date(s.configLastWriteUtc).toLocaleString() : '—';
+        if (el('influxStoreDisk')) el('influxStoreDisk').textContent = (s.freeBytes != null && s.totalBytes) ? formatBytes(s.freeBytes) + ' free of ' + formatBytes(s.totalBytes) : '—';
+        if (msg) msg.textContent = '';
+    } catch (e) { if (msg) msg.textContent = '✗ ' + e.message; }
+}
+async function loadInflux() { await Promise.all([loadInfluxConfig(), loadInfluxStatus(), loadInfluxStorage()]); }
 async function saveInflux() {
     const body = {
         enabled: el('influxEnabled').checked,
