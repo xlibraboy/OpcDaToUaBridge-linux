@@ -17,6 +17,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+**The import dialog can show only the rows whose description differs (#41).** A **Only tags with a
+different description** toggle sits above the preview list: switching it on narrows a long file to
+the rows already mapped with a different description — the ones carrying the *desc differs* pill
+and an *Update* button — so a plant-sized import can be reviewed down to the differences instead of
+scanning past everything that already matches. It is a view filter: *Update descriptions* still
+covers every differing row in the group and the tick selection keeps working group-wide, exactly
+like the row cap's *Add all still adds every new tag in this group*. The toggle disables itself
+when nothing in the group differs, and steps back to the full list once its last row has been
+updated or un-mapped.
+
 ## [1.8.0] - 2026-10-06
 
 ### Added

@@ -38,7 +38,8 @@ namespace OpcBridge.App;
 //   Maps import from file (#30 rework — source-scan reconciliation, path-qualified item ids): id="btnImportTags" (browser toolbar, beside
 //   Browse All Tags / Browse Folders)/"importTagsFile"/"importTagsOverlay"/"importTagsPick"/
 //   "importTagsSource"/"importTagsGroup"/"importTagsSummary"/"importTagsList"/"importTagsMessage"/
-//   "importTagsSelectAll"/"importTagsSelection"/"importTagsAddAll"/"importTagsAddSelected"/"importTagsUpdateAll",
+//   "importTagsSelectAll"/"importTagsSelection"/"importTagsOnlyDiffers"/"importTagsAddAll"/"importTagsAddSelected"/"importTagsUpdateAll",
+//   state.importOnlyDiffers — the "Only tags with a different description" view filter (#41),
 //   function openImportTags(/closeImportTags(/renderImportTags(/readImportTagsFile(/addImportRows(/
 //   updateImportRows(/unmapImportRow(/importRowSelectable(/importSourceOnlyHtml(/pruneImportSelection(,
 //   /api/mappings/import/preview, data-action="import-add"/"import-update"/"import-unmap"/"import-pick",
@@ -2006,7 +2007,8 @@ internal static class DashboardPage
             </div>
             <div class="hint" id="importTagsSummary" role="status">Choose a file to compare its tags with this source.</div>
             <div class="field" style="margin:6px 0 0">
-                <label class="fl" style="width:auto" for="importTagsSelectAll"><input type="checkbox" id="importTagsSelectAll" disabled> Select every not-mapped tag in this group</label>
+                <label class="fl" style="width:auto" for="importTagsOnlyDiffers"><input type="checkbox" id="importTagsOnlyDiffers" disabled> Only tags with a different description</label>
+                <label class="fl" style="width:auto;margin-left:14px" for="importTagsSelectAll"><input type="checkbox" id="importTagsSelectAll" disabled> Select every not-mapped tag in this group</label>
                 <span class="msg" id="importTagsSelection" style="margin-left:auto"></span>
             </div>
             <div class="list" id="importTagsList" style="max-height:340px"></div>
@@ -2485,6 +2487,9 @@ const state = {
     importText: '',
     importGroup: '',
     importRows: [],
+    // The view filter (#41): show only the rows whose stored description differs from the file's
+    // — the ones an Update settles — so a long import can be reviewed down to the differences.
+    importOnlyDiffers: false,
     // Item ids ticked for mapping. Only rows the source really exposes and the bridge does not
     // map yet can be ticked, so the selection is exactly "not mapped, and on the source".
     importSelected: new Set(),
@@ -9567,6 +9572,7 @@ function openImportTags() {
     state.importGroup = '';
     state.importRows = [];
     state.importSelected = new Set();
+    state.importOnlyDiffers = false;
     state.importNameTemplatePending = false;
     state.importSourceChecked = false;
     state.importSourceTruncated = false;
@@ -9581,6 +9587,8 @@ function openImportTags() {
     el('importTagsList').innerHTML = '';
     el('importTagsSummary').className = 'hint';
     el('importTagsSummary').textContent = 'Choose a file to compare its tags with this source.';
+    el('importTagsOnlyDiffers').checked = false;
+    el('importTagsOnlyDiffers').disabled = true;
     el('importTagsSelectAll').checked = false;
     el('importTagsSelectAll').disabled = true;
     el('importTagsSelection').textContent = '';
@@ -9849,13 +9857,20 @@ function renderImportTags() {
     el('importTagsSummary').className = counts.missing || notes.length ? 'hint warn' : 'hint';
     el('importTagsSummary').textContent = parts.join(' · ') + (notes.length ? ' — ' + notes.join('; ') + '.' : '.');
 
-    const shown = rows.slice(0, IMPORT_ROWS_CAP);
-    const fileRows = rows.length
-        ? shown.map(importTagRowHtml).join('') + (rows.length > IMPORT_ROWS_CAP
-            ? `<span class="msg">… showing the first ${IMPORT_ROWS_CAP} of ${rows.length} tags. Add all still adds every new tag in this group.</span>`
+    // The differs toggle (#41) narrows the list to the rows an Update settles. It is a view
+    // filter: the tick selection and the footer buttons keep working on the whole group, like
+    // the row cap's "Add all still adds every new tag in this group".
+    if (state.importOnlyDiffers && !counts.differs) state.importOnlyDiffers = false;
+    const view = state.importOnlyDiffers ? rows.filter(row => row.status === 'differs') : rows;
+    const shown = view.slice(0, IMPORT_ROWS_CAP);
+    const fileRows = view.length
+        ? shown.map(importTagRowHtml).join('') + (view.length > IMPORT_ROWS_CAP
+            ? `<span class="msg">… showing the first ${IMPORT_ROWS_CAP} of ${view.length} tags${state.importOnlyDiffers ? ' with a different description — Update descriptions still covers every one in this group' : '. Add all still adds every new tag in this group.'}</span>`
             : '')
         : '<span class="msg">No tags in this group.</span>';
-    el('importTagsList').innerHTML = fileRows + importSourceOnlyHtml();
+    // The source-only reconciliation rows are not in the file, so they carry no description to
+    // compare — the differs view leaves them out.
+    el('importTagsList').innerHTML = fileRows + (state.importOnlyDiffers ? '' : importSourceOnlyHtml());
 
     // The tick-all control works on what this dialog may map at all, so it can never sweep a tag
     // the source does not expose into the selection.
@@ -9874,6 +9889,10 @@ function renderImportTags() {
     el('importTagsUpdateAll').style.display = counts.differs ? '' : 'none';
     el('importTagsUpdateAll').textContent = 'Update descriptions (' + counts.differs + ')';
     el('importTagsUpdateAll').disabled = counts.differs === 0;
+    // Nothing differs → nothing to isolate; the control stays visible but inert.
+    const differsToggle = el('importTagsOnlyDiffers');
+    differsToggle.checked = state.importOnlyDiffers;
+    differsToggle.disabled = counts.differs === 0;
 }
 // One add call for the rows the dialog adds — a single row or the whole group. The name is the
 // template's rendering (#40) as the preview returned it, the description comes from the file; the
@@ -10438,6 +10457,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         addImportRows(rows, rows.length === 1 ? rows[0].itemId : rows.length + ' tags')
             .then(() => { state.importSelected = new Set(); })
             .catch(e => setImportMessage('✗ ' + e.message));
+    });
+    el('importTagsOnlyDiffers').addEventListener('change', event => {
+        state.importOnlyDiffers = event.target.checked;
+        renderImportTags();
     });
     el('importTagsSelectAll').addEventListener('change', event => {
         const rows = importRowsSelectable(importTagRowsFor(state.importGroup));

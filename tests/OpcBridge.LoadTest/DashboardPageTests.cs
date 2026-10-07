@@ -1620,6 +1620,8 @@ public sealed class DashboardPageTests
         Assert.Contains("id=\"importTagsSelectAll\"", DashboardPage.Html);
         Assert.Contains("id=\"importTagsSelection\"", DashboardPage.Html);
         Assert.Contains("id=\"importTagsAddSelected\"", DashboardPage.Html);
+        // The rows whose stored description differs can be isolated (#41).
+        Assert.Contains("id=\"importTagsOnlyDiffers\"", DashboardPage.Html);
         // The faceplate carries the mapping's add stamp (issue #30).
         Assert.Contains("id=\"fpAdded\"", DashboardPage.Html);
         // Import lives beside the browse buttons in the Tag Browser toolbar, so the three ways
@@ -1674,6 +1676,27 @@ public sealed class DashboardPageTests
         Assert.Contains("if (button.dataset.action === 'import-unmap')", DashboardPage.Script);
         Assert.Contains("await removeMapping(state.importSourceId, row.itemId);", DashboardPage.Script);
         Assert.Contains("Its unit, deadband, update rate and MQTT/Influx settings are lost.'", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Script_MapsImportCanIsolateRowsWithADifferentDescription()
+    {
+        // #41: a long import can be narrowed to the rows whose stored description differs from the
+        // file's — the ones carrying the "desc differs" pill and an Update — instead of scanning
+        // the whole list. The filter is a view: ticks and the footer buttons stay group-wide.
+        Assert.Contains("Only tags with a different description", DashboardPage.Html);
+        Assert.Contains("importOnlyDiffers: false,", DashboardPage.Script);
+        Assert.Contains("el('importTagsOnlyDiffers').addEventListener('change'", DashboardPage.Script);
+        Assert.Contains("state.importOnlyDiffers = event.target.checked;", DashboardPage.Script);
+        Assert.Contains("const view = state.importOnlyDiffers ? rows.filter(row => row.status === 'differs') : rows;", DashboardPage.Script);
+        // The source-only reconciliation rows carry no file description, so the view leaves them out.
+        Assert.Contains("(state.importOnlyDiffers ? '' : importSourceOnlyHtml())", DashboardPage.Script);
+        // A filter with nothing left to show steps aside by itself — its last row was just updated
+        // or taken back — and nothing differs disables the control.
+        Assert.Contains("if (state.importOnlyDiffers && !counts.differs) state.importOnlyDiffers = false;", DashboardPage.Script);
+        Assert.Contains("differsToggle.disabled = counts.differs === 0;", DashboardPage.Script);
+        // Reopening the dialog starts unfiltered, like every other field it resets.
+        Assert.Contains("el('importTagsOnlyDiffers').checked = false;", DashboardPage.Script);
     }
 
     [Fact]
