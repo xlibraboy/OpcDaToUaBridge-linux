@@ -36,6 +36,22 @@ last-saved time, the destination the writer targets (URL · org · bucket), and 
 volume holding the data folder. `GET /api/influx/storage` serves it; like the rest of the page it
 needs a session (Viewer), and each bridge reports only its own folder — never another instance's.
 
+**Saved tags can be renamed to the import dialog's name template (#43).** A row that already holds
+a mapping carries a **Rename** button whenever the template's rendering no longer matches the
+stored name, and the footer mirrors it with **Update names (N)** for the whole group: the name the
+row shows — what an *Add* would store today — is written onto the saved mapping, so a file imported
+before the template existed can be brought in line without un-mapping and re-adding it. Everything
+else the tag carries (description, DA group and rate, MQTT/Influx settings, the add stamp) is
+echoed back untouched, and the comparison re-runs so the row settles under its new name.
+
+### Fixed
+
+**Editing a tag no longer drops its DA group association.** The tag payload the mapping API accepts
+never carried `daGroup`, so a save that echoed the stored mapping — the faceplate's *Apply*, an
+*Update descriptions*, or a rename in the import dialog — silently cleared the group a DA tag was
+assigned to and left it on the rate fallback. `daGroup` now round-trips through
+`POST /api/mappings/add` and `POST /api/mappings/update` like every other field.
+
 ## [1.8.0] - 2026-10-06
 
 ### Added

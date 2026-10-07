@@ -1642,6 +1642,8 @@ public sealed class DashboardPageTests
         Assert.Contains("id=\"importTagsAddSelected\"", DashboardPage.Html);
         // The rows whose stored description differs can be isolated (#41).
         Assert.Contains("id=\"importTagsOnlyDiffers\"", DashboardPage.Html);
+        // Saved tags can be renamed to the template's rendering (#43).
+        Assert.Contains("id=\"importTagsRenameAll\"", DashboardPage.Html);
         // The faceplate carries the mapping's add stamp (issue #30).
         Assert.Contains("id=\"fpAdded\"", DashboardPage.Html);
         // Import lives beside the browse buttons in the Tag Browser toolbar, so the three ways
@@ -1717,6 +1719,30 @@ public sealed class DashboardPageTests
         Assert.Contains("differsToggle.disabled = counts.differs === 0;", DashboardPage.Script);
         // Reopening the dialog starts unfiltered, like every other field it resets.
         Assert.Contains("el('importTagsOnlyDiffers').checked = false;", DashboardPage.Script);
+    }
+
+    [Fact]
+    public void Script_MapsImportCanRenameSavedTagsToTheTemplate()
+    {
+        // #43: a tag saved under an older name is renamed to what the dialog's row shows — the
+        // current template's rendering — from a Rename on the row or Update names in the footer.
+        // Both go through the same full-replace update the description flow uses, built from the
+        // stored mapping, so nothing else the tag carries is written away.
+        Assert.Contains("data-action=\"import-rename\"", DashboardPage.Script);
+        Assert.Contains(">Rename</button>", DashboardPage.Script);
+        Assert.Contains("function importRenameNeeded(", DashboardPage.Script);
+        Assert.Contains("function importRenameRows(", DashboardPage.Script);
+        Assert.Contains("if (button.dataset.action === 'import-rename')", DashboardPage.Script);
+        Assert.Contains("if (row.status !== 'mapped' && row.status !== 'differs') return false;", DashboardPage.Script);
+        Assert.Contains("payload.displayName = row.name || row.itemId;", DashboardPage.Script);
+        // The payload is a full replace, so the stored mappings are reloaded before it is built.
+        Assert.Contains("async function importRenameRows(rows) {\n    await loadMappings();", DashboardPage.Script);
+        Assert.Contains("const payload = mappingReplacePayload(mapping, state.importSourceId, row.itemId);", DashboardPage.Script);
+        // The footer mirror of Update descriptions, hidden when nothing needs renaming, and parked
+        // while an edited template is re-rendering the rows.
+        Assert.Contains("el('importTagsRenameAll').textContent = 'Update names (", DashboardPage.Script);
+        Assert.Contains("el('importTagsRenameAll').disabled = true;", DashboardPage.Script);
+        Assert.Contains("importTagRowsFor(state.importGroup).filter(importRenameNeeded)", DashboardPage.Script);
     }
 
     [Fact]
