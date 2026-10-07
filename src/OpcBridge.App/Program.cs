@@ -3531,6 +3531,7 @@ static TagMapping ToTagMapping(MappingTagDto tag) => new()
     ManualValue = string.IsNullOrWhiteSpace(tag.ManualValue) ? null : tag.ManualValue,
     PollRateMs = tag.PollRateMs ?? 0,
     Decimals = tag.Decimals,
+    DaGroup = string.IsNullOrWhiteSpace(tag.DaGroup) ? null : tag.DaGroup.Trim(),
     DeadbandPct = tag.DeadbandPct ?? 0f,
     Writeable = tag.Writeable ?? false,
     AccessRights = tag.AccessRights ?? string.Empty,

@@ -41,8 +41,11 @@ namespace OpcBridge.App;
 //   Maps import from file (#30 rework — source-scan reconciliation, path-qualified item ids): id="btnImportTags" (browser toolbar, beside
 //   Browse All Tags / Browse Folders)/"importTagsFile"/"importTagsOverlay"/"importTagsPick"/
 //   "importTagsSource"/"importTagsGroup"/"importTagsSummary"/"importTagsList"/"importTagsMessage"/
-//   "importTagsSelectAll"/"importTagsSelection"/"importTagsOnlyDiffers"/"importTagsAddAll"/"importTagsAddSelected"/"importTagsUpdateAll",
+//   "importTagsSelectAll"/"importTagsSelection"/"importTagsOnlyDiffers"/"importTagsAddAll"/"importTagsAddSelected"/
+//   "importTagsUpdateAll"/"importTagsRenameAll",
 //   state.importOnlyDiffers — the "Only tags with a different description" view filter (#41),
+//   saved tags rename to the template's rendering (#43): data-action="import-rename",
+//   function importRenameNeeded(/importRenameRows(,
 //   function openImportTags(/closeImportTags(/renderImportTags(/readImportTagsFile(/addImportRows(/
 //   updateImportRows(/unmapImportRow(/importRowSelectable(/importSourceOnlyHtml(/pruneImportSelection(,
 //   /api/mappings/import/preview, data-action="import-add"/"import-update"/"import-unmap"/"import-pick",
@@ -2018,6 +2021,7 @@ internal static class DashboardPage
         </div>
         <div class="modal-f">
             <span class="msg" id="importTagsMessage" role="status"></span>
+            <button class="btn ghost" type="button" id="importTagsRenameAll" style="display:none">Update names</button>
             <button class="btn ghost" type="button" id="importTagsUpdateAll" style="display:none">Update descriptions</button>
             <button class="btn ghost" type="button" id="importTagsAddAll">Add all new</button>
             <button class="btn" type="button" id="importTagsAddSelected">Map selected</button>
@@ -9630,6 +9634,7 @@ function openImportTags() {
     el('importTagsAddSelected').textContent = 'Map selected';
     el('importTagsAddSelected').disabled = true;
     el('importTagsUpdateAll').style.display = 'none';
+    el('importTagsRenameAll').style.display = 'none';
     setImportMessage('');
     el('importTagsOverlay').classList.add('open');
     el('importTagsPick').focus();
@@ -9706,6 +9711,7 @@ function applyImportNameTemplate() {
     el('importTagsAddAll').disabled = true;
     el('importTagsAddSelected').disabled = true;
     el('importTagsUpdateAll').disabled = true;
+    el('importTagsRenameAll').disabled = true;
     setImportMessage('Applying the name template…');
     refreshImportPreview()
         .then(applied => {
@@ -9827,6 +9833,17 @@ function importTagStatusChip(row) {
     if (row.onSource === false) return '<span class="pill" title="The source does not expose this tag name">not on source</span>';
     return '<span class="pill" title="On the source and not mapped yet — tick it to map it">not mapped</span>';
 }
+// Whether a saved row's name is behind the template (#43): the dialog shows every row under the
+// current template, but a mapping added earlier keeps the name it was stored with — the row and
+// the tag disagree until the rendering is written onto the mapping. Only a row that already holds
+// a mapping can need this, and only while the two names differ.
+function importRenameNeeded(row) {
+    if (row.status !== 'mapped' && row.status !== 'differs') return false;
+    const mapping = getMapping(state.importSourceId, row.itemId);
+    if (!mapping) return false;
+    const stored = String(mapping.displayName ?? mapping.DisplayName ?? '');
+    return stored !== String(row.name || row.itemId);
+}
 function importTagRowHtml(row) {
     const description = String(row.description || '');
     const existing = String(row.existingDescription || '');
@@ -9846,12 +9863,17 @@ function importTagRowHtml(row) {
     // noticed in this very list, so Un-map removes the mapping and the compare drops the row back
     // to "not mapped", ready to be ticked. A differing description keeps Update beside it.
     const unmap = `<button class="btn ghost" type="button" data-action="import-unmap" data-item-id="${attr(row.itemId)}">Un-map</button>`;
+    // A saved row whose name no longer matches the template gets Rename (#43): it writes the name
+    // the row shows — what the template would map it with — onto the stored mapping.
+    const rename = importRenameNeeded(row)
+        ? `<button class="btn ghost" type="button" data-action="import-rename" data-item-id="${attr(row.itemId)}">Rename</button>`
+        : '';
     const action = row.status === 'new'
         ? `<button class="btn ghost" type="button" data-action="import-add" data-item-id="${attr(row.itemId)}">Add</button>`
         : row.status === 'differs'
-            ? `<button class="btn ghost" type="button" data-action="import-update" data-item-id="${attr(row.itemId)}">Update</button>` + unmap
+            ? rename + `<button class="btn ghost" type="button" data-action="import-update" data-item-id="${attr(row.itemId)}">Update</button>` + unmap
             : row.status === 'mapped'
-                ? unmap
+                ? rename + unmap
                 : '';
     return `<div class="li" role="listitem"><div class="import-pick">${importPickHtml(row)}</div><div style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span class="n">${esc(row.name || row.itemId)}</span> <span class="p">${esc(detail)}</span></div><div class="li-actions">${importTagStatusChip(row)}${action}</div></div>`;
 }
@@ -9869,6 +9891,7 @@ function renderImportTags() {
     const rows = importTagRowsFor(state.importGroup);
     const counts = importRowCounts(rows);
     const selectedCount = importSelectedRows(rows).length;
+    const renameCount = rows.filter(importRenameNeeded).length;
     const parts = [
         counts.total + (counts.total === 1 ? ' tag' : ' tags') + ' in this group',
         counts.addable + ' not mapped',
@@ -9922,6 +9945,11 @@ function renderImportTags() {
     el('importTagsUpdateAll').style.display = counts.differs ? '' : 'none';
     el('importTagsUpdateAll').textContent = 'Update descriptions (' + counts.differs + ')';
     el('importTagsUpdateAll').disabled = counts.differs === 0;
+    // Renaming (#43) is group-wide too — every saved row the template's rendering no longer
+    // matches — and hides itself when there is nothing to rename.
+    el('importTagsRenameAll').style.display = renameCount ? '' : 'none';
+    el('importTagsRenameAll').textContent = 'Update names (' + renameCount + ')';
+    el('importTagsRenameAll').disabled = renameCount === 0;
     // Nothing differs → nothing to isolate; the control stays visible but inert.
     const differsToggle = el('importTagsOnlyDiffers');
     differsToggle.checked = state.importOnlyDiffers;
@@ -9984,6 +10012,32 @@ async function updateImportRows(rows) {
     await refresh();
     await refreshImportPreview();
     setImportMessage('✓ ' + updated + (updated === 1 ? ' description updated' : ' descriptions updated') + '.');
+}
+// Renaming a saved tag to what the dialog shows (#43), the mirror of the description update above:
+// the name sent is the row's template rendering, so the stored mapping ends up called exactly what
+// an Add would name it today. Mappings are reloaded first — the payload is a full replace built
+// from the stored copy, so a stale one must never be written back.
+async function importRenameRows(rows) {
+    await loadMappings();
+    let renamed = 0;
+    for (const row of rows) {
+        const mapping = getMapping(state.importSourceId, row.itemId);
+        if (!mapping) continue;
+        const payload = mappingReplacePayload(mapping, state.importSourceId, row.itemId);
+        payload.displayName = row.name || row.itemId;
+        const r = await fetch('/api/mappings/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tag: payload })
+        });
+        const p = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
+        renamed++;
+    }
+    await loadMappings();
+    await refresh();
+    await refreshImportPreview();
+    setImportMessage('✓ ' + renamed + (renamed === 1 ? ' tag name updated' : ' tag names updated') + '.');
 }
 // Taking a mis-picked mapping back (#32): the same remove the faceplate performs, then the
 // comparison again — the row returns as "not mapped" with its description and tick, so the right
@@ -10513,6 +10567,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         setImportMessage('Updating ' + rows.length + (rows.length === 1 ? ' description…' : ' descriptions…'));
         updateImportRows(rows).catch(e => setImportMessage('✗ ' + e.message));
     });
+    el('importTagsRenameAll').addEventListener('click', () => {
+        const rows = importTagRowsFor(state.importGroup).filter(importRenameNeeded);
+        if (!rows.length) return;
+        setImportMessage('Renaming ' + rows.length + (rows.length === 1 ? ' tag…' : ' tags…'));
+        importRenameRows(rows).catch(e => setImportMessage('✗ ' + e.message));
+    });
     el('importTagsOverlay').addEventListener('click', event => {
         const button = event.target.closest('button[data-action]');
         if (!button) return;
@@ -10532,6 +10592,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (!row) return;
             setImportMessage('Updating ' + itemId + '…');
             updateImportRows([row]).catch(e => setImportMessage('✗ ' + e.message));
+            return;
+        }
+        if (button.dataset.action === 'import-rename') {
+            const row = importTagRowsFor(state.importGroup).find(r => r.itemId === itemId);
+            if (!row) return;
+            setImportMessage('Renaming ' + itemId + '…');
+            importRenameRows([row]).catch(e => setImportMessage('✗ ' + e.message));
             return;
         }
         if (button.dataset.action === 'import-unmap') {

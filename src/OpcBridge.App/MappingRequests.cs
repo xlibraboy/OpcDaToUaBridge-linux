@@ -12,6 +12,7 @@ public sealed record MappingTagDto(
     string? ManualValue = null,
     int? PollRateMs = null,
     int? Decimals = null,
+    string? DaGroup = null,
     float? DeadbandPct = null,
     bool? Writeable = null,
     string? AccessRights = null,
