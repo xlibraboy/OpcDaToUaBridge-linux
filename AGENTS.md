@@ -13,6 +13,9 @@ Add important architectural decisions and patterns here.
 
 ## Common Workflows
 
+### GitHub Issues
+When handling a GitHub issue, do not work directly on `main`. Create a dedicated branch and an isolated working directory (worktree) for the issue and do the work there. Do not open a PR; when the work is done, ask whether to merge the branch to `main` directly.
+
 ### Build with Docker
 There is no local dotnet SDK — all builds and tests run in the official SDK container. `--user` keeps build artifacts owned by the host user, and the mounted `.nuget-cache` persists packages between runs.
 
