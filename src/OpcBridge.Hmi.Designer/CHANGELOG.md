@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-10-06
+
 ### Added
 
 **Pick a source and bind a tag — no more typing IDs.** The Designer now connects to the

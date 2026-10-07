@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.2] - 2026-10-06
+
 ### Fixed
 
 **The connection state is now live, not latched at connect.** The status pill, the Home bridge

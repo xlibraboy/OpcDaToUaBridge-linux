@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-10-06
+
 ### Added
 
 **Import from file can name the tags it maps with an editable template (#40).** The import dialog

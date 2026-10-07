@@ -15,9 +15,9 @@
     InformationalVersion.
   -->
   <PropertyGroup>
-    <ServerVersion>1.7.2</ServerVersion>
-    <HmiVersion>1.8.1</HmiVersion>
-    <DesignerVersion>1.7.0</DesignerVersion>
+    <ServerVersion>1.8.0</ServerVersion>
+    <HmiVersion>1.8.2</HmiVersion>
+    <DesignerVersion>1.8.0</DesignerVersion>
     <Version>$(ServerVersion)</Version>
     <Product>OpcBridge</Product>
   </PropertyGroup>
