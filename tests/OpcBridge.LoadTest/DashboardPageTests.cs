@@ -187,6 +187,26 @@ public sealed class DashboardPageTests
     }
 
     [Fact]
+    public void Html_ContainsInfluxStorageBox()
+    {
+        Assert.Contains("id=\"influxStoreDataDir\"", DashboardPage.Html);
+        Assert.Contains("id=\"influxStoreSource\"", DashboardPage.Html);
+        Assert.Contains("id=\"influxStoreConfigPath\"", DashboardPage.Html);
+        Assert.Contains("id=\"influxStoreConfigSize\"", DashboardPage.Html);
+        Assert.Contains("id=\"influxStoreConfigSaved\"", DashboardPage.Html);
+        Assert.Contains("id=\"influxStoreDestination\"", DashboardPage.Html);
+        Assert.Contains("id=\"influxStoreDisk\"", DashboardPage.Html);
+    }
+
+    [Fact]
+    public void Script_LoadsInfluxStorage()
+    {
+        Assert.Contains("function loadInfluxStorage(", DashboardPage.Script);
+        Assert.Contains("/api/influx/storage", DashboardPage.Script);
+        Assert.Contains("loadInfluxStorage()", DashboardPage.Script);
+    }
+
+    [Fact]
     public void Html_SeparatesMqttAndTrafficViews()
     {
         Assert.Contains("data-tab=\"mqtt\"", DashboardPage.Html);

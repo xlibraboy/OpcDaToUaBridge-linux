@@ -16,5 +16,9 @@ public static class DataDirectory
 
     public static string Value => Path_.Value;
 
+    /// <summary>True when OPCBRIDGE_DATA supplies the data folder (e.g. a Docker volume); false when the app folder is used.</summary>
+    public static bool IsEnvironmentOverride { get; } =
+        !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("OPCBRIDGE_DATA"));
+
     public static string Combine(string fileName) => Path.Combine(Value, fileName);
 }

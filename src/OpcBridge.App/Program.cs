@@ -2668,6 +2668,43 @@ app.MapGet("/api/influx/status", (InfluxRuntimeSettings settings) =>
         enabled = snapshot.Options.Enabled
     });
 });
+app.MapGet("/api/influx/storage", () =>
+{
+    string dataDirectory = DataDirectory.Value;
+    string configPath = DataDirectory.Combine("influx.json");
+    FileInfo config = new(configPath);
+    long? freeBytes = null;
+    long? totalBytes = null;
+    try
+    {
+        string root = Path.GetPathRoot(Path.GetFullPath(dataDirectory)) ?? string.Empty;
+        if (root.Length > 0)
+        {
+            DriveInfo drive = new(root);
+            if (drive.IsReady)
+            {
+                freeBytes = drive.AvailableFreeSpace;
+                totalBytes = drive.TotalSize;
+            }
+        }
+    }
+    catch
+    {
+        // UNC paths / unready volumes: paths still answer; sizes stay null.
+    }
+
+    return Results.Json(new
+    {
+        dataDirectory,
+        dataDirectorySource = DataDirectory.IsEnvironmentOverride ? "OPCBRIDGE_DATA" : "application folder",
+        configPath,
+        configExists = config.Exists,
+        configSizeBytes = config.Exists ? config.Length : (long?)null,
+        configLastWriteUtc = config.Exists ? config.LastWriteTimeUtc : (DateTime?)null,
+        freeBytes,
+        totalBytes
+    });
+});
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapAuth();
