@@ -1,4 +1,3 @@
-using Microsoft.Extensions.Logging;
 using OpcBridge.Mobile.Core;
 using OpcBridge.Mobile.Views;
 
@@ -10,10 +9,6 @@ public static class MauiProgram
     {
         MauiAppBuilder builder = MauiApp.CreateBuilder();
         builder.UseMauiApp<App>();
-
-#if DEBUG
-        builder.Logging.AddDebug();
-#endif
 
         builder.Services.AddSingleton<LogicApiClient>();
         builder.Services.AddSingleton<MobileHubClient>();

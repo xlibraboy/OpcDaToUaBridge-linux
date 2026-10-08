@@ -367,7 +367,7 @@ Package `publish.tmp` → tar.gz, SCP to host as `publish-new.tar.gz`, then run 
 - **Backend-first.** Verify the backend seam (`ISourceClient`, `BridgeWorker`, `BridgeState`) before wiring dashboard controls.
 - **Conventional commits** (`feat:`, `fix:`, etc.). Committed code on `main` is authoritative; uncommitted changes are a known risk.
 - **One version and one changelog per app.** `Directory.Build.props` holds `ServerVersion`, `HmiVersion`, `DesignerVersion` and `MobileVersion`; each app's changelog is its own release authority and each releases on its own tag (`v*`, `hmi-v*`, `designer-v*`, `mobile-v*`). `ChangelogTests` enforces the file format, that an app's newest section matches the version its own assembly reports (the Android viewer's against `MobileVersion`, since its assembly cannot load on the Linux test host), and the embedded copies.
-- **Tests exist** under `tests/OpcBridge.LoadTest` (xUnit, 1008 tests). Prefer `InternalsVisibleTo` over making types public for tests. Run in Docker (command above). Primary verification is the full suite + rig/browser proof after deploy.
+- **Tests exist** under `tests/OpcBridge.LoadTest` (xUnit, 1395 tests). Prefer `InternalsVisibleTo` over making types public for tests. Run in Docker (command above). Primary verification is the full suite + rig/browser proof after deploy. Note: running the container as `-u "$(id -u):$(id -g)"` leaves `DaWorkerIdentityTests.CurrentAccountName_IsNotEmpty` red when the host uid has no passwd entry in the image (environment, not code).
 
 ## Gotchas
 

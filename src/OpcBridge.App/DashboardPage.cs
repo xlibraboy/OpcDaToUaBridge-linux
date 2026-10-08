@@ -522,11 +522,11 @@ internal static class DashboardPage
         /* Plant logic tab: block list on the left, the block editor on the right; conditions
            and steps render as compact rows carrying a live state chip per condition. */
         .logic-layout { display: grid; grid-template-columns: minmax(230px, 300px) 1fr; gap: 12px; align-items: start; }
-        .logic-block-row { display: flex; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 6px 8px; border: 1px solid var(--border2); background: var(--panel); color: var(--text); cursor: pointer; }
+        .logic-block-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 6px 8px; border: 1px solid var(--border2); background: var(--panel); color: var(--text); cursor: pointer; }
         .logic-block-row + .logic-block-row { margin-top: 6px; }
         .logic-block-row.active { border-color: var(--accent); background: var(--panel2); }
         .logic-block-row .logic-row-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .logic-block-row .logic-row-reason { flex: 1 0 100%; color: var(--muted); font-size: var(--fs-micro); }
+        .logic-block-row .logic-row-reason { flex: 1 0 100%; min-width: 0; color: var(--muted); font-size: var(--fs-micro); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .logic-cond-row, .logic-action-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 8px; border: 1px solid var(--border2); background: var(--panel); }
         .logic-cond-row + .logic-cond-row, .logic-action-row + .logic-action-row { margin-top: 6px; }
         .logic-cond-row input[data-field="text"] { flex: 1 1 220px; min-width: 160px; }
