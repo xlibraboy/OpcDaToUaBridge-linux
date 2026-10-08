@@ -214,6 +214,8 @@ builder.Services.AddSingleton<SourceClientFactory>(sp => new RoutingSourceClient
 builder.Services.AddSingleton<BridgeState>();
 builder.Services.AddSingleton<MappingStore>();
 builder.Services.AddSingleton<InterlinkStore>();
+builder.Services.AddSingleton<LogicStore>();
+builder.Services.AddSingleton<LogicNoteStore>();
 builder.Services.AddSingleton<IInterlinkMetadataResolver>(sp => sp.GetRequiredService<BridgeWorker>());
 builder.Services.AddSingleton<UaServerHost>();
 builder.Services.AddSingleton<OpcUaBrowseService>();
@@ -1752,6 +1754,59 @@ app.MapDelete("/api/interlinks/{id:guid}", (Guid id, InterlinkStore store) =>
     }
 
     return Results.Json(new { version });
+});
+// Plant logic: blocks authored in the dashboard's Logic tab, evaluated against live tag
+// values. /api/logic/state and /api/logic/notes are HMI paths (see AuthPolicy) because the
+// mobile viewer reads and annotates them like the Avalonia apps do; definitions stay on the
+// default role table (reads Viewer, mutations Engineer).
+app.MapGet("/api/logic", (LogicStore store) =>
+{
+    (IReadOnlyList<LogicBlockDto> blocks, long version) = store.GetSnapshot();
+    return Results.Json(new { blocks, version });
+});
+app.MapPost("/api/logic/blocks", (LogicBlockSaveRequest request, LogicStore store) =>
+{
+    if (request.Block is null)
+    {
+        return Results.BadRequest(new { error = "Block is required." });
+    }
+
+    if (!store.TrySave(request.Block, out LogicBlockDto saved, out long version, out string? error))
+    {
+        return string.Equals(error, "Block name already exists.", StringComparison.Ordinal)
+            ? Results.Conflict(new { error })
+            : Results.BadRequest(new { error });
+    }
+
+    return Results.Json(new { block = saved, version });
+});
+app.MapDelete("/api/logic/blocks/{id:guid}", (Guid id, LogicStore store) =>
+{
+    if (!store.TryRemove(id, out long version))
+    {
+        return Results.NotFound(new { error = "Block not found." });
+    }
+
+    return Results.Json(new { version });
+});
+app.MapGet("/api/logic/state", (LogicStore store, MappingStore mappingStore, BridgeState state) =>
+    Results.Json(LogicStateRead.Snapshot(store, mappingStore, state, DateTime.UtcNow)));
+app.MapGet("/api/logic/notes", (LogicNoteStore notes, Guid? blockId, int? limit) =>
+    Results.Json(new { notes = notes.Get(blockId, limit ?? 50) }));
+app.MapPost("/api/logic/notes", (LogicNoteAddRequest request, LogicNoteStore notes, LogicStore store, HttpContext context) =>
+{
+    (IReadOnlyList<LogicBlockDto> blocks, _) = store.GetSnapshot();
+    if (!blocks.Any(block => block.Id == request.BlockId))
+    {
+        return Results.NotFound(new { error = "Block not found." });
+    }
+
+    if (!notes.TryAdd(request, context.GetAuthCaller()?.Username, out LogicNoteDto? note, out string? error))
+    {
+        return Results.BadRequest(new { error });
+    }
+
+    return Results.Json(new { note });
 });
 app.MapGet("/api/mappings", (MappingStore store) =>
 {

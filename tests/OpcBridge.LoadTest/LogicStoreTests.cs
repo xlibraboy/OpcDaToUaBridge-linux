@@ -8,10 +8,11 @@ using Xunit;
 namespace OpcBridge.LoadTest;
 
 [Collection(nameof(InterlinkApiAppCollection))]
-public sealed class LogicStoreTests
+public sealed class LogicStoreTests : IDisposable
 {
-    // LogicStore persists to a fixed file under AppContext.BaseDirectory. Clear it before each
-    // test so a prior run cannot leak blocks into the snapshot under test.
+    // LogicStore persists to a fixed file under AppContext.BaseDirectory — which is also the
+    // directory the app-backed tests copy their instance from. Clear it before each test, and
+    // again after (xUnit disposes each test instance), so no leftover block can seed a test app.
     private static LogicStore CreateStore()
     {
         string path = Path.Combine(AppContext.BaseDirectory, "logic.json");
@@ -21,6 +22,21 @@ public sealed class LogicStoreTests
         }
 
         return new LogicStore(Options.Create(new BridgeOptions()));
+    }
+
+    public void Dispose()
+    {
+        string path = Path.Combine(AppContext.BaseDirectory, "logic.json");
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch
+        {
+        }
     }
 
     private static LogicBlockDto CreateInterlock(
@@ -65,7 +81,7 @@ public sealed class LogicStoreTests
         List<long> versions = new();
         store.Changed += versions.Add;
 
-        bool ok = store.TrySave(CreateInterlock(), out long version, out string? error);
+        bool ok = store.TrySave(CreateInterlock(), out _, out long version, out string? error);
 
         Assert.True(ok);
         Assert.Null(error);
@@ -84,10 +100,10 @@ public sealed class LogicStoreTests
     {
         LogicStore store = CreateStore();
         LogicBlockDto block = CreateInterlock();
-        store.TrySave(block, out _, out _);
+        store.TrySave(block, out _, out _, out _);
 
         block.Name = "Line 01 Start (rev B)";
-        bool ok = store.TrySave(block, out _, out string? error);
+        bool ok = store.TrySave(block, out _, out _, out string? error);
 
         Assert.True(ok);
         Assert.Null(error);
@@ -100,9 +116,9 @@ public sealed class LogicStoreTests
     public void TrySave_RejectsDuplicateNamesCaseInsensitively()
     {
         LogicStore store = CreateStore();
-        store.TrySave(CreateInterlock("Line 01 Start"), out _, out _);
+        store.TrySave(CreateInterlock("Line 01 Start"), out _, out _, out _);
 
-        bool ok = store.TrySave(CreateInterlock("line 01 start"), out _, out string? error);
+        bool ok = store.TrySave(CreateInterlock("line 01 start"), out _, out _, out string? error);
 
         Assert.False(ok);
         Assert.Equal("Block name already exists.", error);
@@ -117,7 +133,7 @@ public sealed class LogicStoreTests
     {
         LogicStore store = CreateStore();
 
-        bool ok = store.TrySave(CreateInterlock(name), out _, out string? error);
+        bool ok = store.TrySave(CreateInterlock(name), out _, out _, out string? error);
 
         Assert.False(ok);
         Assert.Equal(expectedError, error);
@@ -130,7 +146,7 @@ public sealed class LogicStoreTests
         LogicBlockDto block = CreateInterlock();
         block.Kind = "ladder";
 
-        bool ok = store.TrySave(block, out _, out string? error);
+        bool ok = store.TrySave(block, out _, out _, out string? error);
 
         Assert.False(ok);
         Assert.Equal("Block kind must be interlock, permissive or sequence.", error);
@@ -143,7 +159,7 @@ public sealed class LogicStoreTests
         LogicBlockDto block = CreateInterlock();
         block.Conditions.Clear();
 
-        bool ok = store.TrySave(block, out _, out string? error);
+        bool ok = store.TrySave(block, out _, out _, out string? error);
 
         Assert.False(ok);
         Assert.Equal("A block needs at least one condition.", error);
@@ -157,7 +173,7 @@ public sealed class LogicStoreTests
         bool ok = store.TrySave(
             CreateInterlock(conditions: CreateCondition(op: LogicConditionOps.GreaterThan, value: null)),
             out _,
-            out string? error);
+            out _, out string? error);
 
         Assert.False(ok);
         Assert.Equal("A numeric comparison needs a value.", error);
@@ -170,7 +186,7 @@ public sealed class LogicStoreTests
         LogicBlockDto block = CreateInterlock();
         block.Kind = LogicBlockKinds.Sequence;
 
-        bool ok = store.TrySave(block, out _, out string? error);
+        bool ok = store.TrySave(block, out _, out _, out string? error);
 
         Assert.False(ok);
         Assert.Equal("A sequence needs at least one step.", error);
@@ -186,7 +202,7 @@ public sealed class LogicStoreTests
         block.Steps.Add(CreateStep("Step 1"));
         block.Steps.Add(CreateStep("step 1"));
 
-        bool ok = store.TrySave(block, out _, out string? error);
+        bool ok = store.TrySave(block, out _, out _, out string? error);
 
         Assert.False(ok);
         Assert.Equal("Step names must be unique within a sequence.", error);
@@ -204,7 +220,7 @@ public sealed class LogicStoreTests
         step.CompletionItemId = null;
         block.Steps.Add(step);
 
-        bool ok = store.TrySave(block, out _, out string? error);
+        bool ok = store.TrySave(block, out _, out _, out string? error);
 
         Assert.False(ok);
         Assert.Equal("A completion handshake needs both a source and a tag.", error);
@@ -219,7 +235,7 @@ public sealed class LogicStoreTests
         block.Conditions[0].Id = Guid.Empty;
         block.Conditions[0].SourceId = "  ";
 
-        bool ok = store.TrySave(block, out _, out _);
+        bool ok = store.TrySave(block, out _, out _, out _);
 
         Assert.True(ok);
         (IReadOnlyList<LogicBlockDto> blocks, _) = store.GetSnapshot();
@@ -233,7 +249,7 @@ public sealed class LogicStoreTests
     {
         LogicStore store = CreateStore();
         LogicBlockDto block = CreateInterlock();
-        store.TrySave(block, out _, out _);
+        store.TrySave(block, out _, out _, out _);
 
         Assert.False(store.TryRemove(Guid.NewGuid(), out _));
         Assert.True(store.TryRemove(block.Id, out long version));
@@ -248,7 +264,7 @@ public sealed class LogicStoreTests
         LogicStore store = CreateStore();
         LogicBlockDto block = CreateInterlock();
         block.Conditions[0].NextStepText = "Turn the permit key to Permit";
-        store.TrySave(block, out _, out _);
+        store.TrySave(block, out _, out _, out _);
 
         LogicStore reopened = new(Options.Create(new BridgeOptions()));
         (IReadOnlyList<LogicBlockDto> blocks, long version) = reopened.GetSnapshot();

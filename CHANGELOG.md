@@ -19,6 +19,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+**Plant logic — interlocks, permissives and sequences — is a first-class bridge concept.** A new
+**Tags ▸ Logic** tab authors named blocks of conditions over mapped tags: each condition carries
+the operator sentence and the *what to do when not true* next-step line, interlock/permissive
+blocks require all of their conditions to be true, and sequence blocks walk ordered steps (each
+completing when its conditions are true plus an optional completion-handshake tag). The bridge
+evaluates every block against the live value stream — a false condition gives **blocked** with
+that condition's sentence as the reason, a missing or bad-quality value gives **unknown**, never
+silently ready — and serves the result at `GET /api/logic/state` and on the `logic` SignalR
+message, pushed only when the derived states change. Blocks and conditions live in `logic.json`
+next to `mappings.json` / `links.json`; definitions are edited through `GET/POST/DELETE
+/api/logic*`. See **Help ▸ Guide ▸ Logic**.
+
 **The import dialog can show only the rows whose description differs (#41).** A **Only tags with a
 different description** toggle sits above the preview list: switching it on narrows a long file to
 the rows already mapped with a different description — the ones carrying the *desc differs* pill

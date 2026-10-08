@@ -54,20 +54,26 @@ public sealed class LogicStore
         return version_;
     }
 
-    /// <summary>Insert or replace by id — the dashboard's Save for a new or edited block.</summary>
-    public bool TrySave(LogicBlockDto block, out long version, out string? error)
+    /// <summary>
+    /// Insert or replace by id — the dashboard's Save for a new or edited block.
+    /// <paramref name="saved"/> is the normalized block as stored (ids generated, text trimmed).
+    /// </summary>
+    public bool TrySave(LogicBlockDto block, out LogicBlockDto saved, out long version, out string? error)
     {
         long newVersion;
+        LogicBlockDto stored;
         lock (sync_)
         {
             if (!TryNormalize(block, out LogicBlockDto normalized, out error))
             {
+                saved = block;
                 version = version_;
                 return false;
             }
 
             if (HasNameConflict(normalized.Name, normalized.Id))
             {
+                saved = block;
                 version = version_;
                 error = "Block name already exists.";
                 return false;
@@ -86,10 +92,12 @@ public sealed class LogicStore
             version_++;
             Persist();
             newVersion = version_;
+            stored = normalized;
             error = null;
         }
 
         Changed?.Invoke(newVersion);
+        saved = stored;
         version = newVersion;
         return true;
     }

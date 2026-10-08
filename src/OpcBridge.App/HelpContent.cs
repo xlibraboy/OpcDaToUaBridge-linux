@@ -21,7 +21,7 @@ collapsed and open on click — selecting a page in one of them (or following a 
 that lands there) opens its group for you:
 
 - **Sources** — Sources (status, + Add Source wizard), OPC DA (connection config, credentials, default rate, subscriptions, discover, backup), DA Groups (per-rate COM groups, per-group I/O mode), OPC UA (client sources) — external UA servers the bridge connects out to, UA Subs (named UA subscriptions and their publish rates), Drivers (PLC serial: Mitsubishi A3N RS-232, Siemens S7-200 PPI)
-- **Tags** — Maps (OPC DA / OPC UA / Drivers sub-tabs: browse, search the tag list, map to UA, import a tag list from a file, faceplate), Interlinks (tag-to-tag forwarding across sources)
+- **Tags** — Maps (OPC DA / OPC UA / Drivers sub-tabs: browse, search the tag list, map to UA, import a tag list from a file, faceplate), Interlinks (tag-to-tag forwarding across sources), Logic (plant interlocks, permissives and sequences shown in the OpcBridge Logic app)
 - **IoT** — MQTT (broker config), Traffic (publish/subscribe monitor)
 - **Historian** — InfluxDB (config, write status, per-tag enable via faceplate)
 - **Ops** — Monitor (status, resources), Diagnostics (bridge vitals: uptime, values/sec, poll duration), Live Values (live tag values), Sessions (DA source diagnostics, time sync, UA sessions/subscriptions, bandwidth), Logs, Diagram
@@ -233,6 +233,50 @@ Interlinks are a **separate subsystem** from DA → UA mappings. A provider chan
       │                                    │
       └── InterlinkRule match ────────────► WriteQueue(B) ──► protocol write (DA async/sync, UA Write)
 ```
+
+---
+
+# Logic (Interlocks, Permissives & Sequences)
+
+The **Logic** tab holds the plant logic the **OpcBridge Logic** mobile app shows on the floor:
+named blocks of conditions built from mapped tags, evaluated by the bridge against live values.
+The evaluation runs server-side, so the phone carries no plant logic and shows exactly what the
+bridge derived.
+
+## Block kinds
+
+- **Interlock / permissive** — a flat list of conditions. The block is **ready** only when every
+  *blocks*-severity condition is true. A false condition makes it **blocked**, with that
+  condition's operator sentence as the reason; a missing or bad-quality value makes it
+  **unknown** — never silently ready.
+- **Sequence** — ordered steps. A step is **done** when its conditions are true and, when a
+  *completion handshake* tag is set, that tag is true too. The first step that is not done is the
+  **current** one — its failing condition (or unsatisfied handshake) is the block's reason — and
+  every later step stays **pending** until the sequence reaches it.
+
+## Conditions
+
+Each condition is one tag comparison, with the operator sentence the phone shows and a
+"what to do when not true" next-step line:
+
+- `is ON` / `is OFF` — digital state; Boolean tags and Byte 0/1 tags both work (`is ON` is any
+  non-zero value).
+- `>` / `<` / `=` — numeric comparison against the value you enter.
+- **warn only** conditions are shown and tracked, but never block the block.
+
+## Actions
+
+A block can carry action buttons (label, tag, value, confirm). The phone renders them as
+operator buttons; a press writes the value through the bridge's normal write path, so the target
+tag must allow writes and the caller's role must permit them.
+
+## Live state
+
+The bridge evaluates every block on the value stream and serves the result at
+`GET /api/logic/state`, pushing changes to connected apps over the `logic` hub message. The
+dashboard shows the same chips while the tab is open — green ready, red blocked, grey
+unknown/disabled — and both the dashboard and the phone show the first blocking reason and the
+next-step text.
 
 ---
 

@@ -8,7 +8,7 @@ using Xunit;
 namespace OpcBridge.LoadTest;
 
 [Collection(nameof(InterlinkApiAppCollection))]
-public sealed class LogicNoteStoreTests
+public sealed class LogicNoteStoreTests : IDisposable
 {
     private static string PersistPath => Path.Combine(AppContext.BaseDirectory, "logic-notes.json");
 
@@ -20,6 +20,22 @@ public sealed class LogicNoteStoreTests
         }
 
         return new LogicNoteStore(Options.Create(new BridgeOptions()));
+    }
+
+    // The test output directory is the source app-backed tests copy their instance from, so
+    // the file must not outlive a test (xUnit disposes each test instance).
+    public void Dispose()
+    {
+        try
+        {
+            if (File.Exists(PersistPath))
+            {
+                File.Delete(PersistPath);
+            }
+        }
+        catch
+        {
+        }
     }
 
     [Fact]
