@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="OpcBridge.Mobile.Views.LogicBlockPage"
+             Title="Logic block">
+    <ContentPage.Resources>
+        <DataTemplate x:Key="ConditionRow">
+            <Border Margin="0,0,0,6" Padding="10" StrokeThickness="1"
+                    Stroke="{StaticResource BorderColor}" BackgroundColor="{StaticResource SurfaceColor}">
+                <Grid ColumnDefinitions="26,*,Auto" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="6">
+                    <Label Grid.Row="0" Grid.Column="0" Text="{Binding Mark}" FontSize="18" FontAttributes="Bold"
+                           TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
+                    <Label Grid.Row="0" Grid.Column="1" Text="{Binding Text}" />
+                    <Label Grid.Row="0" Grid.Column="2" Text="{Binding ValueText}" FontSize="13"
+                           TextColor="{StaticResource MutedColor}" />
+                    <Label Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding TagLabel}"
+                           FontSize="11" TextColor="{StaticResource MutedColor}" />
+                    <Label Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding NextStepText}"
+                           IsVisible="{Binding ShowNextStep}" FontSize="12" TextColor="{StaticResource WarnColor}" />
+                </Grid>
+            </Border>
+        </DataTemplate>
+    </ContentPage.Resources>
+
+    <ScrollView>
+        <VerticalStackLayout Padding="12" Spacing="10">
+            <Label x:Name="titleLabel" FontSize="22" FontAttributes="Bold" />
+            <Label x:Name="stateLabel" FontSize="16" FontAttributes="Bold" />
+            <Label x:Name="blockedLabel" FontSize="13" TextColor="{StaticResource BadColor}" />
+            <Label x:Name="descriptionLabel" FontSize="13" TextColor="{StaticResource MutedColor}" />
+            <Label x:Name="messageLabel" FontSize="13" TextColor="{StaticResource WarnColor}" />
+
+            <Label Text="Conditions" FontAttributes="Bold" IsVisible="{Binding ShowConditions}" />
+            <VerticalStackLayout IsVisible="{Binding ShowConditions}" Spacing="0"
+                                 BindableLayout.ItemsSource="{Binding Conditions}"
+                                 BindableLayout.ItemTemplate="{StaticResource ConditionRow}" />
+
+            <Label Text="Steps" FontAttributes="Bold" IsVisible="{Binding IsSequence}" />
+            <VerticalStackLayout IsVisible="{Binding IsSequence}" Spacing="8"
+                                 BindableLayout.ItemsSource="{Binding Steps}">
+                <BindableLayout.ItemTemplate>
+                    <DataTemplate>
+                        <Border Padding="10" StrokeThickness="1"
+                                Stroke="{StaticResource BorderColor}" BackgroundColor="{StaticResource SurfaceColor}">
+                            <VerticalStackLayout Spacing="4">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                                    <Label Text="{Binding Name}" FontAttributes="Bold" />
+                                    <Label Grid.Column="1" Text="{Binding StateLabel}"
+                                           TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
+                                </Grid>
+                                <Label Text="{Binding Reason}" FontSize="12" TextColor="{StaticResource WarnColor}" />
+                                <VerticalStackLayout Spacing="0" BindableLayout.ItemsSource="{Binding Conditions}"
+                                                     BindableLayout.ItemTemplate="{StaticResource ConditionRow}" />
+                            </VerticalStackLayout>
+                        </Border>
+                    </DataTemplate>
+                </BindableLayout.ItemTemplate>
+            </VerticalStackLayout>
+
+            <Label Text="Actions" FontAttributes="Bold" />
+            <VerticalStackLayout Spacing="6" BindableLayout.ItemsSource="{Binding Actions}">
+                <BindableLayout.ItemTemplate>
+                    <DataTemplate>
+                        <Button Text="{Binding Label}" Clicked="OnActionClicked" />
+                    </DataTemplate>
+                </BindableLayout.ItemTemplate>
+            </VerticalStackLayout>
+
+            <Label Text="Notes" FontAttributes="Bold" />
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                <Entry x:Name="noteEntry" Placeholder="Add a note for the next shift…" />
+                <Button Grid.Column="1" Text="Add" Clicked="OnAddNoteClicked" />
+            </Grid>
+            <VerticalStackLayout Spacing="4" BindableLayout.ItemsSource="{Binding Notes}">
+                <BindableLayout.ItemTemplate>
+                    <DataTemplate>
+                        <Border Padding="8" StrokeThickness="1"
+                                Stroke="{StaticResource BorderColor}" BackgroundColor="{StaticResource SurfaceColor}">
+                            <VerticalStackLayout Spacing="2">
+                                <Label Text="{Binding Text}" FontSize="13" />
+                                <Label Text="{Binding Meta}" FontSize="11" TextColor="{StaticResource MutedColor}" />
+                            </VerticalStackLayout>
+                        </Border>
+                    </DataTemplate>
+                </BindableLayout.ItemTemplate>
+            </VerticalStackLayout>
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

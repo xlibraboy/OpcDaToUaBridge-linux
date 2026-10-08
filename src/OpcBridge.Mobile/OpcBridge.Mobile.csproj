@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The Android logic viewer. Deliberately NOT in OpcBridge.sln: it needs the
+       maui-android workload, so keeping it out leaves `dotnet build OpcBridge.sln`
+       and the test suite runnable in the plain SDK container. Its testable half
+       (src/OpcBridge.Mobile.Core) is in the solution and covered by the suite;
+       the APK is built by .github/workflows/mobile-release.yml (or Dockerfile.mobile). -->
+  <PropertyGroup>
+    <TargetFramework>net8.0-android</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <UseMaui>true</UseMaui>
+    <SingleProject>true</SingleProject>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>OpcBridge.Mobile</RootNamespace>
+    <ApplicationTitle>OpcBridge Logic</ApplicationTitle>
+    <ApplicationId>com.opcbridge.logic</ApplicationId>
+    <ApplicationDisplayVersion>$(MobileVersion)</ApplicationDisplayVersion>
+    <ApplicationVersion>1</ApplicationVersion>
+    <SupportedOSPlatformVersion>24.0</SupportedOSPlatformVersion>
+    <!-- The viewer versions and releases on its own (mobile-v* tags, MobileVersion in
+         Directory.Build.props) instead of the server's version. -->
+    <Version>$(MobileVersion)</Version>
+    <!-- Internal plant distribution: a debug-signed APK installs without a keystore.
+         Production/Play signing is a follow-up. -->
+    <AndroidPackageFormat>apk</AndroidPackageFormat>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <MauiIcon Include="Resources/AppIcon/appicon.svg" Color="#0F1513" />
+    <MauiSplashScreen Include="Resources/Splash/splash.svg" Color="#0F1513" BaseSize="128,128" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpcBridge.Mobile.Core\OpcBridge.Mobile.Core.csproj" />
+    <ProjectReference Include="..\OpcBridge.Client\OpcBridge.Client.csproj" />
+  </ItemGroup>
+
+  <!-- The release notes ship inside the assembly, like the desktop apps. -->
+  <ItemGroup>
+    <None Remove="CHANGELOG.md" />
+    <EmbeddedResource Include="CHANGELOG.md" LogicalName="OpcBridge.Mobile.CHANGELOG.md" />
+  </ItemGroup>
+
+</Project>

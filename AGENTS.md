@@ -34,3 +34,22 @@ docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp/dh -e DOTNET_CLI_HOME=/tmp/d
 ```
 
 Build output lands in `src/*/bin/Debug/net8.0/`; the bridge app is `src/OpcBridge.App/bin/Debug/net8.0/OpcBridge.App.dll`.
+
+### Build the Android viewer (APK)
+
+`src/OpcBridge.Mobile` targets `net8.0-android` and therefore needs the MAUI Android workload — it is deliberately **not** in `OpcBridge.sln`, so the two commands above stay workload-free. The shared logic lives in `src/OpcBridge.Mobile.Core` (net8.0) and is covered by the test suite. CI builds the APK on `mobile-v*` (`.github/workflows/mobile-release.yml`); locally:
+
+```bash
+# One-time: build the toolchain image (SDK + maui-android workload + JDK 17 + Android SDK)
+docker build -f Dockerfile.mobile -t opcbridge-mobile-build .
+
+# Build the APK (Debug = debug-signed, installs on a phone without a keystore)
+docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp/dh -e DOTNET_CLI_HOME=/tmp/dh \
+  -e NUGET_PACKAGES=/nuget -e JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 \
+  -e ANDROID_HOME=/opt/android-sdk -e ANDROID_SDK_ROOT=/opt/android-sdk \
+  -v "$PWD":/src -v "$PWD/.nuget-cache":/nuget -w /src \
+  opcbridge-mobile-build \
+  dotnet publish src/OpcBridge.Mobile/OpcBridge.Mobile.csproj -f net8.0-android -c Debug -p:AndroidPackageFormats=apk
+```
+
+The APK lands under `src/OpcBridge.Mobile/bin/Debug/net8.0-android/` (the publish folder).

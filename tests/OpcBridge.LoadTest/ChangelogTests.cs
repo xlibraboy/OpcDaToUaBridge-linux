@@ -20,12 +20,13 @@ public sealed class ChangelogTests
     private const string ServerFile = "CHANGELOG.md";
     private const string HmiFile = "src/OpcBridge.Hmi/CHANGELOG.md";
     private const string DesignerFile = "src/OpcBridge.Hmi.Designer/CHANGELOG.md";
+    private const string MobileFile = "src/OpcBridge.Mobile/CHANGELOG.md";
 
     private static readonly Regex ReleasedSection = new(
         @"^##\s+\[\s*(\d+\.\d+\.\d+)\s*\]\s+-\s+(\d{4}-\d{2}-\d{2})\s*$",
         RegexOptions.Multiline | RegexOptions.Compiled);
 
-    public static TheoryData<string> ChangelogFiles => new() { ServerFile, HmiFile, DesignerFile };
+    public static TheoryData<string> ChangelogFiles => new() { ServerFile, HmiFile, DesignerFile, MobileFile };
 
     private static string RepoRoot()
     {
@@ -88,6 +89,23 @@ public sealed class ChangelogTests
         AssertChangelogMatchesAssembly(ServerFile, typeof(AppInfoSnapshot).Assembly);
         AssertChangelogMatchesAssembly(HmiFile, typeof(OpcBridge.Hmi.Views.MainWindow).Assembly);
         AssertChangelogMatchesAssembly(DesignerFile, typeof(OpcBridge.Hmi.Designer.Views.DesignerWindow).Assembly);
+    }
+
+    [Fact]
+    public void MobileChangelog_MatchesMobileVersion()
+    {
+        // The Android viewer's assembly cannot be loaded on the Linux test host (net8.0-android),
+        // so its drift check compares the changelog against MobileVersion in Directory.Build.props
+        // and pins the two places that stamp it: the app project and the release workflow tag.
+        string props = OnDisk("Directory.Build.props");
+        Match version = Regex.Match(props, @"<MobileVersion>([^<]+)</MobileVersion>");
+        Assert.True(version.Success, "no <MobileVersion> in Directory.Build.props");
+
+        string changelogVersion = ReleaseNotes.ParseLatestVersion(OnDisk(MobileFile));
+        Assert.Equal(version.Groups[1].Value, changelogVersion);
+
+        Assert.Contains("<Version>$(MobileVersion)</Version>", OnDisk("src/OpcBridge.Mobile/OpcBridge.Mobile.csproj"), StringComparison.Ordinal);
+        Assert.Contains("mobile-v*", OnDisk(".github/workflows/mobile-release.yml"), StringComparison.Ordinal);
     }
 
     private static void AssertChangelogMatchesAssembly(string relativePath, Assembly assembly)

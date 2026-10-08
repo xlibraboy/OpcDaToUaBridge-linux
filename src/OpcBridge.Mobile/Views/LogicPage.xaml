@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="OpcBridge.Mobile.Views.LogicPage"
+             Title="Logic">
+    <Grid RowDefinitions="Auto,Auto,*" Padding="12" RowSpacing="10">
+        <VerticalStackLayout Grid.Row="0" Spacing="2">
+            <Label Text="Plant logic" FontSize="22" FontAttributes="Bold" />
+            <Label x:Name="summaryLabel" FontSize="13" TextColor="{StaticResource MutedColor}" />
+            <Label x:Name="connectionLabel" FontSize="12" TextColor="{StaticResource MutedColor}" />
+        </VerticalStackLayout>
+
+        <HorizontalStackLayout Grid.Row="1" Spacing="8">
+            <Button x:Name="refreshButton" Text="Refresh" Clicked="OnRefreshClicked" />
+            <Button Text="Settings" Clicked="OnSettingsClicked" />
+        </HorizontalStackLayout>
+
+        <RefreshView x:Name="refreshView" Grid.Row="2" Refreshing="OnRefreshing">
+            <CollectionView x:Name="blocksView" SelectionMode="Single" SelectionChanged="OnBlockSelected">
+                <CollectionView.EmptyView>
+                    <Label Text="No logic blocks configured on the bridge. Author them in the dashboard under Tags ▸ Logic."
+                           TextColor="{StaticResource MutedColor}" Margin="8" />
+                </CollectionView.EmptyView>
+                <CollectionView.ItemTemplate>
+                    <DataTemplate>
+                        <Border Margin="0,0,0,8" Padding="12" StrokeThickness="1"
+                                Stroke="{StaticResource BorderColor}" BackgroundColor="{StaticResource SurfaceColor}">
+                            <VerticalStackLayout Spacing="4">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                    <Label Text="{Binding Name}" FontSize="17" FontAttributes="Bold" />
+                                    <Label Grid.Column="1" Text="{Binding StateLabel}" FontAttributes="Bold"
+                                           TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
+                                </Grid>
+                                <Label Text="{Binding KindLabel}" FontSize="11" TextColor="{StaticResource MutedColor}" />
+                                <Label Text="{Binding Reason}" FontSize="13" />
+                                <Label Text="{Binding ProgressText}" FontSize="12" TextColor="{StaticResource MutedColor}" />
+                            </VerticalStackLayout>
+                        </Border>
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+        </RefreshView>
+    </Grid>
+</ContentPage>

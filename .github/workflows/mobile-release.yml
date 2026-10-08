@@ -1,0 +1,111 @@
+name: Android release (Logic viewer)
+
+# Builds the OpcBridge Logic Android APK and — on a mobile-v* tag — publishes the viewer's
+# GitHub Release:
+#   OpcBridge-Logic-<version>.apk
+#
+# The viewer is a product of its own: it versions with MobileVersion in
+# Directory.Build.props, releases on mobile-v* tags and carries
+# src/OpcBridge.Mobile/CHANGELOG.md, which is its release authority. A release that changes
+# only the bridge, the HMI runtime or the designer does not touch it.
+#
+# The APK is built here rather than locally because the build needs the maui-android
+# workload, JDK 17 and the Android SDK — all present on the ubuntu runner. Local builds use
+# Dockerfile.mobile, the same recipe in a container.
+#
+# A mobile-v* tag push publishes a GitHub Release carrying the APK; a manual
+# workflow_dispatch run stops at the uploaded artifact, because there is no tag to release
+# against. The APK is debug-signed, which is what an internal plant install needs; release
+# signing (a keystore) is a follow-up for managed/Play distribution.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'mobile-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version from Directory.Build.props
+        id: version
+        run: |
+          version=$(sed -n 's/.*<MobileVersion>\([^<]*\)<\/MobileVersion>.*/\1/p' Directory.Build.props)
+          if [ -z "$version" ]; then
+            echo "no <MobileVersion> in Directory.Build.props" >&2
+            exit 1
+          fi
+          # A tag names the release; it must agree with the version the APK is stamped from.
+          if [ "${GITHUB_REF}" != "${GITHUB_REF#refs/tags/}" ] && [ "${GITHUB_REF_NAME}" != "mobile-v${version}" ]; then
+            echo "tag '${GITHUB_REF_NAME}' does not match viewer version ${version} (expected mobile-v${version})" >&2
+            exit 1
+          fi
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install the MAUI Android workload
+        run: dotnet workload install maui-android --skip-manifest-update
+
+      # Debug configuration: the APK is debug-signed, so it installs on a phone without a
+      # keystore. The .NET test suite is not run here — the workflow's job is the artifact,
+      # and the suite covers the shared Mobile.Core logic in the server workflow.
+      - name: Build the APK
+        run: |
+          dotnet publish src/OpcBridge.Mobile/OpcBridge.Mobile.csproj \
+            -f net8.0-android -c Debug -p:AndroidPackageFormats=apk
+
+      - name: Name the artifact
+        run: |
+          version='${{ steps.version.outputs.version }}'
+          mkdir -p dist
+          apk=$(find src/OpcBridge.Mobile/bin/Debug/net8.0-android -name '*.apk' | head -n 1)
+          if [ -z "$apk" ]; then
+            echo "no APK produced under src/OpcBridge.Mobile/bin/Debug/net8.0-android" >&2
+            exit 1
+          fi
+          cp "$apk" "dist/OpcBridge-Logic-${version}.apk"
+          ls -lh dist
+
+      - name: Upload the APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpcBridge-Logic-${{ steps.version.outputs.version }}-apk
+          path: dist/*.apk
+          if-no-files-found: error
+
+      # Only a tagged run has something to release; a workflow_dispatch run stops above.
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version='${{ steps.version.outputs.version }}'
+          awk -v ver="$version" '
+            $0 == "## [" ver "]" { capture = 1; next }
+            capture && /^## \[/ { exit }
+            capture { print }
+          ' src/OpcBridge.Mobile/CHANGELOG.md > build-release-notes.md
+          if [ ! -s build-release-notes.md ]; then
+            echo "src/OpcBridge.Mobile/CHANGELOG.md has no '## [$version]' section" >&2
+            exit 1
+          fi
+
+          gh release create "${GITHUB_REF_NAME}" \
+            "dist/OpcBridge-Logic-${version}.apk" \
+            --title "OpcBridge Logic ${version}" \
+            --notes-file build-release-notes.md
