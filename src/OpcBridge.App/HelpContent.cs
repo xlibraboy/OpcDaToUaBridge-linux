@@ -264,6 +264,14 @@ Each condition is one tag comparison, with the operator sentence the phone shows
 - `>` / `<` / `=` — numeric comparison against the value you enter.
 - **warn only** conditions are shown and tracked, but never block the block.
 
+## Tags
+
+A block can carry up to 8 short **tags** — comma-separated labels typed in the editor's Tags
+box (e.g. `Line 1, Safety`), each at most 24 characters. The store trims them, drops blanks
+and case-insensitive duplicates, and refuses a save that exceeds the limits. The phone shows
+them as chips on the block's card and filters the list by them; its search box matches the
+block name, the description or any tag.
+
 ## Actions
 
 A block can carry action buttons (label, tag, value, confirm). The phone renders them as

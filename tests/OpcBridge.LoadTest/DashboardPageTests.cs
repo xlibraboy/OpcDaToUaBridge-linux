@@ -1879,7 +1879,7 @@ public sealed class DashboardPageTests
             "logicBlockList", "btnLogicAdd", "logicConditions", "btnLogicAddCondition", "logicSteps",
             "btnLogicAddStep", "logicActions", "btnLogicAddAction", "logicCount", "logicMessage",
             "logicEditor", "logicEditorTitle", "logicLiveBadge", "logicEditorMsg", "logicStateHint",
-            "btnLogicSave", "btnLogicDelete", "lgName", "lgKind", "lgEnabled", "lgDescription"
+            "btnLogicSave", "btnLogicDelete", "lgName", "lgKind", "lgEnabled", "lgDescription", "lgTags"
         })
         {
             Assert.Contains($"id=\"{id}\"", DashboardPage.Html);
@@ -1902,6 +1902,9 @@ public sealed class DashboardPageTests
         Assert.Contains("function logicConditionRow(", DashboardPage.Script, StringComparison.Ordinal);
         Assert.Contains("function logicStepCard(", DashboardPage.Script, StringComparison.Ordinal);
         Assert.Contains("function logicActionRow(", DashboardPage.Script, StringComparison.Ordinal);
+        // The tags the phone shows as chips are read from and written to the editor's box.
+        Assert.Contains("el('lgTags')", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("block.tags =", DashboardPage.Script, StringComparison.Ordinal);
         Assert.Contains("/api/logic/blocks", DashboardPage.Script, StringComparison.Ordinal);
         Assert.Contains("/api/logic/state", DashboardPage.Script, StringComparison.Ordinal);
         Assert.Contains("data-action=\"logic-select\"", DashboardPage.Script, StringComparison.Ordinal);

@@ -24,6 +24,12 @@ public sealed class LogicBlockDto
     /// <summary>Display order among blocks (ascending).</summary>
     public int Order { get; set; }
 
+    /// <summary>
+    /// Free-form labels that group blocks (e.g. "Line 1", "Safety"), shown as chips on the
+    /// phone. Up to 8, each max 24 characters; the store trims and deduplicates them.
+    /// </summary>
+    public List<string> Tags { get; set; } = new();
+
     /// <summary>Conditions for interlock / permissive blocks. Empty for sequences.</summary>
     public List<LogicConditionDto> Conditions { get; set; } = new();
 

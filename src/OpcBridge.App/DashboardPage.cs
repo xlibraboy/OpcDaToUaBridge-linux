@@ -16,7 +16,7 @@ namespace OpcBridge.App;
 //   Logic (Tags ▸ Logic): data-tab="logic", id="view-logic", data-route="tags/logic",
 //   id="logicBlockList"/"btnLogicAdd"/"logicConditions"/"logicSteps"/"logicActions"/
 //   "logicCount"/"logicMessage"/"logicEditor"/"logicEditorTitle"/"logicLiveBadge"/"logicEditorMsg"/
-//   "logicStateHint"/"lgName"/"lgKind"/"lgEnabled"/"lgDescription",
+//   "logicStateHint"/"lgName"/"lgKind"/"lgEnabled"/"lgDescription"/"lgTags",
 //   function loadLogic(/loadLogicState(/renderLogicView(/renderLogicLive(/collectLogicDraft(/
 //   saveLogicBlock(/deleteLogicBlock(/logicConditionRow(/logicStepCard(/logicActionRow(/onLogicEditorChange(,
 //   data-action="logic-select"/"logic-remove-condition"/"logic-add-step-condition"/"logic-step-up"/
@@ -1980,6 +1980,7 @@ internal static class DashboardPage
                     <div class="field"><label class="fl" for="lgKind">Kind <span class="info" data-tip="Interlock / permissive: every block-severity condition must be true. Sequence: ordered steps, each completed when its own conditions are true (and its optional handshake tag is true), the first incomplete step being the current one.">i</span></label><select id="lgKind"><option value="interlock">Interlock (all must be true)</option><option value="permissive">Permissive (all must be true)</option><option value="sequence">Sequence (ordered steps)</option></select></div>
                     <div class="field"><label class="fl" for="lgEnabled">Enabled</label><input type="checkbox" id="lgEnabled" checked></div>
                     <div class="field"><label class="fl" for="lgDescription">Description</label><input type="text" id="lgDescription" style="flex:1" placeholder="Shown on the phone under the block name"></div>
+                    <div class="field"><label class="fl" for="lgTags">Tags <span class="info" data-tip="Comma-separated labels that group blocks on the phone (e.g. Line 1, Safety). Up to 8, each at most 24 characters; blanks and duplicates are dropped. The phone shows them as chips on the card and can filter the list by them.">i</span></label><input type="text" id="lgTags" style="flex:1" placeholder="Line 1, Safety"></div>
                     <div id="logicConditionsBlock">
                         <div class="fp-k" style="margin-top:10px">Conditions <button class="btn ghost" type="button" id="btnLogicAddCondition" style="float:right;margin-top:-3px">+ Condition</button></div>
                         <div class="list" id="logicConditions"></div>
@@ -4329,6 +4330,7 @@ function newLogicDraft() {
         kind: 'interlock',
         enabled: true,
         order: (state.logic || []).length,
+        tags: [],
         conditions: [{ id: logicNewId(), text: '', sourceId: '', itemId: '', op: 'on', value: null, nextStepText: null, severity: 'block' }],
         steps: [],
         actions: []
@@ -4367,6 +4369,8 @@ function collectLogicDraft() {
     block.kind = el('lgKind').value;
     block.enabled = !!el('lgEnabled').checked;
     block.description = el('lgDescription').value.trim();
+    // Comma-separated labels; the store trims, drops blanks and deduplicates, and rejects an over-long list.
+    block.tags = el('lgTags').value.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
     block.order = stored ? Number(get(stored, 'order') || 0) : (state.logic || []).length;
     block.actions = Array.from(el('logicActions').querySelectorAll('.logic-action-row')).map(logicDraftActionFrom);
     if (block.kind === 'sequence') {
@@ -4419,6 +4423,7 @@ function renderLogicEditor() {
     el('lgKind').value = kind;
     el('lgEnabled').checked = get(block, 'enabled') !== false;
     el('lgDescription').value = get(block, 'description') || '';
+    el('lgTags').value = (get(block, 'tags') || []).join(', ');
     const conditions = block.conditions || [];
     el('logicConditions').innerHTML = conditions.length
         ? conditions.map(c => logicConditionRow(c, null)).join('')

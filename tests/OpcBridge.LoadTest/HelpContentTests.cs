@@ -24,6 +24,8 @@ public sealed class HelpContentTests
         Assert.Contains("unknown", HelpContent.Markdown, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("/api/logic/state", HelpContent.Markdown);
         Assert.Contains("next-step", HelpContent.Markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("## Tags", HelpContent.Markdown);
+        Assert.Contains("filters the list", HelpContent.Markdown);
     }
 
     [Fact]

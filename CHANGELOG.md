@@ -19,6 +19,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+**Logic blocks can carry tags, and the phone's list can be searched and filtered.** The dashboard's
+**Tags ▸ Logic** editor gained a **Tags** box — comma-separated labels such as `Line 1, Safety`, up
+to 8 per block and 24 characters each, with blanks and case-insensitive duplicates dropped (a
+longer list is refused at save, not silently trimmed). The bridge stores the labels on the block
+and serves them with the rest of the definition; the OpcBridge Logic app shows them as chips on
+each card and its Logic tab now has a search box and filters — free text matches the block name,
+the description or any tag, tag chips narrow the list to the blocks carrying the labels picked,
+and a single-select state row narrows it to ready / blocked / no data / disabled, with an *n of m
+blocks* line while any filter is on and a "no blocks match" empty state. Live state and filter
+changes never rebuild the card objects, so the list does not rebuild under the operator's finger.
+
 **Plant logic — interlocks, permissives and sequences — is a first-class bridge concept.** A new
 **Tags ▸ Logic** tab authors named blocks of conditions over mapped tags: each condition carries
 the operator sentence and the *what to do when not true* next-step line, interlock/permissive

@@ -14,6 +14,9 @@ namespace OpcBridge.App;
 /// </summary>
 public sealed class LogicStore
 {
+    private const int MaxTagsPerBlock = 8;
+    private const int MaxTagLength = 24;
+
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     private readonly object sync_ = new();
@@ -179,6 +182,12 @@ public sealed class LogicStore
             return false;
         }
 
+        if (!TryNormalizeTags(block.Tags, out List<string> tags, out error))
+        {
+            normalized = default!;
+            return false;
+        }
+
         string kind = block.Kind.ToLowerInvariant();
         bool isSequence = kind == LogicBlockKinds.Sequence;
 
@@ -254,6 +263,7 @@ public sealed class LogicStore
             Kind = kind,
             Enabled = block.Enabled,
             Order = block.Order,
+            Tags = tags,
             Conditions = conditions,
             Steps = steps,
             Actions = actions
@@ -412,6 +422,44 @@ public sealed class LogicStore
             Value = action.Value.Trim(),
             Confirm = action.Confirm
         };
+        error = null;
+        return true;
+    }
+
+    /// <summary>
+    /// Trims the block's tags, drops blanks and case-insensitive duplicates (first spelling
+    /// wins) and bounds the set: at most <see cref="MaxTagsPerBlock"/> tags of at most
+    /// <see cref="MaxTagLength"/> characters each — a longer list is a save error, not a
+    /// silent truncation.
+    /// </summary>
+    private static bool TryNormalizeTags(IReadOnlyList<string>? tags, out List<string> normalized, out string? error)
+    {
+        normalized = new List<string>();
+        HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+
+        foreach (string? raw in tags ?? Array.Empty<string>())
+        {
+            string tag = raw?.Trim() ?? string.Empty;
+            if (tag.Length == 0 || !seen.Add(tag))
+            {
+                continue;
+            }
+
+            if (tag.Length > MaxTagLength)
+            {
+                error = "A tag can be at most 24 characters.";
+                return false;
+            }
+
+            if (normalized.Count == MaxTagsPerBlock)
+            {
+                error = "A block can carry at most 8 tags.";
+                return false;
+            }
+
+            normalized.Add(tag);
+        }
+
         error = null;
         return true;
     }

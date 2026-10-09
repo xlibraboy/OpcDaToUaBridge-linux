@@ -245,6 +245,48 @@ public sealed class LogicStoreTests : IDisposable
     }
 
     [Fact]
+    public void TrySave_NormalizesTagsTrimsDropsBlanksAndDeduplicates()
+    {
+        LogicStore store = CreateStore();
+        LogicBlockDto block = CreateInterlock();
+        block.Tags = new List<string> { " Line 1 ", "", "safety", "line 1", "  ", "Safety" };
+
+        bool ok = store.TrySave(block, out LogicBlockDto saved, out _, out string? error);
+
+        Assert.True(ok);
+        Assert.Null(error);
+        // First spelling wins the case-insensitive duplicate; authored order is kept.
+        Assert.Equal(new[] { "Line 1", "safety" }, saved.Tags);
+    }
+
+    [Fact]
+    public void TrySave_RejectsMoreThanEightTags()
+    {
+        LogicStore store = CreateStore();
+        LogicBlockDto block = CreateInterlock();
+        block.Tags = Enumerable.Range(1, 9).Select(i => "Tag " + i).ToList();
+
+        bool ok = store.TrySave(block, out _, out _, out string? error);
+
+        Assert.False(ok);
+        Assert.Equal("A block can carry at most 8 tags.", error);
+        Assert.Empty(store.GetSnapshot().Blocks);
+    }
+
+    [Fact]
+    public void TrySave_RejectsATagLongerThan24Characters()
+    {
+        LogicStore store = CreateStore();
+        LogicBlockDto block = CreateInterlock();
+        block.Tags = new List<string> { new string('x', 25) };
+
+        bool ok = store.TrySave(block, out _, out _, out string? error);
+
+        Assert.False(ok);
+        Assert.Equal("A tag can be at most 24 characters.", error);
+    }
+
+    [Fact]
     public void TryRemove_ReturnsFalseForUnknownAndTrueOtherwise()
     {
         LogicStore store = CreateStore();
@@ -264,6 +306,7 @@ public sealed class LogicStoreTests : IDisposable
         LogicStore store = CreateStore();
         LogicBlockDto block = CreateInterlock();
         block.Conditions[0].NextStepText = "Turn the permit key to Permit";
+        block.Tags = new List<string> { "Line 1", "Safety" };
         store.TrySave(block, out _, out _, out _);
 
         LogicStore reopened = new(Options.Create(new BridgeOptions()));
@@ -274,6 +317,7 @@ public sealed class LogicStoreTests : IDisposable
         Assert.Single(blocks);
         Assert.Equal(block.Id, blocks[0].Id);
         Assert.Equal("Turn the permit key to Permit", blocks[0].Conditions[0].NextStepText);
+        Assert.Equal(new[] { "Line 1", "Safety" }, blocks[0].Tags);
     }
 
     [Fact]

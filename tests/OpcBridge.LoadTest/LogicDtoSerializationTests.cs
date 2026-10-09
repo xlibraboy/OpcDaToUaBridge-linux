@@ -27,6 +27,7 @@ public sealed class LogicDtoSerializationTests
             Kind = LogicBlockKinds.Sequence,
             Enabled = true,
             Order = 2,
+            Tags = { "Line 1", "Safety" },
             Steps =
             {
                 new LogicStepDto
@@ -72,6 +73,7 @@ public sealed class LogicDtoSerializationTests
         Assert.Contains("\"completionSourceId\"", json, StringComparison.Ordinal);
         Assert.Contains("\"severity\":\"block\"", json, StringComparison.Ordinal);
         Assert.Contains("\"confirm\":true", json, StringComparison.Ordinal);
+        Assert.Contains("\"tags\":[\"Line 1\",\"Safety\"]", json, StringComparison.Ordinal);
         Assert.DoesNotContain("\"Kind\"", json, StringComparison.Ordinal);
 
         LogicBlockDto? copy = JsonSerializer.Deserialize<LogicBlockDto>(json, CamelCase);
@@ -80,6 +82,7 @@ public sealed class LogicDtoSerializationTests
         Assert.Equal(block.Id, copy!.Id);
         Assert.Equal(LogicBlockKinds.Sequence, copy.Kind);
         Assert.Equal("Line 01 Start", copy.Name);
+        Assert.Equal(new[] { "Line 1", "Safety" }, copy.Tags);
         Assert.Single(copy.Steps);
         Assert.Equal("Turn the permit key", copy.Steps[0].NextStepText);
         Assert.Equal("ns=2;s=Status/Line01.Permit", copy.Steps[0].Conditions[0].ItemId);
