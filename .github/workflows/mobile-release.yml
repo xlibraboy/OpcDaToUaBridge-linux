@@ -15,8 +15,14 @@ name: Android release (Logic viewer)
 #
 # A mobile-v* tag push publishes a GitHub Release carrying the APK; a manual
 # workflow_dispatch run stops at the uploaded artifact, because there is no tag to release
-# against. The APK is debug-signed, which is what an internal plant install needs; release
-# signing (a keystore) is a follow-up for managed/Play distribution.
+# against. The APK is signed with the Android debug key (AndroidKeyStore=false), which is
+# what an internal plant install needs; release signing (a keystore) is a follow-up for
+# managed/Play distribution.
+#
+# Release configuration on purpose: a Debug APK relies on fast deployment (assemblies pushed
+# by `dotnet build/install`) and exits on launch when installed standalone — "No assemblies
+# found ... Assuming this is part of Fast Deployment. Exiting". Release embeds them
+# (EmbedAssembliesIntoApk), so the APK is self-contained.
 
 on:
   workflow_dispatch:
@@ -61,21 +67,22 @@ jobs:
       - name: Install the MAUI Android workload
         run: dotnet workload install maui-android --skip-manifest-update
 
-      # Debug configuration: the APK is debug-signed, so it installs on a phone without a
-      # keystore. The .NET test suite is not run here — the workflow's job is the artifact,
-      # and the suite covers the shared Mobile.Core logic in the server workflow.
+      # Release embeds the assemblies into the APK (a Debug APK expects fast deployment and
+      # exits when installed standalone); AndroidKeyStore=false signs it with the Android
+      # debug key, so it installs without a keystore.
       - name: Build the APK
         run: |
           dotnet publish src/OpcBridge.Mobile/OpcBridge.Mobile.csproj \
-            -f net8.0-android -c Debug -p:AndroidPackageFormats=apk
+            -f net8.0-android -c Release -p:AndroidPackageFormats=apk \
+            -p:EmbedAssembliesIntoApk=true -p:AndroidKeyStore=false
 
       - name: Name the artifact
         run: |
           version='${{ steps.version.outputs.version }}'
           mkdir -p dist
-          apk=$(find src/OpcBridge.Mobile/bin/Debug/net8.0-android -name '*.apk' | head -n 1)
+          apk=$(find src/OpcBridge.Mobile/bin/Release/net8.0-android -name '*-Signed.apk' | head -n 1)
           if [ -z "$apk" ]; then
-            echo "no APK produced under src/OpcBridge.Mobile/bin/Debug/net8.0-android" >&2
+            echo "no APK produced under src/OpcBridge.Mobile/bin/Release/net8.0-android" >&2
             exit 1
           fi
           cp "$apk" "dist/OpcBridge-Logic-${version}.apk"

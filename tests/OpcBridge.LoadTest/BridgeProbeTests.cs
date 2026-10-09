@@ -60,6 +60,53 @@ public sealed class BridgeProbeTests
     }
 
     [Fact]
+    public async Task FindAsync_FindsAuthEnabledBridgeWhosePortProbeIsGated()
+    {
+        int port = ReservePort();
+        using HttpListener listener = new();
+        listener.Prefixes.Add($"http://127.0.0.1:{port}/");
+        listener.Start();
+        try
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    while (listener.IsListening)
+                    {
+                        HttpListenerContext context = await listener.GetContextAsync();
+                        // Auth is enabled: /api/status/ports wants a session, /api/auth/me does not.
+                        if (context.Request.Url!.AbsolutePath == "/api/status/ports")
+                        {
+                            context.Response.StatusCode = 401;
+                            context.Response.Close();
+                            continue;
+                        }
+
+                        byte[] body = Encoding.UTF8.GetBytes("{\"authenticated\":false,\"authEnabled\":true}");
+                        context.Response.StatusCode = 200;
+                        context.Response.ContentType = "application/json";
+                        await context.Response.OutputStream.WriteAsync(body);
+                        context.Response.Close();
+                    }
+                }
+                catch (Exception)
+                {
+                    // Listener stopped with the test.
+                }
+            });
+
+            string? found = await BridgeProbe.FindAsync($"127.0.0.1:{port}", timeoutMs: 500);
+
+            Assert.Equal($"http://127.0.0.1:{port}", found);
+        }
+        finally
+        {
+            listener.Stop();
+        }
+    }
+
+    [Fact]
     public async Task IsBridgeAsync_RejectsNonBridgeEndpoints()
     {
         int port = ReservePort();
@@ -96,7 +143,7 @@ public sealed class BridgeProbeTests
                 while (listener.IsListening)
                 {
                     HttpListenerContext context = await listener.GetContextAsync();
-                    byte[] body = Encoding.UTF8.GetBytes("{\"httpPort\":" + port + "}");
+                    byte[] body = Encoding.UTF8.GetBytes("{\"httpPort\":" + port + ",\"authEnabled\":false}");
                     context.Response.StatusCode = 200;
                     context.Response.ContentType = "application/json";
                     await context.Response.OutputStream.WriteAsync(body);

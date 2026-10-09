@@ -8,7 +8,12 @@
 #     -e ANDROID_HOME=/opt/android-sdk -e ANDROID_SDK_ROOT=/opt/android-sdk \
 #     -v "$PWD":/src -v "$PWD/.nuget-cache":/nuget -w /src \
 #     opcbridge-mobile-build \
-#     dotnet publish src/OpcBridge.Mobile/OpcBridge.Mobile.csproj -f net8.0-android -c Debug -p:AndroidPackageFormats=apk
+#     dotnet publish src/OpcBridge.Mobile/OpcBridge.Mobile.csproj -f net8.0-android -c Release \
+#       -p:AndroidPackageFormats=apk -p:EmbedAssembliesIntoApk=true -p:AndroidKeyStore=false
+#
+# Release + EmbedAssembliesIntoApk: a Debug APK expects fast deployment (assemblies pushed
+# by `dotnet build/install`) and exits on launch when installed standalone. AndroidKeyStore=
+# false signs with the Android debug key, so the APK installs without a keystore.
 FROM mcr.microsoft.com/dotnet/sdk:8.0
 
 ENV DEBIAN_FRONTEND=noninteractive

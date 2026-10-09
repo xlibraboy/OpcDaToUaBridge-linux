@@ -1,9 +1,10 @@
 namespace OpcBridge.Mobile.Core;
 
+using System.Text.Json;
+
 /// <summary>
 /// Finds a bridge on the plant LAN from the host or address the operator typed: probes the
-/// known container publish port, then the bridge's own HTTP range (8080–8180) for
-/// <c>/api/status/ports</c> — the same probe the desktop HMI uses, adapted to a remote host.
+/// known container publish port, then the bridge's own HTTP range (8080–8180).
 /// </summary>
 public static class BridgeProbe
 {
@@ -34,7 +35,13 @@ public static class BridgeProbe
         return null;
     }
 
-    /// <summary>True when the address answers the bridge's port probe.</summary>
+    /// <summary>
+    /// True when the address answers as a bridge. The probe is <c>/api/auth/me</c>, which stays
+    /// anonymous whether or not Auth is enabled — <c>/api/status/ports</c>, the desktop HMI's
+    /// same-origin probe, is session-gated and so would reject a phone that has no session yet.
+    /// The body must carry the endpoint's <c>authEnabled</c> field, so a foreign web server on
+    /// the same port is not mistaken for a bridge.
+    /// </summary>
     public static async Task<bool> IsBridgeAsync(string? baseUrl, int timeoutMs = 1200, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(baseUrl))
@@ -46,11 +53,21 @@ public static class BridgeProbe
         {
             using HttpClient http = new() { Timeout = TimeSpan.FromMilliseconds(timeoutMs) };
             using HttpResponseMessage response = await http
-                .GetAsync(baseUrl.TrimEnd('/') + "/api/status/ports", cancellationToken)
+                .GetAsync(baseUrl.TrimEnd('/') + "/api/auth/me", cancellationToken)
                 .ConfigureAwait(false);
-            return response.IsSuccessStatusCode;
+            if (!response.IsSuccessStatusCode)
+            {
+                return false;
+            }
+
+            await using Stream stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+            using JsonDocument document = await JsonDocument
+                .ParseAsync(stream, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+            return document.RootElement.ValueKind == JsonValueKind.Object
+                && document.RootElement.TryGetProperty("authEnabled", out _);
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException or JsonException)
         {
             return false;
         }
