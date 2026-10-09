@@ -134,6 +134,106 @@ public sealed class LogicOverviewViewModelTests
     }
 
     [Fact]
+    public void BlocksAreGroupedUnderTheirInterlockHeading_UngroupedLast()
+    {
+        LogicOverviewViewModel vm = new();
+        LogicBlockDto up = Block("Primary Arm Up", conditions: Condition());
+        up.Group = "Primary Arm";
+        LogicBlockDto down = Block("Primary Arm Down", conditions: Condition());
+        down.Group = "primary arm"; // the same group, whatever the case
+        LogicBlockDto loose = Block("Line 01 Start", conditions: Condition());
+        vm.ApplyDefinitions(new[] { up, down, loose });
+
+        // Groups match case-insensitively; the heading takes the spelling of its first block
+        // in list order (blocks are sorted by order, then name).
+        Assert.Equal(new[] { "primary arm", "Ungrouped" }, vm.VisibleGroups.Select(group => group.Name));
+        Assert.True(vm.VisibleGroups[0].ShowHeader);
+        Assert.True(vm.VisibleGroups[1].ShowHeader);
+        Assert.Equal(new[] { "Primary Arm Down", "Primary Arm Up" }, vm.VisibleGroups[0].Select(card => card.Name));
+        Assert.Single(vm.VisibleGroups[1]);
+        // Before any snapshot every member reads as no data, and the heading says so.
+        Assert.Equal("2 blocks · 2 no data", vm.VisibleGroups[0].Summary);
+    }
+
+    [Fact]
+    public void UngroupedOnlyListHidesTheCatchAllHeading()
+    {
+        LogicOverviewViewModel vm = new();
+        vm.ApplyDefinitions(new[] { Block("Line 01 Start", conditions: Condition()) });
+
+        LogicBlockGroupViewModel only = Assert.Single(vm.VisibleGroups);
+        Assert.Equal("Ungrouped", only.Name);
+        Assert.False(only.ShowHeader);
+        Assert.Single(only);
+
+        // Once a block carries a group, the catch-all heading names itself.
+        LogicBlockDto grouped = Block("Primary Arm Up", conditions: Condition());
+        grouped.Group = "Primary Arm";
+        vm.ApplyDefinitions(new[] { Block("Line 01 Start", conditions: Condition()), grouped });
+        Assert.True(vm.VisibleGroups.Single(group => group.Group.Length == 0).ShowHeader);
+    }
+
+    [Fact]
+    public void AGroupCollapsesKeepsItsSummaryAndSurvivesStatePushes()
+    {
+        LogicOverviewViewModel vm = new();
+        LogicBlockDto up = Block("Primary Arm Up", conditions: Condition());
+        up.Group = "Primary Arm";
+        LogicBlockDto down = Block("Primary Arm Down", conditions: Condition());
+        down.Group = "Primary Arm";
+        vm.ApplyDefinitions(new[] { up, down });
+        vm.ApplyState(new LogicStateSnapshot
+        {
+            Blocks = { State(up.Id, LogicBlockStates.Blocked, "permit missing"), State(down.Id, LogicBlockStates.Ready) }
+        });
+
+        LogicBlockGroupViewModel group = Assert.Single(vm.VisibleGroups);
+        Assert.Equal("2 blocks · 1 blocked", group.Summary);
+        LogicBlockCardViewModel card = group[0];
+
+        // Collapsing empties the bound items but keeps the heading's summary.
+        group.ToggleCommand.Execute(null);
+
+        Assert.False(group.IsExpanded);
+        Assert.Empty(group);
+        Assert.Equal("▸", group.Chevron);
+        Assert.Equal("2 blocks · 1 blocked", group.Summary);
+
+        // A state push leaves the collapsed heading (and its cards) alone.
+        vm.ApplyState(new LogicStateSnapshot
+        {
+            Blocks = { State(up.Id, LogicBlockStates.Ready), State(down.Id, LogicBlockStates.Ready) }
+        });
+
+        Assert.Same(group, Assert.Single(vm.VisibleGroups));
+        Assert.False(group.IsExpanded);
+        Assert.Empty(group);
+        Assert.Equal("2 blocks", group.Summary);
+
+        group.ToggleCommand.Execute(null);
+        Assert.Equal("▾", group.Chevron);
+        Assert.Same(card, group[0]);
+    }
+
+    [Fact]
+    public void SearchAndStateFilters_NarrowTheGroupedListToo()
+    {
+        LogicOverviewViewModel vm = new();
+        LogicBlockDto up = Block("Primary Arm Up", conditions: Condition());
+        up.Group = "Primary Arm";
+        LogicBlockDto down = Block("Primary Arm Down", conditions: Condition());
+        down.Group = "Primary Arm";
+        vm.ApplyDefinitions(new[] { up, down });
+
+        vm.SearchText = "down";
+
+        LogicBlockGroupViewModel group = Assert.Single(vm.VisibleGroups);
+        Assert.Equal("Primary Arm", group.Name);
+        Assert.Equal(new[] { "Primary Arm Down" }, group.Select(card => card.Name));
+        Assert.Equal("1 of 2 blocks", vm.FilterText);
+    }
+
+    [Fact]
     public void Search_MatchesNameDescriptionAndTagsTermByTerm()
     {
         LogicOverviewViewModel vm = new();
@@ -269,13 +369,15 @@ public sealed class LogicBlockDetailViewModelTests
         string itemId = "Permit",
         string severity = LogicConditionSeverities.Block,
         string? nextStep = null,
-        string op = LogicConditionOps.On) => new()
+        string op = LogicConditionOps.On,
+        double? value = null) => new()
     {
         Id = Guid.NewGuid(),
         Text = text,
         SourceId = "sim",
         ItemId = itemId,
         Op = op,
+        Value = value,
         Severity = severity,
         NextStepText = nextStep
     };
@@ -288,6 +390,9 @@ public sealed class LogicBlockDetailViewModelTests
         Conditions = conditions.ToList()
     };
 
+    private static IReadOnlyList<LogicElementRowViewModel> Contacts(LogicBlockDetailViewModel vm) =>
+        vm.Elements.Where(row => row.IsContact).ToList();
+
     private static MultiBridgeTagCache TagCache(params HmiTagDto[] tags)
     {
         MultiBridgeTagCache cache = new();
@@ -296,7 +401,7 @@ public sealed class LogicBlockDetailViewModelTests
     }
 
     [Fact]
-    public void ConditionRows_ShowMarksValueTextAndTheNextStepOnlyWhileNotTrue()
+    public void ElementRows_ShowMarksValueTextAndTheNextStepOnlyWhileNotTrue()
     {
         LogicConditionDto permit = Condition("Line 01 start permit must be given", itemId: "Permit", nextStep: "Turn the permit key");
         LogicBlockDetailViewModel vm = new(
@@ -306,7 +411,7 @@ public sealed class LogicBlockDetailViewModelTests
             {
                 State = LogicBlockStates.Blocked,
                 Reason = permit.Text,
-                Conditions = { new LogicConditionStateDto { Id = permit.Id, State = LogicConditionStates.False, ValueText = "Blocked" } }
+                Elements = { new LogicElementStateDto { Id = permit.Id, Kind = LogicElementKinds.Contact, State = LogicConditionStates.False, ValueText = "Blocked", Should = "1", Matches = false } }
             },
             TagCache(new HmiTagDto
             {
@@ -321,21 +426,24 @@ public sealed class LogicBlockDetailViewModelTests
                 IsGood = true
             }));
 
-        LogicConditionRowViewModel row = vm.Conditions[0];
+        LogicElementRowViewModel row = Contacts(vm)[0];
+        Assert.Equal("NO", row.KindLabel);
         Assert.Equal("✗", row.Mark);
-        // The plant reads the condition as 0 (false); the mapped texts stay as the live value.
-        Assert.Equal("0", row.StateWord);
+        // The plant reads the element as 0 (false); the mapped texts stay as the live value.
+        Assert.Equal("0", row.ActualText);
         Assert.True(row.Blocks);
         Assert.True(row.ShowNextStep);
         Assert.Equal("Turn the permit key", row.NextStepText);
         Assert.Equal("Line 01 Start Permit · Simulation", row.TagLabel);
         // The live value comes from the tag cache, so a delta keeps it current.
         Assert.Equal("Blocked", row.ValueText);
+        Assert.True(row.ShowShould);
+        Assert.Equal("should 1 · actual 0", row.ShouldLine);
         Assert.Equal("Blocked by: Line 01 start permit must be given", vm.BlockedByText);
     }
 
     [Fact]
-    public void ConditionRows_ReadOneZeroOrNoDataForBooleansOnly()
+    public void ElementRows_ReadOneZeroOrNoDataForBooleansOnly()
     {
         LogicConditionDto permit = Condition("Permit must be given");
         LogicConditionDto level = Condition("Tank 01 level above 50 %", itemId: "Tank01.Level", op: LogicConditionOps.GreaterThan);
@@ -346,29 +454,32 @@ public sealed class LogicBlockDetailViewModelTests
             new LogicBlockStateDto
             {
                 State = LogicBlockStates.Blocked,
-                Conditions =
+                Elements =
                 {
-                    new LogicConditionStateDto { Id = permit.Id, State = LogicConditionStates.True, ValueText = "Permit" },
-                    new LogicConditionStateDto { Id = level.Id, State = LogicConditionStates.True, ValueText = "62.5 %" }
+                    new LogicElementStateDto { Id = permit.Id, Kind = LogicElementKinds.Contact, State = LogicConditionStates.True, ValueText = "Permit", Should = "1", Matches = true },
+                    new LogicElementStateDto { Id = level.Id, Kind = LogicElementKinds.Contact, State = LogicConditionStates.True, ValueText = "62.5 %", Should = "> 50", Matches = true }
                 }
             });
 
-        Assert.True(vm.Conditions[0].ShowStateWord);
-        Assert.Equal("1", vm.Conditions[0].StateWord);
-        Assert.Equal("Permit", vm.Conditions[0].ValueText);
+        IReadOnlyList<LogicElementRowViewModel> contacts = Contacts(vm);
+        Assert.Equal("1", contacts[0].ActualText);
+        Assert.Equal("Permit", contacts[0].ValueText);
 
         // A numeric comparison keeps its value: a level above 50 % is not a bit.
-        Assert.False(vm.Conditions[1].ShowStateWord);
-        Assert.Equal(string.Empty, vm.Conditions[1].StateWord);
-        Assert.Equal("62.5 %", vm.Conditions[1].ValueText);
+        Assert.Equal("62.5 %", contacts[1].ActualText);
+        Assert.Equal("62.5 %", contacts[1].ValueText);
 
-        // No snapshot yet: a boolean reads as no data, never as 0.
-        Assert.True(vm.Conditions[2].ShowStateWord);
-        Assert.Equal("—", vm.Conditions[2].StateWord);
+        // No state yet: a boolean reads as unknown, never as 0.
+        Assert.Equal("?", contacts[2].ActualText);
+
+        // The block's own AND sits on top of the three contacts.
+        Assert.Equal("AND", vm.Elements[0].KindLabel);
+        Assert.Equal(0, vm.Elements[0].Depth);
+        Assert.Equal(1, contacts[0].Depth);
     }
 
     [Fact]
-    public void ADigitalTagMakesItsConditionReadAsABitEvenWithACompareOp()
+    public void ADigitalTagMakesItsElementReadAsABitEvenWithACompareOp()
     {
         LogicConditionDto run = Condition("Run feedback", itemId: "Run", op: LogicConditionOps.Equal);
         LogicBlockDetailViewModel vm = new(
@@ -377,7 +488,7 @@ public sealed class LogicBlockDetailViewModelTests
             new LogicBlockStateDto
             {
                 State = LogicBlockStates.Ready,
-                Conditions = { new LogicConditionStateDto { Id = run.Id, State = LogicConditionStates.True, ValueText = "Running" } }
+                Elements = { new LogicElementStateDto { Id = run.Id, Kind = LogicElementKinds.Contact, State = LogicConditionStates.True, ValueText = "Running", Should = "= 1", Matches = true } }
             },
             TagCache(new HmiTagDto
             {
@@ -392,10 +503,196 @@ public sealed class LogicBlockDetailViewModelTests
                 IsGood = true
             }));
 
-        Assert.True(vm.Conditions[0].ShowStateWord);
-        Assert.Equal("1", vm.Conditions[0].StateWord);
-        Assert.Equal("Running", vm.Conditions[0].ValueText);
+        Assert.Equal("1", Contacts(vm)[0].ActualText);
+        Assert.Equal("Running", Contacts(vm)[0].ValueText);
     }
+
+    [Fact]
+    public void ElementRows_ShowShouldAgainstActual()
+    {
+        LogicConditionDto pressure = Condition("Pressure switch PS1 must read 1", itemId: "PS1");
+        LogicConditionDto limit = Condition("Limit switch LS2 must be clear", itemId: "LS2", op: LogicConditionOps.Off);
+        LogicConditionDto level = Condition("Level must be above 50", itemId: "Level", op: LogicConditionOps.GreaterThan, value: 50);
+        LogicBlockDto block = Interlock(pressure, limit, level);
+        LogicBlockDetailViewModel vm = new(block, BridgeKey);
+
+        vm.ApplyState(new LogicBlockStateDto
+        {
+            Id = block.Id,
+            State = LogicBlockStates.Blocked,
+            Reason = "Pressure switch PS1 must read 1",
+            Elements =
+            {
+                new LogicElementStateDto { Id = pressure.Id, Kind = LogicElementKinds.Contact, State = LogicConditionStates.False, ValueText = "Off", Should = "1", Matches = false },
+                new LogicElementStateDto { Id = limit.Id, Kind = LogicElementKinds.Contact, State = LogicConditionStates.True, ValueText = "Off", Should = "0", Matches = true },
+                new LogicElementStateDto { Id = level.Id, Kind = LogicElementKinds.Contact, State = LogicConditionStates.False, ValueText = "40.2 %", Should = "> 50", Matches = false }
+            }
+        });
+
+        IReadOnlyList<LogicElementRowViewModel> contacts = Contacts(vm);
+
+        // should 1 · actual 0 — the interlock's expectation against the live reading.
+        Assert.Equal("NC", contacts[1].KindLabel);
+        Assert.True(contacts[0].ShowShould);
+        Assert.Equal("should 1 · actual 0", contacts[0].ShouldLine);
+        Assert.True(contacts[0].Mismatch);
+        Assert.Equal(LogicConditionStates.False, contacts[0].ShouldKey);
+
+        // A satisfied normally closed contact reads 0 — the raw bit, not the match.
+        Assert.Equal("should 0 · actual 0", contacts[1].ShouldLine);
+        Assert.False(contacts[1].Mismatch);
+        Assert.Equal(LogicConditionStates.True, contacts[1].ShouldKey);
+
+        // A numeric comparison keeps its value.
+        Assert.Equal("should > 50 · actual 40.2 %", contacts[2].ShouldLine);
+        Assert.True(contacts[2].Mismatch);
+    }
+
+    [Fact]
+    public void ElementRows_ReadUnknownAsAQuestionMark()
+    {
+        LogicConditionDto pressure = Condition("Pressure switch PS1 must read 1", itemId: "PS1");
+        LogicBlockDto block = Interlock(pressure);
+        LogicBlockDetailViewModel vm = new(block, BridgeKey);
+
+        vm.ApplyState(new LogicBlockStateDto
+        {
+            Id = block.Id,
+            State = LogicBlockStates.Unknown,
+            Elements =
+            {
+                new LogicElementStateDto { Id = pressure.Id, Kind = LogicElementKinds.Contact, State = LogicConditionStates.Unknown, ValueText = "—", Should = "1", Matches = null }
+            }
+        });
+
+        Assert.Equal("should 1 · actual ?", Contacts(vm)[0].ShouldLine);
+        Assert.False(Contacts(vm)[0].Mismatch);
+        Assert.Equal(LogicConditionStates.Unknown, Contacts(vm)[0].ShouldKey);
+    }
+
+    [Fact]
+    public void ElementRows_ShowTheTimerProgress()
+    {
+        LogicConditionDto pressure = Condition("Hydraulic pressure must hold", itemId: "PS1");
+        pressure.HoldMs = 3000;
+        LogicConditionDto plain = Condition("Permit must be given", itemId: "Permit");
+        LogicBlockDto block = Interlock(pressure, plain);
+        LogicBlockDetailViewModel vm = new(block, BridgeKey);
+
+        Guid timerId = LogicElementIds.Derived(pressure.Id, 1);
+
+        // The input is right but the hold is still running.
+        vm.ApplyState(new LogicBlockStateDto
+        {
+            Id = block.Id,
+            State = LogicBlockStates.Blocked,
+            Elements =
+            {
+                new LogicElementStateDto { Id = timerId, Kind = LogicElementKinds.Ton, Depth = 1, State = LogicConditionStates.False, PtMs = 3000, ElapsedMs = 1500 },
+                new LogicElementStateDto { Id = pressure.Id, Kind = LogicElementKinds.Contact, Depth = 2, State = LogicConditionStates.True, ValueText = "On", Should = "1", Matches = true },
+                new LogicElementStateDto { Id = plain.Id, Kind = LogicElementKinds.Contact, State = LogicConditionStates.True, ValueText = "On", Should = "1", Matches = true }
+            }
+        });
+
+        LogicElementRowViewModel timer = vm.Elements.Single(row => row.KindLabel == "TON IN");
+        Assert.Equal("TON IN", timer.KindLabel);
+        Assert.True(timer.ShowProgress);
+        Assert.Equal("holding 1.5 s of 3 s", timer.ProgressText);
+        Assert.Equal(LogicConditionStates.False, timer.StateKey);
+        Assert.Equal("Hydraulic pressure must hold", timer.Text);
+        Assert.False(Contacts(vm)[0].Mismatch);
+
+        // Held long enough: the timer is satisfied.
+        vm.ApplyState(new LogicBlockStateDto
+        {
+            Id = block.Id,
+            State = LogicBlockStates.Ready,
+            Elements =
+            {
+                new LogicElementStateDto { Id = timerId, Kind = LogicElementKinds.Ton, Depth = 1, State = LogicConditionStates.True, PtMs = 3000, ElapsedMs = 3000 },
+                new LogicElementStateDto { Id = pressure.Id, Kind = LogicElementKinds.Contact, Depth = 2, State = LogicConditionStates.True, ValueText = "On", Should = "1", Matches = true },
+                new LogicElementStateDto { Id = plain.Id, Kind = LogicElementKinds.Contact, State = LogicConditionStates.True, ValueText = "On", Should = "1", Matches = true }
+            }
+        });
+
+        Assert.Equal("holding done · 3 s", timer.ProgressText);
+
+        // The input dropped: the timer starts over.
+        vm.ApplyState(new LogicBlockStateDto
+        {
+            Id = block.Id,
+            State = LogicBlockStates.Blocked,
+            Elements =
+            {
+                new LogicElementStateDto { Id = timerId, Kind = LogicElementKinds.Ton, Depth = 1, State = LogicConditionStates.False, PtMs = 3000, ElapsedMs = 0 },
+                new LogicElementStateDto { Id = pressure.Id, Kind = LogicElementKinds.Contact, Depth = 2, State = LogicConditionStates.False, ValueText = "Off", Should = "1", Matches = false },
+                new LogicElementStateDto { Id = plain.Id, Kind = LogicElementKinds.Contact, State = LogicConditionStates.True, ValueText = "On", Should = "1", Matches = true }
+            }
+        });
+
+        Assert.Equal("holding 0 s of 3 s", timer.ProgressText);
+    }
+
+    [Fact]
+    public void ElementRows_ShowTheGatesAndTheirDepth()
+    {
+        LogicConditionDto local = Condition("Local start PB must be pressed", itemId: "PB1");
+        LogicConditionDto remote = Condition("Remote start PB must be pressed", itemId: "PB2");
+        local.Group = "Start permissive";
+        remote.Group = "Start permissive";
+        LogicConditionDto plain = Condition("Pressure switch PS1 must read 1", itemId: "PS1");
+        LogicBlockDto block = Interlock(local, remote, plain);
+        LogicBlockDetailViewModel vm = new(block, BridgeKey);
+
+        vm.ApplyState(new LogicBlockStateDto
+        {
+            Id = block.Id,
+            State = LogicBlockStates.Blocked,
+            Elements =
+            {
+                new LogicElementStateDto { Id = LogicElementIds.Derived(local.Id, 3), Kind = LogicElementKinds.And, Depth = 0, State = LogicConditionStates.False },
+                new LogicElementStateDto { Id = LogicElementIds.Derived(local.Id, 2), Kind = LogicElementKinds.Or, Depth = 1, State = LogicConditionStates.False },
+                new LogicElementStateDto { Id = local.Id, Kind = LogicElementKinds.Contact, Depth = 2, State = LogicConditionStates.False, ValueText = "Off", Should = "1", Matches = false },
+                new LogicElementStateDto { Id = remote.Id, Kind = LogicElementKinds.Contact, Depth = 2, State = LogicConditionStates.False, ValueText = "Off", Should = "1", Matches = false },
+                new LogicElementStateDto { Id = plain.Id, Kind = LogicElementKinds.Contact, Depth = 1, State = LogicConditionStates.True, ValueText = "On", Should = "1", Matches = true }
+            }
+        });
+
+        // The network reads as a tree: the block's AND, the group under it, its members deeper.
+        Assert.Equal("AND", vm.Elements[0].KindLabel);
+        LogicElementRowViewModel or = vm.Elements[1];
+        Assert.Equal("OR", or.KindLabel);
+        Assert.Equal("Start permissive", or.Text);
+        Assert.Equal(1, or.Depth);
+        Assert.Equal(14, or.IndentWidth);
+        Assert.Equal(LogicConditionStates.False, or.StateKey);
+        Assert.Equal(3, Contacts(vm).Count);
+        Assert.Equal(2, Contacts(vm)[0].Depth);
+
+        // One member true satisfies the group.
+        vm.ApplyState(new LogicBlockStateDto
+        {
+            Id = block.Id,
+            State = LogicBlockStates.Blocked,
+            Elements =
+            {
+                new LogicElementStateDto { Id = LogicElementIds.Derived(local.Id, 3), Kind = LogicElementKinds.And, Depth = 0, State = LogicConditionStates.False },
+                new LogicElementStateDto { Id = LogicElementIds.Derived(local.Id, 2), Kind = LogicElementKinds.Or, Depth = 1, State = LogicConditionStates.True },
+                new LogicElementStateDto { Id = local.Id, Kind = LogicElementKinds.Contact, Depth = 2, State = LogicConditionStates.True, ValueText = "On", Should = "1", Matches = true },
+                new LogicElementStateDto { Id = remote.Id, Kind = LogicElementKinds.Contact, Depth = 2, State = LogicConditionStates.False, ValueText = "Off", Should = "1", Matches = false },
+                new LogicElementStateDto { Id = plain.Id, Kind = LogicElementKinds.Contact, Depth = 1, State = LogicConditionStates.False, ValueText = "Off", Should = "1", Matches = false }
+            }
+        });
+
+        Assert.Equal(LogicConditionStates.True, or.StateKey);
+    }
+
+    private static LogicBlockStateDto BlockState(LogicBlockDto block, string state, params LogicElementStateDto[] elements) => new()
+    {
+        Id = block.Id,
+        State = state,
+        Elements = elements.ToList()
+    };
 
     [Fact]
     public void Sequence_ShowsTheStepFlowAndMarksTheCurrentStep()
@@ -440,7 +737,7 @@ public sealed class LogicBlockDetailViewModelTests
         Assert.Equal("Current", vm.Steps[1].StateLabel);
         Assert.True(vm.Steps[1].IsCurrent);
         Assert.Equal("Valve 01 must be open", vm.Steps[1].Reason);
-        Assert.Single(vm.Steps[0].Conditions);
+        Assert.Single(vm.Steps[0].Elements);
     }
 
     [Fact]

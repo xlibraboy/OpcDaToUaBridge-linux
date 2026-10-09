@@ -17,6 +17,22 @@ public sealed class LogicStore
     private const int MaxTagsPerBlock = 8;
     private const int MaxTagLength = 24;
 
+    /// <summary>Longest interlock group name a block may carry (the phone's heading).</summary>
+    private const int MaxBlockGroupLength = 40;
+
+    /// <summary>Longest OR group label a condition may carry.</summary>
+    private const int MaxOrGroupLength = 24;
+
+    /// <summary>Longest hold timer a contact may carry (one hour).</summary>
+    private const int MaxHoldMs = 3_600_000;
+
+    /// <summary>Longest counter preset a CTU / CTD may carry.</summary>
+    private const int MaxCounterPv = 1_000_000;
+
+    /// <summary>Deepest an IEC network may nest, and how many elements one block may hold.</summary>
+    private const int MaxElementDepth = 8;
+    private const int MaxElementsPerBlock = 64;
+
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     private readonly object sync_ = new();
@@ -188,16 +204,40 @@ public sealed class LogicStore
             return false;
         }
 
+        string blockGroup = block.Group?.Trim() ?? string.Empty;
+        if (blockGroup.Length > MaxBlockGroupLength)
+        {
+            normalized = default!;
+            error = "An interlock group can be at most 40 characters.";
+            return false;
+        }
+
         string kind = block.Kind.ToLowerInvariant();
         bool isSequence = kind == LogicBlockKinds.Sequence;
+
+        // A block carries its logic either as an IEC network or as the simple conditions form;
+        // the two are alternatives, never both, so there is one source of truth to evaluate.
+        List<LogicElementDto> elements = new();
+        if (!TryNormalizeElements(block.Elements, out elements, out error))
+        {
+            normalized = default!;
+            return false;
+        }
 
         List<LogicConditionDto> conditions = new();
         if (!isSequence)
         {
-            if (block.Conditions.Count == 0)
+            if (elements.Count > 0 && block.Conditions.Count > 0)
             {
                 normalized = default!;
-                error = "A block needs at least one condition.";
+                error = "Use either conditions or an IEC network, not both.";
+                return false;
+            }
+
+            if (elements.Count == 0 && block.Conditions.Count == 0)
+            {
+                normalized = default!;
+                error = "A block needs at least one condition or an IEC network.";
                 return false;
             }
 
@@ -211,6 +251,12 @@ public sealed class LogicStore
 
                 conditions.Add(normalizedCondition);
             }
+        }
+        else if (elements.Count > 0 || block.Conditions.Count > 0)
+        {
+            normalized = default!;
+            error = "A sequence carries its logic in its steps.";
+            return false;
         }
 
         List<LogicStepDto> steps = new();
@@ -259,11 +305,13 @@ public sealed class LogicStore
         {
             Id = block.Id == Guid.Empty ? Guid.NewGuid() : block.Id,
             Name = name,
+            Group = blockGroup,
             Description = block.Description?.Trim() ?? string.Empty,
             Kind = kind,
             Enabled = block.Enabled,
             Order = block.Order,
             Tags = tags,
+            Elements = elements,
             Conditions = conditions,
             Steps = steps,
             Actions = actions
@@ -279,6 +327,20 @@ public sealed class LogicStore
         {
             normalized = default!;
             error = "Step name is required (max 64 characters).";
+            return false;
+        }
+
+        List<LogicElementDto> stepElements = new();
+        if (!TryNormalizeElements(step.Elements, out stepElements, out error))
+        {
+            normalized = default!;
+            return false;
+        }
+
+        if (stepElements.Count > 0 && step.Conditions.Count > 0)
+        {
+            normalized = default!;
+            error = "Use either conditions or an IEC network, not both.";
             return false;
         }
 
@@ -324,6 +386,7 @@ public sealed class LogicStore
         {
             Id = step.Id == Guid.Empty ? Guid.NewGuid() : step.Id,
             Name = name,
+            Elements = stepElements,
             Conditions = conditions,
             NextStepText = NormalizeOptional(step.NextStepText),
             CompletionSourceId = completionSourceId,
@@ -333,6 +396,197 @@ public sealed class LogicStore
         error = null;
         return true;
     }
+
+    /// <summary>
+    /// Normalizes a network: element kinds, arities and constants checked, ids generated, the
+    /// contact fields cleared on gates and blocks (and the presets cleared where they do not
+    /// apply), depth and element count bounded so a hand-written file cannot build an unbounded
+    /// tree.
+    /// </summary>
+    private static bool TryNormalizeElements(
+        IReadOnlyList<LogicElementDto>? elements,
+        out List<LogicElementDto> normalized,
+        out string? error)
+    {
+        normalized = new List<LogicElementDto>();
+        int budget = MaxElementsPerBlock;
+
+        foreach (LogicElementDto element in elements ?? Array.Empty<LogicElementDto>())
+        {
+            if (!TryNormalizeElement(element, 0, ref budget, out LogicElementDto child, out error))
+            {
+                return false;
+            }
+
+            normalized.Add(child);
+        }
+
+        error = null;
+        return true;
+    }
+
+    private static bool TryNormalizeElement(
+        LogicElementDto element,
+        int depth,
+        ref int budget,
+        out LogicElementDto normalized,
+        out string? error)
+    {
+        if (depth > MaxElementDepth)
+        {
+            normalized = default!;
+            error = "A network can nest at most 8 levels.";
+            return false;
+        }
+
+        if (budget-- <= 0)
+        {
+            normalized = default!;
+            error = "A block can hold at most 64 elements.";
+            return false;
+        }
+
+        if (!LogicElementKinds.IsValid(element.Kind))
+        {
+            normalized = default!;
+            error = "Unknown element kind.";
+            return false;
+        }
+
+        string kind = element.Kind.ToLowerInvariant();
+        string text = element.Text?.Trim() ?? string.Empty;
+        if (text.Length > 200)
+        {
+            normalized = default!;
+            error = "Element text is at most 200 characters.";
+            return false;
+        }
+
+        if (!LogicConditionSeverities.IsValid(element.Severity))
+        {
+            normalized = default!;
+            error = "Element severity must be block or warn.";
+            return false;
+        }
+
+        if (kind == LogicElementKinds.Contact)
+        {
+            if (text.Length == 0)
+            {
+                normalized = default!;
+                error = "A contact needs its operator sentence.";
+                return false;
+            }
+
+            string contactItemId = element.ItemId?.Trim() ?? string.Empty;
+            if (contactItemId.Length == 0)
+            {
+                normalized = default!;
+                error = "A contact needs a tag.";
+                return false;
+            }
+
+            if (!LogicConditionOps.IsValid(element.Op))
+            {
+                normalized = default!;
+                error = "A contact must be on, off, gt, lt or eq.";
+                return false;
+            }
+
+            if (element.Inputs.Count > 0)
+            {
+                normalized = default!;
+                error = "A contact reads one tag and takes no inputs.";
+                return false;
+            }
+
+            string contactOp = element.Op.ToLowerInvariant();
+            normalized = new LogicElementDto
+            {
+                Id = element.Id == Guid.Empty ? Guid.NewGuid() : element.Id,
+                Kind = LogicElementKinds.Contact,
+                Text = text,
+                SourceId = NormalizeSourceId(element.SourceId),
+                ItemId = contactItemId,
+                Op = contactOp,
+                Value = LogicConditionOps.RequiresValue(contactOp) ? element.Value : null,
+                Severity = element.Severity.ToLowerInvariant(),
+                NextStepText = NormalizeOptional(element.NextStepText)
+            };
+            error = null;
+            return true;
+        }
+
+        (int minInputs, int maxInputs) = LogicElementKinds.InputRange(kind);
+        if (element.Inputs.Count < minInputs || element.Inputs.Count > maxInputs)
+        {
+            normalized = default!;
+            error = minInputs == maxInputs
+                ? $"{KindName(kind)} takes exactly {minInputs} input(s)."
+                : $"{KindName(kind)} takes between {minInputs} and {maxInputs} inputs.";
+            return false;
+        }
+
+        if (element.PtMs is < 0 or > MaxHoldMs)
+        {
+            normalized = default!;
+            error = "A timer preset must be between 0 and 3,600,000 ms.";
+            return false;
+        }
+
+        if (element.Pv is < 0 or > MaxCounterPv)
+        {
+            normalized = default!;
+            error = "A counter preset must be between 0 and 1,000,000.";
+            return false;
+        }
+
+        List<LogicElementDto> inputs = new();
+        foreach (LogicElementDto input in element.Inputs)
+        {
+            if (!TryNormalizeElement(input, depth + 1, ref budget, out LogicElementDto child, out error))
+            {
+                normalized = default!;
+                return false;
+            }
+
+            inputs.Add(child);
+        }
+
+        normalized = new LogicElementDto
+        {
+            Id = element.Id == Guid.Empty ? Guid.NewGuid() : element.Id,
+            Kind = kind,
+            Text = text,
+            // A gate or block combines its inputs; only a contact reads a tag, and only a timer
+            // or counter carries a preset.
+            PtMs = LogicElementKinds.IsTimer(kind) ? element.PtMs : 0,
+            Pv = LogicElementKinds.IsCounter(kind) ? element.Pv : 0,
+            Inputs = inputs,
+            Severity = element.Severity.ToLowerInvariant(),
+            NextStepText = NormalizeOptional(element.NextStepText)
+        };
+        error = null;
+        return true;
+    }
+
+    private static string KindName(string kind) => kind switch
+    {
+        LogicElementKinds.And => "AND",
+        LogicElementKinds.Or => "OR",
+        LogicElementKinds.Xor => "XOR",
+        LogicElementKinds.Not => "NOT",
+        LogicElementKinds.Ton => "TON",
+        LogicElementKinds.Tof => "TOF",
+        LogicElementKinds.Tp => "TP",
+        LogicElementKinds.Ctu => "CTU",
+        LogicElementKinds.Ctd => "CTD",
+        LogicElementKinds.Sr => "SR",
+        LogicElementKinds.Rs => "RS",
+        LogicElementKinds.RisingEdge => "R_TRIG",
+        LogicElementKinds.FallingEdge => "F_TRIG",
+        _ => "The element"
+    };
 
     private static bool TryNormalizeCondition(LogicConditionDto condition, out LogicConditionDto normalized, out string? error)
     {
@@ -374,6 +628,21 @@ public sealed class LogicStore
             return false;
         }
 
+        if (condition.HoldMs is < 0 or > MaxHoldMs)
+        {
+            normalized = default!;
+            error = "A hold timer must be between 0 and 3,600,000 ms.";
+            return false;
+        }
+
+        string group = condition.Group?.Trim() ?? string.Empty;
+        if (group.Length > MaxOrGroupLength)
+        {
+            normalized = default!;
+            error = "An OR group can be at most 24 characters.";
+            return false;
+        }
+
         normalized = new LogicConditionDto
         {
             Id = condition.Id == Guid.Empty ? Guid.NewGuid() : condition.Id,
@@ -382,6 +651,8 @@ public sealed class LogicStore
             ItemId = itemId,
             Op = op,
             Value = LogicConditionOps.RequiresValue(op) ? condition.Value : null,
+            Group = group,
+            HoldMs = condition.HoldMs,
             NextStepText = NormalizeOptional(condition.NextStepText),
             Severity = condition.Severity.ToLowerInvariant()
         };

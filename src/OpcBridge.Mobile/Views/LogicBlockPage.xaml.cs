@@ -89,6 +89,8 @@ public partial class LogicBlockPage : ContentPage
             .FirstOrDefault(candidate => candidate.Id == blockId_);
         viewModel_.ApplyState(blockState);
         viewModel_.ApplyValues();
+        offlineLabel.IsVisible = Active.IsOffline;
+        offlineLabel.Text = Active.OfflineText;
         stateLabel.Text = viewModel_.StateLabel;
         stateLabel.TextColor = (Color)new StateColorConverter()
             .Convert(viewModel_.StateKey, typeof(Color), null, CultureInfo.InvariantCulture);

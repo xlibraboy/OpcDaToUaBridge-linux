@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using OpcBridge.Client;
@@ -6,47 +7,88 @@ using OpcBridge.Hmi.Core;
 
 namespace OpcBridge.Mobile.Core;
 
-/// <summary>One condition on the block detail screen, with its live state and value.</summary>
-public sealed partial class LogicConditionRowViewModel : ObservableObject
+/// <summary>
+/// One element of a block's IEC 61131-3 network on the detail screen: a contact, a gate or a
+/// function block, with its live state. A contact carries the reading it needs against the live
+/// one ("should 1 · actual 0"); a timer or counter carries its progress.
+/// </summary>
+public sealed partial class LogicElementRowViewModel : ObservableObject
 {
-    private readonly LogicConditionDto condition_;
+    private readonly LogicElementDto element_;
     private string lastState_ = LogicConditionStates.Unknown;
+    private bool? lastMatches_;
+    private string should_text_ = string.Empty;
 
     [ObservableProperty] private string _mark = "—";
     [ObservableProperty] private string _stateKey = LogicConditionStates.Unknown;
-    [ObservableProperty] private string _stateWord = string.Empty;
-    [ObservableProperty] private bool _showStateWord;
-    [ObservableProperty] private string _valueText = "—";
+    [ObservableProperty] private string _actualText = "—";
+    [ObservableProperty] private string _valueText = string.Empty;
     [ObservableProperty] private bool _showNextStep;
 
-    public LogicConditionRowViewModel(LogicConditionDto condition, string tagLabel)
+    /// <summary>"should 1 · actual 0" — the reading a contact expects against the live one.</summary>
+    [ObservableProperty] private string _shouldLine = string.Empty;
+
+    /// <summary>True for a contact whose requirement can be stated.</summary>
+    [ObservableProperty] private bool _showShould;
+
+    /// <summary>True while the live reading does not satisfy a contact.</summary>
+    [ObservableProperty] private bool _mismatch;
+
+    /// <summary>State key the should/actual line colours by: "true" matched, "false" mismatched.</summary>
+    [ObservableProperty] private string _shouldKey = LogicConditionStates.Unknown;
+
+    /// <summary>"holding 1.5 s of 3 s" / "count 2 of 5" — a timer's or counter's progress.</summary>
+    [ObservableProperty] private string _progressText = string.Empty;
+
+    [ObservableProperty] private bool _showProgress;
+
+    public LogicElementRowViewModel(LogicElementDto element, int depth, string tagLabel)
     {
-        condition_ = condition;
+        element_ = element;
+        Depth = depth;
         TagLabel = tagLabel;
-        NextStepText = condition.NextStepText;
-        isBoolean_ = condition.Op is LogicConditionOps.On or LogicConditionOps.Off;
+        NextStepText = element.NextStepText;
+
+        string kind = element.Kind.ToLowerInvariant();
+        IsContact = kind == LogicElementKinds.Contact;
+        isBoolean_ = IsContact && element.Op is LogicConditionOps.On or LogicConditionOps.Off;
+        KindLabel = DescribeKind(element, kind);
     }
 
     private bool isBoolean_;
 
-    public Guid Id => condition_.Id;
+    public Guid Id => element_.Id;
 
-    public string Text => condition_.Text;
+    /// <summary>Depth in the network (0 = a root) — the row indents by it.</summary>
+    public int Depth { get; }
 
-    /// <summary>"Line 01 Start Permit · sim" — what the condition reads.</summary>
+    /// <summary>Pixels to indent by, so the tree reads without extra glyphs.</summary>
+    public double IndentWidth => Depth * 14;
+
+    /// <summary>True for a contact / comparison; false for a gate or function block.</summary>
+    public bool IsContact { get; }
+
+    /// <summary>"NO" / "NC" / "&gt; 50" for a contact; "AND", "TON IN", "CTU CU" for a block.</summary>
+    public string KindLabel { get; }
+
+    /// <summary>The element's sentence (contacts) or label (gates and blocks).</summary>
+    public string Text => string.IsNullOrWhiteSpace(element_.Text) ? KindLabel : element_.Text;
+
+    /// <summary>"Pressure switch PS1 · sim" — what a contact reads; empty for a gate or block.</summary>
     public string TagLabel { get; }
 
-    /// <summary>The "what to do when not true" hint, highlighted while the condition is not true.</summary>
+    /// <summary>The "what to do when not true" hint, highlighted while the element is not true.</summary>
     public string? NextStepText { get; }
 
-    public bool Blocks => !string.Equals(condition_.Severity, LogicConditionSeverities.Warn, StringComparison.OrdinalIgnoreCase);
+    public bool Blocks => !string.Equals(element_.Severity, LogicConditionSeverities.Warn, StringComparison.OrdinalIgnoreCase);
 
     public string SeverityLabel => Blocks ? string.Empty : "warn only";
 
-    public void ApplyState(LogicConditionStateDto? state)
+    public void ApplyState(LogicElementStateDto? state)
     {
         string value = state?.State ?? LogicConditionStates.Unknown;
         lastState_ = value;
+        lastMatches_ = state?.Matches;
         StateKey = value;
         Mark = value switch
         {
@@ -54,54 +96,168 @@ public sealed partial class LogicConditionRowViewModel : ObservableObject
             LogicConditionStates.False => "✗",
             _ => "—"
         };
-        UpdateStateWord();
+
         ShowNextStep = !string.IsNullOrWhiteSpace(NextStepText) && value != LogicConditionStates.True;
         if (!string.IsNullOrWhiteSpace(state?.ValueText))
         {
             ValueText = state!.ValueText;
         }
+
+        ShouldLine = state?.Should is { Length: > 0 } should ? should : string.Empty;
+        should_text_ = ShouldLine;
+        Mismatch = state?.Matches == false;
+        ShouldKey = state?.Matches switch
+        {
+            true => LogicConditionStates.True,
+            false => LogicConditionStates.False,
+            null => LogicConditionStates.Unknown
+        };
+
+        ApplyProgress(state);
+        UpdateActualText();
+        UpdateShouldLine();
     }
 
     /// <summary>
-    /// Live value and kind straight from the tag cache. A boolean condition reads as
-    /// <c>1</c>/<c>0</c>; a numeric one keeps its value (a level above 50 % is not a bit).
+    /// Live value straight from the tag cache (updated on every value delta). A boolean
+    /// contact reads as <c>1</c>/<c>0</c>; a numeric one keeps its value.
     /// </summary>
     public void ApplyTag(MultiBridgeTagEntry? entry)
     {
-        if (entry is null)
+        if (entry is null || !IsContact)
         {
             return;
         }
 
         isBoolean_ = entry.Digital;
         ApplyValueText(LogicTagText.Format(entry));
-        UpdateStateWord();
     }
 
-    /// <summary>Live text straight from the tag cache (updated on every value delta).</summary>
     public void ApplyValueText(string valueText)
     {
         if (!string.IsNullOrWhiteSpace(valueText))
         {
             ValueText = valueText;
         }
+
+        UpdateActualText();
+        UpdateShouldLine();
     }
 
-    private void UpdateStateWord()
+    private void ApplyProgress(LogicElementStateDto? state)
     {
-        ShowStateWord = isBoolean_;
-        StateWord = !isBoolean_
-            ? string.Empty
-            : lastState_ switch
+        string kind = element_.Kind.ToLowerInvariant();
+        if (state is null)
+        {
+            ShowProgress = false;
+            ProgressText = string.Empty;
+            return;
+        }
+
+        switch (kind)
+        {
+            case LogicElementKinds.Ton:
+            case LogicElementKinds.Tof:
+            case LogicElementKinds.Tp:
             {
-                LogicConditionStates.True => "1",
-                LogicConditionStates.False => "0",
-                _ => "—"
-            };
+                ShowProgress = state.PtMs > 0;
+                string verb = kind switch
+                {
+                    LogicElementKinds.Tof => "off-delay",
+                    LogicElementKinds.Tp => "pulse",
+                    _ => "holding"
+                };
+                ProgressText = !ShowProgress
+                    ? string.Empty
+                    : lastState_ == LogicConditionStates.True
+                        ? verb + " done · " + FormatSeconds(state.PtMs)
+                        : verb + " " + FormatSeconds(state.ElapsedMs) + " of " + FormatSeconds(state.PtMs);
+                break;
+            }
+
+            case LogicElementKinds.Ctu:
+            case LogicElementKinds.Ctd:
+                ShowProgress = true;
+                ProgressText = "count " + state.Count + " of " + element_.Pv;
+                break;
+
+            default:
+                ShowProgress = false;
+                ProgressText = string.Empty;
+                break;
+        }
     }
+
+    /// <summary>
+    /// What the element reads: the live bit for a contact, the output bit for a gate or block,
+    /// the value text for a numeric comparison, and "?" whenever it is unknown.
+    /// </summary>
+    private void UpdateActualText()
+    {
+        if (isBoolean_)
+        {
+            bool? raw = lastMatches_ switch
+            {
+                null => null,
+                bool matches => element_.Op == LogicConditionOps.Off ? !matches : matches
+            };
+            ActualText = raw switch { true => "1", false => "0", null => "?" };
+            return;
+        }
+
+        if (IsContact)
+        {
+            ActualText = string.IsNullOrWhiteSpace(ValueText) || ValueText == "—" ? "?" : ValueText;
+            return;
+        }
+
+        ActualText = lastState_ switch
+        {
+            LogicConditionStates.True => "1",
+            LogicConditionStates.False => "0",
+            _ => "—"
+        };
+    }
+
+    private void UpdateShouldLine()
+    {
+        ShowShould = should_text_.Length > 0;
+        ShouldLine = ShowShould ? "should " + should_text_ + " · actual " + ActualText : string.Empty;
+    }
+
+    private static string FormatSeconds(int milliseconds) =>
+        (milliseconds / 1000.0).ToString("0.##", CultureInfo.InvariantCulture) + " s";
+
+    /// <summary>The element's short name: the contact form, or the block with its first input.</summary>
+    private static string DescribeKind(LogicElementDto element, string kind) => kind switch
+    {
+        LogicElementKinds.Contact => element.Op.ToLowerInvariant() switch
+        {
+            LogicConditionOps.On => "NO",
+            LogicConditionOps.Off => "NC",
+            LogicConditionOps.GreaterThan => ">",
+            LogicConditionOps.LessThan => "<",
+            LogicConditionOps.Equal => "=",
+            _ => "contact"
+        },
+        LogicElementKinds.And => "AND",
+        LogicElementKinds.Or => "OR",
+        LogicElementKinds.Xor => "XOR",
+        LogicElementKinds.Not => "NOT",
+        LogicElementKinds.Ton => "TON IN",
+        LogicElementKinds.Tof => "TOF IN",
+        LogicElementKinds.Tp => "TP IN",
+        LogicElementKinds.Ctu => "CTU CU",
+        LogicElementKinds.Ctd => "CTD CD",
+        LogicElementKinds.Sr => "SR S1",
+        LogicElementKinds.Rs => "RS S",
+        LogicElementKinds.RisingEdge => "R_TRIG IN",
+        LogicElementKinds.FallingEdge => "F_TRIG IN",
+        _ => "element"
+    };
 }
 
-/// <summary>One ordered step of a sequence.</summary>
+/// <summary>One ordered step of a sequence, with the element rows of its own network.</summary>
 public sealed partial class LogicStepRowViewModel : ObservableObject
 {
     [ObservableProperty] private string _stateLabel = "Pending";
@@ -125,7 +281,7 @@ public sealed partial class LogicStepRowViewModel : ObservableObject
 
     public string? NextStepText { get; }
 
-    public ObservableCollection<LogicConditionRowViewModel> Conditions { get; } = new();
+    public ObservableCollection<LogicElementRowViewModel> Elements { get; } = new();
 
     public void ApplyState(LogicStepStateDto? state)
     {
@@ -181,15 +337,15 @@ public sealed class LogicNoteRowViewModel
 }
 
 /// <summary>
-/// The block detail screen: conditions (or the ordered step flow), action buttons and notes,
-/// all updated in place from the pushed logic snapshot and value deltas.
+/// The block detail screen: the block's IEC network (or the ordered step flow), action buttons
+/// and notes, all updated in place from the pushed logic snapshot and value deltas.
 /// </summary>
 public sealed partial class LogicBlockDetailViewModel : ObservableObject
 {
     private readonly LogicBlockDto block_;
     private readonly string bridgeKey_;
     private readonly MultiBridgeTagCache? tags_;
-    private readonly Dictionary<Guid, LogicConditionRowViewModel> conditionRows_ = new();
+    private readonly Dictionary<Guid, LogicElementRowViewModel> elementRows_ = new();
     private readonly Dictionary<Guid, LogicStepRowViewModel> stepRows_ = new();
 
     [ObservableProperty] private string _stateLabel = "no data";
@@ -215,10 +371,9 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
             ? "Sequence"
             : string.Equals(block.Kind, LogicBlockKinds.Permissive, StringComparison.OrdinalIgnoreCase) ? "Permissive" : "Interlock";
 
-        foreach (LogicConditionDto condition in block.Conditions)
+        foreach ((LogicElementDto element, int depth) in LogicNetwork.Walk(LogicNetwork.For(block)))
         {
-            LogicConditionRowViewModel row = CreateRow(condition);
-            Conditions.Add(row);
+            Elements.Add(CreateRow(element, depth));
         }
 
         int number = 0;
@@ -227,12 +382,9 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
             number++;
             LogicStepRowViewModel row = new(step, number);
             stepRows_[step.Id] = row;
-            foreach (LogicConditionDto condition in step.Conditions)
+            foreach ((LogicElementDto element, int depth) in LogicNetwork.Walk(LogicNetwork.For(step)))
             {
-                string label = StepConditionLabel(step, condition);
-                LogicConditionRowViewModel conditionRow = CreateRow(condition, label);
-                conditionRows_[condition.Id] = conditionRow;
-                row.Conditions.Add(conditionRow);
+                row.Elements.Add(CreateRow(element, depth));
             }
 
             Steps.Add(row);
@@ -269,10 +421,12 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
     public string KindLabel { get; }
     public bool IsSequence { get; }
 
-    /// <summary>Interlocks and permissives show the flat condition list instead of steps.</summary>
-    public bool ShowConditions => !IsSequence;
+    /// <summary>Interlocks and permissives show the network instead of steps.</summary>
+    public bool ShowNetwork => !IsSequence;
 
-    public ObservableCollection<LogicConditionRowViewModel> Conditions { get; } = new();
+    /// <summary>The block's network, in drawing order — a parent row above its inputs.</summary>
+    public ObservableCollection<LogicElementRowViewModel> Elements { get; } = new();
+
     public ObservableCollection<LogicStepRowViewModel> Steps { get; } = new();
     public ObservableCollection<LogicActionButtonViewModel> Actions { get; } = new();
     public ObservableCollection<LogicNoteRowViewModel> Notes { get; } = new();
@@ -303,19 +457,19 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
         Reason = string.IsNullOrWhiteSpace(state?.Reason)
             ? (StateKey == LogicBlockStates.Ready ? "all conditions met" : null)
             : state!.Reason;
-        BlockedByText = StateKey == LogicBlockStates.Blocked || StateKey == LogicBlockStates.Unknown
+        BlockedByText = StateKey is LogicBlockStates.Blocked or LogicBlockStates.Unknown
             ? (string.IsNullOrWhiteSpace(Reason) ? string.Empty : "Blocked by: " + Reason)
             : string.Empty;
 
-        Dictionary<Guid, LogicConditionStateDto> conditionStates = new();
-        foreach (LogicConditionStateDto condition in state?.Conditions ?? Enumerable.Empty<LogicConditionStateDto>())
+        Dictionary<Guid, LogicElementStateDto> elementStates = new();
+        foreach (LogicElementStateDto element in state?.Elements ?? Enumerable.Empty<LogicElementStateDto>())
         {
-            conditionStates[condition.Id] = condition;
+            elementStates[element.Id] = element;
         }
 
-        foreach ((Guid id, LogicConditionRowViewModel row) in conditionRows_)
+        foreach ((Guid id, LogicElementRowViewModel row) in elementRows_)
         {
-            row.ApplyState(conditionStates.TryGetValue(id, out LogicConditionStateDto? conditionState) ? conditionState : null);
+            row.ApplyState(elementStates.TryGetValue(id, out LogicElementStateDto? elementState) ? elementState : null);
         }
 
         Dictionary<Guid, LogicStepStateDto> stepStates = new();
@@ -331,7 +485,7 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
         }
     }
 
-    /// <summary>Live value text for every condition, straight from the tag cache.</summary>
+    /// <summary>Live value text for every contact, straight from the tag cache.</summary>
     public void ApplyValues()
     {
         if (tags_ is null)
@@ -339,10 +493,15 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
             return;
         }
 
-        foreach (LogicConditionDto condition in AllConditions())
+        foreach (LogicElementDto element in AllElements())
         {
-            if (conditionRows_.TryGetValue(condition.Id, out LogicConditionRowViewModel? row) &&
-                tags_.TryGet(TagBindingKey.Create(bridgeKey_, condition.SourceId, condition.ItemId), out MultiBridgeTagEntry? entry))
+            if (!string.Equals(element.Kind, LogicElementKinds.Contact, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (elementRows_.TryGetValue(element.Id, out LogicElementRowViewModel? row) &&
+                tags_.TryGet(TagBindingKey.Create(bridgeKey_, element.SourceId, element.ItemId), out MultiBridgeTagEntry? entry))
             {
                 row.ApplyTag(entry);
             }
@@ -358,15 +517,15 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
         }
     }
 
-    private LogicConditionRowViewModel CreateRow(LogicConditionDto condition, string? labelOverride = null)
+    private LogicElementRowViewModel CreateRow(LogicElementDto element, int depth)
     {
-        LogicConditionRowViewModel row = new(condition, labelOverride ?? TagLabel(condition.SourceId, condition.ItemId));
-        conditionRows_[condition.Id] = row;
+        string label = string.Equals(element.Kind, LogicElementKinds.Contact, StringComparison.OrdinalIgnoreCase)
+            ? TagLabel(element.SourceId, element.ItemId)
+            : string.Empty;
+        LogicElementRowViewModel row = new(element, depth, label);
+        elementRows_[element.Id] = row;
         return row;
     }
-
-    private string StepConditionLabel(LogicStepDto step, LogicConditionDto condition) =>
-        $"{step.Name}: {TagLabel(condition.SourceId, condition.ItemId)}";
 
     private string TagLabel(string sourceId, string itemId)
     {
@@ -380,18 +539,18 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
         return string.IsNullOrWhiteSpace(sourceId) ? itemId : $"{itemId} · {sourceId}";
     }
 
-    private IEnumerable<LogicConditionDto> AllConditions()
+    private IEnumerable<LogicElementDto> AllElements()
     {
-        foreach (LogicConditionDto condition in block_.Conditions)
+        foreach ((LogicElementDto element, int _) in LogicNetwork.Walk(LogicNetwork.For(block_)))
         {
-            yield return condition;
+            yield return element;
         }
 
         foreach (LogicStepDto step in block_.Steps)
         {
-            foreach (LogicConditionDto condition in step.Conditions)
+            foreach ((LogicElementDto element, int _) in LogicNetwork.Walk(LogicNetwork.For(step)))
             {
-                yield return condition;
+                yield return element;
             }
         }
     }

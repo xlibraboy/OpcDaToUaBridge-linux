@@ -4,24 +4,37 @@
              x:Class="OpcBridge.Mobile.Views.LogicBlockPage"
              Title="Logic block">
     <ContentPage.Resources>
-        <DataTemplate x:Key="ConditionRow">
+        <!-- One element of the IEC network: a contact, a gate or a function block. The row indents
+             by its depth, so the tree reads without extra glyphs. -->
+        <DataTemplate x:Key="ElementRow">
             <Border Margin="0,0,0,6" Padding="10" StrokeThickness="1"
                     Stroke="{StaticResource BorderColor}" BackgroundColor="{StaticResource SurfaceColor}">
-                <Grid ColumnDefinitions="26,*,Auto" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="6">
-                    <Label Grid.Row="0" Grid.Column="0" Text="{Binding Mark}" FontSize="18" FontAttributes="Bold"
-                           TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
-                    <Label Grid.Row="0" Grid.Column="1" Text="{Binding Text}" VerticalOptions="Center" />
-                    <VerticalStackLayout Grid.Row="0" Grid.Column="2" Spacing="0" HorizontalOptions="End">
-                        <Label Text="{Binding StateWord}" FontSize="18" FontAttributes="Bold" HorizontalTextAlignment="End"
-                               IsVisible="{Binding ShowStateWord}"
+                <Grid ColumnDefinitions="Auto,*">
+                    <BoxView Grid.Column="0" WidthRequest="{Binding IndentWidth}" HeightRequest="1" Color="Transparent" />
+                    <Grid Grid.Column="1" ColumnDefinitions="26,*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto" ColumnSpacing="6">
+                        <Label Grid.Row="0" Grid.Column="0" Text="{Binding Mark}" FontSize="18" FontAttributes="Bold"
                                TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
-                        <Label Text="{Binding ValueText}" FontSize="11" HorizontalTextAlignment="End"
-                               TextColor="{StaticResource MutedColor}" />
-                    </VerticalStackLayout>
-                    <Label Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding TagLabel}"
-                           FontSize="11" TextColor="{StaticResource MutedColor}" />
-                    <Label Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding NextStepText}"
-                           IsVisible="{Binding ShowNextStep}" FontSize="12" TextColor="{StaticResource WarnColor}" />
+                        <VerticalStackLayout Grid.Row="0" Grid.Column="1" Spacing="0" VerticalOptions="Center">
+                            <Label Text="{Binding KindLabel}" FontSize="10" TextColor="{StaticResource MutedColor}" />
+                            <Label Text="{Binding Text}" />
+                        </VerticalStackLayout>
+                        <VerticalStackLayout Grid.Row="0" Grid.Column="2" Spacing="0" HorizontalOptions="End">
+                            <Label Text="{Binding ActualText}" FontSize="18" FontAttributes="Bold" HorizontalTextAlignment="End"
+                                   TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
+                            <Label Text="{Binding ValueText}" FontSize="11" HorizontalTextAlignment="End"
+                                   TextColor="{StaticResource MutedColor}" />
+                        </VerticalStackLayout>
+                        <Label Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding TagLabel}"
+                               FontSize="11" TextColor="{StaticResource MutedColor}" />
+                        <!-- Should vs actual: the reading the element needs against the live one. -->
+                        <Label Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding ShouldLine}"
+                               IsVisible="{Binding ShowShould}" FontSize="12"
+                               TextColor="{Binding ShouldKey, Converter={StaticResource StateColor}}" />
+                        <Label Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding ProgressText}"
+                               IsVisible="{Binding ShowProgress}" FontSize="12" TextColor="{StaticResource WarnColor}" />
+                        <Label Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding NextStepText}"
+                               IsVisible="{Binding ShowNextStep}" FontSize="12" TextColor="{StaticResource WarnColor}" />
+                    </Grid>
                 </Grid>
             </Border>
         </DataTemplate>
@@ -30,15 +43,16 @@
     <ScrollView>
         <VerticalStackLayout Padding="12" Spacing="10">
             <Label x:Name="titleLabel" FontSize="22" FontAttributes="Bold" />
+            <Label x:Name="offlineLabel" FontSize="12" TextColor="{StaticResource WarnColor}" IsVisible="false" />
             <Label x:Name="stateLabel" FontSize="16" FontAttributes="Bold" />
             <Label x:Name="blockedLabel" FontSize="13" TextColor="{StaticResource BadColor}" />
             <Label x:Name="descriptionLabel" FontSize="13" TextColor="{StaticResource MutedColor}" />
             <Label x:Name="messageLabel" FontSize="13" TextColor="{StaticResource WarnColor}" />
 
-            <Label Text="Conditions" FontAttributes="Bold" IsVisible="{Binding ShowConditions}" />
-            <VerticalStackLayout IsVisible="{Binding ShowConditions}" Spacing="0"
-                                 BindableLayout.ItemsSource="{Binding Conditions}"
-                                 BindableLayout.ItemTemplate="{StaticResource ConditionRow}" />
+            <Label Text="Network" FontAttributes="Bold" IsVisible="{Binding ShowNetwork}" />
+            <VerticalStackLayout IsVisible="{Binding ShowNetwork}" Spacing="0"
+                                 BindableLayout.ItemsSource="{Binding Elements}"
+                                 BindableLayout.ItemTemplate="{StaticResource ElementRow}" />
 
             <Label Text="Steps" FontAttributes="Bold" IsVisible="{Binding IsSequence}" />
             <VerticalStackLayout IsVisible="{Binding IsSequence}" Spacing="8"
@@ -54,8 +68,8 @@
                                            TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
                                 </Grid>
                                 <Label Text="{Binding Reason}" FontSize="12" TextColor="{StaticResource WarnColor}" />
-                                <VerticalStackLayout Spacing="0" BindableLayout.ItemsSource="{Binding Conditions}"
-                                                     BindableLayout.ItemTemplate="{StaticResource ConditionRow}" />
+                                <VerticalStackLayout Spacing="0" BindableLayout.ItemsSource="{Binding Elements}"
+                                                     BindableLayout.ItemTemplate="{StaticResource ElementRow}" />
                             </VerticalStackLayout>
                         </Border>
                     </DataTemplate>

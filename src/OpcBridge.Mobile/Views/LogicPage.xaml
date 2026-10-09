@@ -18,6 +18,8 @@
             <Label x:Name="summaryLabel" FontSize="13" TextColor="{StaticResource MutedColor}" />
             <Label x:Name="filterLabel" FontSize="12" TextColor="{StaticResource MutedColor}" IsVisible="false" />
             <Label x:Name="connectionLabel" FontSize="12" TextColor="{StaticResource MutedColor}" />
+            <!-- Shown while the list is the last data the bridge served. -->
+            <Label x:Name="offlineLabel" FontSize="12" TextColor="{StaticResource WarnColor}" IsVisible="false" />
         </VerticalStackLayout>
 
         <Picker x:Name="bridgePicker" Grid.Row="1" Title="Bridge" SelectedIndexChanged="OnBridgePicked" />
@@ -42,10 +44,30 @@
         </ScrollView>
 
         <RefreshView x:Name="refreshView" Grid.Row="5" Refreshing="OnRefreshing">
-            <CollectionView x:Name="blocksView" SelectionMode="Single" SelectionChanged="OnBlockSelected">
+            <CollectionView x:Name="blocksView" IsGrouped="True" SelectionMode="Single" SelectionChanged="OnBlockSelected">
                 <CollectionView.EmptyView>
                     <Label x:Name="emptyLabel" TextColor="{StaticResource MutedColor}" Margin="8" />
                 </CollectionView.EmptyView>
+                <!-- One heading per interlock group: tap to collapse, the summary keeps the state
+                     visible while the members are hidden. -->
+                <CollectionView.GroupHeaderTemplate>
+                    <DataTemplate>
+                        <Border Margin="0,8,0,6" Padding="10,6" StrokeThickness="1"
+                                Stroke="{StaticResource BorderColor}" BackgroundColor="{StaticResource PageBg}"
+                                IsVisible="{Binding ShowHeader}">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding ToggleCommand}" />
+                            </Border.GestureRecognizers>
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                                <Label Grid.Column="0" Text="{Binding Chevron}" FontSize="14" VerticalOptions="Center"
+                                       TextColor="{StaticResource MutedColor}" />
+                                <Label Grid.Column="1" Text="{Binding Name}" FontAttributes="Bold" FontSize="15" VerticalOptions="Center" />
+                                <Label Grid.Column="2" Text="{Binding Summary}" FontSize="11" VerticalOptions="Center"
+                                       TextColor="{StaticResource MutedColor}" />
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </CollectionView.GroupHeaderTemplate>
                 <CollectionView.ItemTemplate>
                     <DataTemplate>
                         <Border Margin="0,0,0,8" Padding="12" StrokeThickness="1"

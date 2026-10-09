@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using OpcBridge.Client;
 
 namespace OpcBridge.Mobile.Core;
@@ -28,6 +30,12 @@ public sealed partial class LogicBlockCardViewModel : ObservableObject
 
     public Guid Id => block_.Id;
 
+    /// <summary>The interlock group the block was authored under ("" = ungrouped).</summary>
+    public string Group { get; private set; } = string.Empty;
+
+    /// <summary>The heading this block sits under ("Ungrouped" when it carries no group).</summary>
+    public string GroupLabel => Group.Length == 0 ? "Ungrouped" : Group;
+
     public string KindLabel => block_.Kind switch
     {
         LogicBlockKinds.Sequence => "Sequence",
@@ -44,9 +52,11 @@ public sealed partial class LogicBlockCardViewModel : ObservableObject
     {
         Name = block.Name;
         Description = block.Description;
+        Group = (block.Group ?? string.Empty).Trim();
         SyncTags(block.Tags);
         OnPropertyChanged(nameof(KindLabel));
         OnPropertyChanged(nameof(Enabled));
+        OnPropertyChanged(nameof(GroupLabel));
     }
 
     public void ApplyState(LogicBlockStateDto? state)
@@ -132,10 +142,157 @@ public sealed partial class LogicFilterChipViewModel : ObservableObject
 }
 
 /// <summary>
+/// One heading on the overview: the blocks that share an interlock group (or the ungrouped
+/// ones), collapsible so a machine's up/down interlocks stay compact. Members are re-parented,
+/// never recreated, and collapsing only empties the collection the list binds.
+/// </summary>
+public sealed class LogicBlockGroupViewModel : ObservableCollection<LogicBlockCardViewModel>
+{
+    private readonly List<LogicBlockCardViewModel> members_ = new();
+    private RelayCommand? toggle_command_;
+    private bool expanded_ = true;
+    private string summary_ = string.Empty;
+    private bool show_header_ = true;
+
+    public LogicBlockGroupViewModel(string group, string name)
+    {
+        Group = group;
+        Name = name;
+    }
+
+    /// <summary>The authored group label ("" for the ungrouped blocks).</summary>
+    public string Group { get; }
+
+    /// <summary>The heading the list shows ("Ungrouped" for blocks authored without a group).</summary>
+    public string Name { get; }
+
+    /// <summary>"▾" / "▸" — the heading reports its own state without colour.</summary>
+    public string Chevron => expanded_ ? "▾" : "▸";
+
+    /// <summary>Collapses or expands the group; the heading keeps its summary either way.</summary>
+    public IRelayCommand ToggleCommand => toggle_command_ ??= new RelayCommand(() => IsExpanded = !IsExpanded);
+
+    public bool IsExpanded
+    {
+        get => expanded_;
+        set
+        {
+            if (expanded_ == value)
+            {
+                return;
+            }
+
+            expanded_ = value;
+            OnPropertyChanged(new PropertyChangedEventArgs(nameof(IsExpanded)));
+            OnPropertyChanged(new PropertyChangedEventArgs(nameof(Chevron)));
+            SyncItems();
+        }
+    }
+
+    /// <summary>
+    /// True while the heading is worth a row: a named group always, the catch-all only once
+    /// some other block carries a group.
+    /// </summary>
+    public bool ShowHeader
+    {
+        get => show_header_;
+        internal set
+        {
+            if (show_header_ != value)
+            {
+                show_header_ = value;
+                OnPropertyChanged(new PropertyChangedEventArgs(nameof(ShowHeader)));
+            }
+        }
+    }
+
+    /// <summary>"3 blocks · 1 blocked" — what the heading keeps visible while collapsed.</summary>
+    public string Summary
+    {
+        get => summary_;
+        internal set
+        {
+            if (!string.Equals(summary_, value, StringComparison.Ordinal))
+            {
+                summary_ = value;
+                OnPropertyChanged(new PropertyChangedEventArgs(nameof(Summary)));
+            }
+        }
+    }
+
+    /// <summary>The group's blocks in list order; the bound items are the visible subset.</summary>
+    internal IReadOnlyList<LogicBlockCardViewModel> Members => members_;
+
+    /// <summary>
+    /// Points the group at its members. An unchanged membership leaves the bound items alone,
+    /// so a state push never rebuilds the rows the operator is looking at.
+    /// </summary>
+    internal void SetMembers(IReadOnlyList<LogicBlockCardViewModel> members)
+    {
+        bool same = members_.Count == members.Count;
+        if (same)
+        {
+            for (int i = 0; i < members.Count; i++)
+            {
+                if (!ReferenceEquals(members_[i], members[i]))
+                {
+                    same = false;
+                    break;
+                }
+            }
+        }
+
+        if (same)
+        {
+            return;
+        }
+
+        members_.Clear();
+        members_.AddRange(members);
+        SyncItems();
+    }
+
+    private void SyncItems()
+    {
+        if (expanded_)
+        {
+            if (Count == members_.Count)
+            {
+                bool same = true;
+                for (int i = 0; i < members_.Count; i++)
+                {
+                    if (!ReferenceEquals(this[i], members_[i]))
+                    {
+                        same = false;
+                        break;
+                    }
+                }
+
+                if (same)
+                {
+                    return;
+                }
+            }
+
+            Clear();
+            foreach (LogicBlockCardViewModel member in members_)
+            {
+                Add(member);
+            }
+        }
+        else if (Count > 0)
+        {
+            Clear();
+        }
+    }
+}
+
+/// <summary>
 /// The overview: every block as a card, updated in place from pushed snapshots so the list
 /// never rebuilds under the operator's finger. A search box, a tag chip row and a single-choice
 /// state row narrow <see cref="Visible"/>; filtering never replaces the cards themselves, and a
-/// state push only re-syncs the visible set when it actually changed.
+/// state push only re-syncs the visible set when it actually changed. The visible blocks are
+/// shown under their interlock group's collapsible heading.
 /// </summary>
 public sealed partial class LogicOverviewViewModel : ObservableObject
 {
@@ -146,7 +303,15 @@ public sealed partial class LogicOverviewViewModel : ObservableObject
 
     private const string NoMatchText = "No blocks match the search or filter.";
 
+    /// <summary>Heading for the blocks authored without a group.</summary>
+    private const string UngroupedName = "Ungrouped";
+
     private readonly Dictionary<Guid, LogicBlockCardViewModel> cards_ = new();
+
+    /// <summary>Which group headings the operator collapsed, by group label.</summary>
+    private readonly Dictionary<string, bool> collapsed_ = new(StringComparer.OrdinalIgnoreCase);
+
+    private bool anyGrouped_;
 
     public LogicOverviewViewModel()
     {
@@ -162,6 +327,12 @@ public sealed partial class LogicOverviewViewModel : ObservableObject
 
     /// <summary>The blocks the search and filters leave visible (all of them when none are set).</summary>
     public ObservableCollection<LogicBlockCardViewModel> Visible { get; } = new();
+
+    /// <summary>
+    /// The visible blocks under their collapsible group headings — the grouped view the list
+    /// binds. Group instances survive state pushes; only membership changes re-parent cards.
+    /// </summary>
+    public ObservableCollection<LogicBlockGroupViewModel> VisibleGroups { get; } = new();
 
     /// <summary>One chip per tag on any block; several can be on at once (any-of match).</summary>
     public ObservableCollection<LogicFilterChipViewModel> TagFilters { get; } = new();
@@ -250,6 +421,7 @@ public sealed partial class LogicOverviewViewModel : ObservableObject
         }
 
         RebuildTagFilters(sorted);
+        anyGrouped_ = sorted.Any(block => !string.IsNullOrWhiteSpace(block.Group));
         ApplyState(State);
     }
 
@@ -306,10 +478,118 @@ public sealed partial class LogicOverviewViewModel : ObservableObject
         }
 
         SyncVisible(visible);
+        SyncGroups();
 
         HasFilter = terms.Length > 0 || tags.Count > 0 || stateKey.Length > 0;
         FilterText = HasFilter ? $"{Visible.Count} of {Blocks.Count} blocks" : string.Empty;
         EmptyMessage = Blocks.Count == 0 ? NoBlocksText : NoMatchText;
+    }
+
+    /// <summary>
+    /// Rebuilds the group headings from <see cref="Visible"/>: named groups alphabetically, the
+    /// ungrouped catch-all last. Headings match case-insensitively and take the spelling of their
+    /// first block in list order. Existing headings keep their instance, their collapse state and
+    /// their cards; only a changed membership re-parents anything.
+    /// </summary>
+    private void SyncGroups()
+    {
+        Dictionary<string, List<LogicBlockCardViewModel>> byGroup = new(StringComparer.OrdinalIgnoreCase);
+        List<string> order = new();
+        foreach (LogicBlockCardViewModel card in Visible)
+        {
+            if (!byGroup.TryGetValue(card.Group, out List<LogicBlockCardViewModel>? members))
+            {
+                members = new List<LogicBlockCardViewModel>();
+                byGroup[card.Group] = members;
+                order.Add(card.Group);
+            }
+
+            members.Add(card);
+        }
+
+        // Named groups alphabetically, the catch-all last. A stable sort keeps the spelling the
+        // first block used when labels differ only by case.
+        order = order
+            .OrderBy(label => label.Length == 0 ? 1 : 0)
+            .ThenBy(label => label, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        bool sameNames = VisibleGroups.Count == order.Count;
+        if (sameNames)
+        {
+            for (int i = 0; i < order.Count; i++)
+            {
+                if (!string.Equals(VisibleGroups[i].Group, order[i], StringComparison.OrdinalIgnoreCase))
+                {
+                    sameNames = false;
+                    break;
+                }
+            }
+        }
+
+        if (!sameNames)
+        {
+            Dictionary<string, LogicBlockGroupViewModel> existing = new(StringComparer.OrdinalIgnoreCase);
+            foreach (LogicBlockGroupViewModel group in VisibleGroups)
+            {
+                collapsed_[group.Group] = !group.IsExpanded;
+                existing[group.Group] = group;
+            }
+
+            List<LogicBlockGroupViewModel> rebuilt = new();
+            foreach (string label in order)
+            {
+                if (!existing.TryGetValue(label, out LogicBlockGroupViewModel? group))
+                {
+                    group = new LogicBlockGroupViewModel(label, label.Length == 0 ? UngroupedName : label)
+                    {
+                        // A heading the operator collapsed stays collapsed across pushes and edits.
+                        IsExpanded = !collapsed_.TryGetValue(label, out bool collapsed) || !collapsed
+                    };
+                }
+
+                rebuilt.Add(group);
+            }
+
+            VisibleGroups.Clear();
+            foreach (LogicBlockGroupViewModel group in rebuilt)
+            {
+                VisibleGroups.Add(group);
+            }
+        }
+
+        foreach (string label in order)
+        {
+            LogicBlockGroupViewModel? group = VisibleGroups.FirstOrDefault(candidate =>
+                string.Equals(candidate.Group, label, StringComparison.OrdinalIgnoreCase));
+            if (group is null)
+            {
+                continue;
+            }
+
+            group.ShowHeader = label.Length > 0 || anyGrouped_;
+            group.SetMembers(byGroup[label]);
+            group.Summary = BuildGroupSummary(byGroup[label]);
+        }
+    }
+
+    /// <summary>"3 blocks · 1 blocked · 1 no data" — the heading's own state while collapsed.</summary>
+    private static string BuildGroupSummary(IReadOnlyList<LogicBlockCardViewModel> members)
+    {
+        string text = members.Count + (members.Count == 1 ? " block" : " blocks");
+        int blocked = members.Count(card => string.Equals(card.StateKey, LogicBlockStates.Blocked, StringComparison.OrdinalIgnoreCase));
+        int unknown = members.Count(card => string.Equals(card.StateKey, LogicBlockStates.Unknown, StringComparison.OrdinalIgnoreCase));
+        if (blocked > 0)
+        {
+            text += " · " + blocked + " blocked";
+        }
+
+        if (unknown > 0)
+        {
+            text += " · " + unknown + " no data";
+        }
+
+        return text;
     }
 
     private static bool Matches(LogicBlockCardViewModel card, IReadOnlyList<string> terms, IReadOnlyList<string> tags, string stateKey)

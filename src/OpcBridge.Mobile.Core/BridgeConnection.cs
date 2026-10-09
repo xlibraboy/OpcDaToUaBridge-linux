@@ -19,23 +19,30 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
     private readonly MobileHubClient hub_ = new();
     private readonly LogicApiClient api_ = new();
     private readonly MultiBridgeTagCache tags_;
+    private readonly IBridgeCacheStore cache_;
     private readonly Action<Action> post_;
+    private List<HmiTagDto> lastTags_ = new();
+    private DateTime? lastCachedUtc_;
 
-    public BridgeConnection(SavedBridge bridge, MultiBridgeTagCache tags, Action<Action>? post = null)
+    public BridgeConnection(SavedBridge bridge, MultiBridgeTagCache tags, Action<Action>? post = null, IBridgeCacheStore? cache = null)
     {
         Bridge = bridge;
         tags_ = tags;
+        cache_ = cache ?? new MemoryBridgeCacheStore();
         post_ = post ?? (action => action());
 
         hub_.LogicStateChanged += snapshot => post_(() =>
         {
             Overview.ApplyState(snapshot);
+            // A pushed snapshot is the link working: whatever was cached is live again.
+            IsOffline = false;
             StatusText = LiveText;
             RaiseChanged();
         });
         hub_.ValuesChanged += deltas => post_(() =>
         {
             tags_.ApplyDeltas(CacheKey, deltas);
+            IsOffline = false;
             RaiseChanged();
         });
         hub_.Reconnecting += _ => post_(() =>
@@ -45,6 +52,7 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
         });
         hub_.Reconnected += connectionId => post_(() =>
         {
+            IsOffline = false;
             StatusText = LiveText;
             _ = RefreshAsync(CancellationToken.None);
             RaiseChanged();
@@ -52,8 +60,19 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
         hub_.Closed += error => post_(() =>
         {
             StatusText = error is null ? "live link closed" : "live link lost: " + error.Message;
+            // Closing a connection this bridge has already replaced (every connect builds a new
+            // one) is not a lost link; only a close with nothing live left marks the list offline.
+            if (!hub_.IsConnected)
+            {
+                MarkOffline();
+            }
+
             RaiseChanged();
         });
+
+        // The list the bridge served last time is on disk: show it immediately, before the
+        // first call decides whether the link is there.
+        LoadCached();
     }
 
     /// <summary>Raised on the posting thread after any change this bridge caused.</summary>
@@ -81,12 +100,22 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
     /// <summary>True once the bridge answered with its logic (signed out still counts).</summary>
     [ObservableProperty] private bool _isConnected;
 
+    /// <summary>
+    /// True when the list on screen is the last data the bridge served — the link is down,
+    /// nothing live is arriving, and <see cref="OfflineText"/> says how old it is.
+    /// </summary>
+    [ObservableProperty] private bool _isOffline;
+
+    /// <summary>"offline · showing Plant 1 as of 2026-10-09 12:31:05" — what the banner reads.</summary>
+    [ObservableProperty] private string _offlineText = string.Empty;
+
     public bool IsLive => hub_.IsConnected;
 
     /// <summary>
     /// Takes the session, the logic snapshot and the live link, in that order. Failure is
     /// reported in <see cref="StatusText"/> (the bridge answered but wants a session, the
-    /// address is wrong, the link dropped) — never thrown.
+    /// address is wrong, the link dropped) — never thrown. A failed refresh leaves the cached
+    /// list on screen, marked offline.
     /// </summary>
     public async Task ConnectAsync(CancellationToken cancellationToken)
     {
@@ -125,12 +154,14 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
         {
             Overview.ApplyDefinitions(definitions.Value!);
             IsConnected = true;
+            IsOffline = false;
             StatusText = IsLive ? LiveText : "connected";
         }
         else
         {
             IsConnected = false;
             StatusText = FailureText(definitions);
+            MarkOffline();
         }
 
         if (definitions.Ok)
@@ -138,7 +169,8 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
             MobileResult<IReadOnlyList<HmiTagDto>> tags = await api_.GetTagsAsync(cancellationToken);
             if (tags.Ok)
             {
-                tags_.ReplaceBridge(CacheKey, tags.Value!);
+                lastTags_ = tags.Value!.ToList();
+                tags_.ReplaceBridge(CacheKey, lastTags_);
             }
 
             MobileResult<LogicStateSnapshot> state = await api_.GetLogicStateAsync(cancellationToken);
@@ -146,9 +178,60 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
             {
                 Overview.ApplyState(state.Value);
             }
+
+            Persist();
         }
 
         RaiseChanged();
+    }
+
+    /// <summary>
+    /// Shows the last data this bridge served, so the list is never blank while the link is
+    /// being acquired (or after it is gone). Leaves <see cref="IsOffline"/> to a failed call —
+    /// a cached list that is about to be refreshed is not "offline" yet.
+    /// </summary>
+    public void LoadCached()
+    {
+        BridgeCacheSnapshot? snapshot = BridgeCacheCodec.Deserialize(cache_.Read(BridgeCacheCodec.Key(Bridge.Id)));
+        if (snapshot is null)
+        {
+            return;
+        }
+
+        Overview.ApplyDefinitions(snapshot.Blocks);
+        lastTags_ = snapshot.Tags;
+        if (snapshot.Tags.Count > 0)
+        {
+            tags_.ReplaceBridge(CacheKey, snapshot.Tags);
+        }
+
+        Overview.ApplyState(snapshot.State);
+        lastCachedUtc_ = snapshot.SavedUtc;
+    }
+
+    private void Persist()
+    {
+        BridgeCacheSnapshot snapshot = new()
+        {
+            SavedUtc = DateTime.UtcNow,
+            Blocks = Overview.Definitions.ToList(),
+            State = Overview.State,
+            Tags = lastTags_.ToList()
+        };
+        cache_.Write(BridgeCacheCodec.Key(Bridge.Id), BridgeCacheCodec.Serialize(snapshot));
+        lastCachedUtc_ = snapshot.SavedUtc;
+    }
+
+    /// <summary>Marks the list as the last data served, aged by when the bridge last answered.</summary>
+    private void MarkOffline()
+    {
+        if (lastCachedUtc_ is not { } savedUtc)
+        {
+            return;
+        }
+
+        IsOffline = true;
+        OfflineText = "offline · showing " + Bridge.DisplayName + " as of " + savedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss");
     }
 
     public async Task<MobileResult<MobileSession>> SignInAsync(string username, string password, CancellationToken cancellationToken)

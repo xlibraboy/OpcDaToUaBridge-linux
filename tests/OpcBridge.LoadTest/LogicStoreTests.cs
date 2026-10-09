@@ -162,7 +162,7 @@ public sealed class LogicStoreTests : IDisposable
         bool ok = store.TrySave(block, out _, out _, out string? error);
 
         Assert.False(ok);
-        Assert.Equal("A block needs at least one condition.", error);
+        Assert.Equal("A block needs at least one condition or an IEC network.", error);
     }
 
     [Fact]
@@ -189,7 +189,7 @@ public sealed class LogicStoreTests : IDisposable
         bool ok = store.TrySave(block, out _, out _, out string? error);
 
         Assert.False(ok);
-        Assert.Equal("A sequence needs at least one step.", error);
+        Assert.Equal("A sequence carries its logic in its steps.", error);
     }
 
     [Fact]
@@ -285,6 +285,214 @@ public sealed class LogicStoreTests : IDisposable
         Assert.False(ok);
         Assert.Equal("A tag can be at most 24 characters.", error);
     }
+
+    [Fact]
+    public void TrySave_NormalizesGroupsAndKeepsHoldTimers()
+    {
+        LogicStore store = CreateStore();
+        LogicBlockDto block = CreateInterlock(conditions: new LogicConditionDto
+        {
+            Id = Guid.NewGuid(),
+            Text = "Hydraulic pressure must hold",
+            SourceId = "sim",
+            ItemId = "PS1",
+            Op = LogicConditionOps.On,
+            Severity = LogicConditionSeverities.Block,
+            Group = "  Start permissive  ",
+            HoldMs = 3000
+        });
+        block.Group = "  Primary Arm  ";
+
+        bool ok = store.TrySave(block, out LogicBlockDto saved, out _, out string? error);
+
+        Assert.True(ok, error);
+        Assert.Equal("Primary Arm", saved.Group);
+        Assert.Equal("Start permissive", saved.Conditions[0].Group);
+        Assert.Equal(3000, saved.Conditions[0].HoldMs);
+    }
+
+    [Fact]
+    public void TrySave_RejectsAnInterlockGroupLongerThan40Characters()
+    {
+        LogicStore store = CreateStore();
+        LogicBlockDto block = CreateInterlock();
+        block.Group = new string('x', 41);
+
+        bool ok = store.TrySave(block, out _, out _, out string? error);
+
+        Assert.False(ok);
+        Assert.Equal("An interlock group can be at most 40 characters.", error);
+    }
+
+    [Fact]
+    public void TrySave_RejectsAnOrGroupLongerThan24Characters()
+    {
+        LogicStore store = CreateStore();
+        LogicBlockDto block = CreateInterlock();
+        block.Conditions[0].Group = new string('x', 25);
+
+        bool ok = store.TrySave(block, out _, out _, out string? error);
+
+        Assert.False(ok);
+        Assert.Equal("An OR group can be at most 24 characters.", error);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(3_600_001)]
+    public void TrySave_RejectsAHoldTimerOutOfRange(int holdMs)
+    {
+        LogicStore store = CreateStore();
+        LogicBlockDto block = CreateInterlock();
+        block.Conditions[0].HoldMs = holdMs;
+
+        bool ok = store.TrySave(block, out _, out _, out string? error);
+
+        Assert.False(ok);
+        Assert.Equal("A hold timer must be between 0 and 3,600,000 ms.", error);
+    }
+
+    [Fact]
+    public void TrySave_KeepsAnIecNetworkAndRejectsMixingItWithConditions()
+    {
+        LogicStore store = CreateStore();
+        LogicBlockDto block = CreateInterlock();
+        block.Conditions.Clear();
+        block.Elements = new List<LogicElementDto>
+        {
+            new()
+            {
+                Kind = LogicElementKinds.And,
+                Inputs =
+                {
+                    new LogicElementDto
+                    {
+                        Kind = LogicElementKinds.Contact,
+                        Text = "Pressure switch PS1 must read 1",
+                        SourceId = "sim",
+                        ItemId = "PS1",
+                        Op = LogicConditionOps.On
+                    },
+                    new LogicElementDto
+                    {
+                        Kind = LogicElementKinds.Ton,
+                        Text = "Flow must hold",
+                        PtMs = 3000,
+                        Inputs =
+                        {
+                            new LogicElementDto
+                            {
+                                Kind = LogicElementKinds.Contact,
+                                Text = "Flow switch FS1 must read 1",
+                                SourceId = "sim",
+                                ItemId = "FS1",
+                                Op = LogicConditionOps.On
+                            }
+                        }
+                    }
+                }
+            }
+        };
+
+        bool ok = store.TrySave(block, out LogicBlockDto saved, out _, out string? error);
+
+        Assert.True(ok, error);
+        LogicElementDto savedRoot = Assert.Single(saved.Elements);
+        Assert.Equal(LogicElementKinds.And, savedRoot.Kind);
+        Assert.NotEqual(Guid.Empty, savedRoot.Id);
+        Assert.Equal(3000, savedRoot.Inputs[1].PtMs);
+        Assert.Equal(LogicElementKinds.Contact, savedRoot.Inputs[1].Inputs[0].Kind);
+
+        // Both forms at once is ambiguous: one source of truth.
+        LogicBlockDto mixed = CreateInterlock();
+        mixed.Elements = block.Elements;
+        bool mixedOk = store.TrySave(mixed, out _, out _, out string? mixedError);
+
+        Assert.False(mixedOk);
+        Assert.Equal("Use either conditions or an IEC network, not both.", mixedError);
+    }
+
+    [Fact]
+    public void TrySave_RejectsAnElementWithTheWrongArity()
+    {
+        LogicStore store = CreateStore();
+        LogicBlockDto block = CreateInterlock();
+        block.Conditions.Clear();
+        block.Elements = new List<LogicElementDto>
+        {
+            new() { Kind = LogicElementKinds.Not, Inputs = { Contact(), Contact() } }
+        };
+
+        bool ok = store.TrySave(block, out _, out _, out string? error);
+
+        Assert.False(ok);
+        Assert.Equal("NOT takes exactly 1 input(s).", error);
+    }
+
+    [Fact]
+    public void TrySave_RejectsAnOverdeepOrOversizedNetwork()
+    {
+        LogicStore store = CreateStore();
+        LogicBlockDto deep = CreateInterlock();
+        deep.Conditions.Clear();
+        LogicElementDto node = new() { Kind = LogicElementKinds.Not, Inputs = { Contact() } };
+        for (int i = 0; i < 10; i++)
+        {
+            node = new LogicElementDto { Kind = LogicElementKinds.Not, Inputs = { node } };
+        }
+
+        deep.Elements = new List<LogicElementDto> { node };
+        bool deepOk = store.TrySave(deep, out _, out _, out string? deepError);
+
+        Assert.False(deepOk);
+        Assert.Equal("A network can nest at most 8 levels.", deepError);
+
+        LogicBlockDto wide = CreateInterlock();
+        wide.Conditions.Clear();
+        wide.Elements = Enumerable.Range(0, 65).Select(_ => (LogicElementDto)Contact()).ToList();
+        bool wideOk = store.TrySave(wide, out _, out _, out string? wideError);
+
+        Assert.False(wideOk);
+        Assert.Equal("A block can hold at most 64 elements.", wideError);
+    }
+
+    [Fact]
+    public void TrySave_ClearsFieldsThatDoNotBelongToTheKind()
+    {
+        LogicStore store = CreateStore();
+        LogicBlockDto block = CreateInterlock();
+        block.Conditions.Clear();
+        block.Elements = new List<LogicElementDto>
+        {
+            new()
+            {
+                Kind = LogicElementKinds.And,
+                // A gate combines its inputs: a stray tag and a preset are dropped, not saved.
+                ItemId = "not-a-contact",
+                Op = LogicConditionOps.On,
+                PtMs = 5000,
+                Pv = 7,
+                Inputs = { Contact(), Contact() }
+            }
+        };
+
+        bool ok = store.TrySave(block, out LogicBlockDto saved, out _, out string? error);
+
+        Assert.True(ok, error);
+        LogicElementDto gate = Assert.Single(saved.Elements);
+        Assert.Equal(string.Empty, gate.ItemId);
+        Assert.Equal(0, gate.PtMs);
+        Assert.Equal(0, gate.Pv);
+    }
+
+    private static LogicElementDto Contact() => new()
+    {
+        Kind = LogicElementKinds.Contact,
+        Text = "Permit must be given",
+        SourceId = "sim",
+        ItemId = "Permit",
+        Op = LogicConditionOps.On
+    };
 
     [Fact]
     public void TryRemove_ReturnsFalseForUnknownAndTrueOtherwise()

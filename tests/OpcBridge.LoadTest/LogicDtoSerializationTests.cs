@@ -23,6 +23,7 @@ public sealed class LogicDtoSerializationTests
         {
             Id = Guid.NewGuid(),
             Name = "Line 01 Start",
+            Group = "Primary Arm",
             Description = "Start-up permissives for line 01",
             Kind = LogicBlockKinds.Sequence,
             Enabled = true,
@@ -47,7 +48,9 @@ public sealed class LogicDtoSerializationTests
                             ItemId = "ns=2;s=Status/Line01.Permit",
                             Op = LogicConditionOps.On,
                             NextStepText = "Turn the permit key to Permit",
-                            Severity = LogicConditionSeverities.Block
+                            Severity = LogicConditionSeverities.Block,
+                            Group = "Start permissive",
+                            HoldMs = 3000
                         }
                     },
                     Actions =
@@ -74,6 +77,9 @@ public sealed class LogicDtoSerializationTests
         Assert.Contains("\"severity\":\"block\"", json, StringComparison.Ordinal);
         Assert.Contains("\"confirm\":true", json, StringComparison.Ordinal);
         Assert.Contains("\"tags\":[\"Line 1\",\"Safety\"]", json, StringComparison.Ordinal);
+        Assert.Contains("\"group\":\"Primary Arm\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"group\":\"Start permissive\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"holdMs\":3000", json, StringComparison.Ordinal);
         Assert.DoesNotContain("\"Kind\"", json, StringComparison.Ordinal);
 
         LogicBlockDto? copy = JsonSerializer.Deserialize<LogicBlockDto>(json, CamelCase);
@@ -104,14 +110,35 @@ public sealed class LogicDtoSerializationTests
                     Id = Guid.NewGuid(),
                     State = LogicBlockStates.Blocked,
                     Reason = "Line 01 start permit must be given",
-                    Conditions =
+                    Elements =
                     {
-                        new LogicConditionStateDto
+                        new LogicElementStateDto
                         {
                             Id = Guid.NewGuid(),
+                            Kind = LogicElementKinds.Contact,
+                            Depth = 1,
                             State = LogicConditionStates.False,
                             ValueText = "Blocked",
-                            TimestampUtc = new DateTime(2026, 10, 8, 11, 59, 0, DateTimeKind.Utc)
+                            TimestampUtc = new DateTime(2026, 10, 8, 11, 59, 0, DateTimeKind.Utc),
+                            Should = "1",
+                            Matches = false
+                        },
+                        new LogicElementStateDto
+                        {
+                            Id = Guid.NewGuid(),
+                            Kind = LogicElementKinds.Ton,
+                            Depth = 0,
+                            State = LogicConditionStates.False,
+                            PtMs = 3000,
+                            ElapsedMs = 1500
+                        },
+                        new LogicElementStateDto
+                        {
+                            Id = Guid.NewGuid(),
+                            Kind = LogicElementKinds.Ctu,
+                            Depth = 0,
+                            State = LogicConditionStates.True,
+                            Count = 2
                         }
                     },
                     Steps = { new LogicStepStateDto { Id = Guid.NewGuid(), State = LogicStepStates.Current, Reason = "waiting for Line 01 Start Permit" } }
@@ -122,6 +149,11 @@ public sealed class LogicDtoSerializationTests
         string json = JsonSerializer.Serialize(snapshot, CamelCase);
         Assert.Contains("\"evaluatedUtc\"", json, StringComparison.Ordinal);
         Assert.Contains("\"valueText\":\"Blocked\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"should\":\"1\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"matches\":false", json, StringComparison.Ordinal);
+        Assert.Contains("\"kind\":\"ton\",\"depth\":0", json, StringComparison.Ordinal);
+        Assert.Contains("\"ptMs\":3000,\"elapsedMs\":1500", json, StringComparison.Ordinal);
+        Assert.Contains("\"count\":2", json, StringComparison.Ordinal);
 
         LogicStateSnapshot? copy = JsonSerializer.Deserialize<LogicStateSnapshot>(json, CamelCase);
 
@@ -129,6 +161,10 @@ public sealed class LogicDtoSerializationTests
         Assert.Equal(7, copy!.Version);
         Assert.Equal(LogicBlockStates.Blocked, copy.Blocks[0].State);
         Assert.Equal(LogicStepStates.Current, copy.Blocks[0].Steps[0].State);
+        Assert.False(copy.Blocks[0].Elements[0].Matches);
+        Assert.Equal(LogicElementKinds.Ton, copy.Blocks[0].Elements[1].Kind);
+        Assert.Equal(1500, copy.Blocks[0].Elements[1].ElapsedMs);
+        Assert.Equal(2, copy.Blocks[0].Elements[2].Count);
     }
 
     [Fact]

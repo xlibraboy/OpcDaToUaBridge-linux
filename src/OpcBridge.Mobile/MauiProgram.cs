@@ -13,11 +13,13 @@ public static class MauiProgram
         builder.UseMauiApp<App>();
 
         builder.Services.AddSingleton<IBridgeSettings, MauiBridgeSettings>();
+        builder.Services.AddSingleton<IBridgeCacheStore, MauiBridgeCacheStore>();
         builder.Services.AddSingleton<MultiBridgeTagCache>();
         builder.Services.AddSingleton(services => new BridgeCoordinator(
             services.GetRequiredService<IBridgeSettings>(),
             services.GetRequiredService<MultiBridgeTagCache>(),
-            action => MainThread.BeginInvokeOnMainThread(action)));
+            action => MainThread.BeginInvokeOnMainThread(action),
+            services.GetRequiredService<IBridgeCacheStore>()));
         builder.Services.AddTransient<LogicPage>();
         builder.Services.AddTransient<LogicBlockPage>();
         builder.Services.AddTransient<SettingsPage>();

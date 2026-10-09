@@ -1879,7 +1879,8 @@ public sealed class DashboardPageTests
             "logicBlockList", "btnLogicAdd", "logicConditions", "btnLogicAddCondition", "logicSteps",
             "btnLogicAddStep", "logicActions", "btnLogicAddAction", "logicCount", "logicMessage",
             "logicEditor", "logicEditorTitle", "logicLiveBadge", "logicEditorMsg", "logicStateHint",
-            "btnLogicSave", "btnLogicDelete", "lgName", "lgKind", "lgEnabled", "lgDescription", "lgTags"
+            "btnLogicSave", "btnLogicDelete", "lgName", "lgGroup", "lgKind", "lgEnabled", "lgDescription", "lgTags",
+            "logicElements", "btnLogicAddElement", "btnLogicToNetwork", "btnLogicToConditions"
         })
         {
             Assert.Contains($"id=\"{id}\"", DashboardPage.Html);
@@ -1905,6 +1906,28 @@ public sealed class DashboardPageTests
         // The tags the phone shows as chips are read from and written to the editor's box.
         Assert.Contains("el('lgTags')", DashboardPage.Script, StringComparison.Ordinal);
         Assert.Contains("block.tags =", DashboardPage.Script, StringComparison.Ordinal);
+        // The interlock group (the phone's heading) and the gate fields: an OR group label and
+        // a hold timer per condition, both read back from the row.
+        Assert.Contains("el('lgGroup')", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("block.group =", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("data-field=\"group\"", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("data-field=\"hold\"", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("holdMs: Number.isFinite(holdSeconds) && holdSeconds > 0 ? Math.round(holdSeconds * 1000) : 0", DashboardPage.Script, StringComparison.Ordinal);
+        // The block list carries the same headings the phone shows.
+        Assert.Contains("class=\"logic-group-head\"", DashboardPage.Script, StringComparison.Ordinal);
+        // The IEC 61131-3 network editor: rows nest by indent, the kind drives the fields.
+        Assert.Contains("function logicElementRow(", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("function logicElementTreeFromDom(", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("function logicExpandConditions(", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("function logicRenderNetwork(", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("data-action=\"logic-element-indent\"", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("data-action=\"logic-element-outdent\"", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("data-action=\"logic-element-remove\"", DashboardPage.Script, StringComparison.Ordinal);
+        foreach (string kind in new[] { "and", "or", "xor", "not", "ton", "tof", "tp", "ctu", "ctd", "sr", "rs", "r_trig", "f_trig" })
+        {
+            Assert.Contains($"['{kind}',", DashboardPage.Script, StringComparison.Ordinal);
+        }
+
         Assert.Contains("/api/logic/blocks", DashboardPage.Script, StringComparison.Ordinal);
         Assert.Contains("/api/logic/state", DashboardPage.Script, StringComparison.Ordinal);
         Assert.Contains("data-action=\"logic-select\"", DashboardPage.Script, StringComparison.Ordinal);

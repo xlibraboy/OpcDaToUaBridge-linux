@@ -15,6 +15,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The Logic tab lists blocks **under their interlock group's heading** (the group authored in the
+  dashboard's Logic tab, e.g. *Primary Arm*), collapsible by tapping the heading — the heading
+  keeps a live summary (*2 blocks · 1 blocked · 1 no data*) while its members are hidden, and an
+  ungrouped-only list stays flat. Groups match case-insensitively, keep their collapsed state
+  across state pushes, and only re-parent cards when the membership actually changes.
+- The block screen renders the block's **IEC 61131-3 network**: every element as a row indented by
+  its depth — contacts (NO / NC / comparison), gates (AND / OR / XOR / NOT) and function blocks
+  (TON / TOF / TP, CTU / CTD, SR / RS, R_TRIG / F_TRIG) — each with its live state and, for a
+  contact, the reading it needs against the live one: **should 1 · actual 0** (a mismatched line
+  is coloured, the row keeps its ✓/✗ mark and state word). Timers and counters report their
+  progress (*holding 1.5 s of 3 s*, *count 2 of 5*), and the network the bridge expanded a flat
+  condition list into shows up the same way, so the simple and network forms read alike.
+- **Offline mode.** The phone keeps the last logic definitions, evaluated state and tag values the
+  bridge served, per bridge, and shows them on start-up and after a failed call with an **offline
+  banner** naming when the data was last read (*offline · showing Plant 1 as of 2026-10-09
+  12:31:05*) — the floor list still reads when the link is down, and the banner clears on the next
+  successful refresh.
+
 - Cards show the block's **tags** as chips under the name — the labels the bridge serves with
   the definition (authored in the dashboard's Logic tab, up to 8 per block).
 - The Logic tab gained a **search box and filters**. The search matches the block name, the

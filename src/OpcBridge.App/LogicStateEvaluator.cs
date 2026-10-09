@@ -7,15 +7,19 @@ using OpcBridge.Core;
 namespace OpcBridge.App;
 
 /// <summary>
-/// Derives the live state of every logic block from the bridge's tag values. Pure and
-/// host-free — the API endpoint and the HMI broadcaster both feed it the value/mapping
-/// lookups, so the derivation stays unit-testable without a running bridge.
+/// Derives the live state of every logic block from the bridge's tag values, walking the
+/// block's IEC 61131-3 network. Pure and host-free — the API endpoint and the HMI broadcaster
+/// both feed it the value/mapping lookups, so the derivation stays unit-testable without a
+/// running bridge (function blocks need a <see cref="LogicStateStore"/>; without one a timer
+/// passes its input straight through and a latch holds nothing).
 ///
-/// Condition resolution: a condition is unknown when its tag has no value or bad quality,
-/// true/false otherwise (on/off use the bridge's digital coercion, so Boolean and Byte 0/1
-/// tags both work). Interlock/permissive blocks are ready when every block-severity
-/// condition is true; a sequence walks its steps in order and the first step that is not
-/// done becomes the current one whose failing part is the block's reason.
+/// Elements are three-valued: a contact is unknown when its tag has no value or bad quality,
+/// true/false otherwise (on/off use the bridge's digital coercion, so Boolean and Byte 0/1 tags
+/// both work), and a gate is unknown while its inputs leave the answer open. A warn element is
+/// reported but contributes true to its parent — it can never block. Every element keeps the
+/// reading it must show (<see cref="LogicElementStateDto.Should"/>) and whether the live value
+/// satisfies it (<see cref="LogicElementStateDto.Matches"/>), which is what the phone renders
+/// as "should 1 / actual 0"; a timer or counter reports its progress alongside.
 /// </summary>
 public static class LogicStateEvaluator
 {
@@ -41,32 +45,43 @@ public static class LogicStateEvaluator
         long version,
         Func<string, string, BridgeValueSnapshot?> valueLookup,
         Func<string, string, TagMapping?> mappingLookup,
-        DateTime nowUtc)
+        DateTime nowUtc,
+        LogicStateStore? states = null)
     {
         ArgumentNullException.ThrowIfNull(blocks);
 
-        LogicStateSnapshot snapshot = new()
+        states?.BeginPass();
+        try
         {
-            Version = version,
-            EvaluatedUtc = nowUtc
-        };
+            LogicStateSnapshot snapshot = new()
+            {
+                Version = version,
+                EvaluatedUtc = nowUtc
+            };
 
-        foreach (LogicBlockDto block in blocks.OrderBy(block => block.Order))
-        {
-            snapshot.Blocks.Add(EvaluateBlock(block, valueLookup, mappingLookup));
+            foreach (LogicBlockDto block in blocks.OrderBy(block => block.Order))
+            {
+                snapshot.Blocks.Add(EvaluateBlock(block, valueLookup, mappingLookup, states, nowUtc));
+            }
+
+            return snapshot;
         }
-
-        return snapshot;
+        finally
+        {
+            states?.EndPass();
+        }
     }
 
     public static LogicBlockStateDto EvaluateBlock(
         LogicBlockDto block,
         Func<string, string, BridgeValueSnapshot?> valueLookup,
-        Func<string, string, TagMapping?> mappingLookup)
+        Func<string, string, TagMapping?> mappingLookup,
+        LogicStateStore? states = null,
+        DateTime nowUtc = default)
     {
         ArgumentNullException.ThrowIfNull(block);
 
-        List<LogicConditionStateDto> conditions = new();
+        List<LogicElementStateDto> elements = new();
         List<LogicStepStateDto> steps = new();
 
         string state;
@@ -74,18 +89,24 @@ public static class LogicStateEvaluator
 
         if (!block.Enabled)
         {
-            EvaluateConditions(block.Conditions, valueLookup, mappingLookup, conditions);
-            EvaluateStepConditions(block.Steps, valueLookup, mappingLookup, conditions);
+            EvaluateNetwork(LogicNetwork.For(block), valueLookup, mappingLookup, states, nowUtc, elements);
+            foreach (LogicStepDto step in block.Steps)
+            {
+                EvaluateNetwork(LogicNetwork.For(step), valueLookup, mappingLookup, states, nowUtc, elements);
+            }
+
             state = LogicBlockStates.Disabled;
             reason = "block is disabled";
         }
         else if (string.Equals(block.Kind, LogicBlockKinds.Sequence, StringComparison.OrdinalIgnoreCase))
         {
-            (state, reason) = EvaluateSequence(block, valueLookup, mappingLookup, conditions, steps);
+            (state, reason) = EvaluateSequence(block, valueLookup, mappingLookup, states, nowUtc, elements, steps);
         }
         else
         {
-            (state, reason) = EvaluateFlat(block, valueLookup, mappingLookup, conditions);
+            (bool? output, string? failing, string? missing) =
+                EvaluateNetwork(LogicNetwork.For(block), valueLookup, mappingLookup, states, nowUtc, elements);
+            (state, reason) = BlockVerdict(output, failing, missing);
         }
 
         return new LogicBlockStateDto
@@ -93,14 +114,16 @@ public static class LogicStateEvaluator
             Id = block.Id,
             State = state,
             Reason = reason,
-            Conditions = conditions,
+            Elements = elements,
             Steps = steps
         };
     }
 
     /// <summary>
     /// A cheap fingerprint of the derived states (no value text — that follows the tag
-    /// stream), so the broadcaster can push only when something actually changed.
+    /// stream), so the broadcaster can push only when something actually changed. A running
+    /// timer advances by the whole second and a counter by its value, so progress is reported
+    /// without pushing on every tick.
     /// </summary>
     public static string Signature(LogicStateSnapshot snapshot)
     {
@@ -108,9 +131,14 @@ public static class LogicStateEvaluator
         foreach (LogicBlockStateDto block in snapshot.Blocks)
         {
             builder.Append(block.Id).Append(':').Append(block.State).Append(':').Append(block.Reason).Append('|');
-            foreach (LogicConditionStateDto condition in block.Conditions)
+
+            foreach (LogicElementStateDto element in block.Elements)
             {
-                builder.Append(condition.Id).Append(':').Append(condition.State).Append('|');
+                builder.Append(element.Id).Append(':').Append(element.State).Append(':')
+                    .Append(element.Matches switch { true => '1', false => '0', null => '?' }).Append(':')
+                    .Append(element.PtMs > 0 ? (element.ElapsedMs / 1000).ToString(CultureInfo.InvariantCulture) : string.Empty).Append(':')
+                    .Append(element.Count != 0 ? element.Count.ToString(CultureInfo.InvariantCulture) : string.Empty)
+                    .Append('|');
             }
 
             foreach (LogicStepStateDto step in block.Steps)
@@ -122,54 +150,13 @@ public static class LogicStateEvaluator
         return builder.ToString();
     }
 
-    private static (string State, string? Reason) EvaluateFlat(
-        LogicBlockDto block,
-        Func<string, string, BridgeValueSnapshot?> valueLookup,
-        Func<string, string, TagMapping?> mappingLookup,
-        List<LogicConditionStateDto> conditions)
-    {
-        EvaluateConditions(block.Conditions, valueLookup, mappingLookup, conditions);
-
-        string? firstFalseText = null;
-        string? firstUnknownLabel = null;
-
-        for (int i = 0; i < block.Conditions.Count; i++)
-        {
-            LogicConditionDto condition = block.Conditions[i];
-            if (string.Equals(condition.Severity, LogicConditionSeverities.Warn, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            LogicConditionStateDto state = conditions[i];
-            if (state.State == LogicConditionStates.False && firstFalseText is null)
-            {
-                firstFalseText = condition.Text;
-            }
-            else if (state.State == LogicConditionStates.Unknown && firstUnknownLabel is null)
-            {
-                firstUnknownLabel = ConditionLabel(condition, mappingLookup);
-            }
-        }
-
-        if (firstFalseText is not null)
-        {
-            return (LogicBlockStates.Blocked, firstFalseText);
-        }
-
-        if (firstUnknownLabel is not null)
-        {
-            return (LogicBlockStates.Unknown, "no data for " + firstUnknownLabel);
-        }
-
-        return (LogicBlockStates.Ready, null);
-    }
-
     private static (string State, string? Reason) EvaluateSequence(
         LogicBlockDto block,
         Func<string, string, BridgeValueSnapshot?> valueLookup,
         Func<string, string, TagMapping?> mappingLookup,
-        List<LogicConditionStateDto> conditions,
+        LogicStateStore? states,
+        DateTime nowUtc,
+        List<LogicElementStateDto> elements,
         List<LogicStepStateDto> steps)
     {
         bool foundCurrent = false;
@@ -178,53 +165,29 @@ public static class LogicStateEvaluator
 
         foreach (LogicStepDto step in block.Steps)
         {
-            List<LogicConditionStateDto> stepConditions = new();
-            EvaluateConditions(step.Conditions, valueLookup, mappingLookup, stepConditions);
-            conditions.AddRange(stepConditions);
-
-            string? firstFalseText = null;
-            string? firstUnknownLabel = null;
-            for (int i = 0; i < step.Conditions.Count; i++)
-            {
-                LogicConditionDto condition = step.Conditions[i];
-                if (string.Equals(condition.Severity, LogicConditionSeverities.Warn, StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                LogicConditionStateDto conditionState = stepConditions[i];
-                if (conditionState.State == LogicConditionStates.False && firstFalseText is null)
-                {
-                    firstFalseText = condition.Text;
-                }
-                else if (conditionState.State == LogicConditionStates.Unknown && firstUnknownLabel is null)
-                {
-                    firstUnknownLabel = ConditionLabel(condition, mappingLookup);
-                }
-            }
+            (bool? output, string? failing, string? missing) =
+                EvaluateNetwork(LogicNetwork.For(step), valueLookup, mappingLookup, states, nowUtc, elements);
+            bool stepDone = output == true;
 
             bool completionConfigured = !string.IsNullOrWhiteSpace(step.CompletionSourceId)
                 && !string.IsNullOrWhiteSpace(step.CompletionItemId);
-            bool completionTrue = true;
             bool completionUnknown = false;
             string? completionText = null;
-            if (completionConfigured)
+            if (stepDone && completionConfigured)
             {
                 BridgeValueSnapshot? completion = valueLookup(step.CompletionSourceId!, step.CompletionItemId!);
                 if (completion is null || !completion.IsGood)
                 {
-                    completionTrue = false;
+                    stepDone = false;
                     completionUnknown = true;
                     completionText = "no data for " + Label(step.CompletionSourceId, step.CompletionItemId, mappingLookup);
                 }
                 else if (!TagDigital.CoerceBool(completion.Value))
                 {
-                    completionTrue = false;
+                    stepDone = false;
                     completionText = "waiting for " + Label(step.CompletionSourceId, step.CompletionItemId, mappingLookup);
                 }
             }
-
-            bool stepDone = firstFalseText is null && firstUnknownLabel is null && completionTrue;
 
             string stepState;
             string? stepReason = null;
@@ -237,13 +200,13 @@ public static class LogicStateEvaluator
                 else
                 {
                     // The first step that is not done is where the sequence stands; everything
-                    // after it stays pending even when its own conditions already happen to be true.
+                    // after it stays pending even when its own network already happens to be true.
                     foundCurrent = true;
                     allDone = false;
-                    bool dataMissing = firstUnknownLabel is not null || completionUnknown;
+                    bool dataMissing = missing is not null || completionUnknown || output is null;
                     stepState = dataMissing ? LogicStepStates.Unknown : LogicStepStates.Current;
-                    stepReason = firstFalseText
-                        ?? (firstUnknownLabel is not null ? "no data for " + firstUnknownLabel : null)
+                    stepReason = failing
+                        ?? (missing is not null ? "no data for " + missing : null)
                         ?? completionText
                         ?? "step is not done";
                 }
@@ -261,7 +224,7 @@ public static class LogicStateEvaluator
             };
             steps.Add(stepStateDto);
 
-            if (stepState == LogicStepStates.Current || stepState == LogicStepStates.Unknown)
+            if (stepState is LogicStepStates.Current or LogicStepStates.Unknown)
             {
                 current = stepStateDto;
             }
@@ -280,71 +243,368 @@ public static class LogicStateEvaluator
         return (LogicBlockStates.Blocked, current?.Reason);
     }
 
-    private static void EvaluateConditions(
-        List<LogicConditionDto> source,
+    /// <summary>
+    /// Evaluates one network in drawing order (a parent before its inputs), appending every
+    /// element's state to <paramref name="target"/>. Returns the combined output — the roots
+    /// AND'ed together — plus the reason of the first root that is not satisfied, which becomes
+    /// the block's reason.
+    /// </summary>
+    private static (bool? Output, string? Failing, string? Missing) EvaluateNetwork(
+        IReadOnlyList<LogicElementDto> roots,
         Func<string, string, BridgeValueSnapshot?> valueLookup,
         Func<string, string, TagMapping?> mappingLookup,
-        List<LogicConditionStateDto> target)
+        LogicStateStore? states,
+        DateTime nowUtc,
+        List<LogicElementStateDto> target)
     {
-        foreach (LogicConditionDto condition in source)
-        {
-            BridgeValueSnapshot? snapshot = valueLookup(condition.SourceId, condition.ItemId);
-            TagMapping? mapping = mappingLookup(condition.SourceId, condition.ItemId);
-            string valueText = FormatValueText(snapshot?.Value, mapping);
+        List<bool?> outputs = new();
+        string? failing = null;
+        string? missing = null;
 
-            string state;
-            if (snapshot is null || !snapshot.IsGood)
+        foreach (LogicElementDto root in roots)
+        {
+            bool? output = EvaluateElement(root, 0, valueLookup, mappingLookup, states, nowUtc, target, out string? reason, out string? missingLeaf);
+            if (IsWarn(root))
             {
-                state = LogicConditionStates.Unknown;
+                // A warn element at the root is reported but never gates the block.
+                continue;
+            }
+
+            outputs.Add(output);
+            if (output == false && failing is null)
+            {
+                failing = reason ?? ElementLabel(root);
+            }
+            else if (output is null && missing is null)
+            {
+                missing = missingLeaf ?? ElementLabel(root);
+            }
+        }
+
+        return (Combine.And(outputs), failing, missing);
+    }
+
+    /// <summary>
+    /// Evaluates one element and reports, alongside its output, why it is not satisfied —
+    /// <paramref name="reason"/> when it is false and <paramref name="missing"/> when it is
+    /// unknown. A gate passes on the cause of the input that decided it, so the reason names
+    /// what actually failed rather than the first thing the walk happened to see.
+    /// </summary>
+    private static bool? EvaluateElement(
+        LogicElementDto element,
+        int depth,
+        Func<string, string, BridgeValueSnapshot?> valueLookup,
+        Func<string, string, TagMapping?> mappingLookup,
+        LogicStateStore? states,
+        DateTime nowUtc,
+        List<LogicElementStateDto> target,
+        out string? reason,
+        out string? missing)
+    {
+        LogicElementStateDto row = new()
+        {
+            Id = element.Id,
+            Kind = element.Kind.ToLowerInvariant(),
+            Depth = depth,
+            State = LogicConditionStates.Unknown
+        };
+        target.Add(row);
+
+        List<bool?> inputs = new();
+        List<string?> inputReasons = new();
+        List<string?> inputMissing = new();
+        foreach (LogicElementDto input in element.Inputs)
+        {
+            bool? value = EvaluateElement(input, depth + 1, valueLookup, mappingLookup, states, nowUtc, target, out string? inputReason, out string? inputMissingLeaf);
+            // A warn element is reported but inert: it neither satisfies nor blocks its parent.
+            if (!IsWarn(input))
+            {
+                inputs.Add(value);
+                inputReasons.Add(inputReason);
+                inputMissing.Add(inputMissingLeaf);
+            }
+        }
+
+        string kind = element.Kind.ToLowerInvariant();
+        bool? output;
+        if (kind == LogicElementKinds.Contact)
+        {
+            output = EvaluateContact(element, row, valueLookup, mappingLookup);
+        }
+        else
+        {
+            output = EvaluateBlockElement(element, kind, inputs, row, states, nowUtc);
+        }
+
+        row.State = StateOf(output);
+        string own = ElementLabel(element);
+        reason = null;
+        missing = null;
+        if (!IsWarn(element))
+        {
+            if (kind == LogicElementKinds.Contact)
+            {
+                reason = output == false ? own : null;
+                missing = output is null ? LeafLabel(element, mappingLookup) : null;
+            }
+            else if (LogicElementKinds.IsGate(kind))
+            {
+                // A gate the author labelled names itself when it is false; a bare one points at
+                // the input that decided it. A missing reading always points at the tag.
+                bool named = !string.IsNullOrWhiteSpace(element.Text);
+                reason = output == false ? (named ? own : FirstCause(inputs, inputReasons, false) ?? own) : null;
+                missing = output is null ? FirstCause(inputs, inputMissing, null) ?? own : null;
             }
             else
             {
-                bool? result = Compare(condition, snapshot.Value, mapping);
-                state = result switch
-                {
-                    true => LogicConditionStates.True,
-                    false => LogicConditionStates.False,
-                    null => LogicConditionStates.Unknown
-                };
+                // A function block is its own cause: the time has not elapsed, the count is not
+                // reached, the latch is unset.
+                reason = output == false ? own : null;
+                missing = output is null ? own : null;
+            }
+        }
 
-                if (state == LogicConditionStates.Unknown)
+        return output;
+    }
+
+    /// <summary>The reason of the first input whose value is <paramref name="state"/> (false or unknown).</summary>
+    private static string? FirstCause(IReadOnlyList<bool?> inputs, IReadOnlyList<string?> causes, bool? state)
+    {
+        for (int i = 0; i < inputs.Count && i < causes.Count; i++)
+        {
+            if (inputs[i] == state && !string.IsNullOrWhiteSpace(causes[i]))
+            {
+                return causes[i];
+            }
+        }
+
+        return null;
+    }
+
+    private static bool? EvaluateContact(
+        LogicElementDto element,
+        LogicElementStateDto row,
+        Func<string, string, BridgeValueSnapshot?> valueLookup,
+        Func<string, string, TagMapping?> mappingLookup)
+    {
+        BridgeValueSnapshot? snapshot = valueLookup(element.SourceId, element.ItemId);
+        TagMapping? mapping = mappingLookup(element.SourceId, element.ItemId);
+        string valueText = FormatValueText(snapshot?.Value, mapping);
+
+        row.Should = ShouldText(element, mapping);
+        if (snapshot is null || !snapshot.IsGood)
+        {
+            row.ValueText = valueText;
+            return null;
+        }
+
+        bool? matches = Compare(element, snapshot.Value, mapping);
+        row.Matches = matches;
+        row.ValueText = matches is null
+            ? (valueText == "—" ? "not numeric" : valueText)
+            : valueText;
+        row.TimestampUtc = snapshot.TimestampUtc;
+        return matches;
+    }
+
+    private static bool? EvaluateBlockElement(
+        LogicElementDto element,
+        string kind,
+        List<bool?> inputs,
+        LogicElementStateDto row,
+        LogicStateStore? states,
+        DateTime nowUtc)
+    {
+        bool? first = inputs.Count > 0 ? inputs[0] : null;
+        switch (kind)
+        {
+            case LogicElementKinds.And:
+                return Combine.And(inputs);
+            case LogicElementKinds.Or:
+                return Combine.Or(inputs);
+            case LogicElementKinds.Xor:
+                return Combine.Xor(inputs);
+            case LogicElementKinds.Not:
+                return first is null ? null : !first;
+
+            case LogicElementKinds.Ton:
+            {
+                row.PtMs = element.PtMs;
+                if (states is null || element.PtMs <= 0)
                 {
-                    valueText = valueText == "—" ? "not numeric" : valueText;
+                    row.ElapsedMs = 0;
+                    return first;
                 }
+
+                (bool satisfied, int elapsed) = states.Ton(element.Id, first == true, element.PtMs, nowUtc);
+                row.ElapsedMs = elapsed;
+                return first is null ? null : satisfied;
             }
 
-            target.Add(new LogicConditionStateDto
+            case LogicElementKinds.Tof:
             {
-                Id = condition.Id,
-                State = state,
-                ValueText = valueText,
-                TimestampUtc = snapshot?.TimestampUtc
-            });
+                row.PtMs = element.PtMs;
+                if (states is null || element.PtMs <= 0)
+                {
+                    row.ElapsedMs = 0;
+                    return first;
+                }
+
+                (bool satisfied, int elapsed) = states.Tof(element.Id, first == true, element.PtMs, nowUtc);
+                row.ElapsedMs = elapsed;
+                return first is null ? null : satisfied;
+            }
+
+            case LogicElementKinds.Tp:
+            {
+                row.PtMs = element.PtMs;
+                if (states is null || element.PtMs <= 0)
+                {
+                    row.ElapsedMs = 0;
+                    return first;
+                }
+
+                (bool satisfied, int elapsed) = states.Tp(element.Id, first == true, element.PtMs, nowUtc);
+                row.ElapsedMs = elapsed;
+                return first is null ? null : satisfied;
+            }
+
+            case LogicElementKinds.Ctu:
+            {
+                bool? up = first;
+                bool? reset = inputs.Count > 1 ? inputs[1] : false;
+                if (states is null)
+                {
+                    return up == true && element.Pv <= 0;
+                }
+
+                (bool reached, int count) = states.Ctu(element.Id, up == true, reset == true, element.Pv);
+                row.Count = count;
+                return up is null || reset is null ? null : reached;
+            }
+
+            case LogicElementKinds.Ctd:
+            {
+                bool? down = first;
+                bool? load = inputs.Count > 1 ? inputs[1] : false;
+                if (states is null)
+                {
+                    return element.Pv <= 0;
+                }
+
+                (bool reached, int count) = states.Ctd(element.Id, down == true, load == true, element.Pv);
+                row.Count = count;
+                return down is null || load is null ? null : reached;
+            }
+
+            case LogicElementKinds.Sr:
+            case LogicElementKinds.Rs:
+            {
+                bool? set = first;
+                bool? reset = inputs.Count > 1 ? inputs[1] : false;
+                if (states is null)
+                {
+                    return set;
+                }
+
+                bool latched = kind == LogicElementKinds.Sr
+                    ? states.Sr(element.Id, set == true, reset == true)
+                    : states.Rs(element.Id, set == true, reset == true);
+                return set is null || reset is null ? null : latched;
+            }
+
+            case LogicElementKinds.RisingEdge:
+                return states is null || first is null ? first == true : states.Edge(element.Id, first == true, rising: true);
+
+            case LogicElementKinds.FallingEdge:
+                return states is null || first is null ? first == false : states.Edge(element.Id, first == true, rising: false);
+
+            default:
+                return null;
         }
     }
 
-    private static void EvaluateStepConditions(
-        List<LogicStepDto> steps,
-        Func<string, string, BridgeValueSnapshot?> valueLookup,
-        Func<string, string, TagMapping?> mappingLookup,
-        List<LogicConditionStateDto> target)
+    private static (string State, string? Reason) BlockVerdict(bool? output, string? failing, string? missing)
     {
-        foreach (LogicStepDto step in steps)
+        if (output == true)
         {
-            EvaluateConditions(step.Conditions, valueLookup, mappingLookup, target);
+            return (LogicBlockStates.Ready, null);
         }
+
+        if (output is null || (failing is null && missing is not null))
+        {
+            return (LogicBlockStates.Unknown, "no data for " + (missing ?? "(unmapped)"));
+        }
+
+        return (LogicBlockStates.Blocked, failing);
     }
 
-    private static bool? Compare(LogicConditionDto condition, object? value, TagMapping? mapping)
+    private static string StateOf(bool? value) => value switch
     {
-        string op = condition.Op.ToLowerInvariant();
+        true => LogicConditionStates.True,
+        false => LogicConditionStates.False,
+        _ => LogicConditionStates.Unknown
+    };
+
+    private static bool IsWarn(LogicElementDto element) =>
+        string.Equals(element.Severity, LogicConditionSeverities.Warn, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The element's own words for a reason line: its sentence, else its kind.</summary>
+    private static string ElementLabel(LogicElementDto element) =>
+        string.IsNullOrWhiteSpace(element.Text) ? KindLabel(element.Kind) : element.Text;
+
+    /// <summary>What a missing reading names: the tag for a contact, else the element's sentence.</summary>
+    private static string LeafLabel(LogicElementDto element, Func<string, string, TagMapping?> mappingLookup) =>
+        string.Equals(element.Kind, LogicElementKinds.Contact, StringComparison.OrdinalIgnoreCase)
+            ? Label(element.SourceId, element.ItemId, mappingLookup)
+            : ElementLabel(element);
+
+    private static string KindLabel(string? kind) => (kind ?? string.Empty).ToLowerInvariant() switch
+    {
+        LogicElementKinds.And => "AND",
+        LogicElementKinds.Or => "OR",
+        LogicElementKinds.Xor => "XOR",
+        LogicElementKinds.Not => "NOT",
+        LogicElementKinds.Ton => "TON",
+        LogicElementKinds.Tof => "TOF",
+        LogicElementKinds.Tp => "TP",
+        LogicElementKinds.Ctu => "CTU",
+        LogicElementKinds.Ctd => "CTD",
+        LogicElementKinds.Sr => "SR",
+        LogicElementKinds.Rs => "RS",
+        LogicElementKinds.RisingEdge => "R_TRIG",
+        LogicElementKinds.FallingEdge => "F_TRIG",
+        _ => "element"
+    };
+
+    /// <summary>
+    /// The reading a contact must show: "1" for a normally open contact (<c>on</c>), "0" for a
+    /// normally closed one (<c>off</c>), or the comparison itself (e.g. "&gt; 50").
+    /// </summary>
+    private static string ShouldText(LogicElementDto element, TagMapping? mapping)
+    {
+        string op = element.Op.ToLowerInvariant();
+        return op switch
+        {
+            LogicConditionOps.On => "1",
+            LogicConditionOps.Off => "0",
+            LogicConditionOps.GreaterThan => "> " + FormatNumber(element.Value ?? 0, mapping?.Decimals),
+            LogicConditionOps.LessThan => "< " + FormatNumber(element.Value ?? 0, mapping?.Decimals),
+            LogicConditionOps.Equal => "= " + FormatNumber(element.Value ?? 0, mapping?.Decimals),
+            _ => string.Empty
+        };
+    }
+
+    private static bool? Compare(LogicElementDto element, object? value, TagMapping? mapping)
+    {
+        string op = element.Op.ToLowerInvariant();
         if (op is LogicConditionOps.On or LogicConditionOps.Off)
         {
             bool on = TagDigital.CoerceBool(value);
             return op == LogicConditionOps.On ? on : !on;
         }
 
-        if (condition.Value is not double target || !TryNumber(value, out double number))
+        if (element.Value is not double target || !TryNumber(value, out double number))
         {
             return null;
         }
@@ -357,9 +617,6 @@ public static class LogicStateEvaluator
             _ => null
         };
     }
-
-    private static string ConditionLabel(LogicConditionDto condition, Func<string, string, TagMapping?> mappingLookup) =>
-        Label(condition.SourceId, condition.ItemId, mappingLookup);
 
     private static string Label(string? sourceId, string? itemId, Func<string, string, TagMapping?> mappingLookup)
     {
@@ -479,6 +736,50 @@ public static class LogicStateEvaluator
             default:
                 number = 0;
                 return false;
+        }
+    }
+
+    /// <summary>
+    /// Three-valued boolean combining (Kleene logic): an answer is known only when the inputs
+    /// settle it, so a gate over a tag with no value reads unknown rather than inventing a state.
+    /// </summary>
+    private static class Combine
+    {
+        public static bool? And(IReadOnlyList<bool?> inputs)
+        {
+            if (inputs.Count == 0)
+            {
+                return true;
+            }
+
+            if (inputs.Any(input => input == false))
+            {
+                return false;
+            }
+
+            return inputs.All(input => input == true) ? true : null;
+        }
+
+        public static bool? Or(IReadOnlyList<bool?> inputs)
+        {
+            if (inputs.Any(input => input == true))
+            {
+                return true;
+            }
+
+            return inputs.All(input => input == false) ? false : null;
+        }
+
+        /// <summary>Parity: true when an odd number of inputs is true (the standard XOR over two).</summary>
+        public static bool? Xor(IReadOnlyList<bool?> inputs)
+        {
+            if (inputs.Any(input => input is null))
+            {
+                // An unknown input can still flip the parity either way.
+                return null;
+            }
+
+            return inputs.Count(input => input == true) % 2 == 1;
         }
     }
 }

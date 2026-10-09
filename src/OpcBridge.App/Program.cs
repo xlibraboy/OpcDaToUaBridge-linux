@@ -216,6 +216,10 @@ builder.Services.AddSingleton<MappingStore>();
 builder.Services.AddSingleton<InterlinkStore>();
 builder.Services.AddSingleton<LogicStore>();
 builder.Services.AddSingleton<LogicNoteStore>();
+// The memory the IEC 61131-3 function blocks need between evaluations (timer elapsed times,
+// counter values, latch and edge state), shared by the API read and the hub broadcaster so
+// both report the same state.
+builder.Services.AddSingleton<LogicStateStore>();
 builder.Services.AddSingleton<IInterlinkMetadataResolver>(sp => sp.GetRequiredService<BridgeWorker>());
 builder.Services.AddSingleton<UaServerHost>();
 builder.Services.AddSingleton<OpcUaBrowseService>();
@@ -1789,8 +1793,8 @@ app.MapDelete("/api/logic/blocks/{id:guid}", (Guid id, LogicStore store) =>
 
     return Results.Json(new { version });
 });
-app.MapGet("/api/logic/state", (LogicStore store, MappingStore mappingStore, BridgeState state) =>
-    Results.Json(LogicStateRead.Snapshot(store, mappingStore, state, DateTime.UtcNow)));
+app.MapGet("/api/logic/state", (LogicStore store, MappingStore mappingStore, BridgeState state, LogicStateStore logicStates) =>
+    Results.Json(LogicStateRead.Snapshot(store, mappingStore, state, DateTime.UtcNow, logicStates)));
 app.MapGet("/api/logic/notes", (LogicNoteStore notes, Guid? blockId, int? limit) =>
     Results.Json(new { notes = notes.Get(blockId, limit ?? 50) }));
 app.MapPost("/api/logic/notes", (LogicNoteAddRequest request, LogicNoteStore notes, LogicStore store, HttpContext context) =>

@@ -19,6 +19,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+**Logic blocks can be authored as IEC 61131-3 networks, and every element reports should vs
+actual.** The Logic tab's editor gained a **Network (IEC 61131-3)** form beside the flat
+condition list: element rows nest by indentation (a row's inputs are the rows under it at a
+deeper level, the outermost rows are the block's roots — the block's AND) and the vocabulary is
+the standard's — **contacts** (NO / NC, or a comparison), **gates** (`AND`, `OR`, `XOR`, `NOT`,
+nested to any depth) and **function blocks** (`TON` / `TOF` / `TP` timers with a preset `PT` and
+reported elapsed time, `CTU` / `CTD` counters with a preset `PV` and reported count, `SR` / `RS`
+latches, `R_TRIG` / `F_TRIG` edge triggers). `Convert to IEC network` rewrites the conditions
+already authored into the equivalent network, so an existing block can be extended rather than
+rebuilt; the store keeps the two forms exclusive (one source of truth) and bounds a network to
+8 levels and 64 elements. The bridge evaluates the network with three-valued logic, keeps the
+function blocks' memory between passes (timers, counters, latches, edges — a restart re-times
+them, the honest reading for a monitor), and pushes a fresh snapshot while a timer runs so its
+progress reaches the apps. Every evaluated element now carries the reading it needs
+(`should`) and whether the live value satisfies it (`matches`) — the phone renders "should 1 /
+actual 0" per element — and each element state reports its kind, depth, timer preset/elapsed and
+counter value.
+
+**Logic blocks carry an interlock group, and a condition can carry an OR group and a hold
+timer.** A block's new **Interlock group** (e.g. `Primary Arm`) collects related interlocks under
+one heading; conditions can share an **OR group** label (an any-of gate: the group is satisfied
+as soon as one member is true, and only block-severity members count) and a **hold** (a TON
+on-delay timer: the contact counts only after its input has held true that long). Warn-only
+conditions are shown and tracked but never block and never carry a gate or timer. The evaluation
+reports each contact's expected reading (`should`), whether the live value satisfies it
+(`matches`) and a timer's progress, so a phone row reads *should 1 · actual 0* and a running
+timer reports *holding 1.5 s of 3 s*; a labelled gate names itself as the block's reason, a bare
+one points at the input that failed, and a missing reading always names the tag. The dashboard
+lists blocks under their group's heading, and `/api/logic/state` reports the network as a flat,
+depth-first element list.
+
 **Logic blocks can carry tags, and the phone's list can be searched and filtered.** The dashboard's
 **Tags ▸ Logic** editor gained a **Tags** box — comma-separated labels such as `Line 1, Safety`, up
 to 8 per block and 24 characters each, with blanks and case-insensitive duplicates dropped (a

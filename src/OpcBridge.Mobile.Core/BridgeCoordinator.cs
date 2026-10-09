@@ -21,11 +21,17 @@ public sealed class BridgeCoordinator : IDisposable
     private readonly IBridgeSettings settings_;
     private readonly Action<Action> post_;
     private readonly MultiBridgeTagCache tags_;
+    private readonly IBridgeCacheStore cache_;
 
-    public BridgeCoordinator(IBridgeSettings settings, MultiBridgeTagCache? tags = null, Action<Action>? post = null)
+    public BridgeCoordinator(
+        IBridgeSettings settings,
+        MultiBridgeTagCache? tags = null,
+        Action<Action>? post = null,
+        IBridgeCacheStore? cache = null)
     {
         settings_ = settings;
         tags_ = tags ?? new MultiBridgeTagCache();
+        cache_ = cache ?? new MemoryBridgeCacheStore();
         post_ = post ?? (action => action());
     }
 
@@ -150,7 +156,7 @@ public sealed class BridgeCoordinator : IDisposable
 
     private BridgeConnection NewConnection(SavedBridge bridge)
     {
-        BridgeConnection connection = new(bridge, tags_, post_);
+        BridgeConnection connection = new(bridge, tags_, post_, cache_);
         connection.Changed += RaiseChanged;
         return connection;
     }

@@ -30,6 +30,13 @@ public sealed class LogicStateEvaluatorTests
             index.TryGetValue(LogicStateEvaluator.Key(sourceId, itemId), out TagMapping mapping) ? mapping : null;
     }
 
+    /// <summary>
+    /// The contacts of a block's evaluated network, in authored order — the simple form's
+    /// leaves, whatever the expansion wrapped them in.
+    /// </summary>
+    private static IReadOnlyList<LogicElementStateDto> Contacts(LogicBlockStateDto state) =>
+        state.Elements.Where(element => element.Kind == LogicElementKinds.Contact).ToList();
+
     private static LogicConditionDto Condition(
         string text = "Line 01 start permit must be given",
         string op = LogicConditionOps.On,
@@ -37,7 +44,9 @@ public sealed class LogicStateEvaluatorTests
         string sourceId = "sim",
         string itemId = "Permit",
         string severity = LogicConditionSeverities.Block,
-        string? nextStep = null)
+        string? nextStep = null,
+        string group = "",
+        int holdMs = 0)
     {
         return new LogicConditionDto
         {
@@ -48,7 +57,9 @@ public sealed class LogicStateEvaluatorTests
             Op = op,
             Value = value,
             Severity = severity,
-            NextStepText = nextStep
+            NextStepText = nextStep,
+            Group = group,
+            HoldMs = holdMs
         };
     }
 
@@ -98,7 +109,7 @@ public sealed class LogicStateEvaluatorTests
 
         Assert.Equal(LogicBlockStates.Ready, state.State);
         Assert.Null(state.Reason);
-        Assert.All(state.Conditions, condition => Assert.Equal(LogicConditionStates.True, condition.State));
+        Assert.All(Contacts(state), condition => Assert.Equal(LogicConditionStates.True, condition.State));
     }
 
     [Fact]
@@ -115,7 +126,7 @@ public sealed class LogicStateEvaluatorTests
 
         Assert.Equal(LogicBlockStates.Blocked, state.State);
         Assert.Equal("Line 01 start permit must be given", state.Reason);
-        Assert.Equal(LogicConditionStates.False, state.Conditions[0].State);
+        Assert.Equal(LogicConditionStates.False, Contacts(state)[0].State);
     }
 
     [Fact]
@@ -130,9 +141,9 @@ public sealed class LogicStateEvaluatorTests
 
         Assert.Equal(LogicBlockStates.Unknown, state.State);
         Assert.Equal("no data for Line 01 Start Permit", state.Reason);
-        Assert.Equal(LogicConditionStates.Unknown, state.Conditions[0].State);
-        Assert.Equal("—", state.Conditions[0].ValueText);
-        Assert.Null(state.Conditions[0].TimestampUtc);
+        Assert.Equal(LogicConditionStates.Unknown, Contacts(state)[0].State);
+        Assert.Equal("—", Contacts(state)[0].ValueText);
+        Assert.Null(Contacts(state)[0].TimestampUtc);
     }
 
     [Fact]
@@ -163,7 +174,7 @@ public sealed class LogicStateEvaluatorTests
 
         Assert.Equal(LogicBlockStates.Ready, state.State);
         Assert.Null(state.Reason);
-        Assert.Equal(LogicConditionStates.False, state.Conditions[1].State);
+        Assert.Equal(LogicConditionStates.False, Contacts(state)[1].State);
     }
 
     [Fact]
@@ -226,8 +237,8 @@ public sealed class LogicStateEvaluatorTests
                 new TagMapping { SourceId = "sim", ItemId = "PumpRun", Digital = true, OnText = "Running", OffText = "Stopped" },
                 new TagMapping { SourceId = "sim", ItemId = "Flow", DataType = "Double", Decimals = 1, Unit = "m³/h" }));
 
-        Assert.Equal("Running", state.Conditions[0].ValueText);
-        Assert.Equal("12.3 m³/h", state.Conditions[1].ValueText);
+        Assert.Equal("Running", Contacts(state)[0].ValueText);
+        Assert.Equal("12.3 m³/h", Contacts(state)[1].ValueText);
     }
 
     [Fact]
@@ -246,7 +257,7 @@ public sealed class LogicStateEvaluatorTests
         Assert.Equal("Line 01 start permit must be given", state.Reason);
         Assert.Equal(LogicStepStates.Current, state.Steps[0].State);
         Assert.Equal(LogicStepStates.Pending, state.Steps[1].State);
-        Assert.Equal(2, state.Conditions.Count);
+        Assert.Equal(2, Contacts(state).Count);
     }
 
     [Fact]
@@ -325,6 +336,223 @@ public sealed class LogicStateEvaluatorTests
         Assert.Equal("no data for Line 01 Start Permit", state.Reason);
     }
 
+    /// <summary>A flat block evaluated against a few tag values.</summary>
+    private static LogicBlockStateDto Evaluate(LogicBlockDto block, params (string SourceId, string ItemId, object? Value, bool Good)[] entries) =>
+        LogicStateEvaluator.EvaluateBlock(block, Values(entries), Mappings());
+
+    [Fact]
+    public void Should_And_Matches_ReportTheRequiredReadingAndTheLiveOne()
+    {
+        LogicBlockDto block = Flat(
+            Condition("Pressure switch PS1 must read 1", itemId: "PS1"),
+            Condition("Limit switch LS2 must be clear", op: LogicConditionOps.Off, itemId: "LS2"),
+            Condition("Level must be above 50", op: LogicConditionOps.GreaterThan, value: 50, itemId: "Level"));
+
+        LogicBlockStateDto state = LogicStateEvaluator.EvaluateBlock(
+            block,
+            Values(("sim", "PS1", false, true), ("sim", "LS2", false, true), ("sim", "Level", 40.0, true)),
+            Mappings(new TagMapping { SourceId = "sim", ItemId = "Level", Decimals = 0 }));
+
+        // The reading each contact must show, and whether the tag currently shows it.
+        Assert.Equal("1", Contacts(state)[0].Should);
+        Assert.False(Contacts(state)[0].Matches);
+        Assert.Equal("0", Contacts(state)[1].Should);
+        Assert.True(Contacts(state)[1].Matches);
+        Assert.Equal("> 50", Contacts(state)[2].Should);
+        Assert.False(Contacts(state)[2].Matches);
+        Assert.Equal(LogicBlockStates.Blocked, state.State);
+        Assert.Equal("Pressure switch PS1 must read 1", state.Reason);
+    }
+
+    [Fact]
+    public void Should_IsUnknownsCompanion_AndMatchesIsNullWithoutAValue()
+    {
+        LogicBlockDto block = Flat(Condition("Pressure switch PS1 must read 1", itemId: "PS1"));
+
+        LogicBlockStateDto state = LogicStateEvaluator.EvaluateBlock(block, Values(), Mappings());
+
+        Assert.Equal("1", Contacts(state)[0].Should);
+        Assert.Null(Contacts(state)[0].Matches);
+        Assert.Equal(LogicConditionStates.Unknown, Contacts(state)[0].State);
+    }
+
+    [Fact]
+    public void OrGate_IsAnyOf_AndTheBlockStillNeedsEveryRoot()
+    {
+        LogicBlockDto block = Flat(
+            Condition("Local start PB must be pressed", itemId: "PB1", group: "Start permissive"),
+            Condition("Remote start PB must be pressed", itemId: "PB2", group: "Start permissive"),
+            Condition("Pressure switch PS1 must read 1", itemId: "PS1"));
+
+        // The block's own AND sits on top, the group hangs under it, the contacts under that.
+        LogicBlockStateDto oneTrue = Evaluate(block,
+            ("sim", "PB1", true, true), ("sim", "PB2", false, true), ("sim", "PS1", false, true));
+
+        Assert.Equal(LogicBlockStates.Blocked, oneTrue.State);
+        Assert.Equal("Pressure switch PS1 must read 1", oneTrue.Reason);
+        Assert.Equal(LogicElementKinds.And, oneTrue.Elements[0].Kind);
+        LogicElementStateDto or = Assert.Single(oneTrue.Elements.Where(element => element.Kind == LogicElementKinds.Or));
+        Assert.Equal(1, or.Depth);
+        Assert.Equal(LogicConditionStates.True, or.State);
+        Assert.Equal(3, oneTrue.Elements.Count(element => element.Kind == LogicElementKinds.Contact));
+
+        // Every member false blocks, and the labelled gate names itself as the reason.
+        LogicBlockStateDto allFalse = Evaluate(block,
+            ("sim", "PB1", false, true), ("sim", "PB2", false, true), ("sim", "PS1", true, true));
+
+        Assert.Equal(LogicBlockStates.Blocked, allFalse.State);
+        Assert.Equal("Start permissive", allFalse.Reason);
+        Assert.Equal(LogicConditionStates.False, Assert.Single(allFalse.Elements.Where(element => element.Kind == LogicElementKinds.Or)).State);
+
+        // A member with no value leaves the gate unknown, and the reason names the missing tag.
+        LogicBlockStateDto unknown = Evaluate(block,
+            ("sim", "PB1", false, true), ("sim", "PS1", true, true));
+
+        Assert.Equal(LogicBlockStates.Unknown, unknown.State);
+        Assert.Equal("no data for PB2", unknown.Reason);
+        Assert.Equal(LogicConditionStates.Unknown, Assert.Single(unknown.Elements.Where(element => element.Kind == LogicElementKinds.Or)).State);
+    }
+
+    [Fact]
+    public void OrGate_WithoutALabelIsStillAReadableGate()
+    {
+        LogicBlockDto block = Flat(
+            Condition("Local start PB must be pressed", itemId: "PB1", group: "Start permissive"),
+            Condition("Remote start PB must be pressed", itemId: "PB2", group: "Start permissive"));
+
+        LogicBlockStateDto state = Evaluate(block,
+            ("sim", "PB1", false, true), ("sim", "PB2", false, true));
+
+        // A single group is the whole network, so it is the root (no AND wrapper).
+        Assert.Equal(LogicBlockStates.Blocked, state.State);
+        Assert.Equal("Start permissive", state.Reason);
+        LogicElementStateDto or = Assert.Single(state.Elements.Where(element => element.Kind == LogicElementKinds.Or));
+        Assert.Equal(0, or.Depth);
+        Assert.Equal(LogicConditionStates.False, or.State);
+    }
+
+    [Fact]
+    public void WarnElementsAreReportedButInert()
+    {
+        LogicBlockDto block = Flat(
+            Condition("Local start PB must be pressed", itemId: "PB1", group: "Start permissive"),
+            Condition("Remote link is healthy", itemId: "Link", severity: LogicConditionSeverities.Warn, group: "Start permissive"));
+
+        LogicBlockStateDto state = Evaluate(block,
+            ("sim", "PB1", false, true), ("sim", "Link", true, true));
+
+        // The warn member is true, but it neither satisfies nor blocks its gate.
+        Assert.Equal(LogicBlockStates.Blocked, state.State);
+        Assert.Equal(LogicConditionStates.False, Assert.Single(state.Elements.Where(element => element.Kind == LogicElementKinds.Or)).State);
+        LogicElementStateDto warn = Assert.Single(state.Elements.Where(element => element.Id != Guid.Empty && element.Kind == LogicElementKinds.Contact && element.State == LogicConditionStates.True));
+        Assert.Equal(LogicConditionStates.True, warn.State);
+    }
+
+    [Fact]
+    public void Ton_HoldsUntilTheInputHasHeldLongEnough_AndResetsOnADrop()
+    {
+        LogicStateStore states = new();
+        LogicBlockDto block = Flat(Condition("Hydraulic pressure must hold", itemId: "PS1", holdMs: 3000));
+
+        LogicBlockStateDto atStart = LogicStateEvaluator.EvaluateBlock(
+            block, Values(("sim", "PS1", true, true)), Mappings(), states, Now);
+
+        // The expansion wrapped the contact in a TON, which is the root.
+        LogicElementStateDto ton = atStart.Elements[0];
+        Assert.Equal(LogicElementKinds.Ton, ton.Kind);
+        Assert.Equal(3000, ton.PtMs);
+        Assert.Equal(0, ton.ElapsedMs);
+        Assert.Equal(LogicConditionStates.False, ton.State);
+        Assert.True(Contacts(atStart)[0].Matches);
+        Assert.Equal("Hydraulic pressure must hold", atStart.Reason);
+        Assert.Equal(LogicBlockStates.Blocked, atStart.State);
+
+        LogicBlockStateDto halfway = LogicStateEvaluator.EvaluateBlock(
+            block, Values(("sim", "PS1", true, true)), Mappings(), states, Now.AddSeconds(1.5));
+
+        Assert.Equal(1500, halfway.Elements[0].ElapsedMs);
+        Assert.Equal(LogicConditionStates.False, halfway.Elements[0].State);
+        Assert.Equal(LogicBlockStates.Blocked, halfway.State);
+
+        LogicBlockStateDto elapsed = LogicStateEvaluator.EvaluateBlock(
+            block, Values(("sim", "PS1", true, true)), Mappings(), states, Now.AddSeconds(3));
+
+        Assert.Equal(LogicBlockStates.Ready, elapsed.State);
+        Assert.Null(elapsed.Reason);
+        Assert.Equal(LogicElementKinds.Ton, elapsed.Elements[0].Kind);
+        Assert.Equal(LogicConditionStates.True, elapsed.Elements[0].State);
+
+        // The input drops: the timer starts over.
+        LogicBlockStateDto dropped = LogicStateEvaluator.EvaluateBlock(
+            block, Values(("sim", "PS1", false, true)), Mappings(), states, Now.AddSeconds(4));
+
+        Assert.Equal(LogicBlockStates.Blocked, dropped.State);
+        Assert.Equal(0, dropped.Elements[0].ElapsedMs);
+        Assert.Equal(LogicConditionStates.False, dropped.Elements[0].State);
+        Assert.Equal("Hydraulic pressure must hold", dropped.Reason);
+
+        LogicBlockStateDto restarted = LogicStateEvaluator.EvaluateBlock(
+            block, Values(("sim", "PS1", true, true)), Mappings(), states, Now.AddSeconds(5));
+
+        Assert.Equal(LogicBlockStates.Blocked, restarted.State);
+        Assert.Equal(0, restarted.Elements[0].ElapsedMs);
+    }
+
+    [Fact]
+    public void Ton_WithoutAStateStorePassesTheInputThrough()
+    {
+        LogicBlockDto block = Flat(Condition("Hydraulic pressure must hold", itemId: "PS1", holdMs: 3000));
+
+        LogicBlockStateDto state = LogicStateEvaluator.EvaluateBlock(
+            block, Values(("sim", "PS1", true, true)), Mappings());
+
+        Assert.Equal(LogicBlockStates.Ready, state.State);
+        Assert.Equal(LogicElementKinds.Ton, state.Elements[0].Kind);
+        Assert.Equal(LogicConditionStates.True, state.Elements[0].State);
+        Assert.Equal(3000, state.Elements[0].PtMs);
+    }
+
+    [Fact]
+    public void Ton_ForgetsATimerWhoseElementLeftThePass()
+    {
+        LogicStateStore states = new();
+        LogicConditionDto condition = Condition("Hydraulic pressure must hold", itemId: "PS1", holdMs: 3000);
+        LogicBlockDto block = Flat(condition);
+
+        LogicStateEvaluator.Evaluate(new[] { block }, 1, Values(("sim", "PS1", true, true)), Mappings(), Now, states);
+        // The element is gone (edited away): the next full pass prunes its memory.
+        LogicStateEvaluator.Evaluate(Array.Empty<LogicBlockDto>(), 2, Values(), Mappings(), Now.AddSeconds(1), states);
+        // Re-added: the timer starts from zero rather than remembering the old run.
+        LogicBlockStateDto state = LogicStateEvaluator.EvaluateBlock(
+            block, Values(("sim", "PS1", true, true)), Mappings(), states, Now.AddSeconds(1));
+
+        Assert.Equal(LogicBlockStates.Blocked, state.State);
+        Assert.Equal(0, state.Elements[0].ElapsedMs);
+    }
+
+    [Fact]
+    public void Signature_FollowsShouldMatchesAndTheTimersWholeSeconds()
+    {
+        LogicStateStore states = new();
+        LogicBlockDto block = Flat(
+            Condition("Pressure switch PS1 must read 1", itemId: "PS1"),
+            Condition("Hydraulic pressure must hold", itemId: "PS2", holdMs: 3000));
+
+        LogicStateSnapshot first = LogicStateEvaluator.Evaluate(
+            new[] { block }, 1, Values(("sim", "PS1", true, true), ("sim", "PS2", true, true)), Mappings(), Now, states);
+        LogicStateSnapshot sameSecond = LogicStateEvaluator.Evaluate(
+            new[] { block }, 1, Values(("sim", "PS1", true, true), ("sim", "PS2", true, true)), Mappings(), Now.AddMilliseconds(400), states);
+        LogicStateSnapshot nextSecond = LogicStateEvaluator.Evaluate(
+            new[] { block }, 1, Values(("sim", "PS1", true, true), ("sim", "PS2", true, true)), Mappings(), Now.AddSeconds(1), states);
+        LogicStateSnapshot elapses = LogicStateEvaluator.Evaluate(
+            new[] { block }, 1, Values(("sim", "PS1", true, true), ("sim", "PS2", true, true)), Mappings(), Now.AddSeconds(3), states);
+
+        // Same whole second of a running timer: no push. A new second, and the final state, do push.
+        Assert.Equal(LogicStateEvaluator.Signature(first), LogicStateEvaluator.Signature(sameSecond));
+        Assert.NotEqual(LogicStateEvaluator.Signature(first), LogicStateEvaluator.Signature(nextSecond));
+        Assert.NotEqual(LogicStateEvaluator.Signature(nextSecond), LogicStateEvaluator.Signature(elapses));
+    }
+
     [Fact]
     public void Disabled_BlockReportsDisabledEvenWhenConditionFalse()
     {
@@ -338,7 +566,7 @@ public sealed class LogicStateEvaluatorTests
 
         Assert.Equal(LogicBlockStates.Disabled, state.State);
         Assert.Equal("block is disabled", state.Reason);
-        Assert.Equal(LogicConditionStates.False, state.Conditions[0].State);
+        Assert.Equal(LogicConditionStates.False, Contacts(state)[0].State);
     }
 
     [Fact]

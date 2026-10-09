@@ -90,7 +90,7 @@ public sealed class LogicApiTests
             Assert.Equal(blockId, blockState.GetProperty("id").GetGuid());
             Assert.Equal("unknown", blockState.GetProperty("state").GetString());
             Assert.Equal("no data for Line 01 Start Permit", blockState.GetProperty("reason").GetString());
-            Assert.Equal("unknown", blockState.GetProperty("conditions")[0].GetProperty("state").GetString());
+            Assert.Equal("unknown", blockState.GetProperty("elements")[0].GetProperty("state").GetString());
             Assert.Equal(1, state.RootElement.GetProperty("version").GetInt64());
         }
     }

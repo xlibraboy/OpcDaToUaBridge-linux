@@ -34,9 +34,9 @@ public partial class LogicPage : ContentPage
         BridgeConnection? active = coordinator_.Active;
         LogicOverviewViewModel? overview = active?.Overview;
 
-        if (!ReferenceEquals(blocksView.ItemsSource, overview?.Visible))
+        if (!ReferenceEquals(blocksView.ItemsSource, overview?.VisibleGroups))
         {
-            blocksView.ItemsSource = overview?.Visible;
+            blocksView.ItemsSource = overview?.VisibleGroups;
         }
 
         // The visible list is rebuilt on the UI thread when a filter or a state change moves
@@ -62,6 +62,8 @@ public partial class LogicPage : ContentPage
         connectionLabel.Text = active is null
             ? "no bridges yet — add one under Settings ▸ Bridges"
             : active.StatusText + " · " + active.Bridge.Url;
+        offlineLabel.IsVisible = active?.IsOffline == true;
+        offlineLabel.Text = active?.OfflineText ?? string.Empty;
 
         string search = overview?.SearchText ?? string.Empty;
         if (!string.Equals(searchBar.Text, search, StringComparison.Ordinal))

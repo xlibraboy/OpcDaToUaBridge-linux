@@ -33,11 +33,11 @@ public sealed class LogicBroadcastTests : IDisposable
         Assert.Equal("logic", firstMethod);
         LogicStateSnapshot first = Assert.IsType<LogicStateSnapshot>(firstPayload);
         Assert.Equal(LogicBlockStates.Ready, first.Blocks[0].State);
-        Assert.Equal(LogicConditionStates.True, first.Blocks[0].Conditions[0].State);
+        Assert.Equal(LogicConditionStates.True, first.Blocks[0].Elements.Single(element => element.Kind == LogicElementKinds.Contact).State);
         // No mapping is seeded in this test, so a Boolean value renders as the plain On/Off
         // text; the mapping-driven texts (OnText/OffText, decimals, unit) are covered in
         // LogicStateEvaluatorTests.ValueText_UsesDigitalTextsAnalogDecimalsAndUnit.
-        Assert.Equal("On", first.Blocks[0].Conditions[0].ValueText);
+        Assert.Equal("On", first.Blocks[0].Elements.Single(element => element.Kind == LogicElementKinds.Contact).ValueText);
 
         // Same state, new sample after the same value: no push.
         values.SetValue(new BridgeValue("sim", "Permit", true, DateTime.UtcNow, 192, true));

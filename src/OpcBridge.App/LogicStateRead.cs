@@ -14,7 +14,8 @@ public static class LogicStateRead
         LogicStore logicStore,
         MappingStore mappingStore,
         BridgeState bridgeState,
-        DateTime nowUtc)
+        DateTime nowUtc,
+        LogicStateStore? states = null)
     {
         (IReadOnlyList<LogicBlockDto> blocks, long version) = logicStore.GetSnapshot();
         (IReadOnlyList<TagMapping> mappings, _) = mappingStore.GetSnapshot();
@@ -27,6 +28,7 @@ public static class LogicStateRead
                 bridgeState.TryGetSnapshot(sourceId, itemId, out BridgeValueSnapshot snapshot) ? snapshot : null,
             (sourceId, itemId) =>
                 index.TryGetValue(LogicStateEvaluator.Key(sourceId, itemId), out TagMapping mapping) ? mapping : null,
-            nowUtc);
+            nowUtc,
+            states);
     }
 }
