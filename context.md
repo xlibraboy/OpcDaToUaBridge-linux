@@ -1,6 +1,6 @@
 # context.md — OpcBridge
 
-Instruction file for AI agents working in this repo. All facts below are verified against committed code as of 2026-10-01 (branch `feature/da-containment-and-workers`, `b2ce3aa`; the worker-isolation feature is not merged to `main` yet).
+Instruction file for AI agents working in this repo. All facts below are verified against committed code as of 2026-10-09 (`main` at `1a979ed`, the merge of `feature/mobile-logic-viewer`; the worker isolation, the mobile logic viewer and the IEC 61131-3 logic networks are all on `main`).
 
 ## What this project is
 
