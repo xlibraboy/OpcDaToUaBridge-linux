@@ -42,26 +42,36 @@ public partial class SettingsPage : ContentPage
 
     private async void OnConnectClicked(object? sender, EventArgs e)
     {
+        string host = hostEntry.Text?.Trim() ?? string.Empty;
+        if (host.Length == 0)
+        {
+            connectionLabel.Text = "enter the bridge host or IP first";
+            return;
+        }
+
         connectButton.IsEnabled = false;
+        // The probe can walk the whole 8080–8180 range; say what is happening right away.
+        connectionLabel.Text = "searching for a bridge on " + host + "…";
         try
         {
             MobileResult<BridgeConnection> result = await coordinator_.AddOrConnectAsync(
-                hostEntry.Text ?? string.Empty,
+                host,
                 nameEntry.Text,
                 CancellationToken.None);
             if (!result.Ok)
             {
-                connectionLabel.Text = result.Error ?? "could not reach that bridge";
+                // Do not Repaint over this: the operator must see why the address was refused.
+                connectionLabel.Text = "✗ " + (result.Error ?? "could not reach that bridge");
                 return;
             }
 
             hostEntry.Text = string.Empty;
             nameEntry.Text = string.Empty;
+            Repaint();
         }
         finally
         {
             connectButton.IsEnabled = true;
-            Repaint();
         }
     }
 

@@ -55,9 +55,10 @@ public sealed class LogicApiClient : IDisposable
     {
         MobileResult<LogicBlocksResponse> result = await GetJsonAsync<LogicBlocksResponse>("api/logic", cancellationToken)
             .ConfigureAwait(false);
+        // Keep the status code: the caller turns a 401 into "the bridge requires sign-in".
         return result.Ok
             ? MobileResult<IReadOnlyList<LogicBlockDto>>.Success(result.Value?.Blocks ?? new List<LogicBlockDto>())
-            : MobileResult<IReadOnlyList<LogicBlockDto>>.Fail(result.Error ?? "request failed");
+            : MobileResult<IReadOnlyList<LogicBlockDto>>.Fail(result.Error ?? "request failed", result.StatusCode);
     }
 
     public async Task<MobileResult<IReadOnlyList<HmiTagDto>>> GetTagsAsync(CancellationToken cancellationToken)
@@ -66,7 +67,7 @@ public sealed class LogicApiClient : IDisposable
             .ConfigureAwait(false);
         return result.Ok
             ? MobileResult<IReadOnlyList<HmiTagDto>>.Success(result.Value?.Tags ?? new List<HmiTagDto>())
-            : MobileResult<IReadOnlyList<HmiTagDto>>.Fail(result.Error ?? "request failed");
+            : MobileResult<IReadOnlyList<HmiTagDto>>.Fail(result.Error ?? "request failed", result.StatusCode);
     }
 
     public async Task<MobileResult<IReadOnlyList<LogicNoteDto>>> GetNotesAsync(Guid? blockId, int limit, CancellationToken cancellationToken)
@@ -76,7 +77,7 @@ public sealed class LogicApiClient : IDisposable
             .ConfigureAwait(false);
         return result.Ok
             ? MobileResult<IReadOnlyList<LogicNoteDto>>.Success(result.Value?.Notes ?? new List<LogicNoteDto>())
-            : MobileResult<IReadOnlyList<LogicNoteDto>>.Fail(result.Error ?? "request failed");
+            : MobileResult<IReadOnlyList<LogicNoteDto>>.Fail(result.Error ?? "request failed", result.StatusCode);
     }
 
     public async Task<MobileResult<LogicNoteDto>> AddNoteAsync(LogicNoteAddRequest request, CancellationToken cancellationToken)

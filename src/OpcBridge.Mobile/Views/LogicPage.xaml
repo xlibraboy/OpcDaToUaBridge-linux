@@ -3,10 +3,20 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="OpcBridge.Mobile.Views.LogicPage"
              Title="Logic">
-    <Grid RowDefinitions="Auto,Auto,Auto,*" Padding="12" RowSpacing="10">
+    <ContentPage.Resources>
+        <!-- One search/filter chip: filled and dark-texted while selected, dark with muted
+             text otherwise, so the choice reads without relying on colour alone. -->
+        <DataTemplate x:Key="FilterChip">
+            <Button Text="{Binding Label}" Clicked="OnFilterChipClicked" FontSize="12" Padding="10,4" CornerRadius="14"
+                    BackgroundColor="{Binding IsSelected, Converter={StaticResource ChipColor}}"
+                    TextColor="{Binding IsSelected, Converter={StaticResource ChipColor}, ConverterParameter=text}" />
+        </DataTemplate>
+    </ContentPage.Resources>
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*" Padding="12" RowSpacing="10">
         <VerticalStackLayout Grid.Row="0" Spacing="2">
             <Label Text="Plant logic" FontSize="22" FontAttributes="Bold" />
             <Label x:Name="summaryLabel" FontSize="13" TextColor="{StaticResource MutedColor}" />
+            <Label x:Name="filterLabel" FontSize="12" TextColor="{StaticResource MutedColor}" IsVisible="false" />
             <Label x:Name="connectionLabel" FontSize="12" TextColor="{StaticResource MutedColor}" />
         </VerticalStackLayout>
 
@@ -17,11 +27,24 @@
             <Button Text="Settings" Clicked="OnSettingsClicked" />
         </HorizontalStackLayout>
 
-        <RefreshView x:Name="refreshView" Grid.Row="3" Refreshing="OnRefreshing">
+        <SearchBar x:Name="searchBar" Grid.Row="3" Placeholder="Search name, description or tags"
+                   TextChanged="OnSearchChanged" />
+
+        <ScrollView Grid.Row="4" Orientation="Horizontal" HorizontalScrollBarVisibility="Never">
+            <HorizontalStackLayout Spacing="6">
+                <HorizontalStackLayout x:Name="stateChips" Spacing="6"
+                                       BindableLayout.ItemTemplate="{StaticResource FilterChip}" />
+                <BoxView x:Name="chipDivider" WidthRequest="1" Color="{StaticResource BorderColor}"
+                         Margin="2,3" IsVisible="false" />
+                <HorizontalStackLayout x:Name="tagChips" Spacing="6"
+                                       BindableLayout.ItemTemplate="{StaticResource FilterChip}" />
+            </HorizontalStackLayout>
+        </ScrollView>
+
+        <RefreshView x:Name="refreshView" Grid.Row="5" Refreshing="OnRefreshing">
             <CollectionView x:Name="blocksView" SelectionMode="Single" SelectionChanged="OnBlockSelected">
                 <CollectionView.EmptyView>
-                    <Label Text="No logic blocks here. Add a bridge under Settings ▸ Bridges, or author blocks in the dashboard under Tags ▸ Logic."
-                           TextColor="{StaticResource MutedColor}" Margin="8" />
+                    <Label x:Name="emptyLabel" TextColor="{StaticResource MutedColor}" Margin="8" />
                 </CollectionView.EmptyView>
                 <CollectionView.ItemTemplate>
                     <DataTemplate>
@@ -34,6 +57,17 @@
                                            TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
                                 </Grid>
                                 <Label Text="{Binding KindLabel}" FontSize="11" TextColor="{StaticResource MutedColor}" />
+                                <FlexLayout Wrap="Wrap" Direction="Row" AlignItems="Center"
+                                            BindableLayout.ItemsSource="{Binding Tags}">
+                                    <BindableLayout.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Margin="0,0,6,2" Padding="6,1" StrokeThickness="1"
+                                                    Stroke="{StaticResource BorderColor}" BackgroundColor="{StaticResource PageBg}">
+                                                <Label Text="{Binding}" FontSize="11" TextColor="{StaticResource MutedColor}" />
+                                            </Border>
+                                        </DataTemplate>
+                                    </BindableLayout.ItemTemplate>
+                                </FlexLayout>
                                 <Label Text="{Binding Reason}" FontSize="13" />
                                 <Label Text="{Binding ProgressText}" FontSize="12" TextColor="{StaticResource MutedColor}" />
                             </VerticalStackLayout>

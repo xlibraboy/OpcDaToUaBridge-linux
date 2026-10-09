@@ -11,11 +11,18 @@ public static class BridgeProbe
     public const int ScanStart = 8080;
     public const int ScanEnd = 8180;
 
+    /// <summary>
+    /// Per-port timeout while sweeping the range: a bridge that is listening answers in
+    /// milliseconds, so a host that silently drops packets cannot hold the Add button for
+    /// the two minutes a full 1.2 s-per-port sweep would take.
+    /// </summary>
+    public const int ScanTimeoutMs = 400;
+
     /// <summary>Host ports the bridge is commonly published on when it runs in a container.</summary>
     public static readonly int[] KnownHostPorts = { 18080 };
 
     /// <summary>The first address on <paramref name="host"/> that answers as a bridge, or null.</summary>
-    public static async Task<string?> FindAsync(string? host, int timeoutMs = 1200, CancellationToken cancellationToken = default)
+    public static async Task<string?> FindAsync(string? host, int timeoutMs = 3000, CancellationToken cancellationToken = default)
     {
         (string name, int? explicitPort) = ParseHost(host);
         if (name.Length == 0)
@@ -26,7 +33,12 @@ public static class BridgeProbe
         foreach (int port in CandidatePorts(explicitPort))
         {
             string baseUrl = $"http://{name}:{port}";
-            if (await IsBridgeAsync(baseUrl, timeoutMs, cancellationToken).ConfigureAwait(false))
+            // The port the operator typed, and the known container publish ports, get the
+            // caller's full timeout; the wide sweep gets the short one.
+            int perPortTimeout = port == explicitPort || KnownHostPorts.Contains(port)
+                ? timeoutMs
+                : Math.Min(timeoutMs, ScanTimeoutMs);
+            if (await IsBridgeAsync(baseUrl, perPortTimeout, cancellationToken).ConfigureAwait(false))
             {
                 return baseUrl;
             }
@@ -40,9 +52,11 @@ public static class BridgeProbe
     /// anonymous whether or not Auth is enabled — <c>/api/status/ports</c>, the desktop HMI's
     /// same-origin probe, is session-gated and so would reject a phone that has no session yet.
     /// The body must carry the endpoint's <c>authEnabled</c> field, so a foreign web server on
-    /// the same port is not mistaken for a bridge.
+    /// the same port is not mistaken for a bridge. The body is read as a string (bounded by
+    /// Content-Length) rather than parsed off the stream: a keep-alive connection never reaches
+    /// EOF, and a stream parse would sit there until the timeout on a real bridge.
     /// </summary>
-    public static async Task<bool> IsBridgeAsync(string? baseUrl, int timeoutMs = 1200, CancellationToken cancellationToken = default)
+    public static async Task<bool> IsBridgeAsync(string? baseUrl, int timeoutMs = 3000, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(baseUrl))
         {
@@ -60,10 +74,8 @@ public static class BridgeProbe
                 return false;
             }
 
-            await using Stream stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-            using JsonDocument document = await JsonDocument
-                .ParseAsync(stream, cancellationToken: cancellationToken)
-                .ConfigureAwait(false);
+            string body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+            using JsonDocument document = JsonDocument.Parse(body);
             return document.RootElement.ValueKind == JsonValueKind.Object
                 && document.RootElement.TryGetProperty("authEnabled", out _);
         }

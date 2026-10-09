@@ -17,6 +17,7 @@
             <Color x:Key="WarnColor">#E2A336</Color>
 
             <local:StateColorConverter x:Key="StateColor" />
+            <local:ChipColorConverter x:Key="ChipColor" />
 
             <Style TargetType="Label">
                 <Setter Property="TextColor" Value="{StaticResource TextColor}" />
@@ -32,6 +33,13 @@
                 <Setter Property="TextColor" Value="{StaticResource TextColor}" />
                 <Setter Property="PlaceholderColor" Value="{StaticResource MutedColor}" />
                 <Setter Property="BackgroundColor" Value="{StaticResource SurfaceColor}" />
+            </Style>
+            <Style TargetType="SearchBar">
+                <Setter Property="TextColor" Value="{StaticResource TextColor}" />
+                <Setter Property="PlaceholderColor" Value="{StaticResource MutedColor}" />
+                <Setter Property="CancelButtonColor" Value="{StaticResource MutedColor}" />
+                <Setter Property="BackgroundColor" Value="{StaticResource SurfaceColor}" />
+                <Setter Property="FontSize" Value="14" />
             </Style>
             <Style TargetType="ContentPage">
                 <Setter Property="BackgroundColor" Value="{StaticResource PageBg}" />

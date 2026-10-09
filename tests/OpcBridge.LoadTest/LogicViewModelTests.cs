@@ -115,6 +115,149 @@ public sealed class LogicOverviewViewModelTests
         Assert.Equal("reading…", vm.Blocks[0].Reason);
         Assert.Equal("0 ready · 0 blocked · 1 no data", vm.Summary);
     }
+
+    [Fact]
+    public void CardsCarryTheirTagsAndTheOverviewBuildsTagChips()
+    {
+        LogicOverviewViewModel vm = new();
+        LogicBlockDto first = Block("Line 01 Start", conditions: Condition());
+        first.Tags = new List<string> { "Safety", "Line 1" };
+        LogicBlockDto second = Block("Line 02 Start", conditions: Condition());
+        second.Tags = new List<string> { "line 1" };
+        vm.ApplyDefinitions(new[] { first, second });
+
+        Assert.Equal(new[] { "Safety", "Line 1" }, vm.Blocks.Single(card => card.Id == first.Id).Tags);
+        // One chip per distinct tag (case-insensitive), sorted; none ticked yet.
+        Assert.Equal(new[] { "Line 1", "Safety" }, vm.TagFilters.Select(chip => chip.Key));
+        Assert.All(vm.TagFilters, chip => Assert.False(chip.IsSelected));
+        Assert.Equal(2, vm.Visible.Count);
+    }
+
+    [Fact]
+    public void Search_MatchesNameDescriptionAndTagsTermByTerm()
+    {
+        LogicOverviewViewModel vm = new();
+        LogicBlockDto start = Block("Line 01 Start", conditions: Condition());
+        start.Tags = new List<string> { "Safety" };
+        LogicBlockDto stop = Block("Line 01 Stop", conditions: Condition());
+        stop.Description = "Emergency stop chain";
+        vm.ApplyDefinitions(new[] { start, stop });
+
+        vm.SearchText = "start";
+        Assert.Single(vm.Visible);
+        Assert.Equal("Line 01 Start", vm.Visible[0].Name);
+        Assert.True(vm.HasFilter);
+        Assert.Equal("1 of 2 blocks", vm.FilterText);
+
+        vm.SearchText = "emergency";
+        Assert.Equal("Line 01 Stop", vm.Visible[0].Name);
+
+        vm.SearchText = "safety";
+        Assert.Equal("Line 01 Start", vm.Visible[0].Name);
+
+        // Every whitespace-separated term must match somewhere on the block.
+        vm.SearchText = "line 01";
+        Assert.Equal(2, vm.Visible.Count);
+        vm.SearchText = "line safety";
+        Assert.Single(vm.Visible);
+        Assert.Equal("Line 01 Start", vm.Visible[0].Name);
+
+        vm.SearchText = string.Empty;
+        Assert.Equal(2, vm.Visible.Count);
+        Assert.False(vm.HasFilter);
+        Assert.Equal(string.Empty, vm.FilterText);
+    }
+
+    [Fact]
+    public void TagChips_NarrowToAnyTickedLabelAndKeepTheSelectionAcrossRefreshes()
+    {
+        LogicOverviewViewModel vm = new();
+        LogicBlockDto first = Block("Line 01 Start", conditions: Condition());
+        first.Tags = new List<string> { "Line 1", "Safety" };
+        LogicBlockDto second = Block("Line 02 Start", conditions: Condition());
+        second.Tags = new List<string> { "Line 2" };
+        vm.ApplyDefinitions(new[] { first, second });
+
+        vm.ToggleTagFilter(vm.TagFilters.Single(chip => chip.Key == "Safety"));
+        Assert.Single(vm.Visible);
+        Assert.Equal("Line 01 Start", vm.Visible[0].Name);
+        Assert.Equal("1 of 2 blocks", vm.FilterText);
+
+        // A second tick widens to any-of; ticking one off narrows back.
+        vm.ToggleTagFilter(vm.TagFilters.Single(chip => chip.Key == "Line 2"));
+        Assert.Equal(2, vm.Visible.Count);
+        vm.ToggleTagFilter(vm.TagFilters.Single(chip => chip.Key == "Line 2"));
+        Assert.Single(vm.Visible);
+
+        // The same definitions arriving again must not lose the ticked chip.
+        vm.ApplyDefinitions(new[] { first, second });
+        Assert.True(vm.TagFilters.Single(chip => chip.Key == "Safety").IsSelected);
+        Assert.Single(vm.Visible);
+
+        vm.ToggleTagFilter(vm.TagFilters.Single(chip => chip.Key == "Safety"));
+        Assert.Equal(2, vm.Visible.Count);
+        Assert.False(vm.HasFilter);
+    }
+
+    [Fact]
+    public void StateChip_NarrowsAndFollowsStatePushesInPlace()
+    {
+        LogicOverviewViewModel vm = new();
+        LogicBlockDto first = Block("Line 01 Start", conditions: Condition());
+        LogicBlockDto second = Block("Line 02 Start", conditions: Condition());
+        vm.ApplyDefinitions(new[] { first, second });
+        vm.ApplyState(new LogicStateSnapshot
+        {
+            Blocks = { State(first.Id, LogicBlockStates.Blocked, "permit missing"), State(second.Id, LogicBlockStates.Ready) }
+        });
+
+        vm.SelectStateFilter(vm.StateFilters.Single(chip => chip.Key == LogicBlockStates.Blocked));
+        Assert.Single(vm.Visible);
+        LogicBlockCardViewModel card = vm.Visible[0];
+        Assert.Equal("BLOCKED", card.StateLabel);
+
+        // A live state change re-applies the filter without replacing the card objects.
+        vm.ApplyState(new LogicStateSnapshot
+        {
+            Blocks = { State(first.Id, LogicBlockStates.Ready), State(second.Id, LogicBlockStates.Ready) }
+        });
+        Assert.Empty(vm.Visible);
+        Assert.Equal("0 of 2 blocks", vm.FilterText);
+
+        vm.SelectStateFilter(vm.StateFilters.First());
+        Assert.Equal(2, vm.Visible.Count);
+        Assert.Contains(card, vm.Visible);
+        Assert.False(vm.HasFilter);
+    }
+
+    [Fact]
+    public void StatePushes_DoNotRebuildTheVisibleListWhenNothingMoved()
+    {
+        LogicOverviewViewModel vm = new();
+        LogicBlockDto first = Block("Line 01 Start", conditions: Condition());
+        vm.ApplyDefinitions(new[] { first });
+
+        int changes = 0;
+        vm.Visible.CollectionChanged += (_, _) => changes++;
+
+        vm.ApplyState(new LogicStateSnapshot { Blocks = { State(first.Id, LogicBlockStates.Blocked, "permit missing") } });
+        vm.ApplyState(new LogicStateSnapshot { Blocks = { State(first.Id, LogicBlockStates.Blocked, "still the same permit") } });
+
+        Assert.Equal(0, changes);
+    }
+
+    [Fact]
+    public void EmptyMessage_TellsApartNoBlocksFromAFilterThatMatchedNothing()
+    {
+        LogicOverviewViewModel vm = new();
+        Assert.StartsWith("No logic blocks here", vm.EmptyMessage, StringComparison.Ordinal);
+
+        vm.ApplyDefinitions(new[] { Block("Line 01 Start", conditions: Condition()) });
+        vm.SearchText = "nothing matches this";
+
+        Assert.Empty(vm.Visible);
+        Assert.Equal("No blocks match the search or filter.", vm.EmptyMessage);
+    }
 }
 
 public sealed class LogicBlockDetailViewModelTests

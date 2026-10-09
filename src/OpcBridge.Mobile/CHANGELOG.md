@@ -13,6 +13,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Cards show the block's **tags** as chips under the name — the labels the bridge serves with
+  the definition (authored in the dashboard's Logic tab, up to 8 per block).
+- The Logic tab gained a **search box and filters**. The search matches the block name, the
+  description or any tag (every word must match); tag chips narrow the list to the blocks
+  carrying any of the ticked labels; the state row narrows it to Ready, Blocked, No data or
+  Disabled. A *n of m blocks* line reports how much of the list is showing, the empty state
+  says when a filter matched nothing, and live state keeps flowing into the filtered list
+  without rebuilding it.
+
+### Fixed
+
+- **Add & Connect now finds a real bridge.** The port probe read the bridge's reply off the
+  network stream — which a keep-alive connection never ends — so it sat until its 1.2 s
+  timeout and reported *no bridge answered* although the bridge had answered in milliseconds
+  (the same read works against a test listener that closes the connection, which is why the
+  suite never caught it). The reply body is read directly now, and the typed port gets 3 s.
+- A bridge that asks for a session reads as **the bridge requires sign-in** instead of *no
+  bridge answered*: the definitions/tags/notes calls dropped the HTTP status code, so a 401
+  sign-in gate looked like an unreachable bridge.
+
 ## [1.8.0] - 2026-10-08
 
 ### Added

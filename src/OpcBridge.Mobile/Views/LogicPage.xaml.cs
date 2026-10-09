@@ -1,3 +1,4 @@
+using System.Collections.Specialized;
 using OpcBridge.Mobile.Core;
 
 namespace OpcBridge.Mobile.Views;
@@ -5,6 +6,7 @@ namespace OpcBridge.Mobile.Views;
 public partial class LogicPage : ContentPage
 {
     private readonly BridgeCoordinator coordinator_;
+    private LogicOverviewViewModel? subscribed_;
     private bool picking_;
 
     public LogicPage(BridgeCoordinator coordinator)
@@ -14,6 +16,7 @@ public partial class LogicPage : ContentPage
         bridgePicker.ItemsSource = coordinator_.Bridges;
         bridgePicker.ItemDisplayBinding = new Binding(nameof(BridgeConnection.DisplayName));
         coordinator_.Changed += OnChanged;
+        RefreshFilterUi();
     }
 
     protected override async void OnAppearing()
@@ -29,19 +32,98 @@ public partial class LogicPage : ContentPage
     private void Repaint()
     {
         BridgeConnection? active = coordinator_.Active;
-        if (!ReferenceEquals(blocksView.ItemsSource, active?.Overview.Blocks))
+        LogicOverviewViewModel? overview = active?.Overview;
+
+        if (!ReferenceEquals(blocksView.ItemsSource, overview?.Visible))
         {
-            blocksView.ItemsSource = active?.Overview.Blocks;
+            blocksView.ItemsSource = overview?.Visible;
         }
 
-        summaryLabel.Text = active?.Overview.Summary ?? string.Empty;
+        // The visible list is rebuilt on the UI thread when a filter or a state change moves
+        // blocks in or out; the labels that report it follow the collection.
+        if (!ReferenceEquals(subscribed_, overview))
+        {
+            if (subscribed_ is not null)
+            {
+                subscribed_.Visible.CollectionChanged -= OnVisibleChanged;
+            }
+
+            subscribed_ = overview;
+            if (subscribed_ is not null)
+            {
+                subscribed_.Visible.CollectionChanged += OnVisibleChanged;
+            }
+        }
+
+        BindableLayout.SetItemsSource(stateChips, overview?.StateFilters);
+        BindableLayout.SetItemsSource(tagChips, overview?.TagFilters);
+
+        summaryLabel.Text = overview?.Summary ?? string.Empty;
         connectionLabel.Text = active is null
             ? "no bridges yet — add one under Settings ▸ Bridges"
             : active.StatusText + " · " + active.Bridge.Url;
 
+        string search = overview?.SearchText ?? string.Empty;
+        if (!string.Equals(searchBar.Text, search, StringComparison.Ordinal))
+        {
+            searchBar.Text = search;
+        }
+
         picking_ = true;
         bridgePicker.SelectedItem = active;
         picking_ = false;
+
+        RefreshFilterUi();
+    }
+
+    private void OnVisibleChanged(object? sender, NotifyCollectionChangedEventArgs e) =>
+        MainThread.BeginInvokeOnMainThread(RefreshFilterUi);
+
+    /// <summary>Keeps the filter labels, the search box and the empty state in step with the active overview.</summary>
+    private void RefreshFilterUi()
+    {
+        LogicOverviewViewModel? overview = coordinator_.Active?.Overview;
+
+        filterLabel.Text = overview?.FilterText ?? string.Empty;
+        filterLabel.IsVisible = overview?.HasFilter == true;
+
+        bool hasTags = (overview?.TagFilters.Count ?? 0) > 0;
+        chipDivider.IsVisible = hasTags;
+        tagChips.IsVisible = hasTags;
+
+        emptyLabel.Text = overview is null
+            ? "No bridge selected — add one under Settings ▸ Bridges."
+            : overview.EmptyMessage;
+    }
+
+    private void OnSearchChanged(object? sender, TextChangedEventArgs e)
+    {
+        if (coordinator_.Active?.Overview is { } overview)
+        {
+            overview.SearchText = e.NewTextValue ?? string.Empty;
+            RefreshFilterUi();
+        }
+    }
+
+    private void OnFilterChipClicked(object? sender, EventArgs e)
+    {
+        if (sender is not Button button ||
+            button.BindingContext is not LogicFilterChipViewModel chip ||
+            coordinator_.Active?.Overview is not { } overview)
+        {
+            return;
+        }
+
+        if (overview.StateFilters.Contains(chip))
+        {
+            overview.SelectStateFilter(chip);
+        }
+        else
+        {
+            overview.ToggleTagFilter(chip);
+        }
+
+        RefreshFilterUi();
     }
 
     private async void OnBridgePicked(object? sender, EventArgs e)

@@ -100,4 +100,55 @@ public sealed class MobileLogicApiClientTests
         Assert.False(write.Ok);
         Assert.NotNull(write.Error);
     }
+
+    [Fact]
+    public async Task Client_KeepsTheSignInGateInTheWrappedResults()
+    {
+        // The bridge answers a sessionless read with 401 {"error"}: the wrappers must carry the
+        // status through, or the phone reports a bridge that answered as one that never did.
+        int port = OpcBridge.Core.PortHelper.FindAvailablePort(19000, 19099);
+        using HttpListener listener = new();
+        listener.Prefixes.Add($"http://127.0.0.1:{port}/");
+        listener.Start();
+        try
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    while (listener.IsListening)
+                    {
+                        HttpListenerContext context = await listener.GetContextAsync();
+                        byte[] body = System.Text.Encoding.UTF8.GetBytes("{\"error\":\"Sign in required.\"}");
+                        context.Response.StatusCode = 401;
+                        context.Response.ContentType = "application/json";
+                        await context.Response.OutputStream.WriteAsync(body);
+                        context.Response.Close();
+                    }
+                }
+                catch (Exception)
+                {
+                    // Listener stopped with the test.
+                }
+            });
+
+            using LogicApiClient client = new();
+            client.SetBaseAddress($"http://127.0.0.1:{port}");
+
+            MobileResult<IReadOnlyList<LogicBlockDto>> blocks = await client.GetLogicBlocksAsync(CancellationToken.None);
+            MobileResult<IReadOnlyList<HmiTagDto>> tags = await client.GetTagsAsync(CancellationToken.None);
+            MobileResult<IReadOnlyList<LogicNoteDto>> notes = await client.GetNotesAsync(null, 50, CancellationToken.None);
+
+            Assert.False(blocks.Ok);
+            Assert.True(blocks.IsSignInRequired);
+            Assert.Equal(401, blocks.StatusCode);
+            Assert.Equal("Sign in required.", blocks.Error);
+            Assert.True(tags.IsSignInRequired);
+            Assert.True(notes.IsSignInRequired);
+        }
+        finally
+        {
+            listener.Stop();
+        }
+    }
 }

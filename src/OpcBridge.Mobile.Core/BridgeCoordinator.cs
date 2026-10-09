@@ -63,7 +63,7 @@ public sealed class BridgeCoordinator : IDisposable
     /// </summary>
     public async Task<MobileResult<BridgeConnection>> AddOrConnectAsync(string host, string? name, CancellationToken cancellationToken)
     {
-        string? url = await BridgeProbe.FindAsync(host, 1200, cancellationToken);
+        string? url = await BridgeProbe.FindAsync(host, 3000, cancellationToken);
         if (url is null)
         {
             return MobileResult<BridgeConnection>.Fail("no bridge answered on " + host);
