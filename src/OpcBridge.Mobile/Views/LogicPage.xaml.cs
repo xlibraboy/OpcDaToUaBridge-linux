@@ -4,42 +4,55 @@ namespace OpcBridge.Mobile.Views;
 
 public partial class LogicPage : ContentPage
 {
-    private readonly AppState state_;
+    private readonly BridgeCoordinator coordinator_;
+    private bool picking_;
 
-    public LogicPage(AppState state)
+    public LogicPage(BridgeCoordinator coordinator)
     {
         InitializeComponent();
-        state_ = state;
-        blocksView.ItemsSource = state_.Overview.Blocks;
-        state_.Changed += OnStateChanged;
+        coordinator_ = coordinator;
+        bridgePicker.ItemsSource = coordinator_.Bridges;
+        bridgePicker.ItemDisplayBinding = new Binding(nameof(BridgeConnection.DisplayName));
+        coordinator_.Changed += OnChanged;
     }
 
     protected override async void OnAppearing()
     {
         base.OnAppearing();
         Repaint();
-        if (!state_.IsConnected)
-        {
-            await ConnectSilentlyAsync();
-        }
-    }
-
-    private async Task ConnectSilentlyAsync()
-    {
-        string host = state_.BaseUrl;
-        await state_.ConnectAsync(host, CancellationToken.None);
+        await coordinator_.ConnectActiveAsync(CancellationToken.None);
         Repaint();
     }
 
-    private void OnStateChanged()
-    {
-        MainThread.BeginInvokeOnMainThread(Repaint);
-    }
+    private void OnChanged() => MainThread.BeginInvokeOnMainThread(Repaint);
 
     private void Repaint()
     {
-        summaryLabel.Text = state_.Overview.Summary;
-        connectionLabel.Text = state_.ConnectionText + " · " + state_.BaseUrl;
+        BridgeConnection? active = coordinator_.Active;
+        if (!ReferenceEquals(blocksView.ItemsSource, active?.Overview.Blocks))
+        {
+            blocksView.ItemsSource = active?.Overview.Blocks;
+        }
+
+        summaryLabel.Text = active?.Overview.Summary ?? string.Empty;
+        connectionLabel.Text = active is null
+            ? "no bridges yet — add one under Settings ▸ Bridges"
+            : active.StatusText + " · " + active.Bridge.Url;
+
+        picking_ = true;
+        bridgePicker.SelectedItem = active;
+        picking_ = false;
+    }
+
+    private async void OnBridgePicked(object? sender, EventArgs e)
+    {
+        if (picking_ || bridgePicker.SelectedItem is not BridgeConnection connection || ReferenceEquals(connection, coordinator_.Active))
+        {
+            return;
+        }
+
+        await coordinator_.ActivateAsync(connection, CancellationToken.None);
+        Repaint();
     }
 
     private async void OnRefreshClicked(object? sender, EventArgs e)
@@ -47,19 +60,25 @@ public partial class LogicPage : ContentPage
         refreshButton.IsEnabled = false;
         try
         {
-            if (!state_.IsConnected)
+            BridgeConnection? active = coordinator_.Active;
+            if (active is null)
             {
-                await ConnectSilentlyAsync();
+                connectionLabel.Text = "add a bridge under Settings ▸ Bridges";
+            }
+            else if (active.IsConnected)
+            {
+                await active.RefreshAsync(CancellationToken.None);
             }
             else
             {
-                await state_.RefreshAsync(CancellationToken.None);
+                await active.ConnectAsync(CancellationToken.None);
             }
         }
         finally
         {
             refreshButton.IsEnabled = true;
             refreshView.IsRefreshing = false;
+            Repaint();
         }
     }
 
@@ -67,7 +86,11 @@ public partial class LogicPage : ContentPage
     {
         try
         {
-            await state_.RefreshAsync(CancellationToken.None);
+            BridgeConnection? active = coordinator_.Active;
+            if (active is not null)
+            {
+                await active.RefreshAsync(CancellationToken.None);
+            }
         }
         finally
         {

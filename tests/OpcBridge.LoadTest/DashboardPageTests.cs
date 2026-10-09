@@ -1930,6 +1930,9 @@ public sealed class DashboardPageTests
         Assert.Contains("data-logic-step-live", DashboardPage.Script, StringComparison.Ordinal);
         string renderLive = FunctionBody(DashboardPage.Script, "function renderLogicLive(");
         Assert.DoesNotContain(".value =", renderLive, StringComparison.Ordinal);
+        // A boolean condition reads as 1 or 0; a numeric one keeps its value in the chip.
+        Assert.Contains("const isBoolean = op === 'on' || op === 'off';", renderLive, StringComparison.Ordinal);
+        Assert.Contains("s === 'true' ? '1' : s === 'false' ? '0' : 'no data'", renderLive, StringComparison.Ordinal);
     }
 
     private static int CountOccurrences(string haystack, string needle)

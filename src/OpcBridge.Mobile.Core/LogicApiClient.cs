@@ -24,6 +24,12 @@ public sealed class LogicApiClient : IDisposable
 
     public string BaseUrl => base_url_;
 
+    /// <summary>
+    /// The bridge's session cookie, shared with the hub link so a hardened bridge
+    /// (Auth on, <c>TrustHmi</c> off) accepts the live connection after sign-in.
+    /// </summary>
+    internal CookieContainer Cookies => cookies_;
+
     public void SetBaseAddress(string baseUrl)
     {
         client_.Dispose();
@@ -83,7 +89,7 @@ public sealed class LogicApiClient : IDisposable
             string body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                return MobileResult<LogicNoteDto>.Fail(ReadError(body) ?? $"HTTP {(int)response.StatusCode}");
+                return MobileResult<LogicNoteDto>.Fail(ReadError(body) ?? $"HTTP {(int)response.StatusCode}", (int)response.StatusCode);
             }
 
             LogicNoteResponse? parsed = JsonSerializer.Deserialize<LogicNoteResponse>(body, JsonOptions);
@@ -132,7 +138,7 @@ public sealed class LogicApiClient : IDisposable
             string body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                return MobileResult<SessionResponse>.Fail(ReadError(body) ?? $"HTTP {(int)response.StatusCode}");
+                return MobileResult<SessionResponse>.Fail(ReadError(body) ?? $"HTTP {(int)response.StatusCode}", (int)response.StatusCode);
             }
 
             SessionResponse? parsed = JsonSerializer.Deserialize<SessionResponse>(body, JsonOptions);
@@ -156,7 +162,7 @@ public sealed class LogicApiClient : IDisposable
             string body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                return MobileResult<T>.Fail(ReadError(body) ?? $"HTTP {(int)response.StatusCode}");
+                return MobileResult<T>.Fail(ReadError(body) ?? $"HTTP {(int)response.StatusCode}", (int)response.StatusCode);
             }
 
             T? value = JsonSerializer.Deserialize<T>(body, JsonOptions);

@@ -10,9 +10,14 @@
                 <Grid ColumnDefinitions="26,*,Auto" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="6">
                     <Label Grid.Row="0" Grid.Column="0" Text="{Binding Mark}" FontSize="18" FontAttributes="Bold"
                            TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
-                    <Label Grid.Row="0" Grid.Column="1" Text="{Binding Text}" />
-                    <Label Grid.Row="0" Grid.Column="2" Text="{Binding ValueText}" FontSize="13"
-                           TextColor="{StaticResource MutedColor}" />
+                    <Label Grid.Row="0" Grid.Column="1" Text="{Binding Text}" VerticalOptions="Center" />
+                    <VerticalStackLayout Grid.Row="0" Grid.Column="2" Spacing="0" HorizontalOptions="End">
+                        <Label Text="{Binding StateWord}" FontSize="18" FontAttributes="Bold" HorizontalTextAlignment="End"
+                               IsVisible="{Binding ShowStateWord}"
+                               TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
+                        <Label Text="{Binding ValueText}" FontSize="11" HorizontalTextAlignment="End"
+                               TextColor="{StaticResource MutedColor}" />
+                    </VerticalStackLayout>
                     <Label Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding TagLabel}"
                            FontSize="11" TextColor="{StaticResource MutedColor}" />
                     <Label Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding NextStepText}"

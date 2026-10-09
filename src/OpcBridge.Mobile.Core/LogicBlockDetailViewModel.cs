@@ -10,9 +10,12 @@ namespace OpcBridge.Mobile.Core;
 public sealed partial class LogicConditionRowViewModel : ObservableObject
 {
     private readonly LogicConditionDto condition_;
+    private string lastState_ = LogicConditionStates.Unknown;
 
     [ObservableProperty] private string _mark = "—";
     [ObservableProperty] private string _stateKey = LogicConditionStates.Unknown;
+    [ObservableProperty] private string _stateWord = string.Empty;
+    [ObservableProperty] private bool _showStateWord;
     [ObservableProperty] private string _valueText = "—";
     [ObservableProperty] private bool _showNextStep;
 
@@ -21,7 +24,10 @@ public sealed partial class LogicConditionRowViewModel : ObservableObject
         condition_ = condition;
         TagLabel = tagLabel;
         NextStepText = condition.NextStepText;
+        isBoolean_ = condition.Op is LogicConditionOps.On or LogicConditionOps.Off;
     }
+
+    private bool isBoolean_;
 
     public Guid Id => condition_.Id;
 
@@ -40,6 +46,7 @@ public sealed partial class LogicConditionRowViewModel : ObservableObject
     public void ApplyState(LogicConditionStateDto? state)
     {
         string value = state?.State ?? LogicConditionStates.Unknown;
+        lastState_ = value;
         StateKey = value;
         Mark = value switch
         {
@@ -47,11 +54,28 @@ public sealed partial class LogicConditionRowViewModel : ObservableObject
             LogicConditionStates.False => "✗",
             _ => "—"
         };
+        UpdateStateWord();
         ShowNextStep = !string.IsNullOrWhiteSpace(NextStepText) && value != LogicConditionStates.True;
         if (!string.IsNullOrWhiteSpace(state?.ValueText))
         {
             ValueText = state!.ValueText;
         }
+    }
+
+    /// <summary>
+    /// Live value and kind straight from the tag cache. A boolean condition reads as
+    /// <c>1</c>/<c>0</c>; a numeric one keeps its value (a level above 50 % is not a bit).
+    /// </summary>
+    public void ApplyTag(MultiBridgeTagEntry? entry)
+    {
+        if (entry is null)
+        {
+            return;
+        }
+
+        isBoolean_ = entry.Digital;
+        ApplyValueText(LogicTagText.Format(entry));
+        UpdateStateWord();
     }
 
     /// <summary>Live text straight from the tag cache (updated on every value delta).</summary>
@@ -61,6 +85,19 @@ public sealed partial class LogicConditionRowViewModel : ObservableObject
         {
             ValueText = valueText;
         }
+    }
+
+    private void UpdateStateWord()
+    {
+        ShowStateWord = isBoolean_;
+        StateWord = !isBoolean_
+            ? string.Empty
+            : lastState_ switch
+            {
+                LogicConditionStates.True => "1",
+                LogicConditionStates.False => "0",
+                _ => "—"
+            };
     }
 }
 
@@ -150,6 +187,7 @@ public sealed class LogicNoteRowViewModel
 public sealed partial class LogicBlockDetailViewModel : ObservableObject
 {
     private readonly LogicBlockDto block_;
+    private readonly string bridgeKey_;
     private readonly MultiBridgeTagCache? tags_;
     private readonly Dictionary<Guid, LogicConditionRowViewModel> conditionRows_ = new();
     private readonly Dictionary<Guid, LogicStepRowViewModel> stepRows_ = new();
@@ -161,11 +199,13 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
 
     public LogicBlockDetailViewModel(
         LogicBlockDto block,
+        string bridgeKey,
         LogicBlockStateDto? state = null,
         MultiBridgeTagCache? tags = null,
         IReadOnlyList<LogicNoteDto>? notes = null)
     {
         block_ = block;
+        bridgeKey_ = bridgeKey;
         tags_ = tags;
 
         Title = block.Name;
@@ -302,9 +342,9 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
         foreach (LogicConditionDto condition in AllConditions())
         {
             if (conditionRows_.TryGetValue(condition.Id, out LogicConditionRowViewModel? row) &&
-                tags_.TryGet(TagBindingKey.Create(MobileBridge.Id, condition.SourceId, condition.ItemId), out MultiBridgeTagEntry? entry))
+                tags_.TryGet(TagBindingKey.Create(bridgeKey_, condition.SourceId, condition.ItemId), out MultiBridgeTagEntry? entry))
             {
-                row.ApplyValueText(LogicTagText.Format(entry));
+                row.ApplyTag(entry);
             }
         }
     }
@@ -331,7 +371,7 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
     private string TagLabel(string sourceId, string itemId)
     {
         if (tags_ is not null &&
-            tags_.TryGet(TagBindingKey.Create(MobileBridge.Id, sourceId, itemId), out MultiBridgeTagEntry? entry) &&
+            tags_.TryGet(TagBindingKey.Create(bridgeKey_, sourceId, itemId), out MultiBridgeTagEntry? entry) &&
             entry is not null)
         {
             return $"{entry.DisplayName} · {entry.SourceName}";

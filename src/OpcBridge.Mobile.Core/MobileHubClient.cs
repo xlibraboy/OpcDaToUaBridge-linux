@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.SignalR.Client;
 using OpcBridge.Client;
+using System.Net;
 
 namespace OpcBridge.Mobile.Core;
 
@@ -40,13 +41,23 @@ public sealed class MobileHubClient : IAsyncDisposable
 
     public bool IsConnected => connection_?.State == HubConnectionState.Connected;
 
-    public async Task ConnectAsync(string baseUrl, CancellationToken cancellationToken, MobileHubTiming? timing = null)
+    /// <summary>
+    /// Opens the link. <paramref name="cookies"/> carries the bridge session from
+    /// <see cref="LogicApiClient"/>, so a bridge that gates the hub accepts the handshake.
+    /// </summary>
+    public async Task ConnectAsync(string baseUrl, CancellationToken cancellationToken, MobileHubTiming? timing = null, CookieContainer? cookies = null)
     {
         await DisposeAsync().ConfigureAwait(false);
         MobileHubTiming settings = timing ?? MobileHubTiming.Default;
 
         connection_ = new HubConnectionBuilder()
-            .WithUrl(baseUrl.TrimEnd('/') + "/hmi")
+            .WithUrl(baseUrl.TrimEnd('/') + "/hmi", options =>
+            {
+                if (cookies is not null)
+                {
+                    options.Cookies = cookies;
+                }
+            })
             .WithAutomaticReconnect(settings.ReconnectDelays.ToArray())
             .Build();
         connection_.KeepAliveInterval = settings.KeepAliveInterval;

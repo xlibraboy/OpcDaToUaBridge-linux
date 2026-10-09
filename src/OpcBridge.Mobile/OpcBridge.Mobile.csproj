@@ -1,10 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!-- The Android logic viewer. Deliberately NOT in OpcBridge.sln: it needs the
-       maui-android workload, so keeping it out leaves `dotnet build OpcBridge.sln`
-       and the test suite runnable in the plain SDK container. Its testable half
-       (src/OpcBridge.Mobile.Core) is in the solution and covered by the suite;
-       the APK is built by .github/workflows/mobile-release.yml (or Dockerfile.mobile). -->
+  <!-- The Android logic viewer, part of the monorepo like the other apps (own
+       MobileVersion, own CHANGELOG, own mobile-v* release tag). It is listed in
+       OpcBridge.sln but excluded from the solution's build configurations: it needs
+       the maui-android workload, which the plain SDK container and the server CI job
+       do not install, so `dotnet build OpcBridge.sln` and the test suite stay
+       runnable there. Build the APK with the Maui workload — Dockerfile.mobile
+       locally, .github/workflows/mobile-release.yml in CI.
+       Its testable half (src/OpcBridge.Mobile.Core) is built and covered by the suite. -->
   <PropertyGroup>
     <TargetFramework>net8.0-android</TargetFramework>
     <OutputType>Exe</OutputType>
@@ -21,9 +24,21 @@
     <!-- The viewer versions and releases on its own (mobile-v* tags, MobileVersion in
          Directory.Build.props) instead of the server's version. -->
     <Version>$(MobileVersion)</Version>
-    <!-- Internal plant distribution: a debug-signed APK installs without a keystore.
-         Production/Play signing is a follow-up. -->
+    <!-- Internal plant distribution: signed with the keystore committed under
+         packaging/android, so every build — CI, the Docker recipe, a laptop — produces an
+         APK a phone can upgrade in place. Relying on the SDK's auto-generated debug
+         keystore breaks that: a fresh build agent mints a new key each time and Android
+         then refuses the upgrade with INSTALL_FAILED_UPDATE_INCOMPATIBLE. Replace this
+         with a real release keystore before any managed/Play distribution. -->
     <AndroidPackageFormat>apk</AndroidPackageFormat>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <AndroidKeyStore>true</AndroidKeyStore>
+    <AndroidSigningKeyStore>$(MSBuildThisFileDirectory)..\..\packaging\android\opcbridge-debug.keystore</AndroidSigningKeyStore>
+    <AndroidSigningStorePass>opcbridge</AndroidSigningStorePass>
+    <AndroidSigningKeyAlias>opcbridge</AndroidSigningKeyAlias>
+    <AndroidSigningKeyPass>opcbridge</AndroidSigningKeyPass>
   </PropertyGroup>
 
   <ItemGroup>

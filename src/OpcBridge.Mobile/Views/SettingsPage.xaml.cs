@@ -5,14 +5,14 @@ namespace OpcBridge.Mobile.Views;
 
 public partial class SettingsPage : ContentPage
 {
-    private readonly AppState state_;
+    private readonly BridgeCoordinator coordinator_;
 
-    public SettingsPage(AppState state)
+    public SettingsPage(BridgeCoordinator coordinator)
     {
         InitializeComponent();
-        state_ = state;
-        hostEntry.Text = state_.BaseUrl;
-        state_.Changed += OnStateChanged;
+        coordinator_ = coordinator;
+        BindableLayout.SetItemsSource(bridgesList, coordinator_.Bridges);
+        coordinator_.Changed += OnChanged;
         aboutLabel.Text = "OpcBridge Logic " + AppInfo.Current.VersionString;
     }
 
@@ -22,15 +22,17 @@ public partial class SettingsPage : ContentPage
         Repaint();
     }
 
-    private void OnStateChanged()
-    {
-        MainThread.BeginInvokeOnMainThread(Repaint);
-    }
+    private void OnChanged() => MainThread.BeginInvokeOnMainThread(Repaint);
 
     private void Repaint()
     {
-        connectionLabel.Text = state_.ConnectionText + " · " + state_.BaseUrl;
-        MobileSession? session = state_.Session;
+        BridgeConnection? active = coordinator_.Active;
+        bridgesEmptyLabel.IsVisible = coordinator_.Bridges.Count == 0;
+        connectionLabel.Text = active is null
+            ? "no bridge selected"
+            : active.StatusText + " · " + active.Bridge.Url;
+
+        MobileSession? session = active?.Session;
         sessionLabel.Text = session is null
             ? "not signed in"
             : (session.Authenticated
@@ -43,11 +45,18 @@ public partial class SettingsPage : ContentPage
         connectButton.IsEnabled = false;
         try
         {
-            MobileResult<string> result = await state_.ConnectAsync(hostEntry.Text ?? string.Empty, CancellationToken.None);
-            if (result.Ok)
+            MobileResult<BridgeConnection> result = await coordinator_.AddOrConnectAsync(
+                hostEntry.Text ?? string.Empty,
+                nameEntry.Text,
+                CancellationToken.None);
+            if (!result.Ok)
             {
-                hostEntry.Text = result.Value;
+                connectionLabel.Text = result.Error ?? "could not reach that bridge";
+                return;
             }
+
+            hostEntry.Text = string.Empty;
+            nameEntry.Text = string.Empty;
         }
         finally
         {
@@ -56,12 +65,50 @@ public partial class SettingsPage : ContentPage
         }
     }
 
+    private async void OnBridgeTapped(object? sender, TappedEventArgs e)
+    {
+        if (sender is not Border border || border.BindingContext is not BridgeConnection connection || connection.IsActive)
+        {
+            return;
+        }
+
+        await coordinator_.ActivateAsync(connection, CancellationToken.None);
+        Repaint();
+    }
+
+    private async void OnRemoveBridgeClicked(object? sender, EventArgs e)
+    {
+        if (sender is not Button button || button.BindingContext is not BridgeConnection connection)
+        {
+            return;
+        }
+
+        bool confirmed = await DisplayAlert(
+            "Remove bridge",
+            $"Forget {connection.DisplayName} ({connection.Bridge.Url})?",
+            "Remove",
+            "Cancel");
+        if (confirmed)
+        {
+            await coordinator_.RemoveAsync(connection);
+            Repaint();
+        }
+    }
+
     private async void OnSignInClicked(object? sender, EventArgs e)
     {
+        BridgeConnection? active = coordinator_.Active;
+        if (active is null)
+        {
+            await DisplayAlert("Sign in", "Add a bridge first.", "OK");
+            return;
+        }
+
         signInButton.IsEnabled = false;
         try
         {
-            MobileResult<MobileSession> result = await state_.SignInAsync(
+            MobileResult<MobileSession> result = await coordinator_.SignInAsync(
+                active,
                 userEntry.Text ?? string.Empty,
                 passwordEntry.Text ?? string.Empty,
                 CancellationToken.None);

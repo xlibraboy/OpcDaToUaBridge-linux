@@ -1,3 +1,5 @@
+using Microsoft.Maui.ApplicationModel;
+using OpcBridge.Hmi.Core;
 using OpcBridge.Mobile.Core;
 using OpcBridge.Mobile.Views;
 
@@ -10,9 +12,12 @@ public static class MauiProgram
         MauiAppBuilder builder = MauiApp.CreateBuilder();
         builder.UseMauiApp<App>();
 
-        builder.Services.AddSingleton<LogicApiClient>();
-        builder.Services.AddSingleton<MobileHubClient>();
-        builder.Services.AddSingleton<AppState>();
+        builder.Services.AddSingleton<IBridgeSettings, MauiBridgeSettings>();
+        builder.Services.AddSingleton<MultiBridgeTagCache>();
+        builder.Services.AddSingleton(services => new BridgeCoordinator(
+            services.GetRequiredService<IBridgeSettings>(),
+            services.GetRequiredService<MultiBridgeTagCache>(),
+            action => MainThread.BeginInvokeOnMainThread(action)));
         builder.Services.AddTransient<LogicPage>();
         builder.Services.AddTransient<LogicBlockPage>();
         builder.Services.AddTransient<SettingsPage>();

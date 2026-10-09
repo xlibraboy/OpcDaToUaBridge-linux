@@ -119,17 +119,20 @@ public sealed class LogicOverviewViewModelTests
 
 public sealed class LogicBlockDetailViewModelTests
 {
+    private const string BridgeKey = "mobile:test";
+
     private static LogicConditionDto Condition(
         string text,
         string itemId = "Permit",
         string severity = LogicConditionSeverities.Block,
-        string? nextStep = null) => new()
+        string? nextStep = null,
+        string op = LogicConditionOps.On) => new()
     {
         Id = Guid.NewGuid(),
         Text = text,
         SourceId = "sim",
         ItemId = itemId,
-        Op = LogicConditionOps.On,
+        Op = op,
         Severity = severity,
         NextStepText = nextStep
     };
@@ -145,7 +148,7 @@ public sealed class LogicBlockDetailViewModelTests
     private static MultiBridgeTagCache TagCache(params HmiTagDto[] tags)
     {
         MultiBridgeTagCache cache = new();
-        cache.ReplaceBridge(MobileBridge.Id, tags);
+        cache.ReplaceBridge(BridgeKey, tags);
         return cache;
     }
 
@@ -155,6 +158,7 @@ public sealed class LogicBlockDetailViewModelTests
         LogicConditionDto permit = Condition("Line 01 start permit must be given", itemId: "Permit", nextStep: "Turn the permit key");
         LogicBlockDetailViewModel vm = new(
             Interlock(permit),
+            BridgeKey,
             new LogicBlockStateDto
             {
                 State = LogicBlockStates.Blocked,
@@ -176,6 +180,8 @@ public sealed class LogicBlockDetailViewModelTests
 
         LogicConditionRowViewModel row = vm.Conditions[0];
         Assert.Equal("✗", row.Mark);
+        // The plant reads the condition as 0 (false); the mapped texts stay as the live value.
+        Assert.Equal("0", row.StateWord);
         Assert.True(row.Blocks);
         Assert.True(row.ShowNextStep);
         Assert.Equal("Turn the permit key", row.NextStepText);
@@ -183,6 +189,69 @@ public sealed class LogicBlockDetailViewModelTests
         // The live value comes from the tag cache, so a delta keeps it current.
         Assert.Equal("Blocked", row.ValueText);
         Assert.Equal("Blocked by: Line 01 start permit must be given", vm.BlockedByText);
+    }
+
+    [Fact]
+    public void ConditionRows_ReadOneZeroOrNoDataForBooleansOnly()
+    {
+        LogicConditionDto permit = Condition("Permit must be given");
+        LogicConditionDto level = Condition("Tank 01 level above 50 %", itemId: "Tank01.Level", op: LogicConditionOps.GreaterThan);
+        LogicConditionDto valve = Condition("Valve 01 must be open", itemId: "Valve01");
+        LogicBlockDetailViewModel vm = new(
+            Interlock(permit, level, valve),
+            BridgeKey,
+            new LogicBlockStateDto
+            {
+                State = LogicBlockStates.Blocked,
+                Conditions =
+                {
+                    new LogicConditionStateDto { Id = permit.Id, State = LogicConditionStates.True, ValueText = "Permit" },
+                    new LogicConditionStateDto { Id = level.Id, State = LogicConditionStates.True, ValueText = "62.5 %" }
+                }
+            });
+
+        Assert.True(vm.Conditions[0].ShowStateWord);
+        Assert.Equal("1", vm.Conditions[0].StateWord);
+        Assert.Equal("Permit", vm.Conditions[0].ValueText);
+
+        // A numeric comparison keeps its value: a level above 50 % is not a bit.
+        Assert.False(vm.Conditions[1].ShowStateWord);
+        Assert.Equal(string.Empty, vm.Conditions[1].StateWord);
+        Assert.Equal("62.5 %", vm.Conditions[1].ValueText);
+
+        // No snapshot yet: a boolean reads as no data, never as 0.
+        Assert.True(vm.Conditions[2].ShowStateWord);
+        Assert.Equal("—", vm.Conditions[2].StateWord);
+    }
+
+    [Fact]
+    public void ADigitalTagMakesItsConditionReadAsABitEvenWithACompareOp()
+    {
+        LogicConditionDto run = Condition("Run feedback", itemId: "Run", op: LogicConditionOps.Equal);
+        LogicBlockDetailViewModel vm = new(
+            Interlock(run),
+            BridgeKey,
+            new LogicBlockStateDto
+            {
+                State = LogicBlockStates.Ready,
+                Conditions = { new LogicConditionStateDto { Id = run.Id, State = LogicConditionStates.True, ValueText = "Running" } }
+            },
+            TagCache(new HmiTagDto
+            {
+                SourceId = "sim",
+                SourceName = "Simulation",
+                ItemId = "Run",
+                DisplayName = "Run feedback",
+                Digital = true,
+                OnText = "Running",
+                OffText = "Stopped",
+                Value = true,
+                IsGood = true
+            }));
+
+        Assert.True(vm.Conditions[0].ShowStateWord);
+        Assert.Equal("1", vm.Conditions[0].StateWord);
+        Assert.Equal("Running", vm.Conditions[0].ValueText);
     }
 
     [Fact]
@@ -209,6 +278,7 @@ public sealed class LogicBlockDetailViewModelTests
 
         LogicBlockDetailViewModel vm = new(
             sequence,
+            BridgeKey,
             new LogicBlockStateDto
             {
                 State = LogicBlockStates.Blocked,
@@ -242,7 +312,7 @@ public sealed class LogicBlockDetailViewModelTests
             Value = "true",
             Confirm = true
         });
-        LogicBlockDetailViewModel vm = new(block);
+        LogicBlockDetailViewModel vm = new(block, BridgeKey);
         LogicActionButtonViewModel? requested = null;
         vm.ActionRequested += action => requested = action;
 
@@ -256,7 +326,7 @@ public sealed class LogicBlockDetailViewModelTests
     [Fact]
     public void Notes_AreListedNewestFirstWithAuthorAndLocalTime()
     {
-        LogicBlockDetailViewModel vm = new(Interlock(Condition("Permit must be given")));
+        LogicBlockDetailViewModel vm = new(Interlock(Condition("Permit must be given")), BridgeKey);
 
         vm.SetNotes(new[]
         {

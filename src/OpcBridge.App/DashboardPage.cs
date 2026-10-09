@@ -4481,6 +4481,12 @@ function renderLogicLive() {
     }
     const conditionStates = {};
     const stepStates = {};
+    const conditionOps = {};
+    (state.logic || []).forEach(block => {
+        const collect = c => { conditionOps[String(get(c, 'id') || '')] = String(get(c, 'op') || 'on'); };
+        (block.conditions || []).forEach(collect);
+        (block.steps || []).forEach(step => (step.conditions || []).forEach(collect));
+    });
     Object.keys(states).forEach(blockId => {
         (states[blockId].conditions || []).forEach(c => { conditionStates[String(get(c, 'id') || '')] = c; });
         (states[blockId].steps || []).forEach(s => { stepStates[String(get(s, 'id') || '')] = s; });
@@ -4489,9 +4495,17 @@ function renderLogicLive() {
         const c = conditionStates[node.dataset.logicConditionLive];
         if (!c) { node.textContent = '—'; node.className = 'logic-live'; node.title = ''; return; }
         const s = String(get(c, 'state') || 'unknown');
-        node.textContent = s === 'true' ? 'true' : s === 'false' ? 'false' : 'no data';
+        const value = get(c, 'valueText');
+        // A bit reads as 1 or 0; a numeric condition keeps its value (a level above 50 % is not a bit).
+        const op = conditionOps[node.dataset.logicConditionLive] || 'on';
+        const isBoolean = op === 'on' || op === 'off';
+        node.textContent = isBoolean
+            ? (s === 'true' ? '1' : s === 'false' ? '0' : 'no data')
+            : (value ? value : 'no data');
         node.className = 'logic-live ' + (s === 'true' ? 'true' : s === 'false' ? 'false' : 'unknown');
-        node.title = get(c, 'valueText') ? 'Live value: ' + get(c, 'valueText') : '';
+        node.title = isBoolean
+            ? (value ? 'Live value: ' + value : '')
+            : 'Condition: ' + s + (value ? ' · live value: ' + value : '');
     });
     document.querySelectorAll('#logicSteps .logic-step').forEach(stepEl => {
         const s = stepStates[stepEl.dataset.stepId];

@@ -7,16 +7,19 @@ namespace OpcBridge.Mobile.Views;
 [QueryProperty(nameof(BlockId), "id")]
 public partial class LogicBlockPage : ContentPage
 {
-    private readonly AppState state_;
+    private readonly BridgeCoordinator coordinator_;
     private LogicBlockDetailViewModel? viewModel_;
     private Guid blockId_;
 
-    public LogicBlockPage(AppState state)
+    public LogicBlockPage(BridgeCoordinator coordinator)
     {
         InitializeComponent();
-        state_ = state;
-        state_.Changed += OnLiveChanged;
+        coordinator_ = coordinator;
+        coordinator_.Changed += OnLiveChanged;
     }
+
+    /// <summary>The bridge whose block this page shows (the active one).</summary>
+    private BridgeConnection? Active => coordinator_.Active;
 
     /// <summary>Route parameter from <c>block?id=…</c>.</summary>
     public string BlockId
@@ -33,11 +36,18 @@ public partial class LogicBlockPage : ContentPage
 
     private async Task LoadAsync()
     {
-        LogicBlockDto? block = state_.Overview.Definitions.FirstOrDefault(candidate => candidate.Id == blockId_);
+        if (Active is null)
+        {
+            titleLabel.Text = "No bridge selected";
+            messageLabel.Text = "Pick a bridge on the Logic tab.";
+            return;
+        }
+
+        LogicBlockDto? block = Active.Overview.Definitions.FirstOrDefault(candidate => candidate.Id == blockId_);
         if (block is null)
         {
-            await state_.RefreshAsync(CancellationToken.None);
-            block = state_.Overview.Definitions.FirstOrDefault(candidate => candidate.Id == blockId_);
+            await Active.RefreshAsync(CancellationToken.None);
+            block = Active.Overview.Definitions.FirstOrDefault(candidate => candidate.Id == blockId_);
         }
 
         if (block is null)
@@ -47,11 +57,12 @@ public partial class LogicBlockPage : ContentPage
             return;
         }
 
-        MobileResult<IReadOnlyList<LogicNoteDto>> notes = await state_.Api.GetNotesAsync(blockId_, 50, CancellationToken.None);
+        MobileResult<IReadOnlyList<LogicNoteDto>> notes = await Active.Api.GetNotesAsync(blockId_, 50, CancellationToken.None);
         viewModel_ = new LogicBlockDetailViewModel(
             block,
-            state_.Overview.State?.Blocks.FirstOrDefault(candidate => candidate.Id == blockId_),
-            state_.Tags,
+            Active.CacheKey,
+            Active.Overview.State?.Blocks.FirstOrDefault(candidate => candidate.Id == blockId_),
+            coordinator_.Tags,
             notes.Ok ? notes.Value : null);
         viewModel_.ActionRequested += OnActionRequested;
 
@@ -69,12 +80,12 @@ public partial class LogicBlockPage : ContentPage
 
     private void Repaint()
     {
-        if (viewModel_ is null)
+        if (viewModel_ is null || Active is null)
         {
             return;
         }
 
-        LogicBlockStateDto? blockState = state_.Overview.State?.Blocks
+        LogicBlockStateDto? blockState = Active.Overview.State?.Blocks
             .FirstOrDefault(candidate => candidate.Id == blockId_);
         viewModel_.ApplyState(blockState);
         viewModel_.ApplyValues();
@@ -109,7 +120,12 @@ public partial class LogicBlockPage : ContentPage
 
     private async void OnActionRequested(LogicActionButtonViewModel action)
     {
-        HmiWriteResponse result = await state_.Api.WriteAsync(
+        if (Active is null)
+        {
+            return;
+        }
+
+        HmiWriteResponse result = await Active.Api.WriteAsync(
             new HmiWriteRequest
             {
                 SourceId = action.Action.SourceId,
@@ -126,12 +142,12 @@ public partial class LogicBlockPage : ContentPage
     private async void OnAddNoteClicked(object? sender, EventArgs e)
     {
         string text = noteEntry.Text?.Trim() ?? string.Empty;
-        if (text.Length == 0 || viewModel_ is null)
+        if (text.Length == 0 || viewModel_ is null || Active is null)
         {
             return;
         }
 
-        MobileResult<LogicNoteDto> result = await state_.Api.AddNoteAsync(
+        MobileResult<LogicNoteDto> result = await Active.Api.AddNoteAsync(
             new LogicNoteAddRequest { BlockId = blockId_, Text = text },
             CancellationToken.None);
         if (!result.Ok)
@@ -141,7 +157,7 @@ public partial class LogicBlockPage : ContentPage
         }
 
         noteEntry.Text = string.Empty;
-        MobileResult<IReadOnlyList<LogicNoteDto>> notes = await state_.Api.GetNotesAsync(blockId_, 50, CancellationToken.None);
+        MobileResult<IReadOnlyList<LogicNoteDto>> notes = await Active.Api.GetNotesAsync(blockId_, 50, CancellationToken.None);
         if (notes.Ok)
         {
             viewModel_.SetNotes(notes.Value!);
