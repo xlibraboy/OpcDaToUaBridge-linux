@@ -43,15 +43,15 @@ Build output lands in `src/*/bin/Debug/net8.0/`; the bridge app is `src/OpcBridg
 # One-time: build the toolchain image (SDK + maui-android workload + JDK 17 + Android SDK)
 docker build -f Dockerfile.mobile -t opcbridge-mobile-build .
 
-# Build the APK (Release embeds the assemblies; AndroidKeyStore=false signs with the Android
-# debug key, so it installs on a phone without a keystore)
+# Build the APK (Release embeds the assemblies; the project signs with the keystore in
+# packaging/android, so successive builds install over each other)
 docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp/dh -e DOTNET_CLI_HOME=/tmp/dh \
   -e NUGET_PACKAGES=/nuget -e JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 \
   -e ANDROID_HOME=/opt/android-sdk -e ANDROID_SDK_ROOT=/opt/android-sdk \
   -v "$PWD":/src -v "$PWD/.nuget-cache":/nuget -w /src \
   opcbridge-mobile-build \
   dotnet publish src/OpcBridge.Mobile/OpcBridge.Mobile.csproj -f net8.0-android -c Release \
-    -p:AndroidPackageFormats=apk -p:EmbedAssembliesIntoApk=true -p:AndroidKeyStore=false
+    -p:AndroidPackageFormats=apk -p:EmbedAssembliesIntoApk=true
 ```
 
 The APK lands under `src/OpcBridge.Mobile/bin/Release/net8.0-android/` (`-Signed.apk`).
