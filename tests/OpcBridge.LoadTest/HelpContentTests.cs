@@ -17,6 +17,18 @@ public sealed class HelpContentTests
         return match.Success ? match.Groups[1].Value.Trim() : string.Empty;
     }
     [Fact]
+    public void HelpText_DescribesPlantLogicAndItsLiveState()
+    {
+        Assert.Contains("# Logic (Interlocks, Permissives & Sequences)", HelpContent.Markdown);
+        Assert.Contains("interlock / permissive", HelpContent.Markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("unknown", HelpContent.Markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("/api/logic/state", HelpContent.Markdown);
+        Assert.Contains("next-step", HelpContent.Markdown, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("## Tags", HelpContent.Markdown);
+        Assert.Contains("filters the list", HelpContent.Markdown);
+    }
+
+    [Fact]
     public void HelpText_DescribesInterlinksAsAnySourceTagLinking()
     {
         Assert.Contains("# Interlinks", HelpContent.Markdown);

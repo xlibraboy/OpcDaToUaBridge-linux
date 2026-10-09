@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="OpcBridge.Mobile.Views.SettingsPage"
+             Title="Settings">
+    <ScrollView>
+        <VerticalStackLayout Padding="12" Spacing="12">
+            <Label Text="Bridges" FontSize="18" FontAttributes="Bold" />
+            <Label Text="Bridges saved on this phone. Tap one to show it live on the Logic tab; the phone keeps one live link at a time."
+                   FontSize="12" TextColor="{StaticResource MutedColor}" />
+            <VerticalStackLayout x:Name="bridgesList" Spacing="6">
+                <BindableLayout.ItemTemplate>
+                    <DataTemplate>
+                        <Border Padding="10" StrokeThickness="1"
+                                Stroke="{StaticResource BorderColor}" BackgroundColor="{StaticResource SurfaceColor}">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnBridgeTapped" />
+                            </Border.GestureRecognizers>
+                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                <VerticalStackLayout Spacing="2">
+                                    <Label Text="{Binding DisplayName}" FontAttributes="Bold" />
+                                    <Label Text="{Binding Bridge.Url}" FontSize="11" TextColor="{StaticResource MutedColor}" />
+                                    <Label Text="{Binding StatusText}" FontSize="11" TextColor="{StaticResource MutedColor}" />
+                                </VerticalStackLayout>
+                                <Button Grid.Column="1" Text="Remove" FontSize="12" Padding="10,2"
+                                        VerticalOptions="Start" Clicked="OnRemoveBridgeClicked" />
+                            </Grid>
+                        </Border>
+                    </DataTemplate>
+                </BindableLayout.ItemTemplate>
+            </VerticalStackLayout>
+            <Label x:Name="bridgesEmptyLabel" Text="No bridges saved yet — add one below."
+                   FontSize="12" TextColor="{StaticResource MutedColor}" />
+
+            <Label Text="Add a bridge" FontSize="18" FontAttributes="Bold" Margin="0,8,0,0" />
+            <Label Text="Enter the bridge host or IP (the phone must be on the plant network)."
+                   FontSize="12" TextColor="{StaticResource MutedColor}" />
+            <Entry x:Name="hostEntry" Placeholder="10.3.1.50 or http://10.3.1.50:8080" />
+            <Entry x:Name="nameEntry" Placeholder="Name (optional, e.g. Line 1)" />
+            <HorizontalStackLayout Spacing="8">
+                <Button x:Name="connectButton" Text="Add &amp; Connect" Clicked="OnConnectClicked" />
+            </HorizontalStackLayout>
+            <Label x:Name="connectionLabel" FontSize="13" TextColor="{StaticResource MutedColor}" />
+
+            <Label Text="Sign in" FontSize="18" FontAttributes="Bold" Margin="0,8,0,0" />
+            <Label Text="Only needed when the selected bridge requires a session (Auth enabled without TrustHmi). Actions need the Operator role."
+                   FontSize="12" TextColor="{StaticResource MutedColor}" />
+            <Entry x:Name="userEntry" Placeholder="Username" />
+            <Entry x:Name="passwordEntry" Placeholder="Password" IsPassword="True" />
+            <Button x:Name="signInButton" Text="Sign in" Clicked="OnSignInClicked" />
+            <Label x:Name="sessionLabel" FontSize="13" TextColor="{StaticResource MutedColor}" />
+
+            <Label Text="About" FontSize="18" FontAttributes="Bold" Margin="0,8,0,0" />
+            <Label x:Name="aboutLabel" FontSize="13" TextColor="{StaticResource MutedColor}" />
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

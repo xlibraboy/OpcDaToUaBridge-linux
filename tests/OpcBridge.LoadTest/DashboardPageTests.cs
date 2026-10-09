@@ -1867,6 +1867,100 @@ public sealed class DashboardPageTests
             StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void Html_ShipsTheLogicViewAndEditor()
+    {
+        // Tags ▸ Logic: the block list and editor the mobile app's logic comes from.
+        Assert.Contains("data-tab=\"logic\"", DashboardPage.Html, StringComparison.Ordinal);
+        Assert.Contains("data-route=\"tags/logic\"", DashboardPage.Html, StringComparison.Ordinal);
+        Assert.Contains("id=\"view-logic\"", DashboardPage.Html, StringComparison.Ordinal);
+        foreach (string id in new[]
+        {
+            "logicBlockList", "btnLogicAdd", "logicConditions", "btnLogicAddCondition", "logicSteps",
+            "btnLogicAddStep", "logicActions", "btnLogicAddAction", "logicCount", "logicMessage",
+            "logicEditor", "logicEditorTitle", "logicLiveBadge", "logicEditorMsg", "logicStateHint",
+            "btnLogicSave", "btnLogicDelete", "lgName", "lgGroup", "lgKind", "lgEnabled", "lgDescription", "lgTags",
+            "logicElements", "btnLogicAddElement", "btnLogicToNetwork", "btnLogicToConditions"
+        })
+        {
+            Assert.Contains($"id=\"{id}\"", DashboardPage.Html);
+        }
+    }
+
+    [Fact]
+    public void Script_RoutesLogicTabAndAuthorsBlocks()
+    {
+        Assert.Contains("'tags/logic': 'logic'", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("logic: 'tags/logic'", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("if (activeTab === 'logic')", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("function loadLogic(", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("function loadLogicState(", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("function renderLogicView(", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("function renderLogicLive(", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("function collectLogicDraft(", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("function saveLogicBlock(", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("function deleteLogicBlock(", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("function logicConditionRow(", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("function logicStepCard(", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("function logicActionRow(", DashboardPage.Script, StringComparison.Ordinal);
+        // The tags the phone shows as chips are read from and written to the editor's box.
+        Assert.Contains("el('lgTags')", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("block.tags =", DashboardPage.Script, StringComparison.Ordinal);
+        // The interlock group (the phone's heading) and the gate fields: an OR group label and
+        // a hold timer per condition, both read back from the row.
+        Assert.Contains("el('lgGroup')", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("block.group =", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("data-field=\"group\"", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("data-field=\"hold\"", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("holdMs: Number.isFinite(holdSeconds) && holdSeconds > 0 ? Math.round(holdSeconds * 1000) : 0", DashboardPage.Script, StringComparison.Ordinal);
+        // The block list carries the same headings the phone shows.
+        Assert.Contains("class=\"logic-group-head\"", DashboardPage.Script, StringComparison.Ordinal);
+        // The IEC 61131-3 network editor: rows nest by indent, the kind drives the fields.
+        Assert.Contains("function logicElementRow(", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("function logicElementTreeFromDom(", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("function logicExpandConditions(", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("function logicRenderNetwork(", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("data-action=\"logic-element-indent\"", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("data-action=\"logic-element-outdent\"", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("data-action=\"logic-element-remove\"", DashboardPage.Script, StringComparison.Ordinal);
+        foreach (string kind in new[] { "and", "or", "xor", "not", "ton", "tof", "tp", "ctu", "ctd", "sr", "rs", "r_trig", "f_trig" })
+        {
+            Assert.Contains($"['{kind}',", DashboardPage.Script, StringComparison.Ordinal);
+        }
+
+        Assert.Contains("/api/logic/blocks", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("/api/logic/state", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("data-action=\"logic-select\"", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("data-action=\"logic-remove-condition\"", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("data-action=\"logic-step-up\"", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("data-action=\"logic-step-down\"", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("data-action=\"logic-remove-action\"", DashboardPage.Script, StringComparison.Ordinal);
+        // The editor is Engineer-only, like the other configuration surfaces.
+        Assert.Contains("'interlinks', 'logic', 'mqtt'", DashboardPage.Script, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Script_LogicRefreshRepaintsOnlyTheLiveChips()
+    {
+        // The 1 s poll re-fetches the evaluated state and repaints only the chips — the
+        // editor inputs are never rebuilt while someone is typing.
+        Assert.Contains("state.logicStateById = {}", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains(
+            "if (document.getElementById('view-logic')?.classList.contains('active')) {",
+            DashboardPage.Script,
+            StringComparison.Ordinal);
+        Assert.Contains("loadLogicState().then(renderLogicLive)", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("data-logic-badge", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("data-logic-reason", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("data-logic-condition-live", DashboardPage.Script, StringComparison.Ordinal);
+        Assert.Contains("data-logic-step-live", DashboardPage.Script, StringComparison.Ordinal);
+        string renderLive = FunctionBody(DashboardPage.Script, "function renderLogicLive(");
+        Assert.DoesNotContain(".value =", renderLive, StringComparison.Ordinal);
+        // A boolean condition reads as 1 or 0; a numeric one keeps its value in the chip.
+        Assert.Contains("const isBoolean = op === 'on' || op === 'off';", renderLive, StringComparison.Ordinal);
+        Assert.Contains("s === 'true' ? '1' : s === 'false' ? '0' : 'no data'", renderLive, StringComparison.Ordinal);
+    }
+
     private static int CountOccurrences(string haystack, string needle)
     {
         int count = 0, index = 0;

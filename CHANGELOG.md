@@ -19,6 +19,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+**Logic blocks can be authored as IEC 61131-3 networks, and every element reports should vs
+actual.** The Logic tab's editor gained a **Network (IEC 61131-3)** form beside the flat
+condition list: element rows nest by indentation (a row's inputs are the rows under it at a
+deeper level, the outermost rows are the block's roots — the block's AND) and the vocabulary is
+the standard's — **contacts** (NO / NC, or a comparison), **gates** (`AND`, `OR`, `XOR`, `NOT`,
+nested to any depth) and **function blocks** (`TON` / `TOF` / `TP` timers with a preset `PT` and
+reported elapsed time, `CTU` / `CTD` counters with a preset `PV` and reported count, `SR` / `RS`
+latches, `R_TRIG` / `F_TRIG` edge triggers). `Convert to IEC network` rewrites the conditions
+already authored into the equivalent network, so an existing block can be extended rather than
+rebuilt; the store keeps the two forms exclusive (one source of truth) and bounds a network to
+8 levels and 64 elements. The bridge evaluates the network with three-valued logic, keeps the
+function blocks' memory between passes (timers, counters, latches, edges — a restart re-times
+them, the honest reading for a monitor), and pushes a fresh snapshot while a timer runs so its
+progress reaches the apps. Every evaluated element now carries the reading it needs
+(`should`) and whether the live value satisfies it (`matches`) — the phone renders "should 1 /
+actual 0" per element — and each element state reports its kind, depth, timer preset/elapsed and
+counter value.
+
+**Logic blocks carry an interlock group, and a condition can carry an OR group and a hold
+timer.** A block's new **Interlock group** (e.g. `Primary Arm`) collects related interlocks under
+one heading; conditions can share an **OR group** label (an any-of gate: the group is satisfied
+as soon as one member is true, and only block-severity members count) and a **hold** (a TON
+on-delay timer: the contact counts only after its input has held true that long). Warn-only
+conditions are shown and tracked but never block and never carry a gate or timer. The evaluation
+reports each contact's expected reading (`should`), whether the live value satisfies it
+(`matches`) and a timer's progress, so a phone row reads *should 1 · actual 0* and a running
+timer reports *holding 1.5 s of 3 s*; a labelled gate names itself as the block's reason, a bare
+one points at the input that failed, and a missing reading always names the tag. The dashboard
+lists blocks under their group's heading, and `/api/logic/state` reports the network as a flat,
+depth-first element list.
+
+**Logic blocks can carry tags, and the phone's list can be searched and filtered.** The dashboard's
+**Tags ▸ Logic** editor gained a **Tags** box — comma-separated labels such as `Line 1, Safety`, up
+to 8 per block and 24 characters each, with blanks and case-insensitive duplicates dropped (a
+longer list is refused at save, not silently trimmed). The bridge stores the labels on the block
+and serves them with the rest of the definition; the OpcBridge Logic app shows them as chips on
+each card and its Logic tab now has a search box and filters — free text matches the block name,
+the description or any tag, tag chips narrow the list to the blocks carrying the labels picked,
+and a single-select state row narrows it to ready / blocked / no data / disabled, with an *n of m
+blocks* line while any filter is on and a "no blocks match" empty state. Live state and filter
+changes never rebuild the card objects, so the list does not rebuild under the operator's finger.
+
+**Plant logic — interlocks, permissives and sequences — is a first-class bridge concept.** A new
+**Tags ▸ Logic** tab authors named blocks of conditions over mapped tags: each condition carries
+the operator sentence and the *what to do when not true* next-step line, interlock/permissive
+blocks require all of their conditions to be true, and sequence blocks walk ordered steps (each
+completing when its conditions are true plus an optional completion-handshake tag). The bridge
+evaluates every block against the live value stream — a false condition gives **blocked** with
+that condition's sentence as the reason, a missing or bad-quality value gives **unknown**, never
+silently ready — and serves the result at `GET /api/logic/state` and on the `logic` SignalR
+message, pushed only when the derived states change. Blocks and conditions live in `logic.json`
+next to `mappings.json` / `links.json`; definitions are edited through `GET/POST/DELETE
+/api/logic*`. See **Help ▸ Guide ▸ Logic**.
+
 **The import dialog can show only the rows whose description differs (#41).** A **Only tags with a
 different description** toggle sits above the preview list: switching it on narrows a long file to
 the rows already mapped with a different description — the ones carrying the *desc differs* pill

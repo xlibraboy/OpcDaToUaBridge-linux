@@ -1,0 +1,40 @@
+# Local APK build image for OpcBridge.Mobile: the .NET SDK with the MAUI Android
+# workload plus JDK 17 and the Android command-line tools. CI builds the APK the same
+# way (.github/workflows/mobile-release.yml); this image is the local recipe.
+#
+#   docker build -f Dockerfile.mobile -t opcbridge-mobile-build .
+#   docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp/dh -e DOTNET_CLI_HOME=/tmp/dh \
+#     -e NUGET_PACKAGES=/nuget -e JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 \
+#     -e ANDROID_HOME=/opt/android-sdk -e ANDROID_SDK_ROOT=/opt/android-sdk \
+#     -v "$PWD":/src -v "$PWD/.nuget-cache":/nuget -w /src \
+#     opcbridge-mobile-build \
+#     dotnet publish src/OpcBridge.Mobile/OpcBridge.Mobile.csproj -f net8.0-android -c Release \
+#       -p:AndroidPackageFormats=apk -p:EmbedAssembliesIntoApk=true
+#
+# Release + EmbedAssembliesIntoApk: a Debug APK expects fast deployment (assemblies pushed
+# by `dotnet build/install`) and exits on launch when installed standalone. The project signs
+# with the keystore committed under packaging/android, so consecutive builds upgrade in place
+# (the SDK's auto-generated debug keystore would differ per build agent).
+FROM mcr.microsoft.com/dotnet/sdk:8.0
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends openjdk-17-jdk-headless unzip curl ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+ENV ANDROID_HOME=/opt/android-sdk
+ENV ANDROID_SDK_ROOT=/opt/android-sdk
+
+RUN dotnet workload install maui-android --skip-manifest-update
+
+RUN mkdir -p /opt/android-sdk/cmdline-tools \
+ && curl -sSLo /tmp/cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip \
+ && unzip -q /tmp/cmdline-tools.zip -d /opt/android-sdk/cmdline-tools \
+ && mv /opt/android-sdk/cmdline-tools/cmdline-tools /opt/android-sdk/cmdline-tools/latest \
+ && rm /tmp/cmdline-tools.zip \
+ && yes | /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null \
+ && /opt/android-sdk/cmdline-tools/latest/bin/sdkmanager \
+      "platform-tools" "platforms;android-34" "build-tools;34.0.0" > /dev/null
+
+WORKDIR /src

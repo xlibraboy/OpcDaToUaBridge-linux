@@ -37,12 +37,17 @@ public sealed class AuthPolicyTests
     [InlineData("/api/hmi/displays")]
     [InlineData("/api/hmi/displays/line-1")]
     [InlineData("/api/hmi/write")]
+    [InlineData("/api/logic")]
+    [InlineData("/api/logic/blocks")]
+    [InlineData("/api/logic/state")]
+    [InlineData("/api/logic/notes")]
     [InlineData("/api/influx/status")]
     public void HmiPaths_AreRecognised(string path) => Assert.True(AuthPolicy.IsHmiPath(path));
 
     [Theory]
     [InlineData("/api/hmi/tagsFoo")] // prefix must not leak across a segment boundary
     [InlineData("/api/hmi")]
+    [InlineData("/api/logicFoo")]
     [InlineData("/api/mappings")]
     [InlineData("/api/influx/config")] // token-bearing; must never join the trusted HMI surface
     [InlineData("/api/influx/storage")] // local paths/disk details stay behind a session
@@ -61,6 +66,11 @@ public sealed class AuthPolicyTests
     [InlineData("POST", "/api/auth/users", UserRole.Admin)]
     [InlineData("POST", "/api/auth/users/remove", UserRole.Admin)]
     [InlineData("POST", "/api/hmi/write", UserRole.Operator)]
+    [InlineData("POST", "/api/logic/notes", UserRole.Operator)]
+    [InlineData("GET", "/api/logic", UserRole.Viewer)]
+    [InlineData("POST", "/api/logic/blocks", UserRole.Engineer)]
+    [InlineData("DELETE", "/api/logic/blocks/6c1d1a5e-2a7b-4a3f-9a1f-8f5f5c2b7d10", UserRole.Engineer)]
+    [InlineData("GET", "/api/logic/state", UserRole.Viewer)]
     [InlineData("PUT", "/api/hmi/displays/line-1", UserRole.Engineer)]
     [InlineData("DELETE", "/api/hmi/displays/line-1", UserRole.Engineer)]
     [InlineData("POST", "/api/mappings/add", UserRole.Engineer)]

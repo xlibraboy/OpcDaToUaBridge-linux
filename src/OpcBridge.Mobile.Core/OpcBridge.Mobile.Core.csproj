@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The logic viewer's testable core: REST/SignalR clients, the tag cache glue and the
+       view models, all plain net8.0 so tests/OpcBridge.LoadTest covers them. The MAUI app
+       (src/OpcBridge.Mobile, net8.0-android) holds only the views and platform services. -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
+    <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="8.0.11" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OpcBridge.Client\OpcBridge.Client.csproj" />
+    <ProjectReference Include="..\OpcBridge.Core\OpcBridge.Core.csproj" />
+    <ProjectReference Include="..\OpcBridge.Hmi.Core\OpcBridge.Hmi.Core.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -13,6 +13,17 @@ namespace OpcBridge.App;
 //   text "Clear Selection", text "Delete Saved Link", function clearInterlinkDraftSelection
 //   state.interlinkDraft.consumer = null, state.interlinkDraft.provider = null
 //   function renderInterlinkPickers(, state.interlinkDraft, data-action="pick-interlink-consumer", data-action="pick-interlink-provider"
+//   Logic (Tags ▸ Logic): data-tab="logic", id="view-logic", data-route="tags/logic",
+//   id="logicBlockList"/"btnLogicAdd"/"logicConditions"/"logicSteps"/"logicActions"/
+//   "logicCount"/"logicMessage"/"logicEditor"/"logicEditorTitle"/"logicLiveBadge"/"logicEditorMsg"/
+//   "logicStateHint"/"lgName"/"lgGroup"/"lgKind"/"lgEnabled"/"lgDescription"/"lgTags",
+//   id="logicElements"/"btnLogicAddElement"/"btnLogicToNetwork"/"btnLogicToConditions",
+//   data-action="logic-element-indent"/"logic-element-outdent"/"logic-element-remove",
+//   function loadLogic(/loadLogicState(/renderLogicView(/renderLogicLive(/collectLogicDraft(/
+//   saveLogicBlock(/deleteLogicBlock(/logicConditionRow(/logicStepCard(/logicActionRow(/onLogicEditorChange(,
+//   data-action="logic-select"/"logic-remove-condition"/"logic-add-step-condition"/"logic-step-up"/
+//   "logic-step-down"/"logic-step-remove"/"logic-remove-action", data-logic-badge/data-logic-reason/
+//   data-logic-condition-live/data-logic-step-live, /api/logic, /api/logic/blocks, /api/logic/state
 //   data-tab="opc-da", id="view-opc-da", data-route="connectivity/opc-da", text "OPC DA"
 //   Sources is a sidebar group label only (not a page); legacy connectivity/sources → opc-da
 //   data-tab="drivers", id="view-drivers", data-route="connectivity/drivers", id="wzDrv" (driver wizard)
@@ -510,6 +521,38 @@ internal static class DashboardPage
         .il-flow { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; cursor: help; user-select: none; padding: 0 2px; }
         .il-flow .il-arrow { font-size: var(--fs-value); line-height: 1; color: var(--text); }
         .il-flow .il-flow-hint { font-size: var(--fs-micro); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); font-family: var(--font-mono); }
+        /* Plant logic tab: block list on the left, the block editor on the right; conditions
+           and steps render as compact rows carrying a live state chip per condition. */
+        .logic-layout { display: grid; grid-template-columns: minmax(230px, 300px) 1fr; gap: 12px; align-items: start; }
+        .logic-block-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; width: 100%; text-align: left; padding: 6px 8px; border: 1px solid var(--border2); background: var(--panel); color: var(--text); cursor: pointer; }
+        .logic-block-row + .logic-block-row { margin-top: 6px; }
+        .logic-block-row.active { border-color: var(--accent); background: var(--panel2); }
+        .logic-block-row .logic-row-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .logic-block-row .logic-row-reason { flex: 1 0 100%; min-width: 0; color: var(--muted); font-size: var(--fs-micro); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .logic-cond-row, .logic-action-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 8px; border: 1px solid var(--border2); background: var(--panel); }
+        .logic-cond-row + .logic-cond-row, .logic-action-row + .logic-action-row { margin-top: 6px; }
+        .logic-cond-row input[data-field="text"] { flex: 1 1 220px; min-width: 160px; }
+        .logic-cond-row select, .logic-action-row select { max-width: 190px; }
+        .logic-cond-row input[data-field="value"] { width: 90px; }
+        .logic-cond-row input[data-field="nextStep"] { flex: 1 1 180px; min-width: 140px; }
+        .logic-live { font-family: var(--font-mono); font-size: var(--fs-micro); padding: 1px 6px; border: 1px solid var(--border2); white-space: nowrap; }
+        .logic-live.true { color: var(--good); border-color: var(--good); }
+        .logic-live.false { color: var(--bad); border-color: var(--bad); }
+        .logic-live.unknown, .logic-live.disabled { color: var(--muted); }
+        .logic-step { border: 1px solid var(--border2); background: var(--panel2); padding: 8px; }
+        .logic-step + .logic-step { margin-top: 8px; }
+        .logic-step.current { border-color: var(--accent); }
+        .logic-step-head { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
+        .logic-step-head input[data-field="stepName"] { flex: 1 1 160px; min-width: 120px; }
+        .logic-step-conditions { margin-top: 6px; }
+        .logic-reason { color: var(--warn); font-size: var(--fs-micro); }
+        /* One network element row: the indent is set inline, the kind drives which fields show. */
+        .logic-element-row { align-items: flex-start; }
+        .logic-element-row select[data-field="kind"] { max-width: 190px; }
+        .logic-element-row .logic-element-label { flex: 1 1 200px; min-width: 150px; }
+        /* The block list groups blocks by their interlock group — the same heading the phone shows. */
+        .logic-group-head { margin: 8px 0 4px; font-size: var(--fs-micro); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+        @media (max-width: 900px) { .logic-layout { grid-template-columns: 1fr; } }
         .mapping-toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; align-items: center; }
         @media (max-width: 520px) { .fp-body { grid-template-columns: 1fr; } .fp-body.with-flow { grid-template-columns: 1fr; } .il-flow .il-arrow { transform: rotate(90deg); } }
         .fp-panel { background: var(--panel2); border: 1px solid var(--border2); border-radius: 0; padding: 12px; }
@@ -1087,6 +1130,7 @@ internal static class DashboardPage
     <button class="tabbtn" data-tab="tags" data-route="tags/maps" onclick="navigate('tags/maps')">Maps</button>
     <button class="tabbtn" data-tab="values" data-route="tags/values" onclick="navigate('tags/values')">Live Values</button>
     <button class="tabbtn" data-tab="interlinks" data-route="tags/interlinks" onclick="navigate('tags/interlinks')">Interlinks</button>
+    <button class="tabbtn" data-tab="logic" data-route="tags/logic" onclick="navigate('tags/logic')">Logic</button>
     </div>
   </div>
   <div class="nav-group">
@@ -1927,6 +1971,58 @@ internal static class DashboardPage
         </div>
     </div>
 </div>
+<div class="view" id="view-logic">
+    <h1 class="view-title" tabindex="-1">Logic</h1>
+    <div class="box">
+        <div class="box-h">Plant logic <span class="msg" id="logicCount" style="margin-left:auto"></span></div>
+        <div class="box-b">
+            <div class="hint" id="logicMessage" role="status" style="margin-bottom:10px">Author the logic the mobile app shows: <b>interlock</b> / <b>permissive</b> blocks (every condition and every OR group must be satisfied — the AND) or <b>sequence</b> blocks whose ordered steps are completed one after another. A condition's <b>ON (NO contact)</b> / <b>OFF (NC contact)</b> sets the reading it must show, an <b>OR group</b> makes its members any-of, and a <b>hold</b> makes a contact wait for a steady signal. The phone renders each contact as <i>should 1 / actual 0</i> and follows the block's live state.</div>
+            <div class="logic-layout">
+                <div class="fp-panel">
+                    <div class="fp-k">Blocks <button class="btn ghost" type="button" id="btnLogicAdd" style="float:right;margin-top:-3px">+ Add</button></div>
+                    <div class="list" id="logicBlockList" style="max-height:420px"><span class="msg">Loading…</span></div>
+                </div>
+                <div class="fp-panel" id="logicEditor">
+                    <div class="fp-k"><span id="logicEditorTitle">Block</span><span id="logicLiveBadge" style="margin-left:8px"></span></div>
+                    <div class="field"><label class="fl" for="lgName">Name</label><input type="text" id="lgName" maxlength="64" style="flex:1" placeholder="Line 01 Start"></div>
+                    <div class="field"><label class="fl" for="lgKind">Kind <span class="info" data-tip="Interlock / permissive: every block-severity condition must be true. Sequence: ordered steps, each completed when its own conditions are true (and its optional handshake tag is true), the first incomplete step being the current one.">i</span></label><select id="lgKind"><option value="interlock">Interlock (all must be true)</option><option value="permissive">Permissive (all must be true)</option><option value="sequence">Sequence (ordered steps)</option></select></div>
+                    <div class="field"><label class="fl" for="lgEnabled">Enabled</label><input type="checkbox" id="lgEnabled" checked></div>
+                    <div class="field"><label class="fl" for="lgDescription">Description</label><input type="text" id="lgDescription" style="flex:1" placeholder="Shown on the phone under the block name"></div>
+                    <div class="field"><label class="fl" for="lgGroup">Interlock group <span class="info" data-tip="Optional. The phone collects blocks carrying the same group under one collapsible heading (e.g. Primary Arm), so a machine's up/down interlocks read together instead of as a flat list. At most 40 characters.">i</span></label><input type="text" id="lgGroup" maxlength="40" style="flex:1" placeholder="Primary Arm"></div>
+                    <div class="field"><label class="fl" for="lgTags">Tags <span class="info" data-tip="Comma-separated labels that group blocks on the phone (e.g. Line 1, Safety). Up to 8, each at most 24 characters; blanks and duplicates are dropped. The phone shows them as chips on the card and can filter the list by them.">i</span></label><input type="text" id="lgTags" style="flex:1" placeholder="Line 1, Safety"></div>
+                    <div id="logicConditionsBlock">
+                        <div class="fp-k" style="margin-top:10px">Conditions
+                            <button class="btn ghost" type="button" id="btnLogicAddCondition" style="float:right;margin-top:-3px">+ Condition</button>
+                            <button class="btn ghost" type="button" id="btnLogicToNetwork" style="float:right;margin-top:-3px;margin-right:6px" title="Rewrite these conditions as an IEC network you can nest (AND of ORs, timers, blocks).">Convert to IEC network</button>
+                        </div>
+                        <div class="list" id="logicConditions"></div>
+                    </div>
+                    <div id="logicNetworkBlock" style="display:none">
+                        <div class="fp-k" style="margin-top:10px">Network (IEC 61131-3)
+                            <span class="info" data-tip="The block's logic as a network of contacts, gates and standard function blocks. Rows nest by their indent: a row's inputs are the rows under it at a deeper level, and the outermost rows are the block's roots (all must be true). Contacts are NO / NC (or a comparison); gates are AND / OR / XOR / NOT; blocks are TON / TOF / TP timers, CTU / CTD counters, SR / RS latches and R_TRIG / F_TRIG edge triggers.">i</span>
+                            <button class="btn ghost" type="button" id="btnLogicAddElement" style="float:right;margin-top:-3px">+ Element</button>
+                            <button class="btn ghost" type="button" id="btnLogicToConditions" style="float:right;margin-top:-3px;margin-right:6px" title="Drop the network and go back to the flat condition list.">Back to conditions</button>
+                        </div>
+                        <div class="list" id="logicElements"></div>
+                        <div class="hint" style="margin-top:4px">Indent with → to make a row an input of the row above it; the phone shows every row with its live state and the reading it needs.</div>
+                    </div>
+                    <div id="logicStepsBlock" style="display:none">
+                        <div class="fp-k" style="margin-top:10px">Steps <button class="btn ghost" type="button" id="btnLogicAddStep" style="float:right;margin-top:-3px">+ Step</button></div>
+                        <div class="list" id="logicSteps"></div>
+                    </div>
+                    <div class="fp-k" style="margin-top:10px">Actions <span class="info" data-tip="Buttons the mobile app shows for this block or step. A press writes the value into the tag through the bridge's normal write path — the tag must be writeable.">i</span><button class="btn ghost" type="button" id="btnLogicAddAction" style="float:right;margin-top:-3px">+ Action</button></div>
+                    <div class="list" id="logicActions"></div>
+                    <div class="tag-browser-toolbar" style="margin-top:10px">
+                        <button class="btn" type="button" id="btnLogicSave">Save Block</button>
+                        <button class="btn ghost" type="button" id="btnLogicDelete">Delete Block</button>
+                        <span class="msg" id="logicEditorMsg" role="status"></span>
+                    </div>
+                    <div class="hint" id="logicStateHint" style="margin-top:6px">Live state appears here for a saved block.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 <div class="modal-overlay" id="faceplateOverlay" onclick="if(event.target===this)closeFaceplate()">
     <div class="modal">
         <div class="modal-h">
@@ -2496,6 +2592,12 @@ const state = {
     interlinks: [],
     interlinkDraft: { consumer: null, provider: null },
     linkStatsById: {},
+    // Plant logic (Tags ▸ Logic): definitions, the block being edited, and the evaluated
+    // state keyed by block id (the same payload the mobile app renders).
+    logic: [],
+    logicDraft: null,
+    logicSelectedId: '',
+    logicStateById: {},
     mappingSort: 'name',
     mappingSortDir: 1,
     mappingFilter: '',
@@ -4146,6 +4248,653 @@ function clearInterlinkDraftSelection() {
     el('linksMessage').textContent = 'Selection cleared.';
     renderInterlinksView();
 }
+// ---- Plant logic (Tags ▸ Logic) ---------------------------------------------------------
+// Blocks are authored here and evaluated by the bridge (/api/logic/state); the mobile app
+// renders the same state. The editor keeps a draft object and reads the form back on save;
+// the 1 s refresh only repaints the live chips, never the inputs, so typing is not disturbed.
+const LOGIC_OPS = [['on', 'ON (NO contact)'], ['off', 'OFF (NC contact)'], ['gt', '>'], ['lt', '<'], ['eq', '=']];
+function logicNewId() {
+    if (window.crypto && window.crypto.randomUUID) return window.crypto.randomUUID();
+    // Plain-http LAN pages are not a secure context, so randomUUID can be unavailable.
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = Math.random() * 16 | 0;
+        return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+}
+function logicOpNeedsValue(op) { return op === 'gt' || op === 'lt' || op === 'eq'; }
+function logicKindLabel(kind) {
+    const k = String(kind || 'interlock');
+    return k === 'sequence' ? 'Sequence' : k === 'permissive' ? 'Permissive' : 'Interlock';
+}
+function logicKindOf(block) { return String(get(block, 'kind') || 'interlock'); }
+function logicStateOf(blockId) { return state.logicStateById[String(blockId)] || null; }
+function logicStateChip(st) {
+    if (!st) return '<span class="pill" style="padding:1px 6px;font-size:var(--fs-micro)">no state</span>';
+    const v = String(get(st, 'state') || 'unknown');
+    const cls = v === 'ready' ? 'good' : v === 'blocked' ? 'bad' : v === 'disabled' ? '' : 'partial';
+    return badge(v, cls);
+}
+function logicSourceOptions(selected) {
+    const sources = state.sources || [];
+    return '<option value="">— source —</option>' + sources.map(s =>
+        `<option value="${attr(s.sourceId)}"${s.sourceId === selected ? ' selected' : ''}>${esc(s.displayName || s.sourceId)}</option>`).join('');
+}
+function logicTagOptions(sourceId, selected, wantWrite) {
+    if (!sourceId) return '<option value="">— tag —</option>';
+    const rows = (state.mappings || []).filter(m => String(m.sourceId || m.SourceId || 'default') === sourceId);
+    const options = rows.map(m => {
+        const item = m.itemId || m.ItemId || m.daItemId || m.DaItemId || '';
+        const name = m.displayName || m.DisplayName || item;
+        const rights = mappingAccessRights(m);
+        const usable = wantWrite ? (rights === 'Read-Write' || rights === 'Write') : (rights === 'Read-Write' || rights === 'Read');
+        return `<option value="${attr(item)}"${item === selected ? ' selected' : ''}${usable ? '' : ' disabled'}>${esc(name)}${usable ? '' : ' — needs ' + (wantWrite ? 'write' : 'read')}</option>`;
+    }).join('');
+    return '<option value="">— tag —</option>' + options;
+}
+function logicConditionRow(condition, stepId) {
+    const op = String(condition.op || 'on');
+    const needsValue = logicOpNeedsValue(op);
+    const conditionId = condition.id || logicNewId();
+    const severity = String(condition.severity || 'block');
+    const holdSeconds = condition.holdMs ? String(condition.holdMs / 1000) : '';
+    // OR groups are a property of interlock / permissive blocks; a sequence step is already a
+    // list of conditions that must all be true, so its rows carry no group box.
+    const groupField = stepId
+        ? ''
+        : `<input type="text" data-field="group" placeholder="OR group" maxlength="24" style="width:110px" title="OR group (the OR gate): conditions sharing this label are combined with any-of, so one true member satisfies the group. The block still needs every group and every ungrouped condition." value="${attr(condition.group || '')}">`;
+    return `<div class="logic-cond-row" data-condition-id="${attr(conditionId)}">
+        <input type="text" data-field="text" placeholder="Operator sentence (e.g. Line 01 start permit must be given)" maxlength="200" value="${attr(condition.text || '')}">
+        <select data-field="source">${logicSourceOptions(condition.sourceId || '')}</select>
+        <select data-field="item">${logicTagOptions(condition.sourceId || '', condition.itemId || '', false)}</select>
+        <select data-field="op" title="ON = normally open contact (should read 1); OFF = normally closed contact (should read 0).">${LOGIC_OPS.map(([v, label]) => `<option value="${v}"${v === op ? ' selected' : ''}>${label}</option>`).join('')}</select>
+        <input type="number" step="any" data-field="value" placeholder="value" value="${condition.value === null || condition.value === undefined ? '' : attr(String(condition.value))}" style="${needsValue ? '' : 'display:none'}">
+        ${groupField}
+        <input type="number" data-field="hold" step="0.1" min="0" max="3600" placeholder="hold s" style="width:80px" title="Hold timer in seconds (0 = none): the contact counts as satisfied only after its input has held true this long." value="${attr(holdSeconds)}">
+        <select data-field="severity"><option value="block"${severity === 'block' ? ' selected' : ''}>blocks</option><option value="warn"${severity === 'warn' ? ' selected' : ''}>warn only</option></select>
+        <input type="text" data-field="nextStep" placeholder="What to do when not true" maxlength="200" value="${attr(condition.nextStepText || '')}">
+        <span class="logic-live" data-logic-condition-live="${attr(conditionId)}">—</span>
+        <button class="btn ghost" type="button" data-action="logic-remove-condition" title="Remove condition">✕</button>
+    </div>`;
+}
+function logicStepCard(step, index, total) {
+    const stepId = step.id || logicNewId();
+    const conditions = (step.conditions || []).map(c => logicConditionRow(c, stepId)).join('');
+    return `<div class="logic-step" data-step-id="${attr(stepId)}">
+        <div class="logic-step-head">
+            <span class="msg" style="font-size:var(--fs-micro)">STEP ${index + 1}</span>
+            <input type="text" data-field="stepName" placeholder="Step name" maxlength="64" value="${attr(step.name || '')}">
+            <span class="logic-live" data-logic-step-live="${attr(stepId)}">—</span>
+            <button class="btn ghost" type="button" data-action="logic-step-up"${index === 0 ? ' disabled' : ''} title="Move earlier">↑</button>
+            <button class="btn ghost" type="button" data-action="logic-step-down"${index === total - 1 ? ' disabled' : ''} title="Move later">↓</button>
+            <button class="btn ghost" type="button" data-action="logic-step-remove" title="Remove step">✕</button>
+        </div>
+        <input type="text" data-field="stepNextStep" placeholder="What to do in this step (next-step text)" maxlength="200" value="${attr(step.nextStepText || '')}" style="width:100%">
+        <div class="logic-step-conditions">${conditions || '<span class="msg">No conditions — a step with none completes immediately.</span>'}</div>
+        <div class="tag-browser-toolbar" style="margin-top:6px">
+            <button class="btn ghost" type="button" data-action="logic-add-step-condition">+ Condition</button>
+            <span class="msg" data-logic-step-reason="${attr(stepId)}"></span>
+        </div>
+        <div class="tag-browser-toolbar" style="margin-top:4px">
+            <span class="msg">Completion handshake <span class="info" data-tip="Optional. When set, the step counts as done only once this tag is true — the PLC telling the bridge the step finished. Leave both blank to complete the step as soon as its conditions are true.">i</span></span>
+            <select data-field="completionSource">${logicSourceOptions(step.completionSourceId || '')}</select>
+            <select data-field="completionItem">${logicTagOptions(step.completionSourceId || '', step.completionItemId || '', false)}</select>
+        </div>
+    </div>`;
+}
+function logicActionRow(action) {
+    return `<div class="logic-action-row">
+        <input type="text" data-field="label" placeholder="Button label (e.g. Start pump)" maxlength="32" value="${attr(action.label || '')}">
+        <select data-field="source">${logicSourceOptions(action.sourceId || '')}</select>
+        <select data-field="item">${logicTagOptions(action.sourceId || '', action.itemId || '', true)}</select>
+        <input type="text" data-field="value" placeholder="value to write" value="${attr(action.value || '')}">
+        <label class="msg" style="display:flex;align-items:center;gap:4px"><input type="checkbox" data-field="confirm"${action.confirm !== false ? ' checked' : ''}> confirm</label>
+        <button class="btn ghost" type="button" data-action="logic-remove-action" title="Remove action">✕</button>
+    </div>`;
+}
+// ---- IEC 61131-3 network editor ---------------------------------------------------------
+// The network is authored as an indented row list: on save a row's inputs are the rows below
+// it at a deeper indent, and the outermost rows are the block's roots (all must be true). The
+// bridge evaluates the network; the phone lists every element with its own live state.
+const LOGIC_ELEMENT_KINDS = [
+    ['contact', 'Contact — NO / NC / compare'],
+    ['and', 'AND'], ['or', 'OR'], ['xor', 'XOR'], ['not', 'NOT'],
+    ['ton', 'TON — on-delay (IN, PT)'],
+    ['tof', 'TOF — off-delay (IN, PT)'],
+    ['tp', 'TP — pulse (IN, PT)'],
+    ['ctu', 'CTU — up counter (CU, R, PV)'],
+    ['ctd', 'CTD — down counter (CD, LD, PV)'],
+    ['sr', 'SR — set-dominant latch (S1, R)'],
+    ['rs', 'RS — reset-dominant latch (S, R1)'],
+    ['r_trig', 'R_TRIG — rising edge (IN)'],
+    ['f_trig', 'F_TRIG — falling edge (IN)']
+];
+function logicElementKindOf(element) { return String(get(element, 'kind') || 'contact'); }
+function logicKindOptions(selected) {
+    return LOGIC_ELEMENT_KINDS
+        .map(pair => '<option value="' + attr(pair[0]) + '"' + (pair[0] === selected ? ' selected' : '') + '>' + esc(pair[1]) + '</option>')
+        .join('');
+}
+function logicOpOptions(selected) {
+    return LOGIC_OPS
+        .map(pair => '<option value="' + attr(pair[0]) + '"' + (pair[0] === selected ? ' selected' : '') + '>' + esc(pair[1]) + '</option>')
+        .join('');
+}
+function logicElementIsTimer(kind) { return kind === 'ton' || kind === 'tof' || kind === 'tp'; }
+function logicElementIsCounter(kind) { return kind === 'ctu' || kind === 'ctd'; }
+function logicElementRow(element, indent) {
+    const kind = logicElementKindOf(element);
+    const id = element.id || logicNewId();
+    const op = String(element.op || 'on');
+    const needsValue = logicOpNeedsValue(op);
+    const severity = String(element.severity || 'block');
+    const fields = [];
+    if (kind === 'contact') {
+        fields.push(`<input type="text" data-field="text" class="logic-element-label" placeholder="Operator sentence" maxlength="200" value="${attr(element.text || '')}">`);
+        fields.push(`<select data-field="source">${logicSourceOptions(element.sourceId || '')}</select>`);
+        fields.push(`<select data-field="item">${logicTagOptions(element.sourceId || '', element.itemId || '', false)}</select>`);
+        fields.push(`<select data-field="op" title="NO = normally open (should read 1); NC = normally closed (should read 0).">${logicOpOptions(op)}</select>`);
+        fields.push(`<input type="number" step="any" data-field="value" placeholder="value" value="${element.value === null || element.value === undefined ? '' : attr(String(element.value))}" style="${needsValue ? '' : 'display:none'}">`);
+    } else if (logicElementIsTimer(kind)) {
+        const pt = element.ptMs ? String(element.ptMs / 1000) : '';
+        fields.push(`<input type="text" data-field="text" class="logic-element-label" placeholder="Label (e.g. Flow must hold)" maxlength="200" value="${attr(element.text || '')}">`);
+        fields.push(`<input type="number" data-field="pt" step="0.1" min="0" max="3600" placeholder="PT s" style="width:80px" title="Preset time (PT) in seconds." value="${attr(pt)}">`);
+    } else if (logicElementIsCounter(kind)) {
+        fields.push(`<input type="text" data-field="text" class="logic-element-label" placeholder="Label (e.g. Start attempts)" maxlength="200" value="${attr(element.text || '')}">`);
+        fields.push(`<input type="number" data-field="pv" min="0" max="1000000" placeholder="PV" style="width:80px" title="Preset count (PV)." value="${element.pv === null || element.pv === undefined ? '' : attr(String(element.pv))}">`);
+    } else {
+        fields.push(`<input type="text" data-field="text" class="logic-element-label" placeholder="Label (optional)" maxlength="200" value="${attr(element.text || '')}">`);
+    }
+    fields.push(`<select data-field="severity"><option value="block"${severity === 'block' ? ' selected' : ''}>blocks</option><option value="warn"${severity === 'warn' ? ' selected' : ''}>warn only</option></select>`);
+    fields.push(`<span class="logic-live" data-logic-condition-live="${attr(id)}">—</span>`);
+    return `<div class="logic-cond-row logic-element-row" data-element-id="${attr(id)}" data-indent="${indent}" style="padding-left:${8 + indent * 18}px">
+        <select data-field="kind">${logicKindOptions(kind)}</select>
+        ${fields.join('')}
+        <button class="btn ghost" type="button" data-action="logic-element-indent" title="Make this row an input of the row above">→</button>
+        <button class="btn ghost" type="button" data-action="logic-element-outdent" title="Move this row out one level">←</button>
+        <button class="btn ghost" type="button" data-action="logic-element-remove" title="Remove element">✕</button>
+    </div>`;
+}
+function logicRenderElementRows(container, elements, indent) {
+    (elements || []).forEach(element => {
+        container.insertAdjacentHTML('beforeend', logicElementRow(element, indent));
+        logicRenderElementRows(container, get(element, 'inputs'), indent + 1);
+    });
+}
+function logicEventFromRow(row) {
+    const field = name => { const node = row.querySelector(`[data-field="${name}"]`); return node ? node.value : ''; };
+    const kind = field('kind') || 'contact';
+    const op = field('op') || 'on';
+    const rawValue = field('value');
+    const pt = Number(field('pt'));
+    const pv = Number(field('pv'));
+    const element = {
+        id: row.dataset.elementId || logicNewId(),
+        kind: kind,
+        text: field('text').trim(),
+        severity: field('severity') || 'block',
+        inputs: []
+    };
+    if (kind === 'contact') {
+        element.sourceId = field('source');
+        element.itemId = field('item');
+        element.op = op;
+        element.value = logicOpNeedsValue(op) && rawValue !== '' ? Number(rawValue) : null;
+    } else if (logicElementIsTimer(kind)) {
+        element.ptMs = Number.isFinite(pt) && pt > 0 ? Math.round(pt * 1000) : 0;
+    } else if (logicElementIsCounter(kind)) {
+        element.pv = Number.isFinite(pv) && pv > 0 ? Math.round(pv) : 0;
+    }
+    return element;
+}
+function logicElementTreeFromDom() {
+    const rows = Array.from(el('logicElements').querySelectorAll('.logic-element-row'))
+        .map(row => ({ indent: Number(row.dataset.indent || 0), element: logicEventFromRow(row) }));
+    let position = 0;
+    const build = parentIndent => {
+        const list = [];
+        while (position < rows.length && rows[position].indent > parentIndent) {
+            const node = rows[position++];
+            node.element.inputs = build(node.indent);
+            list.push(node.element);
+        }
+        return list;
+    };
+    return build(-1);
+}
+function logicRenderNetwork() {
+    const container = el('logicElements');
+    const elements = get(state.logicDraft || {}, 'elements') || [];
+    if (!elements.length) {
+        container.innerHTML = '<span class="msg">No elements — add the first one, then indent the rows under it.</span>';
+        return;
+    }
+    container.innerHTML = '';
+    logicRenderElementRows(container, elements, 0);
+}
+/** Rewrites the simple conditions as the equivalent network (the bridge expands them the same way). */
+function logicExpandConditions(conditions) {
+    const roots = [];
+    const groups = {};
+    (conditions || []).forEach(condition => {
+        let element = {
+            id: condition.id || logicNewId(),
+            kind: 'contact',
+            text: condition.text,
+            sourceId: condition.sourceId,
+            itemId: condition.itemId,
+            op: condition.op || 'on',
+            value: condition.value === undefined ? null : condition.value,
+            severity: condition.severity || 'block',
+            inputs: []
+        };
+        if ((condition.holdMs || 0) > 0) {
+            element = {
+                id: logicNewId(),
+                kind: 'ton',
+                text: condition.text,
+                ptMs: condition.holdMs,
+                severity: condition.severity || 'block',
+                inputs: [element]
+            };
+        }
+        const group = String(condition.group || '').trim();
+        if (!group) { roots.push(element); return; }
+        const key = group.toLowerCase();
+        if (!groups[key]) {
+            groups[key] = { id: logicNewId(), kind: 'or', text: group, severity: 'block', inputs: [] };
+            roots.push(groups[key]);
+        }
+        groups[key].inputs.push(element);
+    });
+    if (roots.length <= 1) return roots;
+    return [{ id: logicNewId(), kind: 'and', text: '', severity: 'block', inputs: roots }];
+}
+function logicElementLiveRow(row) {
+    const indent = Number(row.dataset.indent || 0);
+    row.outerHTML = logicElementRow(logicEventFromRow(row), indent);
+}
+function newLogicDraft() {
+    return {
+        id: '',
+        name: '',
+        group: '',
+        description: '',
+        kind: 'interlock',
+        enabled: true,
+        order: (state.logic || []).length,
+        tags: [],
+        elements: [],
+        conditions: [{ id: logicNewId(), text: '', sourceId: '', itemId: '', op: 'on', value: null, group: '', holdMs: 0, nextStepText: null, severity: 'block' }],
+        steps: [],
+        actions: []
+    };
+}
+function logicDraftConditionFrom(row) {
+    const field = name => { const node = row.querySelector(`[data-field="${name}"]`); return node ? node.value : ''; };
+    const op = field('op') || 'on';
+    const rawValue = field('value');
+    const holdSeconds = Number(field('hold'));
+    return {
+        id: row.dataset.conditionId || logicNewId(),
+        text: field('text').trim(),
+        sourceId: field('source'),
+        itemId: field('item'),
+        op: op,
+        value: logicOpNeedsValue(op) && rawValue !== '' ? Number(rawValue) : null,
+        group: field('group').trim(),
+        holdMs: Number.isFinite(holdSeconds) && holdSeconds > 0 ? Math.round(holdSeconds * 1000) : 0,
+        nextStepText: field('nextStep').trim() || null,
+        severity: field('severity') || 'block'
+    };
+}
+function logicDraftActionFrom(row) {
+    const field = name => { const node = row.querySelector(`[data-field="${name}"]`); return node ? node.value : ''; };
+    const confirmNode = row.querySelector('[data-field="confirm"]');
+    return {
+        label: field('label').trim(),
+        sourceId: field('source'),
+        itemId: field('item'),
+        value: field('value').trim(),
+        confirm: confirmNode ? confirmNode.checked : true
+    };
+}
+function collectLogicDraft() {
+    const block = state.logicDraft ? Object.assign({}, state.logicDraft) : newLogicDraft();
+    const stored = (state.logic || []).find(b => String(get(b, 'id') || '') === String(block.id || ''));
+    block.name = el('lgName').value.trim();
+    block.kind = el('lgKind').value;
+    block.enabled = !!el('lgEnabled').checked;
+    block.description = el('lgDescription').value.trim();
+    block.group = el('lgGroup').value.trim();
+    // Comma-separated labels; the store trims, drops blanks and deduplicates, and rejects an over-long list.
+    block.tags = el('lgTags').value.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
+    block.order = stored ? Number(get(stored, 'order') || 0) : (state.logic || []).length;
+    block.actions = Array.from(el('logicActions').querySelectorAll('.logic-action-row')).map(logicDraftActionFrom);
+    if (block.kind === 'sequence') {
+        block.conditions = [];
+        block.elements = [];
+        block.steps = Array.from(el('logicSteps').querySelectorAll('.logic-step')).map(stepEl => {
+            const stepId = stepEl.dataset.stepId || logicNewId();
+            const storedStep = stored && (stored.steps || []).find(s => String(get(s, 'id') || '') === String(stepId));
+            return {
+                id: stepId,
+                name: (stepEl.querySelector('[data-field="stepName"]') ? stepEl.querySelector('[data-field="stepName"]').value : '').trim(),
+                nextStepText: (stepEl.querySelector('[data-field="stepNextStep"]') ? stepEl.querySelector('[data-field="stepNextStep"]').value : '').trim() || null,
+                completionSourceId: (stepEl.querySelector('[data-field="completionSource"]') ? stepEl.querySelector('[data-field="completionSource"]').value : '') || null,
+                completionItemId: (stepEl.querySelector('[data-field="completionItem"]') ? stepEl.querySelector('[data-field="completionItem"]').value : '') || null,
+                // A step carries either conditions or a network; the editor writes conditions.
+                elements: [],
+                conditions: Array.from(stepEl.querySelectorAll('.logic-cond-row')).map(logicDraftConditionFrom),
+                // Step buttons are not authored here yet; keep whatever the API stored.
+                actions: storedStep ? (storedStep.actions || []) : []
+            };
+        });
+    } else if (el('logicElements').querySelectorAll('.logic-element-row').length > 0) {
+        // The block carries an IEC network: the rows are the network, the flat list is empty.
+        block.elements = logicElementTreeFromDom();
+        block.conditions = [];
+        block.steps = [];
+    } else {
+        block.elements = [];
+        block.steps = [];
+        block.conditions = Array.from(el('logicConditions').querySelectorAll('.logic-cond-row')).map(logicDraftConditionFrom);
+    }
+    return block;
+}
+function logicDeepCopy(value) { return JSON.parse(JSON.stringify(value)); }
+/** The condition rows as they stand in the editor, for the network conversion. */
+function collectCurrentConditions() {
+    return Array.from(el('logicConditions').querySelectorAll('.logic-cond-row')).map(logicDraftConditionFrom);
+}
+function selectLogicBlock(blockId) {
+    const found = (state.logic || []).find(b => String(get(b, 'id') || '') === String(blockId));
+    state.logicSelectedId = found ? String(get(found, 'id')) : '';
+    state.logicDraft = found ? logicDeepCopy(found) : newLogicDraft();
+    el('logicEditorMsg').textContent = '';
+    renderLogicView();
+}
+function addLogicBlock() {
+    state.logicSelectedId = '';
+    state.logicDraft = newLogicDraft();
+    el('logicEditorMsg').textContent = '';
+    renderLogicView();
+    el('lgName').focus();
+}
+function renderLogicKindUi() {
+    const kind = el('lgKind').value;
+    const hasNetwork = (get(state.logicDraft || {}, 'elements') || []).length > 0;
+    const sequence = kind === 'sequence';
+    el('logicStepsBlock').style.display = sequence ? '' : 'none';
+    el('logicConditionsBlock').style.display = sequence || hasNetwork ? 'none' : '';
+    el('logicNetworkBlock').style.display = !sequence && hasNetwork ? '' : 'none';
+}
+function renderLogicEditor() {
+    const block = state.logicDraft || newLogicDraft();
+    const kind = logicKindOf(block);
+    el('logicEditorTitle').textContent = get(block, 'id') ? (get(block, 'name') || 'Block') : 'New block';
+    el('lgName').value = get(block, 'name') || '';
+    el('lgKind').value = kind;
+    el('lgEnabled').checked = get(block, 'enabled') !== false;
+    el('lgDescription').value = get(block, 'description') || '';
+    el('lgGroup').value = get(block, 'group') || '';
+    el('lgTags').value = (get(block, 'tags') || []).join(', ');
+    const conditions = block.conditions || [];
+    el('logicConditions').innerHTML = conditions.length
+        ? conditions.map(c => logicConditionRow(c, null)).join('')
+        : '<span class="msg">No conditions — add at least one.</span>';
+    logicRenderNetwork();
+    const steps = block.steps || [];
+    el('logicSteps').innerHTML = steps.length
+        ? steps.map((s, i) => logicStepCard(s, i, steps.length)).join('')
+        : '<span class="msg">No steps — add at least one.</span>';
+    const actions = block.actions || [];
+    el('logicActions').innerHTML = actions.length
+        ? actions.map(logicActionRow).join('')
+        : '<span class="msg">No actions — optional write buttons for the phone.</span>';
+    renderLogicKindUi();
+}
+function renderLogicView() {
+    const blocks = state.logic || [];
+    if (!state.logicDraft) {
+        state.logicDraft = blocks.length ? logicDeepCopy(blocks[0]) : newLogicDraft();
+        state.logicSelectedId = blocks.length ? String(get(blocks[0], 'id') || '') : '';
+    } else if (get(state.logicDraft, 'id') && !blocks.some(b => String(get(b, 'id') || '') === String(get(state.logicDraft, 'id')))) {
+        // The edited block is gone (deleted elsewhere): start clean rather than resurrect it.
+        state.logicDraft = newLogicDraft();
+        state.logicSelectedId = '';
+    }
+    el('logicCount').textContent = blocks.length ? blocks.length + (blocks.length === 1 ? ' block' : ' blocks') : 'No blocks';
+    // The list follows the phone: heading per interlock group. Blocks without a group stay in
+    // authored order at the top; a grouped list sorts by group so each heading appears once.
+    const anyGrouped = blocks.some(block => String(get(block, 'group') || '').trim().length > 0);
+    const listed = anyGrouped
+        ? blocks.slice().sort((a, b) => {
+            const ga = String(get(a, 'group') || '').trim();
+            const gb = String(get(b, 'group') || '').trim();
+            return ga.localeCompare(gb) || (Number(get(a, 'order') || 0) - Number(get(b, 'order') || 0));
+        })
+        : blocks;
+    let lastGroup = null;
+    el('logicBlockList').innerHTML = listed.length ? listed.map(block => {
+        const group = String(get(block, 'group') || '').trim();
+        let head = '';
+        if (anyGrouped && group !== lastGroup) {
+            head = `<div class="logic-group-head">${esc(group || 'Ungrouped')}</div>`;
+        }
+        lastGroup = group;
+        const id = String(get(block, 'id') || '');
+        const active = id !== '' && id === state.logicSelectedId;
+        const reason = logicStateOf(id);
+        return head + `<button type="button" class="logic-block-row${active ? ' active' : ''}" data-action="logic-select" data-block-id="${attr(id)}">
+            <span class="logic-row-name">${esc(get(block, 'name') || '(unnamed)')}</span>
+            <span class="pill" style="padding:1px 6px;font-size:var(--fs-micro)">${esc(logicKindLabel(get(block, 'kind')))}</span>
+            <span data-logic-badge="${attr(id)}">${logicStateChip(reason)}</span>
+            <span class="logic-row-reason" data-logic-reason="${attr(id)}">${esc(reason && get(reason, 'reason') ? get(reason, 'reason') : '')}</span>
+        </button>`;
+    }).join('') : '<span class="msg">No logic blocks yet — press + Add.</span>';
+    renderLogicEditor();
+    renderLogicLive();
+}
+function renderLogicLive() {
+    const states = state.logicStateById || {};
+    document.querySelectorAll('#logicBlockList [data-logic-badge]').forEach(node => {
+        node.innerHTML = logicStateChip(states[node.dataset.logicBadge]);
+    });
+    document.querySelectorAll('#logicBlockList [data-logic-reason]').forEach(node => {
+        const st = states[node.dataset.logicReason];
+        node.textContent = st && get(st, 'reason') ? get(st, 'reason') : '';
+    });
+    const selected = state.logicSelectedId ? states[state.logicSelectedId] || null : null;
+    const liveBadge = el('logicLiveBadge');
+    if (liveBadge) liveBadge.innerHTML = selected ? logicStateChip(selected) : '';
+    const hint = el('logicStateHint');
+    if (hint) {
+        if (selected) {
+            const reason = get(selected, 'reason');
+            hint.textContent = 'Live: ' + get(selected, 'state') + (reason ? ' — ' + reason : '');
+        } else {
+            hint.textContent = 'Live state appears here for a saved block.';
+        }
+    }
+    const conditionStates = {};
+    const stepStates = {};
+    const conditionOps = {};
+    // Every condition of the simple form and every element of a network, nested inputs included.
+    const collectConditions = list => (list || []).forEach(c => { conditionOps[String(get(c, 'id') || '')] = String(get(c, 'op') || 'on'); });
+    const collectElements = list => (list || []).forEach(element => {
+        const id = String(get(element, 'id') || '');
+        const kind = String(get(element, 'kind') || 'contact');
+        conditionOps[id] = kind === 'contact' ? String(get(element, 'op') || 'on') : kind;
+        collectElements(get(element, 'inputs'));
+    });
+    (state.logic || []).forEach(block => {
+        collectConditions(get(block, 'conditions'));
+        collectElements(get(block, 'elements'));
+        (get(block, 'steps') || []).forEach(step => {
+            collectConditions(get(step, 'conditions'));
+            collectElements(get(step, 'elements'));
+        });
+    });
+    Object.keys(states).forEach(blockId => {
+        (get(states[blockId], 'elements') || []).forEach(c => { conditionStates[String(get(c, 'id') || '')] = c; });
+        (get(states[blockId], 'steps') || []).forEach(s => { stepStates[String(get(s, 'id') || '')] = s; });
+    });
+    document.querySelectorAll('[data-logic-condition-live]').forEach(node => {
+        const c = conditionStates[node.dataset.logicConditionLive];
+        if (!c) { node.textContent = '—'; node.className = 'logic-live'; node.title = ''; return; }
+        const s = String(get(c, 'state') || 'unknown');
+        const value = get(c, 'valueText');
+        // A bit reads as 1 or 0; a numeric condition keeps its value (a level above 50 % is not a bit).
+        const op = conditionOps[node.dataset.logicConditionLive] || 'on';
+        const isBoolean = op === 'on' || op === 'off';
+        node.textContent = isBoolean
+            ? (s === 'true' ? '1' : s === 'false' ? '0' : 'no data')
+            : (value ? value : 'no data');
+        node.className = 'logic-live ' + (s === 'true' ? 'true' : s === 'false' ? 'false' : 'unknown');
+        node.title = isBoolean
+            ? (value ? 'Live value: ' + value : '')
+            : 'Condition: ' + s + (value ? ' · live value: ' + value : '');
+    });
+    document.querySelectorAll('#logicSteps .logic-step').forEach(stepEl => {
+        const s = stepStates[stepEl.dataset.stepId];
+        stepEl.classList.toggle('current', !!s && String(get(s, 'state') || '') === 'current');
+    });
+    document.querySelectorAll('[data-logic-step-live]').forEach(node => {
+        const s = stepStates[node.dataset.logicStepLive];
+        const v = s ? String(get(s, 'state') || '') : '';
+        node.textContent = v || '—';
+        node.className = 'logic-live ' + (v === 'done' ? 'true' : v === 'current' ? 'false' : 'unknown');
+    });
+    document.querySelectorAll('[data-logic-step-reason]').forEach(node => {
+        const s = stepStates[node.dataset.logicStepReason];
+        node.textContent = s && get(s, 'reason') ? get(s, 'reason') : '';
+    });
+}
+function renumberLogicSteps() {
+    const steps = document.querySelectorAll('#logicSteps .logic-step');
+    steps.forEach((stepEl, index) => {
+        const label = stepEl.querySelector('.logic-step-head .msg');
+        if (label) label.textContent = 'STEP ' + (index + 1);
+        const up = stepEl.querySelector('[data-action="logic-step-up"]');
+        const down = stepEl.querySelector('[data-action="logic-step-down"]');
+        if (up) up.disabled = index === 0;
+        if (down) down.disabled = index === steps.length - 1;
+    });
+}
+function onLogicBlockListClick(event) {
+    const button = event.target.closest('button[data-action="logic-select"]');
+    if (!button) return;
+    selectLogicBlock(button.dataset.blockId || '');
+}
+function onLogicEditorClick(event) {
+    const button = event.target.closest('button[data-action]');
+    if (!button) return;
+    const action = button.dataset.action;
+    if (action === 'logic-element-indent' || action === 'logic-element-outdent') {
+        const row = button.closest('.logic-element-row');
+        if (!row) return;
+        const indent = Number(row.dataset.indent || 0);
+        const next = action === 'logic-element-indent' ? Math.min(indent + 1, 8) : Math.max(indent - 1, 0);
+        row.dataset.indent = String(next);
+        row.style.paddingLeft = (8 + next * 18) + 'px';
+        return;
+    }
+    if (action === 'logic-element-remove') {
+        const row = button.closest('.logic-element-row');
+        if (row) row.remove();
+        return;
+    }
+    if (action === 'logic-remove-condition') {
+        const row = button.closest('.logic-cond-row');
+        if (row) row.remove();
+    } else if (action === 'logic-remove-action') {
+        const row = button.closest('.logic-action-row');
+        if (row) row.remove();
+    } else if (action === 'logic-add-step-condition') {
+        const stepEl = button.closest('.logic-step');
+        const container = stepEl ? stepEl.querySelector('.logic-step-conditions') : null;
+        if (!container) return;
+        const empty = container.querySelector('.msg');
+        if (empty) empty.remove();
+        container.insertAdjacentHTML('beforeend', logicConditionRow({ id: logicNewId(), op: 'on', severity: 'block' }, stepEl.dataset.stepId));
+    } else if (action === 'logic-step-remove') {
+        const stepEl = button.closest('.logic-step');
+        if (stepEl) { stepEl.remove(); renumberLogicSteps(); }
+    } else if (action === 'logic-step-up' || action === 'logic-step-down') {
+        const stepEl = button.closest('.logic-step');
+        if (!stepEl) return;
+        const sibling = action === 'logic-step-up' ? stepEl.previousElementSibling : stepEl.nextElementSibling;
+        if (sibling) {
+            if (action === 'logic-step-up') stepEl.parentNode.insertBefore(stepEl, sibling);
+            else stepEl.parentNode.insertBefore(sibling, stepEl);
+            renumberLogicSteps();
+        }
+    }
+}
+function onLogicEditorChange(event) {
+    const field = event.target.closest('[data-field]');
+    if (!field) return;
+    const elementRow = field.closest('.logic-element-row');
+    if (elementRow) {
+        if (field.dataset.field === 'kind') {
+            // A new kind brings its own fields; what carried over (the label) is kept.
+            logicElementLiveRow(elementRow);
+        } else if (field.dataset.field === 'source') {
+            const itemSelect = elementRow.querySelector('[data-field="item"]');
+            if (itemSelect) itemSelect.innerHTML = logicTagOptions(field.value, '', false);
+        } else if (field.dataset.field === 'op') {
+            const valueInput = elementRow.querySelector('[data-field="value"]');
+            if (valueInput) valueInput.style.display = logicOpNeedsValue(field.value) ? '' : 'none';
+        }
+        return;
+    }
+    const row = field.closest('.logic-cond-row');
+    if (row) {
+        if (field.dataset.field === 'op') {
+            const valueInput = row.querySelector('[data-field="value"]');
+            if (valueInput) valueInput.style.display = logicOpNeedsValue(field.value) ? '' : 'none';
+        } else if (field.dataset.field === 'source') {
+            const itemSelect = row.querySelector('[data-field="item"]');
+            if (itemSelect) itemSelect.innerHTML = logicTagOptions(field.value, '', false);
+        }
+        return;
+    }
+    const stepEl = field.closest('.logic-step');
+    if (stepEl && field.dataset.field === 'completionSource') {
+        const itemSelect = stepEl.querySelector('[data-field="completionItem"]');
+        if (itemSelect) itemSelect.innerHTML = logicTagOptions(field.value, '', false);
+    }
+}
+async function saveLogicBlock() {
+    const block = collectLogicDraft();
+    el('logicEditorMsg').textContent = 'Saving…';
+    const r = await fetch('/api/logic/blocks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ block })
+    });
+    const p = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
+    state.logicDraft = logicDeepCopy(p.block || block);
+    state.logicSelectedId = String(get(p.block || block, 'id') || '');
+    el('logicEditorMsg').textContent = '✓ Saved.';
+    await loadLogic();
+    renderLogicEditor();
+    await loadLogicState();
+    renderLogicLive();
+}
+async function deleteLogicBlock() {
+    const id = state.logicSelectedId || String(get(state.logicDraft || {}, 'id') || '');
+    if (!id) { el('logicEditorMsg').textContent = 'Nothing saved to delete.'; return; }
+    const r = await fetch('/api/logic/blocks/' + encodeURIComponent(id), { method: 'DELETE' });
+    const p = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(p.error || ('HTTP ' + r.status));
+    state.logicSelectedId = '';
+    state.logicDraft = null;
+    await loadLogic();
+    renderLogicView();
+    el('logicEditorMsg').textContent = '✓ Block deleted.';
+}
 function renderMappingRow(mapping) {
     const sourceId = mapping.sourceId || mapping.SourceId || 'default';
     const item = mapping.itemId || mapping.ItemId || mapping.daItemId || mapping.DaItemId;
@@ -4527,7 +5276,7 @@ function updateManualValueHint() {
 // into the sign-in card instead of a wall of failed fetches.
 const ROLE_RANK = { Viewer: 0, Operator: 1, Engineer: 2, Admin: 3 };
 // Sections only Engineer and up may use (configuration editing surfaces).
-const ENGINEER_TABS = ['connection', 'opc-da', 'opc-da-groups', 'opc-ua', 'ua-subs', 'drivers', 'tags', 'interlinks', 'mqtt', 'influx'];
+const ENGINEER_TABS = ['connection', 'opc-da', 'opc-da-groups', 'opc-ua', 'ua-subs', 'drivers', 'tags', 'interlinks', 'logic', 'mqtt', 'influx'];
 const DEFAULT_ROLES = ['Admin', 'Engineer', 'Operator', 'Viewer'];
 let authSession = { authenticated: false, authEnabled: false, username: '', displayName: '', role: 'Viewer' };
 let authRoles = DEFAULT_ROLES.slice();
@@ -4966,6 +5715,7 @@ const ROUTE_TO_TAB = {
   'tags/maps/drivers': 'tags',
   'tags/interlinks': 'interlinks',
   'tags/links': 'interlinks', // bookmark alias
+  'tags/logic': 'logic',
   'iot/mqtt': 'mqtt',
   'iot/traffic': 'iot-traffic',
   'historian/influx': 'influx',
@@ -5077,6 +5827,15 @@ async function showTab(name, route) {
   if (activeTab === 'interlinks') {
     await Promise.all([loadSources().catch(() => {}), loadMappings().catch(() => {}), loadInterlinks().catch(() => {})]);
     renderInterlinksView();
+  }
+  if (activeTab === 'logic') {
+    await Promise.all([loadSources().catch(() => {}), loadMappings().catch(() => {}), loadLogic().catch(() => {})]);
+    // A fresh visit starts from the stored blocks; unsaved edits are dropped.
+    state.logicDraft = null;
+    state.logicSelectedId = '';
+    renderLogicView();
+    await loadLogicState().catch(() => {});
+    renderLogicLive();
   }
   if (activeTab === 'diagram') {
     state.diagramLoaded = true;
@@ -6956,6 +7715,9 @@ async function refresh() {
         (p.linkStats || []).forEach(s => { state.linkStatsById[String(get(s, 'id') || '')] = s; });
         if (document.getElementById('view-values')?.classList.contains('active')) { renderInterlinkFlow(); updateFlowBadge(); }
         if (document.getElementById('view-interlinks')?.classList.contains('active')) renderInterlinksView();
+        if (document.getElementById('view-logic')?.classList.contains('active')) {
+            loadLogicState().then(renderLogicLive).catch(() => {});
+        }
         updateFaceplateLiveValues();
         if (state.diagramLoaded && document.querySelector('.tabbtn.active')?.dataset.tab === 'diagram') {
             renderDiagram();
@@ -7316,6 +8078,18 @@ async function loadInterlinks() {
     state.interlinks = p.links || [];
     if (document.getElementById('view-interlinks')?.classList.contains('active')) renderInterlinksView();
     if (document.getElementById('view-values')?.classList.contains('active')) { renderInterlinkFlow(); updateFlowBadge(); }
+}
+
+async function loadLogic() {
+    const p = await (await fetch('/api/logic', { cache: 'no-store' })).json();
+    state.logic = p.blocks || [];
+    if (document.getElementById('view-logic')?.classList.contains('active')) renderLogicView();
+}
+
+async function loadLogicState() {
+    const p = await (await fetch('/api/logic/state', { cache: 'no-store' })).json();
+    state.logicStateById = {};
+    (p.blocks || []).forEach(block => { state.logicStateById[String(get(block, 'id') || '')] = block; });
 }
 
 async function loadMappings() {
@@ -10704,6 +11478,68 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!btn) return;
         deleteInterlink(btn.dataset.linkId || '').catch(e => el('linksMessage').textContent = '✗ ' + e.message);
     });
+    el('btnLogicAdd').addEventListener('click', () => addLogicBlock());
+    el('btnLogicSave').addEventListener('click', () => saveLogicBlock().catch(e => el('logicEditorMsg').textContent = '✗ ' + e.message));
+    el('btnLogicDelete').addEventListener('click', () => deleteLogicBlock().catch(e => el('logicEditorMsg').textContent = '✗ ' + e.message));
+    el('btnLogicAddElement').addEventListener('click', () => {
+        const container = el('logicElements');
+        const empty = container.querySelector('.msg');
+        if (empty) empty.remove();
+        // A new row sits at the root; indent it under another row to make it an input.
+        container.insertAdjacentHTML('beforeend', logicElementRow({ id: logicNewId(), kind: 'contact', op: 'on', severity: 'block', inputs: [] }, 0));
+    });
+    el('btnLogicToNetwork').addEventListener('click', () => {
+        const draft = state.logicDraft || newLogicDraft();
+        const elements = logicExpandConditions(collectCurrentConditions());
+        if (!elements.length) {
+            el('logicEditorMsg').textContent = 'Nothing to convert — add a condition first.';
+            return;
+        }
+
+        draft.elements = elements;
+        state.logicDraft = draft;
+        renderLogicEditor();
+        el('logicEditorMsg').textContent = '✓ Conditions rewritten as a network — Save Block to keep it.';
+    });
+    el('btnLogicToConditions').addEventListener('click', () => {
+        const draft = state.logicDraft || newLogicDraft();
+        if (!confirm('Drop the network and go back to the flat condition list? Anything not saved is lost.')) {
+            return;
+        }
+
+        draft.elements = [];
+        if (!(draft.conditions || []).length) {
+            draft.conditions = [{ id: logicNewId(), text: '', sourceId: '', itemId: '', op: 'on', value: null, group: '', holdMs: 0, nextStepText: null, severity: 'block' }];
+        }
+
+        state.logicDraft = draft;
+        renderLogicEditor();
+        el('logicEditorMsg').textContent = '✓ Network dropped — Save Block to keep the flat list.';
+    });
+    el('btnLogicAddCondition').addEventListener('click', () => {
+        const container = el('logicConditions');
+        const empty = container.querySelector('.msg');
+        if (empty) empty.remove();
+        container.insertAdjacentHTML('beforeend', logicConditionRow({ id: logicNewId(), op: 'on', severity: 'block' }, null));
+    });
+    el('btnLogicAddStep').addEventListener('click', () => {
+        const container = el('logicSteps');
+        const empty = container.querySelector('.msg');
+        if (empty) empty.remove();
+        const count = container.querySelectorAll('.logic-step').length;
+        container.insertAdjacentHTML('beforeend', logicStepCard({ id: logicNewId(), name: 'Step ' + (count + 1), conditions: [{ id: logicNewId(), op: 'on', severity: 'block' }] }, count, count + 1));
+        renumberLogicSteps();
+    });
+    el('btnLogicAddAction').addEventListener('click', () => {
+        const container = el('logicActions');
+        const empty = container.querySelector('.msg');
+        if (empty) empty.remove();
+        container.insertAdjacentHTML('beforeend', logicActionRow({ label: '', sourceId: '', itemId: '', value: '', confirm: true }));
+    });
+    el('lgKind').addEventListener('change', () => renderLogicKindUi());
+    el('logicBlockList').addEventListener('click', onLogicBlockListClick);
+    el('logicEditor').addEventListener('click', onLogicEditorClick);
+    el('logicEditor').addEventListener('change', onLogicEditorChange);
     bindDynamicButtons();
     const LEGACY_TAB_TO_ROUTE = {
       monitor: 'ops/monitor',
@@ -10714,6 +11550,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       sessions: 'ops/sessions',
       tags: 'tags/maps',
       links: 'tags/interlinks',
+      logic: 'tags/logic',
       logs: 'ops/logs',
       mqtt: 'iot/mqtt',
       'iot-traffic': 'iot/traffic',

@@ -35,6 +35,9 @@ public static class AuthPolicy
         "/api/hmi/trends",
         "/api/hmi/displays",
         "/api/hmi/write",
+        // The logic viewer: the phone reads definitions, evaluated state and notes, and posts
+        // operator notes without credentials — the same trust model as the HMI write path.
+        "/api/logic",
         // The runtime polls the live InfluxDB writer state to gate its trend actions.
         "/api/influx/status"
     };
@@ -49,6 +52,7 @@ public static class AuthPolicy
         // starting/killing worker processes is Admin work.
         ("/api/workers", "POST", UserRole.Admin),
         ("/api/hmi/write", "POST", UserRole.Operator),
+        ("/api/logic/notes", "POST", UserRole.Operator),
         ("/api/hmi/displays", "PUT", UserRole.Engineer),
         ("/api/hmi/displays", "DELETE", UserRole.Engineer)
     };
