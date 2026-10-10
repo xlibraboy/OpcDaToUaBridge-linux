@@ -79,13 +79,7 @@ public sealed class BridgeClientTests
     {
         int bridgePort = ReservePort();
         int otherPort = ReservePort();
-        using FakeBridgeListener bridge = new(bridgePort, context =>
-        {
-            byte[] body = Encoding.UTF8.GetBytes("{\"authenticated\":false,\"authEnabled\":true}");
-            context.Response.StatusCode = 200;
-            context.Response.ContentType = "application/json";
-            return WriteAsync(context, body);
-        });
+        using FakeBridgeListener bridge = new(bridgePort, IdentityHandler());
         using FakeBridgeListener other = new(otherPort, context =>
         {
             context.Response.StatusCode = 404;
@@ -96,6 +90,22 @@ public sealed class BridgeClientTests
         string? found = await BridgeLocator.DiscoverAsync(probe, NullLogger.Instance, new[] { otherPort, bridgePort }, CancellationToken.None);
 
         Assert.Equal($"http://127.0.0.1:{bridgePort}", found);
+    }
+
+    [Fact]
+    public async Task Discover_PicksTheLowestAnsweringPortWhenSeveralBridgesReply()
+    {
+        int lower = ReservePort();
+        int higher = ReservePort();
+        using FakeBridgeListener first = new(lower, IdentityHandler());
+        using FakeBridgeListener second = new(higher, IdentityHandler());
+
+        using HttpClient probe = new() { Timeout = Timeout.InfiniteTimeSpan };
+        // Handed out of order on purpose: the sweep is parallel, so "first responder" would
+        // otherwise be whichever probe finished fastest, not the lowest bridge.
+        string? found = await BridgeLocator.DiscoverAsync(probe, NullLogger.Instance, new[] { higher, lower }, CancellationToken.None);
+
+        Assert.Equal($"http://127.0.0.1:{lower}", found);
     }
 
     [Fact]
@@ -121,6 +131,14 @@ public sealed class BridgeClientTests
             .Build();
         return new BridgeClient(configuration, NullLogger<BridgeClient>.Instance);
     }
+
+    private static Func<HttpListenerContext, Task> IdentityHandler() => context =>
+    {
+        byte[] body = Encoding.UTF8.GetBytes("{\"authenticated\":false,\"authEnabled\":true}");
+        context.Response.StatusCode = 200;
+        context.Response.ContentType = "application/json";
+        return WriteAsync(context, body);
+    };
 
     private static async Task WriteAsync(HttpListenerContext context, byte[] body)
     {
