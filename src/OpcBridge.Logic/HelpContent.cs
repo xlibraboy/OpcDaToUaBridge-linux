@@ -117,5 +117,26 @@ open, without rebuilding the inputs, so typing is never disturbed.
 
 While the bridge is unreachable the app keeps the last known blocks and chips on screen, flags the
 connection in the header, and disables editing until the bridge is back.
+
+---
+
+# Result tab
+
+The **Result** tab next to the editor shows what the bridge currently evaluates from the saved
+configuration — the same result the phone presents, refreshed once a second while the tab is open.
+It writes nothing: actions stay on the phone.
+
+- The list on the left collects every block under its **interlock group** heading, with the live
+  state badge (`ready` / `blocked` / `unknown` / `disabled`), the first failing reason and a
+  sequence's progress (`2/3 steps · Open valve`).
+- Selecting a block shows its evaluated network on the right: the **mark** (`✓` / `✗` / `—`), the
+  contact kind (`NO` / `NC` / `>` / `<` / `=` / `AND` / `OR` / `TON` …), the sentence and its
+  reading — `should 1 · actual 0` — plus a **hold** timer's or counter's progress
+  (`holding 1.5 s of 3 s`, `count 2 of 5`) and the next-step text while a contact is unsatisfied.
+- **Sequences** list their steps with their state — `Done` / `Current` / `Pending` / `No data` —
+  the step's reason, and the step's own elements.
+
+While the bridge is unreachable the last known result stays readable from the browser cache; the
+editor is disabled until the bridge is back.
 """;
 }

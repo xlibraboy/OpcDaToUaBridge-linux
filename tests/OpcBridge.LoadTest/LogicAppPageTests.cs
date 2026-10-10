@@ -25,6 +25,8 @@ public sealed class LogicAppPageTests
             "logicElements", "btnLogicAddElement", "btnLogicToConditions",
             "logicBlocksDialog", "logicBlockList", "logicCount", "btnLogicAdd", "btnLogicBlocksClose",
             "guideDialog", "guideToc", "guidePane", "notesBody", "btnGuide", "btnGuideTab", "btnNotesTab",
+            "viewTabs", "tabLogicEditor", "tabLogicResult", "view-result",
+            "logicResultSummary", "logicResultList", "logicResultDetail",
             "bridgeDot", "bridgeAddress", "bridgeStateBadge", "appVersion",
         })
         {
@@ -132,6 +134,47 @@ public sealed class LogicAppPageTests
     }
 
     [Fact]
+    public void Script_ResultViewPresentsTheEvaluatedState()
+    {
+        // The tab strip: both views stay in the DOM, the hash deep-links them, and the
+        // result renders from what the bridge evaluated — read-only.
+        Assert.Contains("role=\"tablist\"", LogicAppPage.Html, StringComparison.Ordinal);
+        Assert.Contains("aria-controls=\"view-logic\"", LogicAppPage.Html, StringComparison.Ordinal);
+        Assert.Contains("aria-controls=\"view-result\"", LogicAppPage.Html, StringComparison.Ordinal);
+        Assert.Contains("aria-selected=\"true\"", LogicAppPage.Html, StringComparison.Ordinal);
+        foreach (string name in new[]
+        {
+            "showView", "onViewTabKey", "renderLogicResult", "logicResultBlockRow",
+            "logicResultElementRow", "logicResultStepCards",
+        })
+        {
+            Assert.Contains($"function {name}(", LogicAppPage.Script, StringComparison.Ordinal);
+        }
+
+        // The phone's presentation, sentence for sentence: the requirement against the live
+        // reading, the timer and counter progress, the step words, the empty-state wording.
+        Assert.Contains("return should ? 'should ' + should + ' · actual ' + logicResultActual(st, def) : '';", LogicAppPage.Script, StringComparison.Ordinal);
+        Assert.Contains("? 'holding' :", LogicAppPage.Script, StringComparison.Ordinal);
+        Assert.Contains("' done · '", LogicAppPage.Script, StringComparison.Ordinal);
+        Assert.Contains("' of '", LogicAppPage.Script, StringComparison.Ordinal);
+        Assert.Contains("'count '", LogicAppPage.Script, StringComparison.Ordinal);
+        Assert.Contains("word === 'done' ? 'Done' : word === 'current' ? 'Current'", LogicAppPage.Script, StringComparison.Ordinal);
+        Assert.Contains("'all conditions met'", LogicAppPage.Script, StringComparison.Ordinal);
+        Assert.Contains("'no logic blocks configured'", LogicAppPage.Script, StringComparison.Ordinal);
+        Assert.Contains("No evaluation yet — waiting for the bridge.", LogicAppPage.Script, StringComparison.Ordinal);
+        Assert.Contains("data-result-block-id", LogicAppPage.Script, StringComparison.Ordinal);
+
+        // The hash carries the view, and switching never touches an editor input — the
+        // result pane is rebuilt, the draft is not.
+        Assert.Contains("'#/' + state.activeView", LogicAppPage.Script, StringComparison.Ordinal);
+        Assert.Contains("location.hash", LogicAppPage.Script, StringComparison.Ordinal);
+        Assert.DoesNotContain(".value =", FunctionBody(LogicAppPage.Script, "function renderLogicResult("), StringComparison.Ordinal);
+
+        // Read-only: the Result view must not grow a write path.
+        Assert.DoesNotContain("/api/hmi/write", LogicAppPage.Script, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Script_KeepsTheLastKnownBlocksWhenTheBridgeIsUnreachable()
     {
         // Definitions, state and tags cache in the browser; an unreachable bridge shows the
@@ -143,6 +186,10 @@ public sealed class LogicAppPageTests
         Assert.Contains("function setBridgeOnline(", LogicAppPage.Script, StringComparison.Ordinal);
         Assert.Contains("save.disabled = !ok;", LogicAppPage.Script, StringComparison.Ordinal);
         Assert.Contains("if (state.logicOffline) throw new Error('The bridge is unreachable — editing is disabled.');", LogicAppPage.Script, StringComparison.Ordinal);
+        // The proxy answers the bridge's absence as 503 JSON; a resolved response is not
+        // success — without the ok-check the empty list would overwrite the cache and the
+        // header would read "connected".
+        Assert.Contains("if (!r.ok) throw new Error('HTTP ' + r.status);", LogicAppPage.Script, StringComparison.Ordinal);
         Assert.Contains("unreachable", LogicAppPage.Script, StringComparison.Ordinal);
         Assert.Contains("/api/bridge/status", LogicAppPage.Script, StringComparison.Ordinal);
     }

@@ -41,7 +41,7 @@ public sealed class LogicAppHelpTests
         foreach (string expected in new[]
         {
             "Block kinds", "Conditions (the simple form)", "Network (IEC 61131-3)",
-            "Interlock group", "Tags", "Actions", "Live state",
+            "Interlock group", "Tags", "Actions", "Live state", "Result tab",
         })
         {
             Assert.Contains(expected, titles);

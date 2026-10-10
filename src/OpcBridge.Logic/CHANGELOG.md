@@ -14,6 +14,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+**The Logic app gained a Result tab.** Next to the editor, a read-only **Result** tab shows what
+the bridge evaluates from the saved configuration: every block grouped with its live state, the
+first failing reason and a sequence's step progress on the left, and the selected block's network
+on the right as the phone presents it — `should 1 · actual 0` per contact, timer and counter
+progress (`holding 1.5 s of 3 s`, `count 2 of 5`), each sequence step's state and reason. The
+list and the detail refresh once a second while the tab is open, and the last known result stays
+readable from the browser cache when the bridge is unreachable.
+
+### Fixed
+
+**An unreachable bridge no longer reads as connected with an empty list.** The app proxies the
+bridge's absence as a `503`, and the loaders now treat any non-OK response as a failure: the last
+known definitions, state and tags stay on screen — and in the cache — instead of being replaced by
+an empty list, and the header marks the bridge unreachable.
+
 ## [1.0.0] - 2026-10-10
 
 ### Added

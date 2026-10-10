@@ -1,10 +1,14 @@
 namespace OpcBridge.Logic;
 
 /// <summary>
-/// The app's single page: the Logic editor and its live state, served at "/" as one document.
-/// The HTML and script below are a test-asserted DOM/JS contract — tests/OpcBridge.LoadTest/
-/// LogicAppPageTests.cs fails when an id or function the contract names is renamed:
+/// The app's page: the Logic editor, the Result view and their live state, served at "/"
+/// as one document. The HTML and script below are a test-asserted DOM/JS contract —
+/// tests/OpcBridge.LoadTest/LogicAppPageTests.cs fails when an id or function the contract
+/// names is renamed:
 ///
+///   Tabs: "viewTabs" (role="tablist") with "tabLogicEditor" (view id="view-logic") and
+///   "tabLogicResult" (view id="view-result": "logicResultSummary", "logicResultList",
+///   "logicResultDetail").
 ///   Editor: id="view-logic", "logicEditor", "logicEditorTitle", "logicLiveBadge",
 ///   "logicMessage", "logicEditorMsg", "logicStateHint", "btnLogicSave",
 ///   "lgName"/"lgKind"/"lgEnabled"/"lgDescription"/"lgGroup"/"lgTags",
@@ -19,9 +23,10 @@ namespace OpcBridge.Logic;
 ///   Guide dialog: "guideDialog", "guideToc", "guidePane", "notesBody", "btnGuide",
 ///   "btnGuideTab"/"btnNotesTab".
 ///   Functions: loadTags(/loadLogic(/loadLogicState(/renderLogicView(/renderLogicLive(/
-///   collectLogicDraft(/saveLogicBlock(/deleteLogicBlock(/logicConditionRow(/logicStepCard(/
-///   logicActionRow(/logicElementRow(/logicElementTreeFromDom(/logicExpandConditions(/
-///   logicRenderNetwork(.
+///   renderLogicResult(/showView(/onViewTabKey(/collectLogicDraft(/saveLogicBlock(/
+///   deleteLogicBlock(/logicConditionRow(/logicStepCard(/logicActionRow(/logicElementRow(/
+///   logicElementTreeFromDom(/logicExpandConditions(/logicRenderNetwork(/logicResultBlockRow(/
+///   logicResultElementRow(/logicResultStepCards(.
 ///   Endpoints: /api/logic, /api/logic/blocks, /api/logic/state, /api/hmi/tags, /api/help,
 ///   /api/changelog, /api/bridge/status.
 /// </summary>
@@ -88,6 +93,7 @@ internal static class LogicAppPage
         }
         @media (pointer: coarse) {
             .btn { min-height: 44px; min-width: 44px; padding: 0 14px; }
+            .view-tab { min-height: 44px; padding: 0 14px; }
             input[type=checkbox] { min-width: 24px; min-height: 24px; }
             select, input[type=text], input[type=number] { min-height: 44px; }
             .modal-close { min-width: 44px; min-height: 44px; }
@@ -275,6 +281,52 @@ internal static class LogicAppPage
         .logic-element-row .logic-element-label { flex: 1 1 200px; min-width: 150px; }
         /* The block list groups blocks by their interlock group — the same heading the phone shows. */
         .logic-group-head { margin: 8px 0 4px; font-size: var(--fs-micro); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+        /* ---- Editor / Result tabs ------------------------------------------------------
+           The strip switches the two views. The Result view presents the evaluated
+           configuration the phone shows: the block list left, the selected block's network
+           and steps right, read-only, refreshed by the same 1 s state poll. */
+        .view-tabs { display: flex; align-items: stretch; padding: 0 14px; background: var(--panel); border-bottom: 1px solid var(--border2); }
+        .view-tab { background: none; border: none; border-bottom: 2px solid transparent; padding: 9px 12px; font-family: var(--font-mono); font-size: var(--fs-micro); font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); cursor: pointer; }
+        .view-tab + .view-tab { margin-left: 2px; }
+        .view-tab:hover { color: var(--text); background: var(--panel2); }
+        .view-tab.active { color: var(--text); border-bottom-color: var(--text); font-weight: 700; }
+        .view-tab:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+        .result-grid { display: grid; grid-template-columns: minmax(240px, 340px) minmax(0, 1fr); gap: 14px; align-items: start; }
+        .result-list { display: flex; flex-direction: column; }
+        .result-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+        .result-title { font-size: var(--fs-title); font-weight: 700; letter-spacing: -.01em; }
+        .result-reason { margin-bottom: 10px; }
+        .result-reason.bad { color: var(--bad); }
+        .result-reason.good { color: var(--muted); }
+        .result-el { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; padding: 6px 8px; border: 1px solid var(--border); background: var(--panel2); }
+        .result-el + .result-el { margin-top: 6px; }
+        .result-mark { font-family: var(--font-mono); font-weight: 700; width: 13px; text-align: center; }
+        .result-mark.true { color: var(--good); }
+        .result-mark.false { color: var(--bad); }
+        .result-mark.unknown { color: var(--muted); }
+        .result-kind { font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--muted); min-width: 46px; text-transform: uppercase; }
+        .result-text { flex: 1 1 200px; min-width: 150px; }
+        .result-warn { font-size: var(--fs-micro); color: var(--warn); }
+        .result-actual { font-family: var(--font-mono); font-size: var(--fs-value); font-weight: 700; line-height: 1.1; margin-left: auto; }
+        .result-actual.true { color: var(--good); }
+        .result-actual.false { color: var(--bad); }
+        .result-actual.unknown { color: var(--muted); }
+        .result-value { color: var(--muted); font-size: var(--fs-micro); font-family: var(--font-mono); }
+        .result-should, .result-progress, .result-tag, .result-next { flex: 1 0 100%; font-size: var(--fs-micro); }
+        .result-should { font-family: var(--font-mono); }
+        .result-should.true { color: var(--good); }
+        .result-should.false { color: var(--bad); }
+        .result-should.unknown { color: var(--muted); }
+        .result-progress { color: var(--warn); font-family: var(--font-mono); }
+        .result-next { color: var(--warn); }
+        .result-tag { color: var(--muted); }
+        .result-step-name { flex: 1; min-width: 120px; font-weight: 700; }
+        .result-step-state { font-family: var(--font-mono); font-size: var(--fs-micro); font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+        .result-step-state.done { color: var(--good); }
+        .result-step-state.current { color: var(--warn); }
+        .result-step-state.pending { color: var(--muted); }
+        .result-step-state.unknown { color: var(--muted); }
+        @media (max-width: 900px) { .result-grid { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
@@ -293,9 +345,13 @@ internal static class LogicAppPage
             </span>
         </span>
     </header>
+    <nav class="view-tabs" id="viewTabs" role="tablist" aria-label="Logic views">
+        <button class="view-tab active" type="button" id="tabLogicEditor" role="tab" aria-selected="true" aria-controls="view-logic" tabindex="0" data-view="editor">Editor</button>
+        <button class="view-tab" type="button" id="tabLogicResult" role="tab" aria-selected="false" aria-controls="view-result" tabindex="-1" data-view="result">Result</button>
+    </nav>
     <main class="content">
         <div class="view active" id="view-logic">
-            <h1 class="view-title" tabindex="-1">Logic</h1>
+            <h1 class="view-title" tabindex="-1">Editor</h1>
             <div class="box">
                 <div class="box-h">Plant logic</div>
                 <div class="box-b">
@@ -336,6 +392,19 @@ internal static class LogicAppPage
                         </div>
                         <div class="hint" id="logicStateHint" style="margin-top:6px">Live state appears here for a saved block.</div>
                     </div>
+                </div>
+            </div>
+        </div>
+        <div class="view" id="view-result">
+            <h1 class="view-title" tabindex="-1">Result</h1>
+            <div class="result-grid">
+                <div class="box">
+                    <div class="box-h">Blocks <span class="hint" id="logicResultSummary" style="margin-left:auto"></span></div>
+                    <div class="box-b"><div class="result-list" id="logicResultList"><span class="msg">Loading…</span></div></div>
+                </div>
+                <div class="box">
+                    <div class="box-h">Evaluated block</div>
+                    <div class="box-b" id="logicResultDetail"><span class="msg">Loading…</span></div>
                 </div>
             </div>
         </div>
@@ -513,6 +582,9 @@ const state = {
     logicDraft: null,
     logicSelectedId: '',
     logicStateById: {},
+    // The Result view's own selection, kept apart from the editor draft.
+    logicResultId: '',
+    activeView: 'editor',
     logicOffline: null,
     bridgeBaseUrl: ''
 };
@@ -571,6 +643,43 @@ function openGuide() {
 function closeGuide() {
     const dialog = el('guideDialog');
     if (dialog && dialog.open) dialog.close();
+}
+// ---- Editor / Result views ---------------------------------------------------------------
+// The two panels stay in the DOM and switching only flips classes, so nothing is rebuilt
+// while someone is typing. The hash carries the view (#/editor, #/result) the way the bridge
+// dashboard carries its route, and a real move lands focus on the new view's heading.
+function showView(name, focus) {
+    const result = name === 'result';
+    state.activeView = result ? 'result' : 'editor';
+    el('view-logic').classList.toggle('active', !result);
+    el('view-result').classList.toggle('active', result);
+    document.querySelectorAll('.view-tab').forEach(tab => {
+        const on = (tab.dataset.view === 'result') === result;
+        tab.classList.toggle('active', on);
+        tab.setAttribute('aria-selected', String(on));
+        tab.tabIndex = on ? 0 : -1;
+    });
+    if (result) renderLogicResult();
+    try { history.replaceState(null, '', '#/' + state.activeView); } catch (e) { }
+    if (!focus) return;
+    document.querySelector('.content').scrollTop = 0;
+    const title = document.querySelector('#' + (result ? 'view-result' : 'view-logic') + ' .view-title');
+    if (title) title.focus({ preventScroll: true });
+}
+// A tab strip is one Tab stop: arrows walk it and switch as they land.
+function onViewTabKey(event) {
+    const tabs = Array.from(document.querySelectorAll('.view-tab'));
+    const index = tabs.indexOf(document.activeElement);
+    if (index < 0) return;
+    let next = null;
+    if (event.key === 'ArrowRight') next = tabs[(index + 1) % tabs.length];
+    else if (event.key === 'ArrowLeft') next = tabs[(index - 1 + tabs.length) % tabs.length];
+    else if (event.key === 'Home') next = tabs[0];
+    else if (event.key === 'End') next = tabs[tabs.length - 1];
+    if (!next) return;
+    event.preventDefault();
+    showView(next.dataset.view, false);
+    next.focus();
 }
 let guideLoaded = false;
 let notesLoaded = false;
@@ -1169,6 +1278,286 @@ function renderLogicLive() {
         node.textContent = s && get(s, 'reason') ? get(s, 'reason') : '';
     });
 }
+// ---- Result view: the evaluated configuration ---------------------------------------------
+// The read-only counterpart of the editor: every block with its live state on the left, the
+// selected block's network and steps on the right — the same result the phone presents
+// (should 1 / actual 0, timer and counter progress, step states). It renders from
+// state.logic + state.logicStateById only; the editor's draft is never touched.
+function logicResultState(block) { return state.logicStateById[String(get(block, 'id') || '')] || null; }
+function logicResultKindLabel(st, def) {
+    const kind = String(get(st, 'kind') || 'contact');
+    if (kind === 'contact') {
+        const op = String(get(def || {}, 'op') || '');
+        if (op) return op === 'on' ? 'NO' : op === 'off' ? 'NC' : op === 'gt' ? '>' : op === 'lt' ? '<' : '=';
+        const should = String(get(st, 'should') || '');
+        return should === '0' ? 'NC' : should === '1' ? 'NO' : should ? should.charAt(0) : 'NO';
+    }
+    const labels = { and: 'AND', or: 'OR', xor: 'XOR', not: 'NOT', ton: 'TON IN', tof: 'TOF IN', tp: 'TP IN', ctu: 'CTU CU', ctd: 'CTD CD', sr: 'SR S1', rs: 'RS S', r_trig: 'R_TRIG IN', f_trig: 'F_TRIG IN' };
+    return labels[kind] || kind;
+}
+function logicResultSeconds(ms) { return (Number(ms || 0) / 1000).toFixed(2).replace(/\.?0+$/, '') + ' s'; }
+function logicResultProgress(st, def) {
+    const kind = String(get(st, 'kind') || '');
+    if (kind === 'ton' || kind === 'tof' || kind === 'tp') {
+        const pt = Number(get(st, 'ptMs') || 0);
+        if (pt <= 0) return '';
+        const verb = kind === 'ton' ? 'holding' : kind === 'tof' ? 'off-delay' : 'pulse';
+        if (String(get(st, 'state') || '') === 'true') return verb + ' done · ' + logicResultSeconds(pt);
+        return verb + ' ' + logicResultSeconds(get(st, 'elapsedMs')) + ' of ' + logicResultSeconds(pt);
+    }
+    if (kind === 'ctu' || kind === 'ctd') {
+        // The count is the live CV; the preset lives on the definition.
+        return 'count ' + Number(get(st, 'count') || 0) + ' of ' + Number(get(def || {}, 'pv') || 0);
+    }
+    return '';
+}
+function logicResultActual(st, def) {
+    const kind = String(get(st, 'kind') || 'contact');
+    if (kind === 'contact') {
+        const op = String(get(def || {}, 'op') || (String(get(st, 'should') || '') === '0' ? 'off' : 'on'));
+        if (op === 'on' || op === 'off') {
+            const matches = get(st, 'matches');
+            if (matches === null || matches === undefined) return '?';
+            const bit = matches ? 1 : 0;
+            return String(op === 'on' ? bit : 1 - bit);
+        }
+        const value = String(get(st, 'valueText') || '');
+        return value && value !== '—' ? value : '?';
+    }
+    const word = String(get(st, 'state') || '');
+    return word === 'true' ? '1' : word === 'false' ? '0' : '—';
+}
+function logicResultShould(st, def) {
+    const should = String(get(st, 'should') || '');
+    return should ? 'should ' + should + ' · actual ' + logicResultActual(st, def) : '';
+}
+function logicResultTag(def) {
+    const sourceId = String(get(def || {}, 'sourceId') || '');
+    const itemId = String(get(def || {}, 'itemId') || '');
+    if (!itemId) return '';
+    const tag = (state.tags || []).find(candidate => String(get(candidate, 'sourceId') || '') === sourceId && String(get(candidate, 'itemId') || '') === itemId);
+    const display = tag ? String(get(tag, 'displayName') || itemId) : itemId;
+    const sourceName = tag ? String(get(tag, 'sourceName') || sourceId) : sourceId;
+    return sourceName ? display + ' · ' + sourceName : display;
+}
+function logicResultDefinitionIndex(block) {
+    // The snapshot carries the live values, the definition the sentences, severities and
+    // presets; conditions and elements share one id space (a contact keeps its condition's id).
+    const index = {};
+    const addConditions = list => (list || []).forEach(condition => { index[String(get(condition, 'id') || '')] = condition; });
+    const addElements = list => (list || []).forEach(element => {
+        index[String(get(element, 'id') || '')] = element;
+        addElements(get(element, 'inputs'));
+    });
+    addConditions(get(block, 'conditions'));
+    addElements(get(block, 'elements'));
+    (get(block, 'steps') || []).forEach(step => {
+        addConditions(get(step, 'conditions'));
+        addElements(get(step, 'elements'));
+    });
+    return index;
+}
+function logicResultElementRow(st, def) {
+    const stateWord = String(get(st, 'state') || 'unknown');
+    const mark = stateWord === 'true' ? '✓' : stateWord === 'false' ? '✗' : '—';
+    const kindLabel = logicResultKindLabel(st, def);
+    const text = def ? String(get(def, 'text') || '') : '';
+    const severity = def ? String(get(def, 'severity') || 'block') : 'block';
+    const shouldLine = logicResultShould(st, def);
+    const shouldKey = shouldLine ? (get(st, 'matches') === true ? 'true' : get(st, 'matches') === false ? 'false' : 'unknown') : '';
+    const progress = logicResultProgress(st, def);
+    const next = def && get(def, 'nextStepText') && stateWord !== 'true' ? String(get(def, 'nextStepText')) : '';
+    const tag = String(get(st, 'kind') || 'contact') === 'contact' && def ? logicResultTag(def) : '';
+    const depth = Math.max(0, Number(get(st, 'depth') || 0));
+    const value = String(get(st, 'valueText') || '');
+    return `<div class="result-el" style="padding-left:${8 + depth * 18}px">
+        <span class="result-mark ${esc(stateWord)}">${mark}</span>
+        <span class="result-kind">${esc(kindLabel)}</span>
+        <span class="result-text">${esc(text)}${severity === 'warn' ? (text ? ' ' : '') + '<span class="result-warn">warn only</span>' : ''}</span>
+        <span class="result-actual ${esc(stateWord)}">${esc(logicResultActual(st, def))}</span>
+        <span class="result-value">${esc(value)}</span>
+        ${shouldLine ? `<span class="result-should ${shouldKey}">${esc(shouldLine)}</span>` : ''}
+        ${progress ? `<span class="result-progress">${esc(progress)}</span>` : ''}
+        ${tag ? `<span class="result-tag">${esc(tag)}</span>` : ''}
+        ${next ? `<span class="result-next">${esc(next)}</span>` : ''}
+    </div>`;
+}
+function logicResultElementRows(elements, index) {
+    return (elements || []).map(st => logicResultElementRow(st, index[String(get(st, 'id') || '')] || null)).join('');
+}
+function logicResultDefinitionIds(step) {
+    const ids = {};
+    const walk = list => (list || []).forEach(element => {
+        ids[String(get(element, 'id') || '')] = true;
+        walk(get(element, 'inputs'));
+    });
+    (get(step, 'conditions') || []).forEach(condition => { ids[String(get(condition, 'id') || '')] = true; });
+    walk(get(step, 'elements'));
+    return ids;
+}
+function logicResultStepAssignments(block, elements) {
+    // The snapshot pools the block's network with every step's network in step order, depth
+    // reset per network. Contacts and authored elements keep their ids; an id-less expansion
+    // wrapper (the AND / OR / TON the simple form expands into) belongs to the step of the
+    // next known id — a wrapper always precedes what it wraps.
+    const stepById = {};
+    (get(block, 'steps') || []).forEach((step, index) => {
+        Object.keys(logicResultDefinitionIds(step)).forEach(id => { stepById[id] = index; });
+    });
+    const assignments = (elements || []).map(() => -1);
+    let next = -1;
+    for (let i = assignments.length - 1; i >= 0; i--) {
+        const known = stepById[String(get(elements[i], 'id') || '')];
+        if (known !== undefined) next = known;
+        assignments[i] = next;
+    }
+    let previous = -1;
+    assignments.forEach((assigned, i) => {
+        if (assigned < 0) assignments[i] = previous; else previous = assigned;
+    });
+    return assignments;
+}
+function logicResultStepCards(block, st, index) {
+    const elements = get(st, 'elements') || [];
+    const assignments = logicResultStepAssignments(block, elements);
+    const stepStates = {};
+    (get(st, 'steps') || []).forEach(stepState => { stepStates[String(get(stepState, 'id') || '')] = stepState; });
+    const cards = (get(block, 'steps') || []).map((step, stepIndex) => {
+        const stepState = stepStates[String(get(step, 'id') || '')] || null;
+        const word = stepState ? String(get(stepState, 'state') || 'unknown') : 'unknown';
+        const label = word === 'done' ? 'Done' : word === 'current' ? 'Current' : word === 'pending' ? 'Pending' : 'No data';
+        const reason = stepState && get(stepState, 'reason') ? String(get(stepState, 'reason')) : '';
+        const rows = elements.filter((element, i) => assignments[i] === stepIndex)
+            .map(element => logicResultElementRow(element, index[String(get(element, 'id') || '')] || null)).join('');
+        return `<div class="logic-step${word === 'current' ? ' current' : ''}">
+            <div class="logic-step-head">
+                <span class="result-step-name">${esc(get(step, 'name') || ('Step ' + (stepIndex + 1)))}</span>
+                <span class="result-step-state ${esc(word)}">${label}</span>
+            </div>
+            ${reason ? `<div class="result-next">${esc(reason)}</div>` : ''}
+            ${rows || '<span class="msg">No evaluated elements.</span>'}
+        </div>`;
+    });
+    return cards.join('') || '<span class="msg">No steps.</span>';
+}
+function logicResultSequenceProgress(block, st) {
+    const steps = get(block, 'steps') || [];
+    if (!steps.length) return '';
+    const stepStates = {};
+    (get(st || {}, 'steps') || []).forEach(stepState => { stepStates[String(get(stepState, 'id') || '')] = String(get(stepState, 'state') || ''); });
+    let done = 0;
+    let current = '';
+    steps.forEach((step, stepIndex) => {
+        const word = stepStates[String(get(step, 'id') || '')] || '';
+        if (word === 'done') done++;
+        else if (!current && (word === 'current' || word === 'unknown')) current = String(get(step, 'name') || ('Step ' + (stepIndex + 1)));
+    });
+    if (done === steps.length) return 'complete';
+    return done + '/' + steps.length + ' steps' + (current ? ' · ' + current : '');
+}
+function logicResultBlockRow(block, active) {
+    const id = String(get(block, 'id') || '');
+    const st = logicResultState(block);
+    const word = st ? String(get(st, 'state') || 'unknown') : '';
+    const reason = st && get(st, 'reason') ? String(get(st, 'reason')) : '';
+    const reasonLine = st ? (word === 'ready' ? 'all conditions met' : reason) : 'reading…';
+    const progress = logicKindOf(block) === 'sequence' ? logicResultSequenceProgress(block, st) : '';
+    return `<div class="logic-block-item">
+        <button type="button" class="logic-block-row${active ? ' active' : ''}" data-result-block-id="${attr(id)}">
+            <span class="logic-row-name">${esc(get(block, 'name') || '(unnamed)')}</span>
+            <span class="pill" style="padding:1px 6px;font-size:var(--fs-micro)">${esc(logicKindLabel(get(block, 'kind')))}</span>
+            <span>${logicStateChip(st)}</span>
+            <span class="logic-row-reason">${esc(reasonLine)}</span>
+            ${progress ? `<span class="logic-row-reason">${esc(progress)}</span>` : ''}
+        </button>
+    </div>`;
+}
+function logicResultSummaryText() {
+    const blocks = state.logic || [];
+    if (!blocks.length) return 'no logic blocks configured';
+    let ready = 0, blocked = 0, noData = 0;
+    blocks.forEach(block => {
+        const st = logicResultState(block);
+        const word = st ? String(get(st, 'state') || '') : 'unknown';
+        if (word === 'ready') ready++;
+        else if (word === 'blocked') blocked++;
+        else if (word !== 'disabled') noData++;
+    });
+    return ready + ' ready · ' + blocked + ' blocked' + (noData ? ' · ' + noData + ' no data' : '');
+}
+function logicResultDetailHtml(block, st) {
+    if (!block) return '<span class="msg">No logic blocks — author one in the Editor.</span>';
+    const index = logicResultDefinitionIndex(block);
+    const kind = logicKindOf(block);
+    const word = st ? String(get(st, 'state') || 'unknown') : '';
+    const reason = st && get(st, 'reason') ? String(get(st, 'reason')) : '';
+    const reasonLine = word === 'ready' ? 'all conditions met'
+        : word === 'blocked' || word === 'unknown' ? (reason ? 'Blocked by: ' + reason : '')
+            : reason;
+    const parts = [`<div class="result-head">
+            <span class="result-title">${esc(get(block, 'name') || '(unnamed)')}</span>
+            <span class="pill" style="padding:1px 6px;font-size:var(--fs-micro)">${esc(logicKindLabel(get(block, 'kind')))}</span>
+            <span>${logicStateChip(st)}</span>
+        </div>`];
+    const description = String(get(block, 'description') || '');
+    if (description) parts.push(`<div class="hint" style="margin-bottom:8px">${esc(description)}</div>`);
+    if (!st) {
+        parts.push('<div class="hint">No evaluation yet — waiting for the bridge.</div>');
+        return parts.join('');
+    }
+    if (reasonLine) parts.push(`<div class="result-reason ${word === 'blocked' || word === 'unknown' ? 'bad' : 'good'}">${esc(reasonLine)}</div>`);
+    if (kind === 'sequence') {
+        parts.push('<div class="fp-k" style="margin-top:4px">Steps</div>');
+        parts.push(logicResultStepCards(block, st, index));
+    } else {
+        parts.push('<div class="fp-k" style="margin-top:4px">Network</div>');
+        parts.push(logicResultElementRows(get(st, 'elements') || [], index) || '<span class="msg">No evaluated elements.</span>');
+    }
+    return parts.join('');
+}
+function renderLogicResult() {
+    const blocks = state.logic || [];
+    const summary = el('logicResultSummary');
+    if (summary) summary.textContent = logicResultSummaryText();
+    if (!blocks.length) {
+        state.logicResultId = '';
+        el('logicResultList').innerHTML = '<span class="msg">No logic blocks yet — author one in the Editor.</span>';
+        el('logicResultDetail').innerHTML = logicResultDetailHtml(null, null);
+        return;
+    }
+    if (!blocks.some(block => String(get(block, 'id') || '') === state.logicResultId)) {
+        // The editor's block is the natural landing point; otherwise the first one.
+        const editor = blocks.find(block => String(get(block, 'id') || '') === state.logicSelectedId);
+        state.logicResultId = String(get(editor || blocks[0], 'id') || '');
+    }
+    // The list follows the phone: a heading per interlock group, ungrouped blocks in
+    // authored order at the top.
+    const anyGrouped = blocks.some(block => String(get(block, 'group') || '').trim().length > 0);
+    const listed = anyGrouped
+        ? blocks.slice().sort((a, b) => {
+            const ga = String(get(a, 'group') || '').trim();
+            const gb = String(get(b, 'group') || '').trim();
+            return ga.localeCompare(gb) || (Number(get(a, 'order') || 0) - Number(get(b, 'order') || 0));
+        })
+        : blocks;
+    let lastGroup = null;
+    el('logicResultList').innerHTML = listed.map(block => {
+        const group = String(get(block, 'group') || '').trim();
+        const head = anyGrouped && group !== lastGroup ? `<div class="logic-group-head">${esc(group || 'Ungrouped')}</div>` : '';
+        lastGroup = group;
+        return head + logicResultBlockRow(block, String(get(block, 'id') || '') === state.logicResultId);
+    }).join('');
+    const selected = blocks.find(block => String(get(block, 'id') || '') === state.logicResultId) || blocks[0];
+    el('logicResultDetail').innerHTML = logicResultDetailHtml(selected, logicResultState(selected));
+}
+function selectLogicResultBlock(blockId) {
+    state.logicResultId = String(blockId || '');
+    renderLogicResult();
+}
+function onLogicResultClick(event) {
+    const button = event.target.closest('button[data-result-block-id]');
+    if (button) selectLogicResultBlock(button.dataset.resultBlockId || '');
+}
 function renumberLogicSteps() {
     const steps = document.querySelectorAll('#logicSteps .logic-step');
     steps.forEach((stepEl, index) => {
@@ -1309,7 +1698,9 @@ async function deleteLogicBlock(blockId) {
 
 async function loadTags() {
     try {
-        const p = await (await fetch('/api/hmi/tags', { cache: 'no-store' })).json();
+        const r = await fetch('/api/hmi/tags', { cache: 'no-store' });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const p = await r.json();
         state.tags = p.tags || [];
         cacheWrite(TAGS_KEY, { tags: state.tags });
         setBridgeOnline(true);
@@ -1322,7 +1713,9 @@ async function loadTags() {
 
 async function loadLogic() {
     try {
-        const p = await (await fetch('/api/logic', { cache: 'no-store' })).json();
+        const r = await fetch('/api/logic', { cache: 'no-store' });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const p = await r.json();
         state.logic = p.blocks || [];
         cacheWrite(DEFS_KEY, { blocks: state.logic });
         setBridgeOnline(true);
@@ -1332,29 +1725,37 @@ async function loadLogic() {
         setBridgeOnline(false, 'Could not reach the bridge — showing the last known blocks. Editing is disabled until it is back.');
     }
     renderLogicView();
+    if (state.activeView === 'result') renderLogicResult();
 }
 
 async function loadLogicState() {
     try {
-        const p = await (await fetch('/api/logic/state', { cache: 'no-store' })).json();
+        const r = await fetch('/api/logic/state', { cache: 'no-store' });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const p = await r.json();
         state.logicStateById = {};
         (p.blocks || []).forEach(block => { state.logicStateById[String(get(block, 'id') || '')] = block; });
         cacheWrite(STATE_KEY, { blocks: p.blocks || [] });
         setBridgeOnline(true);
     } catch (e) {
-        if (!state.logicOffline) {
-            const cached = cacheRead(STATE_KEY);
-            state.logicStateById = {};
-            ((cached && cached.blocks) || []).forEach(block => { state.logicStateById[String(get(block, 'id') || '')] = block; });
-            setBridgeOnline(false, 'Could not reach the bridge — showing the last known state. Editing is disabled until it is back.');
-        }
+        const cached = cacheRead(STATE_KEY);
+        state.logicStateById = {};
+        ((cached && cached.blocks) || []).forEach(block => { state.logicStateById[String(get(block, 'id') || '')] = block; });
+        setBridgeOnline(false, 'Could not reach the bridge — showing the last known state. Editing is disabled until it is back.');
     }
     renderLogicLive();
+    if (state.activeView === 'result') renderLogicResult();
 }
 
 async function initLogicApp() {
     initTheme();
     defaultLogicMessage = el('logicMessage') ? el('logicMessage').textContent : '';
+    // The hash deep-links the view (#/result); the editor stays the default.
+    showView(String(location.hash || '').replace(/^#\/?/, '') === 'result' ? 'result' : 'editor', false);
+    el('tabLogicEditor').addEventListener('click', () => showView('editor', true));
+    el('tabLogicResult').addEventListener('click', () => showView('result', true));
+    el('viewTabs').addEventListener('keydown', onViewTabKey);
+    el('logicResultList').addEventListener('click', onLogicResultClick);
             el('btnLogicBlocks').addEventListener('click', () => openLogicBlocks());
         el('btnLogicBlocksClose').addEventListener('click', () => closeLogicBlocks());
         el('logicBlocksDialog').addEventListener('click', event => { if (event.target === el('logicBlocksDialog')) closeLogicBlocks(); });
