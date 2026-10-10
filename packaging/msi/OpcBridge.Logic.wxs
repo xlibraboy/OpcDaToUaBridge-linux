@@ -1,0 +1,125 @@
+<!--
+  OpcBridge Logic installer (WiX v5 schema, built with the `wix` dotnet tool).
+
+  One of the package sources — one installer per app. This one carries the Logic
+  web app alone (the bridge is packaging/msi/OpcBridge.wxs, the Avalonia apps
+  packaging/msi/OpcBridge.Hmi.wxs and OpcBridge.Designer.wxs). Its UpgradeCode is
+  its own, so the app installs, upgrades and uninstalls independently of the
+  others.
+
+  Built by .github/workflows/logic-release.yml on a Windows runner, which supplies:
+    -define MsiVersion=<x.y.z>   from LogicVersion in Directory.Build.props
+    -define LogicPort=8090       the port the shortcuts and firewall rule use
+    build/wix/LogicFiles.wxs     harvested OpcBridge.Logic files (root LogicFolder, group LogicFiles)
+
+  The app is win-x64 self-contained in every case — it is a browser-facing web
+  app that talks to a bridge over HTTP and holds no COM — so there is one package
+  and no per-architecture loop. It installs into its own Program Files folder as
+  a Windows service (so the Start Menu URL works at any time, like the bridge's
+  dashboard), opens its port on the firewall, and adds one Start Menu shortcut to
+  the OpcBridge folder, which every package shares; this package creates that
+  folder itself, so the shortcut works on a host that has no bridge installed.
+
+  The harvested files come from scripts/msi/harvest.py. The app is stateless —
+  its configuration is its own appsettings.json beside the exe, and the browser
+  caches definitions/state per operator — so Program Files stays read-only for
+  normal users and an upgrade replaces binaries only.
+-->
+
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util"
+     xmlns:fw="http://wixtoolset.org/schemas/v4/wxs/firewall"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+
+  <Package Name="OpcBridge Logic"
+           Manufacturer="AM2-DEV51"
+           Version="$(MsiVersion)"
+           UpgradeCode="C4E7A1F2-9B3D-4A6E-8F21-7D5C0B9A3E64"
+           Scope="perMachine"
+           Compressed="yes"
+           Language="1033"
+           Codepage="1252"
+           InstallerVersion="500">
+
+    <SummaryInformation Description="OpcBridge Logic — plant logic editor and live state (web app)" />
+
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed. Uninstall it first." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Icon Id="ProductIcon" SourceFile="src/OpcBridge.Logic/Assets/opcbridge-logic.ico" />
+    <Property Id="ARPPRODUCTICON" Value="ProductIcon" />
+
+    <ui:WixUI Id="WixUI_FeatureTree" />
+    <WixVariable Id="WixUILicenseRtf" Value="packaging/msi/License.rtf" />
+
+    <Feature Id="LogicApp"
+             Title="OpcBridge Logic"
+             Description="Plant logic authoring (interlocks, permissives, sequences, IEC 61131-3 networks) with live state. Runs as a Windows service; the Start Menu shortcut carries the actual URL."
+             Level="1"
+             InstallDefault="local">
+      <ComponentGroupRef Id="LogicFiles" />
+      <ComponentRef Id="LogicExe" />
+      <ComponentRef Id="LogicShortcut" />
+    </Feature>
+
+    <StandardDirectory Id="ProgramFilesFolder">
+      <Directory Id="LogicFolder" Name="OpcBridge Logic">
+        <Component Id="LogicExe" Guid="8B3E6C14-7A25-4D9F-B0E8-2C6A5F1D93B7">
+          <File Id="LogicAppExe" Source="build\publish-logic\OpcBridge.Logic.exe" KeyPath="yes" />
+          <ServiceInstall Id="LogicService"
+                          Name="OpcBridge Logic"
+                          DisplayName="OpcBridge Logic"
+                          Description="Plant logic web app (interlocks, permissives, sequences) for the OpcBridge bridge — served at the Start Menu shortcut's URL. Finds the bridge on its own unless Bridge:BaseUrl is set in appsettings.json."
+                          Start="auto"
+                          Type="ownProcess"
+                          ErrorControl="normal"
+                          Account="LocalSystem"
+                          Vital="yes">
+            <!-- Restart the service after a crash, the same recovery policy as the bridge. -->
+            <util:ServiceConfig FirstFailureActionType="restart"
+                                SecondFailureActionType="restart"
+                                ThirdFailureActionType="restart"
+                                RestartServiceDelayInSeconds="5"
+                                ResetPeriodInDays="1" />
+          </ServiceInstall>
+          <ServiceControl Id="LogicServiceControl"
+                          Name="OpcBridge Logic"
+                          Start="install"
+                          Stop="both"
+                          Remove="uninstall"
+                          Wait="yes" />
+          <fw:FirewallException Id="FwLogicWeb"
+                                Name="OpcBridge Logic"
+                                Description="OpcBridge Logic web app and API"
+                                Protocol="tcp"
+                                Port="$(LogicPort)"
+                                Scope="any" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <!-- Created by this package, not inherited from the bridge's install: the app
+           installs and uninstalls on its own. The bridge package declares the same
+           folder, and the last of the installed apps to go removes it. -->
+      <Directory Id="MenuFolder" Name="OpcBridge">
+        <Component Id="LogicShortcut" Guid="F2D4A9B6-3C61-4E7B-A5D8-9B0E4C27A1F3">
+          <!-- Type="url" is explicit: this entry ships as the text .url the app rewrites
+               on every start to the port it bound (src/OpcBridge.Logic/LogicShortcut.cs). -->
+          <util:InternetShortcut Id="LogicUrlShortcut"
+                                 Name="OpcBridge Logic"
+                                 Target="http://localhost:$(LogicPort)/"
+                                 Type="url"
+                                 IconFile="[#LogicAppExe]"
+                                 IconIndex="0" />
+          <RegistryValue Root="HKLM"
+                         Key="Software\OpcBridge"
+                         Name="LogicStartMenuShortcut"
+                         Type="integer"
+                         Value="1"
+                         KeyPath="yes" />
+        </Component>
+      </Directory>
+    </StandardDirectory>
+  </Package>
+</Wix>

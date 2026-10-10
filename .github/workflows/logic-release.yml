@@ -1,0 +1,144 @@
+name: Windows release (Logic)
+
+# Builds the Logic web app's Windows installer and — on a logic-v* tag — publishes the
+# app's GitHub Release:
+#   OpcBridge-Logic-<version>-win-x64.msi
+#
+# The app is a product of its own: it versions with LogicVersion in Directory.Build.props,
+# releases on logic-v* tags and carries src/OpcBridge.Logic/CHANGELOG.md, which is the
+# app's release authority. A release that changes only the bridge or the desktop apps does
+# not touch it — that is the point of the per-app versions. Its package source is
+# packaging/msi/OpcBridge.Logic.wxs, and its UpgradeCode is its own, so the app installs,
+# upgrades and uninstalls independently.
+#
+# The installer is built here, on Windows, because WiX cannot link an MSI on Linux (it
+# reports WIX0000 and fails to validate Directory/@Name). It is win-x64 self-contained in
+# every case — the app is a browser-facing web app that talks to a bridge over HTTP and
+# holds no COM — so there is one package and no per-architecture loop.
+#
+# A logic-v* tag push publishes a GitHub Release carrying the installer; a manual
+# workflow_dispatch run stops at the uploaded artifact, because there is no tag to
+# release against.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'logic-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  msi:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version from Directory.Build.props
+        id: version
+        shell: pwsh
+        run: |
+          $match = Select-String -Path Directory.Build.props -Pattern '<LogicVersion>([^<]+)</LogicVersion>'
+          if (-not $match) { throw 'no <LogicVersion> in Directory.Build.props' }
+          $version = $match.Matches[0].Groups[1].Value
+          # A tag names the release; it must agree with the version the package is stamped
+          # from, or the Release page would carry a label the asset does not.
+          if ($env:GITHUB_REF -like 'refs/tags/*' -and $env:GITHUB_REF_NAME -ne "logic-v$version") {
+            throw "tag '$env:GITHUB_REF_NAME' does not match Logic version $version (expected logic-v$version)"
+          }
+          Write-Host "version=$version"
+          "version=$version" >> $env:GITHUB_OUTPUT
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Publish (Logic win-x64)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet publish src/OpcBridge.Logic/OpcBridge.Logic.csproj -c Release -r win-x64 --self-contained true -o build/publish-logic
+
+      - name: Harvest the publish dir into WiX fragments
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # The exe is skipped here and declared in the package source, which is where the
+          # service and the Start Menu shortcut attach to it.
+          python scripts/msi/harvest.py build/publish-logic build/wix/LogicFiles.wxs LogicFolder LogicFiles OpcBridge.Logic.exe
+
+      - name: Install WiX 5.0.2 and its extensions
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet tool install --global wix --version 5.0.2
+          $env:PATH = "$env:PATH;$env:USERPROFILE\.dotnet\tools"
+          # Extensions must match the tool version. Unpinned resolves to 7.x, which
+          # WiX 5 rejects with WIX6101 (and 6+ additionally requires an OSMF licence).
+          # The Logic package needs the UI extension (installer UI), Util (the .url
+          # Start Menu shortcut) and Firewall (the app's port).
+          wix extension add --global WixToolset.UI.wixext/5.0.2
+          wix extension add --global WixToolset.Util.wixext/5.0.2
+          wix extension add --global WixToolset.Firewall.wixext/5.0.2
+
+      - name: Build the installer (Logic win-x64)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:PATH = "$env:PATH;$env:USERPROFILE\.dotnet\tools"
+          $version = '${{ steps.version.outputs.version }}'
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          wix build -arch x64 `
+            -ext WixToolset.UI.wixext `
+            -ext WixToolset.Util.wixext `
+            -ext WixToolset.Firewall.wixext `
+            -define "MsiVersion=$version" `
+            -define "LogicPort=8090" `
+            packaging/msi/OpcBridge.Logic.wxs `
+            build/wix/LogicFiles.wxs `
+            -o "dist/OpcBridge-Logic-$version-win-x64.msi"
+          if ($LASTEXITCODE -ne 0) { throw 'wix build failed for the Logic installer' }
+
+      - name: Upload the installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpcBridge-Logic-${{ steps.version.outputs.version }}-msi
+          path: dist/*.msi
+          if-no-files-found: error
+
+      # Only a tagged run has something to release; a workflow_dispatch run stops above.
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $version = '${{ steps.version.outputs.version }}'
+
+          # The notes are the newest released section of the app's changelog, which is
+          # its release authority and must carry it. -Encoding utf8 is required: without it
+          # Get-Content reads UTF-8 as ANSI and mangles every em dash in the file.
+          $lines = Get-Content -Path src/OpcBridge.Logic/CHANGELOG.md -Encoding utf8
+          $start = ($lines | Select-String -Pattern "^## \[$([regex]::Escape($version))\]").LineNumber
+          if (-not $start) { throw "src/OpcBridge.Logic/CHANGELOG.md has no '## [$version]' section" }
+          # LineNumber is 1-based, so $lines[$start] is the line after the heading and the
+          # body ends on the line before the next released heading.
+          $next = ($lines | Select-String -Pattern '^## \[' | Where-Object { $_.LineNumber -gt $start } | Select-Object -First 1).LineNumber
+          $end = if ($next) { $next - 1 } else { $lines.Count }
+          $body = if ($end -gt $start) { @($lines[$start..($end - 1)]) } else { @() }
+          $body | Set-Content -Path build/release-notes.md -Encoding utf8
+
+          # The asset is named from Directory.Build.props, not the tag, so it always
+          # matches what the steps above produced.
+          gh release create $env:TAG `
+            "dist/OpcBridge-Logic-$version-win-x64.msi" `
+            --title "OpcBridge Logic $version" `
+            --notes-file build/release-notes.md

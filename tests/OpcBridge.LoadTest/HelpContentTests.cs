@@ -17,15 +17,12 @@ public sealed class HelpContentTests
         return match.Success ? match.Groups[1].Value.Trim() : string.Empty;
     }
     [Fact]
-    public void HelpText_DescribesPlantLogicAndItsLiveState()
+    public void HelpText_PointsLogicAtItsOwnApp()
     {
-        Assert.Contains("# Logic (Interlocks, Permissives & Sequences)", HelpContent.Markdown);
-        Assert.Contains("interlock / permissive", HelpContent.Markdown, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("unknown", HelpContent.Markdown, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("/api/logic/state", HelpContent.Markdown);
-        Assert.Contains("next-step", HelpContent.Markdown, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("## Tags", HelpContent.Markdown);
-        Assert.Contains("filters the list", HelpContent.Markdown);
+        // Plant logic moved to the OpcBridge Logic web app; the dashboard guide points there
+        // instead of describing the editor (the app's own guide carries that).
+        Assert.Contains("OpcBridge Logic", HelpContent.Markdown);
+        Assert.DoesNotContain("# Logic (Interlocks, Permissives & Sequences)", HelpContent.Markdown);
     }
 
     [Fact]

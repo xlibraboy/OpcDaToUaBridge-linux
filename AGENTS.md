@@ -35,6 +35,30 @@ docker run --rm -u "$(id -u):$(id -g)" -e HOME=/tmp/dh -e DOTNET_CLI_HOME=/tmp/d
 
 Build output lands in `src/*/bin/Debug/net8.0/`; the bridge app is `src/OpcBridge.App/bin/Debug/net8.0/OpcBridge.App.dll`.
 
+### Run the Logic app (companion web app)
+
+`src/OpcBridge.Logic` is in the solution and builds with the commands above. It needs a running
+bridge, finds one on its own (the 8080–8180 sweep, or `Bridge:BaseUrl`), and serves its page on
+8090 — rolling to the next free port when that one is taken (the log line names the bound port).
+Both run on the host network so discovery reaches the bridge:
+
+```bash
+# The bridge (a container or the MSI service; Dockerfile.local is the local one).
+# OPCBRIDGE_INSTANCE_LOCK keeps the single-instance lock out of the working tree.
+docker run --rm --network host -u "$(id -u):$(id -g)" -e HOME=/tmp/dh -e DOTNET_CLI_HOME=/tmp/dh \
+  -e NUGET_PACKAGES=/nuget -e OPCBRIDGE_INSTANCE_LOCK=/tmp/opcbridge-smoke.lock \
+  -v "$PWD":/src -v "$PWD/.nuget-cache":/nuget -w /src \
+  mcr.microsoft.com/dotnet/sdk:8.0 dotnet src/OpcBridge.App/bin/Debug/net8.0/OpcBridge.App.dll
+
+# The Logic app (build it first: dotnet build src/OpcBridge.Logic -c Debug)
+docker run --rm --network host -u "$(id -u):$(id -g)" -e HOME=/tmp/dh -e DOTNET_CLI_HOME=/tmp/dh \
+  -e NUGET_PACKAGES=/nuget -v "$PWD":/src -v "$PWD/.nuget-cache":/nuget -w /src \
+  mcr.microsoft.com/dotnet/sdk:8.0 dotnet src/OpcBridge.Logic/bin/Debug/net8.0/OpcBridge.Logic.dll
+```
+
+Then open http://localhost:8090. `-e Bridge__BaseUrl=http://host:8080` pins a specific bridge
+instead of discovery; `Dockerfile.logic` is the same app as a standalone image.
+
 ### Build the Android viewer (APK)
 
 `src/OpcBridge.Mobile` targets `net8.0-android` and therefore needs the MAUI Android workload — it is deliberately **not** in `OpcBridge.sln`, so the two commands above stay workload-free. The shared logic lives in `src/OpcBridge.Mobile.Core` (net8.0) and is covered by the test suite. CI builds the APK on `mobile-v*` (`.github/workflows/mobile-release.yml`); locally:

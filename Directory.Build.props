@@ -4,10 +4,11 @@
     Per-app product versions. The server — the bridge and the shared libraries
     (Core, Client) — versions with ServerVersion and releases on a v* tag. The
     desktop apps override <Version> in their own csproj (HmiVersion,
-    DesignerVersion), and the Android viewer does the same (MobileVersion), so
-    each is bumped, tagged and released on its own: hmi-v*, designer-v* and
-    mobile-v* tags, its own GitHub Release. Shared libraries stay on
-    ServerVersion — they are not products of their own.
+    DesignerVersion), and the Android viewer and the Logic web app do the same
+    (MobileVersion, LogicVersion), so each is bumped, tagged and released on its
+    own: hmi-v*, designer-v*, mobile-v* and logic-v* tags, its own GitHub
+    Release. Shared libraries stay on ServerVersion — they are not products of
+    their own.
 
     Bump an app's version together with the newest released section of its own
     changelog (server: CHANGELOG.md, apps: their CHANGELOG.md sections) —
@@ -20,6 +21,7 @@
     <HmiVersion>1.8.2</HmiVersion>
     <DesignerVersion>1.8.0</DesignerVersion>
     <MobileVersion>1.8.0</MobileVersion>
+    <LogicVersion>1.0.0</LogicVersion>
     <Version>$(ServerVersion)</Version>
     <Product>OpcBridge</Product>
   </PropertyGroup>

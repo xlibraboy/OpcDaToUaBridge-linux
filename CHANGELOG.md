@@ -106,6 +106,16 @@ never carried `daGroup`, so a save that echoed the stored mapping — the facepl
 assigned to and left it on the rate fallback. `daGroup` now round-trips through
 `POST /api/mappings/add` and `POST /api/mappings/update` like every other field.
 
+### Changed
+
+**The Logic authoring surface moved out of the dashboard into its own app.** The Tags ▸ Logic
+tab — the block editor, the IEC 61131-3 network editor and the live state chips — is now the
+**OpcBridge Logic** web app (`src/OpcBridge.Logic`, released on its own `logic-v*` tags): a
+browser app on its own port that talks to the bridge through its published API, like the desktop
+HMI and the Android viewer. The bridge keeps the whole engine — definitions, evaluation, the
+`logic` hub message and the `/api/logic*` endpoints are unchanged — while the dashboard no longer
+ships the tab, and its guide points at the app instead of describing the editor.
+
 ## [1.8.0] - 2026-10-06
 
 ### Added

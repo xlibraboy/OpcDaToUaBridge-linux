@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using OpcBridge.App;
 using OpcBridge.Client;
+using OpcBridge.Logic;
 using Xunit;
 
 namespace OpcBridge.LoadTest;
@@ -10,8 +11,8 @@ namespace OpcBridge.LoadTest;
 /// <summary>
 /// Release notes are per-app files, each app versioning and releasing on its own: the
 /// server's CHANGELOG.md (the server's release authority, served at /api/changelog and
-/// reported by the bridge) on ServerVersion, and one file per desktop app embedded in
-/// its own assembly and stamped with its own version (HmiVersion, DesignerVersion).
+/// reported by the bridge) on ServerVersion, and one file per app embedded in its own
+/// assembly and stamped with its own version (HmiVersion, DesignerVersion, LogicVersion).
 /// These tests fail if a file, the shipped copy or the version its assembly reports
 /// drift apart.
 /// </summary>
@@ -21,12 +22,13 @@ public sealed class ChangelogTests
     private const string HmiFile = "src/OpcBridge.Hmi/CHANGELOG.md";
     private const string DesignerFile = "src/OpcBridge.Hmi.Designer/CHANGELOG.md";
     private const string MobileFile = "src/OpcBridge.Mobile/CHANGELOG.md";
+    private const string LogicFile = "src/OpcBridge.Logic/CHANGELOG.md";
 
     private static readonly Regex ReleasedSection = new(
         @"^##\s+\[\s*(\d+\.\d+\.\d+)\s*\]\s+-\s+(\d{4}-\d{2}-\d{2})\s*$",
         RegexOptions.Multiline | RegexOptions.Compiled);
 
-    public static TheoryData<string> ChangelogFiles => new() { ServerFile, HmiFile, DesignerFile, MobileFile };
+    public static TheoryData<string> ChangelogFiles => new() { ServerFile, HmiFile, DesignerFile, MobileFile, LogicFile };
 
     private static string RepoRoot()
     {
@@ -89,6 +91,21 @@ public sealed class ChangelogTests
         AssertChangelogMatchesAssembly(ServerFile, typeof(AppInfoSnapshot).Assembly);
         AssertChangelogMatchesAssembly(HmiFile, typeof(OpcBridge.Hmi.Views.MainWindow).Assembly);
         AssertChangelogMatchesAssembly(DesignerFile, typeof(OpcBridge.Hmi.Designer.Views.DesignerWindow).Assembly);
+        AssertChangelogMatchesAssembly(LogicFile, typeof(LogicAppPage).Assembly);
+    }
+
+    [Fact]
+    public void LogicChangelog_MatchesLogicVersion()
+    {
+        // The Logic web app's assembly pins its changelog through the check above; this adds
+        // the two places that stamp the same version: Directory.Build.props and the app
+        // project (the release workflow's logic-v* tag rule is asserted below, once shipped).
+        string props = OnDisk("Directory.Build.props");
+        Match version = Regex.Match(props, @"<LogicVersion>([^<]+)</LogicVersion>");
+        Assert.True(version.Success, "no <LogicVersion> in Directory.Build.props");
+
+        Assert.Equal(version.Groups[1].Value, ReleaseNotes.ParseLatestVersion(OnDisk(LogicFile)));
+        Assert.Contains("<Version>$(LogicVersion)</Version>", OnDisk("src/OpcBridge.Logic/OpcBridge.Logic.csproj"), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -129,6 +146,7 @@ public sealed class ChangelogTests
 
         AssertEmbedded(HmiFile, typeof(OpcBridge.Hmi.Views.MainWindow).Assembly, "OpcBridge.Hmi.CHANGELOG.md");
         AssertEmbedded(DesignerFile, typeof(OpcBridge.Hmi.Designer.Views.DesignerWindow).Assembly, "OpcBridge.Hmi.Designer.CHANGELOG.md");
+        AssertEmbedded(LogicFile, typeof(LogicAppPage).Assembly, "OpcBridge.Logic.CHANGELOG.md");
     }
 
     private static void AssertEmbedded(string relativePath, Assembly assembly, string resourceName)

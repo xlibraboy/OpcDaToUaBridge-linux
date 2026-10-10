@@ -1,26 +1,28 @@
 #!/usr/bin/env python3
-"""Generate the OpcBridge application icons for the three Windows apps.
+"""Generate the OpcBridge application icons for the four Windows apps.
 
 The .ico files under src/*/Assets/ are generated, not hand-drawn: this script is
 the source of truth, so a colour or shape change is an edit plus a re-run instead
 of a binary blob nobody can review. Requires Pillow only (no ImageMagick, no
 Inkscape, no browser).
 
-    python3 scripts/icons/make-icons.py                 # write the three .ico files
+    python3 scripts/icons/make-icons.py                 # write the four .ico files
     python3 scripts/icons/make-icons.py --preview DIR   # also render a PNG contact sheet
 
 Every size is drawn on its own canvas (supersampled 4x, then Lanczos-downsampled),
 so a stroke keeps its proportion at 16px instead of smearing the way one big
 artwork scaled down does; sizes below 32px drop detail that cannot survive them.
 
-The three icons share one dark tile and one accent palette so they read as a
+The four icons share one dark tile and one accent palette so they read as a
 family in the Start Menu folder, and differ by silhouette so they stay apart at
 16px: the server is stacked rack bars, the runtime is a screen with a live trace,
-the designer is a pen over a layout grid.
+the designer is a pen over a layout grid, the logic app is an AND gate fed by
+green signal lines.
 
     opcbridge-server.ico     OpcBridge.App           (bridge service + dashboard)
     opcbridge-hmi.ico        OpcBridge.Hmi           (HMI runtime)
     opcbridge-designer.ico   OpcBridge.Hmi.Designer  (display authoring)
+    opcbridge-logic.ico      OpcBridge.Logic         (plant logic web app)
 """
 import argparse
 import struct
@@ -125,6 +127,19 @@ class Canvas:
         return self.img.resize((self.size, self.size), Image.Resampling.LANCZOS)
 
 
+def grad_circle(c: Canvas, cx: float, cy: float, r: float, top, bottom) -> None:
+    """A gradient-filled circle, the way grad_tile fills a rounded rectangle."""
+    d = c.px(r * 2)
+    strip = Image.new("RGB", (1, d))
+    strip.putdata([lerp(top, bottom, y / max(1, d - 1)) for y in range(d)])
+    body = strip.resize((d, d), Image.Resampling.NEAREST)
+    mask = Image.new("L", (d, d), 0)
+    ImageDraw.Draw(mask).ellipse((0, 0, d - 1, d - 1), fill=255)
+    out = Image.new("RGBA", (d, d), (0, 0, 0, 0))
+    out.paste(body, (0, 0), mask)
+    c.img.alpha_composite(out, (c.px(cx - r), c.px(cy - r)))
+
+
 def base_tile(c: Canvas) -> None:
     c.paste_tile(0.0, 0.0, 1.0, 1.0, 0.185, TILE_TOP, TILE_BOTTOM)
     c.rounded(c.box(0.015, 0.015, 0.985, 0.985), radius=0.175, outline=TILE_BORDER, width=0.014)
@@ -173,6 +188,24 @@ def draw_designer(c: Canvas, detail: bool) -> None:
         c.line([(0.195, i), (0.805, i)], ACCENT_DIM, 0.035)
         c.line([(i, 0.195), (i, 0.805)], ACCENT_DIM, 0.035)
     pen(c)
+
+
+def draw_logic(c: Canvas, detail: bool) -> None:
+    """Logic app: an AND gate carrying its two inputs and one output."""
+    base_tile(c)
+
+    # The gate body: a flat left edge with a rounded right — the AND shape. The inputs and
+    # output carry the signal and are what read at 16px, so they keep full weight at every
+    # size while the terminal dots drop below 32px.
+    c.paste_tile(0.30, 0.285, 0.50, 0.715, 0.03, ACCENT_TOP, ACCENT_BOTTOM)
+    grad_circle(c, 0.50, 0.50, 0.215, ACCENT_TOP, ACCENT_BOTTOM)
+    c.line([(0.16, 0.375), (0.31, 0.375)], OK_GREEN, 0.055)
+    c.line([(0.16, 0.625), (0.31, 0.625)], OK_GREEN, 0.055)
+    c.line([(0.715, 0.50), (0.85, 0.50)], OK_GREEN, 0.055)
+    if detail:
+        c.circle(0.16, 0.375, 0.045, OK_GREEN)
+        c.circle(0.16, 0.625, 0.045, OK_GREEN)
+        c.circle(0.85, 0.50, 0.045, OK_GREEN)
 
 
 def pen(c: Canvas) -> None:
@@ -255,12 +288,14 @@ ICONS = {
     "opcbridge-server.ico": draw_server,
     "opcbridge-hmi.ico": draw_hmi,
     "opcbridge-designer.ico": draw_designer,
+    "opcbridge-logic.ico": draw_logic,
 }
 
 OUTPUT_DIRS = {
     "opcbridge-server.ico": REPO_ROOT / "src/OpcBridge.App/Assets",
     "opcbridge-hmi.ico": REPO_ROOT / "src/OpcBridge.Hmi/Assets",
     "opcbridge-designer.ico": REPO_ROOT / "src/OpcBridge.Hmi.Designer/Assets",
+    "opcbridge-logic.ico": REPO_ROOT / "src/OpcBridge.Logic/Assets",
 }
 
 
