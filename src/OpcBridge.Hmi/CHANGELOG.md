@@ -25,14 +25,16 @@ with `Convert to IEC network` and back), sequence **steps** with an optional com
 and **actions** the phone renders. Every editor row is its own bordered line with a label on each
 field — nothing is keyed off a column header — and a network row carries a rail for each level it
 nests under, so both forms reflow with the window instead of scrolling sideways. Every row shows
-the bridge's live state as a chip (1 / 0 / no data, or the live value); the **Blocks…** window
-lists every block under its interlock group and is where blocks are created, picked and deleted. The **Result** tab renders the evaluated
-configuration the way the phone does — every element its own bordered row, the live reading in
-large mono digits, with `should 1 · actual 0`, timer and counter progress and the tag it reads
-under it, nested by a rail for every level — fed by the bridge's `logic` hub push plus a
-once-a-second state poll while the page is open; it names the time the state last arrived, never
-rebuilds rows under the operator, and shows a newly picked block's state at once instead of the one
-before it. Definitions save through the bridge's own
+the bridge's live state as a chip (1 / 0 / no data, or the live value); the **block list** stands
+beside both tabs, every block under its interlock group heading with its state pill, first reason
+and sequence progress, so the block being edited is picked and kept in sight from the screen that
+edits it, and the **Blocks…** window is where blocks are created and deleted. The **Result** tab
+renders the selected block's evaluated configuration the way the phone does — every element its
+own bordered row, the live reading in large mono digits, with `should 1 · actual 0`, timer and
+counter progress and the tag it reads under it, nested by a rail for every level — fed by the
+bridge's `logic` hub push plus a once-a-second state poll while the page is open; it names the
+time the state last arrived, never rebuilds rows under the operator, and shows a newly picked
+block's state at once instead of the one before it. Definitions save through the bridge's own
 `/api/logic*` API (its errors shown verbatim, Save greyed until the draft differs); while a bridge
 is unreachable the page keeps the last known blocks on screen and disables editing. A **Guide…**
 button carries the logic guide the dashboard used to describe.
