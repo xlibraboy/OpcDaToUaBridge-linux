@@ -87,6 +87,9 @@ public sealed class HmiLogicPanelTests
         await vm.Logic.LoadSelectedBridgeAsync();
     }
 
+    private static LogicBlockRowViewModel Row(MainViewModel vm, string name) =>
+        vm.Logic.BlockGroups.SelectMany(group => group.Blocks).First(row => row.Name == name);
+
     private static void DeleteConfig(string configPath)
     {
         try
@@ -275,6 +278,116 @@ public sealed class HmiLogicPanelTests
             Assert.Equal("BLOCKED", vm.Logic.ResultStateWord);
             Assert.Equal("BLOCKED", vm.Logic.BlockGroups[0].Blocks[0].StateWord);
             Assert.Equal("0 ready · 1 blocked", vm.Logic.SummaryText);
+        }
+        finally
+        {
+            await vm.DisposeAsync();
+            DeleteConfig(configPath);
+        }
+    }
+
+    [Fact]
+    public void NestedResultRows_CarryARailPerEnclosingLevel()
+    {
+        var root = new LogicElementDto
+        {
+            Id = Guid.NewGuid(),
+            Kind = LogicElementKinds.And,
+            Inputs =
+            {
+                new LogicElementDto
+                {
+                    Id = Guid.NewGuid(),
+                    Kind = LogicElementKinds.Contact,
+                    Op = LogicConditionOps.On,
+                    ItemId = "ns=2;s=Status/Line01.Permit"
+                }
+            }
+        };
+
+        var rows = new List<LogicResultElementRowViewModel>();
+        foreach ((LogicElementDto element, int depth) in LogicNetwork.Walk(new[] { root }))
+        {
+            rows.Add(new LogicResultElementRowViewModel(element, depth, LogicTagCatalog.Empty));
+        }
+
+        Assert.Equal(2, rows.Count);
+        Assert.Equal("AND", rows[0].KindLabel);
+        Assert.Empty(rows[0].Guides);
+        Assert.Equal("NO", rows[1].KindLabel);
+        Assert.Single(rows[1].Guides);
+    }
+
+    [Fact]
+    public async Task TheDetailPane_NamesWhatToDoWhenItIsEmpty()
+    {
+        await using TestAppHandle handle = await StartAsync(PermitTag());
+        MainViewModel vm = NewViewModel(out string configPath);
+        try
+        {
+            Assert.Equal("NO BRIDGE", vm.Logic.ResultEmptyTitle);
+            Assert.Equal("Connect a bridge to load and author its plant logic.", vm.Logic.ResultEmptyMessage);
+            Assert.Equal("Connect a bridge to load its plant logic.", vm.Logic.EmptyBlocksMessage);
+
+            await ConnectAsync(vm, handle);
+            Assert.Equal("NO BLOCKS YET", vm.Logic.ResultEmptyTitle);
+            Assert.Equal("Use New block to author the first one.", vm.Logic.ResultEmptyMessage);
+            Assert.Equal(
+                "No logic blocks yet — use New block to author the first one.",
+                vm.Logic.EmptyBlocksMessage);
+            Assert.False(vm.Logic.ResultTitleVisible);
+
+            vm.Logic.NewBlockCommand.Execute(null);
+            Assert.Equal("NOT SAVED YET", vm.Logic.ResultEmptyTitle);
+            Assert.Equal("Save the block to see its evaluated network.", vm.Logic.ResultEmptyMessage);
+            Assert.True(vm.Logic.ResultTitleVisible);
+        }
+        finally
+        {
+            await vm.DisposeAsync();
+            DeleteConfig(configPath);
+        }
+    }
+
+    [Fact]
+    public async Task SwitchingBlocks_NeverShowsThePreviousBlocksState()
+    {
+        await using TestAppHandle handle = await StartAsync(PermitTag());
+        LogicBlockDto first = Block("Line 01 Start", "");
+        LogicBlockDto second = Block("Line 02 Start", "");
+        await SaveBlockAsync(handle, first);
+        await SaveBlockAsync(handle, second);
+
+        MainViewModel vm = NewViewModel(out string configPath);
+        try
+        {
+            await ConnectAsync(vm, handle);
+
+            vm.Logic.ApplyState(
+                "default",
+                new LogicStateSnapshot
+                {
+                    Version = 42,
+                    Blocks =
+                    {
+                        new LogicBlockStateDto
+                        {
+                            Id = first.Id,
+                            State = LogicBlockStates.Blocked,
+                            Reason = "Line 01 Start permit must be given"
+                        }
+                    }
+                });
+
+            vm.Logic.SelectBlockCommand.Execute(Row(vm, "Line 01 Start"));
+            Assert.Equal("BLOCKED", vm.Logic.ResultStateWord);
+
+            // The second block has no state in the cache: the pane must say so at once instead of
+            // showing the first block's word until the next snapshot lands.
+            vm.Logic.SelectBlockCommand.Execute(Row(vm, "Line 02 Start"));
+            Assert.Equal("READING…", vm.Logic.ResultStateWord);
+            Assert.True(vm.Logic.IsResultWarn);
+            Assert.False(vm.Logic.IsResultBad);
         }
         finally
         {

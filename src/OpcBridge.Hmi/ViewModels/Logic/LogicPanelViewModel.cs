@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using OpcBridge.Client;
@@ -78,12 +79,7 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
 
     partial void OnSelectedBridgeChanged(LogicBridgeOption? value)
     {
-        OnPropertyChanged(nameof(IsEditingEnabled));
-        OnPropertyChanged(nameof(BridgeStatusText));
-        OnPropertyChanged(nameof(EditingHint));
-        OnPropertyChanged(nameof(IsBridgeOk));
-        OnPropertyChanged(nameof(IsBridgeWarn));
-        OnPropertyChanged(nameof(IsBridgeBad));
+        NotifyBridgeDerived();
         NotifyCommands();
         if (!suppressBridgeLoad_)
         {
@@ -134,7 +130,11 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _hasSelectedBlock;
 
-    public string EmptyBlocksMessage => "No logic blocks yet — use New block to author the first one.";
+    public string EmptyBlocksMessage => SelectedBridge is null
+        ? "Connect a bridge to load its plant logic."
+        : IsEditingEnabled
+            ? "No logic blocks yet — use New block to author the first one."
+            : "The bridge is unreachable — its blocks will appear when it answers.";
 
     partial void OnSelectedBlockChanged(LogicBlockRowViewModel? value)
     {
@@ -283,9 +283,34 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _hasResultRows;
 
-    public string ResultEmptyMessage => storedBlock_ is null || storedBlock_.Id == Guid.Empty
-        ? "Save the block to see its evaluated network."
-        : "No evaluated elements yet — waiting for the bridge.";
+    /// <summary>
+    /// The empty detail pane names the one thing the operator can do next: pick a listed block,
+    /// save the draft, or connect the bridge — never a message about the wrong situation.
+    /// </summary>
+    public string ResultEmptyTitle => storedBlock_ is not null
+        ? "NOTHING TO EVALUATE"
+        : editingNewBlock_
+            ? "NOT SAVED YET"
+            : SelectedBridge is null
+                ? "NO BRIDGE"
+                : HasBlocks ? "NO BLOCK SELECTED" : "NO BLOCKS YET";
+
+    public string ResultEmptyMessage => storedBlock_ is not null
+        ? "This block has no elements to evaluate yet."
+        : editingNewBlock_
+            ? "Save the block to see its evaluated network."
+            : SelectedBridge is null
+                ? "Connect a bridge to load and author its plant logic."
+                : HasBlocks
+                    ? "Pick a block in the list to see its evaluated network."
+                    : "Use New block to author the first one.";
+
+    /// <summary>The pane names a block only when there is one — or a draft — to name.</summary>
+    public bool ResultTitleVisible => HasSelectedBlock || editingNewBlock_;
+
+    /// <summary>When the last snapshot was applied — a frozen clock is a stale plant.</summary>
+    [ObservableProperty]
+    private string _resultFreshness = "no state yet";
 
     public bool HasResultDescription => ResultDescription.Length > 0;
 
@@ -518,6 +543,7 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
             _ = ReloadDefinitionsAsync(bridgeId);
         }
 
+        ResultFreshness = "updated " + DateTime.Now.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
         applyingState_ = true;
         try
         {
@@ -703,14 +729,23 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
 
         if (sameBridge)
         {
-            OnPropertyChanged(nameof(IsEditingEnabled));
-            OnPropertyChanged(nameof(BridgeStatusText));
-            OnPropertyChanged(nameof(EditingHint));
-            OnPropertyChanged(nameof(IsBridgeOk));
-            OnPropertyChanged(nameof(IsBridgeWarn));
-            OnPropertyChanged(nameof(IsBridgeBad));
+            NotifyBridgeDerived();
             NotifyCommands();
         }
+    }
+
+    /// <summary>Everything derived from the selected bridge's link state or the block list.</summary>
+    private void NotifyBridgeDerived()
+    {
+        OnPropertyChanged(nameof(IsEditingEnabled));
+        OnPropertyChanged(nameof(BridgeStatusText));
+        OnPropertyChanged(nameof(EditingHint));
+        OnPropertyChanged(nameof(IsBridgeOk));
+        OnPropertyChanged(nameof(IsBridgeWarn));
+        OnPropertyChanged(nameof(IsBridgeBad));
+        OnPropertyChanged(nameof(EmptyBlocksMessage));
+        OnPropertyChanged(nameof(ResultEmptyTitle));
+        OnPropertyChanged(nameof(ResultEmptyMessage));
     }
 
     private async Task FetchDefinitionsAsync(string bridgeId, BridgeCache cache)
@@ -1249,7 +1284,7 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         LogicBlockDto? block = storedBlock_;
 
         ResultTitle = block is null || block.Id == Guid.Empty
-            ? "New block — not saved yet"
+            ? (editingNewBlock_ ? "New block — not saved yet" : "No block selected")
             : (string.IsNullOrWhiteSpace(block.Name) ? "(unnamed)" : block.Name);
         ResultKindLabel = block is null ? string.Empty : LogicText.BlockKindLabel(block.Kind);
         ResultDescription = block?.Description ?? string.Empty;
@@ -1268,7 +1303,7 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
             IsResultBad = false;
             IsResultWarn = false;
             IsResultMuted = false;
-            OnPropertyChanged(nameof(ResultEmptyMessage));
+            NotifyResultEmptyState();
             return;
         }
 
@@ -1302,6 +1337,20 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
             HasResultRows = ResultElements.Count > 0;
         }
 
+        NotifyResultEmptyState();
+
+        if (SelectedBridge is { } selectedBridge)
+        {
+            // Never show the previous block's state while the next snapshot is in flight.
+            ApplyResultState(Cache(selectedBridge.BridgeId));
+        }
+    }
+
+    /// <summary>The detail pane's empty state depends on the selection, the draft and the list.</summary>
+    private void NotifyResultEmptyState()
+    {
+        OnPropertyChanged(nameof(ResultTitleVisible));
+        OnPropertyChanged(nameof(ResultEmptyTitle));
         OnPropertyChanged(nameof(ResultEmptyMessage));
     }
 

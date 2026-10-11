@@ -1,6 +1,5 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
-using Avalonia;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using OpcBridge.Client;
@@ -108,10 +107,13 @@ public partial class LogicElementRowViewModel : ObservableObject
 
     public bool NeedsValue => IsContact && LogicConditionOps.RequiresValue(Op?.Value);
 
-    /// <summary>Indentation carried by the row's margin (the row's inputs sit one level deeper).</summary>
-    public Thickness IndentMargin => new(8 + Indent * 18, 0, 0, 0);
+    /// <summary>
+    /// One entry per level enclosing this row: the row draws a rail for each, so the nesting the
+    /// indentation implies is drawn, not guessed. Rebuilt whenever the row is indented.
+    /// </summary>
+    public IReadOnlyList<int> Guides => new int[Indent];
 
-    partial void OnIndentChanged(int value) => OnPropertyChanged(nameof(IndentMargin));
+    partial void OnIndentChanged(int value) => OnPropertyChanged(nameof(Guides));
 
     partial void OnKindChanged(LogicSelectOption value)
     {

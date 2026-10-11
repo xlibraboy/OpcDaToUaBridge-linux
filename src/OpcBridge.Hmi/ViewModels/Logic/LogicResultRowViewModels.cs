@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using Avalonia;
 using CommunityToolkit.Mvvm.ComponentModel;
 using OpcBridge.Client;
 
@@ -18,6 +17,7 @@ public sealed partial class LogicResultElementRowViewModel : ObservableObject
         Kind = element.Kind;
         Op = element.Op;
         Depth = Math.Max(0, depth);
+        Guides = new int[Depth];
         Text = element.Text;
         WarnOnly = string.Equals(element.Severity, LogicConditionSeverities.Warn, StringComparison.OrdinalIgnoreCase);
         KindLabel = LogicText.ElementKindLabel(Kind, Op);
@@ -51,8 +51,13 @@ public sealed partial class LogicResultElementRowViewModel : ObservableObject
 
     public string TagLabel { get; }
 
-    /// <summary>Indentation for the row (the element's depth in the network).</summary>
-    public Thickness IndentMargin => new(8 + Depth * 18, 0, 0, 0);
+    public bool HasTag => TagLabel.Length > 0;
+
+    /// <summary>
+    /// One entry per level enclosing this row: the row draws a rail for each, so the nesting the
+    /// indentation implies is drawn, not guessed. A rail sits where its parent row's content starts.
+    /// </summary>
+    public IReadOnlyList<int> Guides { get; }
 
     [ObservableProperty]
     private string _mark = "—";

@@ -3,73 +3,132 @@
              xmlns:logic="using:OpcBridge.Hmi.ViewModels.Logic"
              x:Class="OpcBridge.Hmi.Views.LogicElementRowView"
              x:DataType="logic:LogicElementRowViewModel">
-  <Grid ColumnDefinitions="265,260,Auto,125,80,Auto" Margin="{Binding IndentMargin}">
-    <ComboBox Grid.Column="0" Margin="0,0,4,0" ItemsSource="{Binding KindOptions}" SelectedItem="{Binding Kind}"
-              AutomationProperties.Name="Element kind">
-      <ComboBox.ItemTemplate>
-        <DataTemplate x:DataType="logic:LogicSelectOption">
-          <TextBlock Text="{Binding Label}" />
+  <Grid ColumnDefinitions="Auto,*">
+    <!-- The nesting rail: one guide per enclosing level, beside the row card. -->
+    <ItemsControl Grid.Column="0" ItemsSource="{Binding Guides}" Margin="8,0,0,0"
+                  VerticalAlignment="Stretch">
+      <ItemsControl.ItemsPanel>
+        <ItemsPanelTemplate>
+          <StackPanel Orientation="Horizontal" />
+        </ItemsPanelTemplate>
+      </ItemsControl.ItemsPanel>
+      <ItemsControl.Styles>
+        <Style Selector="ContentPresenter">
+          <Setter Property="VerticalAlignment" Value="Stretch" />
+        </Style>
+      </ItemsControl.Styles>
+      <ItemsControl.ItemTemplate>
+        <DataTemplate>
+          <Border Width="18" BorderThickness="1,0,0,0" BorderBrush="{DynamicResource GridLineBrush}"
+                  VerticalAlignment="Stretch" />
         </DataTemplate>
-      </ComboBox.ItemTemplate>
-    </ComboBox>
-    <TextBox Grid.Column="1" Margin="0,0,4,0" Text="{Binding Text}"
-             Watermark="Operator sentence / label" AutomationProperties.Name="Element label" />
-    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4">
-      <ComboBox Width="130" IsVisible="{Binding IsContact}" ItemsSource="{Binding Sources}" SelectedItem="{Binding SelectedSource}"
-                AutomationProperties.Name="Element source"
-                ToolTip.Tip="{Binding SelectedSource.Label}">
-        <ComboBox.ItemTemplate>
-          <DataTemplate x:DataType="logic:LogicSourceOption">
-            <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
-          </DataTemplate>
-        </ComboBox.ItemTemplate>
-      </ComboBox>
-      <ComboBox Width="190" IsVisible="{Binding IsContact}" ItemsSource="{Binding Items}" SelectedItem="{Binding SelectedTag}"
-                AutomationProperties.Name="Element tag"
-                ToolTip.Tip="{Binding SelectedTag.Detail}">
-        <ComboBox.ItemTemplate>
-          <DataTemplate x:DataType="logic:LogicTagOption">
-            <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
-          </DataTemplate>
-        </ComboBox.ItemTemplate>
-      </ComboBox>
-      <ComboBox Width="175" IsVisible="{Binding IsContact}" ItemsSource="{Binding OpOptions}" SelectedItem="{Binding Op}"
-                AutomationProperties.Name="Contact operator">
-        <ComboBox.ItemTemplate>
-          <DataTemplate x:DataType="logic:LogicSelectOption">
-            <TextBlock Text="{Binding Label}" />
-          </DataTemplate>
-        </ComboBox.ItemTemplate>
-      </ComboBox>
-      <TextBox Width="80" IsVisible="{Binding NeedsValue}" Text="{Binding ValueText}" Watermark="value"
-               AutomationProperties.Name="Comparison value" />
-      <TextBox Width="90" IsVisible="{Binding IsTimer}" Text="{Binding PtSeconds}" Watermark="PT s"
-               AutomationProperties.Name="Timer preset seconds"
-               ToolTip.Tip="Preset time (PT) in seconds." />
-      <TextBox Width="90" IsVisible="{Binding IsCounter}" Text="{Binding PvText}" Watermark="PV"
-               AutomationProperties.Name="Counter preset"
-               ToolTip.Tip="Preset count (PV)." />
-    </StackPanel>
-    <ComboBox Grid.Column="3" Margin="4,0,4,0" ItemsSource="{Binding SeverityOptions}" SelectedItem="{Binding Severity}"
-              AutomationProperties.Name="Element severity">
-      <ComboBox.ItemTemplate>
-        <DataTemplate x:DataType="logic:LogicSelectOption">
-          <TextBlock Text="{Binding Label}" />
-        </DataTemplate>
-      </ComboBox.ItemTemplate>
-    </ComboBox>
-    <TextBlock Grid.Column="4" VerticalAlignment="Center" TextAlignment="Center" Text="{Binding LiveText}"
-               Classes.stateOk="{Binding IsLiveOk}"
-               Classes.stateBad="{Binding IsLiveBad}"
-               Classes.stateWarn="{Binding IsLiveWarn}"
-               AutomationProperties.LiveSetting="Polite" />
-    <StackPanel Grid.Column="5" Orientation="Horizontal" Spacing="4">
-      <Button Classes="tool" Content="→" Command="{Binding IndentRowCommand}"
-              ToolTip.Tip="Make this row an input of the row above" AutomationProperties.Name="Indent element" />
-      <Button Classes="tool" Content="←" Command="{Binding OutdentRowCommand}"
-              ToolTip.Tip="Move this row out one level" AutomationProperties.Name="Outdent element" />
-      <Button Classes="tool" Content="✕" Command="{Binding RemoveElementCommand}"
-              AutomationProperties.Name="Remove element" />
-    </StackPanel>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+
+    <!-- One element, as its own row. Only the fields the kind reads are shown: a contact a
+         tag and a reading, a timer its preset, a counter its preset, a gate just its label. -->
+    <Border Grid.Column="1" Classes="editorRow" Margin="0,0,0,6">
+      <Grid ColumnDefinitions="*,Auto">
+        <WrapPanel Grid.Column="0" Orientation="Horizontal">
+          <StackPanel Classes="field" Width="250">
+            <TextBlock Classes="fieldLabel" Text="KIND" />
+            <ComboBox ItemsSource="{Binding KindOptions}" SelectedItem="{Binding Kind}"
+                      AutomationProperties.Name="Element kind">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="logic:LogicSelectOption">
+                  <TextBlock Text="{Binding Label}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+          </StackPanel>
+          <StackPanel Classes="field" Width="260">
+            <TextBlock Classes="fieldLabel" Text="SENTENCE / LABEL" />
+            <TextBox Text="{Binding Text}" Watermark="Guard closed"
+                     AutomationProperties.Name="Element label" />
+          </StackPanel>
+          <StackPanel Classes="field" Width="150" IsVisible="{Binding IsContact}">
+            <TextBlock Classes="fieldLabel" Text="SOURCE" />
+            <ComboBox ItemsSource="{Binding Sources}" SelectedItem="{Binding SelectedSource}"
+                      AutomationProperties.Name="Element source"
+                      ToolTip.Tip="{Binding SelectedSource.Label}">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="logic:LogicSourceOption">
+                  <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+          </StackPanel>
+          <StackPanel Classes="field" Width="210" IsVisible="{Binding IsContact}">
+            <TextBlock Classes="fieldLabel" Text="TAG" />
+            <ComboBox ItemsSource="{Binding Items}" SelectedItem="{Binding SelectedTag}"
+                      AutomationProperties.Name="Element tag"
+                      ToolTip.Tip="{Binding SelectedTag.Detail}">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="logic:LogicTagOption">
+                  <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+          </StackPanel>
+          <StackPanel Classes="field" Width="170" IsVisible="{Binding IsContact}">
+            <TextBlock Classes="fieldLabel" Text="OP" />
+            <ComboBox ItemsSource="{Binding OpOptions}" SelectedItem="{Binding Op}"
+                      AutomationProperties.Name="Contact operator">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="logic:LogicSelectOption">
+                  <TextBlock Text="{Binding Label}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+          </StackPanel>
+          <StackPanel Classes="field" Width="90" IsVisible="{Binding NeedsValue}">
+            <TextBlock Classes="fieldLabel" Text="VALUE" />
+            <TextBox Text="{Binding ValueText}" Watermark="value"
+                     AutomationProperties.Name="Comparison value" />
+          </StackPanel>
+          <StackPanel Classes="field" Width="90" IsVisible="{Binding IsTimer}">
+            <TextBlock Classes="fieldLabel" Text="PT s" />
+            <TextBox Text="{Binding PtSeconds}" Watermark="3"
+                     AutomationProperties.Name="Timer preset seconds"
+                     ToolTip.Tip="Preset time (PT) in seconds." />
+          </StackPanel>
+          <StackPanel Classes="field" Width="90" IsVisible="{Binding IsCounter}">
+            <TextBlock Classes="fieldLabel" Text="PV" />
+            <TextBox Text="{Binding PvText}" Watermark="5"
+                     AutomationProperties.Name="Counter preset"
+                     ToolTip.Tip="Preset count (PV)." />
+          </StackPanel>
+          <StackPanel Classes="field" Width="110">
+            <TextBlock Classes="fieldLabel" Text="SEVERITY" />
+            <ComboBox ItemsSource="{Binding SeverityOptions}" SelectedItem="{Binding Severity}"
+                      AutomationProperties.Name="Element severity">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="logic:LogicSelectOption">
+                  <TextBlock Text="{Binding Label}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+          </StackPanel>
+        </WrapPanel>
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" Margin="0,0,0,6" VerticalAlignment="Top">
+          <StackPanel MinWidth="52">
+            <TextBlock Classes="fieldLabel" Text="LIVE" />
+            <TextBlock Classes="mono" FontSize="13" TextAlignment="Center" Text="{Binding LiveText}"
+                       Classes.stateOk="{Binding IsLiveOk}"
+                       Classes.stateBad="{Binding IsLiveBad}"
+                       Classes.stateWarn="{Binding IsLiveWarn}"
+                       AutomationProperties.LiveSetting="Polite" />
+          </StackPanel>
+          <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Bottom">
+            <Button Classes="tool" Content="→" Command="{Binding IndentRowCommand}"
+                    ToolTip.Tip="Make this row an input of the row above" AutomationProperties.Name="Indent element" />
+            <Button Classes="tool" Content="←" Command="{Binding OutdentRowCommand}"
+                    ToolTip.Tip="Move this row out one level" AutomationProperties.Name="Outdent element" />
+            <Button Classes="tool" Content="✕" Command="{Binding RemoveElementCommand}"
+                    AutomationProperties.Name="Remove element" />
+          </StackPanel>
+        </StackPanel>
+      </Grid>
+    </Border>
   </Grid>
 </UserControl>

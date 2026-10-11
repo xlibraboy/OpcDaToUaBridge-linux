@@ -3,60 +3,98 @@
              xmlns:logic="using:OpcBridge.Hmi.ViewModels.Logic"
              x:Class="OpcBridge.Hmi.Views.LogicConditionRowView"
              x:DataType="logic:LogicConditionRowViewModel">
-  <Grid ColumnDefinitions="260,130,190,175,80,110,70,110,200,80,32" Margin="0,2">
-    <TextBox Grid.Column="0" Margin="0,0,4,0" Text="{Binding Text}"
-             Watermark="Operator sentence" AutomationProperties.Name="Condition sentence" />
-    <ComboBox Grid.Column="1" Margin="0,0,4,0" ItemsSource="{Binding Sources}" SelectedItem="{Binding SelectedSource}"
-              AutomationProperties.Name="Condition source"
-              ToolTip.Tip="{Binding SelectedSource.Label}">
-      <ComboBox.ItemTemplate>
-        <DataTemplate x:DataType="logic:LogicSourceOption">
-          <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
-        </DataTemplate>
-      </ComboBox.ItemTemplate>
-    </ComboBox>
-    <ComboBox Grid.Column="2" Margin="0,0,4,0" ItemsSource="{Binding Items}" SelectedItem="{Binding SelectedTag}"
-              AutomationProperties.Name="Condition tag"
-              ToolTip.Tip="{Binding SelectedTag.Detail}">
-      <ComboBox.ItemTemplate>
-        <DataTemplate x:DataType="logic:LogicTagOption">
-          <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
-        </DataTemplate>
-      </ComboBox.ItemTemplate>
-    </ComboBox>
-    <ComboBox Grid.Column="3" Margin="0,0,4,0" ItemsSource="{Binding OpOptions}" SelectedItem="{Binding Op}"
-              AutomationProperties.Name="Condition operator">
-      <ComboBox.ItemTemplate>
-        <DataTemplate x:DataType="logic:LogicSelectOption">
-          <TextBlock Text="{Binding Label}" />
-        </DataTemplate>
-      </ComboBox.ItemTemplate>
-    </ComboBox>
-    <TextBox Grid.Column="4" Margin="0,0,4,0" Text="{Binding ValueText}" Watermark="value"
-             IsVisible="{Binding NeedsValue}" AutomationProperties.Name="Comparison value" />
-    <TextBox Grid.Column="5" Margin="0,0,4,0" Text="{Binding Group}" Watermark="OR group"
-             AutomationProperties.Name="OR group"
-             ToolTip.Tip="Conditions sharing a group are any-of; everything else is AND." />
-    <TextBox Grid.Column="6" Margin="0,0,4,0" Text="{Binding HoldSeconds}" Watermark="hold s"
-             AutomationProperties.Name="Hold seconds"
-             ToolTip.Tip="TON on-delay: the contact counts only after holding this long." />
-    <ComboBox Grid.Column="7" Margin="0,0,4,0" ItemsSource="{Binding SeverityOptions}" SelectedItem="{Binding Severity}"
-              AutomationProperties.Name="Condition severity">
-      <ComboBox.ItemTemplate>
-        <DataTemplate x:DataType="logic:LogicSelectOption">
-          <TextBlock Text="{Binding Label}" />
-        </DataTemplate>
-      </ComboBox.ItemTemplate>
-    </ComboBox>
-    <TextBox Grid.Column="8" Margin="0,0,4,0" Text="{Binding NextStepText}" Watermark="What to do next"
-             AutomationProperties.Name="Next step text" />
-    <TextBlock Grid.Column="9" VerticalAlignment="Center" TextAlignment="Center" Text="{Binding LiveText}"
-               Classes.stateOk="{Binding IsLiveOk}"
-               Classes.stateBad="{Binding IsLiveBad}"
-               Classes.stateWarn="{Binding IsLiveWarn}"
-               AutomationProperties.LiveSetting="Polite"
-               ToolTip.Tip="Live state: 1 / 0 / no data for a bit, the value for a comparison." />
-    <Button Grid.Column="10" Classes="tool" Content="✕" Command="{Binding RemoveCommand}"
-            AutomationProperties.Name="Remove condition" />
-  </Grid>
+  <!-- One condition, as its own row: the fields wrap, each carries its label, and the live
+       reading stays pinned at the right edge. -->
+  <Border Classes="editorRow" Margin="0,0,0,6">
+    <Grid ColumnDefinitions="*,Auto">
+      <WrapPanel Grid.Column="0" Orientation="Horizontal">
+        <StackPanel Classes="field" Width="300">
+          <TextBlock Classes="fieldLabel" Text="SENTENCE" />
+          <TextBox Text="{Binding Text}" Watermark="Line 01 permit must be given"
+                   AutomationProperties.Name="Condition sentence" />
+        </StackPanel>
+        <StackPanel Classes="field" Width="150">
+          <TextBlock Classes="fieldLabel" Text="SOURCE" />
+          <ComboBox ItemsSource="{Binding Sources}" SelectedItem="{Binding SelectedSource}"
+                    AutomationProperties.Name="Condition source"
+                    ToolTip.Tip="{Binding SelectedSource.Label}">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="logic:LogicSourceOption">
+                <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+        </StackPanel>
+        <StackPanel Classes="field" Width="210">
+          <TextBlock Classes="fieldLabel" Text="TAG" />
+          <ComboBox ItemsSource="{Binding Items}" SelectedItem="{Binding SelectedTag}"
+                    AutomationProperties.Name="Condition tag"
+                    ToolTip.Tip="{Binding SelectedTag.Detail}">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="logic:LogicTagOption">
+                <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+        </StackPanel>
+        <StackPanel Classes="field" Width="150">
+          <TextBlock Classes="fieldLabel" Text="OP" />
+          <ComboBox ItemsSource="{Binding OpOptions}" SelectedItem="{Binding Op}"
+                    AutomationProperties.Name="Condition operator">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="logic:LogicSelectOption">
+                <TextBlock Text="{Binding Label}" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+        </StackPanel>
+        <StackPanel Classes="field" Width="90" IsVisible="{Binding NeedsValue}">
+          <TextBlock Classes="fieldLabel" Text="VALUE" />
+          <TextBox Text="{Binding ValueText}" Watermark="value"
+                   AutomationProperties.Name="Comparison value" />
+        </StackPanel>
+        <StackPanel Classes="field" Width="90">
+          <TextBlock Classes="fieldLabel" Text="OR GROUP" />
+          <TextBox Text="{Binding Group}" Watermark="none"
+                   AutomationProperties.Name="OR group"
+                   ToolTip.Tip="Conditions sharing a group are any-of; everything else is AND." />
+        </StackPanel>
+        <StackPanel Classes="field" Width="70">
+          <TextBlock Classes="fieldLabel" Text="HOLD s" />
+          <TextBox Text="{Binding HoldSeconds}" Watermark="0"
+                   AutomationProperties.Name="Hold seconds"
+                   ToolTip.Tip="TON on-delay: the contact counts only after holding this long." />
+        </StackPanel>
+        <StackPanel Classes="field" Width="110">
+          <TextBlock Classes="fieldLabel" Text="SEVERITY" />
+          <ComboBox ItemsSource="{Binding SeverityOptions}" SelectedItem="{Binding Severity}"
+                    AutomationProperties.Name="Condition severity">
+            <ComboBox.ItemTemplate>
+              <DataTemplate x:DataType="logic:LogicSelectOption">
+                <TextBlock Text="{Binding Label}" />
+              </DataTemplate>
+            </ComboBox.ItemTemplate>
+          </ComboBox>
+        </StackPanel>
+        <StackPanel Classes="field" Width="220">
+          <TextBlock Classes="fieldLabel" Text="NEXT STEP" />
+          <TextBox Text="{Binding NextStepText}" Watermark="What to do next"
+                   AutomationProperties.Name="Next step text" />
+        </StackPanel>
+      </WrapPanel>
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" Margin="0,0,0,6" VerticalAlignment="Top">
+        <StackPanel MinWidth="52">
+          <TextBlock Classes="fieldLabel" Text="LIVE" />
+          <TextBlock Classes="mono" FontSize="13" TextAlignment="Center" Text="{Binding LiveText}"
+                     Classes.stateOk="{Binding IsLiveOk}"
+                     Classes.stateBad="{Binding IsLiveBad}"
+                     Classes.stateWarn="{Binding IsLiveWarn}"
+                     AutomationProperties.LiveSetting="Polite"
+                     ToolTip.Tip="Live state: 1 / 0 / no data for a bit, the value for a comparison." />
+        </StackPanel>
+        <Button Classes="tool" Content="✕" Command="{Binding RemoveCommand}" VerticalAlignment="Bottom"
+                AutomationProperties.Name="Remove condition" />
+      </StackPanel>
+    </Grid>
+  </Border>
 </UserControl>
