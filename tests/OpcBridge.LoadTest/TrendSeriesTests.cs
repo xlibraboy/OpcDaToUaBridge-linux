@@ -36,6 +36,75 @@ public sealed class TrendSeriesTests
     }
 
     [Fact]
+    public void Palette_EveryColorReadsOnTheStripWell()
+    {
+        foreach (string color in TrendSeriesPalette.Colors)
+        {
+            Assert.True(Contrast(color, "#0C141A") >= 4.5, $"{color} is below 4.5:1 on the strip well");
+        }
+    }
+
+    [Fact]
+    public void Palette_AdjacentSlotsCarryAGreyscaleStep()
+    {
+        for (int i = 1; i < TrendSeriesPalette.Colors.Length; i++)
+        {
+            double step = Math.Abs(Lightness(TrendSeriesPalette.Colors[i]) - Lightness(TrendSeriesPalette.Colors[i - 1]));
+            Assert.True(step >= 6, $"palette slots {i - 1} and {i} are only {step:F1} L* apart");
+        }
+    }
+
+    [Fact]
+    public void Palette_FirstCycleSharesNoColorDashPair()
+    {
+        var seen = new HashSet<string>();
+        for (int i = 0; i < TrendSeriesPalette.Colors.Length; i++)
+        {
+            double[]? dash = TrendSeriesPalette.DashFor(TrendSeriesPalette.ColorFor(i));
+            string key = TrendSeriesPalette.ColorFor(i) + "|" + (dash is null ? "solid" : string.Join(",", dash));
+            Assert.True(seen.Add(key), $"pen {i} repeats the colour/dash pair {key}");
+        }
+    }
+
+    [Fact]
+    public void Palette_DashFollowsThePaletteSlotOnly()
+    {
+        // The single-tag default stays a plain solid line.
+        Assert.Null(TrendSeriesPalette.DashFor(TrendSeriesPalette.Colors[0]));
+        Assert.NotNull(TrendSeriesPalette.DashFor(TrendSeriesPalette.Colors[1]));
+        // Case is ignored; colours from an older palette (or none) stay solid.
+        Assert.NotNull(TrendSeriesPalette.DashFor(TrendSeriesPalette.Colors[1].ToLowerInvariant()));
+        Assert.Null(TrendSeriesPalette.DashFor("#4FC3F7"));
+        Assert.Null(TrendSeriesPalette.DashFor(null));
+        Assert.Null(TrendSeriesPalette.DashFor("  "));
+    }
+
+    private static double Contrast(string a, string b)
+    {
+        double la = Luminance(a);
+        double lb = Luminance(b);
+        return (Math.Max(la, lb) + 0.05) / (Math.Min(la, lb) + 0.05);
+    }
+
+    private static double Lightness(string hex)
+    {
+        double y = Luminance(hex);
+        return y > 0.008856 ? 116 * Math.Cbrt(y) - 16 : 903.3 * y;
+    }
+
+    private static double Luminance(string hex)
+    {
+        int value = Convert.ToInt32(hex.TrimStart('#'), 16);
+        double r = Linear(((value >> 16) & 0xFF) / 255.0);
+        double g = Linear(((value >> 8) & 0xFF) / 255.0);
+        double b = Linear((value & 0xFF) / 255.0);
+        return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    }
+
+    private static double Linear(double channel) =>
+        channel <= 0.04045 ? channel / 12.92 : Math.Pow((channel + 0.055) / 1.055, 2.4);
+
+    [Fact]
     public void TrendSeries_KeepsRenderingSettings()
     {
         TrendSample[] samples = { new(new DateTime(2026, 8, 5, 12, 0, 0, DateTimeKind.Utc), 1), new(new DateTime(2026, 8, 5, 12, 1, 0, DateTimeKind.Utc), 2) };

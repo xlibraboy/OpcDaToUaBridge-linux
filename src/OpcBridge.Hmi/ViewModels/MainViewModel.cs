@@ -803,6 +803,16 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty]
     private TrendGroupItemViewModel? _selectedTrendGroup;
 
+    private TrendGroupItemViewModel? deletedTrendGroup_;
+    private int deletedTrendGroupIndex_ = -1;
+
+    /// <summary>True while the last deleted group can still be put back (the page shows an Undo delete button).</summary>
+    [ObservableProperty]
+    private bool _hasPendingTrendGroupUndo;
+
+    partial void OnHasPendingTrendGroupUndoChanged(bool value) =>
+        UndoTrendGroupDeleteCommand.NotifyCanExecuteChanged();
+
     /// <summary>Tag row selected in the group's tag list; drives "Remove tag".</summary>
     [ObservableProperty]
     private TagListRow? _selectedGroupTag;
@@ -908,7 +918,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     private bool CanRemoveSelectedGroupTag() => HasSelectedTrendGroup && SelectedGroupTag is not null;
 
-    /// <summary>Deletes the selected group from the page and from disk.</summary>
+    /// <summary>Deletes the selected group from the page and from disk; undo stays available.</summary>
     [RelayCommand(CanExecute = nameof(CanDeleteTrendGroup))]
     private void DeleteTrendGroup()
     {
@@ -917,14 +927,39 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
+        deletedTrendGroupIndex_ = TrendGroups.IndexOf(group);
+        deletedTrendGroup_ = group;
         TrendGroups.Remove(group);
         SelectedTrendGroup = TrendGroups.FirstOrDefault();
         SaveTrendGroups();
         OnPropertyChanged(nameof(HasTrendGroups));
+        HasPendingTrendGroupUndo = true;
         StatusMessage = $"Deleted trend group '{group.Name}'";
     }
 
     private bool CanDeleteTrendGroup() => HasSelectedTrendGroup;
+
+    private bool CanUndoTrendGroupDelete() => HasPendingTrendGroupUndo && deletedTrendGroup_ is not null;
+
+    /// <summary>Puts the last deleted group back at its original position.</summary>
+    [RelayCommand(CanExecute = nameof(CanUndoTrendGroupDelete))]
+    private void UndoTrendGroupDelete()
+    {
+        if (deletedTrendGroup_ is not { } group)
+        {
+            return;
+        }
+
+        int index = Math.Clamp(deletedTrendGroupIndex_, 0, TrendGroups.Count);
+        TrendGroups.Insert(index, group);
+        SelectedTrendGroup = group;
+        deletedTrendGroup_ = null;
+        deletedTrendGroupIndex_ = -1;
+        HasPendingTrendGroupUndo = false;
+        SaveTrendGroups();
+        OnPropertyChanged(nameof(HasTrendGroups));
+        StatusMessage = $"Restored trend group '{group.Name}'";
+    }
 
     /// <summary>Opens the selected group's chart; closing it saves the pen setup back to the group.</summary>
     [RelayCommand(CanExecute = nameof(CanOpenTrendGroupChart))]

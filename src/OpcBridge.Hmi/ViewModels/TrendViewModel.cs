@@ -149,7 +149,8 @@ public partial class TrendViewModel : TrendWindowViewModelBase
                     IsBoolean: IsBooleanLike(DataType),
                     AlarmLimits: alarms,
                     FixedAxis: fixedAxis,
-                    StrokeWidth: Pen.StrokeWidthFor())
+                    StrokeWidth: Pen.StrokeWidthFor(),
+                    Error: Pen.Error)
             };
         }
     }

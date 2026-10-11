@@ -129,7 +129,8 @@ public partial class TrendPenViewModel : ObservableObject
         Visible: IsVisible,
         IsBoolean: IsBoolean,
         FixedAxis: FixedAxis,
-        StrokeWidth: StrokeWidthFor());
+        StrokeWidth: StrokeWidthFor(),
+        Error: Error);
 
     /// <summary>
     /// The fixed Y axis this pen plots at, or null to auto-fit its samples: the operator's

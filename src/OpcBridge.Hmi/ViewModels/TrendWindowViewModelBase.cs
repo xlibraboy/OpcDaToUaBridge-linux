@@ -376,6 +376,38 @@ public abstract partial class TrendWindowViewModelBase : ObservableObject, IAsyn
         await ReloadAsync().ConfigureAwait(true);
     }
 
+    /// <summary>
+    /// Keyboard zoom step (+ / − on the chart): halves or doubles the visible window around
+    /// <paramref name="centerUtc"/>. Zooming out to the base period or beyond drops the zoom
+    /// entirely, so stepping out returns to live instead of stopping at an arbitrary window.
+    /// </summary>
+    public async Task ZoomStepAsync(DateTime centerUtc, double factor)
+    {
+        if (!(factor > 0) || factor == 1)
+        {
+            return;
+        }
+
+        TimeSpan baseSpan = TimeSpan.FromHours(TrendRange.ParseHours(RangeLabel));
+        TimeSpan target = (ToUtc - FromUtc) * factor;
+        if (factor > 1 && target >= baseSpan)
+        {
+            await ResetZoomAsync().ConfigureAwait(true);
+            return;
+        }
+
+        if (target < TimeSpan.FromSeconds(1))
+        {
+            return;
+        }
+
+        DateTime from = centerUtc - TimeSpan.FromTicks(target.Ticks / 2);
+        zoomFromUtc_ = from;
+        zoomToUtc_ = from + target;
+        IsZoomed = true;
+        await ReloadAsync().ConfigureAwait(true);
+    }
+
     /// <summary>CSV text of the visible series only (hidden traces are excluded).</summary>
     public string BuildCsv() => TrendCsv.Build(VisibleSeries());
 

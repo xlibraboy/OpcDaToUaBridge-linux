@@ -34,6 +34,12 @@ public partial class TrendWindow : Window
             _ = viewModel.ZoomToAsync(e.FromUtc, e.ToUtc);
         };
 
+        // + / − on the keyboard step the zoom around the cursor (or the window centre).
+        TrendChart.ZoomStepRequested += (_, e) =>
+        {
+            _ = viewModel.ZoomStepAsync(e.CenterUtc, e.Factor);
+        };
+
         // Double-click on the plot zooms back out to the base range.
         TrendChart.ZoomResetRequested += (_, _) =>
         {

@@ -26,6 +26,20 @@ public sealed class TrendZoomRequestedEventArgs : EventArgs
     public DateTime ToUtc { get; }
 }
 
+/// <summary>Raised when a keyboard zoom step is requested: show [center×(1−factor)/2, center×(1+factor)/2].</summary>
+public sealed class TrendZoomStepRequestedEventArgs : EventArgs
+{
+    public TrendZoomStepRequestedEventArgs(DateTime centerUtc, double factor)
+    {
+        CenterUtc = centerUtc;
+        Factor = factor;
+    }
+
+    public DateTime CenterUtc { get; }
+
+    public double Factor { get; }
+}
+
 /// <summary>
 /// VTScada-style historical trend with two pen layouts: "Stacked" (one strip per pen,
 /// each with its own Y axis on the left; digital pens get a square-wave strip with
@@ -54,6 +68,10 @@ public sealed class TrendChartControl : Control
     /// <summary>Y-axis mapping for analog pens: "Shared" (one scale) or "Percent" (each strip 0..100%).</summary>
     public static readonly StyledProperty<string?> YAxisModeProperty =
         AvaloniaProperty.Register<TrendChartControl, string?>(nameof(YAxisMode), "Shared");
+
+    /// <summary>True while the host is fetching history: the plot shows a refreshing chip instead of staying blank.</summary>
+    public static readonly StyledProperty<bool> IsLoadingProperty =
+        AvaloniaProperty.Register<TrendChartControl, bool>(nameof(IsLoading), false);
 
     /// <summary>Pen layout: "Stacked" (one strip per pen) or "Mixed" (all pens overlaid on one plot).</summary>
     public static readonly StyledProperty<string?> LayoutModeProperty =
@@ -205,8 +223,18 @@ public sealed class TrendChartControl : Control
         set => SetValue(EnableRangeZoomProperty, value);
     }
 
+    /// <summary>True while the host is fetching history; drives the in-plot refreshing chip.</summary>
+    public bool IsLoading
+    {
+        get => GetValue(IsLoadingProperty);
+        set => SetValue(IsLoadingProperty, value);
+    }
+
     /// <summary>Raised when the operator drag-selects a time range on the plot.</summary>
     public event EventHandler<TrendZoomRequestedEventArgs>? ZoomRequested;
+
+    /// <summary>Raised when the operator presses + or − on the plot: step the zoom around the cursor.</summary>
+    public event EventHandler<TrendZoomStepRequestedEventArgs>? ZoomStepRequested;
 
     /// <summary>Raised when the operator double-clicks the plot (zoom back out).</summary>
     public event EventHandler? ZoomResetRequested;
@@ -231,7 +259,8 @@ public sealed class TrendChartControl : Control
             YStepProperty,
             UnitProperty,
             TrendStyleProperty,
-            ShowNamesInHoverProperty);
+            ShowNamesInHoverProperty,
+            IsLoadingProperty);
     }
 
     public TrendChartControl()
@@ -484,6 +513,14 @@ public sealed class TrendChartControl : Control
             case Key.Back:
                 RemovePinAtKeyboardCursor();
                 break;
+            case Key.OemPlus:
+            case Key.Add:
+                RequestZoomStep(0.5);
+                break;
+            case Key.OemMinus:
+            case Key.Subtract:
+                RequestZoomStep(2.0);
+                break;
             case Key.Escape:
                 keyboardCursorX_ = null;
                 cursorPoint_ = null;
@@ -501,6 +538,23 @@ public sealed class TrendChartControl : Control
         keyboardCursorX_ = x;
         cursorPoint_ = new Point(x, Bounds.Height / 2);
         InvalidateVisual();
+    }
+
+    /// <summary>
+    /// Steps the visible window by <paramref name="factor"/> (0.5 zooms in, 2 zooms out) around the
+    /// keyboard cursor when it is on the plot, otherwise around the window centre. The host window
+    /// re-windows the trend in response; the control only names the intent.
+    /// </summary>
+    private void RequestZoomStep(double factor)
+    {
+        if (layoutPlotWidth_ <= 0 || layoutToUtc_ <= layoutFromUtc_)
+        {
+            return;
+        }
+
+        DateTime center = KeyboardCursorTime()
+            ?? layoutFromUtc_ + TimeSpan.FromTicks((layoutToUtc_ - layoutFromUtc_).Ticks / 2);
+        ZoomStepRequested?.Invoke(this, new TrendZoomStepRequestedEventArgs(center, factor));
     }
 
     /// <summary>Time under the keyboard cursor, or null when the cursor is not on the plot.</summary>
@@ -758,22 +812,110 @@ public sealed class TrendChartControl : Control
         }
 
         IReadOnlyList<TrendSeries> series = GetSeries();
+        var typeface = new Typeface(FontFamily.Default);
 
         // ---- Resolve each pen's strip axis ----
         List<StripLayout> strips = BuildStrips(series, IsPercentAxisMode);
         if (strips.Count == 0)
         {
+            // Every pen is hidden: say so instead of showing a blank plot.
+            if (series.Count > 0)
+            {
+                DrawCenteredState(context, typeface, "All traces hidden", "Show a pen to plot it", width, height);
+            }
+
             return;
         }
 
-        var typeface = new Typeface(FontFamily.Default);
+        int totalUsed = strips.Sum(strip => strip.Used.Length);
+        if (totalUsed == 0)
+        {
+            // No samples yet: distinguish "still reading", "nothing stored" and "history failed"
+            // from a blank plot the operator cannot tell apart.
+            bool allErrored = strips.All(strip => !string.IsNullOrWhiteSpace(strip.Series.Error));
+            string title = IsLoading
+                ? "Loading history…"
+                : allErrored
+                    ? "History is unavailable"
+                    : "No history for this window";
+            string? hint = !IsLoading && allErrored
+                ? "Is InfluxDB logging enabled for these tags?"
+                : null;
+            DrawCenteredState(context, typeface, title, hint, width, height);
+        }
+
         if (IsMixedLayout)
         {
             RenderMixed(context, strips, from, to, totalTicks, width, height, typeface);
-            return;
+        }
+        else
+        {
+            RenderStacked(context, strips, from, to, totalTicks, width, height, typeface);
         }
 
-        RenderStacked(context, strips, from, to, totalTicks, width, height, typeface);
+        if (IsLoading && totalUsed > 0)
+        {
+            // A refresh over existing traces: a quiet chip, never a blanked plot.
+            DrawRefreshingChip(context, typeface, width);
+        }
+    }
+
+    /// <summary>Centered plot state for when there is nothing to draw: title plus an optional hint.</summary>
+    private static void DrawCenteredState(
+        DrawingContext context,
+        Typeface typeface,
+        string title,
+        string? hint,
+        double width,
+        double height)
+    {
+        var titleLayout = new FormattedText(
+            title,
+            CultureInfo.CurrentCulture,
+            FlowDirection.LeftToRight,
+            new Typeface(FontFamily.Default, FontStyle.Normal, FontWeight.SemiBold),
+            FontSize + 2,
+            AxisLabelBrush);
+        double blockHeight = titleLayout.Height;
+        FormattedText? hintLayout = null;
+        if (!string.IsNullOrEmpty(hint))
+        {
+            hintLayout = new FormattedText(
+                hint,
+                CultureInfo.CurrentCulture,
+                FlowDirection.LeftToRight,
+                typeface,
+                FontSize,
+                AxisLabelBrush);
+            blockHeight += hintLayout.Height + 4;
+        }
+
+        double top = Math.Max(TopPad, height / 2 - blockHeight / 2);
+        context.DrawText(titleLayout, new Point(Math.Max(8, width / 2 - titleLayout.Width / 2), top));
+        if (hintLayout is not null)
+        {
+            context.DrawText(
+                hintLayout,
+                new Point(Math.Max(8, width / 2 - hintLayout.Width / 2), top + titleLayout.Height + 4));
+        }
+    }
+
+    /// <summary>Small "refreshing" chip pinned to the plot's top-right while a reload is in flight.</summary>
+    private static void DrawRefreshingChip(DrawingContext context, Typeface typeface, double width)
+    {
+        var layout = new FormattedText(
+            "refreshing…",
+            CultureInfo.CurrentCulture,
+            FlowDirection.LeftToRight,
+            typeface,
+            FontSize,
+            AxisLabelBrush);
+        const double padX = 6;
+        double chipWidth = layout.Width + padX * 2;
+        double chipX = width - RightPad - chipWidth;
+        var rect = new Rect(chipX, TopPad, chipWidth, layout.Height + 4);
+        context.DrawRectangle(ReadoutBgBrush, new Pen(FrameBrush, 1), new RoundedRect(rect, 3, 3));
+        context.DrawText(layout, new Point(chipX + padX, TopPad + 2));
     }
 
     /// <summary>
