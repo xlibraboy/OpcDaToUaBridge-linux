@@ -14,6 +14,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+**The runtime authors and watches the plant logic.** A new **Logic** page (View ▸ Logic, Ctrl+4)
+carries the whole logic surface, per bridge: the block form (name, kind, enabled, interlock group,
+description, tags), the flat **condition** editor (sentence, source/tag pickers,
+ON/OFF/`>`/`<`/`=`, OR group, hold timer, severity, next step), the **IEC 61131-3 network** editor
+(indented element rows — contacts, AND/OR/XOR/NOT, TON/TOF/TP, CTU/CTD, SR/RS, R_TRIG/F_TRIG —
+with `Convert to IEC network` and back), sequence **steps** with an optional completion handshake,
+and **actions** the phone renders. Every row shows the bridge's live state as a chip (1 / 0 / no
+data, or the live value); the **Blocks…** window lists every block under its interlock group and
+is where blocks are created, picked and deleted. The **Result** tab renders the evaluated
+configuration the way the phone does — `should 1 · actual 0`, timer and counter progress, step
+states — fed by the bridge's `logic` hub push plus a once-a-second state poll while the page is
+open, and it never rebuilds rows under the operator. Definitions save through the bridge's own
+`/api/logic*` API (its errors shown verbatim, Save greyed until the draft differs); while a bridge
+is unreachable the page keeps the last known blocks on screen and disables editing. A **Guide…**
+button carries the logic guide the dashboard used to describe.
+
 ## [1.8.2] - 2026-10-06
 
 ### Fixed

@@ -25,6 +25,26 @@ public sealed record HmiInfluxStatus(
     public bool IsConnected => string.Equals(State, "Connected", StringComparison.OrdinalIgnoreCase);
 }
 
+/// <summary>Plant-logic definitions and their version, from GET /api/logic.</summary>
+public sealed record HmiLogicDefinitions(IReadOnlyList<LogicBlockDto> Blocks, long Version);
+
+/// <summary>Outcome of POST /api/logic/blocks or DELETE /api/logic/blocks/{id}.</summary>
+public sealed record HmiLogicSaveResult(bool Ok, LogicBlockDto? Block, long Version, string? Error);
+
+/// <summary>Wire shape of a successful POST /api/logic/blocks.</summary>
+internal sealed class HmiLogicSaveResponse
+{
+    public LogicBlockDto? Block { get; set; }
+
+    public long Version { get; set; }
+}
+
+/// <summary>Wire shape of a successful DELETE /api/logic/blocks/{id}.</summary>
+internal sealed class HmiLogicVersionResponse
+{
+    public long Version { get; set; }
+}
+
 public sealed class BridgeApiClient : IDisposable
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -131,6 +151,74 @@ public sealed class BridgeApiClient : IDisposable
             ItemId = itemId,
             Error = "Empty trends response"
         };
+    }
+
+    /// <summary>Plant-logic definitions and their version, from GET /api/logic.</summary>
+    public async Task<HmiLogicDefinitions> GetLogicDefinitionsAsync(CancellationToken ct)
+    {
+        HmiLogicDefinitions? response = await client_.GetFromJsonAsync<HmiLogicDefinitions>("api/logic", JsonOptions, ct)
+            .ConfigureAwait(false);
+        return response ?? new HmiLogicDefinitions(Array.Empty<LogicBlockDto>(), 0);
+    }
+
+    /// <summary>Evaluated logic state, from GET /api/logic/state.</summary>
+    public async Task<LogicStateSnapshot> GetLogicStateAsync(CancellationToken ct)
+    {
+        LogicStateSnapshot? response = await client_.GetFromJsonAsync<LogicStateSnapshot>(
+            "api/logic/state", JsonOptions, ct).ConfigureAwait(false);
+        return response ?? new LogicStateSnapshot();
+    }
+
+    /// <summary>Saves one logic block; a rejected save answers with the bridge's own error text.</summary>
+    public async Task<HmiLogicSaveResult> SaveLogicBlockAsync(LogicBlockDto block, CancellationToken ct)
+    {
+        using HttpResponseMessage http = await client_.PostAsJsonAsync("api/logic/blocks", new { block }, JsonOptions, ct)
+            .ConfigureAwait(false);
+        if (!http.IsSuccessStatusCode)
+        {
+            return new HmiLogicSaveResult(false, null, 0, await ReadLogicErrorAsync(http, ct).ConfigureAwait(false));
+        }
+
+        HmiLogicSaveResponse? body = await http.Content.ReadFromJsonAsync<HmiLogicSaveResponse>(JsonOptions, ct)
+            .ConfigureAwait(false);
+        return new HmiLogicSaveResult(true, body?.Block ?? block, body?.Version ?? 0, null);
+    }
+
+    /// <summary>Deletes one logic block; a rejected delete answers with the bridge's own error text.</summary>
+    public async Task<HmiLogicSaveResult> DeleteLogicBlockAsync(Guid id, CancellationToken ct)
+    {
+        using HttpResponseMessage http = await client_.DeleteAsync($"api/logic/blocks/{id:D}", ct).ConfigureAwait(false);
+        if (!http.IsSuccessStatusCode)
+        {
+            return new HmiLogicSaveResult(false, null, 0, await ReadLogicErrorAsync(http, ct).ConfigureAwait(false));
+        }
+
+        HmiLogicVersionResponse? body = await http.Content.ReadFromJsonAsync<HmiLogicVersionResponse>(JsonOptions, ct)
+            .ConfigureAwait(false);
+        return new HmiLogicSaveResult(true, null, body?.Version ?? 0, null);
+    }
+
+    /// <summary>The bridge's <c>{error}</c> body when there is one, else the bare HTTP status.</summary>
+    private static async Task<string> ReadLogicErrorAsync(HttpResponseMessage http, CancellationToken ct)
+    {
+        try
+        {
+            JsonElement? body = await http.Content.ReadFromJsonAsync<JsonElement?>(JsonOptions, ct)
+                .ConfigureAwait(false);
+            if (body is { } element
+                && element.ValueKind == JsonValueKind.Object
+                && element.TryGetProperty("error", out JsonElement error)
+                && error.ValueKind == JsonValueKind.String)
+            {
+                return error.GetString() ?? $"HTTP {(int)http.StatusCode}";
+            }
+        }
+        catch
+        {
+            // malformed body: fall through to the status code
+        }
+
+        return $"HTTP {(int)http.StatusCode}";
     }
 
     public void Dispose() => client_.Dispose();

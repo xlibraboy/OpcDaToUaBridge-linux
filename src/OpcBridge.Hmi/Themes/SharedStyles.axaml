@@ -139,6 +139,44 @@
     <Setter Property="Foreground" Value="{DynamicResource MutedFgBrush}" />
   </Style>
 
+  <!-- State text: logic marks, actuals, live chips (never colour alone — the word rides along) -->
+  <Style Selector="TextBlock.stateOk">
+    <Setter Property="Foreground" Value="{DynamicResource OkFgBrush}" />
+  </Style>
+
+  <Style Selector="TextBlock.stateBad">
+    <Setter Property="Foreground" Value="{DynamicResource BadFgBrush}" />
+  </Style>
+
+  <Style Selector="TextBlock.stateWarn">
+    <Setter Property="Foreground" Value="{DynamicResource WarnFgBrush}" />
+  </Style>
+
+  <Style Selector="TextBlock.stateMuted">
+    <Setter Property="Foreground" Value="{DynamicResource MutedFgBrush}" />
+  </Style>
+
+  <!-- Logic block rows: full-width, accent bar when selected -->
+  <Style Selector="Button.logicRow">
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Left" />
+    <Setter Property="BorderThickness" Value="3,0,0,0" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Padding" Value="8,4" />
+    <Setter Property="CornerRadius" Value="3" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="FontWeight" Value="Normal" />
+  </Style>
+
+  <Style Selector="Button.logicRow.active">
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentValueBrush}" />
+    <Setter Property="Background" Value="{DynamicResource WellBrush}" />
+  </Style>
+
+  <Style Selector="Button.logicRow:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource WidgetSurfaceBrush}" />
+  </Style>
+
   <!-- Buttons -->
   <Style Selector="Button.primary">
     <Setter Property="Background" Value="{DynamicResource AccentActionBrush}" />

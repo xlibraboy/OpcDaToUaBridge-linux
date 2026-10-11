@@ -38,7 +38,8 @@ public sealed class HmiHubClient : IAsyncDisposable
         Func<HmiValueDelta[], Task> onValues,
         Func<HmiMappingsChanged, Task> onMappingsChanged,
         CancellationToken ct,
-        HmiHubTiming? timing = null)
+        HmiHubTiming? timing = null,
+        Func<LogicStateSnapshot, Task>? onLogic = null)
     {
         await DisposeAsync().ConfigureAwait(false);
         HmiHubTiming settings = timing ?? HmiHubTiming.Default;
@@ -53,6 +54,12 @@ public sealed class HmiHubClient : IAsyncDisposable
 
         connection_.On<HmiValueDelta[]>("values", async batch => await onValues(batch).ConfigureAwait(false));
         connection_.On<HmiMappingsChanged>("mappingsChanged", async msg => await onMappingsChanged(msg).ConfigureAwait(false));
+        if (onLogic is not null)
+        {
+            // The bridge pushes the evaluated logic state only when it changes; the page VM
+            // applies it in place and polls as a fallback while the page is visible.
+            connection_.On<LogicStateSnapshot>("logic", async snapshot => await onLogic(snapshot).ConfigureAwait(false));
+        }
 
         connection_.Reconnecting += async error =>
         {

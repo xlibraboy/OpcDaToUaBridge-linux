@@ -1,0 +1,33 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:logic="using:OpcBridge.Hmi.ViewModels.Logic"
+             x:Class="OpcBridge.Hmi.Views.LogicResultElementRowView"
+             x:DataType="logic:LogicResultElementRowViewModel">
+  <Grid ColumnDefinitions="24,54,2*,Auto,90,140,120,170" RowDefinitions="Auto,Auto" Margin="{Binding IndentMargin}">
+    <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding Mark}" FontWeight="SemiBold" VerticalAlignment="Center"
+               Classes.stateOk="{Binding IsOk}"
+               Classes.stateBad="{Binding IsBad}"
+               Classes.stateWarn="{Binding IsWarn}" />
+    <TextBlock Grid.Row="0" Grid.Column="1" Classes="hint" Text="{Binding KindLabel}" VerticalAlignment="Center" />
+    <StackPanel Grid.Row="0" Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+      <TextBlock Text="{Binding Text}" TextWrapping="Wrap" VerticalAlignment="Center" />
+      <TextBlock Classes="hint warn" Text="warn only" IsVisible="{Binding WarnOnly}" VerticalAlignment="Center" />
+    </StackPanel>
+    <TextBlock Grid.Row="0" Grid.Column="3" FontWeight="SemiBold" Text="{Binding Actual}" Margin="10,0,0,0" VerticalAlignment="Center"
+               Classes.stateOk="{Binding IsOk}"
+               Classes.stateBad="{Binding IsBad}"
+               Classes.stateWarn="{Binding IsWarn}" />
+    <TextBlock Grid.Row="0" Grid.Column="4" Classes="hint" Text="{Binding ValueText}" Margin="10,0,0,0"
+               VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding ValueText}" />
+    <TextBlock Grid.Row="0" Grid.Column="5" Text="{Binding ShouldLine}" Margin="10,0,0,0" VerticalAlignment="Center"
+               IsVisible="{Binding HasShould}"
+               Classes.stateOk="{Binding IsShouldOk}"
+               Classes.stateBad="{Binding IsShouldBad}" />
+    <TextBlock Grid.Row="0" Grid.Column="6" Classes="hint" Text="{Binding Progress}" Margin="10,0,0,0"
+               VerticalAlignment="Center" IsVisible="{Binding HasProgress}" />
+    <TextBlock Grid.Row="0" Grid.Column="7" Classes="hint" Text="{Binding TagLabel}" Margin="10,0,0,0"
+               VerticalAlignment="Center" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding TagLabel}" />
+    <TextBlock Grid.Row="1" Grid.Column="2" Grid.ColumnSpan="6" Classes="hint" Text="{Binding NextStepText}"
+               Margin="0,2,0,0" TextWrapping="Wrap" IsVisible="{Binding HasNextStep}" />
+  </Grid>
+</UserControl>

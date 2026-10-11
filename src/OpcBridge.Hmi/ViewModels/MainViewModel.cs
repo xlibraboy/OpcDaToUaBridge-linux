@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.Input;
 using OpcBridge.Client;
 using OpcBridge.Hmi.Core;
 using OpcBridge.Hmi.Services;
+using OpcBridge.Hmi.ViewModels.Logic;
 using OpcBridge.Hmi.Views;
 
 namespace OpcBridge.Hmi.ViewModels;
@@ -14,7 +15,8 @@ public enum HmiPage
 {
     Home,
     Config,
-    Trends
+    Trends,
+    Logic
 }
 
 public partial class MainViewModel : ObservableObject, IAsyncDisposable
@@ -55,11 +57,13 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             connections_.Cache,
             OpenFaceplateFor,
             WriteForBindingAsync);
+        Logic = new LogicPanelViewModel(connections_, PostToUiAsync, message => StatusMessage = message);
         connections_.CacheChanged += OnCacheChanged;
         connections_.MappingsChanged += OnMappingsChangedAsync;
         connections_.InfluxStatusChanged += OnInfluxStatusChanged;
         connections_.LinkStateChanged += OnLinkStateChanged;
         connections_.BridgeReconnected += OnBridgeReconnectedAsync;
+        connections_.LogicChanged += OnLogicChanged;
         DisplaySurface.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(DisplaySurfaceViewModel.HasDocument) or nameof(DisplaySurfaceViewModel.DisplayName))
@@ -71,6 +75,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         LoadLocalConfig();
         LoadTrendGroups();
         RecomputeLinkState();
+        Logic.OnConnectionChanged();
         _ = DetectLocalBridgeAsync();
     }
 
@@ -116,6 +121,9 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     public DisplaySurfaceViewModel DisplaySurface { get; }
 
+    /// <summary>Plant-logic page: the block editor and the live evaluated result.</summary>
+    public LogicPanelViewModel Logic { get; }
+
     // ---- Page navigation (SCADA shell) ----
 
     [ObservableProperty]
@@ -128,11 +136,16 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// <summary>Saved trend groups page.</summary>
     public bool IsTrendsPage => CurrentPage == HmiPage.Trends;
 
+    /// <summary>Plant-logic page: authoring editor and the evaluated result.</summary>
+    public bool IsLogicPage => CurrentPage == HmiPage.Logic;
+
     partial void OnCurrentPageChanged(HmiPage value)
     {
         OnPropertyChanged(nameof(IsHomePage));
         OnPropertyChanged(nameof(IsConfigPage));
         OnPropertyChanged(nameof(IsTrendsPage));
+        OnPropertyChanged(nameof(IsLogicPage));
+        Logic.SetPageVisible(value == HmiPage.Logic);
     }
 
     [RelayCommand]
@@ -143,6 +156,9 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     [RelayCommand]
     private void ShowTrends() => CurrentPage = HmiPage.Trends;
+
+    [RelayCommand]
+    private void ShowLogic() => CurrentPage = HmiPage.Logic;
 
     // ---- Home overview card data ----
 
@@ -384,6 +400,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             }
 
             RecomputeLinkState();
+            Logic.OnLinkStatusesChanged();
             StatusMessage = state switch
             {
                 BridgeLinkState.Reconnecting => $"Connection to {bridgeId} lost — reconnecting…",
@@ -398,7 +415,15 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     /// <summary>The link is back and its snapshot landed, so the values on screen are fresh.</summary>
     private Task OnBridgeReconnectedAsync(string bridgeId) =>
-        PostToUiAsync(() => StatusMessage = $"Reconnected to {bridgeId} — values refreshed");
+        PostToUiAsync(() =>
+        {
+            StatusMessage = $"Reconnected to {bridgeId} — values refreshed";
+            Logic.OnBridgeReconnected(bridgeId);
+        });
+
+    /// <summary>A bridge pushed a new evaluated logic state; the page applies it in place.</summary>
+    private void OnLogicChanged(string bridgeId, LogicStateSnapshot snapshot) =>
+        _ = PostToUiAsync(() => Logic.ApplyState(bridgeId, snapshot));
 
     /// <summary>Re-derives the status strip from the manager's live bridge link states.</summary>
     private void RecomputeLinkState()
@@ -608,6 +633,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             ApplyLinkStatuses(config);
             IsConnected = true;
             RecomputeLinkState();
+            Logic.OnConnectionChanged();
             StatusMessage = result.Failed.Count == 0
                 ? $"Loaded {Tags.Count} tags from {result.Connected.Count} bridge(s)"
                 : $"Loaded {Tags.Count} tags from {result.Connected.Count} bridge(s) — "
@@ -1290,6 +1316,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
                 await connections_.RefreshBridgeSnapshotAsync(bridgeId, CancellationToken.None).ConfigureAwait(true);
                 // Tags can appear/disappear with the mappings, so the saved groups' rows follow.
                 RefreshTrendGroupRows();
+                Logic.OnMappingsChanged(bridgeId);
                 StatusMessage = $"Mappings changed on {bridgeId} (v{msg.Version})";
             }
             catch (Exception ex)
@@ -1475,6 +1502,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         connecting_ = false;
         RecomputeLinkState();
+        Logic.OnConnectionChanged();
 
         foreach (DisplayStoreClient client in storeClients_.Values)
         {
@@ -1675,6 +1703,8 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         connections_.InfluxStatusChanged -= OnInfluxStatusChanged;
         connections_.LinkStateChanged -= OnLinkStateChanged;
         connections_.BridgeReconnected -= OnBridgeReconnectedAsync;
+        connections_.LogicChanged -= OnLogicChanged;
+        Logic.Dispose();
         foreach (DisplayStoreClient client in storeClients_.Values)
         {
             client.Dispose();
