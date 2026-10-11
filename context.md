@@ -269,26 +269,28 @@ The Runtime carries the plant-logic surface the dashboard's old Tags ▸ Logic t
 that tab is gone, and the page is the whole editor (branch `feature/logic-web-app`):
 
 - **Shell:** `Views/LogicPage.axaml` + `ViewModels/Logic/LogicPanelViewModel` on `HmiPage.Logic`
-  (View menu / **Ctrl+4**). The page is per bridge (a selector over
-  `BridgeConnectionManager.LinkStatuses`, defaulting to the first connected one); definitions and
-  state are cached per bridge in memory, and hub `logic` pushes are filtered to the selected bridge.
+  (View menu / **Ctrl+4**). The page is a block rail beside the tabbed work surface: the rail
+  (`LOGIC BLOCKS` + the block summary) carries the whole grouped list with its live pills under
+  both tabs, and the work surface switches between the Editor and the Result. The page is per
+  bridge (a selector over `BridgeConnectionManager.LinkStatuses`, defaulting to the first
+  connected one); definitions and state are cached per bridge in memory, and hub `logic` pushes
+  are filtered to the selected bridge.
 - **Editor tab:** the block form (name, kind interlock/permissive/sequence, enabled, interlock
   group, description, tags) and the three authoring surfaces — flat **conditions** (sentence,
   source/tag pickers, ON/OFF/`>`/`<`/`=`, OR group, hold seconds, severity, next step), the
   **IEC 61131-3 network** (indented element rows with →/← nesting, contacts/gates/timers/counters/
   latches/edges, `Convert to IEC network` and back) and sequence **steps** (condition rows plus an
   optional completion handshake), plus block-level **actions** (writeable tags only). Every row
-  carries the bridge's live state as a chip (1 / 0 / no data, or the live value). `Blocks…` opens
-  `LogicBlocksWindow` — the grouped list with state chips, `+ New block` and per-row delete (the
-  list lives there, the editor keeps the whole window). Save/delete go through the bridge's own
+  carries the bridge's live state as a chip (1 / 0 / no data, or the live value). The rail is the
+  picker; `Blocks…` opens `LogicBlocksWindow` — the same grouped list with `+ New block` and
+  per-row delete, for creating and deleting blocks. Save/delete go through the bridge's own
   `/api/logic*` API and surface its errors verbatim (a duplicate name reads "Block name already
   exists."); Save greys out until the draft actually differs. `ViewModels/Logic/LogicEditorCodec`
   holds the collect rules (sequence → steps only; element rows present → the network only;
   otherwise the conditions) and the dirty compare.
-- **Result tab:** the evaluated configuration the way the phone presents it — the grouped block
-  list with state badge, first reason and sequence progress, and the selected block's network as
-  rows (`✓`/`✗`/`—`, kind label, `should 1 · actual 0`, timer/counter progress, next-step text) or
-  its step cards.
+- **Result tab:** the selected block's evaluated configuration the way the phone presents it — its
+  network as rows (`✓`/`✗`/`—`, kind label, `should 1 · actual 0`, timer/counter progress,
+  next-step text) or its step cards; the block list itself is the rail beside the tabs.
 - **Live data:** the hub `logic` snapshot is applied in place (rows matched by element id, never
   rebuilt), plus a 1 s `GET /api/logic/state` poll while the page is visible — a pure value move
   does not re-push the signature, so the poll keeps the readings fresh. A state whose version has

@@ -5,8 +5,8 @@ using OpcBridge.Hmi.ViewModels.Logic;
 namespace OpcBridge.Hmi.Views;
 
 /// <summary>
-/// The logic block list: every block under its interlock group heading with the live state, the
-/// place to create, pick and delete blocks (the editor itself keeps the whole window).
+/// The block management window: every block under its interlock group heading with the live
+/// state, the place to create and delete blocks (the page's rail picks the block to edit).
 /// </summary>
 public partial class LogicBlocksWindow : Window
 {
