@@ -1,5 +1,6 @@
 using System.Globalization;
 using OpcBridge.Client;
+using OpcBridge.Hmi.Core;
 
 namespace OpcBridge.Hmi.ViewModels.Logic;
 
@@ -271,6 +272,104 @@ public static class LogicText
         }
 
         return $"{done}/{block.Steps.Count} steps" + (current.Length > 0 ? $" · {current}" : string.Empty);
+    }
+
+    /// <summary>
+    /// The result pane's freshness line. The link's own state wins over the age: a dead feed must
+    /// never keep claiming a recent update, and a snapshot's age counts up, so a quiet bridge reads
+    /// as quiet instead of fresh.
+    /// </summary>
+    public static string Freshness(BridgeLinkState? link, DateTimeOffset? updatedAt, DateTimeOffset now)
+    {
+        if (link == BridgeLinkState.Failed)
+        {
+            return "stale — bridge unreachable";
+        }
+
+        if (link == BridgeLinkState.Reconnecting)
+        {
+            return "stale — reconnecting";
+        }
+
+        if (updatedAt is not { } at)
+        {
+            return "no state yet";
+        }
+
+        TimeSpan age = now - at;
+        return age.TotalSeconds < 5
+            ? "updated just now"
+            : age.TotalSeconds < 60
+                ? $"updated {(int)age.TotalSeconds}s ago"
+                : age.TotalMinutes < 60
+                    ? $"updated {(int)age.TotalMinutes}m ago"
+                    : $"updated {(int)age.TotalHours}h ago";
+    }
+
+    /// <summary>
+    /// The block list's empty line. Reading, an unreachable bridge, a read the bridge refused and a
+    /// genuinely empty list are four different facts — never one sentence.
+    /// </summary>
+    public static string BlockListEmptyMessage(bool hasBridge, bool connected, bool loading, string? error) =>
+        !hasBridge
+            ? "Connect a bridge to load its plant logic."
+            : loading
+                ? "Reading the bridge's blocks…"
+                : !connected
+                    ? "The bridge is unreachable — its blocks will appear when it answers."
+                    : !string.IsNullOrWhiteSpace(error)
+                        ? $"The bridge could not list its blocks — {error}"
+                        : "No logic blocks yet — use New block to author the first one.";
+
+    /// <summary>
+    /// The result pane's empty state, naming the same fact as the list: no selection, a draft not
+    /// saved yet, a read in flight, an unreachable bridge, a refused read or a truly empty list.
+    /// </summary>
+    public static (string Title, string Message) ResultEmptyState(
+        bool hasStoredBlock,
+        bool editingNewBlock,
+        bool hasBridge,
+        bool connected,
+        bool loading,
+        string? error,
+        bool hasBlocks)
+    {
+        if (hasStoredBlock)
+        {
+            return ("NOTHING TO EVALUATE", "This block has no elements to evaluate yet.");
+        }
+
+        if (editingNewBlock)
+        {
+            return ("NOT SAVED YET", "Save the block to see its evaluated network.");
+        }
+
+        if (!hasBridge)
+        {
+            return ("NO BRIDGE", "Connect a bridge to load and author its plant logic.");
+        }
+
+        if (hasBlocks)
+        {
+            return ("NO BLOCK SELECTED", "Pick a block in the list to see its evaluated network.");
+        }
+
+        if (loading)
+        {
+            return ("READING…", "Reading the bridge's blocks…");
+        }
+
+        if (!connected)
+        {
+            return ("NO BLOCKS", "The bridge is unreachable — its blocks will appear when it answers.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(error))
+        {
+            return ("COULD NOT READ", $"The bridge could not list its blocks — {error}");
+        }
+
+        return ("NO BLOCKS YET", "Use New block to author the first one.");
     }
 
     /// <summary>Seconds with up to two decimals, trailing zeros trimmed ("1.5 s", "3 s").</summary>

@@ -381,6 +381,7 @@
               <TextBlock Text="{Binding ResultStateWord}" AutomationProperties.LiveSetting="Polite" />
             </Border>
             <TextBlock Grid.Column="4" Classes="hint" Margin="10,0,0,0" Text="{Binding ResultFreshness}"
+                       Classes.warn="{Binding IsResultStale}"
                        VerticalAlignment="Center" HorizontalAlignment="Right" />
           </Grid>
           <TextBlock DockPanel.Dock="Top" Classes="hint" Text="{Binding ResultDescription}" TextWrapping="Wrap"

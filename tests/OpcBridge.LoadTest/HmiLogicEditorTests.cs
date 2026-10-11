@@ -1,6 +1,7 @@
 using System.Text.Json;
 using OpcBridge.Client;
 using OpcBridge.Hmi.Core;
+using OpcBridge.Hmi.Services;
 using OpcBridge.Hmi.ViewModels.Logic;
 using Xunit;
 
@@ -9,7 +10,8 @@ namespace OpcBridge.LoadTest;
 /// <summary>
 /// The Logic page's editor model, without a bridge: the collect rules that mirror the Logic web
 /// app (sequence → steps only; element rows → the network only; otherwise the flat conditions),
-/// the indentation tree, the dirty comparison and the console text the rows read back.
+/// the indentation tree, the dirty comparison, the row guards and the wording the surface shows
+/// while a bridge is quiet, unreachable, or never answered at all.
 /// </summary>
 public sealed class HmiLogicEditorTests
 {
@@ -427,5 +429,146 @@ public sealed class HmiLogicEditorTests
         Assert.Equal("gone", row.SourceId);
         Assert.Equal("Old.Tag", row.ItemId);
         Assert.Equal("Old.Tag", row.SelectedTag?.Label);
+    }
+
+    [Fact]
+    public void Freshness_NamesADeadFeed_AndAgesAQuietOne()
+    {
+        var now = new DateTimeOffset(2026, 10, 11, 12, 0, 0, TimeSpan.Zero);
+
+        // The link's own state wins over the age: a dead feed never claims a recent update.
+        Assert.Equal("stale — bridge unreachable", LogicText.Freshness(BridgeLinkState.Failed, null, now));
+        Assert.Equal("stale — bridge unreachable", LogicText.Freshness(BridgeLinkState.Failed, now.AddSeconds(-30), now));
+        Assert.Equal("stale — reconnecting", LogicText.Freshness(BridgeLinkState.Reconnecting, now.AddSeconds(-30), now));
+
+        // A live link with no snapshot yet, and then the age counting up.
+        Assert.Equal("no state yet", LogicText.Freshness(BridgeLinkState.Connected, null, now));
+        Assert.Equal("updated just now", LogicText.Freshness(BridgeLinkState.Connected, now.AddSeconds(-2), now));
+        Assert.Equal("updated 12s ago", LogicText.Freshness(BridgeLinkState.Connected, now.AddSeconds(-12), now));
+        Assert.Equal("updated 2m ago", LogicText.Freshness(BridgeLinkState.Connected, now.AddSeconds(-125), now));
+    }
+
+    [Fact]
+    public void BlockListEmptyMessage_NamesReadingUnreachableRefusedAndEmptySeparately()
+    {
+        Assert.Equal(
+            "Connect a bridge to load its plant logic.",
+            LogicText.BlockListEmptyMessage(hasBridge: false, connected: false, loading: false, error: null));
+        Assert.Equal(
+            "Reading the bridge's blocks…",
+            LogicText.BlockListEmptyMessage(hasBridge: true, connected: true, loading: true, error: null));
+        Assert.Equal(
+            "The bridge is unreachable — its blocks will appear when it answers.",
+            LogicText.BlockListEmptyMessage(hasBridge: true, connected: false, loading: false, error: "boom"));
+        Assert.Equal(
+            "The bridge could not list its blocks — HTTP 500",
+            LogicText.BlockListEmptyMessage(hasBridge: true, connected: true, loading: false, error: "HTTP 500"));
+        Assert.Equal(
+            "No logic blocks yet — use New block to author the first one.",
+            LogicText.BlockListEmptyMessage(hasBridge: true, connected: true, loading: false, error: null));
+    }
+
+    [Fact]
+    public void ResultEmptyState_DoesNotReadARefusedFetchAsNoBlocks()
+    {
+        Assert.Equal(
+            ("COULD NOT READ", "The bridge could not list its blocks — HTTP 500"),
+            LogicText.ResultEmptyState(false, false, hasBridge: true, connected: true, loading: false, error: "HTTP 500", hasBlocks: false));
+        Assert.Equal(
+            ("NO BLOCKS", "The bridge is unreachable — its blocks will appear when it answers."),
+            LogicText.ResultEmptyState(false, false, hasBridge: true, connected: false, loading: false, error: "HTTP 500", hasBlocks: false));
+        Assert.Equal(
+            ("READING…", "Reading the bridge's blocks…"),
+            LogicText.ResultEmptyState(false, false, hasBridge: true, connected: true, loading: true, error: null, hasBlocks: false));
+        Assert.Equal(
+            ("NOT SAVED YET", "Save the block to see its evaluated network."),
+            LogicText.ResultEmptyState(false, true, hasBridge: true, connected: true, loading: false, error: null, hasBlocks: false));
+        Assert.Equal(
+            ("NO BLOCK SELECTED", "Pick a block in the list to see its evaluated network."),
+            LogicText.ResultEmptyState(false, false, hasBridge: true, connected: true, loading: false, error: null, hasBlocks: true));
+        Assert.Equal(
+            ("NO BLOCKS YET", "Use New block to author the first one."),
+            LogicText.ResultEmptyState(false, false, hasBridge: true, connected: true, loading: false, error: null, hasBlocks: false));
+    }
+
+    [Fact]
+    public void RowGuards_FollowCanEdit()
+    {
+        var condition = new LogicConditionRowViewModel(
+            new LogicConditionDto { Id = Guid.NewGuid(), Op = LogicConditionOps.On },
+            Catalog());
+        Assert.True(condition.RemoveCommand.CanExecute(null));
+        condition.CanEdit = false;
+        Assert.False(condition.RemoveCommand.CanExecute(null));
+
+        var element = new LogicElementRowViewModel(
+            new LogicElementDto { Id = Guid.NewGuid(), Kind = LogicElementKinds.Contact },
+            1,
+            Catalog());
+        Assert.True(element.IndentRowCommand.CanExecute(null));
+        Assert.True(element.OutdentRowCommand.CanExecute(null));
+        element.CanEdit = false;
+        Assert.False(element.IndentRowCommand.CanExecute(null));
+        Assert.False(element.OutdentRowCommand.CanExecute(null));
+        Assert.False(element.RemoveElementCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void StepRow_AddConditionAndMove_GoWithCanEdit()
+    {
+        var steps = new System.Collections.ObjectModel.ObservableCollection<LogicStepRowViewModel>();
+        var step = new LogicStepRowViewModel(
+            new LogicStepDto { Id = Guid.NewGuid(), Name = "Step 1" },
+            Catalog(),
+            steps);
+        steps.Add(step);
+        steps.Add(new LogicStepRowViewModel(
+            new LogicStepDto { Id = Guid.NewGuid(), Name = "Step 2" },
+            Catalog(),
+            steps));
+
+        Assert.True(step.AddConditionCommand.CanExecute(null));
+        Assert.True(step.MoveStepDownCommand.CanExecute(null));
+        step.CanEdit = false;
+        Assert.False(step.AddConditionCommand.CanExecute(null));
+        Assert.False(step.MoveStepDownCommand.CanExecute(null));
+        Assert.False(step.RemoveStepCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public async Task LosingTheLink_DisablesTheRowControlsAndReQueriesTheAddButtons()
+    {
+        await using var connections = new BridgeConnectionManager(new BridgeManagerOptions(
+            PollInterval: TimeSpan.FromSeconds(5),
+            SnapshotRetryDelays: new[] { TimeSpan.Zero },
+            BridgeRetryDelays: new[] { TimeSpan.FromSeconds(5) },
+            HubTiming: new HmiHubTiming(TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15), new[] { TimeSpan.Zero })));
+        var panel = new LogicPanelViewModel(connections, work => work(), _ => { });
+
+        panel.SelectedBridge = new LogicBridgeOption("default", BridgeLinkState.Connected);
+        await panel.LoadSelectedBridgeAsync();
+        panel.NewBlockCommand.Execute(null);
+        Assert.NotEmpty(panel.Conditions);
+        Assert.True(panel.AddConditionCommand.CanExecute(null));
+        Assert.True(panel.Conditions[0].CanEdit);
+
+        // The command's CanExecuteChanged is a weak event: root the handler through the asserts.
+        int reQueries = 0;
+        EventHandler watcher = (_, _) => reQueries++;
+        panel.AddConditionCommand.CanExecuteChanged += watcher;
+
+        // A dropped link must grey the rows and the Add buttons in the same tick as the hint line.
+        panel.SelectedBridge = new LogicBridgeOption("default", BridgeLinkState.Failed);
+
+        Assert.True(reQueries > 0);
+        Assert.False(panel.AddConditionCommand.CanExecute(null));
+        Assert.False(panel.AddElementCommand.CanExecute(null));
+        Assert.False(panel.AddStepCommand.CanExecute(null));
+        Assert.False(panel.AddActionCommand.CanExecute(null));
+        Assert.All(panel.Conditions, row => Assert.False(row.CanEdit));
+
+        await panel.LoadSelectedBridgeAsync();
+        Assert.All(panel.Conditions, row => Assert.False(row.CanEdit));
+        GC.KeepAlive(watcher);
     }
 }

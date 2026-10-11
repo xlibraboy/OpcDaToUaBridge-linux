@@ -83,8 +83,11 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
 
     partial void OnSelectedBridgeChanged(LogicBridgeOption? value)
     {
+        // The read state and the freshness stamp belong to the bridge being shown, never the last one.
+        stateUpdatedAt_ = null;
+        IsBlocksLoading = false;
+        BlocksError = string.Empty;
         NotifyBridgeDerived();
-        NotifyCommands();
         if (!suppressBridgeLoad_)
         {
             _ = LoadSelectedBridgeAsync();
@@ -125,6 +128,14 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _hasBlocks;
 
+    /// <summary>True while the selected bridge's definitions are being read.</summary>
+    [ObservableProperty]
+    private bool _isBlocksLoading;
+
+    /// <summary>The last definitions read's error, empty when the last read succeeded.</summary>
+    [ObservableProperty]
+    private string _blocksError = string.Empty;
+
     [ObservableProperty]
     private string _summaryText = "no logic blocks configured";
 
@@ -134,11 +145,11 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _hasSelectedBlock;
 
-    public string EmptyBlocksMessage => SelectedBridge is null
-        ? "Connect a bridge to load its plant logic."
-        : IsEditingEnabled
-            ? "No logic blocks yet — use New block to author the first one."
-            : "The bridge is unreachable — its blocks will appear when it answers.";
+    public string EmptyBlocksMessage => LogicText.BlockListEmptyMessage(
+        hasBridge: SelectedBridge is not null,
+        connected: IsEditingEnabled,
+        loading: IsBlocksLoading,
+        error: BlocksError);
 
     partial void OnSelectedBlockChanged(LogicBlockRowViewModel? value)
     {
@@ -295,26 +306,22 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
     private bool _hasResultRows;
 
     /// <summary>
-    /// The empty detail pane names the one thing the operator can do next: pick a listed block,
-    /// save the draft, or connect the bridge — never a message about the wrong situation.
+    /// The empty detail pane names the one thing that is true right now: pick a listed block, save
+    /// the draft, connect the bridge, wait for the read, or — when the read failed — say so instead
+    /// of claiming there are no blocks.
     /// </summary>
-    public string ResultEmptyTitle => storedBlock_ is not null
-        ? "NOTHING TO EVALUATE"
-        : editingNewBlock_
-            ? "NOT SAVED YET"
-            : SelectedBridge is null
-                ? "NO BRIDGE"
-                : HasBlocks ? "NO BLOCK SELECTED" : "NO BLOCKS YET";
+    private (string Title, string Message) ResultEmptyState => LogicText.ResultEmptyState(
+        hasStoredBlock: storedBlock_ is not null,
+        editingNewBlock: editingNewBlock_,
+        hasBridge: SelectedBridge is not null,
+        connected: IsEditingEnabled,
+        loading: IsBlocksLoading,
+        error: BlocksError,
+        hasBlocks: HasBlocks);
 
-    public string ResultEmptyMessage => storedBlock_ is not null
-        ? "This block has no elements to evaluate yet."
-        : editingNewBlock_
-            ? "Save the block to see its evaluated network."
-            : SelectedBridge is null
-                ? "Connect a bridge to load and author its plant logic."
-                : HasBlocks
-                    ? "Pick a block in the list to see its evaluated network."
-                    : "Use New block to author the first one.";
+    public string ResultEmptyTitle => ResultEmptyState.Title;
+
+    public string ResultEmptyMessage => ResultEmptyState.Message;
 
     /// <summary>The pane names a block only when there is one — or a draft — to name.</summary>
     public bool ResultTitleVisible => HasSelectedBlock || editingNewBlock_;
@@ -323,28 +330,18 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private string _resultFreshness = "no state yet";
 
+    /// <summary>True while the pane shows the last known state for a link that is down.</summary>
+    public bool IsResultStale =>
+        SelectedBridge?.State is BridgeLinkState.Reconnecting or BridgeLinkState.Failed;
+
     private DateTimeOffset? stateUpdatedAt_;
 
     /// <summary>
-    /// Recomputes the freshness line from the last applied snapshot: it counts up while the bridge
-    /// is quiet, so a frozen result reads as age, not as "updated HH:mm:ss" that still looks fresh.
+    /// Recomputes the freshness line: the link's own state wins (a dead feed never claims a recent
+    /// update), and otherwise the snapshot's age counts up, so a quiet bridge reads as quiet.
     /// </summary>
-    private void RefreshFreshness()
-    {
-        if (stateUpdatedAt_ is not { } at)
-        {
-            return;
-        }
-
-        TimeSpan age = DateTimeOffset.Now - at;
-        ResultFreshness = age.TotalSeconds < 5
-            ? "updated just now"
-            : age.TotalSeconds < 60
-                ? $"updated {(int)age.TotalSeconds}s ago"
-                : age.TotalMinutes < 60
-                    ? $"updated {(int)age.TotalMinutes}m ago"
-                    : $"updated {(int)age.TotalHours}h ago";
-    }
+    private void RefreshFreshness() =>
+        ResultFreshness = LogicText.Freshness(SelectedBridge?.State, stateUpdatedAt_, DateTimeOffset.Now);
 
     public bool HasResultDescription => ResultDescription.Length > 0;
 
@@ -794,11 +791,13 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         if (sameBridge)
         {
             NotifyBridgeDerived();
-            NotifyCommands();
         }
     }
 
-    /// <summary>Everything derived from the selected bridge's link state or the block list.</summary>
+    /// <summary>
+    /// Everything derived from the selected bridge's link state or the block list: the pill and the
+    /// hint, the freshness line, and every command and row guard that is only as live as the link.
+    /// </summary>
     private void NotifyBridgeDerived()
     {
         OnPropertyChanged(nameof(IsEditingEnabled));
@@ -807,9 +806,13 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsBridgeOk));
         OnPropertyChanged(nameof(IsBridgeWarn));
         OnPropertyChanged(nameof(IsBridgeBad));
+        OnPropertyChanged(nameof(IsResultStale));
         OnPropertyChanged(nameof(EmptyBlocksMessage));
         OnPropertyChanged(nameof(ResultEmptyTitle));
         OnPropertyChanged(nameof(ResultEmptyMessage));
+        RefreshFreshness();
+        RefreshEditorMode();
+        NotifyCommands();
     }
 
     private async Task FetchDefinitionsAsync(string bridgeId, BridgeCache cache)
@@ -817,9 +820,15 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         if (!connections_.TryGetSession(bridgeId, out BridgeConnectionManager.BridgeSession? session)
             || session is null)
         {
-            cache.Blocks ??= new List<LogicBlockDto>();
+            // Nothing was read: the cache stays empty (Blocks null) so a later load retries, and the
+            // empty state reads "unreachable" instead of remembering a failure as "no blocks".
             ApplyLoadedBlocks(bridgeId, cache);
             return;
+        }
+
+        if (IsSelected(bridgeId))
+        {
+            IsBlocksLoading = true;
         }
 
         try
@@ -828,14 +837,30 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
                 .ConfigureAwait(true);
             cache.Blocks = definitions.Blocks.ToList();
             cache.Version = definitions.Version;
+            if (IsSelected(bridgeId))
+            {
+                BlocksError = string.Empty;
+            }
         }
         catch (Exception ex)
         {
-            cache.Blocks ??= new List<LogicBlockDto>();
+            // Keep the list as last read (or empty when it never was) and report the read's error.
+            if (IsSelected(bridgeId))
+            {
+                BlocksError = ex.Message;
+            }
+
             report_?.Invoke("Logic definitions: " + ex.Message);
         }
+        finally
+        {
+            if (IsSelected(bridgeId))
+            {
+                IsBlocksLoading = false;
+            }
 
-        ApplyLoadedBlocks(bridgeId, cache);
+            ApplyLoadedBlocks(bridgeId, cache);
+        }
     }
 
     private async Task ReloadDefinitionsAsync(string bridgeId)
@@ -993,6 +1018,8 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
 
         BlockGroups.Clear();
         HasBlocks = false;
+        IsBlocksLoading = false;
+        BlocksError = string.Empty;
         SummaryText = "no logic blocks configured";
         SelectedBlock = null;
         ResultElements.Clear();
@@ -1306,7 +1333,12 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
     {
         SaveCommand.NotifyCanExecuteChanged();
         DeleteSelectedCommand.NotifyCanExecuteChanged();
+        DeleteBlockCommand.NotifyCanExecuteChanged();
         NewBlockCommand.NotifyCanExecuteChanged();
+        AddConditionCommand.NotifyCanExecuteChanged();
+        AddElementCommand.NotifyCanExecuteChanged();
+        AddStepCommand.NotifyCanExecuteChanged();
+        AddActionCommand.NotifyCanExecuteChanged();
         ConvertToNetworkCommand.NotifyCanExecuteChanged();
         BackToConditionsCommand.NotifyCanExecuteChanged();
     }
@@ -1431,6 +1463,26 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ResultEmptyMessage));
     }
 
+    partial void OnIsBlocksLoadingChanged(bool value) => RefreshBlockListReadState();
+
+    partial void OnBlocksErrorChanged(string value) => RefreshBlockListReadState();
+
+    /// <summary>
+    /// The block list's read state changed: the summary line and every empty state that names it
+    /// follow, so "reading", "unreachable", "could not read" and "none" never blur into one sentence.
+    /// </summary>
+    private void RefreshBlockListReadState()
+    {
+        if (SelectedBridge is { } bridge && !HasBlocks)
+        {
+            SummaryText = BuildSummary(Cache(bridge.BridgeId));
+        }
+
+        OnPropertyChanged(nameof(EmptyBlocksMessage));
+        OnPropertyChanged(nameof(ResultEmptyTitle));
+        OnPropertyChanged(nameof(ResultEmptyMessage));
+    }
+
     private void ApplyResultState(BridgeCache cache)
     {
         LogicBlockStateDto? blockState = storedBlock_ is { } block && block.Id != Guid.Empty
@@ -1475,7 +1527,12 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         List<LogicBlockDto> blocks = cache.Blocks ?? new List<LogicBlockDto>();
         if (blocks.Count == 0)
         {
-            return "no logic blocks configured";
+            // The summary names what is actually known: reading, a refused read, or none.
+            return IsBlocksLoading
+                ? "reading the bridge's blocks…"
+                : !string.IsNullOrWhiteSpace(BlocksError)
+                    ? "blocks could not be read"
+                    : "no logic blocks configured";
         }
 
         int ready = 0;

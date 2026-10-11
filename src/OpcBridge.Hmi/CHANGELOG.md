@@ -37,6 +37,24 @@ before it. Definitions save through the bridge's own
 is unreachable the page keeps the last known blocks on screen and disables editing. A **Guide…**
 button carries the logic guide the dashboard used to describe.
 
+### Fixed
+
+**The Logic page's empty list says which of the four things happened.** Reading the blocks for
+the first time, an unreachable bridge, a definitions read the bridge refused, and a genuinely
+empty list all read as "No logic blocks yet" — a failed fetch looked like an empty plant. The
+list, the blocks summary and the Result pane's empty state each name the actual state now, and a
+read that fails no longer caches an empty list: the next load retries.
+
+**Editing greys out in the same tick as the link drop.** The rows' own add, remove, indent and
+move controls only followed the bridge's editability on the next draft reload, so a link that
+dropped while the page sat open left them live against a draft that could not be saved. They now
+follow the link state as it changes, beside the "Editing is disabled" hint.
+
+**The Result pane's freshness line names a dead feed.** The line already counted up the age of
+the last snapshot, but a bridge that dropped only said so up in the bridge bar, never in the pane
+showing the frozen readings. It now reads "stale — bridge unreachable" (or "stale — reconnecting")
+in the warning colour, and switching bridges no longer carries the previous bridge's timestamp.
+
 ## [1.8.2] - 2026-10-06
 
 ### Fixed
