@@ -113,8 +113,15 @@ public partial class LogicConditionRowViewModel : ObservableObject
         IsLiveWarn = key == "warn";
     }
 
-    [RelayCommand]
+    [ObservableProperty]
+    private bool _canEdit = true;
+
+    partial void OnCanEditChanged(bool value) => RemoveCommand.NotifyCanExecuteChanged();
+
+    [RelayCommand(CanExecute = nameof(CanRemoveRow))]
     private void Remove() => onRemove_?.Invoke(this);
+
+    private bool CanRemoveRow() => CanEdit;
 
     private void LoadSourceAndItems(string sourceId, string itemId)
     {

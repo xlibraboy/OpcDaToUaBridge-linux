@@ -13,22 +13,22 @@ namespace OpcBridge.Hmi.ViewModels.Logic;
 public partial class LogicStepRowViewModel : ObservableObject
 {
     private readonly LogicTagCatalog catalog_;
+    private readonly ObservableCollection<LogicStepRowViewModel> steps_;
     private readonly Action<LogicStepRowViewModel>? onRemove_;
-    private readonly Action<LogicStepRowViewModel>? onMoveUp_;
-    private readonly Action<LogicStepRowViewModel>? onMoveDown_;
+    private readonly Action? onMoved_;
     private bool loadingCompletion_;
 
     public LogicStepRowViewModel(
         LogicStepDto step,
         LogicTagCatalog catalog,
+        ObservableCollection<LogicStepRowViewModel> steps,
         Action<LogicStepRowViewModel>? onRemove = null,
-        Action<LogicStepRowViewModel>? onMoveUp = null,
-        Action<LogicStepRowViewModel>? onMoveDown = null)
+        Action? onMoved = null)
     {
         catalog_ = catalog;
+        steps_ = steps;
         onRemove_ = onRemove;
-        onMoveUp_ = onMoveUp;
-        onMoveDown_ = onMoveDown;
+        onMoved_ = onMoved;
         StepId = step.Id == Guid.Empty ? Guid.NewGuid() : step.Id;
         StoredActions = step.Actions.ToList();
         Name = step.Name;
@@ -113,7 +113,7 @@ public partial class LogicStepRowViewModel : ObservableObject
         Reason = state?.Reason ?? string.Empty;
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanEdit))]
     private void AddCondition() =>
         Conditions.Add(new LogicConditionRowViewModel(
             new LogicConditionDto { Id = Guid.NewGuid(), Op = LogicConditionOps.On, Severity = LogicConditionSeverities.Block },
@@ -123,14 +123,58 @@ public partial class LogicStepRowViewModel : ObservableObject
     /// <summary>Removes one of the step's condition rows (also the remove callback the rows carry).</summary>
     public void RemoveCondition(LogicConditionRowViewModel row) => Conditions.Remove(row);
 
-    [RelayCommand]
+    [ObservableProperty]
+    private bool _canEdit = true;
+
+    partial void OnCanEditChanged(bool value)
+    {
+        RemoveStepCommand.NotifyCanExecuteChanged();
+        AddConditionCommand.NotifyCanExecuteChanged();
+        MoveStepUpCommand.NotifyCanExecuteChanged();
+        MoveStepDownCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>Re-evaluates the move guards after the step's position in the list changed.</summary>
+    public void NotifyMoveCanExecuteChanged()
+    {
+        MoveStepUpCommand.NotifyCanExecuteChanged();
+        MoveStepDownCommand.NotifyCanExecuteChanged();
+    }
+
+    [RelayCommand(CanExecute = nameof(CanRemoveRow))]
     private void RemoveStep() => onRemove_?.Invoke(this);
 
-    [RelayCommand]
-    private void MoveUp() => onMoveUp_?.Invoke(this);
+    private bool CanRemoveRow() => CanEdit;
 
-    [RelayCommand]
-    private void MoveDown() => onMoveDown_?.Invoke(this);
+    [RelayCommand(CanExecute = nameof(CanMoveStepUp))]
+    private void MoveStepUp()
+    {
+        int index = steps_.IndexOf(this);
+        if (index > 0)
+        {
+            steps_.Move(index, index - 1);
+            onMoved_?.Invoke();
+        }
+    }
+
+    private bool CanMoveStepUp() => CanEdit && steps_.IndexOf(this) > 0;
+
+    [RelayCommand(CanExecute = nameof(CanMoveStepDown))]
+    private void MoveStepDown()
+    {
+        int index = steps_.IndexOf(this);
+        if (index >= 0 && index < steps_.Count - 1)
+        {
+            steps_.Move(index, index + 1);
+            onMoved_?.Invoke();
+        }
+    }
+
+    private bool CanMoveStepDown()
+    {
+        int index = steps_.IndexOf(this);
+        return CanEdit && index >= 0 && index < steps_.Count - 1;
+    }
 
     private void LoadCompletion(string sourceId, string itemId)
     {

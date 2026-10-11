@@ -376,9 +376,26 @@ public sealed class HmiLogicEditorTests
     public void StepRow_HandshakeIsBothOrNeither_AndMoveCommandsReport()
     {
         LogicTagCatalog catalog = Catalog();
+        var steps = new System.Collections.ObjectModel.ObservableCollection<LogicStepRowViewModel>();
         var step = new LogicStepRowViewModel(
             new LogicStepDto { Id = Guid.NewGuid(), Name = "Step 1" },
-            catalog);
+            catalog,
+            steps);
+        steps.Add(step);
+        Assert.True(step.MoveStepUpCommand.CanExecute(null) == false);
+        Assert.True(step.MoveStepDownCommand.CanExecute(null) == false);
+
+        // A second step re-arms the first one's "down" and the second one's "up".
+        var second = new LogicStepRowViewModel(
+            new LogicStepDto { Id = Guid.NewGuid(), Name = "Step 2" },
+            catalog,
+            steps);
+        steps.Add(second);
+        step.NotifyMoveCanExecuteChanged();
+        second.NotifyMoveCanExecuteChanged();
+        Assert.True(step.MoveStepDownCommand.CanExecute(null));
+        Assert.True(second.MoveStepUpCommand.CanExecute(null));
+
         Assert.Null(step.CompletionSourceId);
         Assert.Null(step.CompletionItemId);
 

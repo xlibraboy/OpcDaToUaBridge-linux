@@ -206,6 +206,18 @@
     <Setter Property="Background" Value="{DynamicResource WidgetSurfaceBrush}" />
   </Style>
 
+  <!-- Press lands one step past hover so the click is confirmed before the pane repaints. -->
+  <Style Selector="Button.logicRow:pressed /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource FrameBrush}" />
+  </Style>
+
+  <!-- The row draws its own chrome, so it draws its own focus ring: the template's
+       presenter gets the 2px accent border, the same visual as Button.flat's ring. -->
+  <Style Selector="Button.logicRow:focus-visible /template/ ContentPresenter">
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentValueBrush}" />
+    <Setter Property="BorderThickness" Value="2" />
+  </Style>
+
   <!-- Buttons -->
   <Style Selector="Button.primary">
     <Setter Property="Background" Value="{DynamicResource AccentActionBrush}" />

@@ -52,6 +52,8 @@
       <RadioButton Classes="seg" GroupName="LogicTabs" Content="Editor" IsChecked="{Binding IsEditorTab}" />
       <RadioButton Classes="seg" GroupName="LogicTabs" Content="Result" IsChecked="{Binding IsResultTab}" />
       <TextBlock Classes="hint" VerticalAlignment="Center" Margin="10,0,0,0" Text="{Binding SummaryText}" />
+      <TextBlock Classes="hint warn" VerticalAlignment="Center" Margin="10,0,0,0" Text="unsaved changes"
+                 IsVisible="{Binding HasUnsavedChanges}" />
     </StackPanel>
 
     <!-- ======== EDITOR ======== -->
@@ -63,11 +65,13 @@
             <StackPanel Classes="field" Width="320">
               <TextBlock Classes="fieldLabel" Text="NAME" />
               <TextBox Text="{Binding BlockName}" Watermark="Block name (e.g. Line 01 Start)"
+                       IsEnabled="{Binding IsEditingEnabled}"
                        AutomationProperties.Name="Block name" />
             </StackPanel>
             <StackPanel Classes="field" Width="220">
               <TextBlock Classes="fieldLabel" Text="KIND" />
               <ComboBox ItemsSource="{Binding KindOptions}" SelectedItem="{Binding SelectedKind}"
+                        IsEnabled="{Binding IsEditingEnabled}"
                         AutomationProperties.Name="Block kind">
                 <ComboBox.ItemTemplate>
                   <DataTemplate x:DataType="logic:LogicSelectOption">
@@ -79,23 +83,27 @@
             <StackPanel Classes="field" Width="240">
               <TextBlock Classes="fieldLabel" Text="INTERLOCK GROUP" />
               <TextBox Text="{Binding BlockGroup}" Watermark="Optional (e.g. Primary Arm)"
+                       IsEnabled="{Binding IsEditingEnabled}"
                        AutomationProperties.Name="Interlock group"
                        ToolTip.Tip="Blocks sharing a group list under one heading, here and on the phone." />
             </StackPanel>
             <StackPanel Classes="field" Width="140">
               <TextBlock Classes="fieldLabel" Text="ENABLED" />
               <CheckBox IsChecked="{Binding BlockEnabled}" Margin="0,3,0,0"
+                        IsEnabled="{Binding IsEditingEnabled}"
                         AutomationProperties.Name="Block enabled"
                         ToolTip.Tip="A disabled block evaluates but never counts as ready." />
             </StackPanel>
             <StackPanel Classes="field" Width="420">
               <TextBlock Classes="fieldLabel" Text="DESCRIPTION" />
               <TextBox Text="{Binding BlockDescription}" Watermark="Optional operator note"
+                       IsEnabled="{Binding IsEditingEnabled}"
                        AutomationProperties.Name="Block description" />
             </StackPanel>
             <StackPanel Classes="field" Width="360">
               <TextBlock Classes="fieldLabel" Text="TAGS" />
               <TextBox Text="{Binding BlockTags}" Watermark="Comma-separated (e.g. Line 1, Safety)"
+                       IsEnabled="{Binding IsEditingEnabled}"
                        AutomationProperties.Name="Block tags" />
               <TextBlock Classes="hint" Margin="0,3,0,0" Text="Up to 8 labels of 24 characters." />
             </StackPanel>
@@ -164,7 +172,8 @@
             <ItemsControl ItemsSource="{Binding Steps}" IsVisible="{Binding HasSteps}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="logic:LogicStepRowViewModel">
-                  <Border Classes="cardDark" Margin="0,0,0,8" Padding="10">
+                  <Border Classes="cardDark" Margin="0,0,0,8" Padding="10"
+                          IsEnabled="{Binding CanEdit}">
                     <StackPanel Spacing="6">
                       <Grid ColumnDefinitions="Auto,Auto,*">
                         <TextBlock Grid.Column="0" Classes="sectionLabel" Margin="0" Text="{Binding StepLabel}"
@@ -176,8 +185,8 @@
                           <TextBlock Text="{Binding StateWord}" AutomationProperties.LiveSetting="Polite" />
                         </Border>
                         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right">
-                          <Button Classes="tool" Content="↑" Command="{Binding MoveUpCommand}" AutomationProperties.Name="Move step up" />
-                          <Button Classes="tool" Content="↓" Command="{Binding MoveDownCommand}" AutomationProperties.Name="Move step down" />
+                          <Button Classes="tool" Content="↑" Command="{Binding MoveStepUpCommand}" AutomationProperties.Name="Move step up" />
+                          <Button Classes="tool" Content="↓" Command="{Binding MoveStepDownCommand}" AutomationProperties.Name="Move step down" />
                           <Button Classes="tool" Content="✕" Command="{Binding RemoveStepCommand}" AutomationProperties.Name="Remove step" />
                         </StackPanel>
                       </Grid>
@@ -185,17 +194,20 @@
                         <StackPanel Classes="field" Width="320">
                           <TextBlock Classes="fieldLabel" Text="STEP NAME" />
                           <TextBox Text="{Binding Name}" Watermark="Open inlet valve"
+                                   IsEnabled="{Binding $parent[UserControl].((logic:LogicPanelViewModel)DataContext).IsEditingEnabled}"
                                    AutomationProperties.Name="Step name" />
                         </StackPanel>
                         <StackPanel Classes="field" Width="320">
                           <TextBlock Classes="fieldLabel" Text="NEXT STEP" />
                           <TextBox Text="{Binding NextStepText}"
                                    Watermark="What to do while this is the current step"
+                                   IsEnabled="{Binding $parent[UserControl].((logic:LogicPanelViewModel)DataContext).IsEditingEnabled}"
                                    AutomationProperties.Name="Step next step text" />
                         </StackPanel>
                         <StackPanel Classes="field" Width="150">
                           <TextBlock Classes="fieldLabel" Text="COMPLETION SOURCE" />
                           <ComboBox ItemsSource="{Binding CompletionSources}" SelectedItem="{Binding CompletionSource}"
+                                    IsEnabled="{Binding $parent[UserControl].((logic:LogicPanelViewModel)DataContext).IsEditingEnabled}"
                                     AutomationProperties.Name="Completion source"
                                     ToolTip.Tip="{Binding CompletionSource.Label}">
                             <ComboBox.ItemTemplate>
@@ -208,6 +220,7 @@
                         <StackPanel Classes="field" Width="260">
                           <TextBlock Classes="fieldLabel" Text="COMPLETION TAG" />
                           <ComboBox ItemsSource="{Binding CompletionItems}" SelectedItem="{Binding CompletionTag}"
+                                    IsEnabled="{Binding $parent[UserControl].((logic:LogicPanelViewModel)DataContext).IsEditingEnabled}"
                                     AutomationProperties.Name="Completion tag"
                                     ToolTip.Tip="{Binding CompletionTag.Detail}">
                             <ComboBox.ItemTemplate>
@@ -250,7 +263,7 @@
             <ItemsControl ItemsSource="{Binding Actions}" IsVisible="{Binding HasActions}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="logic:LogicActionRowViewModel">
-                  <Border Classes="editorRow" Margin="0,0,0,6">
+                  <Border Classes="editorRow" Margin="0,0,0,6" IsEnabled="{Binding CanEdit}">
                     <Grid ColumnDefinitions="*,Auto">
                       <WrapPanel Grid.Column="0" Orientation="Horizontal">
                         <StackPanel Classes="field" Width="230">

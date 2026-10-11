@@ -27,7 +27,7 @@
 
     <!-- One element, as its own row. Only the fields the kind reads are shown: a contact a
          tag and a reading, a timer its preset, a counter its preset, a gate just its label. -->
-    <Border Grid.Column="1" Classes="editorRow" Margin="0,0,0,6">
+    <Border Grid.Column="1" Classes="editorRow" Margin="0,0,0,6" IsEnabled="{Binding CanEdit}">
       <Grid ColumnDefinitions="*,Auto">
         <WrapPanel Grid.Column="0" Orientation="Horizontal">
           <StackPanel Classes="field" Width="250">

@@ -38,11 +38,11 @@ public partial class LogicBlocksWindow : Window
         }
     }
 
-    private void OnBlockRowClick(object? sender, RoutedEventArgs e)
+    private async void OnBlockRowClick(object? sender, RoutedEventArgs e)
     {
-        if (sender is Button { Tag: LogicBlockRowViewModel row } && DataContext is LogicPanelViewModel panel)
+        if (sender is Button { Tag: LogicBlockRowViewModel row } && DataContext is LogicPanelViewModel panel
+            && await panel.TrySelectBlockAsync(row))
         {
-            panel.SelectedBlock = row;
             Close();
         }
     }

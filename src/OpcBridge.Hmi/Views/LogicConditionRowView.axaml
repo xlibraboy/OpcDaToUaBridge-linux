@@ -5,7 +5,7 @@
              x:DataType="logic:LogicConditionRowViewModel">
   <!-- One condition, as its own row: the fields wrap, each carries its label, and the live
        reading stays pinned at the right edge. -->
-  <Border Classes="editorRow" Margin="0,0,0,6">
+  <Border Classes="editorRow" Margin="0,0,0,6" IsEnabled="{Binding CanEdit}">
     <Grid ColumnDefinitions="*,Auto">
       <WrapPanel Grid.Column="0" Orientation="Horizontal">
         <StackPanel Classes="field" Width="300">

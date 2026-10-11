@@ -72,6 +72,8 @@ public partial class LogicElementRowViewModel : ObservableObject
     private LogicSelectOption _severity;
 
     [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(IndentRowCommand))]
+    [NotifyCanExecuteChangedFor(nameof(OutdentRowCommand))]
     private int _indent;
 
     [ObservableProperty]
@@ -115,6 +117,13 @@ public partial class LogicElementRowViewModel : ObservableObject
 
     partial void OnIndentChanged(int value) => OnPropertyChanged(nameof(Guides));
 
+    partial void OnCanEditChanged(bool value)
+    {
+        IndentRowCommand.NotifyCanExecuteChanged();
+        OutdentRowCommand.NotifyCanExecuteChanged();
+        RemoveElementCommand.NotifyCanExecuteChanged();
+    }
+
     partial void OnKindChanged(LogicSelectOption value)
     {
         OnPropertyChanged(nameof(IsContact));
@@ -143,14 +152,23 @@ public partial class LogicElementRowViewModel : ObservableObject
         IsLiveWarn = key == "warn";
     }
 
-    [RelayCommand]
+    [ObservableProperty]
+    private bool _canEdit = true;
+
+    [RelayCommand(CanExecute = nameof(CanIndent))]
     private void IndentRow() => Indent = Math.Min(Indent + 1, 8);
 
-    [RelayCommand]
+    private bool CanIndent() => CanEdit && Indent < 8;
+
+    [RelayCommand(CanExecute = nameof(CanOutdent))]
     private void OutdentRow() => Indent = Math.Max(Indent - 1, 0);
 
-    [RelayCommand]
+    private bool CanOutdent() => CanEdit && Indent > 0;
+
+    [RelayCommand(CanExecute = nameof(CanRemoveRow))]
     private void RemoveElement() => onRemove_?.Invoke(this);
+
+    private bool CanRemoveRow() => CanEdit;
 
     private void LoadSourceAndItems(string sourceId, string itemId)
     {

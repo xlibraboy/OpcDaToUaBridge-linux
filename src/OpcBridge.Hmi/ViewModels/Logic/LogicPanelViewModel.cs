@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Globalization;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using OpcBridge.Client;
@@ -24,6 +25,7 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
     private readonly Action<string> report_;
     private readonly Dictionary<string, BridgeCache> caches_ = new(StringComparer.OrdinalIgnoreCase);
     private readonly System.Threading.Timer pollTimer_;
+    private readonly DispatcherTimer freshnessTimer_;
     private readonly SemaphoreSlim loadGate_ = new(1, 1);
     private int polling_;
     private bool pageVisible_;
@@ -49,6 +51,8 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         report_ = report;
         KindOptions = LogicOptions.BlockKinds;
         pollTimer_ = new System.Threading.Timer(_ => _ = PollAsync(), null, Timeout.Infinite, Timeout.Infinite);
+        freshnessTimer_ = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+        freshnessTimer_.Tick += (_, _) => RefreshFreshness();
     }
 
     /// <summary>Set by the page: asks the operator to confirm a destructive step. Null = proceed.</summary>
@@ -214,7 +218,14 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _isDirty;
 
-    partial void OnIsDirtyChanged(bool value) => SaveCommand.NotifyCanExecuteChanged();
+    /// <summary>True while the editor holds changes the bridge has not saved — the tab strip marks it.</summary>
+    public bool HasUnsavedChanges => IsDirty;
+
+    partial void OnIsDirtyChanged(bool value)
+    {
+        SaveCommand.NotifyCanExecuteChanged();
+        OnPropertyChanged(nameof(HasUnsavedChanges));
+    }
 
     partial void OnSelectedKindChanged(LogicSelectOption? value)
     {
@@ -312,6 +323,29 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private string _resultFreshness = "no state yet";
 
+    private DateTimeOffset? stateUpdatedAt_;
+
+    /// <summary>
+    /// Recomputes the freshness line from the last applied snapshot: it counts up while the bridge
+    /// is quiet, so a frozen result reads as age, not as "updated HH:mm:ss" that still looks fresh.
+    /// </summary>
+    private void RefreshFreshness()
+    {
+        if (stateUpdatedAt_ is not { } at)
+        {
+            return;
+        }
+
+        TimeSpan age = DateTimeOffset.Now - at;
+        ResultFreshness = age.TotalSeconds < 5
+            ? "updated just now"
+            : age.TotalSeconds < 60
+                ? $"updated {(int)age.TotalSeconds}s ago"
+                : age.TotalMinutes < 60
+                    ? $"updated {(int)age.TotalMinutes}m ago"
+                    : $"updated {(int)age.TotalHours}h ago";
+    }
+
     public bool HasResultDescription => ResultDescription.Length > 0;
 
     public bool HasResultReason => ResultReason.Length > 0;
@@ -331,14 +365,38 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         EditorMessage = string.Empty;
     }
 
-    /// <summary>Selects a listed block from the Result tab's list (and the Blocks window).</summary>
+    /// <summary>
+    /// Selects a listed block from the Result tab's list (and the Blocks window). Switching to a
+    /// different block while the editor holds unsaved changes asks first — the draft is dropped by
+    /// the load, and the app confirms this loss for "Back to conditions" and Delete.
+    /// </summary>
     [RelayCommand]
-    private void SelectBlock(LogicBlockRowViewModel? row)
+    private async Task SelectBlockAsync(LogicBlockRowViewModel? row) => await TrySelectBlockAsync(row).ConfigureAwait(true);
+
+    /// <summary>False when the operator chose to keep the draft instead of loading <paramref name="row"/>.</summary>
+    public async Task<bool> TrySelectBlockAsync(LogicBlockRowViewModel? row)
     {
-        if (row is not null)
+        if (row is null || ReferenceEquals(row, SelectedBlock))
         {
-            SelectedBlock = row;
+            return true;
         }
+
+        if (IsDirty && ConfirmAsync is { } confirm)
+        {
+            string name = storedBlock_ is { } stored
+                ? string.IsNullOrWhiteSpace(stored.Name) ? "(unnamed)" : stored.Name
+                : "the new block";
+            if (!await confirm(
+                "Discard unsaved changes",
+                $"Discard the unsaved changes to \"{name}\"? Anything not saved is lost.",
+                "Discard").ConfigureAwait(true))
+            {
+                return false;
+            }
+        }
+
+        SelectedBlock = row;
+        return true;
     }
 
     [RelayCommand(CanExecute = nameof(CanSave))]
@@ -382,12 +440,12 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
     private bool CanDelete() => IsEditingEnabled && storedBlock_ is not null;
 
     /// <summary>Deletes one listed block (also the Blocks window's per-row delete).</summary>
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanEdit))]
     private Task DeleteBlock(LogicBlockRowViewModel? row) => DeleteBlockAsync(row);
 
     private bool CanEdit() => IsEditingEnabled;
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanEdit))]
     private void AddCondition()
     {
         AddConditionRow(new LogicConditionDto
@@ -400,7 +458,7 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         RefreshEditorMode();
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanEdit))]
     private void AddElement()
     {
         AddElementRow(
@@ -416,7 +474,7 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         RefreshEditorMode();
     }
 
-    [RelayCommand]
+    [RelayCommand(CanExecute = nameof(CanAddStep))]
     private void AddStep()
     {
         AddStepRow(new LogicStepDto
@@ -437,7 +495,9 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         RefreshEditorMode();
     }
 
-    [RelayCommand]
+    private bool CanAddStep() => CanEdit() && IsSequence;
+
+    [RelayCommand(CanExecute = nameof(CanEdit))]
     private void AddAction()
     {
         AddActionRow(new LogicActionDto { Confirm = true });
@@ -543,7 +603,8 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
             _ = ReloadDefinitionsAsync(bridgeId);
         }
 
-        ResultFreshness = "updated " + DateTime.Now.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
+        stateUpdatedAt_ = DateTimeOffset.Now;
+        RefreshFreshness();
         applyingState_ = true;
         try
         {
@@ -565,11 +626,13 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         if (visible)
         {
             pollTimer_.Change(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+            freshnessTimer_.Start();
             _ = RefreshStateAsync();
         }
         else
         {
             pollTimer_.Change(Timeout.Infinite, Timeout.Infinite);
+            freshnessTimer_.Stop();
         }
     }
 
@@ -668,6 +731,7 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
     {
         disposed_ = true;
         pollTimer_.Dispose();
+        freshnessTimer_.Stop();
     }
 
     // ---- Internals ----
@@ -1014,7 +1078,7 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
 
     private void AddStepRow(LogicStepDto step)
     {
-        var row = new LogicStepRowViewModel(step, catalog_, RemoveStep, MoveStepUp, MoveStepDown);
+        var row = new LogicStepRowViewModel(step, catalog_, Steps, RemoveStep, RenumberSteps);
         row.PropertyChanged += OnEditorRowChanged;
         row.Conditions.CollectionChanged += OnStepConditionsChanged;
         foreach (LogicConditionRowViewModel condition in row.Conditions)
@@ -1072,28 +1136,6 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         RefreshEditorMode();
     }
 
-    private void MoveStepUp(LogicStepRowViewModel row)
-    {
-        int index = Steps.IndexOf(row);
-        if (index > 0)
-        {
-            Steps.Move(index, index - 1);
-            RenumberSteps();
-            DirtyChanged();
-        }
-    }
-
-    private void MoveStepDown(LogicStepRowViewModel row)
-    {
-        int index = Steps.IndexOf(row);
-        if (index >= 0 && index < Steps.Count - 1)
-        {
-            Steps.Move(index, index + 1);
-            RenumberSteps();
-            DirtyChanged();
-        }
-    }
-
     private void RemoveAction(LogicActionRowViewModel row)
     {
         Actions.Remove(row);
@@ -1101,11 +1143,16 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         RefreshEditorMode();
     }
 
+    /// <summary>
+    /// Re-numbers the step labels and refreshes every step's move guards — an order change makes
+    /// the first step's "up" and the last step's "down" unavailable.
+    /// </summary>
     private void RenumberSteps()
     {
         for (int i = 0; i < Steps.Count; i++)
         {
             Steps[i].StepLabel = $"STEP {i + 1}";
+            Steps[i].NotifyMoveCanExecuteChanged();
         }
     }
 
@@ -1174,6 +1221,7 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         }
 
         IsDirty = ComputeDirty();
+        OnPropertyChanged(nameof(HasUnsavedChanges));
     }
 
     private bool ComputeDirty()
@@ -1213,8 +1261,37 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ShowsConditions));
         OnPropertyChanged(nameof(ShowsSteps));
         NotifyRowCounts();
+        NotifyRowCommands();
         ConvertToNetworkCommand.NotifyCanExecuteChanged();
         BackToConditionsCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>Keeps every row's remove / indent / move guards in step with the bridge's editability.</summary>
+    private void NotifyRowCommands()
+    {
+        foreach (LogicConditionRowViewModel row in Conditions)
+        {
+            row.CanEdit = IsEditingEnabled;
+        }
+
+        foreach (LogicElementRowViewModel row in Elements)
+        {
+            row.CanEdit = IsEditingEnabled;
+        }
+
+        foreach (LogicStepRowViewModel row in Steps)
+        {
+            row.CanEdit = IsEditingEnabled;
+            foreach (LogicConditionRowViewModel condition in row.Conditions)
+            {
+                condition.CanEdit = IsEditingEnabled;
+            }
+        }
+
+        foreach (LogicActionRowViewModel row in Actions)
+        {
+            row.CanEdit = IsEditingEnabled;
+        }
     }
 
     private void NotifyRowCounts()
