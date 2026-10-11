@@ -77,6 +77,10 @@ public partial class MainWindow : Window
                 vm.ShowTrendsCommand.Execute(null);
                 e.Handled = true;
                 break;
+            case Key.D4 when e.KeyModifiers.HasFlag(KeyModifiers.Control):
+                vm.ShowLogicCommand.Execute(null);
+                e.Handled = true;
+                break;
         }
 
         if (!e.Handled)

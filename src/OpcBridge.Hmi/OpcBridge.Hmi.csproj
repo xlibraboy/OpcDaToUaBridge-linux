@@ -24,6 +24,11 @@
     <None Remove="CHANGELOG.md" />
     <EmbeddedResource Include="CHANGELOG.md" LogicalName="OpcBridge.Hmi.CHANGELOG.md" />
   </ItemGroup>
+  <!-- The Logic page's guide ships the same way (its Guide… button). -->
+  <ItemGroup>
+    <None Remove="Help/LogicGuide.md" />
+    <EmbeddedResource Include="Help/LogicGuide.md" LogicalName="OpcBridge.Hmi.LogicGuide.md" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.2.1" />
     <PackageReference Include="Avalonia.Desktop" Version="11.2.1" />

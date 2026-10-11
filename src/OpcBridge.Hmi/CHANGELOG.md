@@ -14,6 +14,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+**The runtime authors and watches the plant logic.** A new **Logic** page (View ▸ Logic, Ctrl+4)
+carries the whole logic surface, per bridge: the block form (name, kind, enabled, interlock group,
+description, tags), the flat **condition** editor (sentence, source/tag pickers,
+ON/OFF/`>`/`<`/`=`, OR group, hold timer, severity, next step), the **IEC 61131-3 network** editor
+(indented element rows — contacts, AND/OR/XOR/NOT, TON/TOF/TP, CTU/CTD, SR/RS, R_TRIG/F_TRIG —
+with `Convert to IEC network` and back), sequence **steps** with an optional completion handshake,
+and **actions** the phone renders. Every editor row is its own bordered line with a label on each
+field — nothing is keyed off a column header — and a network row carries a rail for each level it
+nests under, so both forms reflow with the window instead of scrolling sideways. Every row shows
+the bridge's live state as a chip (1 / 0 / no data, or the live value); the **Blocks…** window
+lists every block under its interlock group and is where blocks are created, picked and deleted. The **Result** tab renders the evaluated
+configuration the way the phone does — every element its own bordered row, the live reading in
+large mono digits, with `should 1 · actual 0`, timer and counter progress and the tag it reads
+under it, nested by a rail for every level — fed by the bridge's `logic` hub push plus a
+once-a-second state poll while the page is open; it names the time the state last arrived, never
+rebuilds rows under the operator, and shows a newly picked block's state at once instead of the one
+before it. Definitions save through the bridge's own
+`/api/logic*` API (its errors shown verbatim, Save greyed until the draft differs); while a bridge
+is unreachable the page keeps the last known blocks on screen and disables editing. A **Guide…**
+button carries the logic guide the dashboard used to describe.
+
 ## [1.8.2] - 2026-10-06
 
 ### Fixed

@@ -1,0 +1,431 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:logic="using:OpcBridge.Hmi.ViewModels.Logic"
+             xmlns:views="using:OpcBridge.Hmi.Views"
+             xmlns:converters="using:Avalonia.Data.Converters"
+             x:Class="OpcBridge.Hmi.Views.LogicPage"
+             x:DataType="logic:LogicPanelViewModel">
+  <Grid RowDefinitions="Auto,Auto,*" Margin="12">
+
+    <!-- ======== Bridge + block actions ======== -->
+    <Border Grid.Row="0" Classes="card" Padding="10">
+      <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto" RowDefinitions="Auto,Auto">
+        <TextBlock Grid.Row="0" Grid.Column="0" Classes="listHeader" Text="BRIDGE"
+                   VerticalAlignment="Center" Margin="0,0,8,0" />
+        <ComboBox Grid.Row="0" Grid.Column="1" MinWidth="200"
+                  ItemsSource="{Binding Bridges}" SelectedItem="{Binding SelectedBridge}"
+                  AutomationProperties.Name="Logic bridge"
+                  ToolTip.Tip="The bridge whose plant logic is authored and shown here.">
+          <ComboBox.ItemTemplate>
+            <DataTemplate x:DataType="logic:LogicBridgeOption">
+              <TextBlock Text="{Binding Label}" />
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
+        <Border Grid.Row="0" Grid.Column="2" Margin="10,0,0,0" Classes="pill"
+                Classes.ok="{Binding IsBridgeOk}"
+                Classes.warn="{Binding IsBridgeWarn}"
+                Classes.bad="{Binding IsBridgeBad}">
+          <TextBlock Text="{Binding BridgeStatusText}" AutomationProperties.LiveSetting="Polite" />
+        </Border>
+        <StackPanel Grid.Row="0" Grid.Column="4" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+          <Button Content="Blocks…" Click="OnBlocksClick"
+                  AutomationProperties.Name="Open the logic block list"
+                  ToolTip.Tip="List, select, create and delete blocks." />
+          <Button Content="Guide…" Click="OnGuideClick" AutomationProperties.Name="Open the logic guide" />
+          <Button Content="New block" Command="{Binding NewBlockCommand}" />
+          <Button Classes="primary" Content="Save" Command="{Binding SaveCommand}" />
+          <Button Classes="danger" Content="Delete" Command="{Binding DeleteSelectedCommand}" />
+        </StackPanel>
+        <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="5" Margin="0,8,0,0" Spacing="2">
+          <TextBlock Classes="hint warn" TextWrapping="Wrap" Text="{Binding EditingHint}"
+                     IsVisible="{Binding EditingHint, Converter={x:Static converters:StringConverters.IsNotNullOrEmpty}}" />
+          <TextBlock Classes="hint" TextWrapping="Wrap" Text="{Binding EditorMessage}"
+                     AutomationProperties.LiveSetting="Polite"
+                     IsVisible="{Binding EditorMessage, Converter={x:Static converters:StringConverters.IsNotNullOrEmpty}}" />
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <!-- ======== Editor / Result tabs ======== -->
+    <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="6" Margin="0,10,0,8">
+      <RadioButton Classes="seg" GroupName="LogicTabs" Content="Editor" IsChecked="{Binding IsEditorTab}" />
+      <RadioButton Classes="seg" GroupName="LogicTabs" Content="Result" IsChecked="{Binding IsResultTab}" />
+      <TextBlock Classes="hint" VerticalAlignment="Center" Margin="10,0,0,0" Text="{Binding SummaryText}" />
+    </StackPanel>
+
+    <!-- ======== EDITOR ======== -->
+    <ScrollViewer Grid.Row="2" IsVisible="{Binding IsEditorTab}" VerticalScrollBarVisibility="Auto">
+      <StackPanel Spacing="10">
+
+        <Border Classes="card">
+          <WrapPanel Orientation="Horizontal">
+            <StackPanel Classes="field" Width="320">
+              <TextBlock Classes="fieldLabel" Text="NAME" />
+              <TextBox Text="{Binding BlockName}" Watermark="Block name (e.g. Line 01 Start)"
+                       AutomationProperties.Name="Block name" />
+            </StackPanel>
+            <StackPanel Classes="field" Width="220">
+              <TextBlock Classes="fieldLabel" Text="KIND" />
+              <ComboBox ItemsSource="{Binding KindOptions}" SelectedItem="{Binding SelectedKind}"
+                        AutomationProperties.Name="Block kind">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="logic:LogicSelectOption">
+                    <TextBlock Text="{Binding Label}" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+            </StackPanel>
+            <StackPanel Classes="field" Width="240">
+              <TextBlock Classes="fieldLabel" Text="INTERLOCK GROUP" />
+              <TextBox Text="{Binding BlockGroup}" Watermark="Optional (e.g. Primary Arm)"
+                       AutomationProperties.Name="Interlock group"
+                       ToolTip.Tip="Blocks sharing a group list under one heading, here and on the phone." />
+            </StackPanel>
+            <StackPanel Classes="field" Width="140">
+              <TextBlock Classes="fieldLabel" Text="ENABLED" />
+              <CheckBox IsChecked="{Binding BlockEnabled}" Margin="0,3,0,0"
+                        AutomationProperties.Name="Block enabled"
+                        ToolTip.Tip="A disabled block evaluates but never counts as ready." />
+            </StackPanel>
+            <StackPanel Classes="field" Width="420">
+              <TextBlock Classes="fieldLabel" Text="DESCRIPTION" />
+              <TextBox Text="{Binding BlockDescription}" Watermark="Optional operator note"
+                       AutomationProperties.Name="Block description" />
+            </StackPanel>
+            <StackPanel Classes="field" Width="360">
+              <TextBlock Classes="fieldLabel" Text="TAGS" />
+              <TextBox Text="{Binding BlockTags}" Watermark="Comma-separated (e.g. Line 1, Safety)"
+                       AutomationProperties.Name="Block tags" />
+              <TextBlock Classes="hint" Margin="0,3,0,0" Text="Up to 8 labels of 24 characters." />
+            </StackPanel>
+          </WrapPanel>
+        </Border>
+
+        <!-- Conditions (the simple form) -->
+        <Border Classes="card" IsVisible="{Binding ShowsConditions}">
+          <StackPanel Spacing="8">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+              <TextBlock Grid.Column="0" Classes="sectionLabel" Text="CONDITIONS" VerticalAlignment="Center" />
+              <TextBlock Grid.Column="1" Classes="hint" Margin="12,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap"
+                         Text="Every condition and every OR group must be satisfied — the block's AND. Hold is a TON on-delay." />
+              <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+                <Button Content="Add condition" Command="{Binding AddConditionCommand}" />
+                <Button Content="Convert to IEC network" Command="{Binding ConvertToNetworkCommand}"
+                        ToolTip.Tip="Rewrite the conditions as the equivalent IEC 61131-3 network — it evaluates the same." />
+              </StackPanel>
+            </Grid>
+            <TextBlock Classes="hint" Text="No conditions — add at least one." IsVisible="{Binding !HasConditions}" />
+            <ItemsControl ItemsSource="{Binding Conditions}" IsVisible="{Binding HasConditions}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="logic:LogicConditionRowViewModel">
+                  <views:LogicConditionRowView />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+
+        <!-- Network (IEC 61131-3) -->
+        <Border Classes="card" IsVisible="{Binding ShowsNetwork}">
+          <StackPanel Spacing="8">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+              <TextBlock Grid.Column="0" Classes="sectionLabel" Text="NETWORK (IEC 61131-3)" VerticalAlignment="Center" />
+              <TextBlock Grid.Column="1" Classes="hint" Margin="12,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap"
+                         Text="Rows nest by indentation: a row's inputs are the rows under it at a deeper level; the outermost rows are the block's roots (all must be true)." />
+              <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+                <Button Content="Add element" Command="{Binding AddElementCommand}" />
+                <Button Content="Back to conditions" Command="{Binding BackToConditionsCommand}"
+                        ToolTip.Tip="Drop the network and go back to the flat condition list." />
+              </StackPanel>
+            </Grid>
+            <TextBlock Classes="hint" Text="No elements — add the first one, then indent the rows under it."
+                       IsVisible="{Binding !HasElements}" />
+            <ItemsControl ItemsSource="{Binding Elements}" IsVisible="{Binding HasElements}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="logic:LogicElementRowViewModel">
+                  <views:LogicElementRowView />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+
+        <!-- Steps (sequences) -->
+        <Border Classes="card" IsVisible="{Binding ShowsSteps}">
+          <StackPanel Spacing="8">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+              <TextBlock Grid.Column="0" Classes="sectionLabel" Text="STEPS" VerticalAlignment="Center" />
+              <TextBlock Grid.Column="1" Classes="hint" Margin="12,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap"
+                         Text="A step is done when its conditions are true — and, when a completion handshake tag is set, when that tag is true too." />
+              <Button Grid.Column="2" Content="Add step" Command="{Binding AddStepCommand}" />
+            </Grid>
+            <TextBlock Classes="hint" Text="No steps — add at least one." IsVisible="{Binding !HasSteps}" />
+            <ItemsControl ItemsSource="{Binding Steps}" IsVisible="{Binding HasSteps}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="logic:LogicStepRowViewModel">
+                  <Border Classes="cardDark" Margin="0,0,0,8" Padding="10">
+                    <StackPanel Spacing="6">
+                      <Grid ColumnDefinitions="Auto,Auto,*">
+                        <TextBlock Grid.Column="0" Classes="sectionLabel" Margin="0" Text="{Binding StepLabel}"
+                                   VerticalAlignment="Center" />
+                        <Border Grid.Column="1" Margin="10,0,0,0" Classes="pill"
+                                Classes.ok="{Binding IsDone}"
+                                Classes.warn="{Binding IsCurrent}"
+                                Classes.muted="{Binding IsPending}">
+                          <TextBlock Text="{Binding StateWord}" AutomationProperties.LiveSetting="Polite" />
+                        </Border>
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right">
+                          <Button Classes="tool" Content="↑" Command="{Binding MoveUpCommand}" AutomationProperties.Name="Move step up" />
+                          <Button Classes="tool" Content="↓" Command="{Binding MoveDownCommand}" AutomationProperties.Name="Move step down" />
+                          <Button Classes="tool" Content="✕" Command="{Binding RemoveStepCommand}" AutomationProperties.Name="Remove step" />
+                        </StackPanel>
+                      </Grid>
+                      <WrapPanel Orientation="Horizontal">
+                        <StackPanel Classes="field" Width="320">
+                          <TextBlock Classes="fieldLabel" Text="STEP NAME" />
+                          <TextBox Text="{Binding Name}" Watermark="Open inlet valve"
+                                   AutomationProperties.Name="Step name" />
+                        </StackPanel>
+                        <StackPanel Classes="field" Width="320">
+                          <TextBlock Classes="fieldLabel" Text="NEXT STEP" />
+                          <TextBox Text="{Binding NextStepText}"
+                                   Watermark="What to do while this is the current step"
+                                   AutomationProperties.Name="Step next step text" />
+                        </StackPanel>
+                        <StackPanel Classes="field" Width="150">
+                          <TextBlock Classes="fieldLabel" Text="COMPLETION SOURCE" />
+                          <ComboBox ItemsSource="{Binding CompletionSources}" SelectedItem="{Binding CompletionSource}"
+                                    AutomationProperties.Name="Completion source"
+                                    ToolTip.Tip="{Binding CompletionSource.Label}">
+                            <ComboBox.ItemTemplate>
+                              <DataTemplate x:DataType="logic:LogicSourceOption">
+                                <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
+                              </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                          </ComboBox>
+                        </StackPanel>
+                        <StackPanel Classes="field" Width="260">
+                          <TextBlock Classes="fieldLabel" Text="COMPLETION TAG" />
+                          <ComboBox ItemsSource="{Binding CompletionItems}" SelectedItem="{Binding CompletionTag}"
+                                    AutomationProperties.Name="Completion tag"
+                                    ToolTip.Tip="{Binding CompletionTag.Detail}">
+                            <ComboBox.ItemTemplate>
+                              <DataTemplate x:DataType="logic:LogicTagOption">
+                                <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
+                              </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                          </ComboBox>
+                          <TextBlock Classes="hint" Margin="0,3,0,0" TextWrapping="Wrap"
+                                     Text="Optional handshake: completes once this tag is true (pick both fields or neither)." />
+                        </StackPanel>
+                      </WrapPanel>
+                      <TextBlock Classes="hint" Text="{Binding Reason}" TextWrapping="Wrap" IsVisible="{Binding HasReason}" />
+                      <ItemsControl ItemsSource="{Binding Conditions}">
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate x:DataType="logic:LogicConditionRowViewModel">
+                            <views:LogicConditionRowView />
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                      <Button Content="Add condition" Command="{Binding AddConditionCommand}" HorizontalAlignment="Left" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+
+        <!-- Actions -->
+        <Border Classes="card">
+          <StackPanel Spacing="8">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+              <TextBlock Grid.Column="0" Classes="sectionLabel" Text="ACTIONS" VerticalAlignment="Center" />
+              <TextBlock Grid.Column="1" Classes="hint" Margin="12,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap"
+                         Text="Write buttons the phone renders for the operator — authored here, executed on the phone. Only writeable tags are offered." />
+              <Button Grid.Column="2" Content="Add action" Command="{Binding AddActionCommand}" />
+            </Grid>
+            <TextBlock Classes="hint" Text="No actions — optional write buttons for the phone." IsVisible="{Binding !HasActions}" />
+            <ItemsControl ItemsSource="{Binding Actions}" IsVisible="{Binding HasActions}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="logic:LogicActionRowViewModel">
+                  <Border Classes="editorRow" Margin="0,0,0,6">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <WrapPanel Grid.Column="0" Orientation="Horizontal">
+                        <StackPanel Classes="field" Width="230">
+                          <TextBlock Classes="fieldLabel" Text="LABEL" />
+                          <TextBox Text="{Binding Label}" Watermark="Start conveyor"
+                                   AutomationProperties.Name="Action label" />
+                        </StackPanel>
+                        <StackPanel Classes="field" Width="150">
+                          <TextBlock Classes="fieldLabel" Text="SOURCE" />
+                          <ComboBox ItemsSource="{Binding Sources}" SelectedItem="{Binding SelectedSource}"
+                                    AutomationProperties.Name="Action source" ToolTip.Tip="{Binding SelectedSource.Label}">
+                            <ComboBox.ItemTemplate>
+                              <DataTemplate x:DataType="logic:LogicSourceOption">
+                                <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
+                              </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                          </ComboBox>
+                        </StackPanel>
+                        <StackPanel Classes="field" Width="210">
+                          <TextBlock Classes="fieldLabel" Text="TAG" />
+                          <ComboBox ItemsSource="{Binding Items}" SelectedItem="{Binding SelectedTag}"
+                                    AutomationProperties.Name="Action tag" ToolTip.Tip="{Binding SelectedTag.Detail}">
+                            <ComboBox.ItemTemplate>
+                              <DataTemplate x:DataType="logic:LogicTagOption">
+                                <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
+                              </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                          </ComboBox>
+                        </StackPanel>
+                        <StackPanel Classes="field" Width="140">
+                          <TextBlock Classes="fieldLabel" Text="VALUE" />
+                          <TextBox Text="{Binding Value}" Watermark="1 / true"
+                                   AutomationProperties.Name="Action value" />
+                        </StackPanel>
+                        <StackPanel Classes="field" Width="120">
+                          <TextBlock Classes="fieldLabel" Text="CONFIRM" />
+                          <CheckBox IsChecked="{Binding Confirm}" Margin="0,3,0,0"
+                                    AutomationProperties.Name="Ask the operator to confirm"
+                                    ToolTip.Tip="Ask the operator before the phone writes." />
+                        </StackPanel>
+                      </WrapPanel>
+                      <Button Grid.Column="1" Classes="tool" Content="✕" Command="{Binding RemoveCommand}"
+                              Margin="0,0,0,6" VerticalAlignment="Top" AutomationProperties.Name="Remove action" />
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </ScrollViewer>
+
+    <!-- ======== RESULT ======== -->
+    <Grid Grid.Row="2" IsVisible="{Binding IsResultTab}" ColumnDefinitions="380,*">
+      <Border Grid.Column="0" Classes="card" Margin="0,0,10,0">
+        <DockPanel>
+          <TextBlock DockPanel.Dock="Top" Classes="sectionLabel" Text="EVALUATED BLOCKS" />
+          <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <Panel>
+              <TextBlock Classes="hint" Margin="8" TextWrapping="Wrap" Text="{Binding EmptyBlocksMessage}"
+                         IsVisible="{Binding !HasBlocks}" />
+              <ItemsControl ItemsSource="{Binding BlockGroups}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="logic:LogicGroupViewModel">
+                    <StackPanel Margin="0,0,0,6">
+                      <TextBlock Classes="listHeader" Margin="0,4,0,0" Text="{Binding Name}" IsVisible="{Binding ShowHeading}" />
+                      <TextBlock Classes="hint" Margin="0,0,0,2" Text="{Binding Summary}" IsVisible="{Binding ShowHeading}" />
+                      <ItemsControl ItemsSource="{Binding Blocks}">
+                        <ItemsControl.ItemTemplate>
+                          <DataTemplate x:DataType="logic:LogicBlockRowViewModel">
+                            <Button Classes="logicRow" Classes.active="{Binding IsSelected}"
+                                    Command="{Binding $parent[UserControl].((logic:LogicPanelViewModel)DataContext).SelectBlockCommand}"
+                                    CommandParameter="{Binding}">
+                              <StackPanel Spacing="1">
+                                <Grid ColumnDefinitions="*,Auto,Auto">
+                                  <TextBlock Grid.Column="0" FontSize="13" FontWeight="SemiBold" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                  <TextBlock Grid.Column="1" Classes="hint" Margin="8,0,0,0" Text="{Binding KindLabel}" VerticalAlignment="Center" />
+                                  <Border Grid.Column="2" Classes="pill" Margin="8,0,0,0"
+                                          Classes.ok="{Binding IsOk}"
+                                          Classes.bad="{Binding IsBad}"
+                                          Classes.warn="{Binding IsWarn}"
+                                          Classes.muted="{Binding IsMuted}">
+                                    <TextBlock Text="{Binding StateWord}" AutomationProperties.LiveSetting="Polite" />
+                                  </Border>
+                                </Grid>
+                                <TextBlock Classes="hint" Text="{Binding ReasonLine}" TextWrapping="Wrap" />
+                                <TextBlock Classes="hint" Text="{Binding Progress}" IsVisible="{Binding HasProgress}" />
+                              </StackPanel>
+                            </Button>
+                          </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                      </ItemsControl>
+                    </StackPanel>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </Panel>
+          </ScrollViewer>
+        </DockPanel>
+      </Border>
+
+      <Border Grid.Column="1" Classes="card">
+        <DockPanel>
+          <Grid DockPanel.Dock="Top" ColumnDefinitions="Auto,Auto,Auto,*,Auto" Margin="0,0,0,6">
+            <TextBlock Grid.Column="0" FontSize="16" FontWeight="SemiBold" Text="{Binding ResultTitle}" VerticalAlignment="Center"
+                       IsVisible="{Binding ResultTitleVisible}" />
+            <TextBlock Grid.Column="1" Classes="hint" Margin="10,0,0,0" Text="{Binding ResultKindLabel}" VerticalAlignment="Center"
+                       IsVisible="{Binding ResultKindLabel, Converter={x:Static converters:StringConverters.IsNotNullOrEmpty}}" />
+            <Border Grid.Column="2" Classes="pill" Margin="10,0,0,0" IsVisible="{Binding ResultStateVisible}"
+                    Classes.ok="{Binding IsResultOk}"
+                    Classes.bad="{Binding IsResultBad}"
+                    Classes.warn="{Binding IsResultWarn}"
+                    Classes.muted="{Binding IsResultMuted}">
+              <TextBlock Text="{Binding ResultStateWord}" AutomationProperties.LiveSetting="Polite" />
+            </Border>
+            <TextBlock Grid.Column="4" Classes="hint" Margin="10,0,0,0" Text="{Binding ResultFreshness}"
+                       VerticalAlignment="Center" HorizontalAlignment="Right" />
+          </Grid>
+          <TextBlock DockPanel.Dock="Top" Classes="hint" Text="{Binding ResultDescription}" TextWrapping="Wrap"
+                     IsVisible="{Binding HasResultDescription}" Margin="0,0,0,6" />
+          <TextBlock DockPanel.Dock="Top" Text="{Binding ResultReason}" TextWrapping="Wrap" Margin="0,0,0,8"
+                     IsVisible="{Binding HasResultReason}"
+                     Classes.stateOk="{Binding IsReasonOk}"
+                     Classes.stateBad="{Binding IsReasonBad}" />
+          <Panel>
+            <ScrollViewer VerticalScrollBarVisibility="Auto" IsVisible="{Binding HasResultRows}">
+              <StackPanel>
+                <StackPanel IsVisible="{Binding ResultShowsNetwork}">
+                  <TextBlock Classes="listHeader" Text="NETWORK" Margin="0,2,0,6" />
+                  <ItemsControl ItemsSource="{Binding ResultElements}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="logic:LogicResultElementRowViewModel">
+                        <views:LogicResultElementRowView />
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+                <ItemsControl ItemsSource="{Binding ResultSteps}" IsVisible="{Binding ResultShowsSteps}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="logic:LogicResultStepRowViewModel">
+                      <Border Classes="cardDark" Margin="0,0,0,8" Padding="10">
+                        <StackPanel Spacing="6">
+                          <Grid ColumnDefinitions="Auto,Auto,*">
+                            <TextBlock Grid.Column="0" FontSize="14" FontWeight="SemiBold" Text="{Binding Name}" />
+                            <Border Grid.Column="1" Classes="pill" Margin="10,0,0,0"
+                                    Classes.ok="{Binding IsDone}"
+                                    Classes.warn="{Binding IsCurrent}"
+                                    Classes.muted="{Binding IsPending}">
+                              <TextBlock Text="{Binding StateWord}" AutomationProperties.LiveSetting="Polite" />
+                            </Border>
+                          </Grid>
+                          <TextBlock Classes="hint" Text="{Binding Reason}" TextWrapping="Wrap" IsVisible="{Binding HasReason}" />
+                          <ItemsControl ItemsSource="{Binding Elements}">
+                            <ItemsControl.ItemTemplate>
+                              <DataTemplate x:DataType="logic:LogicResultElementRowViewModel">
+                                <views:LogicResultElementRowView />
+                              </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                          </ItemsControl>
+                        </StackPanel>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </ScrollViewer>
+            <StackPanel IsVisible="{Binding !HasResultRows}" VerticalAlignment="Center" HorizontalAlignment="Center"
+                        Spacing="8" MaxWidth="400" Margin="0,24">
+              <TextBlock Classes="sectionLabel" Margin="0" HorizontalAlignment="Center" Text="{Binding ResultEmptyTitle}" />
+              <TextBlock Classes="hint" TextAlignment="Center" TextWrapping="Wrap" Text="{Binding ResultEmptyMessage}" />
+            </StackPanel>
+          </Panel>
+        </DockPanel>
+      </Border>
+    </Grid>
+  </Grid>
+</UserControl>

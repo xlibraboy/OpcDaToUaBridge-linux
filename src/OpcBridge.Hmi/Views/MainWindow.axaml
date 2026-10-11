@@ -33,6 +33,9 @@
         <MenuItem Header="Trend groups" Command="{Binding ShowTrendsCommand}"
                   ToggleType="CheckBox" IsChecked="{Binding IsTrendsPage, Mode=OneWay}"
                   InputGesture="Ctrl+3" />
+        <MenuItem Header="Logic" Command="{Binding ShowLogicCommand}"
+                  ToggleType="CheckBox" IsChecked="{Binding IsLogicPage, Mode=OneWay}"
+                  InputGesture="Ctrl+4" />
         <Separator />
         <MenuItem Header="Open faceplate" Command="{Binding OpenFaceplateCommand}" />
         <MenuItem Header="Open trend" Command="{Binding OpenTrendCommand}" />
@@ -372,6 +375,11 @@
 
       <!-- ======== TREND GROUPS ======== -->
       <views:TrendGroupsPage IsVisible="{Binding IsTrendsPage}" />
+
+      <!-- ======== PLANT LOGIC ======== -->
+      <Panel IsVisible="{Binding IsLogicPage}">
+        <views:LogicPage DataContext="{Binding Logic}" />
+      </Panel>
     </Grid>
   </DockPanel>
 </Window>

@@ -1,0 +1,16 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="OpcBridge.Hmi.Views.ConfirmWindow"
+        FontSize="11"
+        Width="440"
+        SizeToContent="Height"
+        MinWidth="320"
+        WindowStartupLocation="CenterOwner">
+  <DockPanel Margin="14">
+    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="8" Margin="0,14,0,0" HorizontalAlignment="Right">
+      <Button x:Name="ConfirmButton" Classes="danger" Click="OnConfirmClick" MinWidth="96" />
+      <Button Content="Cancel" Click="OnCancelClick" IsCancel="True" MinWidth="96" />
+    </StackPanel>
+    <TextBlock x:Name="MessageText" TextWrapping="Wrap" LineHeight="18" />
+  </DockPanel>
+</Window>

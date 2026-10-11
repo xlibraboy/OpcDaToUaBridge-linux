@@ -1759,7 +1759,7 @@ app.MapDelete("/api/interlinks/{id:guid}", (Guid id, InterlinkStore store) =>
 
     return Results.Json(new { version });
 });
-// Plant logic: blocks authored in the dashboard's Logic tab, evaluated against live tag
+// Plant logic: blocks authored in the OpcBridge HMI's Logic page, evaluated against live tag
 // values. /api/logic/state and /api/logic/notes are HMI paths (see AuthPolicy) because the
 // mobile viewer reads and annotates them like the Avalonia apps do; definitions stay on the
 // default role table (reads Viewer, mutations Engineer).

@@ -89,6 +89,9 @@ public sealed class BridgeConnectionManager : IAsyncDisposable
     public event Func<string, HmiMappingsChanged, Task>? MappingsChanged;
     public event Action? CacheChanged;
 
+    /// <summary>Raised when a bridge pushes a new evaluated logic state (bridgeId, snapshot).</summary>
+    public event Action<string, LogicStateSnapshot>? LogicChanged;
+
     /// <summary>Raised when a bridge's live link state changes (bridgeId, state, error).</summary>
     public event Action<string, BridgeLinkState, string?>? LinkStateChanged;
 
@@ -193,7 +196,12 @@ public sealed class BridgeConnectionManager : IAsyncDisposable
                     return handler is null ? Task.CompletedTask : handler(session.BridgeId, msg);
                 },
                 ct,
-                options_.HubTiming).ConfigureAwait(false);
+                options_.HubTiming,
+                snapshot =>
+                {
+                    LogicChanged?.Invoke(session.BridgeId, snapshot);
+                    return Task.CompletedTask;
+                }).ConfigureAwait(false);
 
             hub.Reconnecting += error => HandleReconnectingAsync(session, error);
             hub.Reconnected += _ => HandleReconnectedAsync(session);

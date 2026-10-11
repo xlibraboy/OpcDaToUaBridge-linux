@@ -17,15 +17,13 @@ public sealed class HelpContentTests
         return match.Success ? match.Groups[1].Value.Trim() : string.Empty;
     }
     [Fact]
-    public void HelpText_DescribesPlantLogicAndItsLiveState()
+    public void HelpText_PointsLogicAtTheHmiRuntime()
     {
-        Assert.Contains("# Logic (Interlocks, Permissives & Sequences)", HelpContent.Markdown);
-        Assert.Contains("interlock / permissive", HelpContent.Markdown, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("unknown", HelpContent.Markdown, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("/api/logic/state", HelpContent.Markdown);
-        Assert.Contains("next-step", HelpContent.Markdown, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("## Tags", HelpContent.Markdown);
-        Assert.Contains("filters the list", HelpContent.Markdown);
+        // Plant logic is authored in the OpcBridge HMI runtime's Logic page; the dashboard
+        // guide points there instead of describing the editor (the runtime's own guide
+        // carries that).
+        Assert.Contains("OpcBridge HMI", HelpContent.Markdown);
+        Assert.DoesNotContain("# Logic (Interlocks, Permissives & Sequences)", HelpContent.Markdown);
     }
 
     [Fact]

@@ -139,6 +139,73 @@
     <Setter Property="Foreground" Value="{DynamicResource MutedFgBrush}" />
   </Style>
 
+  <!-- State text: logic marks, actuals, live chips (never colour alone — the word rides along) -->
+  <Style Selector="TextBlock.stateOk">
+    <Setter Property="Foreground" Value="{DynamicResource OkFgBrush}" />
+  </Style>
+
+  <Style Selector="TextBlock.stateBad">
+    <Setter Property="Foreground" Value="{DynamicResource BadFgBrush}" />
+  </Style>
+
+  <Style Selector="TextBlock.stateWarn">
+    <Setter Property="Foreground" Value="{DynamicResource WarnFgBrush}" />
+  </Style>
+
+  <Style Selector="TextBlock.stateMuted">
+    <Setter Property="Foreground" Value="{DynamicResource MutedFgBrush}" />
+  </Style>
+
+  <!-- Instrument text: kinds, readings, tags and values read as machine data, the way the
+       Logic web app and the phone print them. Falls back to the app font where no mono
+       family is installed. -->
+  <Style Selector="TextBlock.mono">
+    <Setter Property="FontFamily" Value="Cascadia Mono,Consolas,DejaVu Sans Mono,Liberation Mono,Menlo,monospace" />
+  </Style>
+
+  <!-- Logic editor rows: one bordered row per condition / element / action, every field
+       labelled above its box, so a row explains itself instead of leaning on a column
+       header. Rows are the same surface as the result rows, on purpose. -->
+  <Style Selector="Border.editorRow">
+    <Setter Property="Background" Value="{DynamicResource WellBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource CardBorderBrush}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="Padding" Value="10,8" />
+  </Style>
+
+  <Style Selector="StackPanel.field">
+    <Setter Property="Margin" Value="0,0,8,6" />
+  </Style>
+
+  <Style Selector="TextBlock.fieldLabel">
+    <Setter Property="FontSize" Value="11" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{DynamicResource MutedFgBrush}" />
+    <Setter Property="Margin" Value="0,0,0,3" />
+  </Style>
+
+  <!-- Logic block rows: full-width, accent bar when selected -->
+  <Style Selector="Button.logicRow">
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Left" />
+    <Setter Property="BorderThickness" Value="3,0,0,0" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Padding" Value="8,4" />
+    <Setter Property="CornerRadius" Value="3" />
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="FontWeight" Value="Normal" />
+  </Style>
+
+  <Style Selector="Button.logicRow.active">
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentValueBrush}" />
+    <Setter Property="Background" Value="{DynamicResource WellBrush}" />
+  </Style>
+
+  <Style Selector="Button.logicRow:pointerover /template/ ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource WidgetSurfaceBrush}" />
+  </Style>
+
   <!-- Buttons -->
   <Style Selector="Button.primary">
     <Setter Property="Background" Value="{DynamicResource AccentActionBrush}" />
