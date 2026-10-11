@@ -19,7 +19,7 @@
     <ServerVersion>1.8.0</ServerVersion>
     <HmiVersion>1.8.2</HmiVersion>
     <DesignerVersion>1.8.0</DesignerVersion>
-    <MobileVersion>1.8.0</MobileVersion>
+    <MobileVersion>1.9.0</MobileVersion>
     <Version>$(ServerVersion)</Version>
     <Product>OpcBridge</Product>
   </PropertyGroup>

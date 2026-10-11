@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-10-11
+
 ### Added
 
 - The Logic tab lists blocks **under their interlock group's heading** (the group authored in the
