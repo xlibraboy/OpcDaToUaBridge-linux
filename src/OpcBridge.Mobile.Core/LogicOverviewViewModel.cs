@@ -298,8 +298,9 @@ public sealed partial class LogicOverviewViewModel : ObservableObject
 {
     private const string AllStatesKey = "";
 
-    private static readonly string NoBlocksText =
-        "No logic blocks here. Add a bridge under Settings ▸ Bridges, or author blocks in the OpcBridge HMI under View ▸ Logic.";
+    // The list screen owns the wording (LogicListText.EmptyList); the overview reports its
+    // "connected but nothing authored" meaning through the same text.
+    private static readonly string NoBlocksText = LogicListText.NoBlocksText;
 
     private const string NoMatchText = "No blocks match the search or filter.";
 

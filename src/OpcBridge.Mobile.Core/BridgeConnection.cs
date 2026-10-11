@@ -22,6 +22,7 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
     private readonly IBridgeCacheStore cache_;
     private readonly Action<Action> post_;
     private List<HmiTagDto> lastTags_ = new();
+    private Dictionary<Guid, List<LogicNoteDto>> notesByBlock_ = new();
     private DateTime? lastCachedUtc_;
 
     public BridgeConnection(SavedBridge bridge, MultiBridgeTagCache tags, Action<Action>? post = null, IBridgeCacheStore? cache = null)
@@ -100,6 +101,9 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
     /// <summary>True once the bridge answered with its logic (signed out still counts).</summary>
     [ObservableProperty] private bool _isConnected;
 
+    /// <summary>True when the last failed call was refused for a missing session (HTTP 401/403).</summary>
+    [ObservableProperty] private bool _signInRequired;
+
     /// <summary>
     /// True when the list on screen is the last data the bridge served — the link is down,
     /// nothing live is arriving, and <see cref="OfflineText"/> says how old it is.
@@ -155,11 +159,13 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
             Overview.ApplyDefinitions(definitions.Value!);
             IsConnected = true;
             IsOffline = false;
+            SignInRequired = false;
             StatusText = IsLive ? LiveText : "connected";
         }
         else
         {
             IsConnected = false;
+            SignInRequired = definitions.IsSignInRequired;
             StatusText = FailureText(definitions);
             MarkOffline();
         }
@@ -185,6 +191,27 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
         RaiseChanged();
     }
 
+    /// <summary>Notes for one block as last served by the bridge (empty when none were cached).</summary>
+    public IReadOnlyList<LogicNoteDto> CachedNotes(Guid blockId) =>
+        notesByBlock_.TryGetValue(blockId, out List<LogicNoteDto>? notes) ? notes : Array.Empty<LogicNoteDto>();
+
+    /// <summary>
+    /// Reads one block's notes and keeps them for offline reading. A failed call returns the
+    /// failure and leaves the cached notes alone, so the detail screen keeps showing the last
+    /// notes the bridge served instead of an empty section.
+    /// </summary>
+    public async Task<MobileResult<IReadOnlyList<LogicNoteDto>>> GetNotesAsync(Guid blockId, CancellationToken cancellationToken)
+    {
+        MobileResult<IReadOnlyList<LogicNoteDto>> notes = await api_.GetNotesAsync(blockId, 50, cancellationToken);
+        if (notes.Ok && notes.Value is not null)
+        {
+            notesByBlock_[blockId] = notes.Value.ToList();
+            PersistNotes();
+        }
+
+        return notes;
+    }
+
     /// <summary>
     /// Shows the last data this bridge served, so the list is never blank while the link is
     /// being acquired (or after it is gone). Leaves <see cref="IsOffline"/> to a failed call —
@@ -206,17 +233,38 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
         }
 
         Overview.ApplyState(snapshot.State);
+        notesByBlock_ = snapshot.NotesByBlock is { } notes
+            ? notes
+            : new Dictionary<Guid, List<LogicNoteDto>>();
         lastCachedUtc_ = snapshot.SavedUtc;
     }
 
-    private void Persist()
+    private void Persist() => WriteSnapshot(DateTime.UtcNow);
+
+    /// <summary>
+    /// Writes the snapshot after a notes read. The banner's data age (the last refresh's time)
+    /// stays put, so a notes fetch cannot make the list look fresher than it is.
+    /// </summary>
+    private void PersistNotes()
+    {
+        if (Overview.Definitions.Count == 0)
+        {
+            // Nothing to anchor the snapshot to — and an empty block list reads as no cache.
+            return;
+        }
+
+        WriteSnapshot(lastCachedUtc_ ?? DateTime.UtcNow);
+    }
+
+    private void WriteSnapshot(DateTime savedUtc)
     {
         BridgeCacheSnapshot snapshot = new()
         {
-            SavedUtc = DateTime.UtcNow,
+            SavedUtc = savedUtc,
             Blocks = Overview.Definitions.ToList(),
             State = Overview.State,
-            Tags = lastTags_.ToList()
+            Tags = lastTags_.ToList(),
+            NotesByBlock = new Dictionary<Guid, List<LogicNoteDto>>(notesByBlock_)
         };
         cache_.Write(BridgeCacheCodec.Key(Bridge.Id), BridgeCacheCodec.Serialize(snapshot));
         lastCachedUtc_ = snapshot.SavedUtc;

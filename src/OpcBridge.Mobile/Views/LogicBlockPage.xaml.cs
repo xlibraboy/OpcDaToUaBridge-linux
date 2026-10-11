@@ -18,6 +18,23 @@ public partial class LogicBlockPage : ContentPage
         coordinator_.Changed += OnLiveChanged;
     }
 
+    protected override void OnAppearing()
+    {
+        base.OnAppearing();
+        // The ctor subscribes for the earliest repaint; re-subscribing here is idempotent and
+        // keeps a page that was navigated away from and back alive to live updates.
+        coordinator_.Changed -= OnLiveChanged;
+        coordinator_.Changed += OnLiveChanged;
+    }
+
+    protected override void OnDisappearing()
+    {
+        // The page is transient (a new instance per navigation): without this the singleton
+        // coordinator would keep every visited block page alive and repainting.
+        coordinator_.Changed -= OnLiveChanged;
+        base.OnDisappearing();
+    }
+
     /// <summary>The bridge whose block this page shows (the active one).</summary>
     private BridgeConnection? Active => coordinator_.Active;
 
@@ -44,8 +61,9 @@ public partial class LogicBlockPage : ContentPage
         }
 
         LogicBlockDto? block = Active.Overview.Definitions.FirstOrDefault(candidate => candidate.Id == blockId_);
-        if (block is null)
+        if (block is null && Active.IsConnected)
         {
+            // The id is not in the last list; one refresh can recover a list that is stale.
             await Active.RefreshAsync(CancellationToken.None);
             block = Active.Overview.Definitions.FirstOrDefault(candidate => candidate.Id == blockId_);
         }
@@ -53,17 +71,21 @@ public partial class LogicBlockPage : ContentPage
         if (block is null)
         {
             titleLabel.Text = "Block not found";
-            messageLabel.Text = "Refresh the list on the Logic tab.";
+            messageLabel.Text = Active.IsConnected
+                ? "The block is not in the bridge's list — it may have been deleted."
+                : "This block is not in the last synced list — connect once to refresh.";
             return;
         }
 
-        MobileResult<IReadOnlyList<LogicNoteDto>> notes = await Active.Api.GetNotesAsync(blockId_, 50, CancellationToken.None);
+        // Everything on screen comes from memory first — the definitions, state and values the
+        // cache holds, and the notes last served — so the block opens instantly and reads fully
+        // while the link is down, instead of waiting on a network call.
         viewModel_ = new LogicBlockDetailViewModel(
             block,
             Active.CacheKey,
             Active.Overview.State?.Blocks.FirstOrDefault(candidate => candidate.Id == blockId_),
             coordinator_.Tags,
-            notes.Ok ? notes.Value : null);
+            Active.CachedNotes(blockId_));
         viewModel_.ActionRequested += OnActionRequested;
 
         BindingContext = viewModel_;
@@ -71,6 +93,25 @@ public partial class LogicBlockPage : ContentPage
         titleLabel.Text = block.Name;
         descriptionLabel.Text = block.Description;
         Repaint();
+
+        // Notes are the one part the cache can be behind on: read them in the background and
+        // keep the cached ones when the bridge cannot answer.
+        await RefreshNotesAsync();
+    }
+
+    /// <summary>Re-reads the block's notes through the connection, which keeps them cached.</summary>
+    private async Task RefreshNotesAsync()
+    {
+        if (Active is not { } active)
+        {
+            return;
+        }
+
+        MobileResult<IReadOnlyList<LogicNoteDto>> notes = await active.GetNotesAsync(blockId_, CancellationToken.None);
+        if (notes.Ok && notes.Value is not null)
+        {
+            viewModel_?.SetNotes(notes.Value);
+        }
     }
 
     private void OnLiveChanged()
@@ -159,12 +200,7 @@ public partial class LogicBlockPage : ContentPage
         }
 
         noteEntry.Text = string.Empty;
-        MobileResult<IReadOnlyList<LogicNoteDto>> notes = await Active.Api.GetNotesAsync(blockId_, 50, CancellationToken.None);
-        if (notes.Ok)
-        {
-            viewModel_.SetNotes(notes.Value!);
-        }
-
+        await RefreshNotesAsync();
         messageLabel.Text = "✓ note added";
     }
 

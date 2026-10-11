@@ -32,6 +32,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   banner** naming when the data was last read (*offline · showing Plant 1 as of 2026-10-09
   12:31:05*) — the floor list still reads when the link is down, and the banner clears on the next
   successful refresh.
+- **The block screen reads offline in full.** It opens instantly from the cached definitions,
+  state and last values — no network call holds the render — and the **last notes the bridge
+  served are kept per block**, so the notes section reads on the floor with the link down instead
+  of coming up empty. A later notes read replaces them without making the list look fresher than
+  it is; a failed one leaves the last-known set in place.
 
 - Cards show the block's **tags** as chips under the name — the labels the bridge serves with
   the definition (authored in the dashboard's Logic tab, up to 8 per block).
@@ -44,6 +49,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The empty list is honest about why.** A bridge that was never reached now reads *No data yet
+  — no bridge answered on …* (or asks for the sign-in it needs) instead of *No logic blocks
+  here*, and a bridge that answered with nothing authored no longer tells the operator to add a
+  bridge they already have. A block that is not in the last synced list says so instead of asking
+  for a refresh that cannot run.
 - **Add & Connect now finds a real bridge.** The port probe read the bridge's reply off the
   network stream — which a keep-alive connection never ends — so it sat until its 1.2 s
   timeout and reported *no bridge answered* although the bridge had answered in milliseconds
