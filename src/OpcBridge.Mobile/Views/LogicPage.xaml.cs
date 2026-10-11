@@ -84,7 +84,8 @@ public partial class LogicPage : ContentPage
     /// <summary>Keeps the filter labels, the search box and the empty state in step with the active overview.</summary>
     private void RefreshFilterUi()
     {
-        LogicOverviewViewModel? overview = coordinator_.Active?.Overview;
+        BridgeConnection? active = coordinator_.Active;
+        LogicOverviewViewModel? overview = active?.Overview;
 
         filterLabel.Text = overview?.FilterText ?? string.Empty;
         filterLabel.IsVisible = overview?.HasFilter == true;
@@ -93,9 +94,13 @@ public partial class LogicPage : ContentPage
         chipDivider.IsVisible = hasTags;
         tagChips.IsVisible = hasTags;
 
-        emptyLabel.Text = overview is null
-            ? "No bridge selected — add one under Settings ▸ Bridges."
-            : overview.EmptyMessage;
+        emptyLabel.Text = LogicListText.EmptyList(
+            hasBridge: active is not null,
+            connected: active?.IsConnected == true,
+            hasBlocks: (overview?.Blocks.Count ?? 0) > 0,
+            signInRequired: active?.SignInRequired == true,
+            bridgeStatus: active?.StatusText ?? string.Empty,
+            filterMissText: overview?.EmptyMessage ?? string.Empty);
     }
 
     private void OnSearchChanged(object? sender, TextChangedEventArgs e)

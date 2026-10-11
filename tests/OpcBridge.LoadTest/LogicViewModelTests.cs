@@ -350,7 +350,7 @@ public sealed class LogicOverviewViewModelTests
     public void EmptyMessage_TellsApartNoBlocksFromAFilterThatMatchedNothing()
     {
         LogicOverviewViewModel vm = new();
-        Assert.StartsWith("No logic blocks here", vm.EmptyMessage, StringComparison.Ordinal);
+        Assert.StartsWith("No logic blocks on this bridge yet", vm.EmptyMessage, StringComparison.Ordinal);
 
         vm.ApplyDefinitions(new[] { Block("Line 01 Start", conditions: Condition()) });
         vm.SearchText = "nothing matches this";

@@ -26,6 +26,9 @@ public sealed class BridgeCacheSnapshot
     public LogicStateSnapshot? State { get; set; }
 
     public List<HmiTagDto> Tags { get; set; } = new();
+
+    /// <summary>Notes last served, per block — the detail screen reads them offline too.</summary>
+    public Dictionary<Guid, List<LogicNoteDto>> NotesByBlock { get; set; } = new();
 }
 
 /// <summary>The cache envelope as it is stored, and the key one bridge's cache lives under.</summary>
