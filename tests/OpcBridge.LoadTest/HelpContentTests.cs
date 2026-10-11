@@ -17,11 +17,12 @@ public sealed class HelpContentTests
         return match.Success ? match.Groups[1].Value.Trim() : string.Empty;
     }
     [Fact]
-    public void HelpText_PointsLogicAtItsOwnApp()
+    public void HelpText_PointsLogicAtTheHmiRuntime()
     {
-        // Plant logic moved to the OpcBridge Logic web app; the dashboard guide points there
-        // instead of describing the editor (the app's own guide carries that).
-        Assert.Contains("OpcBridge Logic", HelpContent.Markdown);
+        // Plant logic is authored in the OpcBridge HMI runtime's Logic page; the dashboard
+        // guide points there instead of describing the editor (the runtime's own guide
+        // carries that).
+        Assert.Contains("OpcBridge HMI", HelpContent.Markdown);
         Assert.DoesNotContain("# Logic (Interlocks, Permissives & Sequences)", HelpContent.Markdown);
     }
 

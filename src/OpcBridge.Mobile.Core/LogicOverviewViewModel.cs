@@ -299,7 +299,7 @@ public sealed partial class LogicOverviewViewModel : ObservableObject
     private const string AllStatesKey = "";
 
     private static readonly string NoBlocksText =
-        "No logic blocks here. Add a bridge under Settings ▸ Bridges, or author blocks in the dashboard under Tags ▸ Logic.";
+        "No logic blocks here. Add a bridge under Settings ▸ Bridges, or author blocks in the OpcBridge HMI under View ▸ Logic.";
 
     private const string NoMatchText = "No blocks match the search or filter.";
 

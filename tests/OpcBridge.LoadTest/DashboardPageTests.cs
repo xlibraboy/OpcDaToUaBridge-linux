@@ -1870,7 +1870,7 @@ public sealed class DashboardPageTests
     [Fact]
     public void Html_NoLongerShipsTheLogicView()
     {
-        // The Logic authoring surface moved to its own app (src/OpcBridge.Logic): the bridge
+        // The Logic authoring surface moved into the OpcBridge HMI runtime: the bridge
         // dashboard must not carry the tab, the editor or the endpoints any more.
         Assert.DoesNotContain("logic", DashboardPage.FullHtml, StringComparison.OrdinalIgnoreCase);
     }
