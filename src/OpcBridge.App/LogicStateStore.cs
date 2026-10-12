@@ -3,20 +3,24 @@ namespace OpcBridge.App;
 /// <summary>
 /// Keeps the little bit of memory an IEC 61131-3 network needs between evaluations: how long a
 /// timer's input has been true, a counter's value, a latch's state and an edge trigger's last
-/// input. One singleton serves the API read and the hub broadcaster, so both report the same
-/// state; the memory lives in the process only, so a bridge restart re-times every timer and
-/// reloads every counter — the honest reading for a monitor.
+/// input — plus the internal relays' values, what a coil drives and a relay contact reads. One
+/// singleton serves the API read and the hub broadcaster, so both report the same state; the
+/// memory lives in the process only, so a bridge restart re-times every timer and reloads every
+/// counter — the honest reading for a monitor. A relay needs no reload: its coil drives it every
+/// pass, so the value is re-derived from the logic itself on the first evaluation after a start.
 ///
 /// Thread-safe — a request thread and the flush timer both evaluate. Pruning uses
-/// <see cref="BeginPass"/>/<see cref="EndPass"/>: an id a whole pass never saw (its element was
-/// deleted or its block changed) loses its memory, and an interleaved pass can at worst drop a
-/// live memory, which simply restarts it.
+/// <see cref="BeginPass"/>/<see cref="EndPass"/>: an id or a relay a whole pass never touched
+/// (its element was deleted or its block changed) loses its memory, and an interleaved pass can
+/// at worst drop a live memory, which simply restarts it.
 /// </summary>
 public sealed class LogicStateStore
 {
     private readonly object sync_ = new();
     private readonly Dictionary<Guid, Memory> memories_ = new();
+    private readonly Dictionary<string, bool> relays_ = new(StringComparer.OrdinalIgnoreCase);
     private HashSet<Guid>? seen_;
+    private HashSet<string>? seenRelays_;
 
     private sealed class Memory
     {
@@ -26,16 +30,17 @@ public sealed class LogicStateStore
         public int Count;
     }
 
-    /// <summary>Starts an evaluation pass over every element of every block.</summary>
+    /// <summary>Starts an evaluation pass over every element and relay of every block.</summary>
     public void BeginPass()
     {
         lock (sync_)
         {
             seen_ = new HashSet<Guid>();
+            seenRelays_ = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         }
     }
 
-    /// <summary>Ends the pass and forgets memories whose element was not part of it.</summary>
+    /// <summary>Ends the pass and forgets memories whose element or relay was not part of it.</summary>
     public void EndPass()
     {
         lock (sync_)
@@ -54,7 +59,44 @@ public sealed class LogicStateStore
                 }
             }
 
+            if (relays_.Count > 0 && seenRelays_ is not null)
+            {
+                List<string> staleRelays = relays_.Keys.Where(name => !seenRelays_.Contains(name)).ToList();
+                foreach (string name in staleRelays)
+                {
+                    relays_.Remove(name);
+                }
+            }
+
             seen_ = null;
+            seenRelays_ = null;
+        }
+    }
+
+    /// <summary>
+    /// The value an internal relay holds, or null while no coil has driven it — a relay nobody
+    /// drives reads unknown rather than a silent false. Reading marks the relay as referenced,
+    /// so a pass that only reads a relay keeps the value its coil wrote.
+    /// </summary>
+    public bool? TryGetRelay(string name)
+    {
+        lock (sync_)
+        {
+            seenRelays_?.Add(name);
+            return relays_.TryGetValue(name, out bool value) ? value : null;
+        }
+    }
+
+    /// <summary>
+    /// Writes a coil's input onto its relay. A coil drives its relay every pass, so the value is
+    /// re-derived from the logic itself — nothing here needs to survive a restart.
+    /// </summary>
+    public void SetRelay(string name, bool value)
+    {
+        lock (sync_)
+        {
+            seenRelays_?.Add(name);
+            relays_[name] = value;
         }
     }
 

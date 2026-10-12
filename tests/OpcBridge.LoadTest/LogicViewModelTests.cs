@@ -779,4 +779,72 @@ public sealed class LogicBlockDetailViewModelTests
         Assert.Equal("operator1", vm.Notes[0].Author);
         Assert.StartsWith("2026-10-08", vm.Notes[0].WhenText, StringComparison.Ordinal);
     }
+
+    [Fact]
+    public void RelayElements_NameTheirRelayAndReadTheDrivenBit()
+    {
+        var coil = new LogicElementDto
+        {
+            Id = Guid.NewGuid(),
+            Kind = LogicElementKinds.Coil,
+            Relay = "M01",
+            Inputs =
+            {
+                new LogicElementDto
+                {
+                    Id = Guid.NewGuid(),
+                    Kind = LogicElementKinds.Contact,
+                    Text = "Permit must be given",
+                    SourceId = "sim",
+                    ItemId = "Permit",
+                    Op = LogicConditionOps.On
+                }
+            }
+        };
+        var read = new LogicElementDto
+        {
+            Id = Guid.NewGuid(),
+            Kind = LogicElementKinds.Contact,
+            Text = "M01 must be on",
+            Relay = "M01",
+            Op = LogicConditionOps.On
+        };
+        var block = new LogicBlockDto
+        {
+            Id = Guid.NewGuid(),
+            Name = "Relay network",
+            Kind = LogicBlockKinds.Interlock,
+            Elements = { coil, read }
+        };
+
+        LogicBlockDetailViewModel vm = new(
+            block,
+            BridgeKey,
+            new LogicBlockStateDto
+            {
+                State = LogicBlockStates.Ready,
+                Elements =
+                {
+                    new LogicElementStateDto { Id = coil.Id, Kind = LogicElementKinds.Coil, State = LogicConditionStates.True, ValueText = "1" },
+                    new LogicElementStateDto { Id = read.Id, Kind = LogicElementKinds.Contact, State = LogicConditionStates.True, ValueText = "1", Should = "1", Matches = true }
+                }
+            },
+            TagCache());
+
+        LogicElementRowViewModel coilRow = vm.Elements.Single(row => row.Id == coil.Id);
+        LogicElementRowViewModel readRow = vm.Elements.Single(row => row.Id == read.Id);
+
+        Assert.Equal("COIL M01", coilRow.KindLabel);
+        Assert.Equal("1", coilRow.ActualText);
+        Assert.Equal("relay M01", readRow.TagLabel);
+        Assert.Equal("NO", readRow.KindLabel);
+        Assert.Equal("should 1 · actual 1", readRow.ShouldLine);
+
+        // A relay row reads the bridge's relay state, never a tag: the value pass over the tag
+        // cache must leave it untouched instead of looking up an empty tag.
+        vm.ApplyValues();
+        Assert.Equal("relay M01", readRow.TagLabel);
+        Assert.Equal("1", readRow.ActualText);
+        Assert.Equal("1", coilRow.ActualText);
+    }
 }

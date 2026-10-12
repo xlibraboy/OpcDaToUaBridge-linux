@@ -41,12 +41,13 @@ public static class LogicEditorCodec
     public static List<LogicElementRowViewModel> LoadElements(
         IReadOnlyList<LogicElementDto> elements,
         LogicTagCatalog catalog,
-        Action<LogicElementRowViewModel>? onRemove)
+        Action<LogicElementRowViewModel>? onRemove,
+        IEnumerable<string>? relayNames = null)
     {
         var rows = new List<LogicElementRowViewModel>();
         foreach ((LogicElementDto element, int depth) in LogicNetwork.Walk(elements))
         {
-            rows.Add(new LogicElementRowViewModel(element, depth, catalog, onRemove));
+            rows.Add(new LogicElementRowViewModel(element, depth, catalog, onRemove, relayNames));
         }
 
         return rows;
@@ -102,24 +103,36 @@ public static class LogicEditorCodec
 
     /// <summary>
     /// One element from its row. Only the fields that belong to the kind are set — a gate keeps the
-    /// DTO defaults, exactly like the bridge's own store does.
+    /// DTO defaults, exactly like the bridge's own store does. A relay on a contact makes it a
+    /// relay contact (tag fields cleared) and a relay on a coil is the relay it drives.
     /// </summary>
     public static LogicElementDto ElementFromRow(LogicElementRowViewModel row)
     {
         string kind = LogicElementKinds.IsValid(row.Kind?.Value) ? row.Kind!.Value : LogicElementKinds.Contact;
+        string relay = row.Relay.Trim().ToUpperInvariant();
         var element = new LogicElementDto
         {
             Id = row.ElementId,
             Kind = kind,
             Text = row.Text.Trim(),
-            Severity = ValidSeverity(row.Severity?.Value)
+            Severity = LogicElementKinds.IsCoil(kind)
+                ? LogicConditionSeverities.Block
+                : ValidSeverity(row.Severity?.Value)
         };
         if (string.Equals(kind, LogicElementKinds.Contact, StringComparison.OrdinalIgnoreCase))
         {
-            element.SourceId = row.SourceId;
-            element.ItemId = row.ItemId;
+            element.Relay = relay;
             element.Op = ValidOp(row.Op?.Value);
-            element.Value = NumericValue(element.Op, row.ValueText);
+            if (relay.Length == 0)
+            {
+                element.SourceId = row.SourceId;
+                element.ItemId = row.ItemId;
+                element.Value = NumericValue(element.Op, row.ValueText);
+            }
+        }
+        else if (LogicElementKinds.IsCoil(kind))
+        {
+            element.Relay = relay;
         }
         else if (LogicElementKinds.IsTimer(kind))
         {

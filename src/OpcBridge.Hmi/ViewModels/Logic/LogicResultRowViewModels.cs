@@ -23,9 +23,15 @@ public sealed partial class LogicResultElementRowViewModel : ObservableObject
         KindLabel = LogicText.ElementKindLabel(Kind, Op);
         PresetPv = element.Pv;
         IsContact = string.Equals(Kind, LogicElementKinds.Contact, StringComparison.OrdinalIgnoreCase);
-        TagLabel = IsContact && element.ItemId.Length > 0
-            ? catalog.TagLabel(element.SourceId, element.ItemId)
-            : string.Empty;
+
+        // A relay element names its relay where a tag contact names its tag — a coil reads as
+        // "COIL · relay M01 · 1", a relay contact as "NO · relay M01 · should 1 · actual 0".
+        bool relayElement = !string.IsNullOrWhiteSpace(element.Relay);
+        TagLabel = relayElement
+            ? "relay " + element.Relay
+            : IsContact && element.ItemId.Length > 0
+                ? catalog.TagLabel(element.SourceId, element.ItemId)
+                : string.Empty;
         nextStepCandidate_ = element.NextStepText;
     }
 

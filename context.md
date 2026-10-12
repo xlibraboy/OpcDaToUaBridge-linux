@@ -1,6 +1,6 @@
 # context.md — OpcBridge
 
-Instruction file for AI agents working in this repo. All facts below are verified against committed code as of 2026-10-11 (branch `feature/logic-web-app`: the plant-logic authoring surface moved out of the dashboard into the HMI runtime's **Logic** page; `main` at `55ff426`).
+Instruction file for AI agents working in this repo. All facts below are verified against committed code as of 2026-10-12 (branch `feature/logic-internal-relays`: PLC-style internal relays in logic networks — a coil drives an `M` relay, relay contacts read it across blocks and gate types, network bounds 16 levels / 256 elements; `main` at `238bfe0`).
 
 ## What this project is
 
@@ -187,23 +187,33 @@ A logic block carries its plant logic in one of two exclusive forms, both served
   count) and optionally carrying `HoldMs` (a TON on-delay).
 - **The network form** — `Elements`: the IEC 61131-3 element tree (`LogicElementDto`, nested through
   `Inputs`). Kinds are `LogicElementKinds`: the contact (with its `Op`/`Value`), the gates `and` /
-  `or` / `xor` / `not`, and the function blocks `ton` / `tof` / `tp` (`PtMs`), `ctu` / `ctd` (`Pv`),
-  `sr` / `rs`, `r_trig` / `f_trig`.
+  `or` / `xor` / `not`, the function blocks `ton` / `tof` / `tp` (`PtMs`), `ctu` / `ctd` (`Pv`),
+  `sr` / `rs`, `r_trig` / `f_trig`, and the `coil` that drives an internal relay. **Internal
+  relays** (PLC-style `M01` bits, `LogicElementDto.Relay`, canonical uppercase) make a block's
+  intermediate result readable everywhere: a contact carrying a `Relay` reads that relay instead of
+  a tag (on/off only, no tag), a coil writes its single input onto the relay every pass and passes
+  it through, so a relay can feed any gate or function block in any block — the editor's relay
+  field offers the relays the loaded blocks' coils already drive. Pass order is the scan order
+  (blocks by `Order`, rows top-to-bottom): a coil's write is visible to whatever is evaluated after
+  it, a relay no coil has driven reads unknown, and a disabled block's coils do not write.
 
 `LogicNetwork.For(block)` returns the network to evaluate: the authored `Elements`, else the simple
 form expanded (one contact per condition, an `or` element per group, a `ton` around a held contact,
 an `and` over the roots when there is more than one). The wrappers' ids are **derived** from the
 source condition (`LogicElementIds.Derived`), so a timer's memory survives every evaluation — that is
-what `LogicStateStore` keys on. `LogicStore` bounds the tree (8 levels, 64 elements), clears the
+what `LogicStateStore` keys on. `LogicStore` bounds the tree (16 levels, 256 elements —
+`LogicLimits.MaxElementDepth` / `MaxElementsPerBlock`, shared with the editor), clears the
 fields that do not belong to an element's kind, and rejects a block that carries both forms.
 
 `LogicStateEvaluator` walks the tree in drawing order with three-valued (Kleene) logic — an unknown
 input keeps a gate undecided, never silently true — and reports the block's reason from the first
 root that is not satisfied (a labelled gate names itself, a bare one points at the input that
 failed, a missing reading names the tag). A **warn** element is reported but inert: it neither
-satisfies nor blocks its parent. Function blocks read `LogicStateStore` (default per pass, pruned by
-`BeginPass`/`EndPass`, in-memory so a restart re-times timers and reloads counters); the hub
-broadcaster keeps evaluating while a timer is running so its progress reaches the apps. The phone
+satisfies nor blocks its parent. Function blocks and coils read `LogicStateStore` (default per pass,
+pruned by `BeginPass`/`EndPass`, in-memory so a restart re-times timers and reloads counters —
+internal relay values ride the same store, re-derived by their coils on the first pass after a
+restart); the hub broadcaster keeps evaluating while a timer is running so its progress reaches the
+apps. The phone
 renders one row per element — indented by `Depth`, with the contact's `should`/`matches` and the
 timer's/counter's progress — and the HMI's network editor authors the same tree as indented element rows.
 
@@ -279,11 +289,15 @@ that tab is gone, and the page is the whole editor (branch `feature/logic-web-ap
   group, description, tags) and the three authoring surfaces — flat **conditions** (sentence,
   source/tag pickers, ON/OFF/`>`/`<`/`=`, OR group, hold seconds, severity, next step), the
   **IEC 61131-3 network** (indented element rows with →/← nesting, contacts/gates/timers/counters/
-  latches/edges, `Convert to IEC network` and back) and sequence **steps** (condition rows plus an
-  optional completion handshake), plus block-level **actions** (writeable tags only). Every row
-  carries the bridge's live state as a chip (1 / 0 / no data, or the live value). The rail is the
-  picker; `Blocks…` opens `LogicBlocksWindow` — the same grouped list with `+ New block` and
-  per-row delete, for creating and deleting blocks. Save/delete go through the bridge's own
+  latches/edges and the **coil**, `Convert to IEC network` and back) and sequence **steps**
+  (condition rows plus an optional completion handshake), plus block-level **actions** (writeable
+  tags only). Every row carries the bridge's live state as a chip (1 / 0 / no data, or the live
+  value). A network row's **RELAY** field (an `AutoCompleteBox` offering the relays the loaded
+  blocks' coils already drive) turns a contact into a relay contact and names the relay a coil
+  drives; the tag pickers hide while a relay is typed and a numeric op coerces back to ON, because
+  a relay reads a bit. The rail is the picker; `Blocks…` opens `LogicBlocksWindow` — the same
+  grouped list with `+ New block` and per-row delete, for creating and deleting blocks.
+  Save/delete go through the bridge's own
   `/api/logic*` API and surface its errors verbatim (a duplicate name reads "Block name already
   exists."); Save greys out until the draft actually differs. `ViewModels/Logic/LogicEditorCodec`
   holds the collect rules (sequence → steps only; element rows present → the network only;
@@ -350,7 +364,7 @@ docker run --rm -v "$PWD/<worktree>":/src -w /src -v "$HOME/.nuget-cache":/home/
   -e HOME=/home/build -e DOTNET_CLI_HOME=/home/build --user "$(id -u):$(id -g)" \
   mcr.microsoft.com/dotnet/sdk:8.0 dotnet test tests/OpcBridge.LoadTest/OpcBridge.LoadTest.csproj
 ```
-`--user` keeps build artifacts iwan-owned (rootful daemon). Full suite: **1506 tests** (xUnit, `tests/OpcBridge.LoadTest`), ~4 min in Docker on this host with `$HOME/.nuget-cache` mounted — trust the run's own total over the wall time. The count dropped from 1113 when the MX Component source (and its PLC Groups and Pause/Resume coverage) was removed (#31), then rose by the Maps import coverage (#30) and its source-scan rework (reconciliation + selection), the HMI link-state coverage, and the mobile logic viewer (its `Mobile.Core` half: bridge list, hub link, group headings, element rows, the offline cache) with the IEC network model (expansion, gates, function blocks, store validation), the HMI logic page (editor model, wording, panel end-to-end, guide), and the viewer's offline detail (per-block notes cache, old-cache back-compat, the list's empty-state wording). Known flaky: `InfluxApiTests.InfluxConfig_Post_Persists_EnabledFlag` (historically failed in full-suite order, passes isolated — green in the latest full run). Known environmental failure under the `--user $(id -u)` container: `DaWorkerIdentityTests.CurrentAccountName_IsNotEmpty` — the mapped uid has no passwd entry, so `Environment.UserName` is empty; it fails the same way on `main` (the only failure in the latest full run: 1505 passed / 1 failed).
+`--user` keeps build artifacts iwan-owned (rootful daemon). Full suite: **1524 tests** (xUnit, `tests/OpcBridge.LoadTest`), ~4 min in Docker on this host with `$HOME/.nuget-cache` mounted — trust the run's own total over the wall time. The count dropped from 1113 when the MX Component source (and its PLC Groups and Pause/Resume coverage) was removed (#31), then rose by the Maps import coverage (#30) and its source-scan rework (reconciliation + selection), the HMI link-state coverage, and the mobile logic viewer (its `Mobile.Core` half: bridge list, hub link, group headings, element rows, the offline cache) with the IEC network model (expansion, gates, function blocks, store validation, internal relays — coils/relay contacts and their composability across blocks and gate types), the HMI logic page (editor model, wording, panel end-to-end, guide) and the viewer's offline detail (per-block notes cache, old-cache back-compat, the list's empty-state wording). Known flaky: `InfluxApiTests.InfluxConfig_Post_Persists_EnabledFlag` (historically failed in full-suite order, passes isolated — green in the latest full run) and, once, `HmiLogicPanelTests.EvaluatedStateLandsOnTheResultRows` (it asserts synchronously while a version-change refetch runs on a pool thread; passed isolated and on the next full run). Known environmental failure under the `--user $(id -u)` container: `DaWorkerIdentityTests.CurrentAccountName_IsNotEmpty` — the mapped uid has no passwd entry, so `Environment.UserName` is empty; it fails the same way on `main` (the only failure in the latest full run: 1523 passed / 1 failed).
 
 **Worktree workflow (session convention):** fixes live in `git worktree add .worktrees/<branch-slug> -b <branch> main`; one worktree per branch; full suite per branch before merge; merge to main with `--no-ff`; push to origin. **Tool path quirk:** `edit`/`write` with relative `.worktrees/...` paths sometimes land in the main checkout — always use absolute paths and verify with grep after. `.dockerignore` excludes `.worktrees/` (7+ GB) so images can be built from the main checkout.
 

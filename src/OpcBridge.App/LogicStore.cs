@@ -29,10 +29,6 @@ public sealed class LogicStore
     /// <summary>Longest counter preset a CTU / CTD may carry.</summary>
     private const int MaxCounterPv = 1_000_000;
 
-    /// <summary>Deepest an IEC network may nest, and how many elements one block may hold.</summary>
-    private const int MaxElementDepth = 8;
-    private const int MaxElementsPerBlock = 64;
-
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     private readonly object sync_ = new();
@@ -409,7 +405,7 @@ public sealed class LogicStore
         out string? error)
     {
         normalized = new List<LogicElementDto>();
-        int budget = MaxElementsPerBlock;
+        int budget = LogicLimits.MaxElementsPerBlock;
 
         foreach (LogicElementDto element in elements ?? Array.Empty<LogicElementDto>())
         {
@@ -432,17 +428,17 @@ public sealed class LogicStore
         out LogicElementDto normalized,
         out string? error)
     {
-        if (depth > MaxElementDepth)
+        if (depth > LogicLimits.MaxElementDepth)
         {
             normalized = default!;
-            error = "A network can nest at most 8 levels.";
+            error = $"A network can nest at most {LogicLimits.MaxElementDepth} levels.";
             return false;
         }
 
         if (budget-- <= 0)
         {
             normalized = default!;
-            error = "A block can hold at most 64 elements.";
+            error = $"A block can hold at most {LogicLimits.MaxElementsPerBlock} elements.";
             return false;
         }
 
@@ -469,9 +465,23 @@ public sealed class LogicStore
             return false;
         }
 
+        // A relay is read by a contact and driven by a coil; every other kind must not carry one
+        // (a hand-edited file with a relay on a gate has it cleared, like any other stray field).
+        string relay = string.Empty;
+        if (kind == LogicElementKinds.Contact || LogicElementKinds.IsCoil(kind))
+        {
+            if (!TryNormalizeRelay(element.Relay, out relay, out error))
+            {
+                normalized = default!;
+                return false;
+            }
+        }
+
         if (kind == LogicElementKinds.Contact)
         {
-            if (text.Length == 0)
+            bool relayContact = relay.Length > 0;
+
+            if (text.Length == 0 && !relayContact)
             {
                 normalized = default!;
                 error = "A contact needs its operator sentence.";
@@ -479,7 +489,7 @@ public sealed class LogicStore
             }
 
             string contactItemId = element.ItemId?.Trim() ?? string.Empty;
-            if (contactItemId.Length == 0)
+            if (!relayContact && contactItemId.Length == 0)
             {
                 normalized = default!;
                 error = "A contact needs a tag.";
@@ -501,6 +511,29 @@ public sealed class LogicStore
             }
 
             string contactOp = element.Op.ToLowerInvariant();
+            if (relayContact)
+            {
+                if (LogicConditionOps.RequiresValue(contactOp))
+                {
+                    normalized = default!;
+                    error = "A relay contact must be on or off.";
+                    return false;
+                }
+
+                normalized = new LogicElementDto
+                {
+                    Id = element.Id == Guid.Empty ? Guid.NewGuid() : element.Id,
+                    Kind = LogicElementKinds.Contact,
+                    Text = text,
+                    Relay = relay,
+                    Op = contactOp,
+                    Severity = element.Severity.ToLowerInvariant(),
+                    NextStepText = NormalizeOptional(element.NextStepText)
+                };
+                error = null;
+                return true;
+            }
+
             normalized = new LogicElementDto
             {
                 Id = element.Id == Guid.Empty ? Guid.NewGuid() : element.Id,
@@ -515,6 +548,13 @@ public sealed class LogicStore
             };
             error = null;
             return true;
+        }
+
+        if (LogicElementKinds.IsCoil(kind) && relay.Length == 0)
+        {
+            normalized = default!;
+            error = "A coil needs a relay (e.g. M01).";
+            return false;
         }
 
         (int minInputs, int maxInputs) = LogicElementKinds.InputRange(kind);
@@ -558,12 +598,16 @@ public sealed class LogicStore
             Id = element.Id == Guid.Empty ? Guid.NewGuid() : element.Id,
             Kind = kind,
             Text = text,
-            // A gate or block combines its inputs; only a contact reads a tag, and only a timer
-            // or counter carries a preset.
+            // A gate or block combines its inputs; only a contact reads a tag, only a coil drives
+            // a relay, and only a timer or counter carries a preset. A coil always blocks: it is
+            // an output, so "warn only" has no meaning for it.
+            Relay = relay,
             PtMs = LogicElementKinds.IsTimer(kind) ? element.PtMs : 0,
             Pv = LogicElementKinds.IsCounter(kind) ? element.Pv : 0,
             Inputs = inputs,
-            Severity = element.Severity.ToLowerInvariant(),
+            Severity = LogicElementKinds.IsCoil(kind)
+                ? LogicConditionSeverities.Block
+                : element.Severity.ToLowerInvariant(),
             NextStepText = NormalizeOptional(element.NextStepText)
         };
         error = null;
@@ -572,6 +616,7 @@ public sealed class LogicStore
 
     private static string KindName(string kind) => kind switch
     {
+        LogicElementKinds.Coil => "COIL",
         LogicElementKinds.And => "AND",
         LogicElementKinds.Or => "OR",
         LogicElementKinds.Xor => "XOR",
@@ -729,6 +774,37 @@ public sealed class LogicStore
             }
 
             normalized.Add(tag);
+        }
+
+        error = null;
+        return true;
+    }
+
+    /// <summary>
+    /// Canonical relay name: trimmed and uppercased, so M01 and m01 are one relay. Blank is a
+    /// valid "no relay" for a tag contact; anything else must start with a letter and hold only
+    /// letters, digits and underscores, at most <see cref="LogicLimits.MaxRelayNameLength"/>
+    /// characters.
+    /// </summary>
+    private static bool TryNormalizeRelay(string? text, out string relay, out string? error)
+    {
+        relay = text?.Trim().ToUpperInvariant() ?? string.Empty;
+        if (relay.Length == 0)
+        {
+            error = null;
+            return true;
+        }
+
+        bool valid = relay.Length <= LogicLimits.MaxRelayNameLength && char.IsAsciiLetter(relay[0]);
+        for (int i = 1; i < relay.Length && valid; i++)
+        {
+            valid = char.IsAsciiLetterOrDigit(relay[i]) || relay[i] == '_';
+        }
+
+        if (!valid)
+        {
+            error = $"A relay name must start with a letter (max {LogicLimits.MaxRelayNameLength} characters).";
+            return false;
         }
 
         error = null;

@@ -430,30 +430,191 @@ public sealed class LogicStoreTests : IDisposable
     }
 
     [Fact]
-    public void TrySave_RejectsAnOverdeepOrOversizedNetwork()
+    public void TrySave_BoundsTheNetworkAtSixteenLevelsAndTwoHundredFiftySixElements()
     {
         LogicStore store = CreateStore();
+
+        // Sixteen levels are accepted: the deepest element sits at depth 16.
         LogicBlockDto deep = CreateInterlock();
         deep.Conditions.Clear();
-        LogicElementDto node = new() { Kind = LogicElementKinds.Not, Inputs = { Contact() } };
-        for (int i = 0; i < 10; i++)
+        LogicElementDto node = Contact();
+        for (int i = 0; i < LogicLimits.MaxElementDepth; i++)
         {
             node = new LogicElementDto { Kind = LogicElementKinds.Not, Inputs = { node } };
         }
 
         deep.Elements = new List<LogicElementDto> { node };
-        bool deepOk = store.TrySave(deep, out _, out _, out string? deepError);
+        bool deepOk = store.TrySave(deep, out LogicBlockDto savedDeep, out _, out string? deepError);
 
-        Assert.False(deepOk);
-        Assert.Equal("A network can nest at most 8 levels.", deepError);
+        Assert.True(deepOk, deepError);
+        Assert.Equal(LogicLimits.MaxElementDepth, DepthOf(Assert.Single(savedDeep.Elements)));
 
+        // One level more is refused.
+        LogicBlockDto deeper = CreateInterlock();
+        deeper.Conditions.Clear();
+        deeper.Elements = new List<LogicElementDto>
+        {
+            new() { Kind = LogicElementKinds.Not, Inputs = { node } }
+        };
+        bool deeperOk = store.TrySave(deeper, out _, out _, out string? deeperError);
+
+        Assert.False(deeperOk);
+        Assert.Equal("A network can nest at most 16 levels.", deeperError);
+
+        // The element budget follows the shared limit too.
         LogicBlockDto wide = CreateInterlock();
         wide.Conditions.Clear();
-        wide.Elements = Enumerable.Range(0, 65).Select(_ => (LogicElementDto)Contact()).ToList();
+        wide.Elements = Enumerable.Range(0, LogicLimits.MaxElementsPerBlock + 1).Select(_ => (LogicElementDto)Contact()).ToList();
         bool wideOk = store.TrySave(wide, out _, out _, out string? wideError);
 
         Assert.False(wideOk);
-        Assert.Equal("A block can hold at most 64 elements.", wideError);
+        Assert.Equal("A block can hold at most 256 elements.", wideError);
+    }
+
+    private static int DepthOf(LogicElementDto element) =>
+        element.Inputs.Count == 0 ? 0 : 1 + element.Inputs.Max(DepthOf);
+
+    [Fact]
+    public void TrySave_CanonicalizesRelayNamesAndClearsTheTagOnARelayContact()
+    {
+        LogicStore store = CreateStore();
+        LogicBlockDto block = CreateInterlock();
+        block.Conditions.Clear();
+        block.Elements = new List<LogicElementDto>
+        {
+            // A contact with a relay reads that relay: the name is canonical uppercase, and the
+            // tag fields and the comparison value that belong to a tag contact drop off.
+            new()
+            {
+                Kind = LogicElementKinds.Contact,
+                Text = "M01 must be on",
+                Relay = " m01 ",
+                SourceId = "sim",
+                ItemId = "Permit",
+                Op = LogicConditionOps.On,
+                Value = 5
+            }
+        };
+
+        bool ok = store.TrySave(block, out LogicBlockDto saved, out _, out string? error);
+
+        Assert.True(ok, error);
+        LogicElementDto contact = Assert.Single(saved.Elements);
+        Assert.Equal("M01", contact.Relay);
+        Assert.Equal(string.Empty, contact.SourceId);
+        Assert.Equal(string.Empty, contact.ItemId);
+        Assert.Null(contact.Value);
+    }
+
+    [Fact]
+    public void TrySave_RejectsARelayContactWithANumericOpOrABadRelayName()
+    {
+        LogicStore store = CreateStore();
+
+        LogicBlockDto numeric = CreateInterlock();
+        numeric.Conditions.Clear();
+        numeric.Elements = new List<LogicElementDto>
+        {
+            new()
+            {
+                Kind = LogicElementKinds.Contact,
+                Text = "M01 above 5",
+                Relay = "M01",
+                Op = LogicConditionOps.GreaterThan,
+                Value = 5
+            }
+        };
+        Assert.False(store.TrySave(numeric, out _, out _, out string? numericError));
+        Assert.Equal("A relay contact must be on or off.", numericError);
+
+        LogicBlockDto badName = CreateInterlock();
+        badName.Conditions.Clear();
+        badName.Elements = new List<LogicElementDto>
+        {
+            new() { Kind = LogicElementKinds.Contact, Text = "Relay must be on", Relay = "0M1", Op = LogicConditionOps.On }
+        };
+        Assert.False(store.TrySave(badName, out _, out _, out string? nameError));
+        Assert.Equal("A relay name must start with a letter (max 16 characters).", nameError);
+    }
+
+    [Fact]
+    public void TrySave_CoilNeedsARelayTakesOneInputAndAlwaysBlocks()
+    {
+        LogicStore store = CreateStore();
+
+        LogicBlockDto missing = CreateInterlock();
+        missing.Conditions.Clear();
+        missing.Elements = new List<LogicElementDto>
+        {
+            new() { Kind = LogicElementKinds.Coil, Inputs = { Contact() } }
+        };
+        Assert.False(store.TrySave(missing, out _, out _, out string? missingError));
+        Assert.Equal("A coil needs a relay (e.g. M01).", missingError);
+
+        LogicBlockDto noInput = CreateInterlock();
+        noInput.Conditions.Clear();
+        noInput.Elements = new List<LogicElementDto> { new() { Kind = LogicElementKinds.Coil, Relay = "M01" } };
+        Assert.False(store.TrySave(noInput, out _, out _, out string? arityError));
+        Assert.Equal("COIL takes exactly 1 input(s).", arityError);
+
+        LogicBlockDto warn = CreateInterlock();
+        warn.Conditions.Clear();
+        warn.Elements = new List<LogicElementDto>
+        {
+            new()
+            {
+                Kind = LogicElementKinds.Coil,
+                Relay = "M01",
+                Severity = LogicConditionSeverities.Warn,
+                Inputs = { Contact() }
+            }
+        };
+        bool warnOk = store.TrySave(warn, out LogicBlockDto saved, out _, out string? warnError);
+
+        Assert.True(warnOk, warnError);
+        LogicElementDto coil = Assert.Single(saved.Elements);
+        Assert.Equal(LogicConditionSeverities.Block, coil.Severity);
+        Assert.Equal(string.Empty, coil.ItemId);
+    }
+
+    [Fact]
+    public void TrySave_KeepsARelayContactBesideTagContactsInOneGate()
+    {
+        LogicStore store = CreateStore();
+        LogicBlockDto block = CreateInterlock();
+        block.Conditions.Clear();
+        block.Elements = new List<LogicElementDto>
+        {
+            new()
+            {
+                Kind = LogicElementKinds.And,
+                Inputs =
+                {
+                    new LogicElementDto
+                    {
+                        Kind = LogicElementKinds.Contact,
+                        Text = "M01 must be on",
+                        Relay = "M01",
+                        Op = LogicConditionOps.On
+                    },
+                    new LogicElementDto
+                    {
+                        Kind = LogicElementKinds.Contact,
+                        Text = "Permit must be given",
+                        SourceId = "sim",
+                        ItemId = "Permit",
+                        Op = LogicConditionOps.On
+                    }
+                }
+            }
+        };
+
+        bool ok = store.TrySave(block, out LogicBlockDto saved, out _, out string? error);
+
+        Assert.True(ok, error);
+        LogicElementDto gate = Assert.Single(saved.Elements);
+        Assert.Equal("M01", gate.Inputs[0].Relay);
+        Assert.Equal("Permit", gate.Inputs[1].ItemId);
     }
 
     [Fact]
@@ -467,8 +628,9 @@ public sealed class LogicStoreTests : IDisposable
             new()
             {
                 Kind = LogicElementKinds.And,
-                // A gate combines its inputs: a stray tag and a preset are dropped, not saved.
+                // A gate combines its inputs: a stray tag, relay and preset are dropped, not saved.
                 ItemId = "not-a-contact",
+                Relay = "M01",
                 Op = LogicConditionOps.On,
                 PtMs = 5000,
                 Pv = 7,
@@ -481,6 +643,7 @@ public sealed class LogicStoreTests : IDisposable
         Assert.True(ok, error);
         LogicElementDto gate = Assert.Single(saved.Elements);
         Assert.Equal(string.Empty, gate.ItemId);
+        Assert.Equal(string.Empty, gate.Relay);
         Assert.Equal(0, gate.PtMs);
         Assert.Equal(0, gate.Pv);
     }

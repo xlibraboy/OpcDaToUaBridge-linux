@@ -63,11 +63,45 @@ rows are the block's roots — all of them must be true (the block's AND). Use `
 under the one above and `←` to move it back out. The bridge evaluates the network with
 three-valued logic (a value that has not arrived reads *unknown*, never silently true), and the
 phone lists every element, indented, with its own live state. A **warn** element is reported but
-inert: it neither satisfies nor blocks its parent.
+inert: it neither satisfies nor blocks its parent. A network holds at most 256 elements and nests
+at most 16 levels; a deeper or larger save is refused with the reason, never truncated.
 
 `Convert to IEC network` never changes what the block does: the flat form *is* a network — one
 contact per condition, an OR gate per group, a TON around a held contact — and the bridge expands
 it exactly the same way when it evaluates.
+
+---
+
+# Internal relays (M coils)
+
+A network can also use **internal relays** — the PLC's `M` bits, `M01`, `M02`, … — to split a big
+interlock into readable pieces instead of one deep tree:
+
+- **Coil** (`Coil — drive internal relay (IN, M)`) — takes exactly one input and **drives** the
+  relay it names with that input, every evaluation. Type a new name in the `RELAY` field or pick
+  one of the relays the other blocks already drive. The coil's own output is what it wrote, so a
+  coil can sit inside a gate like any other element.
+- **Relay contact** — a `Contact` with its `RELAY` field filled: `ON` reads the relay as 1, `OFF`
+  reads it as 0, and it is **not** a tag (the tag pickers disappear while a relay is typed). Its
+  live chip and `should 1 · actual 0` line read the same as a tag contact's.
+- **Wiring across blocks** — relays are shared by the whole bridge, so a relay a coil drives in one
+  block feeds **any** gate or function block — `AND`, `OR`, `XOR`, `NOT`, a timer's `IN`, a
+  counter's `CU`, a latch's set — in **any other block**, at any nesting position, mixed freely
+  with tag contacts in the same gate. Split a chain of interlocks the PLC way: block 1 computes the
+  intermediate result and drives `M01`, block 2 reads `M01`, block 3 reads it as a timer input, and
+  so on.
+
+How it runs, in PLC scan terms: the bridge evaluates blocks in their order and each network from
+the top row down, so a coil's write is visible to everything evaluated **after** it — keep each
+coil above the rows (and the blocks) that read it, or a reader sees the previous pass's value for
+one pass. A relay **no coil has driven yet reads unknown**, never a silent 0 — a mistyped `M001`
+shows up as an unknown reading instead of quietly blocking. A **disabled** block evaluates for
+display but its coils **do not** drive anything. Relay values live in the bridge process like the
+timers: a restart forgets them, and the first pass re-derives every relay from its coil.
+
+Relay names are uppercase and start with a letter (`M01`, `StartPermit`, max 16 characters);
+`m01` is stored as `M01`. Keep one coil per relay — if several blocks drive the same relay, the
+last one in scan order wins.
 
 ---
 

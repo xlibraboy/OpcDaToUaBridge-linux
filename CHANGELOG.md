@@ -19,6 +19,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+**Logic networks can drive and read internal relays (M coils).** The IEC 61131-3 vocabulary gained
+a **coil** element — it takes exactly one input, writes it onto the internal relay it names
+(`M01`) every pass, and passes the value through — and the contact gained a **relay** field: with
+it set the contact reads that relay instead of a tag (`on`/`off` only). Relays belong to the
+bridge, not the block, so a rung that computes an intermediate result drives `M01` and **any**
+other block's logic reads it — `AND` / `OR` / `XOR` / `NOT`, a timer's `IN`, a counter's `CU`, a
+latch's set — at any nesting position, mixed freely with tag contacts; a complex interlock splits
+into readable blocks instead of one deep tree. The evaluator keeps the relays in the same
+in-process store as the timers: a coil's write is visible to whatever the pass evaluates after it
+(blocks by `Order`, rows top to bottom — author in dataflow order), a relay no coil has driven
+reads unknown rather than a silent 0, a disabled block's coils do not write, and a bridge restart
+re-derives every relay from its coil on the first pass. Relay names are canonical uppercase
+(`m01` → `M01`, max 16 characters, letters/digits/underscore from a letter). The network bounds
+rise with the feature — 16 levels and 256 elements per block, shared as one `LogicLimits` set
+between the store's validation, the HMI editor's indent clamp and the tests. The wire addition is
+additive: `coil` is a new element kind and `relay` a new element field, so clients that predate it
+render relay rows plainly instead of failing.
+
 **Logic blocks can be authored as IEC 61131-3 networks, and every element reports should vs
 actual.** The logic editor gained a **Network (IEC 61131-3)** form beside the flat
 condition list: element rows nest by indentation (a row's inputs are the rows under it at a
@@ -29,7 +47,7 @@ reported elapsed time, `CTU` / `CTD` counters with a preset `PV` and reported co
 latches, `R_TRIG` / `F_TRIG` edge triggers). `Convert to IEC network` rewrites the conditions
 already authored into the equivalent network, so an existing block can be extended rather than
 rebuilt; the store keeps the two forms exclusive (one source of truth) and bounds a network to
-8 levels and 64 elements. The bridge evaluates the network with three-valued logic, keeps the
+16 levels and 256 elements. The bridge evaluates the network with three-valued logic, keeps the
 function blocks' memory between passes (timers, counters, latches, edges — a restart re-times
 them, the honest reading for a monitor), and pushes a fresh snapshot while a timer runs so its
 progress reaches the apps. Every evaluated element now carries the reading it needs

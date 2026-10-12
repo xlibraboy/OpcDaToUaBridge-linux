@@ -194,7 +194,7 @@
                 <Grid ColumnDefinitions="Auto,*,Auto">
                   <TextBlock Grid.Column="0" Classes="sectionLabel" Text="NETWORK (IEC 61131-3)" VerticalAlignment="Center" />
                   <TextBlock Grid.Column="1" Classes="hint" Margin="12,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap"
-                             Text="Rows nest by indentation: a row's inputs are the rows under it at a deeper level; the outermost rows are the block's roots (all must be true)." />
+                             Text="Rows nest by indentation: a row's inputs are the rows under it at a deeper level; the outermost rows are the block's roots (all must be true). A coil (RELAY M01) drives an internal relay and a relay contact reads it — any block's gate can read it." />
                   <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
                     <Button Content="Add element" Command="{Binding AddElementCommand}" />
                     <Button Content="Back to conditions" Command="{Binding BackToConditionsCommand}"

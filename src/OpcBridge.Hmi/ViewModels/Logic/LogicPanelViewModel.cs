@@ -204,6 +204,13 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<LogicElementRowViewModel> Elements { get; } = new();
 
+    /// <summary>
+    /// The internal relays a coil already drives in any loaded block, offered by every row's
+    /// relay field while one is typed — the whole point is wiring relays across blocks, so a
+    /// relay authored in one block must be nameable in the next.
+    /// </summary>
+    public ObservableCollection<string> RelayNames { get; } = new();
+
     public ObservableCollection<LogicStepRowViewModel> Steps { get; } = new();
 
     public ObservableCollection<LogicActionRowViewModel> Actions { get; } = new();
@@ -907,11 +914,35 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         }
 
         RebuildBlockList(cache);
+        RebuildRelayNames(cache);
         RestoreSelection();
         SummaryText = BuildSummary(cache);
         ApplyBlockStates(cache);
         ApplyEditorLive(cache);
         ApplyResultState(cache);
+    }
+
+    /// <summary>Collects the relays every loaded block's coils drive, in block and row order.</summary>
+    private void RebuildRelayNames(BridgeCache cache)
+    {
+        RelayNames.Clear();
+        foreach (LogicBlockDto block in cache.Blocks ?? new List<LogicBlockDto>())
+        {
+            if (block.Elements.Count == 0)
+            {
+                continue;
+            }
+
+            foreach ((LogicElementDto element, int _) in LogicNetwork.Walk(block.Elements))
+            {
+                if (LogicElementKinds.IsCoil(element.Kind)
+                    && !string.IsNullOrWhiteSpace(element.Relay)
+                    && !RelayNames.Contains(element.Relay, StringComparer.OrdinalIgnoreCase))
+                {
+                    RelayNames.Add(element.Relay);
+                }
+            }
+        }
     }
 
     private void RebuildBlockList(BridgeCache cache)
@@ -1002,6 +1033,7 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         {
             Conditions.Clear();
             Elements.Clear();
+            RelayNames.Clear();
             Steps.Clear();
             Actions.Clear();
             BlockName = string.Empty;
@@ -1098,7 +1130,7 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
 
     private void AddElementRow(LogicElementDto element, int indent)
     {
-        var row = new LogicElementRowViewModel(element, indent, catalog_, RemoveElement);
+        var row = new LogicElementRowViewModel(element, indent, catalog_, RemoveElement, RelayNames);
         row.PropertyChanged += OnEditorRowChanged;
         Elements.Add(row);
     }

@@ -571,4 +571,121 @@ public sealed class HmiLogicEditorTests
         Assert.All(panel.Conditions, row => Assert.False(row.CanEdit));
         GC.KeepAlive(watcher);
     }
+
+    [Fact]
+    public void RelayRows_RoundTripTheCoilAndTheRelayContact()
+    {
+        LogicTagCatalog catalog = Catalog();
+        var stored = new LogicBlockDto
+        {
+            Id = Guid.NewGuid(),
+            Name = "Relay network",
+            Kind = LogicBlockKinds.Interlock,
+            Elements =
+            {
+                new LogicElementDto
+                {
+                    Id = Guid.NewGuid(),
+                    Kind = LogicElementKinds.Coil,
+                    Text = "Start permit",
+                    Relay = "M01",
+                    Inputs =
+                    {
+                        new LogicElementDto
+                        {
+                            Id = Guid.NewGuid(),
+                            Kind = LogicElementKinds.Contact,
+                            Text = "Permit must be given",
+                            SourceId = "sim",
+                            ItemId = "ns=2;s=Status/Line01.Permit",
+                            Op = LogicConditionOps.On
+                        }
+                    }
+                },
+                new LogicElementDto
+                {
+                    Id = Guid.NewGuid(),
+                    Kind = LogicElementKinds.Contact,
+                    Text = "M01 must be on",
+                    Relay = "M01",
+                    Op = LogicConditionOps.On
+                }
+            }
+        };
+
+        List<LogicElementRowViewModel> rows = LogicEditorCodec.LoadElements(stored.Elements, catalog, null, new[] { "M01" });
+        List<LogicElementDto> rebuilt = LogicEditorCodec.ElementTreeFromRows(rows);
+
+        Assert.Equal(JsonSerializer.Serialize(stored.Elements), JsonSerializer.Serialize(rebuilt));
+        Assert.True(rows[0].IsCoil);
+        Assert.False(rows[0].ShowsTag);
+        Assert.False(rows[0].ShowsSeverity);
+        Assert.True(rows[0].ShowsRelay);
+        Assert.Contains("M01", rows[0].RelayNames);
+
+        // The coil's input is an ordinary tag contact, and the second root reads the relay.
+        Assert.True(rows[1].ShowsTag);
+        Assert.False(rows[1].ShowsRelay);
+        Assert.True(rows[2].IsRelayContact);
+        Assert.True(rows[2].ShowsRelay);
+        Assert.False(rows[2].ShowsTag);
+    }
+
+    [Fact]
+    public void RelayContact_ACoercionBackToOnClearsTheTagAndTheValue()
+    {
+        LogicTagCatalog catalog = Catalog();
+        var row = new LogicElementRowViewModel(
+            new LogicElementDto
+            {
+                Id = Guid.NewGuid(),
+                Kind = LogicElementKinds.Contact,
+                Text = "Level above 5",
+                SourceId = "sim",
+                ItemId = "Level",
+                Op = LogicConditionOps.GreaterThan,
+                Value = 5
+            },
+            0,
+            catalog);
+
+        Assert.True(row.NeedsValue);
+
+        // Typing a relay makes it a relay contact: a bit has nothing to compare against.
+        row.Relay = "m01";
+
+        Assert.Equal(LogicConditionOps.On, row.Op.Value);
+        Assert.False(row.NeedsValue);
+        Assert.True(row.IsRelayContact);
+        Assert.False(row.ShowsTag);
+
+        LogicElementDto built = LogicEditorCodec.ElementFromRow(row);
+        Assert.Equal("M01", built.Relay);
+        Assert.Equal(string.Empty, built.SourceId);
+        Assert.Equal(string.Empty, built.ItemId);
+        Assert.Null(built.Value);
+    }
+
+    [Fact]
+    public void Indent_ClampsAtTheSharedDepthLimit()
+    {
+        LogicTagCatalog catalog = Catalog();
+        var deep = new LogicElementRowViewModel(
+            new LogicElementDto { Id = Guid.NewGuid(), Kind = LogicElementKinds.Not },
+            LogicLimits.MaxElementDepth + 5,
+            catalog);
+        var justBelow = new LogicElementRowViewModel(
+            new LogicElementDto { Id = Guid.NewGuid(), Kind = LogicElementKinds.Not },
+            LogicLimits.MaxElementDepth - 1,
+            catalog);
+
+        Assert.Equal(LogicLimits.MaxElementDepth, deep.Indent);
+        Assert.False(deep.IndentRowCommand.CanExecute(null));
+        Assert.True(deep.OutdentRowCommand.CanExecute(null));
+
+        Assert.True(justBelow.IndentRowCommand.CanExecute(null));
+        justBelow.IndentRowCommand.Execute(null);
+        Assert.Equal(LogicLimits.MaxElementDepth, justBelow.Indent);
+        Assert.False(justBelow.IndentRowCommand.CanExecute(null));
+    }
 }
