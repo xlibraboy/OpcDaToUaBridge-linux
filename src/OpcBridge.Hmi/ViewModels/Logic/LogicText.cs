@@ -76,6 +76,7 @@ public static class LogicText
 
         return kind?.ToLowerInvariant() switch
         {
+            LogicElementKinds.Coil => "COIL",
             LogicElementKinds.And => "AND",
             LogicElementKinds.Or => "OR",
             LogicElementKinds.Xor => "XOR",

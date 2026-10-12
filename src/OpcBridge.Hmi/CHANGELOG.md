@@ -16,6 +16,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+**The network editor authors internal relays (M coils).** The element kind list gained **Coil —
+drive internal relay (IN, M)**: it takes one input and drives the relay it names, and a contact
+row gained a **RELAY** field that turns it into a relay contact reading that relay instead of a
+tag — its tag pickers disappear while a relay is typed and a numeric comparison is coerced back
+to ON/OFF, because a relay reads a bit. The relay field suggests the relays the loaded blocks'
+coils already drive, so a relay authored in one block is nameable in the next, and a coil row
+hides SEVERITY (an output has no "warn only"). Editor rows and the Result tab label relay
+elements with the relay they read or drive (`COIL · relay M01 · 1`), the indent clamp follows the
+engine's raised bound (16 levels, 256 elements), and the page's **Guide…** documents the
+scan-order rules: a coil's write is visible to everything evaluated after it, a relay nobody
+drives reads unknown, and a disabled block's coils do not drive anything.
+
 **The runtime authors and watches the plant logic.** A new **Logic** page (View ▸ Logic, Ctrl+4)
 carries the whole logic surface, per bridge: the block form (name, kind, enabled, interlock group,
 description, tags), the flat **condition** editor (sentence, source/tag pickers,

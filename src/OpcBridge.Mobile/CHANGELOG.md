@@ -15,6 +15,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Relay elements in a network read properly: a **coil** row shows `COIL M01` with the bit it
+  drives and a **relay contact** shows `NO`/`NC` with `relay M01` under it and the same
+  **should 1 · actual 0** line as a tag contact, instead of an unnamed row — and relay rows no
+  longer look themselves up in the tag cache, because they read the bridge's relay state, not a
+  tag.
 - The Logic tab lists blocks **under their interlock group's heading** (the group authored in the
   dashboard's Logic tab, e.g. *Primary Arm*), collapsible by tapping the heading — the heading
   keeps a live summary (*2 blocks · 1 blocked · 1 no data*) while its members are hidden, and an

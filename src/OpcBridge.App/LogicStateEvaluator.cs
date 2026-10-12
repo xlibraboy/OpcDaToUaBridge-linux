@@ -11,15 +11,17 @@ namespace OpcBridge.App;
 /// block's IEC 61131-3 network. Pure and host-free — the API endpoint and the HMI broadcaster
 /// both feed it the value/mapping lookups, so the derivation stays unit-testable without a
 /// running bridge (function blocks need a <see cref="LogicStateStore"/>; without one a timer
-/// passes its input straight through and a latch holds nothing).
+/// passes its input straight through, a latch holds nothing and a relay reads unknown).
 ///
 /// Elements are three-valued: a contact is unknown when its tag has no value or bad quality,
 /// true/false otherwise (on/off use the bridge's digital coercion, so Boolean and Byte 0/1 tags
 /// both work), and a gate is unknown while its inputs leave the answer open. A warn element is
-/// reported but contributes true to its parent — it can never block. Every element keeps the
-/// reading it must show (<see cref="LogicElementStateDto.Should"/>) and whether the live value
-/// satisfies it (<see cref="LogicElementStateDto.Matches"/>), which is what the phone renders
-/// as "should 1 / actual 0"; a timer or counter reports its progress alongside.
+/// reported but contributes true to its parent — it can never block. Internal relays extend the
+/// same rule to a coil's memory: a coil drives its relay with its input every pass, a relay
+/// contact reads it from any block, and a relay no coil has driven reads unknown. Every element
+/// keeps the reading it must show (<see cref="LogicElementStateDto.Should"/>) and whether the
+/// live value satisfies it (<see cref="LogicElementStateDto.Matches"/>), which is what the phone
+/// renders as "should 1 / actual 0"; a timer or counter reports its progress alongside.
 /// </summary>
 public static class LogicStateEvaluator
 {
@@ -89,10 +91,12 @@ public static class LogicStateEvaluator
 
         if (!block.Enabled)
         {
-            EvaluateNetwork(LogicNetwork.For(block), valueLookup, mappingLookup, states, nowUtc, elements);
+            // A disabled block is still reported element by element, but its coils must not
+            // drive relays — a disabled interlock has no say in what the plant does.
+            EvaluateNetwork(LogicNetwork.For(block), valueLookup, mappingLookup, states, execute: false, nowUtc, elements);
             foreach (LogicStepDto step in block.Steps)
             {
-                EvaluateNetwork(LogicNetwork.For(step), valueLookup, mappingLookup, states, nowUtc, elements);
+                EvaluateNetwork(LogicNetwork.For(step), valueLookup, mappingLookup, states, execute: false, nowUtc, elements);
             }
 
             state = LogicBlockStates.Disabled;
@@ -105,7 +109,7 @@ public static class LogicStateEvaluator
         else
         {
             (bool? output, string? failing, string? missing) =
-                EvaluateNetwork(LogicNetwork.For(block), valueLookup, mappingLookup, states, nowUtc, elements);
+                EvaluateNetwork(LogicNetwork.For(block), valueLookup, mappingLookup, states, execute: true, nowUtc, elements);
             (state, reason) = BlockVerdict(output, failing, missing);
         }
 
@@ -165,8 +169,9 @@ public static class LogicStateEvaluator
 
         foreach (LogicStepDto step in block.Steps)
         {
+            // A disabled block never reaches here, so a step's coils always drive their relays.
             (bool? output, string? failing, string? missing) =
-                EvaluateNetwork(LogicNetwork.For(step), valueLookup, mappingLookup, states, nowUtc, elements);
+                EvaluateNetwork(LogicNetwork.For(step), valueLookup, mappingLookup, states, execute: true, nowUtc, elements);
             bool stepDone = output == true;
 
             bool completionConfigured = !string.IsNullOrWhiteSpace(step.CompletionSourceId)
@@ -247,13 +252,15 @@ public static class LogicStateEvaluator
     /// Evaluates one network in drawing order (a parent before its inputs), appending every
     /// element's state to <paramref name="target"/>. Returns the combined output — the roots
     /// AND'ed together — plus the reason of the first root that is not satisfied, which becomes
-    /// the block's reason.
+    /// the block's reason. <paramref name="execute"/> is false for a disabled block: its elements
+    /// still report their state, but a coil does not drive its relay.
     /// </summary>
     private static (bool? Output, string? Failing, string? Missing) EvaluateNetwork(
         IReadOnlyList<LogicElementDto> roots,
         Func<string, string, BridgeValueSnapshot?> valueLookup,
         Func<string, string, TagMapping?> mappingLookup,
         LogicStateStore? states,
+        bool execute,
         DateTime nowUtc,
         List<LogicElementStateDto> target)
     {
@@ -263,7 +270,7 @@ public static class LogicStateEvaluator
 
         foreach (LogicElementDto root in roots)
         {
-            bool? output = EvaluateElement(root, 0, valueLookup, mappingLookup, states, nowUtc, target, out string? reason, out string? missingLeaf);
+            bool? output = EvaluateElement(root, 0, valueLookup, mappingLookup, states, execute, nowUtc, target, out string? reason, out string? missingLeaf);
             if (IsWarn(root))
             {
                 // A warn element at the root is reported but never gates the block.
@@ -296,6 +303,7 @@ public static class LogicStateEvaluator
         Func<string, string, BridgeValueSnapshot?> valueLookup,
         Func<string, string, TagMapping?> mappingLookup,
         LogicStateStore? states,
+        bool execute,
         DateTime nowUtc,
         List<LogicElementStateDto> target,
         out string? reason,
@@ -315,7 +323,7 @@ public static class LogicStateEvaluator
         List<string?> inputMissing = new();
         foreach (LogicElementDto input in element.Inputs)
         {
-            bool? value = EvaluateElement(input, depth + 1, valueLookup, mappingLookup, states, nowUtc, target, out string? inputReason, out string? inputMissingLeaf);
+            bool? value = EvaluateElement(input, depth + 1, valueLookup, mappingLookup, states, execute, nowUtc, target, out string? inputReason, out string? inputMissingLeaf);
             // A warn element is reported but inert: it neither satisfies nor blocks its parent.
             if (!IsWarn(input))
             {
@@ -329,11 +337,13 @@ public static class LogicStateEvaluator
         bool? output;
         if (kind == LogicElementKinds.Contact)
         {
-            output = EvaluateContact(element, row, valueLookup, mappingLookup);
+            output = LogicElementKinds.IsRelayContact(element)
+                ? EvaluateRelayContact(element, row, states)
+                : EvaluateContact(element, row, valueLookup, mappingLookup);
         }
         else
         {
-            output = EvaluateBlockElement(element, kind, inputs, row, states, nowUtc);
+            output = EvaluateBlockElement(element, kind, inputs, row, states, execute, nowUtc);
         }
 
         row.State = StateOf(output);
@@ -407,17 +417,59 @@ public static class LogicStateEvaluator
         return matches;
     }
 
+    /// <summary>
+    /// A contact that reads an internal relay instead of a tag: 1 when the relay is on, 0 when it
+    /// is off, unknown while no coil has driven it (a typo'd or not-yet-authored relay is visible
+    /// rather than a silent false). The relay is shared, so the coil may live in any block — the
+    /// pass's order decides whether this read sees that write or the previous pass's value.
+    /// </summary>
+    private static bool? EvaluateRelayContact(
+        LogicElementDto element,
+        LogicElementStateDto row,
+        LogicStateStore? states)
+    {
+        bool normallyOpen = !string.Equals(element.Op, LogicConditionOps.Off, StringComparison.OrdinalIgnoreCase);
+        row.Should = normallyOpen ? "1" : "0";
+
+        bool? relay = states?.TryGetRelay(element.Relay);
+        if (relay is null)
+        {
+            row.ValueText = "—";
+            return null;
+        }
+
+        row.ValueText = relay.Value ? "1" : "0";
+        bool matched = normallyOpen ? relay.Value : !relay.Value;
+        row.Matches = matched;
+        return matched;
+    }
+
     private static bool? EvaluateBlockElement(
         LogicElementDto element,
         string kind,
         List<bool?> inputs,
         LogicElementStateDto row,
         LogicStateStore? states,
+        bool execute,
         DateTime nowUtc)
     {
         bool? first = inputs.Count > 0 ? inputs[0] : null;
         switch (kind)
         {
+            case LogicElementKinds.Coil:
+            {
+                // A coil drives its relay with its input every pass (level, not edge) and passes
+                // the value through, so it can sit inside any gate. An unknown input writes
+                // nothing — the relay keeps the value the last pass's coil gave it.
+                row.ValueText = first is null ? "—" : first.Value ? "1" : "0";
+                if (execute && first is not null && states is not null)
+                {
+                    states.SetRelay(element.Relay, first.Value);
+                }
+
+                return first;
+            }
+
             case LogicElementKinds.And:
                 return Combine.And(inputs);
             case LogicElementKinds.Or:
@@ -549,18 +601,41 @@ public static class LogicStateEvaluator
     private static bool IsWarn(LogicElementDto element) =>
         string.Equals(element.Severity, LogicConditionSeverities.Warn, StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>The element's own words for a reason line: its sentence, else its kind.</summary>
-    private static string ElementLabel(LogicElementDto element) =>
-        string.IsNullOrWhiteSpace(element.Text) ? KindLabel(element.Kind) : element.Text;
+    /// <summary>
+    /// The element's own words for a reason line: its sentence, else its kind — a coil names the
+    /// relay it drives and a bare relay contact names its relay, so a relay reason is actionable.
+    /// </summary>
+    private static string ElementLabel(LogicElementDto element)
+    {
+        if (!string.IsNullOrWhiteSpace(element.Text))
+        {
+            return element.Text;
+        }
 
-    /// <summary>What a missing reading names: the tag for a contact, else the element's sentence.</summary>
+        if (LogicElementKinds.IsCoil(element.Kind))
+        {
+            return "write " + element.Relay;
+        }
+
+        if (LogicElementKinds.IsRelayContact(element))
+        {
+            return element.Relay;
+        }
+
+        return KindLabel(element.Kind);
+    }
+
+    /// <summary>What a missing reading names: the tag (or relay) for a contact, else the element's sentence.</summary>
     private static string LeafLabel(LogicElementDto element, Func<string, string, TagMapping?> mappingLookup) =>
         string.Equals(element.Kind, LogicElementKinds.Contact, StringComparison.OrdinalIgnoreCase)
-            ? Label(element.SourceId, element.ItemId, mappingLookup)
+            ? (LogicElementKinds.IsRelayContact(element)
+                ? element.Relay
+                : Label(element.SourceId, element.ItemId, mappingLookup))
             : ElementLabel(element);
 
     private static string KindLabel(string? kind) => (kind ?? string.Empty).ToLowerInvariant() switch
     {
+        LogicElementKinds.Coil => "COIL",
         LogicElementKinds.And => "AND",
         LogicElementKinds.Or => "OR",
         LogicElementKinds.Xor => "XOR",

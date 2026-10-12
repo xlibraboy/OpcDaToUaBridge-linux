@@ -244,6 +244,7 @@ public sealed partial class LogicElementRowViewModel : ObservableObject
         LogicElementKinds.Or => "OR",
         LogicElementKinds.Xor => "XOR",
         LogicElementKinds.Not => "NOT",
+        LogicElementKinds.Coil => string.IsNullOrWhiteSpace(element.Relay) ? "COIL" : "COIL " + element.Relay,
         LogicElementKinds.Ton => "TON IN",
         LogicElementKinds.Tof => "TOF IN",
         LogicElementKinds.Tp => "TP IN",
@@ -495,8 +496,11 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
 
         foreach (LogicElementDto element in AllElements())
         {
-            if (!string.Equals(element.Kind, LogicElementKinds.Contact, StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(element.Kind, LogicElementKinds.Contact, StringComparison.OrdinalIgnoreCase)
+                || element.ItemId.Length == 0)
             {
+                // Gates, function blocks, coils and relay contacts read a relay or nothing —
+                // only a tag contact has a tag cache entry to look up.
                 continue;
             }
 
@@ -519,9 +523,21 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
 
     private LogicElementRowViewModel CreateRow(LogicElementDto element, int depth)
     {
-        string label = string.Equals(element.Kind, LogicElementKinds.Contact, StringComparison.OrdinalIgnoreCase)
-            ? TagLabel(element.SourceId, element.ItemId)
-            : string.Empty;
+        string label;
+        if (!string.IsNullOrWhiteSpace(element.Relay))
+        {
+            // A relay contact and a coil both name their relay where a tag contact names its tag.
+            label = "relay " + element.Relay;
+        }
+        else if (string.Equals(element.Kind, LogicElementKinds.Contact, StringComparison.OrdinalIgnoreCase))
+        {
+            label = TagLabel(element.SourceId, element.ItemId);
+        }
+        else
+        {
+            label = string.Empty;
+        }
+
         LogicElementRowViewModel row = new(element, depth, label);
         elementRows_[element.Id] = row;
         return row;

@@ -606,4 +606,311 @@ public sealed class LogicStateEvaluatorTests
         Assert.Equal(LogicStateEvaluator.Signature(first), LogicStateEvaluator.Signature(sameStateDifferentValue));
         Assert.NotEqual(LogicStateEvaluator.Signature(first), LogicStateEvaluator.Signature(changed));
     }
+
+    // ---- Internal relays (coils and relay contacts) ----
+
+    private static LogicElementDto RelayContact(string relay, string op = LogicConditionOps.On) => new()
+    {
+        Id = Guid.NewGuid(),
+        Kind = LogicElementKinds.Contact,
+        Relay = relay,
+        Op = op
+    };
+
+    private static LogicElementDto TagContact(
+        string itemId,
+        string text = "Tag must read 1",
+        string op = LogicConditionOps.On) => new()
+    {
+        Id = Guid.NewGuid(),
+        Kind = LogicElementKinds.Contact,
+        Text = text,
+        SourceId = "sim",
+        ItemId = itemId,
+        Op = op
+    };
+
+    private static LogicElementDto Coil(string relay, LogicElementDto input, string text = "") => new()
+    {
+        Id = Guid.NewGuid(),
+        Kind = LogicElementKinds.Coil,
+        Text = text,
+        Relay = relay,
+        Inputs = { input }
+    };
+
+    private static LogicElementDto Gate(string kind, params LogicElementDto[] inputs)
+    {
+        var element = new LogicElementDto { Id = Guid.NewGuid(), Kind = kind };
+        element.Inputs.AddRange(inputs);
+        return element;
+    }
+
+    /// <summary>A block carrying its logic in the network form.</summary>
+    private static LogicBlockDto Network(params LogicElementDto[] roots)
+    {
+        var block = new LogicBlockDto
+        {
+            Id = Guid.NewGuid(),
+            Name = "Relay network",
+            Kind = LogicBlockKinds.Interlock
+        };
+        block.Elements.AddRange(roots);
+        return block;
+    }
+
+    private static LogicElementStateDto Row(LogicBlockStateDto state, LogicElementDto element) =>
+        Assert.Single(state.Elements.Where(row => row.Id == element.Id));
+
+    [Fact]
+    public void Coil_DrivesItsRelay_AndALaterRelayContactReadsItInTheSamePass()
+    {
+        LogicStateStore states = new();
+        LogicElementDto drive = Coil("M01", TagContact("PS1"));
+        LogicElementDto read = RelayContact("M01");
+        LogicBlockDto block = Network(drive, read);
+
+        LogicBlockStateDto state = LogicStateEvaluator.EvaluateBlock(
+            block, Values(("sim", "PS1", true, true)), Mappings(), states, Now);
+
+        Assert.Equal(LogicBlockStates.Ready, state.State);
+        Assert.Equal(LogicConditionStates.True, Row(state, drive).State);
+        Assert.Equal("1", Row(state, drive).ValueText);
+        Assert.Equal(LogicConditionStates.True, Row(state, read).State);
+        Assert.Equal("1", Row(state, read).Should);
+        Assert.True(Row(state, read).Matches);
+        Assert.Equal("1", Row(state, read).ValueText);
+    }
+
+    [Fact]
+    public void RelayContact_BeforeItsCoilSeesThePreviousPass()
+    {
+        LogicStateStore states = new();
+        LogicElementDto read = RelayContact("M01");
+        LogicElementDto drive = Coil("M01", TagContact("PS1"));
+        LogicBlockDto block = Network(read, drive);
+
+        // The read comes first in the pass and nothing has driven M01 yet: unknown, named.
+        LogicBlockStateDto first = LogicStateEvaluator.EvaluateBlock(
+            block, Values(("sim", "PS1", true, true)), Mappings(), states, Now);
+
+        Assert.Equal(LogicBlockStates.Unknown, first.State);
+        Assert.Equal("no data for M01", first.Reason);
+        Assert.Equal(LogicConditionStates.Unknown, Row(first, read).State);
+        Assert.Equal("—", Row(first, read).ValueText);
+
+        // The coil drove it in the first pass, so the second pass's read sees the value.
+        LogicBlockStateDto second = LogicStateEvaluator.EvaluateBlock(
+            block, Values(("sim", "PS1", true, true)), Mappings(), states, Now.AddMilliseconds(100));
+
+        Assert.Equal(LogicBlockStates.Ready, second.State);
+        Assert.Equal(LogicConditionStates.True, Row(second, read).State);
+    }
+
+    [Fact]
+    public void RelayContact_Off_ReadsTheRelaysBitInverted()
+    {
+        LogicStateStore states = new();
+        LogicBlockDto drive = Network(Coil("M01", TagContact("PS1")));
+        drive.Order = 1;
+        LogicElementDto readOff = RelayContact("M01", LogicConditionOps.Off);
+        LogicBlockDto consumer = Network(readOff);
+        consumer.Order = 2;
+
+        LogicStateSnapshot snapshot = LogicStateEvaluator.Evaluate(
+            new[] { drive, consumer }, 1, Values(("sim", "PS1", false, true)), Mappings(), Now, states);
+
+        Assert.Equal(LogicBlockStates.Ready, snapshot.Blocks[1].State);
+        Assert.Equal("0", Row(snapshot.Blocks[1], readOff).Should);
+        Assert.True(Row(snapshot.Blocks[1], readOff).Matches);
+        Assert.Equal("0", Row(snapshot.Blocks[1], readOff).ValueText);
+    }
+
+    [Fact]
+    public void RelayNobodyDrives_ReadsUnknown_AndNamesTheRelay()
+    {
+        LogicElementDto read = RelayContact("M77");
+        LogicBlockDto block = Network(read);
+
+        LogicBlockStateDto state = LogicStateEvaluator.EvaluateBlock(
+            block, Values(), Mappings(), new LogicStateStore(), Now);
+
+        Assert.Equal(LogicBlockStates.Unknown, state.State);
+        Assert.Equal("no data for M77", state.Reason);
+        Assert.Equal("1", Row(state, read).Should);
+        Assert.Null(Row(state, read).Matches);
+        Assert.Equal("—", Row(state, read).ValueText);
+    }
+
+    [Fact]
+    public void Coil_WithAnUnknownInputWritesNothing_AndTheRelayKeepsItsValue()
+    {
+        LogicStateStore states = new();
+        LogicElementDto driveCoil = Coil("M01", TagContact("PS1"));
+        LogicBlockDto drive = Network(driveCoil);
+        drive.Order = 1;
+        LogicElementDto read = RelayContact("M01");
+        LogicBlockDto consumer = Network(read);
+        consumer.Order = 2;
+
+        LogicStateSnapshot ready = LogicStateEvaluator.Evaluate(
+            new[] { drive, consumer }, 1, Values(("sim", "PS1", true, true)), Mappings(), Now, states);
+        Assert.Equal(LogicBlockStates.Ready, ready.Blocks[1].State);
+
+        // PS1 loses its value: the coil writes nothing and M01 keeps the last driven bit.
+        LogicStateSnapshot held = LogicStateEvaluator.Evaluate(
+            new[] { drive, consumer }, 2, Values(("sim", "PS1", true, false)), Mappings(), Now.AddMilliseconds(100), states);
+
+        Assert.Equal(LogicConditionStates.Unknown, Row(held.Blocks[0], driveCoil).State);
+        Assert.Equal("—", Row(held.Blocks[0], driveCoil).ValueText);
+        Assert.Equal(LogicConditionStates.True, Row(held.Blocks[1], read).State);
+        Assert.Equal(LogicBlockStates.Ready, held.Blocks[1].State);
+    }
+
+    [Fact]
+    public void Coil_InADisabledBlockDoesNotWrite_ButStillReportsWhatItWould()
+    {
+        LogicStateStore states = new();
+        LogicElementDto driveCoil = Coil("M01", TagContact("PS1"));
+        LogicBlockDto drive = Network(driveCoil);
+        drive.Enabled = false;
+        LogicElementDto read = RelayContact("M01");
+        LogicBlockDto consumer = Network(read);
+        consumer.Order = 1;
+
+        LogicStateSnapshot snapshot = LogicStateEvaluator.Evaluate(
+            new[] { drive, consumer }, 1, Values(("sim", "PS1", true, true)), Mappings(), Now, states);
+
+        Assert.Equal(LogicBlockStates.Disabled, snapshot.Blocks[0].State);
+        Assert.Equal(LogicConditionStates.True, Row(snapshot.Blocks[0], driveCoil).State);
+        Assert.Null(states.TryGetRelay("M01"));
+        Assert.Equal(LogicBlockStates.Unknown, snapshot.Blocks[1].State);
+
+        // Enabled again, the coil drives the relay within the same pass.
+        drive.Enabled = true;
+        LogicStateSnapshot enabled = LogicStateEvaluator.Evaluate(
+            new[] { drive, consumer }, 2, Values(("sim", "PS1", true, true)), Mappings(), Now.AddMilliseconds(100), states);
+
+        Assert.Equal(LogicConditionStates.True, Row(enabled.Blocks[1], read).State);
+        Assert.Equal(LogicBlockStates.Ready, enabled.Blocks[1].State);
+    }
+
+    [Fact]
+    public void Relay_IsForgottenWhenNoBlockReferencesIt()
+    {
+        LogicStateStore states = new();
+        LogicBlockDto block = Network(Coil("M01", TagContact("PS1")));
+
+        LogicStateEvaluator.Evaluate(new[] { block }, 1, Values(("sim", "PS1", true, true)), Mappings(), Now, states);
+        Assert.True(states.TryGetRelay("M01"));
+
+        // The block is gone (deleted): the next full pass prunes the relay.
+        LogicStateEvaluator.Evaluate(Array.Empty<LogicBlockDto>(), 2, Values(), Mappings(), Now.AddSeconds(1), states);
+        Assert.Null(states.TryGetRelay("M01"));
+    }
+
+    [Fact]
+    public void Relay_FeedsEveryGateAndFunctionBlock_InAnyBlock()
+    {
+        LogicStateStore states = new();
+        LogicBlockDto drive = Network(Coil("M01", TagContact("PS1")));
+        drive.Order = 1;
+
+        LogicElementDto notRoot = Gate(LogicElementKinds.Not, RelayContact("M01"));
+        LogicBlockDto notBlock = Network(notRoot);
+        notBlock.Order = 2;
+
+        LogicElementDto relaySide = RelayContact("M01");
+        LogicElementDto xorRoot = Gate(LogicElementKinds.Xor, relaySide, TagContact("PB2", "PB2 must be pressed"));
+        LogicBlockDto xorBlock = Network(xorRoot);
+        xorBlock.Order = 3;
+
+        LogicElementDto andRoot = Gate(
+            LogicElementKinds.And,
+            RelayContact("M01"),
+            TagContact("PB3", "PB3 must be pressed"));
+        LogicBlockDto andBlock = Network(andRoot);
+        andBlock.Order = 4;
+
+        LogicElementDto tonRoot = new()
+        {
+            Id = Guid.NewGuid(),
+            Kind = LogicElementKinds.Ton,
+            PtMs = 1000,
+            Inputs = { RelayContact("M01") }
+        };
+        LogicBlockDto tonBlock = Network(tonRoot);
+        tonBlock.Order = 5;
+
+        LogicElementDto ctuRoot = new()
+        {
+            Id = Guid.NewGuid(),
+            Kind = LogicElementKinds.Ctu,
+            Pv = 1,
+            Inputs = { RelayContact("M01") }
+        };
+        LogicBlockDto ctuBlock = Network(ctuRoot);
+        ctuBlock.Order = 6;
+
+        LogicStateSnapshot snapshot = LogicStateEvaluator.Evaluate(
+            new[] { drive, notBlock, xorBlock, andBlock, tonBlock, ctuBlock },
+            1,
+            Values(("sim", "PS1", true, true), ("sim", "PB2", false, true), ("sim", "PB3", false, true)),
+            Mappings(),
+            Now,
+            states);
+
+        // The relay one block drives is read by every other block's own kind of logic.
+        Assert.Equal(LogicBlockStates.Ready, snapshot.Blocks[0].State);
+        Assert.Equal(LogicBlockStates.Blocked, snapshot.Blocks[1].State);
+        Assert.Equal(LogicConditionStates.False, Row(snapshot.Blocks[1], notRoot).State);
+        Assert.Equal(LogicBlockStates.Ready, snapshot.Blocks[2].State);
+        Assert.Equal(LogicConditionStates.True, Row(snapshot.Blocks[2], relaySide).State);
+        Assert.Equal(LogicBlockStates.Blocked, snapshot.Blocks[3].State);
+        Assert.Equal("PB3 must be pressed", snapshot.Blocks[3].Reason);
+        Assert.Equal(LogicBlockStates.Blocked, snapshot.Blocks[4].State);
+        Assert.Equal(1000, Row(snapshot.Blocks[4], tonRoot).PtMs);
+        Assert.Equal(LogicConditionStates.False, Row(snapshot.Blocks[4], tonRoot).State);
+        Assert.Equal(LogicBlockStates.Ready, snapshot.Blocks[5].State);
+        Assert.Equal(1, Row(snapshot.Blocks[5], ctuRoot).Count);
+    }
+
+    [Fact]
+    public void RelayChain_AcrossThreeBlocksSettlesInOneOrderedPass()
+    {
+        LogicStateStore states = new();
+        LogicBlockDto first = Network(Coil("M01", TagContact("PS1")));
+        first.Order = 1;
+        LogicBlockDto second = Network(Coil("M02", RelayContact("M01")));
+        second.Order = 2;
+        LogicElementDto read = RelayContact("M02");
+        LogicBlockDto third = Network(read);
+        third.Order = 3;
+
+        LogicStateSnapshot snapshot = LogicStateEvaluator.Evaluate(
+            new[] { first, second, third }, 1, Values(("sim", "PS1", true, true)), Mappings(), Now, states);
+
+        Assert.Equal(LogicBlockStates.Ready, snapshot.Blocks[2].State);
+        Assert.Equal(LogicConditionStates.True, Row(snapshot.Blocks[2], read).State);
+    }
+
+    [Fact]
+    public void DeepNetwork_AtTheBoundsNestsAndEvaluates()
+    {
+        LogicStateStore states = new();
+        LogicElementDto root = TagContact("PS1");
+        for (int i = 0; i < LogicLimits.MaxElementDepth; i++)
+        {
+            root = Gate(LogicElementKinds.Not, root);
+        }
+
+        LogicBlockStateDto state = LogicStateEvaluator.EvaluateBlock(
+            Network(root), Values(("sim", "PS1", true, true)), Mappings(), states, Now);
+
+        Assert.Equal(LogicLimits.MaxElementDepth + 1, state.Elements.Count);
+        Assert.Equal(LogicLimits.MaxElementDepth, state.Elements.Max(row => row.Depth));
+
+        // Sixteen inversions: the tag's true passes through unchanged.
+        Assert.Equal(LogicBlockStates.Ready, state.State);
+    }
 }

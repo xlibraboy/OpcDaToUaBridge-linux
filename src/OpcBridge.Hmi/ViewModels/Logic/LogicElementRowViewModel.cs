@@ -9,8 +9,9 @@ namespace OpcBridge.Hmi.ViewModels.Logic;
 /// <summary>
 /// One editable element row of the IEC 61131-3 network editor. Rows nest by indentation: a row's
 /// inputs are the rows under it at a deeper level, rebuilt into the tree on save. The fields shown
-/// follow the selected kind — a contact reads a tag, a timer its preset, a counter its preset, a
-/// gate or function block just its label.
+/// follow the selected kind — a contact reads a tag (or an internal relay when a relay is typed),
+/// a coil drives an internal relay, a timer its preset, a counter its preset, a gate or function
+/// block just its label.
 /// </summary>
 public partial class LogicElementRowViewModel : ObservableObject
 {
@@ -22,23 +23,29 @@ public partial class LogicElementRowViewModel : ObservableObject
         LogicElementDto element,
         int indent,
         LogicTagCatalog catalog,
-        Action<LogicElementRowViewModel>? onRemove = null)
+        Action<LogicElementRowViewModel>? onRemove = null,
+        IEnumerable<string>? relayNames = null)
     {
         catalog_ = catalog;
         onRemove_ = onRemove;
+        RelayNames = relayNames ?? Array.Empty<string>();
         ElementId = element.Id == Guid.Empty ? Guid.NewGuid() : element.Id;
         Kind = LogicSelectOption.Find(LogicOptions.ElementKinds, element.Kind) ?? LogicOptions.ElementKinds[0];
         Text = element.Text;
         Op = LogicSelectOption.Find(LogicOptions.Ops, element.Op) ?? LogicOptions.Ops[0];
+        Relay = element.Relay;
         ValueText = element.Value is { } value ? LogicConditionRowViewModel.FormatNumber(value) : string.Empty;
         PtSeconds = element.PtMs > 0 ? LogicConditionRowViewModel.FormatNumber(element.PtMs / 1000.0) : string.Empty;
         PvText = element.Pv > 0 ? element.Pv.ToString(CultureInfo.InvariantCulture) : string.Empty;
         Severity = LogicSelectOption.Find(LogicOptions.Severities, element.Severity) ?? LogicOptions.Severities[0];
-        Indent = Math.Clamp(indent, 0, 8);
+        Indent = Math.Clamp(indent, 0, LogicLimits.MaxElementDepth);
         LoadSourceAndItems(element.SourceId, element.ItemId);
     }
 
     public Guid ElementId { get; }
+
+    /// <summary>Relay names already driven by a coil in any block, offered while typing one.</summary>
+    public IEnumerable<string> RelayNames { get; }
 
     public IReadOnlyList<LogicSelectOption> KindOptions => LogicOptions.ElementKinds;
 
@@ -58,6 +65,13 @@ public partial class LogicElementRowViewModel : ObservableObject
 
     [ObservableProperty]
     private LogicSelectOption _op;
+
+    /// <summary>
+    /// Internal relay (e.g. "M01"): typed on a contact it reads the relay instead of a tag,
+    /// typed on a coil it is the relay the coil drives. Uppercased by the bridge on save.
+    /// </summary>
+    [ObservableProperty]
+    private string _relay = string.Empty;
 
     [ObservableProperty]
     private string _valueText = string.Empty;
@@ -104,8 +118,22 @@ public partial class LogicElementRowViewModel : ObservableObject
 
     public bool IsCounter => LogicElementKinds.IsCounter(Kind?.Value);
 
+    public bool IsCoil => LogicElementKinds.IsCoil(Kind?.Value);
+
+    /// <summary>A contact that reads an internal relay instead of a tag.</summary>
+    public bool IsRelayContact => IsContact && Relay.Trim().Length > 0;
+
+    /// <summary>The tag pickers: a contact that is not reading a relay.</summary>
+    public bool ShowsTag => IsContact && !IsRelayContact;
+
+    /// <summary>The relay field: a relay contact reads one, a coil drives one.</summary>
+    public bool ShowsRelay => IsRelayContact || IsCoil;
+
+    /// <summary>A coil is an output — "warn only" has no meaning for it.</summary>
+    public bool ShowsSeverity => !IsCoil;
+
     /// <summary>A gate, latch or edge trigger: a label only, no tag, preset or value.</summary>
-    public bool ShowsLabelOnly => !IsContact && !IsTimer && !IsCounter;
+    public bool ShowsLabelOnly => !IsContact && !IsCoil && !IsTimer && !IsCounter;
 
     public bool NeedsValue => IsContact && LogicConditionOps.RequiresValue(Op?.Value);
 
@@ -129,11 +157,29 @@ public partial class LogicElementRowViewModel : ObservableObject
         OnPropertyChanged(nameof(IsContact));
         OnPropertyChanged(nameof(IsTimer));
         OnPropertyChanged(nameof(IsCounter));
+        OnPropertyChanged(nameof(IsCoil));
+        OnPropertyChanged(nameof(IsRelayContact));
+        OnPropertyChanged(nameof(ShowsTag));
+        OnPropertyChanged(nameof(ShowsRelay));
+        OnPropertyChanged(nameof(ShowsSeverity));
         OnPropertyChanged(nameof(ShowsLabelOnly));
         OnPropertyChanged(nameof(NeedsValue));
     }
 
     partial void OnOpChanged(LogicSelectOption value) => OnPropertyChanged(nameof(NeedsValue));
+
+    partial void OnRelayChanged(string value)
+    {
+        OnPropertyChanged(nameof(IsRelayContact));
+        OnPropertyChanged(nameof(ShowsTag));
+        OnPropertyChanged(nameof(ShowsRelay));
+
+        // A relay contact reads a bit: a numeric comparison has nothing to compare against.
+        if (value.Trim().Length > 0 && LogicConditionOps.RequiresValue(Op?.Value))
+        {
+            Op = LogicOptions.Ops[0];
+        }
+    }
 
     partial void OnSelectedSourceChanged(LogicSourceOption? value)
     {
@@ -156,9 +202,9 @@ public partial class LogicElementRowViewModel : ObservableObject
     private bool _canEdit = true;
 
     [RelayCommand(CanExecute = nameof(CanIndent))]
-    private void IndentRow() => Indent = Math.Min(Indent + 1, 8);
+    private void IndentRow() => Indent = Math.Min(Indent + 1, LogicLimits.MaxElementDepth);
 
-    private bool CanIndent() => CanEdit && Indent < 8;
+    private bool CanIndent() => CanEdit && Indent < LogicLimits.MaxElementDepth;
 
     [RelayCommand(CanExecute = nameof(CanOutdent))]
     private void OutdentRow() => Indent = Math.Max(Indent - 1, 0);

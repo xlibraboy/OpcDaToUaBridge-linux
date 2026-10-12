@@ -67,6 +67,9 @@ public sealed class LogicBlockDto
 /// the same element with a gt/lt/eq operator) is a leaf that reads one tag; a gate or a
 /// function block combines its <see cref="Inputs"/> — itself elements, so a network nests to
 /// any depth. Contacts are normally open (<c>on</c>) or normally closed (<c>off</c>).
+/// A contact carrying a <see cref="Relay"/> reads an internal relay instead of a tag, and a
+/// coil drives one — the PLC's internal memory, so a block's intermediate result can feed any
+/// other block's gates.
 /// </summary>
 public sealed class LogicElementDto
 {
@@ -88,6 +91,15 @@ public sealed class LogicElementDto
 
     /// <summary>Comparison value; required for gt / lt / eq, ignored for on / off.</summary>
     public double? Value { get; set; }
+
+    /// <summary>
+    /// Internal relay this element reads or drives (e.g. "M01"), stored canonical uppercase;
+    /// empty for every element that works on a tag. A contact with a relay reads the relay
+    /// instead of a tag (on/off only, no tag, no comparison value); a coil writes its single
+    /// input onto the relay. Relays are shared across every block of the bridge, so one block's
+    /// coil can feed any other block's gates.
+    /// </summary>
+    public string Relay { get; set; } = string.Empty;
 
     /// <summary>Timer preset (PT) in milliseconds for TON / TOF / TP.</summary>
     public int PtMs { get; set; }
@@ -253,8 +265,18 @@ public static class LogicConditionOps
 /// </summary>
 public static class LogicElementKinds
 {
-    /// <summary>A contact (or comparison) reading one tag — the leaf of a network.</summary>
+    /// <summary>
+    /// A contact (or comparison) reading one tag — the leaf of a network. With
+    /// <see cref="LogicElementDto.Relay"/> set it reads that internal relay instead of a tag.
+    /// </summary>
     public const string Contact = "contact";
+
+    /// <summary>
+    /// A coil: drives its single input onto an internal relay (e.g. "M01") every evaluation.
+    /// The relay a coil drives is what any other block's contacts and gates read — the PLC's
+    /// internal memory, used to split complex logic across blocks.
+    /// </summary>
+    public const string Coil = "coil";
 
     public const string And = "and";
     public const string Or = "or";
@@ -290,11 +312,21 @@ public static class LogicElementKinds
 
     public static readonly string[] All =
     {
-        Contact, And, Or, Xor, Not, Ton, Tof, Tp, Ctu, Ctd, Sr, Rs, RisingEdge, FallingEdge
+        Contact, Coil, And, Or, Xor, Not, Ton, Tof, Tp, Ctu, Ctd, Sr, Rs, RisingEdge, FallingEdge
     };
 
     public static bool IsValid(string? kind) =>
         kind is not null && Array.Exists(All, k => string.Equals(k, kind, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>True for the coil that drives an internal relay.</summary>
+    public static bool IsCoil(string? kind) =>
+        string.Equals(kind, Coil, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>True for a contact that reads an internal relay instead of a tag.</summary>
+    public static bool IsRelayContact(LogicElementDto? element) =>
+        element is not null
+        && string.Equals(element.Kind, Contact, StringComparison.OrdinalIgnoreCase)
+        && !string.IsNullOrWhiteSpace(element.Relay);
 
     /// <summary>AND / OR / XOR / NOT — the boolean gates.</summary>
     public static bool IsGate(string? kind) =>
@@ -326,12 +358,13 @@ public static class LogicElementKinds
 
     /// <summary>
     /// How many inputs the kind reads: a fixed count where the standard fixes it (NOT takes
-    /// one, the timers and edge triggers one, SR / RS two), a range where it varies (CTU takes
-    /// CU and an optional R, CTD takes CD and an optional LD).
+    /// one, the timers and edge triggers one, SR / RS two, a coil exactly one), a range where
+    /// it varies (CTU takes CU and an optional R, CTD takes CD and an optional LD).
     /// </summary>
     public static (int Min, int Max) InputRange(string? kind)
     {
         if (string.Equals(kind, Not, StringComparison.OrdinalIgnoreCase) ||
+            IsCoil(kind) ||
             IsTimer(kind) ||
             string.Equals(kind, RisingEdge, StringComparison.OrdinalIgnoreCase) ||
             string.Equals(kind, FallingEdge, StringComparison.OrdinalIgnoreCase))

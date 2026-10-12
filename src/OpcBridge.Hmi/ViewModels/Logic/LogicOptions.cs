@@ -36,7 +36,8 @@ public static class LogicOptions
 
     public static IReadOnlyList<LogicSelectOption> ElementKinds { get; } = new[]
     {
-        new LogicSelectOption(LogicElementKinds.Contact, "Contact — NO / NC / compare"),
+        new LogicSelectOption(LogicElementKinds.Contact, "Contact — NO / NC / compare / relay"),
+        new LogicSelectOption(LogicElementKinds.Coil, "Coil — drive internal relay (IN, M)"),
         new LogicSelectOption(LogicElementKinds.And, "AND"),
         new LogicSelectOption(LogicElementKinds.Or, "OR"),
         new LogicSelectOption(LogicElementKinds.Xor, "XOR"),

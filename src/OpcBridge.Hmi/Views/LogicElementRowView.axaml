@@ -25,8 +25,9 @@
       </ItemsControl.ItemTemplate>
     </ItemsControl>
 
-    <!-- One element, as its own row. Only the fields the kind reads are shown: a contact a
-         tag and a reading, a timer its preset, a counter its preset, a gate just its label. -->
+    <!-- One element, as its own row. Only the fields the kind reads are shown: a contact a tag
+         (or a relay) and a reading, a coil the relay it drives, a timer its preset, a counter its
+         preset, a gate just its label. -->
     <Border Grid.Column="1" Classes="editorRow" Margin="0,0,0,6" IsEnabled="{Binding CanEdit}">
       <Grid ColumnDefinitions="*,Auto">
         <WrapPanel Grid.Column="0" Orientation="Horizontal">
@@ -46,7 +47,7 @@
             <TextBox Text="{Binding Text}" Watermark="Guard closed"
                      AutomationProperties.Name="Element label" />
           </StackPanel>
-          <StackPanel Classes="field" Width="150" IsVisible="{Binding IsContact}">
+          <StackPanel Classes="field" Width="150" IsVisible="{Binding ShowsTag}">
             <TextBlock Classes="fieldLabel" Text="SOURCE" />
             <ComboBox ItemsSource="{Binding Sources}" SelectedItem="{Binding SelectedSource}"
                       AutomationProperties.Name="Element source"
@@ -58,7 +59,7 @@
               </ComboBox.ItemTemplate>
             </ComboBox>
           </StackPanel>
-          <StackPanel Classes="field" Width="210" IsVisible="{Binding IsContact}">
+          <StackPanel Classes="field" Width="210" IsVisible="{Binding ShowsTag}">
             <TextBlock Classes="fieldLabel" Text="TAG" />
             <ComboBox ItemsSource="{Binding Items}" SelectedItem="{Binding SelectedTag}"
                       AutomationProperties.Name="Element tag"
@@ -69,6 +70,13 @@
                 </DataTemplate>
               </ComboBox.ItemTemplate>
             </ComboBox>
+          </StackPanel>
+          <StackPanel Classes="field" Width="150" IsVisible="{Binding ShowsRelay}">
+            <TextBlock Classes="fieldLabel" Text="RELAY" />
+            <AutoCompleteBox ItemsSource="{Binding RelayNames}" Text="{Binding Relay}"
+                             FilterMode="Contains" Watermark="M01"
+                             AutomationProperties.Name="Internal relay"
+                             ToolTip.Tip="Internal relay (e.g. M01). On a contact it reads the relay; on a coil it drives one — any block can read it." />
           </StackPanel>
           <StackPanel Classes="field" Width="170" IsVisible="{Binding IsContact}">
             <TextBlock Classes="fieldLabel" Text="OP" />
@@ -99,8 +107,9 @@
                      ToolTip.Tip="Preset count (PV)." />
           </StackPanel>
           <StackPanel Classes="field" Width="110">
-            <TextBlock Classes="fieldLabel" Text="SEVERITY" />
+            <TextBlock Classes="fieldLabel" Text="SEVERITY" IsVisible="{Binding ShowsSeverity}" />
             <ComboBox ItemsSource="{Binding SeverityOptions}" SelectedItem="{Binding Severity}"
+                      IsVisible="{Binding ShowsSeverity}"
                       AutomationProperties.Name="Element severity">
               <ComboBox.ItemTemplate>
                 <DataTemplate x:DataType="logic:LogicSelectOption">
