@@ -88,7 +88,7 @@ public sealed class LogicStoreTests : IDisposable
         Assert.Equal(1, version);
         Assert.Equal(new[] { 1L }, versions);
 
-        (IReadOnlyList<LogicBlockDto> blocks, long snapshotVersion) = store.GetSnapshot();
+        (IReadOnlyList<LogicBlockDto> blocks, _, long snapshotVersion) = store.GetSnapshot();
         Assert.Single(blocks);
         Assert.Equal("Line 01 Start", blocks[0].Name);
         Assert.Equal(LogicBlockKinds.Interlock, blocks[0].Kind);
@@ -107,7 +107,7 @@ public sealed class LogicStoreTests : IDisposable
 
         Assert.True(ok);
         Assert.Null(error);
-        (IReadOnlyList<LogicBlockDto> blocks, _) = store.GetSnapshot();
+        (IReadOnlyList<LogicBlockDto> blocks, _, _) = store.GetSnapshot();
         Assert.Single(blocks);
         Assert.Equal("Line 01 Start (rev B)", blocks[0].Name);
     }
@@ -122,7 +122,7 @@ public sealed class LogicStoreTests : IDisposable
 
         Assert.False(ok);
         Assert.Equal("Block name already exists.", error);
-        (IReadOnlyList<LogicBlockDto> blocks, _) = store.GetSnapshot();
+        (IReadOnlyList<LogicBlockDto> blocks, _, _) = store.GetSnapshot();
         Assert.Single(blocks);
     }
 
@@ -238,7 +238,7 @@ public sealed class LogicStoreTests : IDisposable
         bool ok = store.TrySave(block, out _, out _, out _);
 
         Assert.True(ok);
-        (IReadOnlyList<LogicBlockDto> blocks, _) = store.GetSnapshot();
+        (IReadOnlyList<LogicBlockDto> blocks, _, _) = store.GetSnapshot();
         Assert.NotEqual(Guid.Empty, blocks[0].Id);
         Assert.NotEqual(Guid.Empty, blocks[0].Conditions[0].Id);
         Assert.Equal(DaRuntimeSettings.DefaultSourceId, blocks[0].Conditions[0].SourceId);
@@ -667,7 +667,7 @@ public sealed class LogicStoreTests : IDisposable
         Assert.False(store.TryRemove(Guid.NewGuid(), out _));
         Assert.True(store.TryRemove(block.Id, out long version));
         Assert.Equal(2, version);
-        (IReadOnlyList<LogicBlockDto> blocks, _) = store.GetSnapshot();
+        (IReadOnlyList<LogicBlockDto> blocks, _, _) = store.GetSnapshot();
         Assert.Empty(blocks);
     }
 
@@ -681,7 +681,7 @@ public sealed class LogicStoreTests : IDisposable
         store.TrySave(block, out _, out _, out _);
 
         LogicStore reopened = new(Options.Create(new BridgeOptions()));
-        (IReadOnlyList<LogicBlockDto> blocks, long version) = reopened.GetSnapshot();
+        (IReadOnlyList<LogicBlockDto> blocks, _, long version) = reopened.GetSnapshot();
 
         // Version is in-memory only (mirrors InterlinkStore), but the block text must survive.
         Assert.Equal(0, version);
@@ -701,7 +701,7 @@ public sealed class LogicStoreTests : IDisposable
         File.WriteAllText(path, JsonSerializer.Serialize(new[] { valid, invalid }));
 
         LogicStore store = new(Options.Create(new BridgeOptions()));
-        (IReadOnlyList<LogicBlockDto> blocks, _) = store.GetSnapshot();
+        (IReadOnlyList<LogicBlockDto> blocks, _, _) = store.GetSnapshot();
 
         Assert.Single(blocks);
         Assert.Equal("Valid block", blocks[0].Name);
@@ -726,5 +726,121 @@ public sealed class LogicStoreTests : IDisposable
             Name = name,
             Conditions = { CreateCondition() }
         };
+    }
+
+    // ---- Relay/tag bindings ----
+
+    [Fact]
+    public void RelayBindings_AreCanonicalizedAndReloaded()
+    {
+        LogicStore store = CreateStore();
+        bool ok = store.TrySetRelays(
+            new[]
+            {
+                new LogicRelayDto { Name = " m01 ", SourceId = "internal", ItemId = " Line01.Start ", Write = "ALLOW" }
+            },
+            out IReadOnlyList<LogicRelayDto> saved,
+            out long version,
+            out string? error);
+
+        Assert.True(ok, error);
+        Assert.Equal(1, version);
+        LogicRelayDto relay = Assert.Single(saved);
+        Assert.Equal("M01", relay.Name);
+        Assert.Equal("internal", relay.SourceId);
+        Assert.Equal("Line01.Start", relay.ItemId);
+        Assert.Equal(LogicRelayWrites.Allow, relay.Write);
+
+        LogicStore reopened = new(Options.Create(new BridgeOptions()));
+        (_, IReadOnlyList<LogicRelayDto> reloaded, _) = reopened.GetSnapshot();
+        LogicRelayDto stored = Assert.Single(reloaded);
+        Assert.Equal("M01", stored.Name);
+        Assert.Equal("Line01.Start", stored.ItemId);
+        Assert.Equal(LogicRelayWrites.Allow, stored.Write);
+    }
+
+    [Fact]
+    public void RelayBindings_DropUnboundEntries_AndDefaultTheSource()
+    {
+        LogicStore store = CreateStore();
+
+        Assert.True(store.TrySetRelays(
+            new[]
+            {
+                new LogicRelayDto { Name = "M01" },
+                new LogicRelayDto { Name = "M02", ItemId = "Line01.Test" }
+            },
+            out IReadOnlyList<LogicRelayDto> saved,
+            out _,
+            out string? error), error);
+
+        LogicRelayDto relay = Assert.Single(saved);
+        Assert.Equal("M02", relay.Name);
+        Assert.Equal("default", relay.SourceId);
+        Assert.Equal(LogicRelayWrites.Auto, relay.Write);
+    }
+
+    [Fact]
+    public void RelayBindings_RefuseDuplicatesAndBadNames()
+    {
+        LogicStore store = CreateStore();
+
+        Assert.False(store.TrySetRelays(
+            new[]
+            {
+                new LogicRelayDto { Name = "M01", ItemId = "A" },
+                new LogicRelayDto { Name = "m01", ItemId = "B" }
+            },
+            out _,
+            out _,
+            out string? duplicateError));
+        Assert.Contains("twice", duplicateError);
+
+        Assert.False(store.TrySetRelays(
+            new[] { new LogicRelayDto { Name = "1M", ItemId = "A" } },
+            out _,
+            out _,
+            out string? nameError));
+        Assert.Contains("relay name", nameError);
+
+        Assert.Empty(store.GetSnapshot().Relays);
+    }
+
+    [Fact]
+    public void ALegacyBlockArray_LoadsAsBlocksWithoutRelays()
+    {
+        string path = Path.Combine(AppContext.BaseDirectory, "logic.json");
+        File.WriteAllText(path, JsonSerializer.Serialize(new[] { CreateInterlock("Legacy block") }));
+
+        LogicStore store = new(Options.Create(new BridgeOptions()));
+        (IReadOnlyList<LogicBlockDto> blocks, IReadOnlyList<LogicRelayDto> relays, _) = store.GetSnapshot();
+
+        Assert.Single(blocks);
+        Assert.Equal("Legacy block", blocks[0].Name);
+        Assert.Empty(relays);
+    }
+
+    [Fact]
+    public void RelayBindings_FromDiskThatNoLongerValidate_AreDropped()
+    {
+        string path = Path.Combine(AppContext.BaseDirectory, "logic.json");
+        File.WriteAllText(
+            path,
+            """
+            {
+              "Relays": [
+                { "Name": "M01", "SourceId": "internal", "ItemId": "Line01.Start", "Write": "never" },
+                { "Name": "1BAD", "SourceId": "internal", "ItemId": "Line01.Bad" }
+              ],
+              "Blocks": []
+            }
+            """);
+
+        LogicStore store = new(Options.Create(new BridgeOptions()));
+        (_, IReadOnlyList<LogicRelayDto> relays, _) = store.GetSnapshot();
+
+        LogicRelayDto relay = Assert.Single(relays);
+        Assert.Equal("M01", relay.Name);
+        Assert.Equal(LogicRelayWrites.Never, relay.Write);
     }
 }

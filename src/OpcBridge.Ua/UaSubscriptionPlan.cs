@@ -51,6 +51,7 @@ public static class UaSubscriptionPlan
             TagMapping mapping = desiredMappings[i];
             if (!mapping.Enabled
                 || string.Equals(mapping.Mode, TagMode.Manual, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(mapping.Mode, TagMode.Internal, StringComparison.OrdinalIgnoreCase)
                 || string.IsNullOrWhiteSpace(mapping.ItemId)
                 || string.Equals(mapping.AccessRights, TagAccessRights.Write, StringComparison.OrdinalIgnoreCase))
             {

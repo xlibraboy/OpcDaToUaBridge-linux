@@ -34,6 +34,17 @@ public static class LogicOptions
         new LogicSelectOption(LogicConditionSeverities.Warn, "warn only")
     };
 
+    /// <summary>
+    /// Who may write the tag a relay is bound to. Auto follows what the M is: an M a coil drives
+    /// belongs to the logic and its tag is read-only, a free M belongs to the operator.
+    /// </summary>
+    public static IReadOnlyList<LogicSelectOption> RelayWrites { get; } = new[]
+    {
+        new LogicSelectOption(LogicRelayWrites.Auto, "if free (auto)"),
+        new LogicSelectOption(LogicRelayWrites.Allow, "always"),
+        new LogicSelectOption(LogicRelayWrites.Never, "never")
+    };
+
     public static IReadOnlyList<LogicSelectOption> ElementKinds { get; } = new[]
     {
         new LogicSelectOption(LogicElementKinds.Contact, "Contact — NO / NC / compare / relay"),

@@ -26,10 +26,16 @@ public sealed record HmiInfluxStatus(
 }
 
 /// <summary>Plant-logic definitions and their version, from GET /api/logic.</summary>
-public sealed record HmiLogicDefinitions(IReadOnlyList<LogicBlockDto> Blocks, long Version);
+public sealed record HmiLogicDefinitions(
+    IReadOnlyList<LogicBlockDto> Blocks,
+    IReadOnlyList<LogicRelayDto> Relays,
+    long Version);
 
 /// <summary>Outcome of POST /api/logic/blocks or DELETE /api/logic/blocks/{id}.</summary>
 public sealed record HmiLogicSaveResult(bool Ok, LogicBlockDto? Block, long Version, string? Error);
+
+/// <summary>Outcome of POST /api/logic/relays — the relay/tag bindings the editor saved.</summary>
+public sealed record HmiLogicRelaySaveResult(bool Ok, IReadOnlyList<LogicRelayDto>? Relays, long Version, string? Error);
 
 /// <summary>Wire shape of a successful POST /api/logic/blocks.</summary>
 internal sealed class HmiLogicSaveResponse
@@ -42,6 +48,14 @@ internal sealed class HmiLogicSaveResponse
 /// <summary>Wire shape of a successful DELETE /api/logic/blocks/{id}.</summary>
 internal sealed class HmiLogicVersionResponse
 {
+    public long Version { get; set; }
+}
+
+/// <summary>Wire shape of a successful POST /api/logic/relays.</summary>
+internal sealed class HmiLogicRelaySaveResponse
+{
+    public List<LogicRelayDto>? Relays { get; set; }
+
     public long Version { get; set; }
 }
 
@@ -158,7 +172,10 @@ public sealed class BridgeApiClient : IDisposable
     {
         HmiLogicDefinitions? response = await client_.GetFromJsonAsync<HmiLogicDefinitions>("api/logic", JsonOptions, ct)
             .ConfigureAwait(false);
-        return response ?? new HmiLogicDefinitions(Array.Empty<LogicBlockDto>(), 0);
+        return response ?? new HmiLogicDefinitions(
+            Array.Empty<LogicBlockDto>(),
+            Array.Empty<LogicRelayDto>(),
+            0);
     }
 
     /// <summary>Evaluated logic state, from GET /api/logic/state.</summary>
@@ -182,6 +199,27 @@ public sealed class BridgeApiClient : IDisposable
         HmiLogicSaveResponse? body = await http.Content.ReadFromJsonAsync<HmiLogicSaveResponse>(JsonOptions, ct)
             .ConfigureAwait(false);
         return new HmiLogicSaveResult(true, body?.Block ?? block, body?.Version ?? 0, null);
+    }
+
+    /// <summary>
+    /// Saves the relay/tag bindings; a rejected save answers with the bridge's own error text.
+    /// The whole table is replaced, so the caller sends every binding it knows.
+    /// </summary>
+    public async Task<HmiLogicRelaySaveResult> SaveLogicRelaysAsync(
+        IReadOnlyList<LogicRelayDto> relays,
+        CancellationToken ct)
+    {
+        using HttpResponseMessage http = await client_
+            .PostAsJsonAsync("api/logic/relays", new { relays }, JsonOptions, ct)
+            .ConfigureAwait(false);
+        if (!http.IsSuccessStatusCode)
+        {
+            return new HmiLogicRelaySaveResult(false, null, 0, await ReadLogicErrorAsync(http, ct).ConfigureAwait(false));
+        }
+
+        HmiLogicRelaySaveResponse? body = await http.Content.ReadFromJsonAsync<HmiLogicRelaySaveResponse>(JsonOptions, ct)
+            .ConfigureAwait(false);
+        return new HmiLogicRelaySaveResult(true, body?.Relays ?? relays, body?.Version ?? 0, null);
     }
 
     /// <summary>Deletes one logic block; a rejected delete answers with the bridge's own error text.</summary>

@@ -4159,9 +4159,12 @@ function renderMappingRow(mapping) {
     const deadband = Number(mapping.deadbandPct ?? mapping.DeadbandPct ?? 0);
     const access = deriveAccess(mapping);
     const simulated = (mode === 'Manual');
+    // An internal tag is held by the bridge (an internal relay drives it, or a write sets it):
+    // no source poll behind it, so it is labelled apart from the polled tags.
+    const internalTag = (mode === 'Internal');
     let accessBadge;
     if (!enabled) { accessBadge = badge('Disabled', 'bad'); }
-    else { accessBadge = badge(access + (simulated && access !== 'Write' ? ' / Sim' : ''), access === 'Read' ? 'good' : access === 'Read-Write' ? 'partial' : 'warn'); }
+    else { accessBadge = badge(access + (simulated && access !== 'Write' ? ' / Sim' : '') + (internalTag && access !== 'Write' ? ' / Int' : ''), access === 'Read' ? 'good' : access === 'Read-Write' ? 'partial' : 'warn'); }
     const rateBadge = pollRate > 0 ? `<span class="pill" style="padding:1px 6px;font-size:var(--fs-micro)">${pollRate}ms</span>` : '';
     const subName = String(mapping.subscription ?? mapping.Subscription ?? '').trim();
     const subBadge = subName ? `<span class="pill" style="padding:1px 6px;font-size:var(--fs-micro)" title="UA subscription">${esc(subName)}</span>` : '';
@@ -4455,10 +4458,21 @@ function updateManualInputState() {
     const manualInput = el('fpManualInput');
     if (!simCheck || !manualInput) return;
     manualInput.disabled = !simCheck.checked;
-    el('fpModeHint').textContent = simCheck.checked
-        ? 'Simulation ON: bridge publishes the Manual Value to UA instead of reading from DA.'
-        : 'Simulation OFF: bridge reads from DA (for Read/Read-Write). Toggle to inject a fixed value.';
+    const internalTag = !simCheck.checked && faceplateKey
+        ? mappingModeOf(getMapping(...faceplateKey.split('\u0000'))) === 'Internal'
+        : false;
+    el('fpModeHint').textContent = internalTag
+        ? 'Internal tag: the bridge holds this value — the coil of an internal relay bound to it drives it, or a write sets it; nothing is polled and nothing is sent to a device.'
+        : simCheck.checked
+            ? 'Simulation ON: bridge publishes the Manual Value to UA instead of reading from DA.'
+            : 'Simulation OFF: bridge reads from DA (for Read/Read-Write). Toggle to inject a fixed value.';
     updateManualValueHint();
+}
+
+// The mapping's mode, tolerating both wire spellings (the dashboard reads camelCase DTOs and,
+// on some paths, the stored PascalCase objects).
+function mappingModeOf(mapping) {
+    return String((mapping && (mapping.mode || mapping.Mode)) || 'Source');
 }
 
 // Which type a Manual Value must parse as, mirroring the server (ManualValueConverter):
@@ -10248,7 +10262,9 @@ function bindDynamicButtons() {
                     }
                     payload.manualValue = manualField.value.trim() || '';
                 } else {
-                    payload.mode = 'Source';
+                    // An internal tag is held by the bridge: saving its faceplate must not turn
+                    // it back into a polled source tag (the relay binding drives its value).
+                    payload.mode = mappingModeOf(getMapping(sourceId, itemId)) === 'Internal' ? 'Internal' : 'Source';
                     payload.manualValue = null;
                 }
             }).then(() => {
@@ -10267,7 +10283,15 @@ function bindDynamicButtons() {
         if (target.id === 'fpEnabled') {
             updateMapping(target.dataset.sourceId || '', target.dataset.itemId || '', payload => {
                 payload.enabled = target.checked;
-                if (!target.checked) { payload.mode = 'Source'; payload.manualValue = null; payload.writeable = false; }
+                if (!target.checked) {
+                    // Disabling stops a simulation; an internal tag keeps its mode — it is held
+                    // by the bridge, not read from a source.
+                    if (mappingModeOf(getMapping(target.dataset.sourceId || '', target.dataset.itemId || '')) !== 'Internal') {
+                        payload.mode = 'Source';
+                    }
+                    payload.manualValue = null;
+                    payload.writeable = false;
+                }
             }).then(() => openFaceplate(target.dataset.sourceId || '', target.dataset.itemId || '')).catch(e => el('fpMessage').textContent = 'Update failed: ' + e.message);
             return;
         }

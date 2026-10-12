@@ -48,7 +48,9 @@ public static class LogicStateEvaluator
         Func<string, string, BridgeValueSnapshot?> valueLookup,
         Func<string, string, TagMapping?> mappingLookup,
         DateTime nowUtc,
-        LogicStateStore? states = null)
+        LogicStateStore? states = null,
+        IReadOnlyDictionary<string, LogicRelayDto>? relays = null,
+        Action<LogicRelayDto, bool>? publishRelay = null)
     {
         ArgumentNullException.ThrowIfNull(blocks);
 
@@ -63,7 +65,7 @@ public static class LogicStateEvaluator
 
             foreach (LogicBlockDto block in blocks.OrderBy(block => block.Order))
             {
-                snapshot.Blocks.Add(EvaluateBlock(block, valueLookup, mappingLookup, states, nowUtc));
+                snapshot.Blocks.Add(EvaluateBlock(block, valueLookup, mappingLookup, states, nowUtc, relays, publishRelay));
             }
 
             return snapshot;
@@ -74,12 +76,29 @@ public static class LogicStateEvaluator
         }
     }
 
+    /// <summary>Relay bindings keyed by canonical relay name, for the evaluator's relay lookups.</summary>
+    public static IReadOnlyDictionary<string, LogicRelayDto> BuildRelayIndex(IEnumerable<LogicRelayDto>? relays)
+    {
+        Dictionary<string, LogicRelayDto> index = new(StringComparer.OrdinalIgnoreCase);
+        foreach (LogicRelayDto relay in relays ?? Array.Empty<LogicRelayDto>())
+        {
+            if (!string.IsNullOrWhiteSpace(relay.Name))
+            {
+                index[relay.Name.Trim()] = relay;
+            }
+        }
+
+        return index;
+    }
+
     public static LogicBlockStateDto EvaluateBlock(
         LogicBlockDto block,
         Func<string, string, BridgeValueSnapshot?> valueLookup,
         Func<string, string, TagMapping?> mappingLookup,
         LogicStateStore? states = null,
-        DateTime nowUtc = default)
+        DateTime nowUtc = default,
+        IReadOnlyDictionary<string, LogicRelayDto>? relays = null,
+        Action<LogicRelayDto, bool>? publishRelay = null)
     {
         ArgumentNullException.ThrowIfNull(block);
 
@@ -93,10 +112,10 @@ public static class LogicStateEvaluator
         {
             // A disabled block is still reported element by element, but its coils must not
             // drive relays — a disabled interlock has no say in what the plant does.
-            EvaluateNetwork(LogicNetwork.For(block), valueLookup, mappingLookup, states, execute: false, nowUtc, elements);
+            EvaluateNetwork(LogicNetwork.For(block), valueLookup, mappingLookup, states, execute: false, nowUtc, elements, relays, publishRelay);
             foreach (LogicStepDto step in block.Steps)
             {
-                EvaluateNetwork(LogicNetwork.For(step), valueLookup, mappingLookup, states, execute: false, nowUtc, elements);
+                EvaluateNetwork(LogicNetwork.For(step), valueLookup, mappingLookup, states, execute: false, nowUtc, elements, relays, publishRelay);
             }
 
             state = LogicBlockStates.Disabled;
@@ -104,12 +123,12 @@ public static class LogicStateEvaluator
         }
         else if (string.Equals(block.Kind, LogicBlockKinds.Sequence, StringComparison.OrdinalIgnoreCase))
         {
-            (state, reason) = EvaluateSequence(block, valueLookup, mappingLookup, states, nowUtc, elements, steps);
+            (state, reason) = EvaluateSequence(block, valueLookup, mappingLookup, states, nowUtc, elements, steps, relays, publishRelay);
         }
         else
         {
             (bool? output, string? failing, string? missing) =
-                EvaluateNetwork(LogicNetwork.For(block), valueLookup, mappingLookup, states, execute: true, nowUtc, elements);
+                EvaluateNetwork(LogicNetwork.For(block), valueLookup, mappingLookup, states, execute: true, nowUtc, elements, relays, publishRelay);
             (state, reason) = BlockVerdict(output, failing, missing);
         }
 
@@ -161,7 +180,9 @@ public static class LogicStateEvaluator
         LogicStateStore? states,
         DateTime nowUtc,
         List<LogicElementStateDto> elements,
-        List<LogicStepStateDto> steps)
+        List<LogicStepStateDto> steps,
+        IReadOnlyDictionary<string, LogicRelayDto>? relays = null,
+        Action<LogicRelayDto, bool>? publishRelay = null)
     {
         bool foundCurrent = false;
         LogicStepStateDto? current = null;
@@ -171,7 +192,7 @@ public static class LogicStateEvaluator
         {
             // A disabled block never reaches here, so a step's coils always drive their relays.
             (bool? output, string? failing, string? missing) =
-                EvaluateNetwork(LogicNetwork.For(step), valueLookup, mappingLookup, states, execute: true, nowUtc, elements);
+                EvaluateNetwork(LogicNetwork.For(step), valueLookup, mappingLookup, states, execute: true, nowUtc, elements, relays, publishRelay);
             bool stepDone = output == true;
 
             bool completionConfigured = !string.IsNullOrWhiteSpace(step.CompletionSourceId)
@@ -262,7 +283,9 @@ public static class LogicStateEvaluator
         LogicStateStore? states,
         bool execute,
         DateTime nowUtc,
-        List<LogicElementStateDto> target)
+        List<LogicElementStateDto> target,
+        IReadOnlyDictionary<string, LogicRelayDto>? relays = null,
+        Action<LogicRelayDto, bool>? publishRelay = null)
     {
         List<bool?> outputs = new();
         string? failing = null;
@@ -270,7 +293,7 @@ public static class LogicStateEvaluator
 
         foreach (LogicElementDto root in roots)
         {
-            bool? output = EvaluateElement(root, 0, valueLookup, mappingLookup, states, execute, nowUtc, target, out string? reason, out string? missingLeaf);
+            bool? output = EvaluateElement(root, 0, valueLookup, mappingLookup, states, execute, nowUtc, target, out string? reason, out string? missingLeaf, relays, publishRelay);
             if (IsWarn(root))
             {
                 // A warn element at the root is reported but never gates the block.
@@ -307,7 +330,9 @@ public static class LogicStateEvaluator
         DateTime nowUtc,
         List<LogicElementStateDto> target,
         out string? reason,
-        out string? missing)
+        out string? missing,
+        IReadOnlyDictionary<string, LogicRelayDto>? relays = null,
+        Action<LogicRelayDto, bool>? publishRelay = null)
     {
         LogicElementStateDto row = new()
         {
@@ -323,7 +348,7 @@ public static class LogicStateEvaluator
         List<string?> inputMissing = new();
         foreach (LogicElementDto input in element.Inputs)
         {
-            bool? value = EvaluateElement(input, depth + 1, valueLookup, mappingLookup, states, execute, nowUtc, target, out string? inputReason, out string? inputMissingLeaf);
+            bool? value = EvaluateElement(input, depth + 1, valueLookup, mappingLookup, states, execute, nowUtc, target, out string? inputReason, out string? inputMissingLeaf, relays, publishRelay);
             // A warn element is reported but inert: it neither satisfies nor blocks its parent.
             if (!IsWarn(input))
             {
@@ -338,12 +363,12 @@ public static class LogicStateEvaluator
         if (kind == LogicElementKinds.Contact)
         {
             output = LogicElementKinds.IsRelayContact(element)
-                ? EvaluateRelayContact(element, row, states)
+                ? EvaluateRelayContact(element, row, states, relays, valueLookup)
                 : EvaluateContact(element, row, valueLookup, mappingLookup);
         }
         else
         {
-            output = EvaluateBlockElement(element, kind, inputs, row, states, execute, nowUtc);
+            output = EvaluateBlockElement(element, kind, inputs, row, states, execute, nowUtc, relays, publishRelay);
         }
 
         row.State = StateOf(output);
@@ -422,16 +447,30 @@ public static class LogicStateEvaluator
     /// is off, unknown while no coil has driven it (a typo'd or not-yet-authored relay is visible
     /// rather than a silent false). The relay is shared, so the coil may live in any block — the
     /// pass's order decides whether this read sees that write or the previous pass's value.
+    /// A relay bound to a tag and not driven by any coil takes its value from that tag (the
+    /// free M), so an operator write or a device bit reads here like any tag contact.
     /// </summary>
     private static bool? EvaluateRelayContact(
         LogicElementDto element,
         LogicElementStateDto row,
-        LogicStateStore? states)
+        LogicStateStore? states,
+        IReadOnlyDictionary<string, LogicRelayDto>? relays,
+        Func<string, string, BridgeValueSnapshot?> valueLookup)
     {
         bool normallyOpen = !string.Equals(element.Op, LogicConditionOps.Off, StringComparison.OrdinalIgnoreCase);
         row.Should = normallyOpen ? "1" : "0";
 
         bool? relay = states?.TryGetRelay(element.Relay);
+        if (relay is null && LookupBoundRelay(relays, element.Relay) is LogicRelayDto binding)
+        {
+            BridgeValueSnapshot? snapshot = valueLookup(binding.SourceId, binding.ItemId);
+            if (snapshot is not null && snapshot.IsGood)
+            {
+                relay = TagDigital.CoerceBool(snapshot.Value);
+                row.TimestampUtc = snapshot.TimestampUtc;
+            }
+        }
+
         if (relay is null)
         {
             row.ValueText = "—";
@@ -444,6 +483,17 @@ public static class LogicStateEvaluator
         return matched;
     }
 
+    private static LogicRelayDto? LookupBoundRelay(
+        IReadOnlyDictionary<string, LogicRelayDto>? relays,
+        string name)
+    {
+        return relays is not null
+            && relays.TryGetValue(name, out LogicRelayDto? binding)
+            && LogicRelays.IsBound(binding)
+                ? binding
+                : null;
+    }
+
     private static bool? EvaluateBlockElement(
         LogicElementDto element,
         string kind,
@@ -451,7 +501,9 @@ public static class LogicStateEvaluator
         LogicElementStateDto row,
         LogicStateStore? states,
         bool execute,
-        DateTime nowUtc)
+        DateTime nowUtc,
+        IReadOnlyDictionary<string, LogicRelayDto>? relays = null,
+        Action<LogicRelayDto, bool>? publishRelay = null)
     {
         bool? first = inputs.Count > 0 ? inputs[0] : null;
         switch (kind)
@@ -460,11 +512,17 @@ public static class LogicStateEvaluator
             {
                 // A coil drives its relay with its input every pass (level, not edge) and passes
                 // the value through, so it can sit inside any gate. An unknown input writes
-                // nothing — the relay keeps the value the last pass's coil gave it.
+                // nothing — the relay keeps the value the last pass's coil gave it. A bound
+                // relay's state is published onto its tag here, in scan order, so the tag shows
+                // the M everywhere tags are shown.
                 row.ValueText = first is null ? "—" : first.Value ? "1" : "0";
-                if (execute && first is not null && states is not null)
+                if (execute && first is not null)
                 {
-                    states.SetRelay(element.Relay, first.Value);
+                    states?.SetRelay(element.Relay, first.Value);
+                    if (LookupBoundRelay(relays, element.Relay) is LogicRelayDto binding)
+                    {
+                        publishRelay?.Invoke(binding, first.Value);
+                    }
                 }
 
                 return first;

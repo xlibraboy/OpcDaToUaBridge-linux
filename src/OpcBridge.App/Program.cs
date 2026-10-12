@@ -220,6 +220,10 @@ builder.Services.AddSingleton<LogicNoteStore>();
 // counter values, latch and edge state), shared by the API read and the hub broadcaster so
 // both report the same state.
 builder.Services.AddSingleton<LogicStateStore>();
+// Internal relays (M coils) bound to a tag publish their state onto it: the value cache and
+// the OPC UA node, plus a device-backed tag through the write path, on change only.
+builder.Services.AddSingleton<ILogicRelayWriteSink>(sp => sp.GetRequiredService<BridgeWorker>());
+builder.Services.AddSingleton<LogicRelayPublisher>();
 builder.Services.AddSingleton<IInterlinkMetadataResolver>(sp => sp.GetRequiredService<BridgeWorker>());
 builder.Services.AddSingleton<UaServerHost>();
 builder.Services.AddSingleton<OpcUaBrowseService>();
@@ -294,8 +298,8 @@ app.MapGet("/", (HttpContext ctx) => {
     return Results.Bytes(System.Text.Encoding.UTF8.GetBytes(DashboardPage.FullHtml), "text/html; charset=utf-8");
 });
 app.MapGet("/api/values", (BridgeState state) => Results.Json(new { values = state.GetValues() }));
-app.MapGet("/api/hmi/tags", (MappingStore mappingStore, BridgeState state, DaRuntimeSettings daSettings) =>
-    Results.Json(HmiTagSnapshot.Build(mappingStore, state, daSettings.GetSnapshot())));
+app.MapGet("/api/hmi/tags", (MappingStore mappingStore, BridgeState state, DaRuntimeSettings daSettings, LogicStore logicStore) =>
+    Results.Json(HmiTagSnapshot.Build(mappingStore, state, daSettings.GetSnapshot(), logicStore)));
 app.MapPost("/api/hmi/write", async (HmiWriteRequest request, BridgeWorker worker, CancellationToken ct) =>
 {
     (bool ok, string? error) = await worker.TryHmiWriteAsync(
@@ -1765,8 +1769,8 @@ app.MapDelete("/api/interlinks/{id:guid}", (Guid id, InterlinkStore store) =>
 // default role table (reads Viewer, mutations Engineer).
 app.MapGet("/api/logic", (LogicStore store) =>
 {
-    (IReadOnlyList<LogicBlockDto> blocks, long version) = store.GetSnapshot();
-    return Results.Json(new { blocks, version });
+    (IReadOnlyList<LogicBlockDto> blocks, IReadOnlyList<LogicRelayDto> relays, long version) = store.GetSnapshot();
+    return Results.Json(new { blocks, relays, version });
 });
 app.MapPost("/api/logic/blocks", (LogicBlockSaveRequest request, LogicStore store) =>
 {
@@ -1793,13 +1797,35 @@ app.MapDelete("/api/logic/blocks/{id:guid}", (Guid id, LogicStore store) =>
 
     return Results.Json(new { version });
 });
-app.MapGet("/api/logic/state", (LogicStore store, MappingStore mappingStore, BridgeState state, LogicStateStore logicStates) =>
-    Results.Json(LogicStateRead.Snapshot(store, mappingStore, state, DateTime.UtcNow, logicStates)));
+// The relay/tag bindings: which tag an M's state is shown on. A tag that does not exist yet is
+// created as a bridge-held (Mode Internal) tag, so binding an M to a tag is one step: the relay
+// drives it, it is never polled, and the binding's write policy decides who may write it.
+app.MapPost("/api/logic/relays", (LogicRelaySaveRequest request, LogicStore store, MappingStore mappings) =>
+{
+    if (request.Relays is null)
+    {
+        return Results.BadRequest(new { error = "Relays are required." });
+    }
+
+    if (!store.TrySetRelays(request.Relays, out IReadOnlyList<LogicRelayDto> saved, out long version, out string? error))
+    {
+        return Results.BadRequest(new { error });
+    }
+
+    foreach (LogicRelayDto relay in saved)
+    {
+        EnsureRelayTag(mappings, relay);
+    }
+
+    return Results.Json(new { relays = saved, version });
+});
+app.MapGet("/api/logic/state", (LogicStore store, MappingStore mappingStore, BridgeState state, LogicStateStore logicStates, LogicRelayPublisher relayPublisher) =>
+    Results.Json(LogicStateRead.Snapshot(store, mappingStore, state, DateTime.UtcNow, logicStates, relayPublisher.Publish)));
 app.MapGet("/api/logic/notes", (LogicNoteStore notes, Guid? blockId, int? limit) =>
     Results.Json(new { notes = notes.Get(blockId, limit ?? 50) }));
 app.MapPost("/api/logic/notes", (LogicNoteAddRequest request, LogicNoteStore notes, LogicStore store, HttpContext context) =>
 {
-    (IReadOnlyList<LogicBlockDto> blocks, _) = store.GetSnapshot();
+    (IReadOnlyList<LogicBlockDto> blocks, _, _) = store.GetSnapshot();
     if (!blocks.Any(block => block.Id == request.BlockId))
     {
         return Results.NotFound(new { error = "Block not found." });
@@ -3575,6 +3601,46 @@ static MelsecA3nClientOptions? ResolveMelsecTestOptions(MelsecTestConnectionRequ
     }
 
     return null;
+}
+
+/// <summary>
+/// Makes sure the tag a relay is bound to exists. A binding that names a tag the bridge does
+/// not have yet creates it as a bridge-held (Mode Internal) Boolean: the relay drives its value,
+/// nothing polls it, and the binding's write policy decides who may write it. An existing tag is
+/// left exactly as the operator configured it — the binding only says what the M's state is
+/// shown on.
+/// </summary>
+static void EnsureRelayTag(MappingStore mappings, LogicRelayDto relay)
+{
+    if (!LogicRelays.IsBound(relay))
+    {
+        return;
+    }
+
+    (IReadOnlyList<TagMapping> existing, _) = mappings.GetSnapshot();
+    foreach (TagMapping mapping in existing)
+    {
+        if (string.Equals(mapping.SourceId, relay.SourceId, StringComparison.OrdinalIgnoreCase)
+            && string.Equals(mapping.ItemId, relay.ItemId, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+    }
+
+    mappings.Add(new[]
+    {
+        new TagMapping
+        {
+            SourceId = relay.SourceId,
+            ItemId = relay.ItemId,
+            DisplayName = relay.ItemId,
+            DataType = "Boolean",
+            Enabled = true,
+            Mode = TagMode.Internal,
+            AccessRights = TagAccessRights.ReadWrite,
+            Digital = true
+        }
+    });
 }
 
 static TagMapping ToTagMapping(MappingTagDto tag) => new()

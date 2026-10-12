@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Microsoft.Extensions.Logging;
+using OpcBridge.Client;
 using OpcBridge.Core;
 using OpcBridge.Da;
 using OpcBridge.Mqtt;
@@ -14,7 +15,7 @@ using System.Text.Json;
 
 namespace OpcBridge.App;
 
-public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
+public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver, ILogicRelayWriteSink
 {
     private const int CoordinatorTickMs = 200;
 
@@ -22,6 +23,7 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
     private readonly BridgeState bridge_state_;
     private readonly MappingStore mapping_store_;
     private readonly InterlinkStore interlink_store_;
+    private readonly LogicStore? logic_store_;
     private readonly DaRuntimeSettings da_settings_;
     private readonly SourceClientFactory da_client_factory_;
     private readonly ILogger<BridgeWorker> logger_;
@@ -82,12 +84,14 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
         MqttRuntimeSettings mqttSettings,
         MqttValueStore mqttValues,
         IInfluxWriter influxWriter,
-        InfluxRuntimeSettings influxSettings)
+        InfluxRuntimeSettings influxSettings,
+        LogicStore? logicStore = null)
     {
         ua_server_ = uaServer;
         bridge_state_ = bridgeState;
         mapping_store_ = mappingStore;
         interlink_store_ = interlinkStore;
+        logic_store_ = logicStore;
         da_settings_ = daSettings;
         da_client_factory_ = daClientFactory;
         logger_ = logger;
@@ -118,11 +122,25 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
 
         try
         {
-            await ua_server_.StartAsync(activeMappings, stoppingToken).ConfigureAwait(false);
+            await ua_server_.StartAsync(UaMappings(activeMappings), stoppingToken).ConfigureAwait(false);
 
             write_queue_ = new WriteQueue();
             ua_server_.SetWriteHandler((value, tcs) =>
             {
+                TagMapping? target = FindMapping(value.SourceId, value.ItemId);
+                if (target is not null && IsInternalTag(target))
+                {
+                    // The bridge holds this tag's value: a UA write lands here, not on a device.
+                    tcs.TrySetResult(ApplyInternalValue(target, value.Value));
+                    return;
+                }
+
+                if (target is not null && RelayWriteRefusal(target) is not null)
+                {
+                    tcs.TrySetResult(false);
+                    return;
+                }
+
                 if (write_queue_ is null)
                 {
                     tcs.TrySetResult(false);
@@ -134,6 +152,7 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
             });
 
             long uaMappingVersion = mappingVersion;
+            long uaLogicVersion = logic_store_?.GetSnapshot().Version ?? 0;
             long appliedInterlinkVersion = interlinkVersion;
             long connectedVersion = -1;
             Dictionary<string, SourceSession> sessions = new(StringComparer.OrdinalIgnoreCase);
@@ -192,6 +211,16 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
                     try
                     {
                         ScanWatchdog(sessions, failedSourceQueue);
+
+                        // The plant logic's relay bindings decide which tags the logic owns, so a
+                        // logic change also re-projects the address space (read-only while driven).
+                        long logicVersion = logic_store_?.GetSnapshot().Version ?? 0;
+                        bool logicChanged = logicVersion != uaLogicVersion;
+                        if (logicChanged)
+                        {
+                            ua_server_.SyncMappings(UaMappings(activeMappings));
+                            uaLogicVersion = logicVersion;
+                        }
 
                         if (!failedSourceQueue.IsEmpty)
                         {
@@ -257,9 +286,10 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
                                 influx_enabled_keys_ = new HashSet<string>(
                                     activeMappings.Where(m => m.InfluxEnabled).Select(m => NormalizeKey(m.SourceId, m.ItemId)),
                                     StringComparer.OrdinalIgnoreCase);
-                                ua_server_.SyncMappings(activeMappings);
+                                ua_server_.SyncMappings(UaMappings(activeMappings));
                                 bridge_state_.RetainMappedValues(activeMappings);
                                 uaMappingVersion = mappingVersion;
+                                uaLogicVersion = logicVersion;
                                 await ReconcileUaMonitoredItemsAsync(
                                     sessions,
                                     cacheHolder.Cache,
@@ -1726,10 +1756,46 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
         return text;
     }
 
-    /// <summary>Write a value through the existing UA write path (WriteQueue → per-source consumer → DA). Same seam a UA client write uses.</summary>
+    /// <summary>
+    /// Write a value through the existing UA write path (WriteQueue → per-source consumer → DA).
+    /// Same seam a UA client write uses. A tag the bridge holds is set here instead, and a tag
+    /// the plant logic owns is refused — an M a coil drives is not an operator's to poke.
+    /// </summary>
     public async Task<bool> ApplyUaWriteAsync(string sourceId, string itemId, object? value, DateTime timestampUtc, CancellationToken ct)
     {
-        if (write_queue_ is null) return false;
+        return await WriteTagAsync(sourceId, itemId, value, fromLogic: false, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Sends a relay's state out to the tag it is bound to. This is the logic's own output, so
+    /// the operator guard does not apply to it; only a device-backed, writable tag is written.
+    /// </summary>
+    public async Task<bool> WriteRelayValueAsync(string sourceId, string itemId, object? value, CancellationToken ct)
+    {
+        return await WriteTagAsync(sourceId, itemId, value, fromLogic: true, ct).ConfigureAwait(false);
+    }
+
+    private async Task<bool> WriteTagAsync(string sourceId, string itemId, object? value, bool fromLogic, CancellationToken ct)
+    {
+        TagMapping? mapping = FindMapping(sourceId, itemId);
+        if (!fromLogic && mapping is not null)
+        {
+            if (IsInternalTag(mapping))
+            {
+                // The bridge holds this tag's value; there is no device to write it to.
+                return ApplyInternalValue(mapping, value);
+            }
+
+            if (RelayWriteRefusal(mapping) is not null)
+            {
+                return false;
+            }
+        }
+
+        if (write_queue_ is null)
+        {
+            return false;
+        }
 
         TaskCompletionSource<bool> tcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
         write_queue_.Enqueue(sourceId, new WriteRequest(sourceId, itemId, value, tcs));
@@ -1745,6 +1811,104 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
             tcs.TrySetResult(false);
             return false;
         }
+    }
+
+    /// <summary>A bridge-held tag (Mode Internal) is never polled and never written to a device.</summary>
+    private static bool IsInternalTag(TagMapping mapping) =>
+        string.Equals(mapping.Mode, TagMode.Internal, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Sets a bridge-held tag's value: the value cache and the OPC UA node, nothing else.</summary>
+    private bool ApplyInternalValue(TagMapping mapping, object? value)
+    {
+        object? typed = value;
+        if (value is not null && TagDigital.Resolve(mapping))
+        {
+            typed = TagDigital.ToTagValue(mapping.DataType, TagDigital.CoerceBool(value));
+        }
+
+        BridgeValue applied = new(mapping.SourceId, mapping.ItemId, typed, DateTime.UtcNow, 192, true);
+        bridge_state_.SetValue(applied);
+        ua_server_.UpdateValue(applied);
+        return true;
+    }
+
+    /// <summary>
+    /// Why a write to this tag is refused because the plant logic owns it — its relay is driven
+    /// by a coil and the binding does not allow writes — or null when the write may go on.
+    /// </summary>
+    private string? RelayWriteRefusal(TagMapping mapping)
+    {
+        LogicRelayRules rules = RelayRules();
+        if (!rules.TryGetByTag(mapping.SourceId, mapping.ItemId, out LogicRelayDto relay) || rules.IsWritable(relay))
+        {
+            return null;
+        }
+
+        return $"Tag belongs to internal relay {relay.Name}, which the plant logic drives — writes are blocked";
+    }
+
+    private LogicRelayRules RelayRules()
+    {
+        if (logic_store_ is null)
+        {
+            return LogicRelayRules.None;
+        }
+
+        (IReadOnlyList<LogicBlockDto> blocks, IReadOnlyList<LogicRelayDto> relays, long _) = logic_store_.GetSnapshot();
+        return LogicRelayRules.Build(relays, blocks);
+    }
+
+    /// <summary>
+    /// The mappings handed to the OPC UA server: a tag bound to a relay the logic owns is
+    /// projected read-only, so the address space itself says the tag cannot be written. The
+    /// write path refuses the same writes, so this is the visible half of one rule.
+    /// </summary>
+    private IReadOnlyList<TagMapping> UaMappings(IReadOnlyList<TagMapping> activeMappings)
+    {
+        LogicRelayRules rules = RelayRules();
+        if (!rules.HasBindings)
+        {
+            return activeMappings;
+        }
+
+        List<TagMapping> projected = new(activeMappings.Count);
+        bool changed = false;
+        for (int i = 0; i < activeMappings.Count; i++)
+        {
+            TagMapping mapping = activeMappings[i];
+            if (mapping.Writeable
+                && rules.TryGetByTag(mapping.SourceId, mapping.ItemId, out LogicRelayDto relay)
+                && !rules.IsWritable(relay))
+            {
+                TagMapping readOnly = mapping.Clone();
+                readOnly.Writeable = false;
+                readOnly.AccessRights = TagAccessRights.Read;
+                projected.Add(readOnly);
+                changed = true;
+            }
+            else
+            {
+                projected.Add(mapping);
+            }
+        }
+
+        return changed ? projected : activeMappings;
+    }
+
+    private TagMapping? FindMapping(string sourceId, string itemId)
+    {
+        (IReadOnlyList<TagMapping> mappings, _) = mapping_store_.GetSnapshot();
+        for (int i = 0; i < mappings.Count; i++)
+        {
+            TagMapping mapping = mappings[i];
+            if (string.Equals(mapping.SourceId, sourceId, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(mapping.ItemId, itemId, StringComparison.OrdinalIgnoreCase))
+            {
+                return mapping;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -1807,7 +1971,13 @@ public sealed class BridgeWorker : BackgroundService, IInterlinkMetadataResolver
             return (false, "Tag is read-only");
         }
 
-        if (write_queue_ is null)
+        string? refusal = RelayWriteRefusal(mapping);
+        if (refusal is not null)
+        {
+            return (false, refusal);
+        }
+
+        if (!IsInternalTag(mapping) && write_queue_ is null)
         {
             return (false, "Bridge write path is not ready");
         }

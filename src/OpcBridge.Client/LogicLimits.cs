@@ -14,4 +14,10 @@ public static class LogicLimits
 
     /// <summary>Longest internal relay name a coil or relay contact may carry (e.g. "M01").</summary>
     public const int MaxRelayNameLength = 16;
+
+    /// <summary>
+    /// Most relay/tag bindings the plant logic may declare. Only relays bound to a tag are
+    /// stored, so this bounds the M tags one bridge can hold.
+    /// </summary>
+    public const int MaxRelayBindings = 512;
 }

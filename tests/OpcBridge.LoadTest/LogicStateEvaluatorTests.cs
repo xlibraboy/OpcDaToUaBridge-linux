@@ -913,4 +913,149 @@ public sealed class LogicStateEvaluatorTests
         // Sixteen inversions: the tag's true passes through unchanged.
         Assert.Equal(LogicBlockStates.Ready, state.State);
     }
+
+    // ---- Relays bound to a tag (the M's I/O point) ----
+
+    private static IReadOnlyDictionary<string, LogicRelayDto> RelayIndex(params LogicRelayDto[] relays) =>
+        LogicStateEvaluator.BuildRelayIndex(relays);
+
+    private static LogicRelayDto BoundRelay(
+        string name = "M01",
+        string itemId = "Line01.Start",
+        string sourceId = "internal") => new()
+    {
+        Name = name,
+        SourceId = sourceId,
+        ItemId = itemId,
+        Write = LogicRelayWrites.Auto
+    };
+
+    [Fact]
+    public void AFreeRelay_ReadsTheValueOfTheTagItIsBoundTo()
+    {
+        LogicElementDto read = RelayContact("M01");
+        LogicBlockDto block = Network(read);
+
+        LogicBlockStateDto on = LogicStateEvaluator.EvaluateBlock(
+            block,
+            Values(("internal", "Line01.Start", true, true)),
+            Mappings(),
+            new LogicStateStore(),
+            Now,
+            RelayIndex(BoundRelay()));
+
+        Assert.Equal(LogicBlockStates.Ready, on.State);
+        Assert.Equal(LogicConditionStates.True, Row(on, read).State);
+        Assert.Equal("1", Row(on, read).ValueText);
+        Assert.True(Row(on, read).Matches);
+
+        LogicElementDto zeroContact = RelayContact("M01");
+        LogicBlockStateDto off = LogicStateEvaluator.EvaluateBlock(
+            Network(zeroContact),
+            Values(("internal", "Line01.Start", 0, true)),
+            Mappings(),
+            new LogicStateStore(),
+            Now,
+            RelayIndex(BoundRelay()));
+
+        Assert.Equal(LogicConditionStates.False, Row(off, zeroContact).State);
+    }
+
+    [Fact]
+    public void AFreeRelay_WithNoTagValueReadsUnknown()
+    {
+        LogicElementDto read = RelayContact("M01");
+        LogicBlockDto block = Network(read);
+
+        LogicBlockStateDto state = LogicStateEvaluator.EvaluateBlock(
+            block,
+            Values(),
+            Mappings(),
+            new LogicStateStore(),
+            Now,
+            RelayIndex(BoundRelay()));
+
+        Assert.Equal(LogicBlockStates.Unknown, state.State);
+        Assert.Equal(LogicConditionStates.Unknown, Row(state, read).State);
+        Assert.Equal("—", Row(state, read).ValueText);
+    }
+
+    [Fact]
+    public void ADrivenRelay_KeepsReadingItsCoil_NotTheTagItIsBoundTo()
+    {
+        LogicStateStore states = new();
+        LogicElementDto drive = Coil("M01", TagContact("PS1"));
+        LogicElementDto read = RelayContact("M01");
+        LogicBlockDto block = Network(drive, read);
+
+        // The tag says off while the coil drives on: the coil's value is the relay's.
+        LogicBlockStateDto state = LogicStateEvaluator.EvaluateBlock(
+            block,
+            Values(("sim", "PS1", true, true), ("internal", "Line01.Start", false, true)),
+            Mappings(),
+            states,
+            Now,
+            RelayIndex(BoundRelay()));
+
+        Assert.Equal(LogicConditionStates.True, Row(state, read).State);
+        Assert.Equal("1", Row(state, read).ValueText);
+    }
+
+    [Fact]
+    public void ACoil_PublishesItsValueOntoTheBoundTag()
+    {
+        LogicStateStore states = new();
+        List<(string Relay, bool Value)> published = new();
+        LogicBlockDto block = Network(Coil("M01", TagContact("PS1")));
+
+        LogicStateEvaluator.EvaluateBlock(
+            block,
+            Values(("sim", "PS1", true, true)),
+            Mappings(),
+            states,
+            Now,
+            RelayIndex(BoundRelay()),
+            (relay, value) => published.Add((relay.Name, value)));
+
+        Assert.Equal(("M01", true), Assert.Single(published));
+    }
+
+    [Fact]
+    public void ADisabledBlock_PublishesNothing()
+    {
+        LogicStateStore states = new();
+        List<(string Relay, bool Value)> published = new();
+        LogicBlockDto block = Network(Coil("M01", TagContact("PS1")));
+        block.Enabled = false;
+
+        LogicStateEvaluator.EvaluateBlock(
+            block,
+            Values(("sim", "PS1", true, true)),
+            Mappings(),
+            states,
+            Now,
+            RelayIndex(BoundRelay()),
+            (relay, value) => published.Add((relay.Name, value)));
+
+        Assert.Empty(published);
+        Assert.Null(states.TryGetRelay("M01"));
+    }
+
+    [Fact]
+    public void AnUnboundRelay_NeitherPublishesNorReadsATag()
+    {
+        List<(string Relay, bool Value)> published = new();
+        LogicBlockDto block = Network(Coil("M07", TagContact("PS1")));
+
+        LogicStateEvaluator.EvaluateBlock(
+            block,
+            Values(("sim", "PS1", true, true)),
+            Mappings(),
+            new LogicStateStore(),
+            Now,
+            RelayIndex(BoundRelay("M01")),
+            (relay, value) => published.Add((relay.Name, value)));
+
+        Assert.Empty(published);
+    }
 }

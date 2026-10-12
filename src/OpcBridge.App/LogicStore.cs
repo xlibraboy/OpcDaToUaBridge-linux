@@ -7,7 +7,8 @@ namespace OpcBridge.App;
 
 /// <summary>
 /// Persists the plant logic blocks authored in the dashboard's Logic tab
-/// (<c>logic.json</c> in the data directory). Mirrors <see cref="InterlinkStore"/>: one
+/// (<c>logic.json</c> in the data directory): the blocks plus the relay/tag bindings of the
+/// internal relays (M coils) they use. Mirrors <see cref="InterlinkStore"/>: one
 /// coarse lock, an in-memory version counter, whole-file persistence and a
 /// validate-all-or-nothing save. Unlike the interlink store it raises
 /// <see cref="Changed"/> so the HMI broadcaster re-evaluates and pushes the new state.
@@ -34,23 +35,24 @@ public sealed class LogicStore
     private readonly object sync_ = new();
     private readonly string persist_path_;
     private List<LogicBlockDto> blocks_;
+    private List<LogicRelayDto> relays_;
     private long version_;
 
     public LogicStore(IOptions<BridgeOptions> options)
     {
         _ = options;
         persist_path_ = DataDirectory.Combine("logic.json");
-        blocks_ = LoadFromDisk() ?? new List<LogicBlockDto>();
+        (blocks_, relays_) = LoadFromDisk();
     }
 
     /// <summary>Raised after a change, with the new version (outside the lock).</summary>
     public event Action<long>? Changed;
 
-    public (IReadOnlyList<LogicBlockDto> Blocks, long Version) GetSnapshot()
+    public (IReadOnlyList<LogicBlockDto> Blocks, IReadOnlyList<LogicRelayDto> Relays, long Version) GetSnapshot()
     {
         lock (sync_)
         {
-            return (blocks_.ToArray(), version_);
+            return (blocks_.ToArray(), relays_.ToArray(), version_);
         }
     }
 
@@ -136,6 +138,142 @@ public sealed class LogicStore
 
         Changed?.Invoke(newVersion);
         version = newVersion;
+        return true;
+    }
+
+    /// <summary>
+    /// Replaces the whole relay/tag binding table — the Logic editor's Save for the relays its
+    /// blocks use. A binding names the tag the relay's state is shown on; relays left unbound
+    /// are not stored at all (their value is the bridge's memory only).
+    /// </summary>
+    public bool TrySetRelays(
+        IEnumerable<LogicRelayDto> relays,
+        out IReadOnlyList<LogicRelayDto> saved,
+        out long version,
+        out string? error)
+    {
+        ArgumentNullException.ThrowIfNull(relays);
+
+        long newVersion;
+        List<LogicRelayDto> normalized;
+        lock (sync_)
+        {
+            if (!TryNormalizeRelays(relays, out normalized, out error))
+            {
+                saved = Array.Empty<LogicRelayDto>();
+                version = version_;
+                return false;
+            }
+
+            relays_ = normalized;
+            version_++;
+            Persist();
+            newVersion = version_;
+        }
+
+        Changed?.Invoke(newVersion);
+        saved = normalized.ToArray();
+        version = newVersion;
+        error = null;
+        return true;
+    }
+
+    /// <summary>
+    /// Normalizes the binding table: names canonicalized, unbound entries dropped (a relay
+    /// without a tag has nothing to store), duplicates refused, the count bounded. Write is
+    /// canonicalized; SourceId of a bound tag defaults to the bridge's default source.
+    /// </summary>
+    private static bool TryNormalizeRelays(
+        IEnumerable<LogicRelayDto> relays,
+        out List<LogicRelayDto> normalized,
+        out string? error)
+    {
+        normalized = new List<LogicRelayDto>();
+        HashSet<string> names = new(StringComparer.OrdinalIgnoreCase);
+
+        foreach (LogicRelayDto relay in relays)
+        {
+            if (relay is null)
+            {
+                continue;
+            }
+
+            if (!TryNormalizeRelayBinding(relay, out LogicRelayDto? bound, out error))
+            {
+                return false;
+            }
+
+            if (bound is null)
+            {
+                continue;
+            }
+
+            if (!names.Add(bound.Name))
+            {
+                error = $"Relay {bound.Name} is listed twice.";
+                return false;
+            }
+
+            if (normalized.Count == LogicLimits.MaxRelayBindings)
+            {
+                error = $"At most {LogicLimits.MaxRelayBindings} relay tags can be bound.";
+                return false;
+            }
+
+            normalized.Add(bound);
+        }
+
+        error = null;
+        return true;
+    }
+
+    /// <summary>
+    /// One relay binding, or null for an unbound entry (nothing to store). The name must be a
+    /// valid relay; a binding needs both halves of the tag pair, and a write policy is optional.
+    /// </summary>
+    private static bool TryNormalizeRelayBinding(
+        LogicRelayDto relay,
+        out LogicRelayDto? normalized,
+        out string? error)
+    {
+        if (!TryNormalizeRelay(relay.Name, out string name, out error))
+        {
+            normalized = null;
+            return false;
+        }
+
+        if (name.Length == 0)
+        {
+            normalized = null;
+            error = "A relay binding needs a relay name (e.g. M01).";
+            return false;
+        }
+
+        string itemId = relay.ItemId?.Trim() ?? string.Empty;
+        string sourceId = relay.SourceId?.Trim() ?? string.Empty;
+        if (itemId.Length == 0)
+        {
+            // Not bound to a tag: the relay is the bridge's own memory, nothing to store.
+            normalized = null;
+            error = null;
+            return true;
+        }
+
+        if (itemId.Length > 256)
+        {
+            normalized = null;
+            error = "A relay tag name is at most 256 characters.";
+            return false;
+        }
+
+        normalized = new LogicRelayDto
+        {
+            Name = name,
+            SourceId = sourceId.Length == 0 ? DaRuntimeSettings.DefaultSourceId : sourceId,
+            ItemId = itemId,
+            Write = LogicRelayWrites.Normalize(relay.Write)
+        };
+        error = null;
         return true;
     }
 
@@ -827,7 +965,7 @@ public sealed class LogicStore
     {
         try
         {
-            string json = JsonSerializer.Serialize(blocks_, JsonOptions);
+            string json = JsonSerializer.Serialize(new LogicFileDto { Relays = relays_, Blocks = blocks_ }, JsonOptions);
             File.WriteAllText(persist_path_, json);
         }
         catch
@@ -835,49 +973,82 @@ public sealed class LogicStore
         }
     }
 
-    private List<LogicBlockDto>? LoadFromDisk()
+    /// <summary>
+    /// Reads <c>logic.json</c>. The current shape is an object holding the relay bindings and the
+    /// blocks; a bare array is the pre-relay shape and loads as blocks only, so an older file is
+    /// never lost. Blocks (and bindings) that no longer validate are dropped and the file is
+    /// rewritten clean, so one bad hand-edit cannot take the whole store down.
+    /// </summary>
+    private (List<LogicBlockDto> Blocks, List<LogicRelayDto> Relays) LoadFromDisk()
     {
+        List<LogicBlockDto> noBlocks = new();
         try
         {
             if (!File.Exists(persist_path_))
             {
-                return null;
+                return (noBlocks, new List<LogicRelayDto>());
             }
 
             string json = File.ReadAllText(persist_path_);
-            List<LogicBlockDto>? loaded = JsonSerializer.Deserialize<List<LogicBlockDto>>(json);
-            if (loaded is null)
+            List<LogicBlockDto>? loadedBlocks;
+            List<LogicRelayDto>? loadedRelays;
+            if (json.TrimStart().StartsWith('['))
             {
-                return null;
+                loadedBlocks = JsonSerializer.Deserialize<List<LogicBlockDto>>(json);
+                loadedRelays = new List<LogicRelayDto>();
+            }
+            else
+            {
+                LogicFileDto? file = JsonSerializer.Deserialize<LogicFileDto>(json);
+                loadedBlocks = file?.Blocks;
+                loadedRelays = file?.Relays;
             }
 
-            // Drop blocks that no longer validate so one bad hand-edit cannot take the
-            // whole store down, then rewrite the file clean.
-            List<LogicBlockDto> sanitized = new();
-            foreach (LogicBlockDto block in loaded)
+            if (loadedBlocks is null)
+            {
+                return (noBlocks, new List<LogicRelayDto>());
+            }
+
+            List<LogicBlockDto> blocks = new();
+            foreach (LogicBlockDto block in loadedBlocks)
             {
                 if (TryNormalize(block, out LogicBlockDto normalized, out _))
                 {
-                    sanitized.Add(normalized);
+                    blocks.Add(normalized);
                 }
             }
 
-            if (sanitized.Count != loaded.Count)
+            List<LogicRelayDto> relays = new();
+            HashSet<string> names = new(StringComparer.OrdinalIgnoreCase);
+            foreach (LogicRelayDto relay in loadedRelays ?? new List<LogicRelayDto>())
             {
-                try
+                if (relay is not null
+                    && TryNormalizeRelayBinding(relay, out LogicRelayDto? bound, out _)
+                    && bound is not null
+                    && names.Add(bound.Name))
                 {
-                    File.WriteAllText(persist_path_, JsonSerializer.Serialize(sanitized, JsonOptions));
-                }
-                catch
-                {
+                    relays.Add(bound);
                 }
             }
 
-            return sanitized;
+            if (blocks.Count != loadedBlocks.Count || relays.Count != (loadedRelays?.Count ?? 0))
+            {
+                File.WriteAllText(persist_path_, JsonSerializer.Serialize(new LogicFileDto { Relays = relays, Blocks = blocks }, JsonOptions));
+            }
+
+            return (blocks, relays);
         }
         catch
         {
-            return null;
+            return (noBlocks, new List<LogicRelayDto>());
         }
+    }
+
+    /// <summary>The persisted shape of <c>logic.json</c>.</summary>
+    private sealed class LogicFileDto
+    {
+        public List<LogicRelayDto> Relays { get; set; } = new();
+
+        public List<LogicBlockDto> Blocks { get; set; } = new();
     }
 }

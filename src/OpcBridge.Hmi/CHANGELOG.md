@@ -16,6 +16,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+**A relay row binds its M to a tag, and the tag shows the M's state.** A coil or relay contact
+row now carries the same **SOURCE** / **TAG** pickers a tag contact has: they are the tag the M
+is bound to — one binding per relay, so every row that names the same M shows the same tag, and
+an edit on one row mirrors onto the others before the save writes it. A new **WRITE** selector
+(`if free (auto)` / `always` / `never`) decides who may write that tag: the default keeps a
+driven M's tag read-only (the logic owns it) and hands a free M's tag to the operator. A tag the
+bridge does not have yet is created on save as a Boolean internal tag, so binding an M to a tag
+is one step; leaving `TAG` blank keeps the relay the bridge's own memory, exactly as before.
+The bindings are loaded with the definitions (`GET /api/logic`) and saved with the block
+(`POST /api/logic/relays`), and the page's **Guide…** documents the I/O rules.
+
 **The network editor authors internal relays (M coils).** The element kind list gained **Coil —
 drive internal relay (IN, M)**: it takes one input and drives the relay it names, and a contact
 row gained a **RELAY** field that turns it into a relay contact reading that relay instead of a

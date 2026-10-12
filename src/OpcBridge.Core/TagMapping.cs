@@ -106,11 +106,30 @@ public sealed class TagMapping
     /// The Maps import dialog shows it for a tag that is already mapped (issue #30).
     /// </summary>
     public DateTime? AddedUtc { get; set; }
+
+    /// <summary>
+    /// A copy of this mapping — every field is a value or an immutable string, so a shallow copy
+    /// is complete. Used to hand a projected mapping (e.g. read-only while the plant logic owns
+    /// the tag) to a consumer without touching the stored one.
+    /// </summary>
+    public TagMapping Clone() => (TagMapping)MemberwiseClone();
 }
 public static class TagMode
 {
     public const string Source = "Source";
     public const string Manual = "Manual";
+
+    /// <summary>
+    /// The bridge itself holds this tag's value: it is never read from a source and never
+    /// written out to one. Values arrive from the plant logic (an internal relay bound to this
+    /// tag) or from a writer — a UA client, the HMI or the dashboard — and live in the bridge's
+    /// memory, so a restart forgets them until something sets them again.
+    /// </summary>
+    public const string Internal = "Internal";
+
+    /// <summary>True when the mode (however spelled) means a bridge-held tag.</summary>
+    public static bool IsInternal(string? mode) =>
+        string.Equals(mode?.Trim(), Internal, StringComparison.OrdinalIgnoreCase);
 }
 
 public static class TagAccessRights
@@ -159,6 +178,24 @@ public static class TagDigital
     public static bool IsBooleanType(string? dataType) =>
         string.Equals(dataType, "Boolean", StringComparison.OrdinalIgnoreCase)
         || string.Equals(dataType, "Bool", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// A boolean carried in the tag's own declared type, so a value written into the node
+    /// matches its DataType: <c>true</c>/<c>false</c> for a Boolean, 1/0 as the numeric type,
+    /// "1"/"0" for a String, the raw bool for an "Auto" (BaseDataType) tag.
+    /// </summary>
+    public static object ToTagValue(string? dataType, bool value) =>
+        dataType?.Trim().ToUpperInvariant() switch
+        {
+            "BYTE" => (byte)(value ? 1 : 0),
+            "INT16" or "SHORT" => (short)(value ? 1 : 0),
+            "INT32" or "INT" => value ? 1 : 0,
+            "INT64" or "LONG" => value ? 1L : 0L,
+            "FLOAT" or "SINGLE" => value ? 1.0f : 0.0f,
+            "DOUBLE" or "REAL8" => value ? 1.0 : 0.0,
+            "STRING" => value ? "1" : "0",
+            _ => value
+        };
 
     /// <summary>
     /// Any non-zero / true value is on. Handles CLR primitives plus <see cref="System.Text.Json.JsonElement"/>

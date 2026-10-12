@@ -34,8 +34,10 @@ public static class UaSamplingRates
                 continue;
             }
 
-            if (string.Equals(mapping.Mode, TagMode.Manual, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(mapping.Mode, TagMode.Manual, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(mapping.Mode, TagMode.Internal, StringComparison.OrdinalIgnoreCase))
             {
+                // Manual and Internal tags carry their value in the bridge, not on the wire.
                 continue;
             }
 

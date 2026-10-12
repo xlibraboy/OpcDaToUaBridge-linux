@@ -63,13 +63,84 @@ public sealed class LogicBlockDto
 }
 
 /// <summary>
+/// One internal relay (an M coil's bit) and the tag it is bound to. A relay is the PLC's
+/// internal memory: a coil drives it and every block's NO/NC contacts, gates and function
+/// blocks read it — one binding per relay, shared by all of them.
+///
+/// Bound to a tag, the relay is also an I/O point: the coil publishes its state onto that tag
+/// (so the dashboard, HMI, trends, MQTT and OPC UA clients show the M like any other tag), a
+/// relay no coil drives takes its value from the tag, and writes to the tag are governed by
+/// <see cref="Write"/>. An unbound relay lives in the bridge's memory only.
+/// </summary>
+public sealed class LogicRelayDto
+{
+    /// <summary>Canonical relay name (e.g. "M01"), stored uppercase.</summary>
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>Tag the relay is bound to; both empty = no tag, the relay is memory only.</summary>
+    public string SourceId { get; set; } = string.Empty;
+
+    public string ItemId { get; set; } = string.Empty;
+
+    /// <summary>One of <see cref="LogicRelayWrites"/> — who may write the bound tag.</summary>
+    public string Write { get; set; } = LogicRelayWrites.Auto;
+}
+
+/// <summary>Who may write the tag a relay is bound to.</summary>
+public static class LogicRelayWrites
+{
+    /// <summary>Writable while no coil drives the relay (a free M); read-only while driven.</summary>
+    public const string Auto = "auto";
+
+    /// <summary>Always writable: a write pokes the M, and the coil overwrites it on the next pass.</summary>
+    public const string Allow = "allow";
+
+    /// <summary>Never writable — the tag only shows the relay's state.</summary>
+    public const string Never = "never";
+
+    public static readonly string[] All = { Auto, Allow, Never };
+
+    public static bool IsValid(string? write) =>
+        write is not null && Array.Exists(All, w => string.Equals(w, write.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Canonical spelling; anything unrecognized reads as <see cref="Auto"/>.</summary>
+    public static string Normalize(string? write) =>
+        IsValid(write)
+            ? Array.Find(All, w => string.Equals(w, write!.Trim(), StringComparison.OrdinalIgnoreCase))!
+            : Auto;
+}
+
+/// <summary>The relay/tag binding rules shared by the store, the engine and the editor.</summary>
+public static class LogicRelays
+{
+    /// <summary>
+    /// Source id given to a tag the bridge holds itself (no device behind it) — what a relay's
+    /// tag gets when it is created on binding. Never a configured source, so it is never polled.
+    /// </summary>
+    public const string InternalSourceId = "internal";
+
+    /// <summary>A binding is real only with an item id; a relay without one is memory only.</summary>
+    public static bool IsBound(LogicRelayDto? relay) =>
+        relay is not null && !string.IsNullOrWhiteSpace(relay.ItemId);
+
+    /// <summary>Case-insensitive key of a tag, the same pair every mapping lookup uses.</summary>
+    public static string TagKey(string? sourceId, string? itemId) =>
+        string.Concat(sourceId?.Trim(), "::", itemId?.Trim());
+
+    /// <summary>True while the tag pair names the bridge's own (never polled) holding area.</summary>
+    public static bool IsInternalSource(string? sourceId) =>
+        string.Equals(sourceId?.Trim(), InternalSourceId, StringComparison.OrdinalIgnoreCase);
+}
+
+/// <summary>
 /// One element of an IEC 61131-3 logic network. A contact (or a numeric comparison, which is
 /// the same element with a gt/lt/eq operator) is a leaf that reads one tag; a gate or a
 /// function block combines its <see cref="Inputs"/> — itself elements, so a network nests to
 /// any depth. Contacts are normally open (<c>on</c>) or normally closed (<c>off</c>).
 /// A contact carrying a <see cref="Relay"/> reads an internal relay instead of a tag, and a
 /// coil drives one — the PLC's internal memory, so a block's intermediate result can feed any
-/// other block's gates.
+/// other block's gates. What a relay is bound to (a tag the state is shown on) is declared once
+/// per relay in <see cref="LogicRelayDto"/>, not on the elements that reference it.
 /// </summary>
 public sealed class LogicElementDto
 {

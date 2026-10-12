@@ -471,8 +471,15 @@ public sealed class MappingStore
 
     private static string NormalizeMode(string? mode)
     {
-        return string.Equals(mode?.Trim(), TagMode.Manual, StringComparison.OrdinalIgnoreCase)
-            ? TagMode.Manual
+        if (string.Equals(mode?.Trim(), TagMode.Manual, StringComparison.OrdinalIgnoreCase))
+        {
+            return TagMode.Manual;
+        }
+
+        // Internal (bridge-held) tags are how an internal relay shows its state; anything else
+        // unrecognized stays a source tag, the historical default.
+        return string.Equals(mode?.Trim(), TagMode.Internal, StringComparison.OrdinalIgnoreCase)
+            ? TagMode.Internal
             : TagMode.Source;
     }
 

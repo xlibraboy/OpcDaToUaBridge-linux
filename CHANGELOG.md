@@ -19,6 +19,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+**Internal relays (M coils) can be bound to a tag, so an M's state is shown like any other tag.**
+A relay row (coil or relay contact) now carries the tag its M is bound to — `SOURCE` / `TAG`, the
+same pickers a tag contact has — and one binding per M, shared by every NO/NC contact and gate
+that reads that relay. A coil **drives** its bound tag: its evaluated value is published onto the
+tag (value cache, OPC UA node, HMI, trends, MQTT) in scan order, and on a device-backed tag the
+value is also written out through the normal write path, on change only; an internal tag stays in
+the bridge. A tag that does not exist yet is created on save as a Boolean **internal** tag
+(`Mode = Internal`) — the bridge holds its value, nothing polls it and nothing is sent to a
+device; a UA or HMI write to it sets the value locally instead of failing on a source that is not
+there. A free M (no coil anywhere, or only in a disabled block) takes its value **from** the tag,
+so an operator write or a device bit feeds the logic that reads it. Writing a bound tag is
+guarded: a relay a coil drives belongs to the logic and its tag is read-only, a free one belongs
+to the operator — per binding, with a `WRITE` selector (`if free (auto)` / `always` / `never`)
+for the deliberate cases. The same rule is enforced in every direction: a refused write answers
+with the reason (HMI/`/api/hmi/write`) or fails (OPC UA write), the UA node is projected
+read-only while the logic owns it, and `/api/hmi/tags` reports the effective `writeable` so the
+faceplate does not offer a write the bridge would reject. Bindings persist in `logic.json` (the
+file becomes `{ relays, blocks }`; a bare block array still loads) and are served by
+`GET /api/logic` and saved by `POST /api/logic/relays`; a tag bound to a relay keeps the
+dashboard's tag list, and saving an internal tag's faceplate no longer flips it back to Source.
+
 **Logic networks can drive and read internal relays (M coils).** The IEC 61131-3 vocabulary gained
 a **coil** element — it takes exactly one input, writes it onto the internal relay it names
 (`M01`) every pass, and passes the value through — and the contact gained a **relay** field: with

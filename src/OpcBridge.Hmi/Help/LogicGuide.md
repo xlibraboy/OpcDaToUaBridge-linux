@@ -103,6 +103,28 @@ Relay names are uppercase and start with a letter (`M01`, `StartPermit`, max 16 
 `m01` is stored as `M01`. Keep one coil per relay — if several blocks drive the same relay, the
 last one in scan order wins.
 
+## Showing an M's state on a tag
+
+A relay row (a coil or a relay contact) also carries the tag the M is **bound** to — `SOURCE`
+and `TAG`, exactly like a tag contact. One binding per M: every row that names the same relay
+shows the same tag, and every NO/NC contact and gate that reads the M reads that one state.
+
+- **A coil drives the tag.** Its evaluated value is published onto the tag — value cache, OPC UA
+  node, trends, MQTT and the HMI — so the M shows up in the tag list like any other tag. On a
+  device-backed tag the value is also written out through the normal write path, **on change
+  only**; an internal tag stays in the bridge.
+- **A tag that does not exist yet is created** as a Boolean internal tag when you save: the
+  bridge holds its value, nothing polls it. Edit it (name, on/off text, Influx, range) in the
+  dashboard like any other tag.
+- **A free M — no coil anywhere — takes its value from the tag**, so an operator write or a
+  device bit feeds the logic that reads it. Leave `TAG` blank and the M stays the bridge's own
+  memory, wired only to its coils and contacts.
+- **`WRITE` decides who may write the tag.** `if free (auto)` (the default): while a coil drives
+  the M the tag is read-only — the logic owns it — and while the M is free the tag is the
+  operator's. `always`: a write pokes the M and the next pass's coil overwrites it. `never`: the
+  tag only shows the state. A blocked write answers with the reason instead of being applied.
+- A disabled block's coil does not drive: its M counts as free, so its tag becomes writable.
+
 ---
 
 # Interlock group

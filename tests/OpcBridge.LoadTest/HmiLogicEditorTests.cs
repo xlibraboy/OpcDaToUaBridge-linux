@@ -632,6 +632,118 @@ public sealed class HmiLogicEditorTests
     }
 
     [Fact]
+    public void RelayRows_ShowTheTagTheRelayIsBoundTo()
+    {
+        LogicTagCatalog catalog = Catalog();
+        var bindings = new Dictionary<string, LogicRelayDto>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["M01"] = new LogicRelayDto
+            {
+                Name = "M01",
+                SourceId = "sim",
+                ItemId = "ns=2;s=Status/Line01.Permit",
+                Write = LogicRelayWrites.Never
+            }
+        };
+
+        var element = new LogicElementDto
+        {
+            Id = Guid.NewGuid(),
+            Kind = LogicElementKinds.Coil,
+            Relay = "M01",
+            Inputs =
+            {
+                new LogicElementDto
+                {
+                    Id = Guid.NewGuid(),
+                    Kind = LogicElementKinds.Contact,
+                    Text = "Permit must be given",
+                    SourceId = "sim",
+                    ItemId = "ns=2;s=Status/Line01.Permit",
+                    Op = LogicConditionOps.On
+                }
+            }
+        };
+
+        List<LogicElementRowViewModel> rows = LogicEditorCodec.LoadElements(
+            new List<LogicElementDto> { element }, catalog, null, new[] { "M01" }, bindings);
+
+        LogicElementRowViewModel coil = rows[0];
+        Assert.True(coil.ShowsTagFields);
+        Assert.True(coil.ShowsRelayWrite);
+        Assert.Equal("sim", coil.SourceId);
+        Assert.Equal("ns=2;s=Status/Line01.Permit", coil.ItemId);
+        Assert.Equal(LogicRelayWrites.Never, coil.RelayWrite.Value);
+
+        // The binding is not written back onto the element — the block stays relay-only.
+        LogicElementDto rebuilt = LogicEditorCodec.ElementFromRow(coil);
+        Assert.Equal("M01", rebuilt.Relay);
+        Assert.Equal(string.Empty, rebuilt.ItemId);
+
+        // What the row declares is the relay's binding, with the write policy as selected.
+        LogicRelayDto declared = Assert.Single(LogicEditorCodec.RelayBindingsFromRows(rows));
+        Assert.Equal("M01", declared.Name);
+        Assert.Equal("sim", declared.SourceId);
+        Assert.Equal("ns=2;s=Status/Line01.Permit", declared.ItemId);
+        Assert.Equal(LogicRelayWrites.Never, declared.Write);
+
+        // The coil and its input contact — nothing else carries the relay.
+        Assert.Equal(2, rows.Count);
+    }
+
+    [Fact]
+    public void ARelayRowWithoutABinding_DeclaresAnUnboundRelay()
+    {
+        var element = new LogicElementDto
+        {
+            Id = Guid.NewGuid(),
+            Kind = LogicElementKinds.Coil,
+            Relay = "m02",
+            Inputs =
+            {
+                new LogicElementDto
+                {
+                    Id = Guid.NewGuid(),
+                    Kind = LogicElementKinds.Contact,
+                    Text = "Permit must be given",
+                    SourceId = "sim",
+                    ItemId = "ns=2;s=Status/Line01.Permit",
+                    Op = LogicConditionOps.On
+                }
+            }
+        };
+
+        List<LogicElementRowViewModel> rows = LogicEditorCodec.LoadElements(
+            new List<LogicElementDto> { element }, Catalog(), null, new[] { "M02" });
+
+        Assert.False(rows[0].ShowsRelayWrite);
+        Assert.Equal(string.Empty, rows[0].ItemId);
+
+        LogicRelayDto declared = Assert.Single(LogicEditorCodec.RelayBindingsFromRows(rows));
+        Assert.Equal("M02", declared.Name);
+        Assert.False(LogicRelays.IsBound(declared));
+    }
+
+    [Fact]
+    public void RelayBindings_CompareIgnoringOrderAndSpelling()
+    {
+        LogicRelayDto first = new() { Name = "M01", SourceId = "sim", ItemId = "A", Write = "allow" };
+        LogicRelayDto second = new() { Name = "M02", SourceId = "sim", ItemId = "B", Write = LogicRelayWrites.Auto };
+
+        Assert.True(LogicEditorCodec.SameRelayBindings(
+            new[] { first, second },
+            new[]
+            {
+                new LogicRelayDto { Name = "M02", SourceId = "sim", ItemId = "B", Write = "AUTO" },
+                new LogicRelayDto { Name = "M01", SourceId = "SIM", ItemId = "A", Write = LogicRelayWrites.Allow }
+            }));
+
+        Assert.False(LogicEditorCodec.SameRelayBindings(
+            new[] { first, second },
+            new[] { second }));
+    }
+
+    [Fact]
     public void RelayContact_ACoercionBackToOnClearsTheTagAndTheValue()
     {
         LogicTagCatalog catalog = Catalog();

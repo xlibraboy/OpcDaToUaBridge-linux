@@ -42,15 +42,70 @@ public static class LogicEditorCodec
         IReadOnlyList<LogicElementDto> elements,
         LogicTagCatalog catalog,
         Action<LogicElementRowViewModel>? onRemove,
-        IEnumerable<string>? relayNames = null)
+        IEnumerable<string>? relayNames = null,
+        IReadOnlyDictionary<string, LogicRelayDto>? relayBindings = null)
     {
         var rows = new List<LogicElementRowViewModel>();
         foreach ((LogicElementDto element, int depth) in LogicNetwork.Walk(elements))
         {
-            rows.Add(new LogicElementRowViewModel(element, depth, catalog, onRemove, relayNames));
+            rows.Add(new LogicElementRowViewModel(element, depth, catalog, onRemove, relayNames, relayBindings));
         }
 
         return rows;
+    }
+
+    /// <summary>
+    /// The relay bindings the rows declare, one per relay — every row that names one M shows the
+    /// same binding, so the first wins. A row whose M has no tag yet comes back with an empty
+    /// item id; the caller drops it, which is how a binding is removed.
+    /// </summary>
+    public static List<LogicRelayDto> RelayBindingsFromRows(IEnumerable<LogicElementRowViewModel> rows)
+    {
+        List<LogicRelayDto> bindings = new();
+        HashSet<string> names = new(StringComparer.OrdinalIgnoreCase);
+        foreach (LogicElementRowViewModel row in rows)
+        {
+            LogicRelayDto? binding = row.BindingFromRow();
+            if (binding is null || !names.Add(binding.Name))
+            {
+                continue;
+            }
+
+            bindings.Add(binding);
+        }
+
+        return bindings;
+    }
+
+    /// <summary>True when two binding tables say the same thing (order-insensitive).</summary>
+    public static bool SameRelayBindings(IReadOnlyList<LogicRelayDto> first, IReadOnlyList<LogicRelayDto> second)
+    {
+        if (first.Count != second.Count)
+        {
+            return false;
+        }
+
+        Dictionary<string, LogicRelayDto> byName = new(StringComparer.OrdinalIgnoreCase);
+        foreach (LogicRelayDto relay in second)
+        {
+            byName[relay.Name] = relay;
+        }
+
+        foreach (LogicRelayDto relay in first)
+        {
+            if (!byName.TryGetValue(relay.Name, out LogicRelayDto? other)
+                || !string.Equals(relay.SourceId, other.SourceId, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(relay.ItemId, other.ItemId, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(
+                    LogicRelayWrites.Normalize(relay.Write),
+                    LogicRelayWrites.Normalize(other.Write),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>

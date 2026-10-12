@@ -47,11 +47,12 @@
             <TextBox Text="{Binding Text}" Watermark="Guard closed"
                      AutomationProperties.Name="Element label" />
           </StackPanel>
-          <StackPanel Classes="field" Width="150" IsVisible="{Binding ShowsTag}">
+          <StackPanel Classes="field" Width="150" IsVisible="{Binding ShowsTagFields}">
             <TextBlock Classes="fieldLabel" Text="SOURCE" />
             <ComboBox ItemsSource="{Binding Sources}" SelectedItem="{Binding SelectedSource}"
                       AutomationProperties.Name="Element source"
-                      AutomationProperties.HelpText="{Binding SelectedSource.Detail}">
+                      AutomationProperties.HelpText="{Binding SelectedSource.Detail}"
+                      ToolTip.Tip="Source of the tag this row reads — or, on a relay row, of the tag the M's state is shown on.">
               <ComboBox.ItemTemplate>
                 <DataTemplate x:DataType="logic:LogicSourceOption">
                   <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
@@ -59,11 +60,12 @@
               </ComboBox.ItemTemplate>
             </ComboBox>
           </StackPanel>
-          <StackPanel Classes="field" Width="210" IsVisible="{Binding ShowsTag}">
+          <StackPanel Classes="field" Width="210" IsVisible="{Binding ShowsTagFields}">
             <TextBlock Classes="fieldLabel" Text="TAG" />
             <ComboBox ItemsSource="{Binding Items}" SelectedItem="{Binding SelectedTag}"
                       AutomationProperties.Name="Element tag"
-                      AutomationProperties.HelpText="{Binding SelectedTag.Detail}">
+                      AutomationProperties.HelpText="{Binding SelectedTag.Detail}"
+                      ToolTip.Tip="On a relay row this is the tag the M is bound to: the relay drives its value and the write policy below decides who may write it. Blank = the M is the bridge's memory only.">
               <ComboBox.ItemTemplate>
                 <DataTemplate x:DataType="logic:LogicTagOption">
                   <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
@@ -77,6 +79,18 @@
                              FilterMode="Contains" Watermark="M01"
                              AutomationProperties.Name="Internal relay"
                              ToolTip.Tip="Internal relay (e.g. M01). On a contact it reads the relay; on a coil it drives one — any block can read it." />
+          </StackPanel>
+          <StackPanel Classes="field" Width="140" IsVisible="{Binding ShowsRelayWrite}">
+            <TextBlock Classes="fieldLabel" Text="WRITE" />
+            <ComboBox ItemsSource="{Binding RelayWriteOptions}" SelectedItem="{Binding RelayWrite}"
+                      AutomationProperties.Name="Relay tag write policy"
+                      ToolTip.Tip="Who may write this tag. Auto: while no coil drives the M the tag is the operator's, while the logic drives it the tag only shows the state. Always: a write pokes the M and the coil overwrites it on the next pass. Never: the tag is read-only.">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="logic:LogicSelectOption">
+                  <TextBlock Text="{Binding Label}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
           </StackPanel>
           <StackPanel Classes="field" Width="170" IsVisible="{Binding IsContact}">
             <TextBlock Classes="fieldLabel" Text="OP" />

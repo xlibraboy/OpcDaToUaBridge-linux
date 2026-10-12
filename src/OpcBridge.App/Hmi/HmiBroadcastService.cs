@@ -12,6 +12,7 @@ public sealed class HmiBroadcastService : IHostedService
     private readonly MappingStore mapping_store_;
     private readonly LogicStore logic_store_;
     private readonly LogicStateStore logic_states_;
+    private readonly LogicRelayPublisher? relay_publisher_;
     private readonly IHubContext<HmiHub> hub_;
     private readonly int flush_ms_;
     private readonly object batch_lock_ = new();
@@ -28,7 +29,8 @@ public sealed class HmiBroadcastService : IHostedService
         LogicStore logicStore,
         IHubContext<HmiHub> hub,
         IOptions<HmiOptions>? options = null,
-        LogicStateStore? logicStates = null)
+        LogicStateStore? logicStates = null,
+        LogicRelayPublisher? relayPublisher = null)
     {
         bridge_state_ = bridgeState;
         mapping_store_ = mappingStore;
@@ -36,6 +38,9 @@ public sealed class HmiBroadcastService : IHostedService
         // The host passes the singleton so the API read and this loop report the same state; a
         // caller without one (a unit test) gets its own memory.
         logic_states_ = logicStates ?? new LogicStateStore();
+        // Relays bound to a tag publish their state onto it during the pass; without one (a unit
+        // test) the evaluation still runs, nothing is written anywhere.
+        relay_publisher_ = relayPublisher;
         hub_ = hub;
         flush_ms_ = HmiOptions.ClampBroadcastFlushMs(
             options?.Value.BroadcastFlushMs ?? HmiOptions.DefaultBroadcastFlushMs);
@@ -147,7 +152,9 @@ public sealed class HmiBroadcastService : IHostedService
     /// </summary>
     internal void PushLogicIfChanged()
     {
-        LogicStateSnapshot snapshot = LogicStateRead.Snapshot(logic_store_, mapping_store_, bridge_state_, DateTime.UtcNow, logic_states_);
+        Action<LogicRelayDto, bool>? publishRelay = relay_publisher_ is null ? null : relay_publisher_.Publish;
+        LogicStateSnapshot snapshot = LogicStateRead.Snapshot(
+            logic_store_, mapping_store_, bridge_state_, DateTime.UtcNow, logic_states_, publishRelay);
         Volatile.Write(ref timer_pending_, HasRunningTimer(snapshot) ? 1 : 0);
 
         string signature = LogicStateEvaluator.Signature(snapshot);

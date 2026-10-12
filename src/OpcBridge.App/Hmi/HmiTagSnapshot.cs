@@ -8,10 +8,20 @@ public static class HmiTagSnapshot
     public static HmiTagsResponse Build(
         MappingStore mappingStore,
         BridgeState bridgeState,
-        DaRuntimeSettingsSnapshot sourceSettings)
+        DaRuntimeSettingsSnapshot sourceSettings,
+        LogicStore? logicStore = null)
     {
         (IReadOnlyList<TagMapping> mappings, long version) = mappingStore.GetSnapshot();
         IReadOnlyList<BridgeValueSnapshot> values = bridgeState.GetValues();
+
+        // A tag bound to an internal relay the plant logic drives is shown read-only: the logic
+        // owns its value, so the faceplate must not offer a write the bridge would refuse.
+        LogicRelayRules relayRules = LogicRelayRules.None;
+        if (logicStore is not null)
+        {
+            (IReadOnlyList<LogicBlockDto> blocks, IReadOnlyList<LogicRelayDto> relays, long _) = logicStore.GetSnapshot();
+            relayRules = LogicRelayRules.Build(relays, blocks);
+        }
 
         // Source identity per tag: the HMI tag browser separates tags by source, so every
         // tag carries its source's display name and type. Mappings whose source has been
@@ -54,7 +64,7 @@ public static class HmiTagSnapshot
             {
                 SourceId = m.SourceId,
                 SourceName = sourceName,
-                SourceType = source?.SourceType ?? string.Empty,
+                SourceType = source?.SourceType ?? (TagMode.IsInternal(m.Mode) ? "Internal" : string.Empty),
                 ItemId = m.ItemId,
                 DisplayName = string.IsNullOrWhiteSpace(m.DisplayName) ? m.ItemId : m.DisplayName,
                 Description = m.Description,
@@ -63,7 +73,7 @@ public static class HmiTagSnapshot
                 TimestampUtc = snap?.TimestampUtc,
                 DaQuality = snap?.DaQuality,
                 IsGood = snap?.IsGood,
-                Writeable = m.Writeable,
+                Writeable = EffectiveWriteable(m, relayRules),
                 UpdateRateMs = DashboardValues.LookupUpdateRate(updateRateByKey, m.SourceId, m.ItemId),
                 Unit = string.IsNullOrWhiteSpace(m.Unit) ? null : m.Unit,
                 RangeMin = m.RangeMin,
@@ -84,4 +94,13 @@ public static class HmiTagSnapshot
 
         return new HmiTagsResponse { Version = version, Tags = tags };
     }
+
+    /// <summary>
+    /// The tag's own rights, minus the plant logic's claim: a tag bound to a relay the logic
+    /// drives is read-only whatever the mapping says — the same rule the write path enforces.
+    /// </summary>
+    private static bool EffectiveWriteable(TagMapping mapping, LogicRelayRules relayRules) =>
+        mapping.Writeable
+        && (!relayRules.TryGetByTag(mapping.SourceId, mapping.ItemId, out LogicRelayDto relay)
+            || relayRules.IsWritable(relay));
 }

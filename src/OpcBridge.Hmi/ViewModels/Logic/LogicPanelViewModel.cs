@@ -38,6 +38,8 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
     private bool forceReloadDraft_;
     private bool selectFirstAfterReload_;
     private LogicTagCatalog catalog_ = LogicTagCatalog.Empty;
+    private Dictionary<string, LogicRelayDto> relay_bindings_ = new(StringComparer.OrdinalIgnoreCase);
+    private bool syncing_relays_;
     private LogicBlockDto? storedBlock_;
     private Guid? pendingSelectId_;
 
@@ -429,11 +431,50 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
             return;
         }
 
+        // The relay/tag bindings the rows declare ride along with the block save: the bridge
+        // stores one binding per M, so the edited rows are merged over the loaded table.
+        BridgeCache cache = Cache(bridge.BridgeId);
+        List<LogicRelayDto> relays = BuildRelayTable(cache.Relays);
+        if (!LogicEditorCodec.SameRelayBindings(relays, cache.Relays))
+        {
+            HmiLogicRelaySaveResult relayResult = await session.Api.SaveLogicRelaysAsync(relays, CancellationToken.None)
+                .ConfigureAwait(true);
+            if (!relayResult.Ok)
+            {
+                EditorMessage = "✗ " + (relayResult.Error ?? "Relay save failed.");
+                report_?.Invoke($"Logic relay save failed: {relayResult.Error}");
+                return;
+            }
+        }
+
         pendingSelectId_ = result.Block?.Id;
         await ReloadDefinitionsAsync(bridge.BridgeId).ConfigureAwait(true);
         await RefreshStateAsync().ConfigureAwait(true);
         EditorMessage = "✓ Saved.";
         report_?.Invoke($"Logic block '{block.Name}' saved");
+    }
+
+    /// <summary>
+    /// The binding table as the editor stands: the loaded bindings with the ones the block's
+    /// rows edited merged over them, so a relay used only by another block (or a step network
+    /// the editor does not show) keeps its binding through a save.
+    /// </summary>
+    private List<LogicRelayDto> BuildRelayTable(IReadOnlyList<LogicRelayDto> loaded)
+    {
+        List<LogicRelayDto> edited = LogicEditorCodec.RelayBindingsFromRows(Elements);
+        HashSet<string> editedNames = new(edited.Select(relay => relay.Name), StringComparer.OrdinalIgnoreCase);
+
+        List<LogicRelayDto> merged = new();
+        foreach (LogicRelayDto relay in loaded)
+        {
+            if (!editedNames.Contains(relay.Name))
+            {
+                merged.Add(relay);
+            }
+        }
+
+        merged.AddRange(edited.Where(LogicRelays.IsBound));
+        return merged;
     }
 
     private bool CanSave() => IsEditingEnabled && IsDirty;
@@ -843,6 +884,7 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
             HmiLogicDefinitions definitions = await session.Api.GetLogicDefinitionsAsync(CancellationToken.None)
                 .ConfigureAwait(true);
             cache.Blocks = definitions.Blocks.ToList();
+            cache.Relays = definitions.Relays.ToList();
             cache.Version = definitions.Version;
             if (IsSelected(bridgeId))
             {
@@ -890,6 +932,7 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
                 .ConfigureAwait(true);
             BridgeCache cache = Cache(bridgeId);
             cache.Blocks = definitions.Blocks.ToList();
+            cache.Relays = definitions.Relays.ToList();
             cache.Version = definitions.Version;
             if (IsSelected(bridgeId))
             {
@@ -915,6 +958,7 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
 
         RebuildBlockList(cache);
         RebuildRelayNames(cache);
+        RebuildRelayBindings(cache);
         RestoreSelection();
         SummaryText = BuildSummary(cache);
         ApplyBlockStates(cache);
@@ -1130,9 +1174,24 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
 
     private void AddElementRow(LogicElementDto element, int indent)
     {
-        var row = new LogicElementRowViewModel(element, indent, catalog_, RemoveElement, RelayNames);
+        var row = new LogicElementRowViewModel(element, indent, catalog_, RemoveElement, RelayNames, relay_bindings_);
         row.PropertyChanged += OnEditorRowChanged;
         Elements.Add(row);
+    }
+
+    /// <summary>The loaded relay/tag bindings, keyed by relay name — what a relay row shows.</summary>
+    private void RebuildRelayBindings(BridgeCache cache)
+    {
+        Dictionary<string, LogicRelayDto> bindings = new(StringComparer.OrdinalIgnoreCase);
+        foreach (LogicRelayDto relay in cache.Relays)
+        {
+            if (!string.IsNullOrWhiteSpace(relay.Name))
+            {
+                bindings[relay.Name] = relay;
+            }
+        }
+
+        relay_bindings_ = bindings;
     }
 
     private void AddStepRow(LogicStepDto step)
@@ -1269,7 +1328,41 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
             return;
         }
 
+        // One binding per relay: an edit to a row's tag or write policy shows the same on every
+        // other row that names that M, so the save writes one binding for it.
+        if (sender is LogicElementRowViewModel row && !syncing_relays_)
+        {
+            SyncRelayBinding(row);
+        }
+
         DirtyChanged();
+    }
+
+    /// <summary>Mirrors <paramref name="source"/>'s relay binding onto the rows of the same relay.</summary>
+    private void SyncRelayBinding(LogicElementRowViewModel source)
+    {
+        LogicRelayDto? binding = source.BindingFromRow();
+        if (binding is null)
+        {
+            return;
+        }
+
+        syncing_relays_ = true;
+        try
+        {
+            foreach (LogicElementRowViewModel row in Elements)
+            {
+                if (!ReferenceEquals(row, source)
+                    && string.Equals(row.Relay.Trim(), binding.Name, StringComparison.OrdinalIgnoreCase))
+                {
+                    row.ApplyBinding(LogicRelays.IsBound(binding) ? binding : null);
+                }
+            }
+        }
+        finally
+        {
+            syncing_relays_ = false;
+        }
     }
 
     private void DirtyChanged()
@@ -1291,7 +1384,19 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
             return BlockName.Trim().Length > 0;
         }
 
-        return !LogicEditorCodec.Matches(BuildDraft(), storedBlock_);
+        return !LogicEditorCodec.Matches(BuildDraft(), storedBlock_) || RelayBindingsEdited();
+    }
+
+    /// <summary>True while the rows declare a relay binding different from the loaded table.</summary>
+    private bool RelayBindingsEdited()
+    {
+        if (SelectedBridge is not { } bridge)
+        {
+            return false;
+        }
+
+        BridgeCache cache = Cache(bridge.BridgeId);
+        return !LogicEditorCodec.SameRelayBindings(BuildRelayTable(cache.Relays), cache.Relays);
     }
 
     private LogicBlockDto BuildDraft() => LogicEditorCodec.Build(
@@ -1621,6 +1726,9 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         private Dictionary<Guid, LogicBlockStateDto> blockStates_ = new();
 
         public List<LogicBlockDto>? Blocks { get; set; }
+
+        /// <summary>The relay/tag bindings the definitions carried, as loaded.</summary>
+        public List<LogicRelayDto> Relays { get; set; } = new();
 
         public long Version { get; set; }
 

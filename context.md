@@ -1,6 +1,6 @@
 # context.md — OpcBridge
 
-Instruction file for AI agents working in this repo. All facts below are verified against committed code as of 2026-10-12 (branch `feature/logic-internal-relays`: PLC-style internal relays in logic networks — a coil drives an `M` relay, relay contacts read it across blocks and gate types, network bounds 16 levels / 256 elements; `main` at `238bfe0`).
+Instruction file for AI agents working in this repo. All facts below are verified against committed code as of 2026-10-12 (branch `feature/logic-relay-tags`: internal relays (M coils) can be bound to a tag — the coil publishes its state onto the tag, a free M reads it back, writes are guarded by the relay's policy, and a missing tag is created as an internal one; `main` at `5279499`).
 
 ## What this project is
 
@@ -196,6 +196,21 @@ A logic block carries its plant logic in one of two exclusive forms, both served
   field offers the relays the loaded blocks' coils already drive. Pass order is the scan order
   (blocks by `Order`, rows top-to-bottom): a coil's write is visible to whatever is evaluated after
   it, a relay no coil has driven reads unknown, and a disabled block's coils do not write.
+- **Relay/tag bindings** — `LogicRelayDto` (one per relay, stored in `logic.json` beside the
+  blocks and served by `GET /api/logic` / saved by `POST /api/logic/relays`): the tag an M is
+  bound to (`SourceId`/`ItemId`, empty = the relay is memory only) and its `Write` policy
+  (`LogicRelayWrites`: `auto` = writable while no enabled coil drives the relay, `allow`,
+  `never`). The evaluator takes the bindings keyed by relay name and a publish delegate: a coil
+  whose relay is bound publishes its value in scan order (`LogicRelayPublisher` → `BridgeState`
+  + `UaServerHost.UpdateValue`, plus a device write-out on change for a writeable non-Internal
+  tag), and a relay contact with no coil reads its bound tag instead of the memory.
+  `LogicRelayRules.Build(relays, blocks)` is the runtime view (tag → relay, driven set, writable)
+  used by the write guard in `BridgeWorker` (a driven M's tag is refused with the reason), by the
+  UA mapping projection (read-only node while the logic owns the tag) and by `HmiTagSnapshot`
+  (effective `writeable`). A binding that names a tag the bridge does not have creates it as an
+  **internal** tag (`TagMode.Internal`: held by the bridge, never polled or written to a source;
+  `POST /api/logic/relays` → `EnsureRelayTag`), and `BridgeWorker` sets such a tag's value locally
+  on a write.
 
 `LogicNetwork.For(block)` returns the network to evaluate: the authored `Elements`, else the simple
 form expanded (one contact per condition, an `or` element per group, a `ton` around a held contact,
