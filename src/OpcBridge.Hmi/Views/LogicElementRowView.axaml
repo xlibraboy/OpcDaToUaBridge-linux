@@ -51,7 +51,7 @@
             <TextBlock Classes="fieldLabel" Text="SOURCE" />
             <ComboBox ItemsSource="{Binding Sources}" SelectedItem="{Binding SelectedSource}"
                       AutomationProperties.Name="Element source"
-                      ToolTip.Tip="{Binding SelectedSource.Label}">
+                      AutomationProperties.HelpText="{Binding SelectedSource.Detail}">
               <ComboBox.ItemTemplate>
                 <DataTemplate x:DataType="logic:LogicSourceOption">
                   <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
@@ -63,7 +63,7 @@
             <TextBlock Classes="fieldLabel" Text="TAG" />
             <ComboBox ItemsSource="{Binding Items}" SelectedItem="{Binding SelectedTag}"
                       AutomationProperties.Name="Element tag"
-                      ToolTip.Tip="{Binding SelectedTag.Detail}">
+                      AutomationProperties.HelpText="{Binding SelectedTag.Detail}">
               <ComboBox.ItemTemplate>
                 <DataTemplate x:DataType="logic:LogicTagOption">
                   <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />

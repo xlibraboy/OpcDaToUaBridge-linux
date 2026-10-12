@@ -69,6 +69,26 @@ the last snapshot, but a bridge that dropped only said so up in the bridge bar, 
 showing the frozen readings. It now reads "stale — bridge unreachable" (or "stale — reconnecting")
 in the warning colour, and switching bridges no longer carries the previous bridge's timestamp.
 
+**The confirm dialog's safe answer is the default one.** The destructive confirmations (delete a
+block, discard unsaved changes, drop a network) offered the destructive button first, focused and
+default, so a stray Enter triggered the very loss the dialog was asking about. Cancel is now the
+first, focused and default action; the destructive button takes an explicit Tab. **A cancelled
+block pick in the Blocks… window no longer closes the window** — declining the unsaved-changes
+confirm kept the draft but still dismissed the picker, so the operator had to reopen it to choose
+another block.
+
+### Accessibility
+
+**The app is usable without a pointer.** The destructive confirms focus their safe answer; the
+Blocks… window, the trend-group picker (its filter box), the guide and the release notes (their
+Close button) and the faceplate (its write box, on a writeable tag) each open with the control
+their task starts on. The display surface's widgets answer Enter and Space to open the faceplate,
+the keyboard equivalent of the click, and block rows announce name, kind, state and reason as one
+stable name so a truncated row stays readable to a screen reader. The logic page's tag and source
+pickers now carry the full tag identity (name and source) as their accessible description rather
+than only in a hover tooltip, step rows read name and state as one announcement, and the Config
+page's display picker is named.
+
 ## [1.8.2] - 2026-10-06
 
 ### Fixed

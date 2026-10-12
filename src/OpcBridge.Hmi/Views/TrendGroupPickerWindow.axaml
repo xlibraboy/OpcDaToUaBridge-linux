@@ -30,7 +30,7 @@
                  AutomationProperties.Name="Group name"
                  Watermark="Name of the trend group" Text="{Binding GroupName}" />
       </Grid>
-      <TextBox AutomationProperties.Name="Filter tags" Watermark="Filter tags…" Text="{Binding Filter}" />
+      <TextBox x:Name="FilterBox" AutomationProperties.Name="Filter tags" Watermark="Filter tags…" Text="{Binding Filter}" />
       <Grid ColumnDefinitions="*,*,2*,Auto">
         <TextBlock Grid.Column="0" Classes="listHeader" Text="BRIDGE" />
         <TextBlock Grid.Column="1" Classes="listHeader" Text="SOURCE" />

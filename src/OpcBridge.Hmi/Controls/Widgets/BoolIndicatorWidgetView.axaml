@@ -6,6 +6,7 @@
   <Border Background="{DynamicResource WidgetSurfaceBrush}"
           CornerRadius="4"
           Padding="8,4"
+          AutomationProperties.HelpText="Press Enter to open the faceplate"
           PointerPressed="OnPointerPressed">
     <StackPanel Spacing="2">
       <TextBlock Text="{Binding Label}" FontSize="11" Opacity="0.8" Foreground="{DynamicResource MutedFgBrush}" />

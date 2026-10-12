@@ -13,6 +13,9 @@ public partial class LogicGuideWindow : Window
     public LogicGuideWindow()
     {
         InitializeComponent();
+
+        // The guide is read-only: open with the one action focused.
+        Opened += (_, _) => CloseButton.Focus();
     }
 
     public static void ShowFor(Window? owner)

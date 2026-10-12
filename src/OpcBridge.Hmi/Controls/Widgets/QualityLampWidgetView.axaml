@@ -6,6 +6,7 @@
   <Border Background="{DynamicResource WidgetSurfaceBrush}"
           CornerRadius="4"
           Padding="8,4"
+          AutomationProperties.HelpText="Press Enter to open the faceplate"
           PointerPressed="OnPointerPressed">
     <StackPanel Orientation="Horizontal" Spacing="8">
       <!-- Default is the no-data colour; the code-behind swaps it as quality arrives. -->

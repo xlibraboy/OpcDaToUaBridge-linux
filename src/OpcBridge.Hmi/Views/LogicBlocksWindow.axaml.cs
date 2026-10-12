@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Avalonia.VisualTree;
 using OpcBridge.Hmi.ViewModels.Logic;
 
 namespace OpcBridge.Hmi.Views;
@@ -15,6 +16,15 @@ public partial class LogicBlocksWindow : Window
     public LogicBlocksWindow()
     {
         InitializeComponent();
+
+        // Open with the block list focused, so the list is reachable without a pointer.
+        Opened += (_, _) =>
+        {
+            Control? first = this.GetVisualDescendants()
+                .OfType<Control>()
+                .FirstOrDefault(control => control.Focusable && control.IsEffectivelyVisible);
+            first?.Focus();
+        };
     }
 
     public static void ShowFor(Window? owner, LogicPanelViewModel panel)
@@ -40,8 +50,12 @@ public partial class LogicBlocksWindow : Window
 
     private async void OnBlockRowClick(object? sender, RoutedEventArgs e)
     {
-        if (sender is Button { Tag: LogicBlockRowViewModel row } && DataContext is LogicPanelViewModel panel
-            && await panel.TrySelectBlockAsync(row))
+        if (sender is not Button { Tag: LogicBlockRowViewModel row })
+        {
+            return;
+        }
+
+        if (DataContext is LogicPanelViewModel panel && await panel.TrySelectBlockAsync(row))
         {
             Close();
         }

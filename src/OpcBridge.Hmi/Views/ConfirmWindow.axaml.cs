@@ -12,6 +12,9 @@ public partial class ConfirmWindow : Window
     public ConfirmWindow()
     {
         InitializeComponent();
+
+        // Focus the safe answer on open, so keyboard focus never starts on the destructive action.
+        Opened += (_, _) => CancelButton.Focus();
     }
 
     public static async Task<bool> ShowFor(Window? owner, string title, string message, string confirmText)

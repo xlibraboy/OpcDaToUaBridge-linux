@@ -15,6 +15,12 @@ public sealed record LogicTagOption(string SourceId, string ItemId, string Displ
 public sealed record LogicSourceOption(string SourceId, string Name)
 {
     public string Label => string.IsNullOrWhiteSpace(Name) ? SourceId : Name;
+
+    /// <summary>Full identity for the pickers' accessible description: name and source id.</summary>
+    public string Detail => string.IsNullOrWhiteSpace(SourceId)
+        || string.Equals(SourceId, Label, StringComparison.OrdinalIgnoreCase)
+            ? Label
+            : $"{Label} · {SourceId}";
 }
 
 /// <summary>

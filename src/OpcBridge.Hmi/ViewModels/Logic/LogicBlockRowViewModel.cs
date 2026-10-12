@@ -45,6 +45,20 @@ public sealed partial class LogicBlockRowViewModel : ObservableObject
 
     public string KindLabel => LogicText.BlockKindLabel(Block.Kind);
 
+    /// <summary>
+    /// The row's accessible name: what the row shows, in one line — name, kind, state and the
+    /// first reason. A trailing ellipsis in the visual row can hide the reason from sight, so the
+    /// name carries it in full.
+    /// </summary>
+    public string AccessibleName
+    {
+        get
+        {
+            string text = $"{Name}, {KindLabel}, {StateWord}";
+            return string.IsNullOrWhiteSpace(ReasonLine) ? text : $"{text} — {ReasonLine}";
+        }
+    }
+
     [ObservableProperty]
     private string _stateWord = "NO DATA";
 
@@ -84,6 +98,7 @@ public sealed partial class LogicBlockRowViewModel : ObservableObject
         IsWarn = key == "warn";
         ReasonLine = LogicText.ReasonLine(state);
         Progress = LogicText.SequenceProgress(Block, state);
+        OnPropertyChanged(nameof(AccessibleName));
     }
 }
 

@@ -70,6 +70,7 @@
                         <ItemsControl.ItemTemplate>
                           <DataTemplate x:DataType="logic:LogicBlockRowViewModel">
                             <Button Classes="logicRow" Classes.active="{Binding IsSelected}"
+                                    AutomationProperties.Name="{Binding AccessibleName}"
                                     Command="{Binding $parent[UserControl].((logic:LogicPanelViewModel)DataContext).SelectBlockCommand}"
                                     CommandParameter="{Binding}">
                               <StackPanel Spacing="1">
@@ -231,7 +232,8 @@
                         <StackPanel Spacing="6">
                           <Grid ColumnDefinitions="Auto,Auto,*">
                             <TextBlock Grid.Column="0" Classes="sectionLabel" Margin="0" Text="{Binding StepLabel}"
-                                       VerticalAlignment="Center" />
+                                       VerticalAlignment="Center"
+                                       AutomationProperties.Name="{Binding StateWord, StringFormat='{}{0}, step'}" />
                             <Border Grid.Column="1" Margin="10,0,0,0" Classes="pill"
                                     Classes.ok="{Binding IsDone}"
                                     Classes.warn="{Binding IsCurrent}"
@@ -263,7 +265,7 @@
                               <ComboBox ItemsSource="{Binding CompletionSources}" SelectedItem="{Binding CompletionSource}"
                                         IsEnabled="{Binding $parent[UserControl].((logic:LogicPanelViewModel)DataContext).IsEditingEnabled}"
                                         AutomationProperties.Name="Completion source"
-                                        ToolTip.Tip="{Binding CompletionSource.Label}">
+                                        AutomationProperties.HelpText="{Binding CompletionSource.Detail}">
                                 <ComboBox.ItemTemplate>
                                   <DataTemplate x:DataType="logic:LogicSourceOption">
                                     <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
@@ -276,7 +278,7 @@
                               <ComboBox ItemsSource="{Binding CompletionItems}" SelectedItem="{Binding CompletionTag}"
                                         IsEnabled="{Binding $parent[UserControl].((logic:LogicPanelViewModel)DataContext).IsEditingEnabled}"
                                         AutomationProperties.Name="Completion tag"
-                                        ToolTip.Tip="{Binding CompletionTag.Detail}">
+                                        AutomationProperties.HelpText="{Binding CompletionTag.Detail}">
                                 <ComboBox.ItemTemplate>
                                   <DataTemplate x:DataType="logic:LogicTagOption">
                                     <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
@@ -328,7 +330,8 @@
                             <StackPanel Classes="field" Width="150">
                               <TextBlock Classes="fieldLabel" Text="SOURCE" />
                               <ComboBox ItemsSource="{Binding Sources}" SelectedItem="{Binding SelectedSource}"
-                                        AutomationProperties.Name="Action source" ToolTip.Tip="{Binding SelectedSource.Label}">
+                                        AutomationProperties.Name="Action source"
+                                        AutomationProperties.HelpText="{Binding SelectedSource.Detail}">
                                 <ComboBox.ItemTemplate>
                                   <DataTemplate x:DataType="logic:LogicSourceOption">
                                     <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
@@ -339,7 +342,8 @@
                             <StackPanel Classes="field" Width="210">
                               <TextBlock Classes="fieldLabel" Text="TAG" />
                               <ComboBox ItemsSource="{Binding Items}" SelectedItem="{Binding SelectedTag}"
-                                        AutomationProperties.Name="Action tag" ToolTip.Tip="{Binding SelectedTag.Detail}">
+                                        AutomationProperties.Name="Action tag"
+                                        AutomationProperties.HelpText="{Binding SelectedTag.Detail}">
                                 <ComboBox.ItemTemplate>
                                   <DataTemplate x:DataType="logic:LogicTagOption">
                                     <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
@@ -415,7 +419,8 @@
                         <Border Classes="cardDark" Margin="0,0,0,8" Padding="10">
                           <StackPanel Spacing="6">
                             <Grid ColumnDefinitions="Auto,Auto,*">
-                              <TextBlock Grid.Column="0" FontSize="14" FontWeight="SemiBold" Text="{Binding Name}" />
+                              <TextBlock Grid.Column="0" FontSize="14" FontWeight="SemiBold" Text="{Binding Name}"
+                                         AutomationProperties.Name="{Binding StateWord, StringFormat='{}{0}, step'}" />
                               <Border Grid.Column="1" Classes="pill" Margin="10,0,0,0"
                                       Classes.ok="{Binding IsDone}"
                                       Classes.warn="{Binding IsCurrent}"

@@ -16,6 +16,9 @@ public partial class TrendGroupPickerWindow : Window
     {
         InitializeComponent();
 
+        // Open with the filter focused: narrowing the list is the first step of picking tags.
+        Opened += (_, _) => FilterBox.Focus();
+
         // Inner controls claim Escape before it bubbles, so the window watches the tunnel pass.
         AddHandler(KeyDownEvent, OnEscapeKeyDown, RoutingStrategies.Tunnel);
     }

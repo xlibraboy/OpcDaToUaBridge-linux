@@ -16,6 +16,9 @@ public partial class ReleaseNotesWindow : Window
     public ReleaseNotesWindow()
     {
         InitializeComponent();
+
+        // The notes are read-only: open with the one action focused.
+        Opened += (_, _) => CloseButton.Focus();
     }
 
     public static void ShowFor(Window? owner, string productName, Assembly assembly, string resourceName)
