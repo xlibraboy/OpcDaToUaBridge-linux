@@ -26,15 +26,29 @@ public sealed record HmiInfluxStatus(
 }
 
 /// <summary>Plant-logic definitions and their version, from GET /api/logic.</summary>
-public sealed record HmiLogicDefinitions(IReadOnlyList<LogicBlockDto> Blocks, long Version);
+public sealed record HmiLogicDefinitions(
+    IReadOnlyList<LogicBlockDto> Blocks,
+    long Version,
+    IReadOnlyList<LogicTagSourceDto>? TagSources = null);
 
 /// <summary>Outcome of POST /api/logic/blocks or DELETE /api/logic/blocks/{id}.</summary>
 public sealed record HmiLogicSaveResult(bool Ok, LogicBlockDto? Block, long Version, string? Error);
+
+/// <summary>Outcome of the tags-source endpoints; <see cref="TagSource"/> is the stored source on a save.</summary>
+public sealed record HmiLogicTagSourceResult(bool Ok, LogicTagSourceDto? TagSource, long Version, string? Error);
 
 /// <summary>Wire shape of a successful POST /api/logic/blocks.</summary>
 internal sealed class HmiLogicSaveResponse
 {
     public LogicBlockDto? Block { get; set; }
+
+    public long Version { get; set; }
+}
+
+/// <summary>Wire shape of a successful POST /api/logic/tagsources.</summary>
+internal sealed class HmiLogicTagSourceResponse
+{
+    public LogicTagSourceDto? TagSource { get; set; }
 
     public long Version { get; set; }
 }
@@ -196,6 +210,41 @@ public sealed class BridgeApiClient : IDisposable
         HmiLogicVersionResponse? body = await http.Content.ReadFromJsonAsync<HmiLogicVersionResponse>(JsonOptions, ct)
             .ConfigureAwait(false);
         return new HmiLogicSaveResult(true, null, body?.Version ?? 0, null);
+    }
+
+    /// <summary>Saves one machine's tags source; a rejected save answers with the bridge's own error text.</summary>
+    public async Task<HmiLogicTagSourceResult> SaveLogicTagSourceAsync(LogicTagSourceDto tagSource, CancellationToken ct)
+    {
+        using HttpResponseMessage http = await client_
+            .PostAsJsonAsync("api/logic/tagsources", new { tagSource }, JsonOptions, ct)
+            .ConfigureAwait(false);
+        if (!http.IsSuccessStatusCode)
+        {
+            return new HmiLogicTagSourceResult(false, null, 0, await ReadLogicErrorAsync(http, ct).ConfigureAwait(false));
+        }
+
+        HmiLogicTagSourceResponse? body = await http.Content.ReadFromJsonAsync<HmiLogicTagSourceResponse>(JsonOptions, ct)
+            .ConfigureAwait(false);
+        return new HmiLogicTagSourceResult(true, body?.TagSource ?? tagSource, body?.Version ?? 0, null);
+    }
+
+    /// <summary>
+    /// Deletes one machine's tags source; refused (with the bridge's wording) while blocks still
+    /// read it, so the operator is told how many would lose their tags.
+    /// </summary>
+    public async Task<HmiLogicTagSourceResult> DeleteLogicTagSourceAsync(string name, CancellationToken ct)
+    {
+        using HttpResponseMessage http = await client_
+            .DeleteAsync("api/logic/tagsources/" + Uri.EscapeDataString(name), ct)
+            .ConfigureAwait(false);
+        if (!http.IsSuccessStatusCode)
+        {
+            return new HmiLogicTagSourceResult(false, null, 0, await ReadLogicErrorAsync(http, ct).ConfigureAwait(false));
+        }
+
+        HmiLogicVersionResponse? body = await http.Content.ReadFromJsonAsync<HmiLogicVersionResponse>(JsonOptions, ct)
+            .ConfigureAwait(false);
+        return new HmiLogicTagSourceResult(true, null, body?.Version ?? 0, null);
     }
 
     /// <summary>The bridge's <c>{error}</c> body when there is one, else the bare HTTP status.</summary>

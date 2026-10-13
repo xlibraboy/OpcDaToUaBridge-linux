@@ -6,6 +6,14 @@ using OpcBridge.Client;
 namespace OpcBridge.Mobile.Core;
 
 /// <summary>
+/// One bridge's logic surface: its blocks and the machines' tags sources the blocks' named tags
+/// resolve through (a block's rows reference an entry by name; the pair lives on the source).
+/// </summary>
+public sealed record MobileLogicDefinitions(
+    IReadOnlyList<LogicBlockDto> Blocks,
+    IReadOnlyList<LogicTagSourceDto> TagSources);
+
+/// <summary>
 /// HTTP client for the bridge's mobile-facing surface: logic definitions and state, the tag
 /// snapshot, the existing HMI write path, operator notes and sign-in. The cookie container
 /// carries the bridge session like the HMI designer does; with the default
@@ -51,14 +59,16 @@ public sealed class LogicApiClient : IDisposable
     public Task<MobileResult<LogicStateSnapshot>> GetLogicStateAsync(CancellationToken cancellationToken) =>
         GetJsonAsync<LogicStateSnapshot>("api/logic/state", cancellationToken);
 
-    public async Task<MobileResult<IReadOnlyList<LogicBlockDto>>> GetLogicBlocksAsync(CancellationToken cancellationToken)
+    public async Task<MobileResult<MobileLogicDefinitions>> GetLogicDefinitionsAsync(CancellationToken cancellationToken)
     {
         MobileResult<LogicBlocksResponse> result = await GetJsonAsync<LogicBlocksResponse>("api/logic", cancellationToken)
             .ConfigureAwait(false);
         // Keep the status code: the caller turns a 401 into "the bridge requires sign-in".
         return result.Ok
-            ? MobileResult<IReadOnlyList<LogicBlockDto>>.Success(result.Value?.Blocks ?? new List<LogicBlockDto>())
-            : MobileResult<IReadOnlyList<LogicBlockDto>>.Fail(result.Error ?? "request failed", result.StatusCode);
+            ? MobileResult<MobileLogicDefinitions>.Success(new MobileLogicDefinitions(
+                result.Value?.Blocks ?? new List<LogicBlockDto>(),
+                result.Value?.TagSources ?? new List<LogicTagSourceDto>()))
+            : MobileResult<MobileLogicDefinitions>.Fail(result.Error ?? "request failed", result.StatusCode);
     }
 
     public async Task<MobileResult<IReadOnlyList<HmiTagDto>>> GetTagsAsync(CancellationToken cancellationToken)
@@ -208,6 +218,9 @@ public sealed class LogicApiClient : IDisposable
     private sealed class LogicBlocksResponse
     {
         public List<LogicBlockDto> Blocks { get; set; } = new();
+
+        /// <summary>The machines' tags sources a block's named tags resolve through.</summary>
+        public List<LogicTagSourceDto>? TagSources { get; set; }
     }
 
     private sealed class HmiTagsResponse

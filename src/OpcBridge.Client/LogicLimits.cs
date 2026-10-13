@@ -14,4 +14,13 @@ public static class LogicLimits
 
     /// <summary>Longest internal relay name a coil or relay contact may carry (e.g. "M01").</summary>
     public const int MaxRelayNameLength = 16;
+
+    /// <summary>Longest tags source name — the machine a block's tags are shared by (e.g. "DRYEND").</summary>
+    public const int MaxTagSourceNameLength = 40;
+
+    /// <summary>Longest name a tags source entry may carry (e.g. "START_PB").</summary>
+    public const int MaxTagNameLength = 32;
+
+    /// <summary>Most entries one machine's tags source may hold.</summary>
+    public const int MaxTagsPerSource = 256;
 }

@@ -21,6 +21,17 @@ public sealed class HmiLogicPanelTests
     private static async Task<TestAppHandle> StartAsync(params TagMapping[] mappings) =>
         await TestAppHandle.StartAsync(appDirectory =>
         {
+            // The harness copies the test output directory, which can hold files left by the
+            // in-process store tests; start from a clean logic slate.
+            foreach (string stray in new[] { "logic.json", "logic-notes.json", "logic-tags.json" })
+            {
+                string strayPath = Path.Combine(appDirectory, stray);
+                if (File.Exists(strayPath))
+                {
+                    File.Delete(strayPath);
+                }
+            }
+
             File.WriteAllText(
                 Path.Combine(appDirectory, "mappings.json"),
                 JsonSerializer.Serialize(mappings));
@@ -89,6 +100,15 @@ public sealed class HmiLogicPanelTests
 
     private static LogicBlockRowViewModel Row(MainViewModel vm, string name) =>
         vm.Logic.BlockGroups.SelectMany(group => group.Blocks).First(row => row.Name == name);
+
+    /// <summary>
+    /// Waits out the bridge's broadcast flush window (four of the 100 ms periods), so a push an
+    /// earlier call already triggered — a logic save marks the logic dirty — has gone out before
+    /// the test connects. The bridge's own snapshot (unknown in this host, which has no source
+    /// values) is applied on the dispatcher thread and would otherwise race a synthetic snapshot
+    /// the test applies and asserts in the same breath.
+    /// </summary>
+    private static Task SettleBroadcastAsync() => Task.Delay(400);
 
     private static void DeleteConfig(string configPath)
     {
@@ -232,6 +252,12 @@ public sealed class HmiLogicPanelTests
         await SaveBlockAsync(handle, block);
         Guid conditionId = block.Conditions[0].Id;
 
+        // The save marks the logic dirty, so the bridge pushes its own evaluation (unknown in
+        // this host, which has no source values) on its next 100 ms flush. Let that go out
+        // before the client connects: a push landing later is applied on the dispatcher thread
+        // and would overwrite the synthetic snapshot asserted below — the flake this test had.
+        await SettleBroadcastAsync();
+
         MainViewModel vm = NewViewModel(out string configPath);
         try
         {
@@ -358,6 +384,9 @@ public sealed class HmiLogicPanelTests
         await SaveBlockAsync(handle, first);
         await SaveBlockAsync(handle, second);
 
+        // Let the save-driven push go out before the client connects (see SettleBroadcastAsync).
+        await SettleBroadcastAsync();
+
         MainViewModel vm = NewViewModel(out string configPath);
         try
         {
@@ -463,6 +492,171 @@ public sealed class HmiLogicPanelTests
             (string bridgeId, LogicStateSnapshot snapshot) = await pushed.Task;
             Assert.Equal("default", bridgeId);
             Assert.Contains(snapshot.Blocks, state => state.Id == added.Id);
+        }
+        finally
+        {
+            await vm.DisposeAsync();
+            DeleteConfig(configPath);
+        }
+    }
+
+    [Fact]
+    public async Task ATagsSource_SavesWithTheBlockAndItsMachineSharesIt()
+    {
+        await using TestAppHandle handle = await StartAsync(PermitTag());
+        MainViewModel vm = NewViewModel(out string configPath);
+        try
+        {
+            await ConnectAsync(vm, handle);
+            vm.Logic.IsTagsTab = true;
+
+            vm.Logic.NewBlockCommand.Execute(null);
+            vm.Logic.BlockName = "Dry end start";
+            vm.Logic.BlockGroup = "DRYEND";
+
+            // The machine's name is prefilled from the group: every DRYEND block shares this list.
+            Assert.Equal("DRYEND", vm.Logic.TagSource.Name);
+            LogicTagEntryViewModel entry = vm.Logic.TagSource.NewTag();
+            entry.Name = "START_PB";
+            entry.SelectedSource = entry.Sources.First(source => source.SourceId == "sim");
+            entry.SelectedTag = entry.Items.First();
+
+            LogicConditionRowViewModel row = Assert.Single(vm.Logic.Conditions);
+            row.Text = "Dry end start permit must be given";
+            row.SelectedBlockTag = entry;
+            Assert.False(row.ShowsDirectTag);
+
+            Assert.True(vm.Logic.SaveCommand.CanExecute(null));
+            await vm.Logic.SaveCommand.ExecuteAsync(null);
+
+            Assert.Equal("✓ Saved.", vm.Logic.EditorMessage);
+            Assert.False(vm.Logic.IsDirty);
+
+            using JsonDocument document = await handle.GetJsonAsync("/api/logic");
+            JsonElement source = document.RootElement.GetProperty("tagSources")[0];
+            Assert.Equal("DRYEND", source.GetProperty("name").GetString());
+            Assert.Equal("START_PB", source.GetProperty("tags")[0].GetProperty("name").GetString());
+            Assert.Equal("ns=2;s=Status/Line01.Permit", source.GetProperty("tags")[0].GetProperty("itemId").GetString());
+
+            JsonElement stored = document.RootElement.GetProperty("blocks")[0];
+            Assert.Equal("DRYEND", stored.GetProperty("tagSource").GetString());
+            Assert.Equal("START_PB", stored.GetProperty("conditions")[0].GetProperty("tag").GetString());
+            Assert.Equal(string.Empty, stored.GetProperty("conditions")[0].GetProperty("itemId").GetString());
+
+            // A second block of the same machine already reads the assigned entry — the point of
+            // assigning once — and the tab says how many blocks carry the name.
+            vm.Logic.NewBlockCommand.Execute(null);
+            vm.Logic.BlockName = "Dry end stop";
+            vm.Logic.BlockGroup = "DRYEND";
+
+            LogicTagEntryViewModel shared = Assert.Single(vm.Logic.TagSource.Entries);
+            Assert.Equal("START_PB", shared.Name);
+            Assert.True(shared.IsAssigned);
+            Assert.Equal("DRYEND", vm.Logic.TagSource.Name);
+            Assert.Equal(1, vm.Logic.TagSource.UsedByCount);
+            Assert.True(vm.Logic.TagSource.HasUsedBy);
+        }
+        finally
+        {
+            await vm.DisposeAsync();
+            DeleteConfig(configPath);
+        }
+    }
+
+    [Fact]
+    public async Task AnEmptyTag_IsAssignedLaterAndTheBlockReadsItOnceBound()
+    {
+        await using TestAppHandle handle = await StartAsync(PermitTag());
+        MainViewModel vm = NewViewModel(out string configPath);
+        try
+        {
+            await ConnectAsync(vm, handle);
+            vm.Logic.IsTagsTab = true;
+
+            vm.Logic.NewBlockCommand.Execute(null);
+            vm.Logic.BlockName = "Dry end start";
+            vm.Logic.BlockGroup = "DRYEND";
+            LogicTagEntryViewModel entry = vm.Logic.TagSource.NewTag();
+            entry.Name = "START_PB";
+            LogicConditionRowViewModel row = Assert.Single(vm.Logic.Conditions);
+            row.Text = "Dry end start permit must be given";
+            row.SelectedBlockTag = entry;
+
+            // Created empty and saved: the block is stored and reads unknown, naming the entry —
+            // never a silent false.
+            await vm.Logic.SaveCommand.ExecuteAsync(null);
+            using (JsonDocument unassigned = await handle.GetJsonAsync("/api/logic/state"))
+            {
+                Assert.Equal(
+                    "no data for START_PB (not assigned)",
+                    unassigned.RootElement.GetProperty("blocks")[0].GetProperty("reason").GetString());
+            }
+
+            // Assign later, on the tab, and save the tags alone: the block now reads the real tag.
+            // The save rebuilt the draft from the bridge, so the entry is re-read from the tab.
+            LogicTagEntryViewModel stored = Assert.Single(vm.Logic.TagSource.Entries);
+            Assert.Equal("START_PB", stored.Name);
+            stored.SelectedSource = stored.Sources.First(source => source.SourceId == "sim");
+            stored.SelectedTag = stored.Items.First();
+            Assert.True(vm.Logic.IsDirty);
+            await vm.Logic.SaveCommand.ExecuteAsync(null);
+
+            Assert.Equal("✓ Tags saved.", vm.Logic.EditorMessage);
+            Assert.False(vm.Logic.IsDirty);
+
+            using JsonDocument assigned = await handle.GetJsonAsync("/api/logic/state");
+            Assert.Equal(
+                "no data for Line 01 Start Permit",
+                assigned.RootElement.GetProperty("blocks")[0].GetProperty("reason").GetString());
+        }
+        finally
+        {
+            await vm.DisposeAsync();
+            DeleteConfig(configPath);
+        }
+    }
+
+    [Fact]
+    public async Task MovingTagsIntoTheSourceRewritesTheRowsAndKeepsTheVerdict()
+    {
+        await using TestAppHandle handle = await StartAsync(PermitTag());
+        await SaveBlockAsync(handle, Block("Dry end start", "DRYEND"));
+
+        MainViewModel vm = NewViewModel(out string configPath);
+        try
+        {
+            await ConnectAsync(vm, handle);
+            vm.Logic.IsTagsTab = true;
+            vm.Logic.SelectBlockCommand.Execute(Row(vm, "Dry end start"));
+            Assert.Empty(vm.Logic.TagSource.Entries);
+
+            await vm.Logic.TagSource.MoveBlockTagsCommand.ExecuteAsync(null);
+
+            LogicTagEntryViewModel entry = Assert.Single(vm.Logic.TagSource.Entries);
+            Assert.Equal("LINE_01_START_PERMIT", entry.Name);
+            Assert.Equal("ns=2;s=Status/Line01.Permit", entry.ItemId);
+            Assert.True(entry.UsedByThisBlock);
+            Assert.True(vm.Logic.IsDirty);
+            Assert.Contains("Moved 1 tag", vm.Logic.EditorMessage);
+
+            LogicConditionRowViewModel row = Assert.Single(vm.Logic.Conditions);
+            Assert.Equal("LINE_01_START_PERMIT", row.Tag);
+            Assert.False(row.ShowsDirectTag);
+
+            await vm.Logic.SaveCommand.ExecuteAsync(null);
+            Assert.Equal("✓ Saved.", vm.Logic.EditorMessage);
+
+            using JsonDocument document = await handle.GetJsonAsync("/api/logic");
+            Assert.Equal("DRYEND", document.RootElement.GetProperty("tagSources")[0].GetProperty("name").GetString());
+            JsonElement condition = document.RootElement.GetProperty("blocks")[0].GetProperty("conditions")[0];
+            Assert.Equal("LINE_01_START_PERMIT", condition.GetProperty("tag").GetString());
+            Assert.Equal(string.Empty, condition.GetProperty("itemId").GetString());
+
+            // The verdict is unchanged: the same boundary tag, now read through the machine's source.
+            using JsonDocument state = await handle.GetJsonAsync("/api/logic/state");
+            JsonElement blockState = state.RootElement.GetProperty("blocks")[0];
+            Assert.Equal("unknown", blockState.GetProperty("state").GetString());
+            Assert.Equal("no data for Line 01 Start Permit", blockState.GetProperty("reason").GetString());
         }
         finally
         {

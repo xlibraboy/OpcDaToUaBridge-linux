@@ -19,6 +19,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+**Logic blocks can read a machine's shared tags source — a tag assigned once, not once per
+block.** A **tags source** is one machine's named tags (`DRYEND`, `WETEND`, …) on the bridge
+(`logic-tags.json`), and every block naming that machine — a block's `tagSource` falls back to its
+interlock group, so the author just files the block — reads the same entries: a condition, a
+network contact, a step's completion handshake and an action can each carry a `tag` name
+(`START_PB`) instead of a `sourceId`/`itemId` pair, and the pair lives on the source. Assigning an
+entry moves **every** block of the machine at once, and an entry may be created **empty** and
+assigned later the way the workflow asks — while it is unassigned its readers evaluate **unknown**
+with the entry named (`no data for START_PB (not assigned)`), never a silent false; a name the
+machine's source does not hold reads `… (not in DRYEND)`, so a typo and a missing assignment are
+told apart. Blocks remain valid snapshots of where they were authored: existing blocks keep their
+direct tag pairs and evaluate unchanged, nothing migrates behind an author's back, and a
+`400`/`409` refuses a source save or delete that would break them. The store normalizes a source
+(names trimmed, entries de-duplicated case-insensitively, an item without a source landing on
+`default`, blanks left unassigned), canonicalizes every reference to its entry's spelling, and
+shares one version between blocks and sources so every client refetches its definitions when a
+binding moves. New endpoints: `GET /api/logic` now carries `tagSources`, `POST
+/api/logic/tagsources` upserts a machine by name, and `DELETE /api/logic/tagsources/{name}` is
+refused while blocks still read it (naming the count). `LogicTagSources` (the shared resolver in
+`OpcBridge.Client`) is what the evaluator, the HMI and the phone all resolve through, so a named
+tag reads the same everywhere.
+
 **Logic networks can drive and read internal relays (M coils).** The IEC 61131-3 vocabulary gained
 a **coil** element — it takes exactly one input, writes it onto the internal relay it names
 (`M01`) every pass, and passes the value through — and the contact gained a **relay** field: with

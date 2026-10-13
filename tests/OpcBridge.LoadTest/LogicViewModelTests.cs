@@ -847,4 +847,55 @@ public sealed class LogicBlockDetailViewModelTests
         Assert.Equal("1", readRow.ActualText);
         Assert.Equal("1", coilRow.ActualText);
     }
+
+    [Fact]
+    public void NamedTag_ResolvesThroughTheMachinesTagsSourceAndReadsNothingWhileUnassigned()
+    {
+        LogicBlockDto block = Interlock(new LogicConditionDto
+        {
+            Id = Guid.NewGuid(),
+            Text = "Dry end start permit must be given",
+            Tag = "START_PB",
+            Op = LogicConditionOps.On
+        });
+        block.Group = "DRYEND";
+        block.TagSource = "DRYEND";
+
+        MultiBridgeTagCache cache = TagCache(new HmiTagDto
+        {
+            SourceId = "sim",
+            SourceName = "Simulation",
+            ItemId = "Start",
+            DisplayName = "Dry End Start Permit",
+            Digital = true,
+            OnText = "On",
+            OffText = "Off",
+            Value = true,
+            IsGood = true
+        });
+
+        LogicTagSourceDto assigned = new()
+        {
+            Name = "DRYEND",
+            Tags = { new LogicTagDto { Name = "START_PB", SourceId = "sim", ItemId = "Start" } }
+        };
+        var vm = new LogicBlockDetailViewModel(block, BridgeKey, null, cache, null, assigned);
+
+        LogicElementRowViewModel row = Assert.Single(Contacts(vm));
+        Assert.Contains("START_PB", row.TagLabel);
+        Assert.Contains("Dry End Start Permit", row.TagLabel);
+        Assert.True(vm.TryResolveTag("START_PB", null, null, out string sourceId, out string itemId));
+        Assert.Equal("sim", sourceId);
+        Assert.Equal("Start", itemId);
+        Assert.Equal("On", row.ValueText);
+
+        // Created empty and not assigned yet: nothing is read, and the label says which entry waits.
+        LogicTagSourceDto waiting = new() { Name = "DRYEND", Tags = { new LogicTagDto { Name = "START_PB" } } };
+        var unassigned = new LogicBlockDetailViewModel(block, BridgeKey, null, cache, null, waiting);
+
+        LogicElementRowViewModel unassignedRow = Assert.Single(Contacts(unassigned));
+        Assert.Equal("START_PB (not assigned)", unassignedRow.TagLabel);
+        Assert.False(unassigned.TryResolveTag("START_PB", null, null, out _, out _));
+        Assert.Equal(string.Empty, unassignedRow.ValueText);
+    }
 }

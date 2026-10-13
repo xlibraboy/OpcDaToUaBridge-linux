@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Globalization;
+using System.Text;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -50,6 +51,15 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         post_ = post;
         report_ = report;
         KindOptions = LogicOptions.BlockKinds;
+        TagSource.PropertyChanged += OnTagSourceChanged;
+        TagSource.MoveBlockTagsRequested = MoveTagsIntoSourcesAsync;
+        TagSource.DeleteSourceRequested = DeleteTagSourceAsync;
+        TagSource.ConfirmRemoveEntry = async name =>
+            ConfirmAsync is null
+            || await ConfirmAsync(
+                "Remove tag",
+                $"Remove \"{name}\"? This block reads it — its rows need another tag (or a direct one) before they can be saved.",
+                "Remove").ConfigureAwait(true);
         pollTimer_ = new System.Threading.Timer(_ => _ = PollAsync(), null, Timeout.Infinite, Timeout.Infinite);
         freshnessTimer_ = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
         freshnessTimer_.Tick += (_, _) => RefreshFreshness();
@@ -94,19 +104,51 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         }
     }
 
-    // ---- Editor / Result tabs ----
+    // ---- Editor / Tags / Result tabs ----
 
     [ObservableProperty]
     private bool _isEditorTab = true;
 
     [ObservableProperty]
+    private bool _isTagsTab;
+
+    [ObservableProperty]
     private bool _isResultTab;
+
+    /// <summary>
+    /// The selected block's machine's named tags: one source shared by every block carrying its
+    /// name, so a tag is assigned once here instead of in each block's rows.
+    /// </summary>
+    public LogicTagSourceViewModel TagSource { get; } = new();
 
     partial void OnIsEditorTabChanged(bool value)
     {
         if (value && IsResultTab)
         {
             IsResultTab = false;
+        }
+
+        if (value && IsTagsTab)
+        {
+            IsTagsTab = false;
+        }
+    }
+
+    partial void OnIsTagsTabChanged(bool value)
+    {
+        if (value && IsEditorTab)
+        {
+            IsEditorTab = false;
+        }
+
+        if (value && IsResultTab)
+        {
+            IsResultTab = false;
+        }
+
+        if (value)
+        {
+            RefreshTagSource();
         }
     }
 
@@ -115,6 +157,11 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         if (value && IsEditorTab)
         {
             IsEditorTab = false;
+        }
+
+        if (value && IsTagsTab)
+        {
+            IsTagsTab = false;
         }
     }
 
@@ -255,7 +302,17 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
 
     partial void OnBlockEnabledChanged(bool value) => DirtyChanged();
 
-    partial void OnBlockGroupChanged(string value) => DirtyChanged();
+    partial void OnBlockGroupChanged(string value)
+    {
+        // The machine follows the group while the two are in step, so a block filed under
+        // "DRYEND" is on DRYEND's tags without the name being typed twice.
+        if (TagSource.FollowsGroup(value))
+        {
+            TagSource.Name = value.Trim();
+        }
+
+        DirtyChanged();
+    }
 
     partial void OnBlockDescriptionChanged(string value) => DirtyChanged();
 
@@ -418,22 +475,54 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
             return;
         }
 
-        LogicBlockDto block = BuildDraft();
-        EditorMessage = "Saving…";
-        HmiLogicSaveResult result = await session.Api.SaveLogicBlockAsync(block, CancellationToken.None)
-            .ConfigureAwait(true);
-        if (!result.Ok)
+        bool sourceDirty = TagSource.IsDirty;
+        bool blockDirty = ComputeBlockDirty();
+        if (sourceDirty && TagSource.IsNameBlank)
         {
-            EditorMessage = "✗ " + (result.Error ?? "Save failed.");
-            report_?.Invoke($"Logic save failed: {result.Error}");
+            EditorMessage = "✗ " + LogicText.TagSourceNameRequired;
             return;
         }
 
-        pendingSelectId_ = result.Block?.Id;
+        EditorMessage = "Saving…";
+
+        // The machine's tags go first: a block saved against them is consistent the moment it lands.
+        if (sourceDirty)
+        {
+            LogicTagSourceDto source = TagSource.ToDto();
+            HmiLogicTagSourceResult sourceResult = await session.Api
+                .SaveLogicTagSourceAsync(source, CancellationToken.None)
+                .ConfigureAwait(true);
+            if (!sourceResult.Ok)
+            {
+                EditorMessage = "✗ " + (sourceResult.Error ?? "Tags save failed.");
+                report_?.Invoke($"Tags source save failed: {sourceResult.Error}");
+                return;
+            }
+
+            TagSource.MarkSaved(sourceResult.TagSource ?? source);
+        }
+
+        LogicBlockDto block = BuildDraft();
+        if (blockDirty)
+        {
+            HmiLogicSaveResult result = await session.Api.SaveLogicBlockAsync(block, CancellationToken.None)
+                .ConfigureAwait(true);
+            if (!result.Ok)
+            {
+                EditorMessage = "✗ " + (result.Error ?? "Save failed.");
+                report_?.Invoke($"Logic save failed: {result.Error}");
+                return;
+            }
+
+            pendingSelectId_ = result.Block?.Id;
+        }
+
         await ReloadDefinitionsAsync(bridge.BridgeId).ConfigureAwait(true);
         await RefreshStateAsync().ConfigureAwait(true);
-        EditorMessage = "✓ Saved.";
-        report_?.Invoke($"Logic block '{block.Name}' saved");
+        EditorMessage = blockDirty ? "✓ Saved." : "✓ Tags saved.";
+        report_?.Invoke(blockDirty
+            ? $"Logic block '{block.Name}' saved"
+            : $"Tags source '{TagSource.Name.Trim()}' saved");
     }
 
     private bool CanSave() => IsEditingEnabled && IsDirty;
@@ -616,6 +705,7 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
             SummaryText = BuildSummary(cache);
             ApplyEditorLive(cache);
             ApplyResultState(cache);
+            RefreshTagSource();
         }
         finally
         {
@@ -843,6 +933,7 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
             HmiLogicDefinitions definitions = await session.Api.GetLogicDefinitionsAsync(CancellationToken.None)
                 .ConfigureAwait(true);
             cache.Blocks = definitions.Blocks.ToList();
+            cache.TagSources = (definitions.TagSources ?? Array.Empty<LogicTagSourceDto>()).ToList();
             cache.Version = definitions.Version;
             if (IsSelected(bridgeId))
             {
@@ -890,6 +981,7 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
                 .ConfigureAwait(true);
             BridgeCache cache = Cache(bridgeId);
             cache.Blocks = definitions.Blocks.ToList();
+            cache.TagSources = (definitions.TagSources ?? Array.Empty<LogicTagSourceDto>()).ToList();
             cache.Version = definitions.Version;
             if (IsSelected(bridgeId))
             {
@@ -920,6 +1012,7 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         ApplyBlockStates(cache);
         ApplyEditorLive(cache);
         ApplyResultState(cache);
+        RefreshTagSource();
     }
 
     /// <summary>Collects the relays every loaded block's coils drive, in block and row order.</summary>
@@ -1070,6 +1163,12 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
             storedBlock_ = stored;
             editingNewBlock_ = stored is null;
             catalog_ = BuildCatalog();
+            BridgeCache? cache = SelectedBridge is { } bridge ? Cache(bridge.BridgeId) : null;
+            TagSource.Load(
+                block,
+                cache?.TagSources ?? new List<LogicTagSourceDto>(),
+                cache?.Blocks ?? new List<LogicBlockDto>(),
+                catalog_);
             BlockName = block.Name;
             SelectedKind = LogicSelectOption.Find(KindOptions, block.Kind) ?? KindOptions[0];
             BlockEnabled = block.Enabled;
@@ -1111,6 +1210,7 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         }
 
         RefreshEditorMode();
+        RefreshTagSource();
         DirtyChanged();
         NotifyCommands();
     }
@@ -1123,21 +1223,21 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
 
     private void AddConditionRow(LogicConditionDto condition)
     {
-        var row = new LogicConditionRowViewModel(condition, catalog_, RemoveCondition);
+        var row = new LogicConditionRowViewModel(condition, catalog_, RemoveCondition, TagSource.Entries);
         row.PropertyChanged += OnEditorRowChanged;
         Conditions.Add(row);
     }
 
     private void AddElementRow(LogicElementDto element, int indent)
     {
-        var row = new LogicElementRowViewModel(element, indent, catalog_, RemoveElement, RelayNames);
+        var row = new LogicElementRowViewModel(element, indent, catalog_, RemoveElement, RelayNames, TagSource.Entries);
         row.PropertyChanged += OnEditorRowChanged;
         Elements.Add(row);
     }
 
     private void AddStepRow(LogicStepDto step)
     {
-        var row = new LogicStepRowViewModel(step, catalog_, Steps, RemoveStep, RenumberSteps);
+        var row = new LogicStepRowViewModel(step, catalog_, Steps, RemoveStep, RenumberSteps, TagSource.Entries);
         row.PropertyChanged += OnEditorRowChanged;
         row.Conditions.CollectionChanged += OnStepConditionsChanged;
         foreach (LogicConditionRowViewModel condition in row.Conditions)
@@ -1168,7 +1268,7 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
 
     private void AddActionRow(LogicActionDto action)
     {
-        var row = new LogicActionRowViewModel(action, catalog_, RemoveAction);
+        var row = new LogicActionRowViewModel(action, catalog_, RemoveAction, TagSource.Entries);
         row.PropertyChanged += OnEditorRowChanged;
         Actions.Add(row);
     }
@@ -1272,6 +1372,30 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         DirtyChanged();
     }
 
+    /// <summary>A Tags-tab edit (the machine's name, an entry, the dirty flag) is an editor edit.</summary>
+    private void OnTagSourceChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (buildingRows_ || applyingState_)
+        {
+            return;
+        }
+
+        if (string.Equals(e.PropertyName, nameof(LogicTagSourceViewModel.IsDirty), StringComparison.Ordinal)
+            || string.Equals(e.PropertyName, nameof(LogicTagSourceViewModel.Name), StringComparison.Ordinal)
+            || string.Equals(e.PropertyName, nameof(LogicTagSourceViewModel.UsedByCount), StringComparison.Ordinal))
+        {
+            DirtyChanged();
+        }
+
+        if (string.Equals(e.PropertyName, nameof(LogicTagSourceViewModel.Name), StringComparison.Ordinal))
+        {
+            // The name belongs to the block too, and renaming changes who shares the tags.
+            TagSource.RefreshUsedCount(SelectedBridge is { } bridge
+                ? Cache(bridge.BridgeId).Blocks ?? new List<LogicBlockDto>()
+                : new List<LogicBlockDto>());
+        }
+    }
+
     private void DirtyChanged()
     {
         if (buildingRows_)
@@ -1283,7 +1407,9 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(HasUnsavedChanges));
     }
 
-    private bool ComputeDirty()
+    private bool ComputeDirty() => ComputeBlockDirty() || TagSource.IsDirty;
+
+    private bool ComputeBlockDirty()
     {
         if (storedBlock_ is null)
         {
@@ -1301,6 +1427,7 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         SelectedKind?.Value ?? LogicBlockKinds.Interlock,
         BlockEnabled,
         BlockGroup,
+        TagSource.Name,
         BlockDescription,
         BlockTags,
         Conditions,
@@ -1351,6 +1478,296 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         {
             row.CanEdit = IsEditingEnabled;
         }
+
+        TagSource.SetCanEdit(IsEditingEnabled);
+    }
+
+    /// <summary>
+    /// Refreshes the Tags tab: the entries' live chips from the tag cache, which of them this
+    /// block reads right now, and how many loaded blocks share the machine. Only while the tab is
+    /// visible — opening it refreshes it, so the hidden tab costs nothing per state tick.
+    /// </summary>
+    private void RefreshTagSource()
+    {
+        if (!IsTagsTab)
+        {
+            return;
+        }
+
+        if (SelectedBridge is { } bridge)
+        {
+            TagSource.RefreshLive(bridge.BridgeId, connections_.Cache);
+            TagSource.RefreshUsedCount(Cache(bridge.BridgeId).Blocks ?? new List<LogicBlockDto>());
+        }
+
+        TagSource.RefreshUsed(ReferencedTagNames());
+    }
+
+    /// <summary>Every tags-source name the editor's rows reference right now.</summary>
+    private List<string> ReferencedTagNames()
+    {
+        List<string> names = new();
+        HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+
+        void Add(string? name)
+        {
+            if (!string.IsNullOrWhiteSpace(name) && seen.Add(name.Trim()))
+            {
+                names.Add(name.Trim());
+            }
+        }
+
+        foreach (LogicConditionRowViewModel row in Conditions)
+        {
+            Add(row.Tag);
+        }
+
+        foreach (LogicElementRowViewModel row in Elements)
+        {
+            Add(row.Tag);
+        }
+
+        foreach (LogicStepRowViewModel step in Steps)
+        {
+            Add(step.CompletionTagName);
+            foreach (LogicConditionRowViewModel row in step.Conditions)
+            {
+                Add(row.Tag);
+            }
+        }
+
+        foreach (LogicActionRowViewModel row in Actions)
+        {
+            Add(row.Tag);
+        }
+
+        return names;
+    }
+
+    /// <summary>
+    /// Moves this block's direct tags into the machine's tags source — the on-demand conversion
+    /// for blocks authored before tags sources existed: one entry per distinct tag, named after
+    /// its display name, and the rows rewritten to reference it (the bindings are not saved until
+    /// Save, and the block evaluates the same either way).
+    /// </summary>
+    private async Task MoveTagsIntoSourcesAsync()
+    {
+        if (!IsEditingEnabled || SelectedBridge is not { } bridge)
+        {
+            EditorMessage = "Editing is disabled while the bridge is unreachable.";
+            return;
+        }
+
+        string name = TagSource.Name.Trim();
+        if (TagSource.IsNameBlank)
+        {
+            EditorMessage = "✗ " + LogicText.TagSourceNameRequired;
+            return;
+        }
+
+        if (ConfirmAsync is { } confirm
+            && !await confirm(
+                "Move tags into the tags source",
+                $"Move this block's tags into the \"{name}\" tags source? Every block of the machine will share them.",
+                "Move").ConfigureAwait(true))
+        {
+            return;
+        }
+
+        int moved = MoveTagsIntoSources();
+        RefreshTagSource();
+        DirtyChanged();
+        EditorMessage = moved == 0
+            ? "No direct tags to move — this block already reads its machine's tags source."
+            : $"Moved {moved} tag{(moved == 1 ? string.Empty : "s")} into \"{name}\" — Save to store them.";
+        report_?.Invoke($"Logic block '{BlockName.Trim()}' tags moved into '{name}' ({moved})");
+    }
+
+    private int MoveTagsIntoSources()
+    {
+        int moved = 0;
+        foreach (LogicConditionRowViewModel row in Conditions)
+        {
+            moved += MoveCondition(row);
+        }
+
+        foreach (LogicElementRowViewModel row in Elements)
+        {
+            moved += MoveElement(row);
+        }
+
+        foreach (LogicStepRowViewModel step in Steps)
+        {
+            moved += MoveCompletion(step);
+            foreach (LogicConditionRowViewModel row in step.Conditions)
+            {
+                moved += MoveCondition(row);
+            }
+        }
+
+        foreach (LogicActionRowViewModel row in Actions)
+        {
+            moved += MoveAction(row);
+        }
+
+        return moved;
+
+        int MoveCondition(LogicConditionRowViewModel row)
+        {
+            if (row.HasBlockTag || row.ItemId.Length == 0)
+            {
+                return 0;
+            }
+
+            row.SelectedBlockTag = TagSource.EnsureEntry(
+                UniqueTagName(TagNameFor(row.SourceId, row.ItemId)),
+                row.SourceId,
+                row.ItemId);
+            return 1;
+        }
+
+        int MoveElement(LogicElementRowViewModel row)
+        {
+            if (!row.IsTagContact || row.ItemId.Length == 0)
+            {
+                return 0;
+            }
+
+            row.SelectedBlockTag = TagSource.EnsureEntry(
+                UniqueTagName(TagNameFor(row.SourceId, row.ItemId)),
+                row.SourceId,
+                row.ItemId);
+            return 1;
+        }
+
+        int MoveAction(LogicActionRowViewModel row)
+        {
+            if (row.HasBlockTag || row.ItemId.Length == 0)
+            {
+                return 0;
+            }
+
+            row.SelectedBlockTag = TagSource.EnsureEntry(
+                UniqueTagName(TagNameFor(row.SourceId, row.ItemId)),
+                row.SourceId,
+                row.ItemId);
+            return 1;
+        }
+
+        int MoveCompletion(LogicStepRowViewModel step)
+        {
+            if (step.HasCompletionTag
+                || string.IsNullOrWhiteSpace(step.CompletionSourceId)
+                || string.IsNullOrWhiteSpace(step.CompletionItemId))
+            {
+                return 0;
+            }
+
+            step.SelectedCompletionTag = TagSource.EnsureEntry(
+                UniqueTagName(TagNameFor(step.CompletionSourceId!, step.CompletionItemId!)),
+                step.CompletionSourceId!,
+                step.CompletionItemId!);
+            return 1;
+        }
+    }
+
+    /// <summary>A readable entry name for a direct tag: its display name, upper-cased and sanitized.</summary>
+    private string TagNameFor(string sourceId, string itemId)
+    {
+        string label = catalog_.DisplayName(sourceId, itemId);
+        StringBuilder builder = new();
+        foreach (char c in label)
+        {
+            char mapped = char.IsAsciiLetterOrDigit(c) ? char.ToUpperInvariant(c) : '_';
+            if (mapped == '_' && (builder.Length == 0 || builder[^1] == '_'))
+            {
+                continue;
+            }
+
+            builder.Append(mapped);
+        }
+
+        string name = builder.ToString().Trim('_');
+        int limit = LogicLimits.MaxTagNameLength - 4;
+        if (name.Length > limit)
+        {
+            name = name[..limit].Trim('_');
+        }
+
+        return name.Length == 0 ? "TAG" : name;
+    }
+
+    private string UniqueTagName(string name)
+    {
+        if (TagSource.FindByName(name) is null)
+        {
+            return name;
+        }
+
+        for (int suffix = 2; suffix < 1000; suffix++)
+        {
+            string candidate = name + "_" + suffix;
+            if (candidate.Length > LogicLimits.MaxTagNameLength)
+            {
+                candidate = candidate[..LogicLimits.MaxTagNameLength];
+            }
+
+            if (TagSource.FindByName(candidate) is null)
+            {
+                return candidate;
+            }
+        }
+
+        return name;
+    }
+
+    /// <summary>Deletes the machine's tags source (the bridge refuses while blocks still use it).</summary>
+    private async Task DeleteTagSourceAsync()
+    {
+        if (!IsEditingEnabled || SelectedBridge is not { } bridge)
+        {
+            EditorMessage = "Editing is disabled while the bridge is unreachable.";
+            return;
+        }
+
+        string name = TagSource.Name.Trim();
+        if (name.Length == 0)
+        {
+            EditorMessage = "✗ " + LogicText.TagSourceNameRequired;
+            return;
+        }
+
+        string dropped = IsDirty ? " Unsaved changes in the editor are dropped." : string.Empty;
+        if (ConfirmAsync is { } confirm
+            && !await confirm(
+                "Delete tags source",
+                $"Delete the \"{name}\" tags source? Its entries are removed for every block that names it.{dropped}",
+                "Delete").ConfigureAwait(true))
+        {
+            return;
+        }
+
+        if (!connections_.TryGetSession(bridge.BridgeId, out BridgeConnectionManager.BridgeSession? session)
+            || session is null)
+        {
+            EditorMessage = "✗ Bridge not connected.";
+            return;
+        }
+
+        HmiLogicTagSourceResult result = await session.Api
+            .DeleteLogicTagSourceAsync(name, CancellationToken.None)
+            .ConfigureAwait(true);
+        if (!result.Ok)
+        {
+            EditorMessage = "✗ " + (result.Error ?? "Delete failed.");
+            return;
+        }
+
+        forceReloadDraft_ = true;
+        await ReloadDefinitionsAsync(bridge.BridgeId).ConfigureAwait(true);
+        await RefreshStateAsync().ConfigureAwait(true);
+        EditorMessage = "✓ Tags source deleted.";
+        report_?.Invoke($"Tags source '{name}' deleted");
     }
 
     private void NotifyRowCounts()
@@ -1423,6 +1840,7 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         ResultElements.Clear();
         ResultSteps.Clear();
         LogicBlockDto? block = storedBlock_;
+        LogicTagSourceDto? tagSource = CurrentTagSource();
 
         ResultTitle = block is null || block.Id == Guid.Empty
             ? (editingNewBlock_ ? "New block — not saved yet" : "No block selected")
@@ -1458,7 +1876,7 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
                 var stepRow = new LogicResultStepRowViewModel(step, i + 1);
                 foreach ((LogicElementDto element, int depth) in LogicNetwork.Walk(LogicNetwork.For(step)))
                 {
-                    stepRow.Elements.Add(new LogicResultElementRowViewModel(element, depth, catalog_));
+                    stepRow.Elements.Add(new LogicResultElementRowViewModel(element, depth, catalog_, tagSource));
                 }
 
                 ResultSteps.Add(stepRow);
@@ -1472,7 +1890,7 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
             ResultShowsSteps = false;
             foreach ((LogicElementDto element, int depth) in LogicNetwork.Walk(LogicNetwork.For(block)))
             {
-                ResultElements.Add(new LogicResultElementRowViewModel(element, depth, catalog_));
+                ResultElements.Add(new LogicResultElementRowViewModel(element, depth, catalog_, tagSource));
             }
 
             HasResultRows = ResultElements.Count > 0;
@@ -1594,6 +2012,16 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
     private LogicBlockRowViewModel? FindBlockRow(Guid id) =>
         AllBlockRows().FirstOrDefault(row => row.BlockId == id);
 
+    /// <summary>The stored block's machine's tags source, as the bridge holds it (labels, results).</summary>
+    private LogicTagSourceDto? CurrentTagSource() =>
+        SelectedBridge is { } bridge && storedBlock_ is { } block
+            ? LogicTagSources.FindSource(Cache(bridge.BridgeId).TagSources, TagSourceNameFor(block))
+            : null;
+
+    /// <summary>The machine a block belongs to: its own name, else the group it is filed under.</summary>
+    private static string TagSourceNameFor(LogicBlockDto block) =>
+        string.IsNullOrWhiteSpace(block.TagSource) ? block.Group?.Trim() ?? string.Empty : block.TagSource.Trim();
+
     private IEnumerable<LogicBlockRowViewModel> AllBlockRows() =>
         BlockGroups.SelectMany(group => group.Blocks);
 
@@ -1621,6 +2049,9 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         private Dictionary<Guid, LogicBlockStateDto> blockStates_ = new();
 
         public List<LogicBlockDto>? Blocks { get; set; }
+
+        /// <summary>The machines' tags sources, as GET /api/logic served them.</summary>
+        public List<LogicTagSourceDto> TagSources { get; set; } = new();
 
         public long Version { get; set; }
 

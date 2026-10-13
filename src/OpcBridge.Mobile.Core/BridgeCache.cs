@@ -23,6 +23,12 @@ public sealed class BridgeCacheSnapshot
 
     public List<LogicBlockDto> Blocks { get; set; } = new();
 
+    /// <summary>
+    /// The machines' tags sources — a block's named tags resolve through them, so labels and
+    /// write targets keep working offline. Missing in a cache written before they existed.
+    /// </summary>
+    public List<LogicTagSourceDto> TagSources { get; set; } = new();
+
     public LogicStateSnapshot? State { get; set; }
 
     public List<HmiTagDto> Tags { get; set; } = new();

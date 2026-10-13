@@ -23,7 +23,8 @@ public partial class LogicStepRowViewModel : ObservableObject
         LogicTagCatalog catalog,
         ObservableCollection<LogicStepRowViewModel> steps,
         Action<LogicStepRowViewModel>? onRemove = null,
-        Action? onMoved = null)
+        Action? onMoved = null,
+        IEnumerable<LogicTagEntryViewModel>? tagEntries = null)
     {
         catalog_ = catalog;
         steps_ = steps;
@@ -33,12 +34,47 @@ public partial class LogicStepRowViewModel : ObservableObject
         StoredActions = step.Actions.ToList();
         Name = step.Name;
         NextStepText = step.NextStepText ?? string.Empty;
+        TagEntries = tagEntries ?? Array.Empty<LogicTagEntryViewModel>();
+        SelectedCompletionTag = FindTagEntry(step.CompletionTag);
         LoadCompletion(step.CompletionSourceId ?? string.Empty, step.CompletionItemId ?? string.Empty);
         foreach (LogicConditionDto condition in step.Conditions)
         {
-            Conditions.Add(new LogicConditionRowViewModel(condition, catalog, RemoveCondition));
+            Conditions.Add(new LogicConditionRowViewModel(condition, catalog, RemoveCondition, TagEntries));
         }
     }
+
+    /// <summary>The machine's named tags the step's conditions and handshake may read.</summary>
+    public IEnumerable<LogicTagEntryViewModel> TagEntries { get; }
+
+    [ObservableProperty]
+    private LogicTagEntryViewModel? _selectedCompletionTag;
+
+    /// <summary>The stored handshake reference, "" when the step has a direct pair or none.</summary>
+    public string CompletionTagName => SelectedCompletionTag?.Name.Trim() ?? string.Empty;
+
+    public bool HasCompletionTag => CompletionTagName.Length > 0;
+
+    /// <summary>The direct source/tag pickers: hidden while a named handshake is selected.</summary>
+    public bool ShowsDirectCompletion => !HasCompletionTag;
+
+    partial void OnSelectedCompletionTagChanged(LogicTagEntryViewModel? value)
+    {
+        OnPropertyChanged(nameof(CompletionTagName));
+        OnPropertyChanged(nameof(HasCompletionTag));
+        OnPropertyChanged(nameof(ShowsDirectCompletion));
+        ClearCompletionTagCommand.NotifyCanExecuteChanged();
+    }
+
+    [RelayCommand(CanExecute = nameof(CanClearCompletionTag))]
+    private void ClearCompletionTag() => SelectedCompletionTag = null;
+
+    private bool CanClearCompletionTag() => CanEdit && HasCompletionTag;
+
+    private LogicTagEntryViewModel? FindTagEntry(string? name) =>
+        string.IsNullOrWhiteSpace(name)
+            ? null
+            : TagEntries.FirstOrDefault(entry =>
+                string.Equals(entry.Name.Trim(), name.Trim(), StringComparison.OrdinalIgnoreCase));
 
     public Guid StepId { get; }
 
@@ -118,7 +154,8 @@ public partial class LogicStepRowViewModel : ObservableObject
         Conditions.Add(new LogicConditionRowViewModel(
             new LogicConditionDto { Id = Guid.NewGuid(), Op = LogicConditionOps.On, Severity = LogicConditionSeverities.Block },
             catalog_,
-            RemoveCondition));
+            RemoveCondition,
+            TagEntries));
 
     /// <summary>Removes one of the step's condition rows (also the remove callback the rows carry).</summary>
     public void RemoveCondition(LogicConditionRowViewModel row) => Conditions.Remove(row);
@@ -132,6 +169,7 @@ public partial class LogicStepRowViewModel : ObservableObject
         AddConditionCommand.NotifyCanExecuteChanged();
         MoveStepUpCommand.NotifyCanExecuteChanged();
         MoveStepDownCommand.NotifyCanExecuteChanged();
+        ClearCompletionTagCommand.NotifyCanExecuteChanged();
     }
 
     /// <summary>Re-evaluates the move guards after the step's position in the list changed.</summary>

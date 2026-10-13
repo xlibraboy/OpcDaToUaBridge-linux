@@ -21,7 +21,7 @@ public sealed class LogicApiTests
         {
             // The harness copies the test output directory, which can still hold files left by
             // the in-process store tests; start this instance from a clean logic slate.
-            foreach (string stray in new[] { "logic.json", "logic-notes.json" })
+            foreach (string stray in new[] { "logic.json", "logic-notes.json", "logic-tags.json" })
             {
                 string strayPath = Path.Combine(appDirectory, stray);
                 if (File.Exists(strayPath))
@@ -188,6 +188,140 @@ public sealed class LogicApiTests
                 "/api/logic/notes",
                 new { blockId, text = "   " });
             Assert.Equal(HttpStatusCode.BadRequest, blank.StatusCode);
+        }
+    }
+
+    [Fact]
+    public async Task TagsSources_TravelWithTheDefinitionsAndResolveForBlocks()
+    {
+        (TestAppHandle app, _) = await StartWithBlockAsync();
+        await using (app)
+        {
+            using HttpResponseMessage save = await app.Client.PostAsJsonAsync(
+                "/api/logic/tagsources",
+                new
+                {
+                    tagSource = new
+                    {
+                        name = "DRYEND",
+                        tags = new[]
+                        {
+                            new { name = "START_PB", sourceId = "sim", itemId = "ns=2;s=Status/Line01.Permit" },
+                            new { name = "FAULT", sourceId = string.Empty, itemId = string.Empty }
+                        }
+                    }
+                });
+            Assert.Equal(HttpStatusCode.OK, save.StatusCode);
+            using JsonDocument saveBody = JsonDocument.Parse(await save.Content.ReadAsStringAsync());
+            Assert.Equal("DRYEND", saveBody.RootElement.GetProperty("tagSource").GetProperty("name").GetString());
+            Assert.Equal(2, saveBody.RootElement.GetProperty("version").GetInt64());
+
+            // A block that reads the machine's named tags: the pair lives on the source.
+            LogicBlockDto named = new()
+            {
+                Id = Guid.NewGuid(),
+                Name = "Dry end start",
+                Group = "DRYEND",
+                Kind = LogicBlockKinds.Interlock,
+                Conditions =
+                {
+                    new LogicConditionDto
+                    {
+                        Id = Guid.NewGuid(),
+                        Text = "Dry end start permit must be given",
+                        Tag = "START_PB",
+                        Op = LogicConditionOps.On
+                    },
+                    new LogicConditionDto
+                    {
+                        Id = Guid.NewGuid(),
+                        Text = "No dry end fault",
+                        Tag = "FAULT",
+                        Op = LogicConditionOps.On
+                    }
+                }
+            };
+
+            using HttpResponseMessage blockSave = await app.Client.PostAsJsonAsync("/api/logic/blocks", new { block = named });
+            Assert.Equal(HttpStatusCode.OK, blockSave.StatusCode);
+            using JsonDocument blockBody = JsonDocument.Parse(await blockSave.Content.ReadAsStringAsync());
+            JsonElement storedBlock = blockBody.RootElement.GetProperty("block");
+            Assert.Equal("DRYEND", storedBlock.GetProperty("tagSource").GetString());
+            JsonElement storedCondition = storedBlock.GetProperty("conditions")[0];
+            Assert.Equal("START_PB", storedCondition.GetProperty("tag").GetString());
+            Assert.Equal(string.Empty, storedCondition.GetProperty("itemId").GetString());
+
+            JsonDocument list = await app.GetJsonAsync("/api/logic");
+            JsonElement sources = list.RootElement.GetProperty("tagSources");
+            Assert.Equal("DRYEND", sources[0].GetProperty("name").GetString());
+
+            // Evaluation resolves through the source: no values arrive in this host, so the
+            // reason names the real tag for the bound entry and the entry itself when unassigned.
+            JsonDocument state = await app.GetJsonAsync("/api/logic/state");
+            JsonElement[] blockStates = state.RootElement.GetProperty("blocks").EnumerateArray().ToArray();
+            JsonElement namedState = blockStates.Single(candidate => candidate.GetProperty("id").GetGuid() == named.Id);
+            Assert.Equal("unknown", namedState.GetProperty("state").GetString());
+            Assert.Equal("no data for Line 01 Start Permit", namedState.GetProperty("reason").GetString());
+            Assert.Contains(
+                namedState.GetProperty("elements").EnumerateArray(),
+                element => element.GetProperty("kind").GetString() == "contact"
+                    && element.GetProperty("state").GetString() == "unknown");
+        }
+    }
+
+    [Fact]
+    public async Task TagsSources_RefuseDeletionWhileABlockUsesThem()
+    {
+        (TestAppHandle app, _) = await StartWithBlockAsync();
+        await using (app)
+        {
+            using HttpResponseMessage save = await app.Client.PostAsJsonAsync(
+                "/api/logic/tagsources",
+                new { tagSource = new { name = "DRYEND", tags = new[] { new { name = "START_PB", sourceId = string.Empty, itemId = string.Empty } } } });
+            Assert.Equal(HttpStatusCode.OK, save.StatusCode);
+
+            LogicBlockDto named = new()
+            {
+                Id = Guid.NewGuid(),
+                Name = "Dry end start",
+                TagSource = "DRYEND",
+                Kind = LogicBlockKinds.Interlock,
+                Conditions = { new LogicConditionDto { Text = "start", Tag = "START_PB", Op = LogicConditionOps.On } }
+            };
+            using HttpResponseMessage blockSave = await app.Client.PostAsJsonAsync("/api/logic/blocks", new { block = named });
+            Assert.Equal(HttpStatusCode.OK, blockSave.StatusCode);
+
+            using HttpResponseMessage inUse = await app.Client.DeleteAsync("/api/logic/tagsources/DRYEND");
+            Assert.Equal(HttpStatusCode.Conflict, inUse.StatusCode);
+            using JsonDocument inUseBody = JsonDocument.Parse(await inUse.Content.ReadAsStringAsync());
+            Assert.Equal("1 block uses this tags source.", inUseBody.RootElement.GetProperty("error").GetString());
+
+            // Only once the block is gone may the machine's tags be removed.
+            using HttpResponseMessage blockDelete = await app.Client.DeleteAsync($"/api/logic/blocks/{named.Id}");
+            Assert.Equal(HttpStatusCode.OK, blockDelete.StatusCode);
+            using HttpResponseMessage removed = await app.Client.DeleteAsync("/api/logic/tagsources/DRYEND");
+            Assert.Equal(HttpStatusCode.OK, removed.StatusCode);
+
+            JsonDocument list = await app.GetJsonAsync("/api/logic");
+            Assert.Empty(list.RootElement.GetProperty("tagSources").EnumerateArray());
+            using HttpResponseMessage missing = await app.Client.DeleteAsync("/api/logic/tagsources/DRYEND");
+            Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+        }
+    }
+
+    [Fact]
+    public async Task TagsSources_RejectABlankName()
+    {
+        TestAppHandle app = await TestAppHandle.StartAsync(static _ => { });
+        await using (app)
+        {
+            using HttpResponseMessage blank = await app.Client.PostAsJsonAsync(
+                "/api/logic/tagsources",
+                new { tagSource = new { name = "   ", tags = Array.Empty<object>() } });
+            Assert.Equal(HttpStatusCode.BadRequest, blank.StatusCode);
+
+            using HttpResponseMessage missing = await app.Client.PostAsJsonAsync("/api/logic/tagsources", new { });
+            Assert.Equal(HttpStatusCode.BadRequest, missing.StatusCode);
         }
     }
 }

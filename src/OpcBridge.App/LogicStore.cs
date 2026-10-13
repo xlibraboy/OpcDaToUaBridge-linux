@@ -6,11 +6,13 @@ using OpcBridge.Core;
 namespace OpcBridge.App;
 
 /// <summary>
-/// Persists the plant logic blocks authored in the dashboard's Logic tab
-/// (<c>logic.json</c> in the data directory). Mirrors <see cref="InterlinkStore"/>: one
-/// coarse lock, an in-memory version counter, whole-file persistence and a
-/// validate-all-or-nothing save. Unlike the interlink store it raises
-/// <see cref="Changed"/> so the HMI broadcaster re-evaluates and pushes the new state.
+/// Persists the plant logic blocks authored in the HMI's Logic page (<c>logic.json</c> in the
+/// data directory) and the per-machine tags sources they reference by name
+/// (<c>logic-tags.json</c>). Mirrors <see cref="InterlinkStore"/>: one coarse lock, an in-memory
+/// version counter, whole-file persistence and a validate-all-or-nothing save. Unlike the
+/// interlink store it raises <see cref="Changed"/> so the HMI broadcaster re-evaluates and
+/// pushes the new state; blocks and tags sources share the one version, so a binding change
+/// makes every client refetch its definitions.
 /// </summary>
 public sealed class LogicStore
 {
@@ -33,13 +35,18 @@ public sealed class LogicStore
 
     private readonly object sync_ = new();
     private readonly string persist_path_;
+    private readonly string tag_sources_path_;
     private List<LogicBlockDto> blocks_;
+    private List<LogicTagSourceDto> tag_sources_;
     private long version_;
 
     public LogicStore(IOptions<BridgeOptions> options)
     {
         _ = options;
         persist_path_ = DataDirectory.Combine("logic.json");
+        tag_sources_path_ = DataDirectory.Combine("logic-tags.json");
+        // Sources first: block normalization canonicalizes references against them.
+        tag_sources_ = LoadTagSourcesFromDisk() ?? new List<LogicTagSourceDto>();
         blocks_ = LoadFromDisk() ?? new List<LogicBlockDto>();
     }
 
@@ -54,13 +61,134 @@ public sealed class LogicStore
         }
     }
 
+    /// <summary>The machines' tags sources, as stored (normalized).</summary>
+    public IReadOnlyList<LogicTagSourceDto> GetTagSources()
+    {
+        lock (sync_)
+        {
+            return tag_sources_.ToArray();
+        }
+    }
+
+    /// <summary>How many blocks reference a tags source (their own name, or the group it falls back to).</summary>
+    public int CountBlocksUsing(string name)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        string wanted = name.Trim();
+
+        lock (sync_)
+        {
+            return blocks_.Count(block => UsesTagSource(block, wanted));
+        }
+    }
+
+    /// <summary>
+    /// Insert or replace a machine's tags source by name (case-insensitive) — the Tags screen's
+    /// Save. <paramref name="saved"/> is the normalized source as stored.
+    /// </summary>
+    public bool TrySaveTagSource(
+        LogicTagSourceDto source,
+        out LogicTagSourceDto saved,
+        out long version,
+        out string? error)
+    {
+        long newVersion;
+        LogicTagSourceDto stored;
+        lock (sync_)
+        {
+            if (!TryNormalizeTagSource(source, out LogicTagSourceDto normalized, out error))
+            {
+                saved = source;
+                version = version_;
+                return false;
+            }
+
+            int index = tag_sources_.FindIndex(existing =>
+                string.Equals(existing.Name, normalized.Name, StringComparison.OrdinalIgnoreCase));
+            if (index < 0)
+            {
+                tag_sources_.Add(normalized);
+            }
+            else
+            {
+                tag_sources_[index] = normalized;
+            }
+
+            version_++;
+            PersistTagSources();
+            newVersion = version_;
+            stored = normalized;
+            error = null;
+        }
+
+        Changed?.Invoke(newVersion);
+        saved = stored;
+        version = newVersion;
+        return true;
+    }
+
+    /// <summary>
+    /// Removes a machine's tags source. Refused while any block references it — deleting it would
+    /// silently unassign every tag those blocks read; the error names how many.
+    /// </summary>
+    public bool TryRemoveTagSource(string name, out long version, out string? error)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        long newVersion;
+        lock (sync_)
+        {
+            string wanted = name.Trim();
+            int index = tag_sources_.FindIndex(existing =>
+                string.Equals(existing.Name, wanted, StringComparison.OrdinalIgnoreCase));
+            if (index < 0)
+            {
+                version = version_;
+                error = "Tags source not found.";
+                return false;
+            }
+
+            int used = blocks_.Count(block => UsesTagSource(block, wanted));
+            if (used > 0)
+            {
+                version = version_;
+                error = used == 1
+                    ? "1 block uses this tags source."
+                    : $"{used} blocks use this tags source.";
+                return false;
+            }
+
+            tag_sources_.RemoveAt(index);
+            version_++;
+            PersistTagSources();
+            newVersion = version_;
+            error = null;
+        }
+
+        Changed?.Invoke(newVersion);
+        version = newVersion;
+        return true;
+    }
+
+    /// <summary>A block belongs to a source by its stored name, else by the group it falls back to.</summary>
+    private static bool UsesTagSource(LogicBlockDto block, string name)
+    {
+        string blockSource = block.TagSource?.Trim() ?? string.Empty;
+        if (blockSource.Length == 0)
+        {
+            blockSource = block.Group?.Trim() ?? string.Empty;
+        }
+
+        return blockSource.Length > 0
+            && string.Equals(blockSource, name, StringComparison.OrdinalIgnoreCase);
+    }
+
     public long SetAll(IEnumerable<LogicBlockDto> blocks)
     {
         ArgumentNullException.ThrowIfNull(blocks);
 
         lock (sync_)
         {
-            blocks_ = NormalizeAllOrThrow(blocks);
+            NormalizeAllOrThrow(blocks);
             version_++;
             Persist();
         }
@@ -146,7 +274,7 @@ public sealed class LogicStore
             string.Equals(existing.Name, name, StringComparison.OrdinalIgnoreCase));
     }
 
-    private static List<LogicBlockDto> NormalizeAllOrThrow(IEnumerable<LogicBlockDto> blocks)
+    private void NormalizeAllOrThrow(IEnumerable<LogicBlockDto> blocks)
     {
         List<LogicBlockDto> normalized = new();
         HashSet<Guid> ids = new();
@@ -172,10 +300,10 @@ public sealed class LogicStore
             normalized.Add(normalizedBlock);
         }
 
-        return normalized;
+        blocks_ = normalized;
     }
 
-    private static bool TryNormalize(LogicBlockDto block, out LogicBlockDto normalized, out string? error)
+    private bool TryNormalize(LogicBlockDto block, out LogicBlockDto normalized, out string? error)
     {
         ArgumentNullException.ThrowIfNull(block);
 
@@ -208,13 +336,30 @@ public sealed class LogicStore
             return false;
         }
 
+        // The machine whose named tags this block reads: its own name, else the group it is
+        // grouped under — so a grouped machine's blocks land on one tags source by default.
+        string tagSourceName = block.TagSource?.Trim() ?? string.Empty;
+        if (tagSourceName.Length > LogicLimits.MaxTagSourceNameLength)
+        {
+            normalized = default!;
+            error = $"A tags source name can be at most {LogicLimits.MaxTagSourceNameLength} characters.";
+            return false;
+        }
+
+        if (tagSourceName.Length == 0)
+        {
+            tagSourceName = blockGroup;
+        }
+
+        LogicTagSourceDto? tagSource = LogicTagSources.FindSource(tag_sources_, tagSourceName);
+
         string kind = block.Kind.ToLowerInvariant();
         bool isSequence = kind == LogicBlockKinds.Sequence;
 
         // A block carries its logic either as an IEC network or as the simple conditions form;
         // the two are alternatives, never both, so there is one source of truth to evaluate.
         List<LogicElementDto> elements = new();
-        if (!TryNormalizeElements(block.Elements, out elements, out error))
+        if (!TryNormalizeElements(block.Elements, tagSource, out elements, out error))
         {
             normalized = default!;
             return false;
@@ -239,7 +384,7 @@ public sealed class LogicStore
 
             foreach (LogicConditionDto condition in block.Conditions)
             {
-                if (!TryNormalizeCondition(condition, out LogicConditionDto normalizedCondition, out error))
+                if (!TryNormalizeCondition(condition, tagSource, out LogicConditionDto normalizedCondition, out error))
                 {
                     normalized = default!;
                     return false;
@@ -268,7 +413,7 @@ public sealed class LogicStore
             HashSet<string> stepNames = new(StringComparer.OrdinalIgnoreCase);
             foreach (LogicStepDto step in block.Steps)
             {
-                if (!TryNormalizeStep(step, out LogicStepDto normalizedStep, out error))
+                if (!TryNormalizeStep(step, tagSource, out LogicStepDto normalizedStep, out error))
                 {
                     normalized = default!;
                     return false;
@@ -288,7 +433,7 @@ public sealed class LogicStore
         List<LogicActionDto> actions = new();
         foreach (LogicActionDto action in block.Actions)
         {
-            if (!TryNormalizeAction(action, out LogicActionDto normalizedAction, out error))
+            if (!TryNormalizeAction(action, tagSource, out LogicActionDto normalizedAction, out error))
             {
                 normalized = default!;
                 return false;
@@ -302,6 +447,7 @@ public sealed class LogicStore
             Id = block.Id == Guid.Empty ? Guid.NewGuid() : block.Id,
             Name = name,
             Group = blockGroup,
+            TagSource = tagSourceName,
             Description = block.Description?.Trim() ?? string.Empty,
             Kind = kind,
             Enabled = block.Enabled,
@@ -316,7 +462,11 @@ public sealed class LogicStore
         return true;
     }
 
-    private static bool TryNormalizeStep(LogicStepDto step, out LogicStepDto normalized, out string? error)
+    private static bool TryNormalizeStep(
+        LogicStepDto step,
+        LogicTagSourceDto? tagSource,
+        out LogicStepDto normalized,
+        out string? error)
     {
         string name = step.Name?.Trim() ?? string.Empty;
         if (name.Length == 0 || name.Length > 64)
@@ -327,7 +477,7 @@ public sealed class LogicStore
         }
 
         List<LogicElementDto> stepElements = new();
-        if (!TryNormalizeElements(step.Elements, out stepElements, out error))
+        if (!TryNormalizeElements(step.Elements, tagSource, out stepElements, out error))
         {
             normalized = default!;
             return false;
@@ -343,7 +493,7 @@ public sealed class LogicStore
         List<LogicConditionDto> conditions = new();
         foreach (LogicConditionDto condition in step.Conditions)
         {
-            if (!TryNormalizeCondition(condition, out LogicConditionDto normalizedCondition, out error))
+            if (!TryNormalizeCondition(condition, tagSource, out LogicConditionDto normalizedCondition, out error))
             {
                 normalized = default!;
                 return false;
@@ -355,7 +505,7 @@ public sealed class LogicStore
         List<LogicActionDto> actions = new();
         foreach (LogicActionDto action in step.Actions)
         {
-            if (!TryNormalizeAction(action, out LogicActionDto normalizedAction, out error))
+            if (!TryNormalizeAction(action, tagSource, out LogicActionDto normalizedAction, out error))
             {
                 normalized = default!;
                 return false;
@@ -364,18 +514,30 @@ public sealed class LogicStore
             actions.Add(normalizedAction);
         }
 
-        string? completionSourceId = NormalizeOptional(step.CompletionSourceId);
-        string? completionItemId = NormalizeOptional(step.CompletionItemId);
-        if ((completionSourceId is null) != (completionItemId is null))
+        // The handshake is either one of the machine's named tags or a direct source/tag pair.
+        string? completionTag = LogicTagSources.CanonicalName(tagSource, step.CompletionTag);
+        if (completionTag is { Length: 0 })
         {
-            normalized = default!;
-            error = "A completion handshake needs both a source and a tag.";
-            return false;
+            completionTag = null;
         }
 
-        if (completionSourceId is not null)
+        string? completionSourceId = null;
+        string? completionItemId = null;
+        if (completionTag is null)
         {
-            completionSourceId = NormalizeSourceId(completionSourceId);
+            completionSourceId = NormalizeOptional(step.CompletionSourceId);
+            completionItemId = NormalizeOptional(step.CompletionItemId);
+            if ((completionSourceId is null) != (completionItemId is null))
+            {
+                normalized = default!;
+                error = "A completion handshake needs both a source and a tag.";
+                return false;
+            }
+
+            if (completionSourceId is not null)
+            {
+                completionSourceId = NormalizeSourceId(completionSourceId);
+            }
         }
 
         normalized = new LogicStepDto
@@ -387,6 +549,7 @@ public sealed class LogicStore
             NextStepText = NormalizeOptional(step.NextStepText),
             CompletionSourceId = completionSourceId,
             CompletionItemId = completionItemId,
+            CompletionTag = completionTag,
             Actions = actions
         };
         error = null;
@@ -401,6 +564,7 @@ public sealed class LogicStore
     /// </summary>
     private static bool TryNormalizeElements(
         IReadOnlyList<LogicElementDto>? elements,
+        LogicTagSourceDto? tagSource,
         out List<LogicElementDto> normalized,
         out string? error)
     {
@@ -409,7 +573,7 @@ public sealed class LogicStore
 
         foreach (LogicElementDto element in elements ?? Array.Empty<LogicElementDto>())
         {
-            if (!TryNormalizeElement(element, 0, ref budget, out LogicElementDto child, out error))
+            if (!TryNormalizeElement(element, 0, ref budget, tagSource, out LogicElementDto child, out error))
             {
                 return false;
             }
@@ -425,6 +589,7 @@ public sealed class LogicStore
         LogicElementDto element,
         int depth,
         ref int budget,
+        LogicTagSourceDto? tagSource,
         out LogicElementDto normalized,
         out string? error)
     {
@@ -480,6 +645,9 @@ public sealed class LogicStore
         if (kind == LogicElementKinds.Contact)
         {
             bool relayContact = relay.Length > 0;
+            string contactTag = relayContact
+                ? string.Empty
+                : LogicTagSources.CanonicalName(tagSource, element.Tag);
 
             if (text.Length == 0 && !relayContact)
             {
@@ -488,8 +656,10 @@ public sealed class LogicStore
                 return false;
             }
 
+            // A contact reads one of three things: an internal relay, one of the machine's named
+            // tags (the pair lives on the entry), or a direct tag.
             string contactItemId = element.ItemId?.Trim() ?? string.Empty;
-            if (!relayContact && contactItemId.Length == 0)
+            if (!relayContact && contactTag.Length == 0 && contactItemId.Length == 0)
             {
                 normalized = default!;
                 error = "A contact needs a tag.";
@@ -534,13 +704,16 @@ public sealed class LogicStore
                 return true;
             }
 
+            bool named = contactTag.Length > 0;
             normalized = new LogicElementDto
             {
                 Id = element.Id == Guid.Empty ? Guid.NewGuid() : element.Id,
                 Kind = LogicElementKinds.Contact,
                 Text = text,
-                SourceId = NormalizeSourceId(element.SourceId),
-                ItemId = contactItemId,
+                // A named tag's pair lives on the tags source entry, never on the contact.
+                SourceId = named ? string.Empty : NormalizeSourceId(element.SourceId),
+                ItemId = named ? string.Empty : contactItemId,
+                Tag = contactTag,
                 Op = contactOp,
                 Value = LogicConditionOps.RequiresValue(contactOp) ? element.Value : null,
                 Severity = element.Severity.ToLowerInvariant(),
@@ -584,7 +757,7 @@ public sealed class LogicStore
         List<LogicElementDto> inputs = new();
         foreach (LogicElementDto input in element.Inputs)
         {
-            if (!TryNormalizeElement(input, depth + 1, ref budget, out LogicElementDto child, out error))
+            if (!TryNormalizeElement(input, depth + 1, ref budget, tagSource, out LogicElementDto child, out error))
             {
                 normalized = default!;
                 return false;
@@ -633,7 +806,11 @@ public sealed class LogicStore
         _ => "The element"
     };
 
-    private static bool TryNormalizeCondition(LogicConditionDto condition, out LogicConditionDto normalized, out string? error)
+    private static bool TryNormalizeCondition(
+        LogicConditionDto condition,
+        LogicTagSourceDto? tagSource,
+        out LogicConditionDto normalized,
+        out string? error)
     {
         string text = condition.Text?.Trim() ?? string.Empty;
         if (text.Length == 0 || text.Length > 200)
@@ -643,8 +820,9 @@ public sealed class LogicStore
             return false;
         }
 
+        string tag = LogicTagSources.CanonicalName(tagSource, condition.Tag);
         string itemId = condition.ItemId?.Trim() ?? string.Empty;
-        if (itemId.Length == 0)
+        if (tag.Length == 0 && itemId.Length == 0)
         {
             normalized = default!;
             error = "Condition tag is required.";
@@ -692,8 +870,10 @@ public sealed class LogicStore
         {
             Id = condition.Id == Guid.Empty ? Guid.NewGuid() : condition.Id,
             Text = text,
-            SourceId = NormalizeSourceId(condition.SourceId),
-            ItemId = itemId,
+            // A named tag's pair lives on the machine's tags source entry, never on the condition.
+            SourceId = tag.Length > 0 ? string.Empty : NormalizeSourceId(condition.SourceId),
+            ItemId = tag.Length > 0 ? string.Empty : itemId,
+            Tag = tag,
             Op = op,
             Value = LogicConditionOps.RequiresValue(op) ? condition.Value : null,
             Group = group,
@@ -705,7 +885,11 @@ public sealed class LogicStore
         return true;
     }
 
-    private static bool TryNormalizeAction(LogicActionDto action, out LogicActionDto normalized, out string? error)
+    private static bool TryNormalizeAction(
+        LogicActionDto action,
+        LogicTagSourceDto? tagSource,
+        out LogicActionDto normalized,
+        out string? error)
     {
         string label = action.Label?.Trim() ?? string.Empty;
         if (label.Length == 0 || label.Length > 32)
@@ -715,8 +899,9 @@ public sealed class LogicStore
             return false;
         }
 
+        string tag = LogicTagSources.CanonicalName(tagSource, action.Tag);
         string itemId = action.ItemId?.Trim() ?? string.Empty;
-        if (itemId.Length == 0)
+        if (tag.Length == 0 && itemId.Length == 0)
         {
             normalized = default!;
             error = "Action tag is required.";
@@ -733,8 +918,9 @@ public sealed class LogicStore
         normalized = new LogicActionDto
         {
             Label = label,
-            SourceId = NormalizeSourceId(action.SourceId),
-            ItemId = itemId,
+            SourceId = tag.Length > 0 ? string.Empty : NormalizeSourceId(action.SourceId),
+            ItemId = tag.Length > 0 ? string.Empty : itemId,
+            Tag = tag,
             Value = action.Value.Trim(),
             Confirm = action.Confirm
         };
@@ -823,6 +1009,70 @@ public sealed class LogicStore
         return value.Length == 0 ? DaRuntimeSettings.DefaultSourceId : value;
     }
 
+    /// <summary>
+    /// Normalizes a machine's tags source: the name is trimmed and required, entry names are
+    /// trimmed, blanks dropped and case-insensitive duplicates collapsed (first spelling wins),
+    /// and a binding is either a real source/item pair or blank — an item without a source lands
+    /// on the default source, and a missing item leaves the entry created but unassigned, so its
+    /// readers evaluate as unknown until the tag is assigned.
+    /// </summary>
+    private static bool TryNormalizeTagSource(
+        LogicTagSourceDto source,
+        out LogicTagSourceDto normalized,
+        out string? error)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+
+        string name = source.Name?.Trim() ?? string.Empty;
+        if (name.Length == 0 || name.Length > LogicLimits.MaxTagSourceNameLength)
+        {
+            normalized = default!;
+            error = $"A tags source name is required (max {LogicLimits.MaxTagSourceNameLength} characters).";
+            return false;
+        }
+
+        List<LogicTagDto> tags = new();
+        HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+        foreach (LogicTagDto tag in source.Tags)
+        {
+            string tagName = tag.Name?.Trim() ?? string.Empty;
+            if (tagName.Length == 0 || !seen.Add(tagName))
+            {
+                continue;
+            }
+
+            if (tagName.Length > LogicLimits.MaxTagNameLength)
+            {
+                normalized = default!;
+                error = $"A tag name can be at most {LogicLimits.MaxTagNameLength} characters.";
+                return false;
+            }
+
+            if (tags.Count == LogicLimits.MaxTagsPerSource)
+            {
+                normalized = default!;
+                error = $"A tags source can hold at most {LogicLimits.MaxTagsPerSource} tags.";
+                return false;
+            }
+
+            string itemId = tag.ItemId?.Trim() ?? string.Empty;
+            tags.Add(new LogicTagDto
+            {
+                Name = tagName,
+                SourceId = itemId.Length == 0 ? string.Empty : NormalizeSourceId(tag.SourceId),
+                ItemId = itemId
+            });
+        }
+
+        normalized = new LogicTagSourceDto
+        {
+            Name = name,
+            Tags = tags
+        };
+        error = null;
+        return true;
+    }
+
     private void Persist()
     {
         try
@@ -832,6 +1082,66 @@ public sealed class LogicStore
         }
         catch
         {
+        }
+    }
+
+    private void PersistTagSources()
+    {
+        try
+        {
+            string json = JsonSerializer.Serialize(tag_sources_, JsonOptions);
+            File.WriteAllText(tag_sources_path_, json);
+        }
+        catch
+        {
+        }
+    }
+
+    private List<LogicTagSourceDto>? LoadTagSourcesFromDisk()
+    {
+        try
+        {
+            if (!File.Exists(tag_sources_path_))
+            {
+                return null;
+            }
+
+            List<LogicTagSourceDto>? loaded =
+                JsonSerializer.Deserialize<List<LogicTagSourceDto>>(File.ReadAllText(tag_sources_path_));
+            if (loaded is null)
+            {
+                return null;
+            }
+
+            // Drop sources that no longer validate so one bad hand-edit cannot take the whole
+            // store down, then rewrite the file clean.
+            List<LogicTagSourceDto> sanitized = new();
+            HashSet<string> names = new(StringComparer.OrdinalIgnoreCase);
+            foreach (LogicTagSourceDto source in loaded)
+            {
+                if (TryNormalizeTagSource(source, out LogicTagSourceDto normalized, out _)
+                    && names.Add(normalized.Name))
+                {
+                    sanitized.Add(normalized);
+                }
+            }
+
+            if (sanitized.Count != loaded.Count)
+            {
+                try
+                {
+                    File.WriteAllText(tag_sources_path_, JsonSerializer.Serialize(sanitized, JsonOptions));
+                }
+                catch
+                {
+                }
+            }
+
+            return sanitized;
+        }
+        catch
+        {
+            return null;
         }
     }
 

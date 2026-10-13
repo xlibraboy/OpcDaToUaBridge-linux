@@ -153,10 +153,10 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
     /// <summary>Snapshot refresh: definitions, tags and evaluated state.</summary>
     public async Task RefreshAsync(CancellationToken cancellationToken)
     {
-        MobileResult<IReadOnlyList<LogicBlockDto>> definitions = await api_.GetLogicBlocksAsync(cancellationToken);
+        MobileResult<MobileLogicDefinitions> definitions = await api_.GetLogicDefinitionsAsync(cancellationToken);
         if (definitions.Ok)
         {
-            Overview.ApplyDefinitions(definitions.Value!);
+            Overview.ApplyDefinitions(definitions.Value!.Blocks, definitions.Value.TagSources);
             IsConnected = true;
             IsOffline = false;
             SignInRequired = false;
@@ -225,7 +225,7 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
             return;
         }
 
-        Overview.ApplyDefinitions(snapshot.Blocks);
+        Overview.ApplyDefinitions(snapshot.Blocks, snapshot.TagSources);
         lastTags_ = snapshot.Tags;
         if (snapshot.Tags.Count > 0)
         {
@@ -262,6 +262,7 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
         {
             SavedUtc = savedUtc,
             Blocks = Overview.Definitions.ToList(),
+            TagSources = Overview.TagSources.ToList(),
             State = Overview.State,
             Tags = lastTags_.ToList(),
             NotesByBlock = new Dictionary<Guid, List<LogicNoteDto>>(notesByBlock_)
@@ -334,7 +335,7 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
         }
     }
 
-    private string FailureText(MobileResult<IReadOnlyList<LogicBlockDto>> definitions)
+    private string FailureText(MobileResult<MobileLogicDefinitions> definitions)
     {
         if (definitions.IsSignInRequired)
         {

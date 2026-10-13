@@ -294,4 +294,37 @@ public sealed class LogicNetworkTests
         Assert.Equal((1, 2), LogicElementKinds.InputRange(LogicElementKinds.Ctu));
         Assert.Equal((1, 1), LogicElementKinds.InputRange(LogicElementKinds.Ton));
     }
+
+    [Fact]
+    public void Expand_CarriesTheTagsSourceReferenceOntoTheContact()
+    {
+        LogicConditionDto named = new()
+        {
+            Id = Guid.NewGuid(),
+            Text = "Dry end start permit must be given",
+            Tag = "START_PB",
+            Op = LogicConditionOps.On
+        };
+        LogicConditionDto held = new()
+        {
+            Id = Guid.NewGuid(),
+            Text = "Dry end running",
+            Tag = "RUNNING",
+            HoldMs = 2000,
+            Op = LogicConditionOps.On
+        };
+
+        List<LogicElementDto> roots = LogicNetwork.Expand(new[] { named, held });
+
+        // The named reference must survive the expansion, or the evaluator would read a tag
+        // contact with no tag at all.
+        LogicElementDto and = Assert.Single(roots);
+        Assert.Equal(LogicElementKinds.And, and.Kind);
+        Assert.Equal("START_PB", and.Inputs[0].Tag);
+
+        // A held condition becomes a TON around its contact — the reference travels with it.
+        LogicElementDto ton = and.Inputs[1];
+        Assert.Equal(LogicElementKinds.Ton, ton.Kind);
+        Assert.Equal("RUNNING", Assert.Single(ton.Inputs).Tag);
+    }
 }

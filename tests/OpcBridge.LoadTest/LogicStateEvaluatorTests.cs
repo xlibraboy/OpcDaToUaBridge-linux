@@ -46,14 +46,16 @@ public sealed class LogicStateEvaluatorTests
         string severity = LogicConditionSeverities.Block,
         string? nextStep = null,
         string group = "",
-        int holdMs = 0)
+        int holdMs = 0,
+        string tag = "")
     {
         return new LogicConditionDto
         {
             Id = Guid.NewGuid(),
             Text = text,
-            SourceId = sourceId,
-            ItemId = itemId,
+            SourceId = tag.Length > 0 ? string.Empty : sourceId,
+            ItemId = tag.Length > 0 ? string.Empty : itemId,
+            Tag = tag,
             Op = op,
             Value = value,
             Severity = severity,
@@ -912,5 +914,210 @@ public sealed class LogicStateEvaluatorTests
 
         // Sixteen inversions: the tag's true passes through unchanged.
         Assert.Equal(LogicBlockStates.Ready, state.State);
+    }
+
+    /// <summary>One machine's tags, with the entries a test needs bound (or left empty).</summary>
+    private static LogicTagSourceDto TagSource(string name, params (string Name, string ItemId)[] entries)
+    {
+        LogicTagSourceDto source = new() { Name = name };
+        foreach ((string tagName, string itemId) in entries)
+        {
+            source.Tags.Add(new LogicTagDto
+            {
+                Name = tagName,
+                SourceId = itemId.Length == 0 ? string.Empty : "sim",
+                ItemId = itemId
+            });
+        }
+
+        return source;
+    }
+
+    private static LogicBlockDto NamedFlat(string tagSource, params string[] tags) => new()
+    {
+        Id = Guid.NewGuid(),
+        Name = "Dry end start",
+        TagSource = tagSource,
+        Kind = LogicBlockKinds.Interlock,
+        Conditions = tags
+            .Select(tag => new LogicConditionDto
+            {
+                Id = Guid.NewGuid(),
+                Text = tag + " must be given",
+                Tag = tag,
+                Op = LogicConditionOps.On
+            })
+            .ToList()
+    };
+
+    [Fact]
+    public void NamedTag_ResolvesThroughTheMachinesTagsSource()
+    {
+        LogicTagSourceDto source = TagSource("DRYEND", ("START_PB", "Start"));
+        LogicBlockDto block = NamedFlat("DRYEND", "START_PB");
+
+        LogicBlockStateDto state = LogicStateEvaluator.EvaluateBlock(
+            block,
+            Values(("sim", "Start", true, true)),
+            Mappings(),
+            states: null,
+            nowUtc: Now,
+            tagSources: new[] { source });
+
+        Assert.Equal(LogicBlockStates.Ready, state.State);
+        Assert.Equal(LogicConditionStates.True, Contacts(state)[0].State);
+    }
+
+    [Fact]
+    public void NamedTag_Unassigned_ReadsUnknownAndNamesTheEntry()
+    {
+        LogicTagSourceDto source = TagSource("DRYEND", ("START_PB", ""));
+        LogicBlockDto block = NamedFlat("DRYEND", "START_PB");
+
+        LogicBlockStateDto state = LogicStateEvaluator.EvaluateBlock(
+            block,
+            Values(),
+            Mappings(),
+            states: null,
+            nowUtc: Now,
+            tagSources: new[] { source });
+
+        // Never a silent false: the entry is named so the author knows what to assign.
+        Assert.Equal(LogicBlockStates.Unknown, state.State);
+        Assert.Equal("no data for START_PB (not assigned)", state.Reason);
+        Assert.Equal("—", Contacts(state)[0].ValueText);
+    }
+
+    [Fact]
+    public void NamedTag_NotInTheSource_NamesTheMachine()
+    {
+        LogicTagSourceDto source = TagSource("DRYEND", ("START_PB", "Start"));
+        LogicBlockDto block = NamedFlat("DRYEND", "GHOST_PB");
+
+        LogicBlockStateDto state = LogicStateEvaluator.EvaluateBlock(
+            block,
+            Values(),
+            Mappings(),
+            states: null,
+            nowUtc: Now,
+            tagSources: new[] { source });
+
+        Assert.Equal(LogicBlockStates.Unknown, state.State);
+        Assert.Equal("no data for GHOST_PB (not in DRYEND)", state.Reason);
+    }
+
+    [Fact]
+    public void NamedTag_WithoutATagsSource_SaysSo()
+    {
+        LogicBlockDto block = NamedFlat(string.Empty, "GHOST_PB");
+
+        LogicBlockStateDto state = LogicStateEvaluator.EvaluateBlock(
+            block,
+            Values(),
+            Mappings(),
+            states: null,
+            nowUtc: Now,
+            tagSources: Array.Empty<LogicTagSourceDto>());
+
+        Assert.Equal("no data for GHOST_PB (no tags source)", state.Reason);
+    }
+
+    [Fact]
+    public void NamedTag_BoundButUnread_NamesTheRealTagFromTheMapping()
+    {
+        LogicTagSourceDto source = TagSource("DRYEND", ("START_PB", "ns=2;s=Status/Line01.Permit"));
+        LogicBlockDto block = NamedFlat("DRYEND", "START_PB");
+
+        LogicBlockStateDto state = LogicStateEvaluator.EvaluateBlock(
+            block,
+            Values(),
+            Mappings(new TagMapping
+            {
+                SourceId = "sim",
+                ItemId = "ns=2;s=Status/Line01.Permit",
+                DisplayName = "Line 01 Start Permit"
+            }),
+            states: null,
+            nowUtc: Now,
+            tagSources: new[] { source });
+
+        Assert.Equal("no data for Line 01 Start Permit", state.Reason);
+    }
+
+    [Fact]
+    public void NamedTag_SharedByTwoBlocks_MovesBothWhenTheEntryIsBound()
+    {
+        LogicBlockDto start = NamedFlat("DRYEND", "START_PB");
+        LogicBlockDto stop = NamedFlat("DRYEND", "START_PB");
+        stop.Name = "Dry end stop";
+
+        LogicBlockStateDto before = LogicStateEvaluator.EvaluateBlock(
+            start, Values(), Mappings(), states: null, nowUtc: Now,
+            tagSources: new[] { TagSource("DRYEND", ("START_PB", "")) });
+
+        LogicTagSourceDto bound = TagSource("DRYEND", ("START_PB", "Start"));
+        LogicBlockStateDto afterStart = LogicStateEvaluator.EvaluateBlock(
+            start, Values(("sim", "Start", true, true)), Mappings(), states: null, nowUtc: Now, tagSources: new[] { bound });
+        LogicBlockStateDto afterStop = LogicStateEvaluator.EvaluateBlock(
+            stop, Values(("sim", "Start", true, true)), Mappings(), states: null, nowUtc: Now, tagSources: new[] { bound });
+
+        // One assignment moves every block of the machine.
+        Assert.Equal(LogicBlockStates.Unknown, before.State);
+        Assert.Equal(LogicBlockStates.Ready, afterStart.State);
+        Assert.Equal(LogicBlockStates.Ready, afterStop.State);
+    }
+
+    [Fact]
+    public void NamedTag_OnANetworkContactReadsTheBoundTag()
+    {
+        LogicTagSourceDto source = TagSource("DRYEND", ("START_PB", "PS1"));
+        LogicElementDto contact = TagContact("START_PB");
+        contact.Tag = "START_PB";
+        contact.ItemId = string.Empty;
+        LogicBlockDto block = Network(contact);
+        block.TagSource = "DRYEND";
+
+        LogicBlockStateDto state = LogicStateEvaluator.EvaluateBlock(
+            block, Values(("sim", "PS1", true, true)), Mappings(), states: null, nowUtc: Now, tagSources: new[] { source });
+
+        Assert.Equal(LogicBlockStates.Ready, state.State);
+        Assert.Equal(LogicConditionStates.True, Row(state, contact).State);
+    }
+
+    [Fact]
+    public void NamedTag_CompletionHandshakeResolvesAndReportsWhileUnassigned()
+    {
+        LogicConditionDto condition = Condition(tag: "START_PB");
+        LogicStepDto step = new()
+        {
+            Id = Guid.NewGuid(),
+            Name = "Start",
+            Conditions = { condition },
+            CompletionTag = "DONE_FB"
+        };
+        LogicBlockDto block = Sequence(step);
+        block.TagSource = "DRYEND";
+
+        LogicBlockStateDto unassigned = LogicStateEvaluator.EvaluateBlock(
+            block,
+            Values(("sim", "Permit", true, true)),
+            Mappings(),
+            states: null,
+            nowUtc: Now,
+            tagSources: new[] { TagSource("DRYEND", ("START_PB", "Permit"), ("DONE_FB", "")) });
+
+        Assert.Equal(LogicStepStates.Unknown, Assert.Single(unassigned.Steps).State);
+        Assert.Equal("no data for DONE_FB (not assigned)", Assert.Single(unassigned.Steps).Reason);
+
+        LogicBlockStateDto done = LogicStateEvaluator.EvaluateBlock(
+            block,
+            Values(("sim", "Permit", true, true), ("sim", "Done", true, true)),
+            Mappings(),
+            states: null,
+            nowUtc: Now,
+            tagSources: new[] { TagSource("DRYEND", ("START_PB", "Permit"), ("DONE_FB", "Done")) });
+
+        Assert.Equal(LogicBlockStates.Ready, done.State);
+        Assert.Equal(LogicStepStates.Done, Assert.Single(done.Steps).State);
     }
 }

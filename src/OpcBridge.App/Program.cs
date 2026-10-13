@@ -1766,7 +1766,9 @@ app.MapDelete("/api/interlinks/{id:guid}", (Guid id, InterlinkStore store) =>
 app.MapGet("/api/logic", (LogicStore store) =>
 {
     (IReadOnlyList<LogicBlockDto> blocks, long version) = store.GetSnapshot();
-    return Results.Json(new { blocks, version });
+    // The machines' tags sources travel with the definitions: a block's named tags resolve
+    // through them, so a client that shows a block needs them to label and write its tags.
+    return Results.Json(new { blocks, tagSources = store.GetTagSources(), version });
 });
 app.MapPost("/api/logic/blocks", (LogicBlockSaveRequest request, LogicStore store) =>
 {
@@ -1789,6 +1791,32 @@ app.MapDelete("/api/logic/blocks/{id:guid}", (Guid id, LogicStore store) =>
     if (!store.TryRemove(id, out long version))
     {
         return Results.NotFound(new { error = "Block not found." });
+    }
+
+    return Results.Json(new { version });
+});
+app.MapPost("/api/logic/tagsources", (LogicTagSourceSaveRequest request, LogicStore store) =>
+{
+    if (request.TagSource is null)
+    {
+        return Results.BadRequest(new { error = "Tags source is required." });
+    }
+
+    if (!store.TrySaveTagSource(request.TagSource, out LogicTagSourceDto saved, out long version, out string? error))
+    {
+        return Results.BadRequest(new { error });
+    }
+
+    return Results.Json(new { tagSource = saved, version });
+});
+app.MapDelete("/api/logic/tagsources/{name}", (string name, LogicStore store) =>
+{
+    if (!store.TryRemoveTagSource(name, out long version, out string? error))
+    {
+        // In use: a 409 names how many blocks would lose their tags; missing is a 404.
+        return string.Equals(error, "Tags source not found.", StringComparison.Ordinal)
+            ? Results.NotFound(new { error })
+            : Results.Conflict(new { error });
     }
 
     return Results.Json(new { version });

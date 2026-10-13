@@ -27,6 +27,15 @@ public sealed class LogicBlockDto
     /// </summary>
     public string Group { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Name of the machine's <see cref="LogicTagSourceDto"/> — the named tags this block's
+    /// conditions, contacts, step handshakes and actions reference by name. Every block carrying
+    /// the same name shares one source, so a machine's tags are assigned once (e.g. one "DRYEND"
+    /// source for every DRYEND block). Blank = no source; the store falls back to
+    /// <see cref="Group"/> so a grouped machine's blocks land on one source by default.
+    /// </summary>
+    public string TagSource { get; set; } = string.Empty;
+
     /// <summary>Optional operator note rendered under the name.</summary>
     public string Description { get; set; } = string.Empty;
 
@@ -86,6 +95,14 @@ public sealed class LogicElementDto
 
     public string ItemId { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Name of the block's tags source entry this contact reads (e.g. "START_PB"), the
+    /// machine's named tag assigned in one place. When set, <see cref="SourceId"/> and
+    /// <see cref="ItemId"/> are empty — the pair lives on the entry — and the element reads
+    /// unknown while the entry is unassigned. Empty for a contact that carries a direct tag.
+    /// </summary>
+    public string Tag { get; set; } = string.Empty;
+
     /// <summary>Contact form: on (normally open) / off (normally closed) / gt / lt / eq.</summary>
     public string Op { get; set; } = LogicConditionOps.On;
 
@@ -134,6 +151,13 @@ public sealed class LogicConditionDto
 
     public string SourceId { get; set; } = string.Empty;
     public string ItemId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Name of the block's tags source entry this condition reads. When set,
+    /// <see cref="SourceId"/> and <see cref="ItemId"/> are empty — the machine's tags source
+    /// holds the assignment, so every block of the machine reads the same tag.
+    /// </summary>
+    public string Tag { get; set; } = string.Empty;
 
     /// <summary>One of <see cref="LogicConditionOps"/>.</summary>
     public string Op { get; set; } = LogicConditionOps.On;
@@ -187,6 +211,13 @@ public sealed class LogicStepDto
 
     public string? CompletionItemId { get; set; }
 
+    /// <summary>
+    /// Name of the block's tags source entry this step waits on, instead of the direct
+    /// <see cref="CompletionSourceId"/>/<see cref="CompletionItemId"/> pair. Null = no handshake
+    /// or a direct pair.
+    /// </summary>
+    public string? CompletionTag { get; set; }
+
     public List<LogicActionDto> Actions { get; set; } = new();
 }
 
@@ -198,11 +229,49 @@ public sealed class LogicActionDto
     public string SourceId { get; set; } = string.Empty;
     public string ItemId { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Name of the block's tags source entry this button writes, instead of the direct
+    /// <see cref="SourceId"/>/<see cref="ItemId"/> pair. The button does nothing while the entry
+    /// is unassigned.
+    /// </summary>
+    public string Tag { get; set; } = string.Empty;
+
     /// <summary>Literal to write (parsed by the bridge against the target tag's data type).</summary>
     public string Value { get; set; } = string.Empty;
 
     /// <summary>Ask the operator to confirm before writing.</summary>
     public bool Confirm { get; set; } = true;
+}
+
+/// <summary>
+/// One machine's named tags (e.g. "DRYEND"): the entries every block of that machine references
+/// by name. It is the indirection that makes a tag assigned once — a block's conditions,
+/// contacts, step handshakes and actions carry an entry name, the real source/item pair lives
+/// here, so every block of the machine follows one assignment. An entry may be created empty
+/// (name only) and assigned later: its readers evaluate as unknown until then, never as false.
+/// Sources live on the bridge (logic-tags.json), so two blocks carrying the same
+/// <see cref="LogicBlockDto.TagSource"/> share every binding.
+/// </summary>
+public sealed class LogicTagSourceDto
+{
+    /// <summary>The machine's name (e.g. "DRYEND"). Blocks match it case-insensitively.</summary>
+    public string Name { get; set; } = string.Empty;
+
+    public List<LogicTagDto> Tags { get; set; } = new();
+}
+
+/// <summary>
+/// One named tag of a machine's tags source: the name a block references, and the source/item
+/// pair it is bound to (both empty = created, not assigned yet).
+/// </summary>
+public sealed class LogicTagDto
+{
+    /// <summary>The reference name (e.g. "START_PB"), unique within its source.</summary>
+    public string Name { get; set; } = string.Empty;
+
+    public string SourceId { get; set; } = string.Empty;
+
+    public string ItemId { get; set; } = string.Empty;
 }
 
 /// <summary>An operator note (or acknowledgement) attached to a block, optionally to one condition.</summary>

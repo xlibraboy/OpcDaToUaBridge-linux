@@ -95,6 +95,7 @@ public static class LogicNetwork
         Text = condition.Text,
         SourceId = condition.SourceId,
         ItemId = condition.ItemId,
+        Tag = condition.Tag,
         Op = condition.Op,
         Value = condition.Value,
         Severity = condition.Severity,

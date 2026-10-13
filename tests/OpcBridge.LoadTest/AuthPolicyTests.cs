@@ -41,7 +41,8 @@ public sealed class AuthPolicyTests
     [InlineData("/api/logic/blocks")]
     [InlineData("/api/logic/state")]
     [InlineData("/api/logic/notes")]
-    [InlineData("/api/influx/status")]
+    [InlineData("/api/logic/tagsources")]
+    [InlineData("/api/logic/tagsources/DRYEND")]
     public void HmiPaths_AreRecognised(string path) => Assert.True(AuthPolicy.IsHmiPath(path));
 
     [Theory]

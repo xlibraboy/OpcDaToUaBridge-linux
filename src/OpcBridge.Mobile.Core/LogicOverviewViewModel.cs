@@ -358,6 +358,17 @@ public sealed partial class LogicOverviewViewModel : ObservableObject
     /// <summary>The definitions the detail screen is built from (latest applied).</summary>
     public IReadOnlyList<LogicBlockDto> Definitions { get; private set; } = Array.Empty<LogicBlockDto>();
 
+    /// <summary>The machines' tags sources the definitions' named tags resolve through.</summary>
+    public IReadOnlyList<LogicTagSourceDto> TagSources { get; private set; } = Array.Empty<LogicTagSourceDto>();
+
+    /// <summary>The tags source a block reads its named tags from (its machine, else its group).</summary>
+    public LogicTagSourceDto? TagSourceFor(LogicBlockDto? block) =>
+        block is null
+            ? null
+            : LogicTagSources.FindSource(
+                TagSources,
+                string.IsNullOrWhiteSpace(block.TagSource) ? block.Group : block.TagSource);
+
     /// <summary>The latest evaluated state (latest applied).</summary>
     public LogicStateSnapshot? State { get; private set; }
 
@@ -381,13 +392,16 @@ public sealed partial class LogicOverviewViewModel : ObservableObject
         ApplyFilter();
     }
 
-    public void ApplyDefinitions(IEnumerable<LogicBlockDto> blocks)
+    public void ApplyDefinitions(
+        IEnumerable<LogicBlockDto> blocks,
+        IReadOnlyList<LogicTagSourceDto>? tagSources = null)
     {
         List<LogicBlockDto> sorted = blocks
             .OrderBy(block => block.Order)
             .ThenBy(block => block.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
         Definitions = sorted;
+        TagSources = tagSources ?? Array.Empty<LogicTagSourceDto>();
 
         bool sameOrder = sorted.Count == Blocks.Count;
         if (sameOrder)

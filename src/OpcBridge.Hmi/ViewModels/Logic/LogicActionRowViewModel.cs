@@ -19,13 +19,16 @@ public partial class LogicActionRowViewModel : ObservableObject
     public LogicActionRowViewModel(
         LogicActionDto action,
         LogicTagCatalog catalog,
-        Action<LogicActionRowViewModel>? onRemove = null)
+        Action<LogicActionRowViewModel>? onRemove = null,
+        IEnumerable<LogicTagEntryViewModel>? tagEntries = null)
     {
         catalog_ = catalog;
         onRemove_ = onRemove;
         Label = action.Label;
         Value = action.Value;
         Confirm = action.Confirm;
+        TagEntries = tagEntries ?? Array.Empty<LogicTagEntryViewModel>();
+        SelectedBlockTag = FindTagEntry(action.Tag);
         LoadSourceAndItems(action.SourceId, action.ItemId);
     }
 
@@ -52,6 +55,39 @@ public partial class LogicActionRowViewModel : ObservableObject
 
     public string ItemId => SelectedTag?.ItemId ?? string.Empty;
 
+    /// <summary>The machine's named tags this button may write instead of a direct tag.</summary>
+    public IEnumerable<LogicTagEntryViewModel> TagEntries { get; }
+
+    [ObservableProperty]
+    private LogicTagEntryViewModel? _selectedBlockTag;
+
+    /// <summary>The stored tags-source reference, "" when the button writes a direct tag.</summary>
+    public string Tag => SelectedBlockTag?.Name.Trim() ?? string.Empty;
+
+    public bool HasBlockTag => Tag.Length > 0;
+
+    /// <summary>The direct source/tag pickers: hidden while a named tag is selected.</summary>
+    public bool ShowsDirectTag => !HasBlockTag;
+
+    partial void OnSelectedBlockTagChanged(LogicTagEntryViewModel? value)
+    {
+        OnPropertyChanged(nameof(Tag));
+        OnPropertyChanged(nameof(HasBlockTag));
+        OnPropertyChanged(nameof(ShowsDirectTag));
+        ClearBlockTagCommand.NotifyCanExecuteChanged();
+    }
+
+    [RelayCommand(CanExecute = nameof(CanClearBlockTag))]
+    private void ClearBlockTag() => SelectedBlockTag = null;
+
+    private bool CanClearBlockTag() => CanEdit && HasBlockTag;
+
+    private LogicTagEntryViewModel? FindTagEntry(string? name) =>
+        string.IsNullOrWhiteSpace(name)
+            ? null
+            : TagEntries.FirstOrDefault(entry =>
+                string.Equals(entry.Name.Trim(), name.Trim(), StringComparison.OrdinalIgnoreCase));
+
     partial void OnSelectedSourceChanged(LogicSourceOption? value)
     {
         if (!loading_)
@@ -63,7 +99,11 @@ public partial class LogicActionRowViewModel : ObservableObject
     [ObservableProperty]
     private bool _canEdit = true;
 
-    partial void OnCanEditChanged(bool value) => RemoveCommand.NotifyCanExecuteChanged();
+    partial void OnCanEditChanged(bool value)
+    {
+        RemoveCommand.NotifyCanExecuteChanged();
+        ClearBlockTagCommand.NotifyCanExecuteChanged();
+    }
 
     [RelayCommand(CanExecute = nameof(CanRemoveRow))]
     private void Remove() => onRemove_?.Invoke(this);

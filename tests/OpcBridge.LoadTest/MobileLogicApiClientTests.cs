@@ -52,10 +52,31 @@ public sealed class MobileLogicApiClientTests
         using LogicApiClient client = new();
         client.SetBaseAddress(app.Client.BaseAddress!.ToString());
 
-        MobileResult<IReadOnlyList<LogicBlockDto>> blocks = await client.GetLogicBlocksAsync(CancellationToken.None);
-        Assert.True(blocks.Ok, blocks.Error);
-        Assert.Single(blocks.Value!);
-        Assert.Equal("Line 01 Start", blocks.Value![0].Name);
+        MobileResult<MobileLogicDefinitions> definitions = await client.GetLogicDefinitionsAsync(CancellationToken.None);
+        Assert.True(definitions.Ok, definitions.Error);
+        Assert.Single(definitions.Value!.Blocks);
+        Assert.Equal("Line 01 Start", definitions.Value.Blocks[0].Name);
+        Assert.Empty(definitions.Value.TagSources);
+
+        // The machines' tags sources travel with the definitions: a block's named tags resolve
+        // through them on the phone, including offline.
+        using HttpResponseMessage source = await app.Client.PostAsJsonAsync(
+            "/api/logic/tagsources",
+            new
+            {
+                tagSource = new
+                {
+                    name = "DRYEND",
+                    tags = new[] { new { name = "START_PB", sourceId = "sim", itemId = "Start" } }
+                }
+            });
+        Assert.Equal(HttpStatusCode.OK, source.StatusCode);
+
+        definitions = await client.GetLogicDefinitionsAsync(CancellationToken.None);
+        LogicTagSourceDto machine = Assert.Single(definitions.Value!.TagSources);
+        Assert.Equal("DRYEND", machine.Name);
+        Assert.Equal("START_PB", machine.Tags[0].Name);
+        Assert.Equal("Start", machine.Tags[0].ItemId);
 
         MobileResult<LogicStateSnapshot> state = await client.GetLogicStateAsync(CancellationToken.None);
         Assert.True(state.Ok, state.Error);
@@ -135,7 +156,7 @@ public sealed class MobileLogicApiClientTests
             using LogicApiClient client = new();
             client.SetBaseAddress($"http://127.0.0.1:{port}");
 
-            MobileResult<IReadOnlyList<LogicBlockDto>> blocks = await client.GetLogicBlocksAsync(CancellationToken.None);
+            MobileResult<MobileLogicDefinitions> blocks = await client.GetLogicDefinitionsAsync(CancellationToken.None);
             MobileResult<IReadOnlyList<HmiTagDto>> tags = await client.GetTagsAsync(CancellationToken.None);
             MobileResult<IReadOnlyList<LogicNoteDto>> notes = await client.GetNotesAsync(null, 50, CancellationToken.None);
 

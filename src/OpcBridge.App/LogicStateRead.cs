@@ -29,6 +29,7 @@ public static class LogicStateRead
             (sourceId, itemId) =>
                 index.TryGetValue(LogicStateEvaluator.Key(sourceId, itemId), out TagMapping mapping) ? mapping : null,
             nowUtc,
-            states);
+            states,
+            logicStore.GetTagSources());
     }
 }

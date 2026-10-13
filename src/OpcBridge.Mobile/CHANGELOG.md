@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Blocks that read their machine's **tags source** (the HMI Logic page's Tags tab) render fully:
+  a named contact shows the entry and the tag it is bound to (`START_PB · Dry End Start Permit`),
+  its live value is read through the resolved tag, and an action button writes the resolved tag —
+  while an entry that has not been assigned yet reads `START_PB (not assigned)` and the write
+  reports why instead of touching the wrong tag. The machines' tags sources travel with the
+  definitions and are kept in the **offline cache** beside the blocks, so the labels and write
+  targets survive a lost link like everything else.
 - Relay elements in a network read properly: a **coil** row shows `COIL M01` with the bit it
   drives and a **relay contact** shows `NO`/`NC` with `relay M01` under it and the same
   **should 1 · actual 0** line as a tag contact, instead of an unnamed row — and relay rows no

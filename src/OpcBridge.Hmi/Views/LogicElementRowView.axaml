@@ -47,7 +47,25 @@
             <TextBox Text="{Binding Text}" Watermark="Guard closed"
                      AutomationProperties.Name="Element label" />
           </StackPanel>
-          <StackPanel Classes="field" Width="150" IsVisible="{Binding ShowsTag}">
+          <StackPanel Classes="field" Width="210" IsVisible="{Binding ShowsBlockTag}">
+            <TextBlock Classes="fieldLabel" Text="MACHINE TAG" />
+            <StackPanel Orientation="Horizontal" Spacing="4">
+              <ComboBox Width="180" ItemsSource="{Binding TagEntries}" SelectedItem="{Binding SelectedBlockTag}"
+                        AutomationProperties.Name="Machine tag"
+                        ToolTip.Tip="One of this block's machine's tags (the Tags tab) — assigned once, read by every block of the machine.">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="logic:LogicTagEntryViewModel">
+                    <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+              <Button Classes="tool" Content="✕" Command="{Binding ClearBlockTagCommand}"
+                      IsVisible="{Binding HasBlockTag}" VerticalAlignment="Center"
+                      ToolTip.Tip="Read a direct bridge tag instead"
+                      AutomationProperties.Name="Clear machine tag" />
+            </StackPanel>
+          </StackPanel>
+          <StackPanel Classes="field" Width="150" IsVisible="{Binding ShowsDirectTag}">
             <TextBlock Classes="fieldLabel" Text="SOURCE" />
             <ComboBox ItemsSource="{Binding Sources}" SelectedItem="{Binding SelectedSource}"
                       AutomationProperties.Name="Element source"
@@ -59,7 +77,7 @@
               </ComboBox.ItemTemplate>
             </ComboBox>
           </StackPanel>
-          <StackPanel Classes="field" Width="210" IsVisible="{Binding ShowsTag}">
+          <StackPanel Classes="field" Width="210" IsVisible="{Binding ShowsDirectTag}">
             <TextBlock Classes="fieldLabel" Text="TAG" />
             <ComboBox ItemsSource="{Binding Items}" SelectedItem="{Binding SelectedTag}"
                       AutomationProperties.Name="Element tag"

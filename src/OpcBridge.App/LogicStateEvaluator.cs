@@ -18,10 +18,13 @@ namespace OpcBridge.App;
 /// both work), and a gate is unknown while its inputs leave the answer open. A warn element is
 /// reported but contributes true to its parent — it can never block. Internal relays extend the
 /// same rule to a coil's memory: a coil drives its relay with its input every pass, a relay
-/// contact reads it from any block, and a relay no coil has driven reads unknown. Every element
-/// keeps the reading it must show (<see cref="LogicElementStateDto.Should"/>) and whether the
-/// live value satisfies it (<see cref="LogicElementStateDto.Matches"/>), which is what the phone
-/// renders as "should 1 / actual 0"; a timer or counter reports its progress alongside.
+/// contact reads it from any block, and a relay no coil has driven reads unknown. A contact may
+/// also name one of its machine's tags source entries instead of a direct tag: the entry's pair
+/// is what is read, and an entry still waiting for its tag reads unknown with the entry named —
+/// never a silent false. Every element keeps the reading it must show
+/// (<see cref="LogicElementStateDto.Should"/>) and whether the live value satisfies it
+/// (<see cref="LogicElementStateDto.Matches"/>), which is what the phone renders as
+/// "should 1 / actual 0"; a timer or counter reports its progress alongside.
 /// </summary>
 public static class LogicStateEvaluator
 {
@@ -48,7 +51,8 @@ public static class LogicStateEvaluator
         Func<string, string, BridgeValueSnapshot?> valueLookup,
         Func<string, string, TagMapping?> mappingLookup,
         DateTime nowUtc,
-        LogicStateStore? states = null)
+        LogicStateStore? states = null,
+        IReadOnlyList<LogicTagSourceDto>? tagSources = null)
     {
         ArgumentNullException.ThrowIfNull(blocks);
 
@@ -63,7 +67,7 @@ public static class LogicStateEvaluator
 
             foreach (LogicBlockDto block in blocks.OrderBy(block => block.Order))
             {
-                snapshot.Blocks.Add(EvaluateBlock(block, valueLookup, mappingLookup, states, nowUtc));
+                snapshot.Blocks.Add(EvaluateBlock(block, valueLookup, mappingLookup, states, nowUtc, tagSources));
             }
 
             return snapshot;
@@ -79,12 +83,14 @@ public static class LogicStateEvaluator
         Func<string, string, BridgeValueSnapshot?> valueLookup,
         Func<string, string, TagMapping?> mappingLookup,
         LogicStateStore? states = null,
-        DateTime nowUtc = default)
+        DateTime nowUtc = default,
+        IReadOnlyList<LogicTagSourceDto>? tagSources = null)
     {
         ArgumentNullException.ThrowIfNull(block);
 
         List<LogicElementStateDto> elements = new();
         List<LogicStepStateDto> steps = new();
+        LogicTags machine = new(block.TagSource, LogicTagSources.FindSource(tagSources, block.TagSource));
 
         string state;
         string? reason;
@@ -93,10 +99,10 @@ public static class LogicStateEvaluator
         {
             // A disabled block is still reported element by element, but its coils must not
             // drive relays — a disabled interlock has no say in what the plant does.
-            EvaluateNetwork(LogicNetwork.For(block), valueLookup, mappingLookup, states, execute: false, nowUtc, elements);
+            EvaluateNetwork(LogicNetwork.For(block), machine, valueLookup, mappingLookup, states, execute: false, nowUtc, elements);
             foreach (LogicStepDto step in block.Steps)
             {
-                EvaluateNetwork(LogicNetwork.For(step), valueLookup, mappingLookup, states, execute: false, nowUtc, elements);
+                EvaluateNetwork(LogicNetwork.For(step), machine, valueLookup, mappingLookup, states, execute: false, nowUtc, elements);
             }
 
             state = LogicBlockStates.Disabled;
@@ -104,12 +110,12 @@ public static class LogicStateEvaluator
         }
         else if (string.Equals(block.Kind, LogicBlockKinds.Sequence, StringComparison.OrdinalIgnoreCase))
         {
-            (state, reason) = EvaluateSequence(block, valueLookup, mappingLookup, states, nowUtc, elements, steps);
+            (state, reason) = EvaluateSequence(block, machine, valueLookup, mappingLookup, states, nowUtc, elements, steps);
         }
         else
         {
             (bool? output, string? failing, string? missing) =
-                EvaluateNetwork(LogicNetwork.For(block), valueLookup, mappingLookup, states, execute: true, nowUtc, elements);
+                EvaluateNetwork(LogicNetwork.For(block), machine, valueLookup, mappingLookup, states, execute: true, nowUtc, elements);
             (state, reason) = BlockVerdict(output, failing, missing);
         }
 
@@ -121,6 +127,29 @@ public static class LogicStateEvaluator
             Elements = elements,
             Steps = steps
         };
+    }
+
+    /// <summary>
+    /// The machine's tags source a block reads its named tags from, together with the name the
+    /// block carries — so an unresolved reference can say which machine it looked in.
+    /// </summary>
+    private readonly struct LogicTags
+    {
+        public LogicTags(string? name, LogicTagSourceDto? source)
+        {
+            Name = name?.Trim() ?? string.Empty;
+            Source = source;
+        }
+
+        public string Name { get; }
+
+        public LogicTagSourceDto? Source { get; }
+
+        public bool TryResolve(string? tag, out string sourceId, out string itemId) =>
+            LogicTagSources.TryResolve(Source, tag, out sourceId, out itemId);
+
+        public string Unresolved(string? tag) =>
+            LogicTagSources.UnresolvedText(tag, Source, Name);
     }
 
     /// <summary>
@@ -156,6 +185,7 @@ public static class LogicStateEvaluator
 
     private static (string State, string? Reason) EvaluateSequence(
         LogicBlockDto block,
+        LogicTags machine,
         Func<string, string, BridgeValueSnapshot?> valueLookup,
         Func<string, string, TagMapping?> mappingLookup,
         LogicStateStore? states,
@@ -171,26 +201,53 @@ public static class LogicStateEvaluator
         {
             // A disabled block never reaches here, so a step's coils always drive their relays.
             (bool? output, string? failing, string? missing) =
-                EvaluateNetwork(LogicNetwork.For(step), valueLookup, mappingLookup, states, execute: true, nowUtc, elements);
+                EvaluateNetwork(LogicNetwork.For(step), machine, valueLookup, mappingLookup, states, execute: true, nowUtc, elements);
             bool stepDone = output == true;
 
-            bool completionConfigured = !string.IsNullOrWhiteSpace(step.CompletionSourceId)
-                && !string.IsNullOrWhiteSpace(step.CompletionItemId);
+            // The handshake is either one of the machine's named tags or a direct pair.
+            bool completionConfigured = false;
+            bool completionUnassigned = false;
+            string? completionSourceId = step.CompletionSourceId;
+            string? completionItemId = step.CompletionItemId;
+            if (!string.IsNullOrWhiteSpace(step.CompletionTag))
+            {
+                completionConfigured = machine.TryResolve(step.CompletionTag, out string namedSource, out string namedItem);
+                completionUnassigned = !completionConfigured;
+                completionSourceId = namedSource;
+                completionItemId = namedItem;
+            }
+            else
+            {
+                completionConfigured = !string.IsNullOrWhiteSpace(step.CompletionSourceId)
+                    && !string.IsNullOrWhiteSpace(step.CompletionItemId);
+            }
+
             bool completionUnknown = false;
             string? completionText = null;
-            if (stepDone && completionConfigured)
+            if (completionUnassigned)
             {
-                BridgeValueSnapshot? completion = valueLookup(step.CompletionSourceId!, step.CompletionItemId!);
+                // The named handshake waits for a tag nobody has assigned yet: the step cannot
+                // be done, and the reason says which entry is waiting.
+                if (stepDone)
+                {
+                    stepDone = false;
+                    completionUnknown = true;
+                    completionText = "no data for " + machine.Unresolved(step.CompletionTag);
+                }
+            }
+            else if (stepDone && completionConfigured)
+            {
+                BridgeValueSnapshot? completion = valueLookup(completionSourceId!, completionItemId!);
                 if (completion is null || !completion.IsGood)
                 {
                     stepDone = false;
                     completionUnknown = true;
-                    completionText = "no data for " + Label(step.CompletionSourceId, step.CompletionItemId, mappingLookup);
+                    completionText = "no data for " + Label(completionSourceId, completionItemId, mappingLookup);
                 }
                 else if (!TagDigital.CoerceBool(completion.Value))
                 {
                     stepDone = false;
-                    completionText = "waiting for " + Label(step.CompletionSourceId, step.CompletionItemId, mappingLookup);
+                    completionText = "waiting for " + Label(completionSourceId, completionItemId, mappingLookup);
                 }
             }
 
@@ -257,6 +314,7 @@ public static class LogicStateEvaluator
     /// </summary>
     private static (bool? Output, string? Failing, string? Missing) EvaluateNetwork(
         IReadOnlyList<LogicElementDto> roots,
+        LogicTags machine,
         Func<string, string, BridgeValueSnapshot?> valueLookup,
         Func<string, string, TagMapping?> mappingLookup,
         LogicStateStore? states,
@@ -270,7 +328,7 @@ public static class LogicStateEvaluator
 
         foreach (LogicElementDto root in roots)
         {
-            bool? output = EvaluateElement(root, 0, valueLookup, mappingLookup, states, execute, nowUtc, target, out string? reason, out string? missingLeaf);
+            bool? output = EvaluateElement(root, 0, machine, valueLookup, mappingLookup, states, execute, nowUtc, target, out string? reason, out string? missingLeaf);
             if (IsWarn(root))
             {
                 // A warn element at the root is reported but never gates the block.
@@ -300,6 +358,7 @@ public static class LogicStateEvaluator
     private static bool? EvaluateElement(
         LogicElementDto element,
         int depth,
+        LogicTags machine,
         Func<string, string, BridgeValueSnapshot?> valueLookup,
         Func<string, string, TagMapping?> mappingLookup,
         LogicStateStore? states,
@@ -323,7 +382,7 @@ public static class LogicStateEvaluator
         List<string?> inputMissing = new();
         foreach (LogicElementDto input in element.Inputs)
         {
-            bool? value = EvaluateElement(input, depth + 1, valueLookup, mappingLookup, states, execute, nowUtc, target, out string? inputReason, out string? inputMissingLeaf);
+            bool? value = EvaluateElement(input, depth + 1, machine, valueLookup, mappingLookup, states, execute, nowUtc, target, out string? inputReason, out string? inputMissingLeaf);
             // A warn element is reported but inert: it neither satisfies nor blocks its parent.
             if (!IsWarn(input))
             {
@@ -339,7 +398,7 @@ public static class LogicStateEvaluator
         {
             output = LogicElementKinds.IsRelayContact(element)
                 ? EvaluateRelayContact(element, row, states)
-                : EvaluateContact(element, row, valueLookup, mappingLookup);
+                : EvaluateContact(element, row, machine, valueLookup, mappingLookup);
         }
         else
         {
@@ -355,7 +414,7 @@ public static class LogicStateEvaluator
             if (kind == LogicElementKinds.Contact)
             {
                 reason = output == false ? own : null;
-                missing = output is null ? LeafLabel(element, mappingLookup) : null;
+                missing = output is null ? LeafLabel(element, machine, mappingLookup) : null;
             }
             else if (LogicElementKinds.IsGate(kind))
             {
@@ -394,11 +453,26 @@ public static class LogicStateEvaluator
     private static bool? EvaluateContact(
         LogicElementDto element,
         LogicElementStateDto row,
+        LogicTags machine,
         Func<string, string, BridgeValueSnapshot?> valueLookup,
         Func<string, string, TagMapping?> mappingLookup)
     {
-        BridgeValueSnapshot? snapshot = valueLookup(element.SourceId, element.ItemId);
-        TagMapping? mapping = mappingLookup(element.SourceId, element.ItemId);
+        string sourceId = element.SourceId;
+        string itemId = element.ItemId;
+        if (!string.IsNullOrWhiteSpace(element.Tag))
+        {
+            if (!machine.TryResolve(element.Tag, out sourceId, out itemId))
+            {
+                // A named tag that is not assigned yet reads unknown — the operator sees the
+                // entry's name in the reason instead of a false contact.
+                row.Should = ShouldText(element, null);
+                row.ValueText = "—";
+                return null;
+            }
+        }
+
+        BridgeValueSnapshot? snapshot = valueLookup(sourceId, itemId);
+        TagMapping? mapping = mappingLookup(sourceId, itemId);
         string valueText = FormatValueText(snapshot?.Value, mapping);
 
         row.Should = ShouldText(element, mapping);
@@ -626,12 +700,30 @@ public static class LogicStateEvaluator
     }
 
     /// <summary>What a missing reading names: the tag (or relay) for a contact, else the element's sentence.</summary>
-    private static string LeafLabel(LogicElementDto element, Func<string, string, TagMapping?> mappingLookup) =>
-        string.Equals(element.Kind, LogicElementKinds.Contact, StringComparison.OrdinalIgnoreCase)
-            ? (LogicElementKinds.IsRelayContact(element)
-                ? element.Relay
-                : Label(element.SourceId, element.ItemId, mappingLookup))
-            : ElementLabel(element);
+    private static string LeafLabel(
+        LogicElementDto element,
+        LogicTags machine,
+        Func<string, string, TagMapping?> mappingLookup)
+    {
+        if (!string.Equals(element.Kind, LogicElementKinds.Contact, StringComparison.OrdinalIgnoreCase))
+        {
+            return ElementLabel(element);
+        }
+
+        if (LogicElementKinds.IsRelayContact(element))
+        {
+            return element.Relay;
+        }
+
+        if (!string.IsNullOrWhiteSpace(element.Tag))
+        {
+            return machine.TryResolve(element.Tag, out string sourceId, out string itemId)
+                ? Label(sourceId, itemId, mappingLookup)
+                : machine.Unresolved(element.Tag);
+        }
+
+        return Label(element.SourceId, element.ItemId, mappingLookup);
+    }
 
     private static string KindLabel(string? kind) => (kind ?? string.Empty).ToLowerInvariant() switch
     {

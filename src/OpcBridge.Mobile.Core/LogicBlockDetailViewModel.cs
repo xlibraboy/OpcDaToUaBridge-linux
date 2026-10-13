@@ -346,6 +346,7 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
     private readonly LogicBlockDto block_;
     private readonly string bridgeKey_;
     private readonly MultiBridgeTagCache? tags_;
+    private readonly LogicTagSourceDto? tagSource_;
     private readonly Dictionary<Guid, LogicElementRowViewModel> elementRows_ = new();
     private readonly Dictionary<Guid, LogicStepRowViewModel> stepRows_ = new();
 
@@ -359,11 +360,13 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
         string bridgeKey,
         LogicBlockStateDto? state = null,
         MultiBridgeTagCache? tags = null,
-        IReadOnlyList<LogicNoteDto>? notes = null)
+        IReadOnlyList<LogicNoteDto>? notes = null,
+        LogicTagSourceDto? tagSource = null)
     {
         block_ = block;
         bridgeKey_ = bridgeKey;
         tags_ = tags;
+        tagSource_ = tagSource;
 
         Title = block.Name;
         Description = block.Description;
@@ -393,14 +396,16 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
 
         foreach (LogicActionDto action in block.Actions)
         {
-            Actions.Add(new LogicActionButtonViewModel(action, TagLabel(action.SourceId, action.ItemId)));
+            Actions.Add(new LogicActionButtonViewModel(action, ResolvedLabel(action.Tag, action.SourceId, action.ItemId)));
         }
 
         foreach (LogicStepDto step in block.Steps)
         {
             foreach (LogicActionDto action in step.Actions)
             {
-                Actions.Add(new LogicActionButtonViewModel(action, $"{step.Name}: {TagLabel(action.SourceId, action.ItemId)}"));
+                Actions.Add(new LogicActionButtonViewModel(
+                    action,
+                    $"{step.Name}: {ResolvedLabel(action.Tag, action.SourceId, action.ItemId)}"));
             }
         }
 
@@ -496,18 +501,30 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
 
         foreach (LogicElementDto element in AllElements())
         {
-            if (!string.Equals(element.Kind, LogicElementKinds.Contact, StringComparison.OrdinalIgnoreCase)
-                || element.ItemId.Length == 0)
+            if (!IsTagContact(element))
             {
                 // Gates, function blocks, coils and relay contacts read a relay or nothing —
                 // only a tag contact has a tag cache entry to look up.
                 continue;
             }
 
-            if (elementRows_.TryGetValue(element.Id, out LogicElementRowViewModel? row) &&
-                tags_.TryGet(TagBindingKey.Create(bridgeKey_, element.SourceId, element.ItemId), out MultiBridgeTagEntry? entry))
+            bool resolved = TryResolveTag(
+                element.Tag,
+                element.SourceId,
+                element.ItemId,
+                out string sourceId,
+                out string itemId);
+            if (elementRows_.TryGetValue(element.Id, out LogicElementRowViewModel? row))
             {
-                row.ApplyTag(entry);
+                if (!resolved)
+                {
+                    // A named tag that is not assigned yet reads nothing, not the last reading.
+                    row.ApplyTag(null);
+                }
+                else if (tags_.TryGet(TagBindingKey.Create(bridgeKey_, sourceId, itemId), out MultiBridgeTagEntry? entry))
+                {
+                    row.ApplyTag(entry);
+                }
             }
         }
     }
@@ -531,7 +548,7 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
         }
         else if (string.Equals(element.Kind, LogicElementKinds.Contact, StringComparison.OrdinalIgnoreCase))
         {
-            label = TagLabel(element.SourceId, element.ItemId);
+            label = ResolvedLabel(element.Tag, element.SourceId, element.ItemId);
         }
         else
         {
@@ -541,6 +558,54 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
         LogicElementRowViewModel row = new(element, depth, label);
         elementRows_[element.Id] = row;
         return row;
+    }
+
+    /// <summary>A tag contact reads a tag; anything else (a relay, a gate) has nothing to look up.</summary>
+    private static bool IsTagContact(LogicElementDto element) =>
+        string.Equals(element.Kind, LogicElementKinds.Contact, StringComparison.OrdinalIgnoreCase)
+        && string.IsNullOrWhiteSpace(element.Relay);
+
+    /// <summary>
+    /// The tag a row or an action button reads or writes: a named machine tag resolves through the
+    /// block's tags source, a direct reference is itself. False when a named tag is unassigned or
+    /// not in the machine's source — the caller shows why instead of touching the wrong tag.
+    /// </summary>
+    public bool TryResolveTag(
+        string? tag,
+        string? sourceId,
+        string? itemId,
+        out string resolvedSourceId,
+        out string resolvedItemId)
+    {
+        if (!string.IsNullOrWhiteSpace(tag))
+        {
+            return LogicTagSources.TryResolve(tagSource_, tag, out resolvedSourceId, out resolvedItemId);
+        }
+
+        resolvedSourceId = sourceId?.Trim() ?? string.Empty;
+        resolvedItemId = itemId?.Trim() ?? string.Empty;
+        return resolvedSourceId.Length > 0 && resolvedItemId.Length > 0;
+    }
+
+    /// <summary>Why a named tag reads or writes nothing, in the operator's words.</summary>
+    public string UnresolvedTagText(string? tag) =>
+        LogicTagSources.UnresolvedText(
+            tag,
+            tagSource_,
+            string.IsNullOrWhiteSpace(block_.TagSource) ? block_.Group : block_.TagSource);
+
+    /// <summary>A tag's label: the direct tag, or the named one with what it is bound to.</summary>
+    private string ResolvedLabel(string? tag, string? sourceId, string? itemId)
+    {
+        if (!string.IsNullOrWhiteSpace(tag))
+        {
+            string name = tag.Trim();
+            return TryResolveTag(tag, null, null, out string resolvedSourceId, out string resolvedItemId)
+                ? name + " · " + TagLabel(resolvedSourceId, resolvedItemId)
+                : UnresolvedTagText(tag);
+        }
+
+        return TagLabel(sourceId ?? string.Empty, itemId ?? string.Empty);
     }
 
     private string TagLabel(string sourceId, string itemId)

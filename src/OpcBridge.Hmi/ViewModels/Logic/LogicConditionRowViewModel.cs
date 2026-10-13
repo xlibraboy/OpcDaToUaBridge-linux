@@ -9,7 +9,9 @@ namespace OpcBridge.Hmi.ViewModels.Logic;
 /// <summary>
 /// One editable condition row (the simple form). Source and tag are picked from a metadata
 /// snapshot; a stored tag that has left the cache stays selectable as its own entry, so a save
-/// cannot silently drop the reference.
+/// cannot silently drop the reference. The row can instead read one of its machine's named tags
+/// (the Tags tab's entries) — then the tag pickers hide and the pair lives on the shared source,
+/// so every block of the machine follows one assignment.
 /// </summary>
 public partial class LogicConditionRowViewModel : ObservableObject
 {
@@ -20,7 +22,8 @@ public partial class LogicConditionRowViewModel : ObservableObject
     public LogicConditionRowViewModel(
         LogicConditionDto condition,
         LogicTagCatalog catalog,
-        Action<LogicConditionRowViewModel>? onRemove = null)
+        Action<LogicConditionRowViewModel>? onRemove = null,
+        IEnumerable<LogicTagEntryViewModel>? tagEntries = null)
     {
         catalog_ = catalog;
         onRemove_ = onRemove;
@@ -32,6 +35,8 @@ public partial class LogicConditionRowViewModel : ObservableObject
         HoldSeconds = condition.HoldMs > 0 ? FormatNumber(condition.HoldMs / 1000.0) : string.Empty;
         Severity = LogicSelectOption.Find(LogicOptions.Severities, condition.Severity) ?? LogicOptions.Severities[0];
         NextStepText = condition.NextStepText ?? string.Empty;
+        TagEntries = tagEntries ?? Array.Empty<LogicTagEntryViewModel>();
+        SelectedBlockTag = FindTagEntry(condition.Tag);
         LoadSourceAndItems(condition.SourceId, condition.ItemId);
     }
 
@@ -90,6 +95,39 @@ public partial class LogicConditionRowViewModel : ObservableObject
     /// <summary>The stored item id, "" when nothing is picked.</summary>
     public string ItemId => SelectedTag?.ItemId ?? string.Empty;
 
+    /// <summary>The machine's named tags this row may read instead of a direct tag.</summary>
+    public IEnumerable<LogicTagEntryViewModel> TagEntries { get; }
+
+    [ObservableProperty]
+    private LogicTagEntryViewModel? _selectedBlockTag;
+
+    /// <summary>The stored tags-source reference, "" when the row reads a direct tag.</summary>
+    public string Tag => SelectedBlockTag?.Name.Trim() ?? string.Empty;
+
+    public bool HasBlockTag => Tag.Length > 0;
+
+    /// <summary>The direct source/tag pickers: hidden while a named tag is selected.</summary>
+    public bool ShowsDirectTag => !HasBlockTag;
+
+    partial void OnSelectedBlockTagChanged(LogicTagEntryViewModel? value)
+    {
+        OnPropertyChanged(nameof(Tag));
+        OnPropertyChanged(nameof(HasBlockTag));
+        OnPropertyChanged(nameof(ShowsDirectTag));
+        ClearBlockTagCommand.NotifyCanExecuteChanged();
+    }
+
+    [RelayCommand(CanExecute = nameof(CanClearBlockTag))]
+    private void ClearBlockTag() => SelectedBlockTag = null;
+
+    private bool CanClearBlockTag() => CanEdit && HasBlockTag;
+
+    private LogicTagEntryViewModel? FindTagEntry(string? name) =>
+        string.IsNullOrWhiteSpace(name)
+            ? null
+            : TagEntries.FirstOrDefault(entry =>
+                string.Equals(entry.Name.Trim(), name.Trim(), StringComparison.OrdinalIgnoreCase));
+
     /// <summary>True for the numeric operators — the value box is only meaningful then.</summary>
     public bool NeedsValue => LogicConditionOps.RequiresValue(Op?.Value);
 
@@ -116,7 +154,11 @@ public partial class LogicConditionRowViewModel : ObservableObject
     [ObservableProperty]
     private bool _canEdit = true;
 
-    partial void OnCanEditChanged(bool value) => RemoveCommand.NotifyCanExecuteChanged();
+    partial void OnCanEditChanged(bool value)
+    {
+        RemoveCommand.NotifyCanExecuteChanged();
+        ClearBlockTagCommand.NotifyCanExecuteChanged();
+    }
 
     [RelayCommand(CanExecute = nameof(CanRemoveRow))]
     private void Remove() => onRemove_?.Invoke(this);

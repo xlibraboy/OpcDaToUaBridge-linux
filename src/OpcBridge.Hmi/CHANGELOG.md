@@ -16,6 +16,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+**The Logic page has a Tags tab: one machine's tags assigned once, shared by all its blocks.**
+Beside Editor and Result, **Tags** edits the selected block's machine's tags source — type the
+machine (`DRYEND`, `WETEND`, …, prefilled from the block's interlock group), then `+ New tag` for
+each signal the machine's blocks read. An entry can be created **empty** and bound later: the row
+pickers already offer it, the block evaluates **no data for START_PB (not assigned)** until a tag
+is picked, and the tab's **LIVE** column shows the bound tag's value so the assignment can be
+checked in place. Every row — a condition, a network contact, a step's completion handshake, an
+action — gained a **MACHINE TAG** picker listing the machine's entries; picking one hides the
+direct SOURCE/TAG pickers (the `✕` clears it and the row reads a direct tag again), and the store
+keeps the two forms mutually exclusive. Blocks naming the same machine share one list — the tab
+shows **used by N blocks**, and binding an entry moves every one of them — so the same signal is
+never typed twice. **`Move tags into source`** converts a block authored before the feature (one
+entry per distinct direct tag, named after its display name, rows rewritten), **`Delete source`**
+is refused while blocks still read it (the bridge names how many), and **Save** stores the tags
+and the block together, whichever changed (`✓ Tags saved.` when only the machine's tags moved).
+The Result tab labels a named contact as `START_PB · Line 01 Start Permit`, and the page's
+**Guide…** documents the whole flow.
 **The network editor authors internal relays (M coils).** The element kind list gained **Coil —
 drive internal relay (IN, M)**: it takes one input and drives the relay it names, and a contact
 row gained a **RELAY** field that turns it into a relay contact reading that relay instead of a

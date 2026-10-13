@@ -180,6 +180,63 @@ public sealed class LogicDtoSerializationTests
     }
 
     [Fact]
+    public void TagsSourceAndNamedReferences_RoundTripCamelCaseJson()
+    {
+        LogicTagSourceDto source = new()
+        {
+            Name = "DRYEND",
+            Tags =
+            {
+                new LogicTagDto { Name = "START_PB", SourceId = "sim", ItemId = "ns=2;s=Status/Start" },
+                new LogicTagDto { Name = "FAULT" }
+            }
+        };
+
+        string json = JsonSerializer.Serialize(source, CamelCase);
+        Assert.Contains("\"name\":\"DRYEND\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"tags\":[", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"Name\"", json, StringComparison.Ordinal);
+        Assert.DoesNotContain("\"SourceId\"", json, StringComparison.Ordinal);
+
+        LogicTagSourceDto? copy = JsonSerializer.Deserialize<LogicTagSourceDto>(json, CamelCase);
+        Assert.NotNull(copy);
+        Assert.Equal(new[] { "START_PB", "FAULT" }, copy!.Tags.Select(tag => tag.Name));
+        Assert.Equal("ns=2;s=Status/Start", copy.Tags[0].ItemId);
+        Assert.Equal(string.Empty, copy.Tags[1].ItemId);
+
+        LogicBlockDto block = new()
+        {
+            Id = Guid.NewGuid(),
+            Name = "Dry end start",
+            Group = "DRYEND",
+            TagSource = "DRYEND",
+            Kind = LogicBlockKinds.Sequence,
+            Steps =
+            {
+                new LogicStepDto
+                {
+                    Name = "Start",
+                    CompletionTag = "DONE_FB",
+                    Conditions = { new LogicConditionDto { Text = "permit", Tag = "START_PB", Op = LogicConditionOps.On } }
+                }
+            },
+            Actions = { new LogicActionDto { Label = "Start", Tag = "START_PB", Value = "true" } }
+        };
+
+        string blockJson = JsonSerializer.Serialize(block, CamelCase);
+        Assert.Contains("\"tagSource\":\"DRYEND\"", blockJson, StringComparison.Ordinal);
+        Assert.Contains("\"completionTag\":\"DONE_FB\"", blockJson, StringComparison.Ordinal);
+        Assert.Contains("\"tag\":\"START_PB\"", blockJson, StringComparison.Ordinal);
+
+        LogicBlockDto? blockCopy = JsonSerializer.Deserialize<LogicBlockDto>(blockJson, CamelCase);
+        Assert.NotNull(blockCopy);
+        Assert.Equal("DRYEND", blockCopy!.TagSource);
+        Assert.Equal("DONE_FB", blockCopy.Steps[0].CompletionTag);
+        Assert.Equal("START_PB", blockCopy.Steps[0].Conditions[0].Tag);
+        Assert.Equal("START_PB", blockCopy.Actions[0].Tag);
+    }
+
+    [Fact]
     public void Constants_AreStableStrings()
     {
         Assert.Equal("interlock", LogicBlockKinds.Interlock);

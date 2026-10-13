@@ -124,6 +124,39 @@ description or any tag.
 
 ---
 
+# Tags source (per machine)
+
+A block does not have to name the bridge tag in every row. The **Tags** tab next to the editor
+holds its machine's **tags source** — the named tags every block of that machine reads — so a
+signal is assigned **once per machine** instead of once per condition:
+
+- Type the **machine's name** (`DRYEND`, `WETEND`, …). Every block that names the same machine — a
+  block's tag source defaults to its interlock group, and the tab shows and stores the name — shares
+  one list of tags: assign a tag here and every one of those blocks follows. The tab says how many
+  loaded blocks carry the name.
+- **`+ New tag`** creates an entry with a name you choose (`START_PB`, `FAULT`, …). **Name it, leave
+  it unassigned, and assign the bridge tag later** — a block authored against an unassigned entry
+  reads **unknown** with the entry named in the reason (`no data for START_PB (not assigned)`),
+  never a silent false. A name the machine's source does not hold reads `… (not in DRYEND)`.
+- In the editor, every row — a condition, a network contact, a step's completion handshake, an
+  action — has a **MACHINE TAG** picker listing the machine's entries; picking one hides the direct
+  `SOURCE` / `TAG` pickers (the pair lives on the entry now). `✕` clears it and the row reads a
+  direct bridge tag again. Direct tags keep working exactly as before — nothing is converted behind
+  your back.
+- **`Move tags into source`** converts a block authored before tags sources existed: one entry per
+  distinct direct tag, named after the tag's display name, with the rows rewritten to reference it.
+  The block evaluates the same before and after; the mode is stored by **Save**.
+- **Save** stores the machine's tags and the block together (whichever changed, and the tab's
+  `used by` line tells you who shares them). **`Delete source`** removes the machine's list; the
+  bridge refuses while any block still reads it, naming how many.
+- The **LIVE** column shows the bound tag's current value (`1` / `0` for a bit, the number
+  otherwise, `bad` for bad quality), so an assignment can be checked without leaving the tab.
+
+Two blocks of the same machine that read the same signal read the same entry: changing the binding
+moves both at once.
+
+---
+
 # Actions
 
 A block can carry action buttons (label, tag, value, confirm). The phone renders them as operator

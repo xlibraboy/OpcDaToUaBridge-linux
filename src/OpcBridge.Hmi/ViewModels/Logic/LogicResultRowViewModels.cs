@@ -11,7 +11,11 @@ namespace OpcBridge.Hmi.ViewModels.Logic;
 /// </summary>
 public sealed partial class LogicResultElementRowViewModel : ObservableObject
 {
-    public LogicResultElementRowViewModel(LogicElementDto element, int depth, LogicTagCatalog catalog)
+    public LogicResultElementRowViewModel(
+        LogicElementDto element,
+        int depth,
+        LogicTagCatalog catalog,
+        LogicTagSourceDto? tagSource = null)
     {
         ElementId = element.Id;
         Kind = element.Kind;
@@ -25,14 +29,28 @@ public sealed partial class LogicResultElementRowViewModel : ObservableObject
         IsContact = string.Equals(Kind, LogicElementKinds.Contact, StringComparison.OrdinalIgnoreCase);
 
         // A relay element names its relay where a tag contact names its tag — a coil reads as
-        // "COIL · relay M01 · 1", a relay contact as "NO · relay M01 · should 1 · actual 0".
+        // "COIL · relay M01 · 1", a relay contact as "NO · relay M01 · should 1 · actual 0"; a
+        // contact reading the machine's named tags shows the entry and the tag it is bound to.
         bool relayElement = !string.IsNullOrWhiteSpace(element.Relay);
         TagLabel = relayElement
             ? "relay " + element.Relay
-            : IsContact && element.ItemId.Length > 0
-                ? catalog.TagLabel(element.SourceId, element.ItemId)
+            : IsContact
+                ? TagContactLabel(element, catalog, tagSource)
                 : string.Empty;
         nextStepCandidate_ = element.NextStepText;
+    }
+
+    private static string TagContactLabel(LogicElementDto element, LogicTagCatalog catalog, LogicTagSourceDto? tagSource)
+    {
+        if (!string.IsNullOrWhiteSpace(element.Tag))
+        {
+            string name = element.Tag.Trim();
+            return LogicTagSources.TryResolve(tagSource, name, out string sourceId, out string itemId)
+                ? name + " · " + catalog.TagLabel(sourceId, itemId)
+                : LogicTagSources.UnresolvedText(name, tagSource, tagSource?.Name);
+        }
+
+        return element.ItemId.Length > 0 ? catalog.TagLabel(element.SourceId, element.ItemId) : string.Empty;
     }
 
     private readonly string? nextStepCandidate_;

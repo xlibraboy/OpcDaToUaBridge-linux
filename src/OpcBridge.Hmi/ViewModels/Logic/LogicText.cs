@@ -379,4 +379,69 @@ public static class LogicText
         double seconds = milliseconds / 1000.0;
         return seconds.ToString("0.##", CultureInfo.InvariantCulture) + " s";
     }
+
+    // ---- Tags source (the machine's named tags) ----
+
+    /// <summary>An entry that has been created but has no bridge tag yet.</summary>
+    public const string TagNotAssigned = "(not assigned)";
+
+    /// <summary>What the Tags tab's name field means, and what saving it will do.</summary>
+    public static string TagSourceHint(bool blank, bool knownSource, string name) =>
+        blank
+            ? "Name the machine (e.g. DRYEND) — every block of that machine shares these tags."
+            : knownSource
+                ? $"Every {name} block shares these tags — assigning one here updates all of them."
+                : $"New tags source — saving creates it, and every block named {name} reads it.";
+
+    /// <summary>The save refusal when the machine has no name yet.</summary>
+    public const string TagSourceNameRequired =
+        "Name the tags source (e.g. DRYEND) first — a shared tags source needs its machine's name.";
+
+    /// <summary>The tab's empty state: nothing referenced, nothing created.</summary>
+    public const string TagSourceEmpty =
+        "No tags yet — add one for each signal this machine's blocks read, then assign the bridge tag.";
+
+    /// <summary>
+    /// The Tags tab's live chip: the tag's current value (1 / 0 for a bit, the number otherwise),
+    /// "bad" for bad quality and "—" when the tag is unassigned or not on the bridge.
+    /// </summary>
+    public static string TagLiveChip(MultiBridgeTagEntry? entry)
+    {
+        if (entry is null)
+        {
+            return "—";
+        }
+
+        if (entry.IsGood == false)
+        {
+            return "bad";
+        }
+
+        object? value = entry.Value;
+        if (value is null)
+        {
+            return "—";
+        }
+
+        string text = value switch
+        {
+            bool flag => flag ? "1" : "0",
+            double number => number.ToString("0.###", CultureInfo.InvariantCulture),
+            float number => number.ToString("0.###", CultureInfo.InvariantCulture),
+            decimal number => number.ToString("0.###", CultureInfo.InvariantCulture),
+            byte or sbyte or short or ushort or int or uint or long or ulong =>
+                Convert.ToString(value, CultureInfo.InvariantCulture) ?? "—",
+            System.Text.Json.JsonElement element => element.ValueKind switch
+            {
+                System.Text.Json.JsonValueKind.True => "1",
+                System.Text.Json.JsonValueKind.False => "0",
+                System.Text.Json.JsonValueKind.String => element.GetString() ?? "—",
+                System.Text.Json.JsonValueKind.Null => "—",
+                _ => element.ToString()
+            },
+            _ => Convert.ToString(value, CultureInfo.InvariantCulture) ?? "—"
+        };
+
+        return string.IsNullOrWhiteSpace(entry.Unit) ? text : text + " " + entry.Unit;
+    }
 }

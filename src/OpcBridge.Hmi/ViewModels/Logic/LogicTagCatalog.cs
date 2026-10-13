@@ -107,4 +107,19 @@ public sealed class LogicTagCatalog
 
         return itemId;
     }
+
+    /// <summary>The tag's own display name for a stored pair, else the item id (naming an entry).</summary>
+    public string DisplayName(string sourceId, string itemId)
+    {
+        foreach (LogicTagOption tag in tags_)
+        {
+            if (string.Equals(tag.SourceId, sourceId, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(tag.ItemId, itemId, StringComparison.OrdinalIgnoreCase))
+            {
+                return tag.Label;
+            }
+        }
+
+        return itemId;
+    }
 }

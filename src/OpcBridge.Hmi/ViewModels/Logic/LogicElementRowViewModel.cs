@@ -24,7 +24,8 @@ public partial class LogicElementRowViewModel : ObservableObject
         int indent,
         LogicTagCatalog catalog,
         Action<LogicElementRowViewModel>? onRemove = null,
-        IEnumerable<string>? relayNames = null)
+        IEnumerable<string>? relayNames = null,
+        IEnumerable<LogicTagEntryViewModel>? tagEntries = null)
     {
         catalog_ = catalog;
         onRemove_ = onRemove;
@@ -39,6 +40,8 @@ public partial class LogicElementRowViewModel : ObservableObject
         PvText = element.Pv > 0 ? element.Pv.ToString(CultureInfo.InvariantCulture) : string.Empty;
         Severity = LogicSelectOption.Find(LogicOptions.Severities, element.Severity) ?? LogicOptions.Severities[0];
         Indent = Math.Clamp(indent, 0, LogicLimits.MaxElementDepth);
+        TagEntries = tagEntries ?? Array.Empty<LogicTagEntryViewModel>();
+        SelectedBlockTag = FindTagEntry(element.Tag);
         LoadSourceAndItems(element.SourceId, element.ItemId);
     }
 
@@ -123,8 +126,25 @@ public partial class LogicElementRowViewModel : ObservableObject
     /// <summary>A contact that reads an internal relay instead of a tag.</summary>
     public bool IsRelayContact => IsContact && Relay.Trim().Length > 0;
 
-    /// <summary>The tag pickers: a contact that is not reading a relay.</summary>
-    public bool ShowsTag => IsContact && !IsRelayContact;
+    /// <summary>The machine's named tags a tag contact may read instead of a direct tag.</summary>
+    public IEnumerable<LogicTagEntryViewModel> TagEntries { get; }
+
+    [ObservableProperty]
+    private LogicTagEntryViewModel? _selectedBlockTag;
+
+    /// <summary>The stored tags-source reference, "" when the contact reads a direct tag.</summary>
+    public string Tag => SelectedBlockTag?.Name.Trim() ?? string.Empty;
+
+    public bool HasBlockTag => Tag.Length > 0;
+
+    /// <summary>A tag contact: a contact that is not reading an internal relay.</summary>
+    public bool IsTagContact => IsContact && !IsRelayContact;
+
+    /// <summary>The named-tag picker: a contact (a relay contact reads a coil's relay instead).</summary>
+    public bool ShowsBlockTag => IsContact;
+
+    /// <summary>The direct source/tag pickers: a tag contact that has not named a machine tag.</summary>
+    public bool ShowsDirectTag => IsTagContact && !HasBlockTag;
 
     /// <summary>The relay field: a relay contact reads one, a coil drives one.</summary>
     public bool ShowsRelay => IsRelayContact || IsCoil;
@@ -136,6 +156,25 @@ public partial class LogicElementRowViewModel : ObservableObject
     public bool ShowsLabelOnly => !IsContact && !IsCoil && !IsTimer && !IsCounter;
 
     public bool NeedsValue => IsContact && LogicConditionOps.RequiresValue(Op?.Value);
+
+    partial void OnSelectedBlockTagChanged(LogicTagEntryViewModel? value)
+    {
+        OnPropertyChanged(nameof(Tag));
+        OnPropertyChanged(nameof(HasBlockTag));
+        OnPropertyChanged(nameof(ShowsDirectTag));
+        ClearBlockTagCommand.NotifyCanExecuteChanged();
+    }
+
+    [RelayCommand(CanExecute = nameof(CanClearBlockTag))]
+    private void ClearBlockTag() => SelectedBlockTag = null;
+
+    private bool CanClearBlockTag() => CanEdit && HasBlockTag;
+
+    private LogicTagEntryViewModel? FindTagEntry(string? name) =>
+        string.IsNullOrWhiteSpace(name)
+            ? null
+            : TagEntries.FirstOrDefault(entry =>
+                string.Equals(entry.Name.Trim(), name.Trim(), StringComparison.OrdinalIgnoreCase));
 
     /// <summary>
     /// One entry per level enclosing this row: the row draws a rail for each, so the nesting the
@@ -150,6 +189,7 @@ public partial class LogicElementRowViewModel : ObservableObject
         IndentRowCommand.NotifyCanExecuteChanged();
         OutdentRowCommand.NotifyCanExecuteChanged();
         RemoveElementCommand.NotifyCanExecuteChanged();
+        ClearBlockTagCommand.NotifyCanExecuteChanged();
     }
 
     partial void OnKindChanged(LogicSelectOption value)
@@ -159,7 +199,9 @@ public partial class LogicElementRowViewModel : ObservableObject
         OnPropertyChanged(nameof(IsCounter));
         OnPropertyChanged(nameof(IsCoil));
         OnPropertyChanged(nameof(IsRelayContact));
-        OnPropertyChanged(nameof(ShowsTag));
+        OnPropertyChanged(nameof(IsTagContact));
+        OnPropertyChanged(nameof(ShowsBlockTag));
+        OnPropertyChanged(nameof(ShowsDirectTag));
         OnPropertyChanged(nameof(ShowsRelay));
         OnPropertyChanged(nameof(ShowsSeverity));
         OnPropertyChanged(nameof(ShowsLabelOnly));
@@ -171,7 +213,8 @@ public partial class LogicElementRowViewModel : ObservableObject
     partial void OnRelayChanged(string value)
     {
         OnPropertyChanged(nameof(IsRelayContact));
-        OnPropertyChanged(nameof(ShowsTag));
+        OnPropertyChanged(nameof(IsTagContact));
+        OnPropertyChanged(nameof(ShowsDirectTag));
         OnPropertyChanged(nameof(ShowsRelay));
 
         // A relay contact reads a bit: a numeric comparison has nothing to compare against.

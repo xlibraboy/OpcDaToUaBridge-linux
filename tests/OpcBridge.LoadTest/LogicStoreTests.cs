@@ -10,33 +10,79 @@ namespace OpcBridge.LoadTest;
 [Collection(nameof(InterlinkApiAppCollection))]
 public sealed class LogicStoreTests : IDisposable
 {
-    // LogicStore persists to a fixed file under AppContext.BaseDirectory — which is also the
-    // directory the app-backed tests copy their instance from. Clear it before each test, and
-    // again after (xUnit disposes each test instance), so no leftover block can seed a test app.
+    // LogicStore persists to fixed files under AppContext.BaseDirectory — which is also the
+    // directory the app-backed tests copy their instance from. Clear them before each test, and
+    // again after (xUnit disposes each test instance), so no leftover block or tags source can
+    // seed a test app.
+    private static readonly string[] PersistedFiles = { "logic.json", "logic-tags.json" };
+
     private static LogicStore CreateStore()
     {
-        string path = Path.Combine(AppContext.BaseDirectory, "logic.json");
-        if (File.Exists(path))
-        {
-            File.Delete(path);
-        }
-
+        DeletePersisted();
         return new LogicStore(Options.Create(new BridgeOptions()));
     }
 
-    public void Dispose()
+    private static void DeletePersisted()
     {
-        string path = Path.Combine(AppContext.BaseDirectory, "logic.json");
-        try
+        foreach (string file in PersistedFiles)
         {
+            string path = Path.Combine(AppContext.BaseDirectory, file);
             if (File.Exists(path))
             {
                 File.Delete(path);
             }
         }
+    }
+
+    public void Dispose()
+    {
+        try
+        {
+            DeletePersisted();
+        }
         catch
         {
         }
+    }
+
+    private static LogicTagSourceDto CreateTagSource(
+        string name = "DRYEND",
+        params (string Name, string SourceId, string ItemId)[] tags)
+    {
+        return new LogicTagSourceDto
+        {
+            Name = name,
+            Tags = tags.Length == 0
+                ? new List<LogicTagDto> { new() { Name = "START_PB", SourceId = "sim", ItemId = "ns=2;s=Status/Start" } }
+                : tags.Select(tag => new LogicTagDto { Name = tag.Name, SourceId = tag.SourceId, ItemId = tag.ItemId }).ToList()
+        };
+    }
+
+    /// <summary>A block with one condition that names a tag of its machine's source.</summary>
+    private static LogicBlockDto CreateNamedTagInterlock(
+        string name = "Dry end start",
+        string tagSource = "DRYEND",
+        string tag = "START_PB",
+        string group = "")
+    {
+        return new LogicBlockDto
+        {
+            Id = Guid.NewGuid(),
+            Name = name,
+            Group = group,
+            TagSource = tagSource,
+            Kind = LogicBlockKinds.Interlock,
+            Conditions = new List<LogicConditionDto>
+            {
+                new()
+                {
+                    Id = Guid.NewGuid(),
+                    Text = "Dry end start permit must be given",
+                    Tag = tag,
+                    Op = LogicConditionOps.On
+                }
+            }
+        };
     }
 
     private static LogicBlockDto CreateInterlock(
@@ -726,5 +772,310 @@ public sealed class LogicStoreTests : IDisposable
             Name = name,
             Conditions = { CreateCondition() }
         };
+    }
+
+    [Fact]
+    public void TrySaveTagSource_NormalizesEntriesAndSharesTheVersion()
+    {
+        LogicStore store = CreateStore();
+
+        bool ok = store.TrySaveTagSource(
+            new LogicTagSourceDto
+            {
+                Name = "  DRYEND  ",
+                Tags =
+                {
+                    new LogicTagDto { Name = " START_PB ", SourceId = "sim", ItemId = "ns=2;s=Status/Start" },
+                    new LogicTagDto { Name = "start_pb", SourceId = "sim", ItemId = "duplicate" },
+                    new LogicTagDto { Name = "   ", SourceId = "sim", ItemId = "blank name" },
+                    new LogicTagDto { Name = "FAULT", ItemId = "ns=2;s=Status/Fault" },
+                    new LogicTagDto { Name = "RUNNING" }
+                }
+            },
+            out LogicTagSourceDto saved,
+            out long version,
+            out string? error);
+
+        Assert.True(ok);
+        Assert.Null(error);
+        Assert.Equal(1, version);
+        Assert.Equal("DRYEND", saved.Name);
+        Assert.Equal(new[] { "START_PB", "FAULT", "RUNNING" }, saved.Tags.Select(tag => tag.Name));
+
+        // The first spelling wins; an item without a source lands on the default source, and a
+        // missing item leaves the entry created but unassigned.
+        Assert.Equal("ns=2;s=Status/Start", saved.Tags[0].ItemId);
+        Assert.Equal("sim", saved.Tags[0].SourceId);
+        Assert.Equal("default", saved.Tags[1].SourceId);
+        Assert.Equal(string.Empty, saved.Tags[2].SourceId);
+        Assert.Equal(string.Empty, saved.Tags[2].ItemId);
+
+        // The block store and the sources share one version, so a binding change makes clients refetch.
+        store.TrySave(CreateInterlock(), out _, out long blockVersion, out _);
+        Assert.Equal(2, blockVersion);
+        Assert.Single(store.GetTagSources());
+    }
+
+    [Fact]
+    public void TrySaveTagSource_ReplacesByNameCaseInsensitively()
+    {
+        LogicStore store = CreateStore();
+        store.TrySaveTagSource(CreateTagSource(), out _, out _, out _);
+
+        bool ok = store.TrySaveTagSource(
+            CreateTagSource("dryend", ("START_PB", "sim", "ns=2;s=Status/Start2")),
+            out LogicTagSourceDto saved,
+            out _,
+            out string? error);
+
+        Assert.True(ok);
+        Assert.Null(error);
+        Assert.Equal("dryend", saved.Name);
+        Assert.Single(store.GetTagSources());
+        Assert.Equal("ns=2;s=Status/Start2", store.GetTagSources()[0].Tags[0].ItemId);
+    }
+
+    [Fact]
+    public void TrySaveTagSource_RejectsABlankNameAndAnOverlongTagName()
+    {
+        LogicStore store = CreateStore();
+
+        Assert.False(store.TrySaveTagSource(CreateTagSource(name: "   "), out _, out _, out string? blankName));
+        Assert.Contains("tags source name", blankName, StringComparison.OrdinalIgnoreCase);
+
+        Assert.False(store.TrySaveTagSource(
+            CreateTagSource(tags: (new string('X', LogicLimits.MaxTagNameLength + 1), "sim", "t")),
+            out _,
+            out _,
+            out string? longTag));
+        Assert.Contains("tag name", longTag, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(store.GetTagSources());
+    }
+
+    [Fact]
+    public void TryRemoveTagSource_IsRefusedWhileBlocksUseIt()
+    {
+        LogicStore store = CreateStore();
+        store.TrySaveTagSource(CreateTagSource(), out _, out _, out _);
+        store.TrySave(CreateNamedTagInterlock("Dry end start"), out _, out _, out _);
+        store.TrySave(CreateNamedTagInterlock("Dry end stop"), out _, out _, out _);
+
+        bool ok = store.TryRemoveTagSource("dryend", out _, out string? error);
+
+        Assert.False(ok);
+        Assert.Equal("2 blocks use this tags source.", error);
+        Assert.Single(store.GetTagSources());
+
+        // A block that falls back to its group counts as a user of that group's source too.
+        store.TrySaveTagSource(CreateTagSource("WETEND"), out _, out _, out _);
+        store.TrySave(
+            new LogicBlockDto
+            {
+                Id = Guid.NewGuid(),
+                Name = "Wet end start",
+                Group = "WETEND",
+                Kind = LogicBlockKinds.Interlock,
+                Conditions = { CreateCondition() }
+            },
+            out LogicBlockDto stored,
+            out _,
+            out _);
+
+        Assert.Equal("WETEND", stored.TagSource);
+        Assert.False(store.TryRemoveTagSource("WETEND", out _, out string? inUseByGroup));
+        Assert.Equal("1 block uses this tags source.", inUseByGroup);
+    }
+
+    [Fact]
+    public void TryRemoveTagSource_RemovesAnUnusedSource()
+    {
+        LogicStore store = CreateStore();
+        store.TrySaveTagSource(CreateTagSource(), out _, out _, out _);
+        List<long> versions = new();
+        store.Changed += versions.Add;
+
+        bool ok = store.TryRemoveTagSource("DRYEND", out long version, out string? error);
+
+        Assert.True(ok);
+        Assert.Null(error);
+        Assert.Equal(2, version);
+        Assert.Empty(store.GetTagSources());
+        Assert.Equal(new[] { 2L }, versions);
+        Assert.False(store.TryRemoveTagSource("DRYEND", out _, out string? missing));
+        Assert.Equal("Tags source not found.", missing);
+    }
+
+    [Fact]
+    public void TrySave_KeepsANamedTagAndClearsTheDirectPair()
+    {
+        LogicStore store = CreateStore();
+        store.TrySaveTagSource(CreateTagSource(), out _, out _, out _);
+
+        store.TrySave(
+            CreateNamedTagInterlock(group: "DRYEND"),
+            out LogicBlockDto stored,
+            out _,
+            out string? error);
+
+        Assert.Null(error);
+        Assert.Equal("DRYEND", stored.TagSource);
+        LogicConditionDto condition = stored.Conditions[0];
+        Assert.Equal("START_PB", condition.Tag);
+        Assert.Equal(string.Empty, condition.SourceId);
+        Assert.Equal(string.Empty, condition.ItemId);
+    }
+
+    [Fact]
+    public void TrySave_CarriesTheSourceIntoContactsActionsAndStepHandshakes()
+    {
+        LogicStore store = CreateStore();
+        store.TrySaveTagSource(
+            CreateTagSource("DRYEND", ("START_PB", "sim", "ns=2;s=Status/Start"), ("DONE_FB", "sim", "ns=2;s=Status/Done")),
+            out _,
+            out _,
+            out _);
+
+        LogicBlockDto block = new()
+        {
+            Id = Guid.NewGuid(),
+            Name = "Dry end sequence",
+            TagSource = "DRYEND",
+            Kind = LogicBlockKinds.Sequence,
+            Steps =
+            {
+                new LogicStepDto
+                {
+                    Id = Guid.NewGuid(),
+                    Name = "Start",
+                    CompletionTag = "DONE_FB",
+                    Conditions = { new LogicConditionDto { Id = Guid.NewGuid(), Text = "start", Tag = "START_PB", Op = LogicConditionOps.On } }
+                }
+            },
+            Actions = { new LogicActionDto { Label = "Start", Tag = "START_PB", Value = "true" } }
+        };
+
+        bool ok = store.TrySave(block, out LogicBlockDto stored, out _, out string? error);
+
+        Assert.True(ok);
+        Assert.Null(error);
+        Assert.Equal("DONE_FB", stored.Steps[0].CompletionTag);
+        Assert.Null(stored.Steps[0].CompletionSourceId);
+        Assert.Null(stored.Steps[0].CompletionItemId);
+        Assert.Equal("START_PB", stored.Steps[0].Conditions[0].Tag);
+        Assert.Equal(string.Empty, stored.Steps[0].Conditions[0].ItemId);
+        Assert.Equal("START_PB", stored.Actions[0].Tag);
+        Assert.Equal(string.Empty, stored.Actions[0].ItemId);
+    }
+
+    [Fact]
+    public void TrySave_KeepsANamedTagNetworkContactAndLetsTheRelayWin()
+    {
+        LogicStore store = CreateStore();
+        store.TrySaveTagSource(CreateTagSource(), out _, out _, out _);
+
+        LogicBlockDto block = new()
+        {
+            Id = Guid.NewGuid(),
+            Name = "Dry end network",
+            TagSource = "DRYEND",
+            Kind = LogicBlockKinds.Interlock,
+            Elements =
+            {
+                new LogicElementDto
+                {
+                    Id = Guid.NewGuid(),
+                    Kind = LogicElementKinds.Contact,
+                    Text = "start permit",
+                    Tag = "START_PB",
+                    Op = LogicConditionOps.On
+                },
+                new LogicElementDto
+                {
+                    Id = Guid.NewGuid(),
+                    Kind = LogicElementKinds.Contact,
+                    Text = "relay wins",
+                    Tag = "START_PB",
+                    Relay = "M01",
+                    Op = LogicConditionOps.On
+                }
+            }
+        };
+
+        bool ok = store.TrySave(block, out LogicBlockDto stored, out _, out string? error);
+
+        Assert.True(ok);
+        Assert.Null(error);
+        Assert.Equal("START_PB", stored.Elements[0].Tag);
+        Assert.Equal(string.Empty, stored.Elements[0].ItemId);
+        Assert.Equal(string.Empty, stored.Elements[0].SourceId);
+
+        // A relay contact carries its relay and no tag; a stray field is dropped like any other.
+        Assert.Equal(string.Empty, stored.Elements[1].Tag);
+        Assert.Equal("M01", stored.Elements[1].Relay);
+    }
+
+    [Fact]
+    public void TrySave_CanonicalizesAReferenceToTheSourcesSpellingAndKeepsADanglingOne()
+    {
+        LogicStore store = CreateStore();
+        store.TrySaveTagSource(CreateTagSource(tags: ("Start_Pb", "sim", "ns=2;s=Status/Start")), out _, out _, out _);
+
+        store.TrySave(CreateNamedTagInterlock(tag: "start_pb"), out LogicBlockDto matched, out _, out _);
+        store.TrySave(CreateNamedTagInterlock("Ghost", tag: "NOT_IN_THE_SOURCE"), out LogicBlockDto dangling, out _, out _);
+
+        Assert.Equal("Start_Pb", matched.Conditions[0].Tag);
+        // A name the source does not hold is kept, not rejected: the evaluator reports it.
+        Assert.Equal("NOT_IN_THE_SOURCE", dangling.Conditions[0].Tag);
+    }
+
+    [Fact]
+    public void TrySave_RejectsATagsSourceNameThatIsTooLong()
+    {
+        LogicStore store = CreateStore();
+
+        LogicBlockDto block = CreateNamedTagInterlock(tagSource: new string('X', LogicLimits.MaxTagSourceNameLength + 1));
+        bool ok = store.TrySave(block, out _, out _, out string? error);
+
+        Assert.False(ok);
+        Assert.Contains("tags source name", error, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Persist_ReloadsTagsSourcesAfterRestart()
+    {
+        LogicStore store = CreateStore();
+        store.TrySaveTagSource(
+            CreateTagSource("DRYEND", ("START_PB", "sim", "ns=2;s=Status/Start"), ("FAULT", "", "")),
+            out _,
+            out _,
+            out _);
+        store.TrySave(CreateNamedTagInterlock(), out _, out _, out _);
+
+        LogicStore reopened = new(Options.Create(new BridgeOptions()));
+
+        LogicTagSourceDto source = Assert.Single(reopened.GetTagSources());
+        Assert.Equal("DRYEND", source.Name);
+        Assert.Equal(new[] { "START_PB", "FAULT" }, source.Tags.Select(tag => tag.Name));
+        Assert.Single(reopened.GetSnapshot().Blocks);
+        Assert.Equal("START_PB", reopened.GetSnapshot().Blocks[0].Conditions[0].Tag);
+        Assert.Equal(string.Empty, reopened.GetSnapshot().Blocks[0].Conditions[0].ItemId);
+    }
+
+    [Fact]
+    public void LoadFromDisk_DropsTagsSourcesThatNoLongerValidate()
+    {
+        string path = Path.Combine(AppContext.BaseDirectory, "logic-tags.json");
+        File.WriteAllText(
+            path,
+            JsonSerializer.Serialize(new[]
+            {
+                CreateTagSource("DRYEND"),
+                CreateTagSource("  ")
+            }));
+
+        LogicStore store = new(Options.Create(new BridgeOptions()));
+
+        Assert.Single(store.GetTagSources());
+        Assert.Equal("DRYEND", store.GetTagSources()[0].Name);
     }
 }

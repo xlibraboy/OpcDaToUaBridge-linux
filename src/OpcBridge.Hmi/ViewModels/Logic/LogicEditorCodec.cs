@@ -34,20 +34,24 @@ public static class LogicEditorCodec
     public static List<LogicConditionRowViewModel> LoadConditions(
         IEnumerable<LogicConditionDto> conditions,
         LogicTagCatalog catalog,
-        Action<LogicConditionRowViewModel>? onRemove) =>
-        conditions.Select(condition => new LogicConditionRowViewModel(condition, catalog, onRemove)).ToList();
+        Action<LogicConditionRowViewModel>? onRemove,
+        IEnumerable<LogicTagEntryViewModel>? tagEntries = null) =>
+        conditions
+            .Select(condition => new LogicConditionRowViewModel(condition, catalog, onRemove, tagEntries))
+            .ToList();
 
     /// <summary>One row per element, depth-first in drawing order, indented by its depth.</summary>
     public static List<LogicElementRowViewModel> LoadElements(
         IReadOnlyList<LogicElementDto> elements,
         LogicTagCatalog catalog,
         Action<LogicElementRowViewModel>? onRemove,
-        IEnumerable<string>? relayNames = null)
+        IEnumerable<string>? relayNames = null,
+        IEnumerable<LogicTagEntryViewModel>? tagEntries = null)
     {
         var rows = new List<LogicElementRowViewModel>();
         foreach ((LogicElementDto element, int depth) in LogicNetwork.Walk(elements))
         {
-            rows.Add(new LogicElementRowViewModel(element, depth, catalog, onRemove, relayNames));
+            rows.Add(new LogicElementRowViewModel(element, depth, catalog, onRemove, relayNames, tagEntries));
         }
 
         return rows;
@@ -63,12 +67,19 @@ public static class LogicEditorCodec
         LogicTagCatalog catalog,
         ObservableCollection<LogicStepRowViewModel>? owner,
         Action<LogicStepRowViewModel>? onRemove,
-        Action? onMoved)
+        Action? onMoved,
+        IEnumerable<LogicTagEntryViewModel>? tagEntries = null)
     {
         var rows = new List<LogicStepRowViewModel>();
         foreach (LogicStepDto step in steps)
         {
-            rows.Add(new LogicStepRowViewModel(step, catalog, owner ?? new ObservableCollection<LogicStepRowViewModel>(), onRemove, onMoved));
+            rows.Add(new LogicStepRowViewModel(
+                step,
+                catalog,
+                owner ?? new ObservableCollection<LogicStepRowViewModel>(),
+                onRemove,
+                onMoved,
+                tagEntries));
         }
 
         return rows;
@@ -77,8 +88,11 @@ public static class LogicEditorCodec
     public static List<LogicActionRowViewModel> LoadActions(
         IEnumerable<LogicActionDto> actions,
         LogicTagCatalog catalog,
-        Action<LogicActionRowViewModel>? onRemove) =>
-        actions.Select(action => new LogicActionRowViewModel(action, catalog, onRemove)).ToList();
+        Action<LogicActionRowViewModel>? onRemove,
+        IEnumerable<LogicTagEntryViewModel>? tagEntries = null) =>
+        actions
+            .Select(action => new LogicActionRowViewModel(action, catalog, onRemove, tagEntries))
+            .ToList();
 
     /// <summary>Comma-separated labels, trimmed, blanks dropped (the store deduplicates).</summary>
     public static List<string> ParseTags(string text) =>
@@ -87,24 +101,31 @@ public static class LogicEditorCodec
             .Where(tag => tag.Length > 0)
             .ToList();
 
-    public static LogicConditionDto ConditionFromRow(LogicConditionRowViewModel row) => new()
+    public static LogicConditionDto ConditionFromRow(LogicConditionRowViewModel row)
     {
-        Id = row.ConditionId,
-        Text = row.Text.Trim(),
-        SourceId = row.SourceId,
-        ItemId = row.ItemId,
-        Op = ValidOp(row.Op?.Value),
-        Value = NumericValue(row.Op?.Value, row.ValueText),
-        Group = row.Group.Trim(),
-        HoldMs = Milliseconds(row.HoldSeconds),
-        NextStepText = TrimmedOrNull(row.NextStepText),
-        Severity = ValidSeverity(row.Severity?.Value)
-    };
+        string tag = row.Tag;
+        return new LogicConditionDto
+        {
+            Id = row.ConditionId,
+            Text = row.Text.Trim(),
+            // A named tag's pair lives on the machine's tags source, never on the condition.
+            SourceId = tag.Length > 0 ? string.Empty : row.SourceId,
+            ItemId = tag.Length > 0 ? string.Empty : row.ItemId,
+            Tag = tag,
+            Op = ValidOp(row.Op?.Value),
+            Value = NumericValue(row.Op?.Value, row.ValueText),
+            Group = row.Group.Trim(),
+            HoldMs = Milliseconds(row.HoldSeconds),
+            NextStepText = TrimmedOrNull(row.NextStepText),
+            Severity = ValidSeverity(row.Severity?.Value)
+        };
+    }
 
     /// <summary>
     /// One element from its row. Only the fields that belong to the kind are set — a gate keeps the
     /// DTO defaults, exactly like the bridge's own store does. A relay on a contact makes it a
-    /// relay contact (tag fields cleared) and a relay on a coil is the relay it drives.
+    /// relay contact (tag fields cleared) and a relay on a coil is the relay it drives; a contact
+    /// naming one of the machine's tags keeps that name alone.
     /// </summary>
     public static LogicElementDto ElementFromRow(LogicElementRowViewModel row)
     {
@@ -125,8 +146,14 @@ public static class LogicEditorCodec
             element.Op = ValidOp(row.Op?.Value);
             if (relay.Length == 0)
             {
-                element.SourceId = row.SourceId;
-                element.ItemId = row.ItemId;
+                string tag = row.Tag;
+                element.Tag = tag;
+                if (tag.Length == 0)
+                {
+                    element.SourceId = row.SourceId;
+                    element.ItemId = row.ItemId;
+                }
+
                 element.Value = NumericValue(element.Op, row.ValueText);
             }
         }
@@ -174,26 +201,37 @@ public static class LogicEditorCodec
         return Build(-1);
     }
 
-    public static LogicStepDto StepFromRow(LogicStepRowViewModel row) => new()
+    public static LogicStepDto StepFromRow(LogicStepRowViewModel row)
     {
-        Id = row.StepId,
-        Name = row.Name.Trim(),
-        Elements = new List<LogicElementDto>(),
-        Conditions = row.Conditions.Select(ConditionFromRow).ToList(),
-        NextStepText = TrimmedOrNull(row.NextStepText),
-        CompletionSourceId = row.CompletionSourceId,
-        CompletionItemId = row.CompletionItemId,
-        Actions = row.StoredActions.ToList()
-    };
+        string completionTag = row.CompletionTagName;
+        return new LogicStepDto
+        {
+            Id = row.StepId,
+            Name = row.Name.Trim(),
+            Elements = new List<LogicElementDto>(),
+            Conditions = row.Conditions.Select(ConditionFromRow).ToList(),
+            NextStepText = TrimmedOrNull(row.NextStepText),
+            // A named handshake's pair lives on the machine's tags source, never on the step.
+            CompletionSourceId = completionTag.Length > 0 ? null : row.CompletionSourceId,
+            CompletionItemId = completionTag.Length > 0 ? null : row.CompletionItemId,
+            CompletionTag = completionTag.Length > 0 ? completionTag : null,
+            Actions = row.StoredActions.ToList()
+        };
+    }
 
-    public static LogicActionDto ActionFromRow(LogicActionRowViewModel row) => new()
+    public static LogicActionDto ActionFromRow(LogicActionRowViewModel row)
     {
-        Label = row.Label.Trim(),
-        SourceId = row.SourceId,
-        ItemId = row.ItemId,
-        Value = row.Value.Trim(),
-        Confirm = row.Confirm
-    };
+        string tag = row.Tag;
+        return new LogicActionDto
+        {
+            Label = row.Label.Trim(),
+            SourceId = tag.Length > 0 ? string.Empty : row.SourceId,
+            ItemId = tag.Length > 0 ? string.Empty : row.ItemId,
+            Tag = tag,
+            Value = row.Value.Trim(),
+            Confirm = row.Confirm
+        };
+    }
 
     /// <summary>Builds the block exactly as the editor stands, with the web app's collect rules.</summary>
     public static LogicBlockDto Build(
@@ -203,6 +241,7 @@ public static class LogicEditorCodec
         string kind,
         bool enabled,
         string group,
+        string tagSource,
         string description,
         string tagsText,
         IReadOnlyList<LogicConditionRowViewModel> conditions,
@@ -219,6 +258,7 @@ public static class LogicEditorCodec
             Enabled = enabled,
             Description = description.Trim(),
             Group = group.Trim(),
+            TagSource = tagSource.Trim(),
             Order = stored?.Order ?? newOrder,
             Tags = ParseTags(tagsText),
             Actions = actions.Select(ActionFromRow).ToList()

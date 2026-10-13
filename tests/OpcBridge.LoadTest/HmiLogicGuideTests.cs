@@ -24,6 +24,7 @@ public sealed class HmiLogicGuideTests
         Assert.Contains("# Network (IEC 61131-3)", guide);
         Assert.Contains("# Interlock group", guide);
         Assert.Contains("# Tags", guide);
+        Assert.Contains("# Tags source (per machine)", guide);
         Assert.Contains("# Actions", guide);
         Assert.Contains("# Live state", guide);
         Assert.Contains("# Result tab", guide);
@@ -31,6 +32,9 @@ public sealed class HmiLogicGuideTests
         Assert.Contains("OR group", guide);
         Assert.Contains("warn only", guide);
         Assert.Contains("should 1 / actual 0", guide);
+        Assert.Contains("MACHINE TAG", guide);
+        Assert.Contains("not assigned", guide);
+        Assert.Contains("Move tags into source", guide);
         Assert.Contains("TON", guide);
         Assert.Contains("TOF", guide);
         Assert.Contains("TP", guide);
