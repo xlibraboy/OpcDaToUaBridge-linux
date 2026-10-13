@@ -43,18 +43,24 @@ public sealed partial class LogicBlockRowViewModel : ObservableObject
 
     public string Group => Block.Group?.Trim() ?? string.Empty;
 
+    public string Area => Block.Area?.Trim() ?? string.Empty;
+
+    public bool HasArea => Area.Length > 0;
+
     public string KindLabel => LogicText.BlockKindLabel(Block.Kind);
 
     /// <summary>
-    /// The row's accessible name: what the row shows, in one line — name, kind, state and the
-    /// first reason. A trailing ellipsis in the visual row can hide the reason from sight, so the
-    /// name carries it in full.
+    /// The row's accessible name: what the row shows, in one line — name, kind, area, state and
+    /// the first reason. A trailing ellipsis in the visual row can hide the reason from sight, so
+    /// the name carries it in full.
     /// </summary>
     public string AccessibleName
     {
         get
         {
-            string text = $"{Name}, {KindLabel}, {StateWord}";
+            string text = HasArea
+                ? $"{Name}, {KindLabel}, {Area}, {StateWord}"
+                : $"{Name}, {KindLabel}, {StateWord}";
             return string.IsNullOrWhiteSpace(ReasonLine) ? text : $"{text} — {ReasonLine}";
         }
     }
@@ -100,6 +106,27 @@ public sealed partial class LogicBlockRowViewModel : ObservableObject
         Progress = LogicText.SequenceProgress(Block, state);
         OnPropertyChanged(nameof(AccessibleName));
     }
+}
+
+/// <summary>
+/// One area heading of the grouped block list: the blocks of a plant area (e.g. "DRY END") and
+/// the interlock-group headings inside it. A list with no block carrying an area hides its
+/// heading, so the list reads exactly like the ungrouped one.
+/// </summary>
+public sealed class LogicAreaViewModel
+{
+    public LogicAreaViewModel(string name, bool showHeading, IEnumerable<LogicGroupViewModel> groups)
+    {
+        Name = name;
+        ShowHeading = showHeading;
+        Groups = new ObservableCollection<LogicGroupViewModel>(groups);
+    }
+
+    public string Name { get; }
+
+    public bool ShowHeading { get; }
+
+    public ObservableCollection<LogicGroupViewModel> Groups { get; }
 }
 
 /// <summary>

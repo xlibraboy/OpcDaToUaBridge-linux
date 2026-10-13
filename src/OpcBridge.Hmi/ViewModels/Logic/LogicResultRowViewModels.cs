@@ -15,7 +15,7 @@ public sealed partial class LogicResultElementRowViewModel : ObservableObject
         LogicElementDto element,
         int depth,
         LogicTagCatalog catalog,
-        LogicTagSourceDto? tagSource = null)
+        LogicAreaTagsDto? tagSource = null)
     {
         ElementId = element.Id;
         Kind = element.Kind;
@@ -30,7 +30,7 @@ public sealed partial class LogicResultElementRowViewModel : ObservableObject
 
         // A relay element names its relay where a tag contact names its tag — a coil reads as
         // "COIL · relay M01 · 1", a relay contact as "NO · relay M01 · should 1 · actual 0"; a
-        // contact reading the machine's named tags shows the entry and the tag it is bound to.
+        // contact reading the area's named tags shows the entry and the tag it is bound to.
         bool relayElement = !string.IsNullOrWhiteSpace(element.Relay);
         TagLabel = relayElement
             ? "relay " + element.Relay
@@ -40,14 +40,14 @@ public sealed partial class LogicResultElementRowViewModel : ObservableObject
         nextStepCandidate_ = element.NextStepText;
     }
 
-    private static string TagContactLabel(LogicElementDto element, LogicTagCatalog catalog, LogicTagSourceDto? tagSource)
+    private static string TagContactLabel(LogicElementDto element, LogicTagCatalog catalog, LogicAreaTagsDto? tagSource)
     {
         if (!string.IsNullOrWhiteSpace(element.Tag))
         {
             string name = element.Tag.Trim();
-            return LogicTagSources.TryResolve(tagSource, name, out string sourceId, out string itemId)
+            return LogicAreaTags.TryResolve(tagSource, name, out string sourceId, out string itemId)
                 ? name + " · " + catalog.TagLabel(sourceId, itemId)
-                : LogicTagSources.UnresolvedText(name, tagSource, tagSource?.Name);
+                : LogicAreaTags.UnresolvedText(name, tagSource, tagSource?.Name);
         }
 
         return element.ItemId.Length > 0 ? catalog.TagLabel(element.SourceId, element.ItemId) : string.Empty;

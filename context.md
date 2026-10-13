@@ -217,23 +217,28 @@ apps. The phone
 renders one row per element — indented by `Depth`, with the contact's `should`/`matches` and the
 timer's/counter's progress — and the HMI's network editor authors the same tree as indented element rows.
 
-**Tags sources (a machine's named tags, assigned once).** A block can reference its machine's named
-tags instead of a direct pair: `LogicBlockDto.TagSource` names the machine — blank falls back to
-`Group`, so filing a block under `DRYEND` puts it on DRYEND's tags — and a condition, a network
-contact, a step handshake (`CompletionTag`) and an action each carry a `Tag` name that resolves
-through that machine's `LogicTagSourceDto` in `logic-tags.json` (entries are name + optional
+**Area tags (an area's named tags, assigned once).** A block can reference its area's named tags
+instead of a direct pair: `LogicBlockDto.Area` names the plant area — the main section that
+separates the tags (`DRY END`, `WET END`, …) — and its tags are read by every block of the area,
+whatever interlock group it sits under (`Group` is a display heading only). `LogicAreaTags.AreaNameFor`
+decides which list a block reads: its `Area`, else the name it stores (`TagSource`), else its
+`Group` (the legacy fallbacks — the store keeps the resolved name in `TagSource`, so the evaluator,
+the HMI, the phone and older clients resolve a block without knowing about areas) — and a condition,
+a network contact, a step handshake (`CompletionTag`) and an action each carry a `Tag` name that
+resolves through that area's `LogicAreaTagsDto` in `logic-tags.json` (entries are name + optional
 source/item pair; an entry created empty and assigned later is a first-class state). The resolver
-is `LogicTagSources` (shared by the evaluator, the HMI and the phone): a bound entry feeds the normal
+is `LogicAreaTags` (shared by the evaluator, the HMI and the phone): a bound entry feeds the normal
 value/mapping lookups, an unassigned one reads **unknown** with the entry named
-(`no data for START_PB (not assigned)`), a name the source does not hold reads `… (not in DRYEND)`,
+(`no data for START_PB (not assigned)`), a name the list does not hold reads `… (not in DRY END)`,
 and the store canonicalizes every reference to its entry's spelling while clearing the site's
 `SourceId`/`ItemId` (a reference and a pair are mutually exclusive — relay, once set, wins). Nothing
-converts implicitly: direct pairs keep evaluating, and the HMI's **Move tags into source** rewrites
-a block on demand. `LogicStore` owns both files behind one version; `TryRemoveTagSource` refuses
-while blocks read it. The HMI's Logic page carries it as its **Tags** tab (name field, entries with
-live values, `+ New tag`), every editor row has a **MACHINE TAG** picker that hides the direct
-pickers, and the phone resolves labels, live values and action writes through the same source (its
-offline cache keeps the sources beside the blocks).
+converts implicitly: direct pairs keep evaluating, and the HMI's **Move tags into area** rewrites
+a block on demand. `LogicStore` owns both files behind one version; `TryRemoveAreaTags` refuses
+while blocks read the list. The HMI's Logic page carries it as its **Tags** tab (the AREA field,
+entries with live values, `+ New tag`), the block list reads AREA → interlock group → blocks, every
+editor row has an **AREA TAG** picker that hides the direct pickers, and the phone resolves labels,
+live values and action writes through the same list (its offline cache keeps the lists beside the
+blocks).
 
 ### Dashboard authentication & roles
 

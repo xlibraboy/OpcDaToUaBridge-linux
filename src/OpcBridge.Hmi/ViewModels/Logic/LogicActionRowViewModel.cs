@@ -55,13 +55,13 @@ public partial class LogicActionRowViewModel : ObservableObject
 
     public string ItemId => SelectedTag?.ItemId ?? string.Empty;
 
-    /// <summary>The machine's named tags this button may write instead of a direct tag.</summary>
+    /// <summary>The area's named tags this button may write instead of a direct tag.</summary>
     public IEnumerable<LogicTagEntryViewModel> TagEntries { get; }
 
     [ObservableProperty]
     private LogicTagEntryViewModel? _selectedBlockTag;
 
-    /// <summary>The stored tags-source reference, "" when the button writes a direct tag.</summary>
+    /// <summary>The stored area-tags reference, "" when the button writes a direct tag.</summary>
     public string Tag => SelectedBlockTag?.Name.Trim() ?? string.Empty;
 
     public bool HasBlockTag => Tag.Length > 0;

@@ -346,7 +346,7 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
     private readonly LogicBlockDto block_;
     private readonly string bridgeKey_;
     private readonly MultiBridgeTagCache? tags_;
-    private readonly LogicTagSourceDto? tagSource_;
+    private readonly LogicAreaTagsDto? areaTags_;
     private readonly Dictionary<Guid, LogicElementRowViewModel> elementRows_ = new();
     private readonly Dictionary<Guid, LogicStepRowViewModel> stepRows_ = new();
 
@@ -361,12 +361,12 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
         LogicBlockStateDto? state = null,
         MultiBridgeTagCache? tags = null,
         IReadOnlyList<LogicNoteDto>? notes = null,
-        LogicTagSourceDto? tagSource = null)
+        LogicAreaTagsDto? areaTags = null)
     {
         block_ = block;
         bridgeKey_ = bridgeKey;
         tags_ = tags;
-        tagSource_ = tagSource;
+        areaTags_ = areaTags;
 
         Title = block.Name;
         Description = block.Description;
@@ -566,9 +566,9 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
         && string.IsNullOrWhiteSpace(element.Relay);
 
     /// <summary>
-    /// The tag a row or an action button reads or writes: a named machine tag resolves through the
-    /// block's tags source, a direct reference is itself. False when a named tag is unassigned or
-    /// not in the machine's source — the caller shows why instead of touching the wrong tag.
+    /// The tag a row or an action button reads or writes: a named area tag resolves through the
+    /// block's area's tags, a direct reference is itself. False when a named tag is unassigned or
+    /// not in the area's tags — the caller shows why instead of touching the wrong tag.
     /// </summary>
     public bool TryResolveTag(
         string? tag,
@@ -579,7 +579,7 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
     {
         if (!string.IsNullOrWhiteSpace(tag))
         {
-            return LogicTagSources.TryResolve(tagSource_, tag, out resolvedSourceId, out resolvedItemId);
+            return LogicAreaTags.TryResolve(areaTags_, tag, out resolvedSourceId, out resolvedItemId);
         }
 
         resolvedSourceId = sourceId?.Trim() ?? string.Empty;
@@ -589,10 +589,7 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
 
     /// <summary>Why a named tag reads or writes nothing, in the operator's words.</summary>
     public string UnresolvedTagText(string? tag) =>
-        LogicTagSources.UnresolvedText(
-            tag,
-            tagSource_,
-            string.IsNullOrWhiteSpace(block_.TagSource) ? block_.Group : block_.TagSource);
+        LogicAreaTags.UnresolvedText(tag, areaTags_, LogicAreaTags.AreaNameFor(block_));
 
     /// <summary>A tag's label: the direct tag, or the named one with what it is bound to.</summary>
     private string ResolvedLabel(string? tag, string? sourceId, string? itemId)

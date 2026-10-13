@@ -43,7 +43,7 @@ public partial class LogicStepRowViewModel : ObservableObject
         }
     }
 
-    /// <summary>The machine's named tags the step's conditions and handshake may read.</summary>
+    /// <summary>The area's named tags the step's conditions and handshake may read.</summary>
     public IEnumerable<LogicTagEntryViewModel> TagEntries { get; }
 
     [ObservableProperty]

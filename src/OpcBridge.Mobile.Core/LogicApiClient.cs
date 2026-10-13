@@ -6,12 +6,12 @@ using OpcBridge.Client;
 namespace OpcBridge.Mobile.Core;
 
 /// <summary>
-/// One bridge's logic surface: its blocks and the machines' tags sources the blocks' named tags
-/// resolve through (a block's rows reference an entry by name; the pair lives on the source).
+/// One bridge's logic surface: its blocks and the areas' tags the blocks' named tags resolve
+/// through (a block's rows reference an entry by name; the pair lives on the area's list).
 /// </summary>
 public sealed record MobileLogicDefinitions(
     IReadOnlyList<LogicBlockDto> Blocks,
-    IReadOnlyList<LogicTagSourceDto> TagSources);
+    IReadOnlyList<LogicAreaTagsDto> TagSources);
 
 /// <summary>
 /// HTTP client for the bridge's mobile-facing surface: logic definitions and state, the tag
@@ -67,7 +67,7 @@ public sealed class LogicApiClient : IDisposable
         return result.Ok
             ? MobileResult<MobileLogicDefinitions>.Success(new MobileLogicDefinitions(
                 result.Value?.Blocks ?? new List<LogicBlockDto>(),
-                result.Value?.TagSources ?? new List<LogicTagSourceDto>()))
+                result.Value?.TagSources ?? new List<LogicAreaTagsDto>()))
             : MobileResult<MobileLogicDefinitions>.Fail(result.Error ?? "request failed", result.StatusCode);
     }
 
@@ -219,8 +219,8 @@ public sealed class LogicApiClient : IDisposable
     {
         public List<LogicBlockDto> Blocks { get; set; } = new();
 
-        /// <summary>The machines' tags sources a block's named tags resolve through.</summary>
-        public List<LogicTagSourceDto>? TagSources { get; set; }
+        /// <summary>The areas' tags a block's named tags resolve through.</summary>
+        public List<LogicAreaTagsDto>? TagSources { get; set; }
     }
 
     private sealed class HmiTagsResponse

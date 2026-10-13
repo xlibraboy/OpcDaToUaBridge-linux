@@ -7,7 +7,7 @@ using OpcBridge.Hmi.Core;
 namespace OpcBridge.Hmi.ViewModels.Logic;
 
 /// <summary>
-/// One entry of a machine's tags source as the Tags tab edits it: the reference name a block's
+/// One entry of an area's tags as the Tags tab edits it: the reference name a block's
 /// rows carry (e.g. "START_PB") and the bridge tag it is bound to. An entry may be created empty
 /// and assigned later — its readers evaluate as unknown until then, never as a silent false — so
 /// "not assigned" is a normal, visible state rather than an error.

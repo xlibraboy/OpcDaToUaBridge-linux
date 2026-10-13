@@ -78,7 +78,11 @@
                                     <Label Grid.Column="1" Text="{Binding StateLabel}" FontAttributes="Bold"
                                            TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
                                 </Grid>
-                                <Label Text="{Binding KindLabel}" FontSize="11" TextColor="{StaticResource MutedColor}" />
+                                <HorizontalStackLayout Spacing="8">
+                                    <Label Text="{Binding KindLabel}" FontSize="11" TextColor="{StaticResource MutedColor}" />
+                                    <Label Text="{Binding Area}" FontSize="11" TextColor="{StaticResource MutedColor}"
+                                           IsVisible="{Binding HasArea}" />
+                                </HorizontalStackLayout>
                                 <FlexLayout Wrap="Wrap" Direction="Row" AlignItems="Center"
                                             BindableLayout.ItemsSource="{Binding Tags}">
                                     <BindableLayout.ItemTemplate>

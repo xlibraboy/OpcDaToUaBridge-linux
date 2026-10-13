@@ -105,12 +105,22 @@ last one in scan order wins.
 
 ---
 
-# Interlock group
+# Area and interlock group
 
-A block can carry an **interlock group** (e.g. `Primary Arm`). The phone — and the Blocks window —
-collects blocks that share it under one heading, so a machine's up/down interlocks read together:
-name the children after it (`Primary Arm Up`, `Primary Arm Down`) and give them the same group. At
-most 40 characters; blank blocks stay ungrouped.
+A block carries two headings:
+
+- **AREA** (e.g. `DRY END`) — the plant's main section, and the scope its tags are shared by: every
+  block of the area reads one **area tags** list (the Tags tab), so a signal is assigned once per
+  area and re-used by all of its interlocks, whatever their group. New groups and interlocks filed
+  under the area pick from the tags already there.
+- **INTERLOCK GROUP** (e.g. `Primary Arm`) — a display heading only: the front list, the Blocks
+  window and the phone collect blocks that share it under one heading, so a machine's up/down
+  interlocks read together. Name the children after it (`Primary Arm Up`, `Primary Arm Down`) and
+  give them the same group.
+
+At most 40 characters each. A block without an area still works — its named tags resolve through
+the name it stores, else its interlock group (the legacy fallback) — and typing an area moves it
+onto the area's tags.
 
 ---
 
@@ -124,35 +134,35 @@ description or any tag.
 
 ---
 
-# Tags source (per machine)
+# Area tags (per area)
 
 A block does not have to name the bridge tag in every row. The **Tags** tab next to the editor
-holds its machine's **tags source** — the named tags every block of that machine reads — so a
-signal is assigned **once per machine** instead of once per condition:
+holds its area's **area tags** — the named tags every block of that area reads — so a signal is
+assigned **once per area** instead of once per condition:
 
-- Type the **machine's name** (`DRYEND`, `WETEND`, …). Every block that names the same machine — a
-  block's tag source defaults to its interlock group, and the tab shows and stores the name — shares
-  one list of tags: assign a tag here and every one of those blocks follows. The tab says how many
-  loaded blocks carry the name.
+- Type the **area's name** (`DRY END`, `WET END`, …) in the editor's `AREA` field — or in the Tags
+  tab's own box, which is the same value. Every block of the area shares one list of tags: assign a
+  tag here and every one of those blocks follows. The tab says how many loaded blocks carry the
+  area.
 - **`+ New tag`** creates an entry with a name you choose (`START_PB`, `FAULT`, …). **Name it, leave
   it unassigned, and assign the bridge tag later** — a block authored against an unassigned entry
   reads **unknown** with the entry named in the reason (`no data for START_PB (not assigned)`),
-  never a silent false. A name the machine's source does not hold reads `… (not in DRYEND)`.
+  never a silent false. A name the area's tags do not hold reads `… (not in DRY END)`.
 - In the editor, every row — a condition, a network contact, a step's completion handshake, an
-  action — has a **MACHINE TAG** picker listing the machine's entries; picking one hides the direct
+  action — has an **AREA TAG** picker listing the area's entries; picking one hides the direct
   `SOURCE` / `TAG` pickers (the pair lives on the entry now). `✕` clears it and the row reads a
   direct bridge tag again. Direct tags keep working exactly as before — nothing is converted behind
   your back.
-- **`Move tags into source`** converts a block authored before tags sources existed: one entry per
-  distinct direct tag, named after the tag's display name, with the rows rewritten to reference it.
-  The block evaluates the same before and after; the mode is stored by **Save**.
-- **Save** stores the machine's tags and the block together (whichever changed, and the tab's
-  `used by` line tells you who shares them). **`Delete source`** removes the machine's list; the
+- **`Move tags into area`** converts a block authored with direct tags: one entry per distinct tag,
+  named after the tag's display name, with the rows rewritten to reference it. The block evaluates
+  the same before and after; the mode is stored by **Save**.
+- **Save** stores the area's tags and the block together (whichever changed, and the tab's
+  `used by` line tells you who shares them). **`Delete area tags`** removes the area's list; the
   bridge refuses while any block still reads it, naming how many.
 - The **LIVE** column shows the bound tag's current value (`1` / `0` for a bit, the number
   otherwise, `bad` for bad quality), so an assignment can be checked without leaving the tab.
 
-Two blocks of the same machine that read the same signal read the same entry: changing the binding
+Two blocks of the same area that read the same signal read the same entry: changing the binding
 moves both at once.
 
 ---
@@ -185,9 +195,9 @@ The **Result** tab next to the editor shows what the bridge currently evaluates 
 configuration — the same result the phone presents, refreshed once a second while the tab is open.
 It writes nothing: actions stay on the phone.
 
-- The list on the left collects every block under its **interlock group** heading, with the live
-  state badge (`ready` / `blocked` / `unknown` / `disabled`), the first failing reason and a
-  sequence's progress (`2/3 steps · Open valve`).
+- The list on the left collects every block under its **area**, then its **interlock group**
+  heading, with the live state badge (`ready` / `blocked` / `unknown` / `disabled`), the first
+  failing reason and a sequence's progress (`2/3 steps · Open valve`).
 - Selecting a block shows its evaluated network on the right: the **mark** (`✓` / `✗` / `—`), the
   contact kind (`NO` / `NC` / `>` / `<` / `=` / `AND` / `OR` / `TON` …), the sentence and its
   reading — `should 1 · actual 0` — plus a **hold** timer's or counter's progress

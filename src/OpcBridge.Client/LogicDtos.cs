@@ -21,18 +21,27 @@ public sealed class LogicBlockDto
     public string Name { get; set; } = string.Empty;
 
     /// <summary>
-    /// Optional interlock group (e.g. "Primary Arm"). The phone collects blocks carrying the
-    /// same group under one collapsible heading, so a machine's up/down interlocks read
-    /// together instead of as a flat list. Blank = ungrouped.
+    /// Optional interlock group (e.g. "Primary Arm"). The phone and the HMI's block lists
+    /// collect blocks carrying the same group under one heading, so a machine's up/down
+    /// interlocks read together instead of as a flat list. A display heading only — the named
+    /// tags a block reads are shared by its <see cref="Area"/>, never by its group. Blank =
+    /// ungrouped.
     /// </summary>
     public string Group { get; set; } = string.Empty;
 
     /// <summary>
-    /// Name of the machine's <see cref="LogicTagSourceDto"/> — the named tags this block's
-    /// conditions, contacts, step handshakes and actions reference by name. Every block carrying
-    /// the same name shares one source, so a machine's tags are assigned once (e.g. one "DRYEND"
-    /// source for every DRYEND block). Blank = no source; the store falls back to
-    /// <see cref="Group"/> so a grouped machine's blocks land on one source by default.
+    /// The plant area whose tags the block shares (e.g. "DRY END"). Every block of the area
+    /// references the same <see cref="LogicAreaTagsDto"/> entries, so a signal is assigned once
+    /// per area and re-used by all of its interlocks and groups. Blank = the store falls back to
+    /// <see cref="TagSource"/>, then <see cref="Group"/> (legacy).
+    /// </summary>
+    public string Area { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The area tags this block reads, as stored: the area's name, else the legacy name the
+    /// block carried before areas existed. Blank = the store resolves the name from
+    /// <see cref="Area"/>, then <see cref="Group"/>. Kept on the block so the evaluator, the
+    /// phone and older clients resolve a block without knowing about areas.
     /// </summary>
     public string TagSource { get; set; } = string.Empty;
 
@@ -96,10 +105,10 @@ public sealed class LogicElementDto
     public string ItemId { get; set; } = string.Empty;
 
     /// <summary>
-    /// Name of the block's tags source entry this contact reads (e.g. "START_PB"), the
-    /// machine's named tag assigned in one place. When set, <see cref="SourceId"/> and
-    /// <see cref="ItemId"/> are empty — the pair lives on the entry — and the element reads
-    /// unknown while the entry is unassigned. Empty for a contact that carries a direct tag.
+    /// Name of the area's tags entry this contact reads (e.g. "START_PB"), assigned once for
+    /// the area. When set, <see cref="SourceId"/> and <see cref="ItemId"/> are empty — the pair
+    /// lives on the entry — and the element reads unknown while the entry is unassigned. Empty
+    /// for a contact that carries a direct tag.
     /// </summary>
     public string Tag { get; set; } = string.Empty;
 
@@ -153,9 +162,9 @@ public sealed class LogicConditionDto
     public string ItemId { get; set; } = string.Empty;
 
     /// <summary>
-    /// Name of the block's tags source entry this condition reads. When set,
-    /// <see cref="SourceId"/> and <see cref="ItemId"/> are empty — the machine's tags source
-    /// holds the assignment, so every block of the machine reads the same tag.
+    /// Name of the area's tags entry this condition reads. When set,
+    /// <see cref="SourceId"/> and <see cref="ItemId"/> are empty — the area's tags hold the
+    /// assignment, so every block of the area reads the same tag.
     /// </summary>
     public string Tag { get; set; } = string.Empty;
 
@@ -212,7 +221,7 @@ public sealed class LogicStepDto
     public string? CompletionItemId { get; set; }
 
     /// <summary>
-    /// Name of the block's tags source entry this step waits on, instead of the direct
+    /// Name of the area's tags entry this step waits on, instead of the direct
     /// <see cref="CompletionSourceId"/>/<see cref="CompletionItemId"/> pair. Null = no handshake
     /// or a direct pair.
     /// </summary>
@@ -230,7 +239,7 @@ public sealed class LogicActionDto
     public string ItemId { get; set; } = string.Empty;
 
     /// <summary>
-    /// Name of the block's tags source entry this button writes, instead of the direct
+    /// Name of the area's tags entry this button writes, instead of the direct
     /// <see cref="SourceId"/>/<see cref="ItemId"/> pair. The button does nothing while the entry
     /// is unassigned.
     /// </summary>
@@ -244,29 +253,30 @@ public sealed class LogicActionDto
 }
 
 /// <summary>
-/// One machine's named tags (e.g. "DRYEND"): the entries every block of that machine references
-/// by name. It is the indirection that makes a tag assigned once — a block's conditions,
-/// contacts, step handshakes and actions carry an entry name, the real source/item pair lives
-/// here, so every block of the machine follows one assignment. An entry may be created empty
-/// (name only) and assigned later: its readers evaluate as unknown until then, never as false.
-/// Sources live on the bridge (logic-tags.json), so two blocks carrying the same
-/// <see cref="LogicBlockDto.TagSource"/> share every binding.
+/// One area's named tags (e.g. "DRY END"): the entries every block of that area references by
+/// name, re-used by all of its interlocks and groups. It is the indirection that makes a tag
+/// assigned once — a block's conditions, contacts, step handshakes and actions carry an entry
+/// name, the real source/item pair lives here, so every block of the area follows one
+/// assignment. An entry may be created empty (name only) and assigned later: its readers
+/// evaluate as unknown until then, never as false. The lists live on the bridge
+/// (logic-tags.json), so two blocks carrying the same <see cref="LogicBlockDto.Area"/> share
+/// every binding.
 /// </summary>
-public sealed class LogicTagSourceDto
+public sealed class LogicAreaTagsDto
 {
-    /// <summary>The machine's name (e.g. "DRYEND"). Blocks match it case-insensitively.</summary>
+    /// <summary>The area's name (e.g. "DRY END"). Blocks match it case-insensitively.</summary>
     public string Name { get; set; } = string.Empty;
 
     public List<LogicTagDto> Tags { get; set; } = new();
 }
 
 /// <summary>
-/// One named tag of a machine's tags source: the name a block references, and the source/item
-/// pair it is bound to (both empty = created, not assigned yet).
+/// One named tag of an area's tags: the name a block references, and the source/item pair it is
+/// bound to (both empty = created, not assigned yet).
 /// </summary>
 public sealed class LogicTagDto
 {
-    /// <summary>The reference name (e.g. "START_PB"), unique within its source.</summary>
+    /// <summary>The reference name (e.g. "START_PB"), unique within its area's tags.</summary>
     public string Name { get; set; } = string.Empty;
 
     public string SourceId { get; set; } = string.Empty;

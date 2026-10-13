@@ -182,7 +182,7 @@ public sealed class LogicDtoSerializationTests
     [Fact]
     public void TagsSourceAndNamedReferences_RoundTripCamelCaseJson()
     {
-        LogicTagSourceDto source = new()
+        LogicAreaTagsDto source = new()
         {
             Name = "DRYEND",
             Tags =
@@ -198,7 +198,7 @@ public sealed class LogicDtoSerializationTests
         Assert.DoesNotContain("\"Name\"", json, StringComparison.Ordinal);
         Assert.DoesNotContain("\"SourceId\"", json, StringComparison.Ordinal);
 
-        LogicTagSourceDto? copy = JsonSerializer.Deserialize<LogicTagSourceDto>(json, CamelCase);
+        LogicAreaTagsDto? copy = JsonSerializer.Deserialize<LogicAreaTagsDto>(json, CamelCase);
         Assert.NotNull(copy);
         Assert.Equal(new[] { "START_PB", "FAULT" }, copy!.Tags.Select(tag => tag.Name));
         Assert.Equal("ns=2;s=Status/Start", copy.Tags[0].ItemId);
@@ -209,6 +209,7 @@ public sealed class LogicDtoSerializationTests
             Id = Guid.NewGuid(),
             Name = "Dry end start",
             Group = "DRYEND",
+            Area = "DRY END",
             TagSource = "DRYEND",
             Kind = LogicBlockKinds.Sequence,
             Steps =
@@ -225,12 +226,14 @@ public sealed class LogicDtoSerializationTests
 
         string blockJson = JsonSerializer.Serialize(block, CamelCase);
         Assert.Contains("\"tagSource\":\"DRYEND\"", blockJson, StringComparison.Ordinal);
+        Assert.Contains("\"area\":\"DRY END\"", blockJson, StringComparison.Ordinal);
         Assert.Contains("\"completionTag\":\"DONE_FB\"", blockJson, StringComparison.Ordinal);
         Assert.Contains("\"tag\":\"START_PB\"", blockJson, StringComparison.Ordinal);
 
         LogicBlockDto? blockCopy = JsonSerializer.Deserialize<LogicBlockDto>(blockJson, CamelCase);
         Assert.NotNull(blockCopy);
         Assert.Equal("DRYEND", blockCopy!.TagSource);
+        Assert.Equal("DRY END", blockCopy.Area);
         Assert.Equal("DONE_FB", blockCopy.Steps[0].CompletionTag);
         Assert.Equal("START_PB", blockCopy.Steps[0].Conditions[0].Tag);
         Assert.Equal("START_PB", blockCopy.Actions[0].Tag);

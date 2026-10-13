@@ -917,9 +917,9 @@ public sealed class LogicStateEvaluatorTests
     }
 
     /// <summary>One machine's tags, with the entries a test needs bound (or left empty).</summary>
-    private static LogicTagSourceDto TagSource(string name, params (string Name, string ItemId)[] entries)
+    private static LogicAreaTagsDto AreaTags(string name, params (string Name, string ItemId)[] entries)
     {
-        LogicTagSourceDto source = new() { Name = name };
+        LogicAreaTagsDto source = new() { Name = name };
         foreach ((string tagName, string itemId) in entries)
         {
             source.Tags.Add(new LogicTagDto
@@ -953,7 +953,7 @@ public sealed class LogicStateEvaluatorTests
     [Fact]
     public void NamedTag_ResolvesThroughTheMachinesTagsSource()
     {
-        LogicTagSourceDto source = TagSource("DRYEND", ("START_PB", "Start"));
+        LogicAreaTagsDto source = AreaTags("DRYEND", ("START_PB", "Start"));
         LogicBlockDto block = NamedFlat("DRYEND", "START_PB");
 
         LogicBlockStateDto state = LogicStateEvaluator.EvaluateBlock(
@@ -971,7 +971,7 @@ public sealed class LogicStateEvaluatorTests
     [Fact]
     public void NamedTag_Unassigned_ReadsUnknownAndNamesTheEntry()
     {
-        LogicTagSourceDto source = TagSource("DRYEND", ("START_PB", ""));
+        LogicAreaTagsDto source = AreaTags("DRYEND", ("START_PB", ""));
         LogicBlockDto block = NamedFlat("DRYEND", "START_PB");
 
         LogicBlockStateDto state = LogicStateEvaluator.EvaluateBlock(
@@ -991,7 +991,7 @@ public sealed class LogicStateEvaluatorTests
     [Fact]
     public void NamedTag_NotInTheSource_NamesTheMachine()
     {
-        LogicTagSourceDto source = TagSource("DRYEND", ("START_PB", "Start"));
+        LogicAreaTagsDto source = AreaTags("DRYEND", ("START_PB", "Start"));
         LogicBlockDto block = NamedFlat("DRYEND", "GHOST_PB");
 
         LogicBlockStateDto state = LogicStateEvaluator.EvaluateBlock(
@@ -1017,15 +1017,15 @@ public sealed class LogicStateEvaluatorTests
             Mappings(),
             states: null,
             nowUtc: Now,
-            tagSources: Array.Empty<LogicTagSourceDto>());
+            tagSources: Array.Empty<LogicAreaTagsDto>());
 
-        Assert.Equal("no data for GHOST_PB (no tags source)", state.Reason);
+        Assert.Equal("no data for GHOST_PB (no area)", state.Reason);
     }
 
     [Fact]
     public void NamedTag_BoundButUnread_NamesTheRealTagFromTheMapping()
     {
-        LogicTagSourceDto source = TagSource("DRYEND", ("START_PB", "ns=2;s=Status/Line01.Permit"));
+        LogicAreaTagsDto source = AreaTags("DRYEND", ("START_PB", "ns=2;s=Status/Line01.Permit"));
         LogicBlockDto block = NamedFlat("DRYEND", "START_PB");
 
         LogicBlockStateDto state = LogicStateEvaluator.EvaluateBlock(
@@ -1053,9 +1053,9 @@ public sealed class LogicStateEvaluatorTests
 
         LogicBlockStateDto before = LogicStateEvaluator.EvaluateBlock(
             start, Values(), Mappings(), states: null, nowUtc: Now,
-            tagSources: new[] { TagSource("DRYEND", ("START_PB", "")) });
+            tagSources: new[] { AreaTags("DRYEND", ("START_PB", "")) });
 
-        LogicTagSourceDto bound = TagSource("DRYEND", ("START_PB", "Start"));
+        LogicAreaTagsDto bound = AreaTags("DRYEND", ("START_PB", "Start"));
         LogicBlockStateDto afterStart = LogicStateEvaluator.EvaluateBlock(
             start, Values(("sim", "Start", true, true)), Mappings(), states: null, nowUtc: Now, tagSources: new[] { bound });
         LogicBlockStateDto afterStop = LogicStateEvaluator.EvaluateBlock(
@@ -1070,7 +1070,7 @@ public sealed class LogicStateEvaluatorTests
     [Fact]
     public void NamedTag_OnANetworkContactReadsTheBoundTag()
     {
-        LogicTagSourceDto source = TagSource("DRYEND", ("START_PB", "PS1"));
+        LogicAreaTagsDto source = AreaTags("DRYEND", ("START_PB", "PS1"));
         LogicElementDto contact = TagContact("START_PB");
         contact.Tag = "START_PB";
         contact.ItemId = string.Empty;
@@ -1104,7 +1104,7 @@ public sealed class LogicStateEvaluatorTests
             Mappings(),
             states: null,
             nowUtc: Now,
-            tagSources: new[] { TagSource("DRYEND", ("START_PB", "Permit"), ("DONE_FB", "")) });
+            tagSources: new[] { AreaTags("DRYEND", ("START_PB", "Permit"), ("DONE_FB", "")) });
 
         Assert.Equal(LogicStepStates.Unknown, Assert.Single(unassigned.Steps).State);
         Assert.Equal("no data for DONE_FB (not assigned)", Assert.Single(unassigned.Steps).Reason);
@@ -1115,7 +1115,7 @@ public sealed class LogicStateEvaluatorTests
             Mappings(),
             states: null,
             nowUtc: Now,
-            tagSources: new[] { TagSource("DRYEND", ("START_PB", "Permit"), ("DONE_FB", "Done")) });
+            tagSources: new[] { AreaTags("DRYEND", ("START_PB", "Permit"), ("DONE_FB", "Done")) });
 
         Assert.Equal(LogicBlockStates.Ready, done.State);
         Assert.Equal(LogicStepStates.Done, Assert.Single(done.Steps).State);

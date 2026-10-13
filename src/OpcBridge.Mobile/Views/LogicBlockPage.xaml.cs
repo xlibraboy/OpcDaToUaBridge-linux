@@ -86,7 +86,7 @@ public partial class LogicBlockPage : ContentPage
             Active.Overview.State?.Blocks.FirstOrDefault(candidate => candidate.Id == blockId_),
             coordinator_.Tags,
             Active.CachedNotes(blockId_),
-            Active.Overview.TagSourceFor(block));
+            Active.Overview.AreaTagsFor(block));
         viewModel_.ActionRequested += OnActionRequested;
 
         BindingContext = viewModel_;
@@ -169,7 +169,7 @@ public partial class LogicBlockPage : ContentPage
             return;
         }
 
-        // A named machine tag resolves through the block's tags source; while it is unassigned
+        // A named area tag resolves through the block's area's tags; while it is unassigned
         // there is nothing to write, and the message says which entry is waiting.
         if (viewModel_ is null
             || !viewModel_.TryResolveTag(

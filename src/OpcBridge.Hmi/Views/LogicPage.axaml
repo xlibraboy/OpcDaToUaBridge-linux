@@ -60,35 +60,44 @@
             <Panel>
               <TextBlock Classes="hint" Margin="8" TextWrapping="Wrap" Text="{Binding EmptyBlocksMessage}"
                          IsVisible="{Binding !HasBlocks}" />
-              <ItemsControl ItemsSource="{Binding BlockGroups}">
+              <ItemsControl ItemsSource="{Binding BlockAreas}">
                 <ItemsControl.ItemTemplate>
-                  <DataTemplate x:DataType="logic:LogicGroupViewModel">
-                    <StackPanel Margin="0,0,0,6">
-                      <TextBlock Classes="listHeader" Margin="0,4,0,0" Text="{Binding Name}" IsVisible="{Binding ShowHeading}" />
-                      <TextBlock Classes="hint" Margin="0,0,0,2" Text="{Binding Summary}" IsVisible="{Binding ShowHeading}" />
-                      <ItemsControl ItemsSource="{Binding Blocks}">
+                  <DataTemplate x:DataType="logic:LogicAreaViewModel">
+                    <StackPanel Margin="0,0,0,8">
+                      <TextBlock Classes="sectionLabel" Margin="0,6,0,0" Text="{Binding Name}" IsVisible="{Binding ShowHeading}" />
+                      <ItemsControl ItemsSource="{Binding Groups}">
                         <ItemsControl.ItemTemplate>
-                          <DataTemplate x:DataType="logic:LogicBlockRowViewModel">
-                            <Button Classes="logicRow" Classes.active="{Binding IsSelected}"
-                                    AutomationProperties.Name="{Binding AccessibleName}"
-                                    Command="{Binding $parent[UserControl].((logic:LogicPanelViewModel)DataContext).SelectBlockCommand}"
-                                    CommandParameter="{Binding}">
-                              <StackPanel Spacing="1">
-                                <Grid ColumnDefinitions="*,Auto,Auto">
-                                  <TextBlock Grid.Column="0" FontSize="13" FontWeight="SemiBold" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-                                  <TextBlock Grid.Column="1" Classes="hint" Margin="8,0,0,0" Text="{Binding KindLabel}" VerticalAlignment="Center" />
-                                  <Border Grid.Column="2" Classes="pill" Margin="8,0,0,0"
-                                          Classes.ok="{Binding IsOk}"
-                                          Classes.bad="{Binding IsBad}"
-                                          Classes.warn="{Binding IsWarn}"
-                                          Classes.muted="{Binding IsMuted}">
-                                    <TextBlock Text="{Binding StateWord}" AutomationProperties.LiveSetting="Polite" />
-                                  </Border>
-                                </Grid>
-                                <TextBlock Classes="hint" Text="{Binding ReasonLine}" TextWrapping="Wrap" />
-                                <TextBlock Classes="hint" Text="{Binding Progress}" IsVisible="{Binding HasProgress}" />
-                              </StackPanel>
-                            </Button>
+                          <DataTemplate x:DataType="logic:LogicGroupViewModel">
+                            <StackPanel Margin="0,0,0,6">
+                              <TextBlock Classes="listHeader" Margin="0,4,0,0" Text="{Binding Name}" IsVisible="{Binding ShowHeading}" />
+                              <TextBlock Classes="hint" Margin="0,0,0,2" Text="{Binding Summary}" IsVisible="{Binding ShowHeading}" />
+                              <ItemsControl ItemsSource="{Binding Blocks}">
+                                <ItemsControl.ItemTemplate>
+                                  <DataTemplate x:DataType="logic:LogicBlockRowViewModel">
+                                    <Button Classes="logicRow" Classes.active="{Binding IsSelected}"
+                                            AutomationProperties.Name="{Binding AccessibleName}"
+                                            Command="{Binding $parent[UserControl].((logic:LogicPanelViewModel)DataContext).SelectBlockCommand}"
+                                            CommandParameter="{Binding}">
+                                      <StackPanel Spacing="1">
+                                        <Grid ColumnDefinitions="*,Auto,Auto">
+                                          <TextBlock Grid.Column="0" FontSize="13" FontWeight="SemiBold" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                          <TextBlock Grid.Column="1" Classes="hint" Margin="8,0,0,0" Text="{Binding KindLabel}" VerticalAlignment="Center" />
+                                          <Border Grid.Column="2" Classes="pill" Margin="8,0,0,0"
+                                                  Classes.ok="{Binding IsOk}"
+                                                  Classes.bad="{Binding IsBad}"
+                                                  Classes.warn="{Binding IsWarn}"
+                                                  Classes.muted="{Binding IsMuted}">
+                                            <TextBlock Text="{Binding StateWord}" AutomationProperties.LiveSetting="Polite" />
+                                          </Border>
+                                        </Grid>
+                                        <TextBlock Classes="hint" Text="{Binding ReasonLine}" TextWrapping="Wrap" />
+                                        <TextBlock Classes="hint" Text="{Binding Progress}" IsVisible="{Binding HasProgress}" />
+                                      </StackPanel>
+                                    </Button>
+                                  </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                              </ItemsControl>
+                            </StackPanel>
                           </DataTemplate>
                         </ItemsControl.ItemTemplate>
                       </ItemsControl>
@@ -141,7 +150,15 @@
                   <TextBox Text="{Binding BlockGroup}" Watermark="Optional (e.g. Primary Arm)"
                            IsEnabled="{Binding IsEditingEnabled}"
                            AutomationProperties.Name="Interlock group"
-                           ToolTip.Tip="Blocks sharing a group list under one heading, here and on the phone." />
+                           ToolTip.Tip="A display heading only: blocks sharing a group list under one heading, here and on the phone. The tags a block reads are shared by its AREA." />
+                </StackPanel>
+                <StackPanel Classes="field" Width="240">
+                  <TextBlock Classes="fieldLabel" Text="AREA" />
+                  <AutoCompleteBox Text="{Binding BlockArea}" ItemsSource="{Binding AreaTags.AreaNames}"
+                                   FilterMode="Contains" Watermark="Plant area (e.g. DRY END)"
+                                   IsEnabled="{Binding IsEditingEnabled}"
+                                   AutomationProperties.Name="Area"
+                                   ToolTip.Tip="The plant area whose tags this block shares — every block of the area reads one area-tags list (the Tags tab), so a signal is assigned once per area." />
                 </StackPanel>
                 <StackPanel Classes="field" Width="140">
                   <TextBlock Classes="fieldLabel" Text="ENABLED" />
@@ -262,12 +279,12 @@
                                        AutomationProperties.Name="Step next step text" />
                             </StackPanel>
                             <StackPanel Classes="field" Width="210">
-                              <TextBlock Classes="fieldLabel" Text="MACHINE TAG" />
+                              <TextBlock Classes="fieldLabel" Text="AREA TAG" />
                               <StackPanel Orientation="Horizontal" Spacing="4">
                                 <ComboBox Width="180" ItemsSource="{Binding TagEntries}" SelectedItem="{Binding SelectedCompletionTag}"
                                           IsEnabled="{Binding $parent[UserControl].((logic:LogicPanelViewModel)DataContext).IsEditingEnabled}"
-                                          AutomationProperties.Name="Completion machine tag"
-                                          ToolTip.Tip="One of this block's machine's tags (the Tags tab) — assigned once, read by every block of the machine.">
+                                          AutomationProperties.Name="Completion area tag"
+                                          ToolTip.Tip="One of this area's tags (the Tags tab) — assigned once, read by every block of the area.">
                                   <ComboBox.ItemTemplate>
                                     <DataTemplate x:DataType="logic:LogicTagEntryViewModel">
                                       <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
@@ -277,7 +294,7 @@
                                 <Button Classes="tool" Content="✕" Command="{Binding ClearCompletionTagCommand}"
                                         IsVisible="{Binding HasCompletionTag}" VerticalAlignment="Center"
                                         ToolTip.Tip="Use a direct handshake tag instead"
-                                        AutomationProperties.Name="Clear completion machine tag" />
+                                        AutomationProperties.Name="Clear completion area tag" />
                               </StackPanel>
                             </StackPanel>
                             <StackPanel Classes="field" Width="150" IsVisible="{Binding ShowsDirectCompletion}">
@@ -306,7 +323,7 @@
                                 </ComboBox.ItemTemplate>
                               </ComboBox>
                               <TextBlock Classes="hint" Margin="0,3,0,0" TextWrapping="Wrap"
-                                         Text="Optional handshake: completes once this tag is true (pick both fields or neither, or one machine tag)." />
+                                         Text="Optional handshake: completes once this tag is true (pick both fields or neither, or one area tag)." />
                             </StackPanel>
                           </WrapPanel>
                           <TextBlock Classes="hint" Text="{Binding Reason}" TextWrapping="Wrap" IsVisible="{Binding HasReason}" />
@@ -348,11 +365,11 @@
                                        AutomationProperties.Name="Action label" />
                             </StackPanel>
                             <StackPanel Classes="field" Width="210">
-                              <TextBlock Classes="fieldLabel" Text="MACHINE TAG" />
+                              <TextBlock Classes="fieldLabel" Text="AREA TAG" />
                               <StackPanel Orientation="Horizontal" Spacing="4">
                                 <ComboBox Width="180" ItemsSource="{Binding TagEntries}" SelectedItem="{Binding SelectedBlockTag}"
-                                          AutomationProperties.Name="Action machine tag"
-                                          ToolTip.Tip="One of this block's machine's tags (the Tags tab) — assigned once, written by every block of the machine.">
+                                          AutomationProperties.Name="Action area tag"
+                                          ToolTip.Tip="One of this area's tags (the Tags tab) — assigned once, written by every block of the area.">
                                   <ComboBox.ItemTemplate>
                                     <DataTemplate x:DataType="logic:LogicTagEntryViewModel">
                                       <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
@@ -362,7 +379,7 @@
                                 <Button Classes="tool" Content="✕" Command="{Binding ClearBlockTagCommand}"
                                         IsVisible="{Binding HasBlockTag}" VerticalAlignment="Center"
                                         ToolTip.Tip="Write a direct bridge tag instead"
-                                        AutomationProperties.Name="Clear action machine tag" />
+                                        AutomationProperties.Name="Clear action area tag" />
                               </StackPanel>
                             </StackPanel>
                             <StackPanel Classes="field" Width="150" IsVisible="{Binding ShowsDirectTag}">
@@ -413,45 +430,48 @@
           </StackPanel>
         </ScrollViewer>
 
-        <!-- ======== TAGS (the machine's shared tags source) ========
-             One source per machine: every block naming it reads the same entries, so a tag is
-             assigned once here instead of in each block's rows. -->
+        <!-- ======== TAGS (the area's shared tags) ========
+             One area tags list per area: every block of the area reads the same entries, so a
+             tag is assigned once here and re-used by all of its interlocks. -->
         <ScrollViewer Grid.Row="1" IsVisible="{Binding IsTagsTab}" VerticalScrollBarVisibility="Auto">
           <Border Classes="card">
             <StackPanel Spacing="10">
-              <Grid ColumnDefinitions="Auto,Auto,*,Auto" RowDefinitions="Auto,Auto">
-                <TextBlock Grid.Row="0" Grid.Column="0" Classes="listHeader" Text="TAGS SOURCE"
+              <Grid ColumnDefinitions="Auto,Auto,*,Auto" RowDefinitions="Auto,Auto,Auto">
+                <TextBlock Grid.Row="0" Grid.Column="0" Classes="listHeader" Text="AREA TAGS"
                            VerticalAlignment="Center" Margin="0,0,8,0" />
-                <AutoCompleteBox Grid.Row="0" Grid.Column="1" Width="220" Watermark="DRYEND"
-                                 ItemsSource="{Binding TagSource.SourceNames}"
-                                 Text="{Binding TagSource.Name}" FilterMode="Contains"
+                <AutoCompleteBox Grid.Row="0" Grid.Column="1" Width="220" Watermark="DRY END"
+                                 ItemsSource="{Binding AreaTags.AreaNames}"
+                                 Text="{Binding BlockArea}" FilterMode="Contains"
                                  IsEnabled="{Binding IsEditingEnabled}"
-                                 AutomationProperties.Name="Tags source name"
-                                 ToolTip.Tip="The machine's name: every block carrying it shares these tags." />
+                                 AutomationProperties.Name="Area"
+                                 ToolTip.Tip="The area's name: every block of the area shares these tags." />
                 <Border Grid.Row="0" Grid.Column="2" Classes="pill" Margin="10,0,0,0" HorizontalAlignment="Left"
-                        IsVisible="{Binding TagSource.HasUsedBy}">
-                  <TextBlock Text="{Binding TagSource.UsedByText}" />
+                        IsVisible="{Binding AreaTags.HasUsedBy}">
+                  <TextBlock Text="{Binding AreaTags.UsedByText}" />
                 </Border>
                 <StackPanel Grid.Row="0" Grid.Column="3" Orientation="Horizontal" Spacing="8">
-                  <Button Content="+ New tag" Command="{Binding TagSource.NewTagEntryCommand}"
+                  <Button Content="+ New tag" Command="{Binding AreaTags.NewTagEntryCommand}"
                           IsEnabled="{Binding IsEditingEnabled}"
                           AutomationProperties.Name="Add a named tag" />
-                  <Button Content="Move tags into source" Command="{Binding TagSource.MoveBlockTagsCommand}"
+                  <Button Content="Move tags into area" Command="{Binding AreaTags.MoveBlockTagsCommand}"
                           IsEnabled="{Binding IsEditingEnabled}"
-                          ToolTip.Tip="Move this block's direct tags into the machine's tags source, one entry each."
-                          AutomationProperties.Name="Move block tags into the tags source" />
-                  <Button Classes="danger" Content="Delete source" Command="{Binding TagSource.DeleteSourceCommand}"
+                          ToolTip.Tip="Move this block's direct tags into its area's tags, one entry each."
+                          AutomationProperties.Name="Move block tags into the area tags" />
+                  <Button Classes="danger" Content="Delete area tags" Command="{Binding AreaTags.DeleteSourceCommand}"
                           IsEnabled="{Binding IsEditingEnabled}"
-                          AutomationProperties.Name="Delete the tags source" />
+                          AutomationProperties.Name="Delete the area tags" />
                 </StackPanel>
                 <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="4" Classes="hint" Margin="0,6,0,0"
-                           TextWrapping="Wrap" Text="{Binding TagSource.NameHint}" />
+                           TextWrapping="Wrap" Text="{Binding AreaTags.NameHint}" />
+                <TextBlock Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="4" Classes="hint warn" Margin="0,4,0,0"
+                           TextWrapping="Wrap" Text="{Binding AreaFallbackHint}"
+                           IsVisible="{Binding HasAreaFallback}" />
               </Grid>
 
-              <TextBlock Classes="hint" Text="{Binding TagSource.EmptyHint}" TextWrapping="Wrap"
-                         IsVisible="{Binding !TagSource.HasEntries}" />
+              <TextBlock Classes="hint" Text="{Binding AreaTags.EmptyHint}" TextWrapping="Wrap"
+                         IsVisible="{Binding !AreaTags.HasEntries}" />
 
-              <StackPanel IsVisible="{Binding TagSource.HasEntries}">
+              <StackPanel IsVisible="{Binding AreaTags.HasEntries}">
                 <Grid ColumnDefinitions="240,150,210,90,70,Auto" Margin="0,0,0,4">
                   <TextBlock Grid.Column="0" Classes="fieldLabel" Text="NAME" />
                   <TextBlock Grid.Column="1" Classes="fieldLabel" Text="SOURCE" />
@@ -459,7 +479,7 @@
                   <TextBlock Grid.Column="3" Classes="fieldLabel" Text="LIVE" />
                   <TextBlock Grid.Column="4" Classes="fieldLabel" Text="USED" />
                 </Grid>
-                <ItemsControl ItemsSource="{Binding TagSource.Entries}">
+                <ItemsControl ItemsSource="{Binding AreaTags.Entries}">
                   <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="logic:LogicTagEntryViewModel">
                       <Border Classes="editorRow" Margin="0,0,0,6" IsEnabled="{Binding CanEdit}">

@@ -36,6 +36,11 @@ public sealed partial class LogicBlockCardViewModel : ObservableObject
     /// <summary>The heading this block sits under ("Ungrouped" when it carries no group).</summary>
     public string GroupLabel => Group.Length == 0 ? "Ungrouped" : Group;
 
+    /// <summary>The plant area whose tags the block shares ("" = no area set).</summary>
+    public string Area { get; private set; } = string.Empty;
+
+    public bool HasArea => Area.Length > 0;
+
     public string KindLabel => block_.Kind switch
     {
         LogicBlockKinds.Sequence => "Sequence",
@@ -53,10 +58,12 @@ public sealed partial class LogicBlockCardViewModel : ObservableObject
         Name = block.Name;
         Description = block.Description;
         Group = (block.Group ?? string.Empty).Trim();
+        Area = (block.Area ?? string.Empty).Trim();
         SyncTags(block.Tags);
         OnPropertyChanged(nameof(KindLabel));
         OnPropertyChanged(nameof(Enabled));
         OnPropertyChanged(nameof(GroupLabel));
+        OnPropertyChanged(nameof(HasArea));
     }
 
     public void ApplyState(LogicBlockStateDto? state)
@@ -358,16 +365,12 @@ public sealed partial class LogicOverviewViewModel : ObservableObject
     /// <summary>The definitions the detail screen is built from (latest applied).</summary>
     public IReadOnlyList<LogicBlockDto> Definitions { get; private set; } = Array.Empty<LogicBlockDto>();
 
-    /// <summary>The machines' tags sources the definitions' named tags resolve through.</summary>
-    public IReadOnlyList<LogicTagSourceDto> TagSources { get; private set; } = Array.Empty<LogicTagSourceDto>();
+    /// <summary>The areas' tags the definitions' named tags resolve through.</summary>
+    public IReadOnlyList<LogicAreaTagsDto> AreaTags { get; private set; } = Array.Empty<LogicAreaTagsDto>();
 
-    /// <summary>The tags source a block reads its named tags from (its machine, else its group).</summary>
-    public LogicTagSourceDto? TagSourceFor(LogicBlockDto? block) =>
-        block is null
-            ? null
-            : LogicTagSources.FindSource(
-                TagSources,
-                string.IsNullOrWhiteSpace(block.TagSource) ? block.Group : block.TagSource);
+    /// <summary>The area's tags a block reads its named tags from (its area, else the legacy stored name or group).</summary>
+    public LogicAreaTagsDto? AreaTagsFor(LogicBlockDto? block) =>
+        block is null ? null : LogicAreaTags.Find(AreaTags, LogicAreaTags.AreaNameFor(block));
 
     /// <summary>The latest evaluated state (latest applied).</summary>
     public LogicStateSnapshot? State { get; private set; }
@@ -394,14 +397,14 @@ public sealed partial class LogicOverviewViewModel : ObservableObject
 
     public void ApplyDefinitions(
         IEnumerable<LogicBlockDto> blocks,
-        IReadOnlyList<LogicTagSourceDto>? tagSources = null)
+        IReadOnlyList<LogicAreaTagsDto>? areaTags = null)
     {
         List<LogicBlockDto> sorted = blocks
             .OrderBy(block => block.Order)
             .ThenBy(block => block.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
         Definitions = sorted;
-        TagSources = tagSources ?? Array.Empty<LogicTagSourceDto>();
+        AreaTags = areaTags ?? Array.Empty<LogicAreaTagsDto>();
 
         bool sameOrder = sorted.Count == Blocks.Count;
         if (sameOrder)
@@ -623,6 +626,7 @@ public sealed partial class LogicOverviewViewModel : ObservableObject
         {
             if (!card.Name.Contains(term, StringComparison.OrdinalIgnoreCase) &&
                 !card.Description.Contains(term, StringComparison.OrdinalIgnoreCase) &&
+                !card.Area.Contains(term, StringComparison.OrdinalIgnoreCase) &&
                 !card.Tags.Any(tag => tag.Contains(term, StringComparison.OrdinalIgnoreCase)))
             {
                 return false;

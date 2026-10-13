@@ -9,7 +9,7 @@ namespace OpcBridge.Hmi.ViewModels.Logic;
 /// <summary>
 /// One editable condition row (the simple form). Source and tag are picked from a metadata
 /// snapshot; a stored tag that has left the cache stays selectable as its own entry, so a save
-/// cannot silently drop the reference. The row can instead read one of its machine's named tags
+/// cannot silently drop the reference. The row can instead read one of its area's named tags
 /// (the Tags tab's entries) — then the tag pickers hide and the pair lives on the shared source,
 /// so every block of the machine follows one assignment.
 /// </summary>
@@ -95,13 +95,13 @@ public partial class LogicConditionRowViewModel : ObservableObject
     /// <summary>The stored item id, "" when nothing is picked.</summary>
     public string ItemId => SelectedTag?.ItemId ?? string.Empty;
 
-    /// <summary>The machine's named tags this row may read instead of a direct tag.</summary>
+    /// <summary>The area's named tags this row may read instead of a direct tag.</summary>
     public IEnumerable<LogicTagEntryViewModel> TagEntries { get; }
 
     [ObservableProperty]
     private LogicTagEntryViewModel? _selectedBlockTag;
 
-    /// <summary>The stored tags-source reference, "" when the row reads a direct tag.</summary>
+    /// <summary>The stored area-tags reference, "" when the row reads a direct tag.</summary>
     public string Tag => SelectedBlockTag?.Name.Trim() ?? string.Empty;
 
     public bool HasBlockTag => Tag.Length > 0;

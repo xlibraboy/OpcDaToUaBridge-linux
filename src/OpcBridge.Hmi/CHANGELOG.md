@@ -16,23 +16,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-**The Logic page has a Tags tab: one machine's tags assigned once, shared by all its blocks.**
-Beside Editor and Result, **Tags** edits the selected block's machine's tags source — type the
-machine (`DRYEND`, `WETEND`, …, prefilled from the block's interlock group), then `+ New tag` for
-each signal the machine's blocks read. An entry can be created **empty** and bound later: the row
-pickers already offer it, the block evaluates **no data for START_PB (not assigned)** until a tag
-is picked, and the tab's **LIVE** column shows the bound tag's value so the assignment can be
-checked in place. Every row — a condition, a network contact, a step's completion handshake, an
-action — gained a **MACHINE TAG** picker listing the machine's entries; picking one hides the
-direct SOURCE/TAG pickers (the `✕` clears it and the row reads a direct tag again), and the store
-keeps the two forms mutually exclusive. Blocks naming the same machine share one list — the tab
-shows **used by N blocks**, and binding an entry moves every one of them — so the same signal is
-never typed twice. **`Move tags into source`** converts a block authored before the feature (one
-entry per distinct direct tag, named after its display name, rows rewritten), **`Delete source`**
-is refused while blocks still read it (the bridge names how many), and **Save** stores the tags
-and the block together, whichever changed (`✓ Tags saved.` when only the machine's tags moved).
-The Result tab labels a named contact as `START_PB · Line 01 Start Permit`, and the page's
-**Guide…** documents the whole flow.
+**The Logic page shares tags per area: an area's tags assigned once, read by all its blocks.**
+Beside Editor and Result, **Tags** edits the selected block's area's tags — type the area (`DRY
+END`, `WET END`, …) in the editor's new **AREA** field, or in the tab's own box (the same value),
+then `+ New tag` for each signal the area's blocks read. Every block of the area shares one list,
+so a new group or interlock filed under the area re-uses the tags already there instead of starting
+its own: a signal is assigned **once per area**, the tab shows **used by N blocks**, and the block
+list (and the **Blocks…** window) now reads two levels — **AREA**, then the interlock group, then
+the blocks. The interlock group is a display heading only; a block with no area keeps working —
+its named tags resolve through the name it stores, else its interlock group (the legacy fallback),
+which the tab names while offering to move the block onto an area. An entry can be created
+**empty** and bound later: the row pickers already offer it, the block evaluates **no data for
+START_PB (not assigned)** until a tag is picked, and the tab's **LIVE** column shows the bound
+tag's value so the assignment can be checked in place. Every row — a condition, a network contact,
+a step's completion handshake, an action — gained an **AREA TAG** picker listing the area's
+entries; picking one hides the direct SOURCE/TAG pickers (the `✕` clears it and the row reads a
+direct tag again), and the store keeps the two forms mutually exclusive. **`Move tags into area`**
+converts a block authored with direct tags (one entry per distinct tag, named after its display
+name, rows rewritten), **`Delete area tags`** is refused while blocks still read them (the bridge
+names how many), and **Save** stores the tags and the block together, whichever changed
+(`✓ Area tags saved.` when only the area's tags moved). The Result tab labels a named contact as
+`START_PB · Line 01 Start Permit`, and the page's **Guide…** documents the whole flow.
 **The network editor authors internal relays (M coils).** The element kind list gained **Coil —
 drive internal relay (IN, M)**: it takes one input and drives the relay it names, and a contact
 row gained a **RELAY** field that turns it into a relay contact reading that relay instead of a

@@ -126,13 +126,13 @@ public partial class LogicElementRowViewModel : ObservableObject
     /// <summary>A contact that reads an internal relay instead of a tag.</summary>
     public bool IsRelayContact => IsContact && Relay.Trim().Length > 0;
 
-    /// <summary>The machine's named tags a tag contact may read instead of a direct tag.</summary>
+    /// <summary>The area's named tags a tag contact may read instead of a direct tag.</summary>
     public IEnumerable<LogicTagEntryViewModel> TagEntries { get; }
 
     [ObservableProperty]
     private LogicTagEntryViewModel? _selectedBlockTag;
 
-    /// <summary>The stored tags-source reference, "" when the contact reads a direct tag.</summary>
+    /// <summary>The stored area-tags reference, "" when the contact reads a direct tag.</summary>
     public string Tag => SelectedBlockTag?.Name.Trim() ?? string.Empty;
 
     public bool HasBlockTag => Tag.Length > 0;
@@ -143,7 +143,7 @@ public partial class LogicElementRowViewModel : ObservableObject
     /// <summary>The named-tag picker: a contact (a relay contact reads a coil's relay instead).</summary>
     public bool ShowsBlockTag => IsContact;
 
-    /// <summary>The direct source/tag pickers: a tag contact that has not named a machine tag.</summary>
+    /// <summary>The direct source/tag pickers: a tag contact that has not named an area tag.</summary>
     public bool ShowsDirectTag => IsTagContact && !HasBlockTag;
 
     /// <summary>The relay field: a relay contact reads one, a coil drives one.</summary>

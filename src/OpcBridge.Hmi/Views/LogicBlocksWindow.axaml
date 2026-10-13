@@ -15,7 +15,7 @@
       <Button Classes="primary" Content="New block" Command="{Binding NewBlockCommand}" Click="OnNewBlockClick" />
       <Button Content="Close" Click="OnCloseClick" IsCancel="True" MinWidth="90" />
       <TextBlock Classes="hint" VerticalAlignment="Center"
-                 Text="Pick a block to edit it; ✕ deletes it. The list groups blocks under their interlock group." />
+                 Text="Pick a block to edit it; ✕ deletes it. The list groups blocks under their area, then their interlock group." />
     </StackPanel>
     <TextBlock DockPanel.Dock="Top" Classes="sectionLabel" Text="LOGIC BLOCKS" />
     <TextBlock DockPanel.Dock="Top" Classes="hint" Margin="0,0,0,8" TextWrapping="Wrap" Text="{Binding SummaryText}" />
@@ -24,42 +24,51 @@
         <Panel>
           <TextBlock Classes="hint" Margin="8" TextWrapping="Wrap" Text="{Binding EmptyBlocksMessage}"
                      IsVisible="{Binding !HasBlocks}" />
-          <ItemsControl ItemsSource="{Binding BlockGroups}">
+          <ItemsControl ItemsSource="{Binding BlockAreas}">
             <ItemsControl.ItemTemplate>
-              <DataTemplate x:DataType="logic:LogicGroupViewModel">
+              <DataTemplate x:DataType="logic:LogicAreaViewModel">
                 <StackPanel Margin="0,0,0,8">
-                  <TextBlock Classes="listHeader" Margin="0,4,0,0" Text="{Binding Name}" IsVisible="{Binding ShowHeading}" />
-                  <TextBlock Classes="hint" Margin="0,0,0,2" Text="{Binding Summary}" IsVisible="{Binding ShowHeading}" />
-                  <ItemsControl ItemsSource="{Binding Blocks}">
+                  <TextBlock Classes="sectionLabel" Margin="0,6,0,0" Text="{Binding Name}" IsVisible="{Binding ShowHeading}" />
+                  <ItemsControl ItemsSource="{Binding Groups}">
                     <ItemsControl.ItemTemplate>
-                      <DataTemplate x:DataType="logic:LogicBlockRowViewModel">
-                        <Grid ColumnDefinitions="*,Auto" Margin="0,1">
-                          <Button Grid.Column="0" Classes="logicRow" Classes.active="{Binding IsSelected}"
-                                  AutomationProperties.Name="{Binding AccessibleName}"
-                                  Click="OnBlockRowClick" Tag="{Binding}">
-                            <StackPanel Spacing="1">
-                              <Grid ColumnDefinitions="*,Auto,Auto">
-                                <TextBlock Grid.Column="0" Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                                <TextBlock Grid.Column="1" Classes="hint" Margin="8,0,0,0" Text="{Binding KindLabel}" VerticalAlignment="Center" />
-                                <Border Grid.Column="2" Classes="pill" Margin="8,0,0,0"
-                                        Classes.ok="{Binding IsOk}"
-                                        Classes.bad="{Binding IsBad}"
-                                        Classes.warn="{Binding IsWarn}"
-                                        Classes.muted="{Binding IsMuted}">
-                                  <TextBlock Text="{Binding StateWord}" AutomationProperties.LiveSetting="Polite" />
-                                </Border>
-                              </Grid>
-                              <TextBlock Classes="hint" Text="{Binding ReasonLine}" TextWrapping="Wrap" />
-                              <TextBlock Classes="hint" Text="{Binding Progress}" IsVisible="{Binding HasProgress}" />
-                            </StackPanel>
-                          </Button>
-                          <Button Grid.Column="1" Classes="tool" Content="✕" Margin="4,0,0,0"
-                                  AutomationProperties.Name="{Binding Name, StringFormat='Delete {0}'}"
-                                  ToolTip.Tip="Delete this block"
-                                  IsEnabled="{Binding $parent[Window].((logic:LogicPanelViewModel)DataContext).IsEditingEnabled}"
-                                  Command="{Binding $parent[Window].((logic:LogicPanelViewModel)DataContext).DeleteBlockCommand}"
-                                  CommandParameter="{Binding}" />
-                        </Grid>
+                      <DataTemplate x:DataType="logic:LogicGroupViewModel">
+                        <StackPanel Margin="0,0,0,8">
+                          <TextBlock Classes="listHeader" Margin="0,4,0,0" Text="{Binding Name}" IsVisible="{Binding ShowHeading}" />
+                          <TextBlock Classes="hint" Margin="0,0,0,2" Text="{Binding Summary}" IsVisible="{Binding ShowHeading}" />
+                          <ItemsControl ItemsSource="{Binding Blocks}">
+                            <ItemsControl.ItemTemplate>
+                              <DataTemplate x:DataType="logic:LogicBlockRowViewModel">
+                                <Grid ColumnDefinitions="*,Auto" Margin="0,1">
+                                  <Button Grid.Column="0" Classes="logicRow" Classes.active="{Binding IsSelected}"
+                                          AutomationProperties.Name="{Binding AccessibleName}"
+                                          Click="OnBlockRowClick" Tag="{Binding}">
+                                    <StackPanel Spacing="1">
+                                      <Grid ColumnDefinitions="*,Auto,Auto">
+                                        <TextBlock Grid.Column="0" Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                        <TextBlock Grid.Column="1" Classes="hint" Margin="8,0,0,0" Text="{Binding KindLabel}" VerticalAlignment="Center" />
+                                        <Border Grid.Column="2" Classes="pill" Margin="8,0,0,0"
+                                                Classes.ok="{Binding IsOk}"
+                                                Classes.bad="{Binding IsBad}"
+                                                Classes.warn="{Binding IsWarn}"
+                                                Classes.muted="{Binding IsMuted}">
+                                          <TextBlock Text="{Binding StateWord}" AutomationProperties.LiveSetting="Polite" />
+                                        </Border>
+                                      </Grid>
+                                      <TextBlock Classes="hint" Text="{Binding ReasonLine}" TextWrapping="Wrap" />
+                                      <TextBlock Classes="hint" Text="{Binding Progress}" IsVisible="{Binding HasProgress}" />
+                                    </StackPanel>
+                                  </Button>
+                                  <Button Grid.Column="1" Classes="tool" Content="✕" Margin="4,0,0,0"
+                                          AutomationProperties.Name="{Binding Name, StringFormat='Delete {0}'}"
+                                          ToolTip.Tip="Delete this block"
+                                          IsEnabled="{Binding $parent[Window].((logic:LogicPanelViewModel)DataContext).IsEditingEnabled}"
+                                          Command="{Binding $parent[Window].((logic:LogicPanelViewModel)DataContext).DeleteBlockCommand}"
+                                          CommandParameter="{Binding}" />
+                                </Grid>
+                              </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                          </ItemsControl>
+                        </StackPanel>
                       </DataTemplate>
                     </ItemsControl.ItemTemplate>
                   </ItemsControl>
