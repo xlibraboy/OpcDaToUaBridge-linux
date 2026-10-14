@@ -25,6 +25,11 @@ public partial class LogicPage : UserControl
             // The page owns the dialogs; the view model only asks.
             panel.ConfirmAsync ??= (title, message, confirm) =>
                 ConfirmWindow.ShowFor(TopLevel.GetTopLevel(this) as Window, title, message, confirm);
+
+            // New block asks for the name, the group and the AREA first — the area is the
+            // tag-sharing scope, so it is set before any tag is authored.
+            panel.NewBlockPrompt ??= (owner, request) =>
+                LogicNewBlockWindow.ShowFor(owner ?? TopLevel.GetTopLevel(this) as Window, request);
         }
     }
 

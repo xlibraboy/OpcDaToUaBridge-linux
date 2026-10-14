@@ -82,6 +82,7 @@ public sealed class HmiLogicEditorTests
             stored.Kind,
             stored.Enabled,
             stored.Group,
+            stored.Area,
             stored.TagSource,
             stored.Description,
             string.Join(", ", stored.Tags),
@@ -116,7 +117,7 @@ public sealed class HmiLogicEditorTests
         LogicTagCatalog catalog = Catalog();
         List<LogicConditionRowViewModel> conditions = LogicEditorCodec.LoadConditions(stored.Conditions, catalog, null);
         LogicBlockDto built = LogicEditorCodec.Build(
-            stored, stored.Order, stored.Name, stored.Kind, stored.Enabled, stored.Group, stored.TagSource,
+            stored, stored.Order, stored.Name, stored.Kind, stored.Enabled, stored.Group, stored.Area, stored.TagSource,
             stored.Description, string.Join(", ", stored.Tags), conditions, new List<LogicElementRowViewModel>(),
             new List<LogicStepRowViewModel>(), LogicEditorCodec.LoadActions(stored.Actions, catalog, null));
 
@@ -124,7 +125,7 @@ public sealed class HmiLogicEditorTests
         conditions[0].Text = "Line 01 start permit must be given (edited)";
         Assert.False(LogicEditorCodec.Matches(
             LogicEditorCodec.Build(
-                stored, stored.Order, stored.Name, stored.Kind, stored.Enabled, stored.Group, stored.TagSource,
+                stored, stored.Order, stored.Name, stored.Kind, stored.Enabled, stored.Group, stored.Area, stored.TagSource,
                 stored.Description, string.Join(", ", stored.Tags), conditions, new List<LogicElementRowViewModel>(),
                 new List<LogicStepRowViewModel>(), LogicEditorCodec.LoadActions(stored.Actions, catalog, null)),
             stored));
@@ -254,6 +255,7 @@ public sealed class HmiLogicEditorTests
             "Seq",
             LogicBlockKinds.Sequence,
             true,
+            string.Empty,
             string.Empty,
             string.Empty,
             string.Empty,

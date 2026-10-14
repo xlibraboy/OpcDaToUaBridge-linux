@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Seed the "Primary Arm" interlock example into a running OpcBridge instance, authored in the
 # IEC 61131-3 network form the Logic tab edits: contacts (NO / NC), gates (AND / OR / XOR /
-# NOT), a TON on-delay timer, a CTU counter and a warn-only element.
+# NOT), a TON on-delay timer, a CTU counter and a warn-only element. Both blocks carry the same
+# AREA ("Dry End") — the section that separates the tags — and the "Primary Arm" interlock group
+# that heads them in the lists.
 #
 # It reads the simulator's self-toggling Boolean status tags, so the example is alive as soon
 # as it lands — the phone shows every element with its live state and the reading it needs
@@ -69,6 +71,7 @@ def block(name, group, description, elements, tags):
         "id": new_id(),
         "name": name,
         "group": group,
+        "area": "Dry End",
         "description": description,
         "kind": "interlock",
         "enabled": True,

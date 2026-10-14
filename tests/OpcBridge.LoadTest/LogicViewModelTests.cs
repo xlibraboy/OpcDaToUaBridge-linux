@@ -54,6 +54,25 @@ public sealed class LogicOverviewViewModelTests
     }
 
     [Fact]
+    public void BlocksCarryTheirAreaAndTheSearchMatchesIt()
+    {
+        LogicOverviewViewModel vm = new();
+        LogicBlockDto block = Block("Primary Arm Up", conditions: Condition());
+        block.Area = "DRY END";
+        var areaTags = new LogicAreaTagsDto { Name = "DRY END", Tags = { new LogicTagDto { Name = "START_PB" } } };
+
+        vm.ApplyDefinitions(new[] { block }, new[] { areaTags });
+
+        LogicBlockCardViewModel card = Assert.Single(vm.Blocks);
+        Assert.Equal("DRY END", card.Area);
+        Assert.True(card.HasArea);
+        Assert.Same(areaTags, vm.AreaTagsFor(block));
+
+        vm.SearchText = "dry end";
+        Assert.Same(card, Assert.Single(vm.Visible));
+    }
+
+    [Fact]
     public void ApplyState_SetsStateWordReasonAndSummary()
     {
         LogicOverviewViewModel vm = new();
@@ -874,7 +893,7 @@ public sealed class LogicBlockDetailViewModelTests
             IsGood = true
         });
 
-        LogicTagSourceDto assigned = new()
+        LogicAreaTagsDto assigned = new()
         {
             Name = "DRYEND",
             Tags = { new LogicTagDto { Name = "START_PB", SourceId = "sim", ItemId = "Start" } }
@@ -890,7 +909,7 @@ public sealed class LogicBlockDetailViewModelTests
         Assert.Equal("On", row.ValueText);
 
         // Created empty and not assigned yet: nothing is read, and the label says which entry waits.
-        LogicTagSourceDto waiting = new() { Name = "DRYEND", Tags = { new LogicTagDto { Name = "START_PB" } } };
+        LogicAreaTagsDto waiting = new() { Name = "DRYEND", Tags = { new LogicTagDto { Name = "START_PB" } } };
         var unassigned = new LogicBlockDetailViewModel(block, BridgeKey, null, cache, null, waiting);
 
         LogicElementRowViewModel unassignedRow = Assert.Single(Contacts(unassigned));

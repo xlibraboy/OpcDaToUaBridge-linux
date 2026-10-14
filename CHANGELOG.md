@@ -19,27 +19,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-**Logic blocks can read a machine's shared tags source — a tag assigned once, not once per
-block.** A **tags source** is one machine's named tags (`DRYEND`, `WETEND`, …) on the bridge
-(`logic-tags.json`), and every block naming that machine — a block's `tagSource` falls back to its
-interlock group, so the author just files the block — reads the same entries: a condition, a
-network contact, a step's completion handshake and an action can each carry a `tag` name
-(`START_PB`) instead of a `sourceId`/`itemId` pair, and the pair lives on the source. Assigning an
-entry moves **every** block of the machine at once, and an entry may be created **empty** and
-assigned later the way the workflow asks — while it is unassigned its readers evaluate **unknown**
-with the entry named (`no data for START_PB (not assigned)`), never a silent false; a name the
-machine's source does not hold reads `… (not in DRYEND)`, so a typo and a missing assignment are
-told apart. Blocks remain valid snapshots of where they were authored: existing blocks keep their
-direct tag pairs and evaluate unchanged, nothing migrates behind an author's back, and a
-`400`/`409` refuses a source save or delete that would break them. The store normalizes a source
-(names trimmed, entries de-duplicated case-insensitively, an item without a source landing on
+**Logic blocks read their area's shared tags — a tag assigned once per area, not once per
+block.** An **area** (`DRY END`, `WET END`, …) is the plant's main section and the scope that
+separates the tags, and the block's new `area` field names it: every block of the area — whatever
+its interlock group — reads the same **area tags**, so a new group or interlock filed under the
+area re-uses the tags already there. The lists live on the bridge (`logic-tags.json`), keyed by the
+area's name; the store resolves a block's list from its `area`, else the name it stores
+(`tagSource`), else its interlock group (the legacy fallback), and keeps the resolved name in
+`tagSource`, so the evaluator, the HMI and older clients resolve a block without knowing about
+areas. A condition, a network contact, a step's completion handshake and an action can each carry a
+`tag` name (`START_PB`) instead of a `sourceId`/`itemId` pair, and the pair lives on the area's
+list. Assigning an entry moves **every** block of the area at once, and an entry may be created
+**empty** and assigned later the way the workflow asks — while it is unassigned its readers
+evaluate **unknown** with the entry named (`no data for START_PB (not assigned)`), never a silent
+false; a name the area's tags do not hold reads `… (not in DRY END)`, so a typo and a missing
+assignment are told apart. Blocks remain valid snapshots of where they were authored: existing
+blocks keep their direct tag pairs and evaluate unchanged, nothing migrates behind an author's
+back, and a `400`/`409` refuses a list save or delete that would break them. The store normalizes a
+list (names trimmed, entries de-duplicated case-insensitively, an item without a source landing on
 `default`, blanks left unassigned), canonicalizes every reference to its entry's spelling, and
-shares one version between blocks and sources so every client refetches its definitions when a
-binding moves. New endpoints: `GET /api/logic` now carries `tagSources`, `POST
-/api/logic/tagsources` upserts a machine by name, and `DELETE /api/logic/tagsources/{name}` is
-refused while blocks still read it (naming the count). `LogicTagSources` (the shared resolver in
-`OpcBridge.Client`) is what the evaluator, the HMI and the phone all resolve through, so a named
-tag reads the same everywhere.
+shares one version between blocks and lists so every client refetches its definitions when a
+binding moves. New endpoints: `GET /api/logic` carries `tagSources`, `POST /api/logic/tagsources`
+upserts an area by name, and `DELETE /api/logic/tagsources/{name}` is refused while blocks still
+read them (naming the count). `LogicAreaTags` (the shared resolver in `OpcBridge.Client`) is what
+the evaluator, the HMI and the phone all resolve through, so a named tag reads the same everywhere.
 
 **Logic networks can drive and read internal relays (M coils).** The IEC 61131-3 vocabulary gained
 a **coil** element — it takes exactly one input, writes it onto the internal relay it names

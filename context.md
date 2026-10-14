@@ -1,6 +1,6 @@
 # context.md — OpcBridge
 
-Instruction file for AI agents working in this repo. All facts below are verified against committed code as of 2026-10-12 (branch `feature/logic-internal-relays`: PLC-style internal relays in logic networks — a coil drives an `M` relay, relay contacts read it across blocks and gate types, network bounds 16 levels / 256 elements; `main` at `238bfe0`).
+Instruction file for AI agents working in this repo. All facts below are verified against the working tree as of 2026-10-14 (branch `feature/logic-area-tags`: logic area tags — the AREA is assigned at block creation and a picked tag joins the area's tags automatically, no move step; `main` at `8367374`).
 
 ## What this project is
 
@@ -217,23 +217,32 @@ apps. The phone
 renders one row per element — indented by `Depth`, with the contact's `should`/`matches` and the
 timer's/counter's progress — and the HMI's network editor authors the same tree as indented element rows.
 
-**Tags sources (a machine's named tags, assigned once).** A block can reference its machine's named
-tags instead of a direct pair: `LogicBlockDto.TagSource` names the machine — blank falls back to
-`Group`, so filing a block under `DRYEND` puts it on DRYEND's tags — and a condition, a network
-contact, a step handshake (`CompletionTag`) and an action each carry a `Tag` name that resolves
-through that machine's `LogicTagSourceDto` in `logic-tags.json` (entries are name + optional
+**Area tags (an area's named tags, assigned once).** A block can reference its area's named tags
+instead of a direct pair: `LogicBlockDto.Area` names the plant area — the main section that
+separates the tags (`DRY END`, `WET END`, …) — and its tags are read by every block of the area,
+whatever interlock group it sits under (`Group` is a display heading only). `LogicAreaTags.AreaNameFor`
+decides which list a block reads: its `Area`, else the name it stores (`TagSource`), else its
+`Group` (the legacy fallbacks — the store keeps the resolved name in `TagSource`, so the evaluator,
+the HMI, the phone and older clients resolve a block without knowing about areas) — and a condition,
+a network contact, a step handshake (`CompletionTag`) and an action each carry a `Tag` name that
+resolves through that area's `LogicAreaTagsDto` in `logic-tags.json` (entries are name + optional
 source/item pair; an entry created empty and assigned later is a first-class state). The resolver
-is `LogicTagSources` (shared by the evaluator, the HMI and the phone): a bound entry feeds the normal
+is `LogicAreaTags` (shared by the evaluator, the HMI and the phone): a bound entry feeds the normal
 value/mapping lookups, an unassigned one reads **unknown** with the entry named
-(`no data for START_PB (not assigned)`), a name the source does not hold reads `… (not in DRYEND)`,
+(`no data for START_PB (not assigned)`), a name the list does not hold reads `… (not in DRY END)`,
 and the store canonicalizes every reference to its entry's spelling while clearing the site's
-`SourceId`/`ItemId` (a reference and a pair are mutually exclusive — relay, once set, wins). Nothing
-converts implicitly: direct pairs keep evaluating, and the HMI's **Move tags into source** rewrites
-a block on demand. `LogicStore` owns both files behind one version; `TryRemoveTagSource` refuses
-while blocks read it. The HMI's Logic page carries it as its **Tags** tab (name field, entries with
-live values, `+ New tag`), every editor row has a **MACHINE TAG** picker that hides the direct
-pickers, and the phone resolves labels, live values and action writes through the same source (its
-offline cache keeps the sources beside the blocks).
+`SourceId`/`ItemId` (a reference and a pair are mutually exclusive — relay, once set, wins). The HMI
+converts a block's direct pairs into its area's tags automatically, so nothing is shared by a
+button: a tag **picked on a row** becomes an entry (named from its display name) the moment it is
+picked, a block **given an area** converts its rows right away, and a **save** sweeps whatever is
+still direct — a block with a real `Area` always shares its tags. Blocks without an area keep their
+direct pairs exactly as before (the legacy fallbacks are never rewritten). `LogicStore` owns both
+files behind one version; `TryRemoveAreaTags` refuses while blocks read the list. The HMI's Logic
+page carries it as its **Tags** tab (the AREA field, entries with live values, `+ New tag`; **New
+block** asks for the block's name, interlock group and AREA first, so the area is assigned before
+anything is authored), the block list reads AREA → interlock group → blocks, every editor row has an
+**AREA TAG** picker that hides the direct pickers, and the phone resolves labels, live values and
+action writes through the same list (its offline cache keeps the lists beside the blocks).
 
 ### Dashboard authentication & roles
 
@@ -382,7 +391,7 @@ docker run --rm -v "$PWD/<worktree>":/src -w /src -v "$HOME/.nuget-cache":/home/
   -e HOME=/home/build -e DOTNET_CLI_HOME=/home/build --user "$(id -u):$(id -g)" \
   mcr.microsoft.com/dotnet/sdk:8.0 dotnet test tests/OpcBridge.LoadTest/OpcBridge.LoadTest.csproj
 ```
-`--user` keeps build artifacts iwan-owned (rootful daemon). Full suite: **1567 tests** (xUnit, `tests/OpcBridge.LoadTest`), ~4 min in Docker on this host with `$HOME/.nuget-cache` mounted — trust the run's own total over the wall time. The count dropped from 1113 when the MX Component source (and its PLC Groups and Pause/Resume coverage) was removed (#31), then rose by the Maps import coverage (#30) and its source-scan rework (reconciliation + selection), the HMI link-state coverage, and the mobile logic viewer (its `Mobile.Core` half: bridge list, hub link, group headings, element rows, the offline cache) with the IEC network model (expansion, gates, function blocks, store validation, internal relays — coils/relay contacts and their composability across blocks and gate types), the HMI logic page (editor model, wording, panel end-to-end, guide), the per-machine tags sources (store, evaluator resolution, API, HMI Tags tab, phone labels and cache) and the viewer's offline detail (per-block notes cache, old-cache back-compat, the list's empty-state wording). Known flaky: `InfluxApiTests.InfluxConfig_Post_Persists_EnabledFlag` (historically failed in full-suite order, passes isolated — green in the latest full run). The two snapshot tests in `HmiLogicPanelTests` (`EvaluatedStateLandsOnTheResultRows`, `SwitchingBlocks_NeverShowsThePreviousBlocksState`) used to be flaky in full-suite order: the bridge's own `logic` push (unknown — this host has no source values) is applied on the dispatcher thread and raced the synthetic snapshot the test applies and asserts in the same breath; they now wait out the broadcast flush window (`SettleBroadcastAsync`) after saving and before connecting, so the push has gone out to nobody and cannot land in the assertion window (kept: the settled runs fail none, the racing runs failed ~1 in 3). Known environmental failure under the `--user $(id -u)` container: `DaWorkerIdentityTests.CurrentAccountName_IsNotEmpty` — the mapped uid has no passwd entry, so `Environment.UserName` is empty; it fails the same way on `main` (the only failure in the latest full run: 1566 passed / 1 failed).
+`--user` keeps build artifacts iwan-owned (rootful daemon). Full suite: **1576 tests** (xUnit, `tests/OpcBridge.LoadTest`), ~4 min in Docker on this host with `$HOME/.nuget-cache` mounted — trust the run's own total over the wall time. The count dropped from 1113 when the MX Component source (and its PLC Groups and Pause/Resume coverage) was removed (#31), then rose by the Maps import coverage (#30) and its source-scan rework (reconciliation + selection), the HMI link-state coverage, and the mobile logic viewer (its `Mobile.Core` half: bridge list, hub link, group headings, element rows, the offline cache) with the IEC network model (expansion, gates, function blocks, store validation, internal relays — coils/relay contacts and their composability across blocks and gate types), the HMI logic page (editor model, wording, panel end-to-end, guide), the per-machine tags sources (store, evaluator resolution, API, HMI Tags tab, phone labels and cache), the area-first sharing flow (the New-block dialog, pick/area/save conversion, the re-anchor on a scope change) and the viewer's offline detail (per-block notes cache, old-cache back-compat, the list's empty-state wording). Known flaky: `InfluxApiTests.InfluxConfig_Post_Persists_EnabledFlag` (historically failed in full-suite order, passes isolated — green in the latest full run). The two snapshot tests in `HmiLogicPanelTests` (`EvaluatedStateLandsOnTheResultRows`, `SwitchingBlocks_NeverShowsThePreviousBlocksState`) used to be flaky in full-suite order: the bridge's own `logic` push (unknown — this host has no source values) is applied on the dispatcher thread and raced the synthetic snapshot the test applies and asserts in the same breath; they now wait out the broadcast flush window (`SettleBroadcastAsync`) after saving and before connecting, so the push has gone out to nobody and cannot land in the assertion window (kept: the settled runs fail none, the racing runs failed ~1 in 3). Known environmental failure under the `--user $(id -u)` container: `DaWorkerIdentityTests.CurrentAccountName_IsNotEmpty` — the mapped uid has no passwd entry, so `Environment.UserName` is empty; it fails the same way on `main` (the only failure in the latest full run: 1566 passed / 1 failed).
 
 **Worktree workflow (session convention):** fixes live in `git worktree add .worktrees/<branch-slug> -b <branch> main`; one worktree per branch; full suite per branch before merge; merge to main with `--no-ff`; push to origin. **Tool path quirk:** `edit`/`write` with relative `.worktrees/...` paths sometimes land in the main checkout — always use absolute paths and verify with grep after. `.dockerignore` excludes `.worktrees/` (7+ GB) so images can be built from the main checkout.
 
@@ -467,7 +476,7 @@ Package `publish.tmp` → tar.gz, SCP to host as `publish-new.tar.gz`, then run 
 - **Backend-first.** Verify the backend seam (`ISourceClient`, `BridgeWorker`, `BridgeState`) before wiring dashboard controls.
 - **Conventional commits** (`feat:`, `fix:`, etc.). Committed code on `main` is authoritative; uncommitted changes are a known risk.
 - **One version and one changelog per app.** `Directory.Build.props` holds `ServerVersion`, `HmiVersion`, `DesignerVersion` and `MobileVersion`; each app's changelog is its own release authority and each releases on its own tag (`v*`, `hmi-v*`, `designer-v*`, `mobile-v*`). `ChangelogTests` enforces the file format, that an app's newest section matches the version its own assembly reports (the Android viewer's against `MobileVersion`, since its assembly cannot load on the Linux test host), and the embedded copies.
-- **Tests exist** under `tests/OpcBridge.LoadTest` (xUnit, 1506 tests). Prefer `InternalsVisibleTo` over making types public for tests. Run in Docker (command above). Primary verification is the full suite + rig/browser proof after deploy. Note: running the container as `-u "$(id -u):$(id -g)"` leaves `DaWorkerIdentityTests.CurrentAccountName_IsNotEmpty` red when the host uid has no passwd entry in the image (environment, not code).
+- **Tests exist** under `tests/OpcBridge.LoadTest` (xUnit, 1576 tests). Prefer `InternalsVisibleTo` over making types public for tests. Run in Docker (command above). Primary verification is the full suite + rig/browser proof after deploy. Note: running the container as `-u "$(id -u):$(id -g)"` leaves `DaWorkerIdentityTests.CurrentAccountName_IsNotEmpty` red when the host uid has no passwd entry in the image (environment, not code).
 
 ## Gotchas
 

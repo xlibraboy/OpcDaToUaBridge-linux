@@ -73,7 +73,7 @@ public sealed class MobileLogicApiClientTests
         Assert.Equal(HttpStatusCode.OK, source.StatusCode);
 
         definitions = await client.GetLogicDefinitionsAsync(CancellationToken.None);
-        LogicTagSourceDto machine = Assert.Single(definitions.Value!.TagSources);
+        LogicAreaTagsDto machine = Assert.Single(definitions.Value!.TagSources);
         Assert.Equal("DRYEND", machine.Name);
         Assert.Equal("START_PB", machine.Tags[0].Name);
         Assert.Equal("Start", machine.Tags[0].ItemId);

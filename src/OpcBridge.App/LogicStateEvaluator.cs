@@ -19,7 +19,7 @@ namespace OpcBridge.App;
 /// reported but contributes true to its parent — it can never block. Internal relays extend the
 /// same rule to a coil's memory: a coil drives its relay with its input every pass, a relay
 /// contact reads it from any block, and a relay no coil has driven reads unknown. A contact may
-/// also name one of its machine's tags source entries instead of a direct tag: the entry's pair
+/// also name one of its area's tags entries instead of a direct tag: the entry's pair
 /// is what is read, and an entry still waiting for its tag reads unknown with the entry named —
 /// never a silent false. Every element keeps the reading it must show
 /// (<see cref="LogicElementStateDto.Should"/>) and whether the live value satisfies it
@@ -52,7 +52,7 @@ public static class LogicStateEvaluator
         Func<string, string, TagMapping?> mappingLookup,
         DateTime nowUtc,
         LogicStateStore? states = null,
-        IReadOnlyList<LogicTagSourceDto>? tagSources = null)
+        IReadOnlyList<LogicAreaTagsDto>? tagSources = null)
     {
         ArgumentNullException.ThrowIfNull(blocks);
 
@@ -84,13 +84,14 @@ public static class LogicStateEvaluator
         Func<string, string, TagMapping?> mappingLookup,
         LogicStateStore? states = null,
         DateTime nowUtc = default,
-        IReadOnlyList<LogicTagSourceDto>? tagSources = null)
+        IReadOnlyList<LogicAreaTagsDto>? tagSources = null)
     {
         ArgumentNullException.ThrowIfNull(block);
 
         List<LogicElementStateDto> elements = new();
         List<LogicStepStateDto> steps = new();
-        LogicTags machine = new(block.TagSource, LogicTagSources.FindSource(tagSources, block.TagSource));
+        string areaName = LogicAreaTags.AreaNameFor(block);
+        LogicTags areaTags = new(areaName, LogicAreaTags.Find(tagSources, areaName));
 
         string state;
         string? reason;
@@ -99,10 +100,10 @@ public static class LogicStateEvaluator
         {
             // A disabled block is still reported element by element, but its coils must not
             // drive relays — a disabled interlock has no say in what the plant does.
-            EvaluateNetwork(LogicNetwork.For(block), machine, valueLookup, mappingLookup, states, execute: false, nowUtc, elements);
+            EvaluateNetwork(LogicNetwork.For(block), areaTags, valueLookup, mappingLookup, states, execute: false, nowUtc, elements);
             foreach (LogicStepDto step in block.Steps)
             {
-                EvaluateNetwork(LogicNetwork.For(step), machine, valueLookup, mappingLookup, states, execute: false, nowUtc, elements);
+                EvaluateNetwork(LogicNetwork.For(step), areaTags, valueLookup, mappingLookup, states, execute: false, nowUtc, elements);
             }
 
             state = LogicBlockStates.Disabled;
@@ -110,12 +111,12 @@ public static class LogicStateEvaluator
         }
         else if (string.Equals(block.Kind, LogicBlockKinds.Sequence, StringComparison.OrdinalIgnoreCase))
         {
-            (state, reason) = EvaluateSequence(block, machine, valueLookup, mappingLookup, states, nowUtc, elements, steps);
+            (state, reason) = EvaluateSequence(block, areaTags, valueLookup, mappingLookup, states, nowUtc, elements, steps);
         }
         else
         {
             (bool? output, string? failing, string? missing) =
-                EvaluateNetwork(LogicNetwork.For(block), machine, valueLookup, mappingLookup, states, execute: true, nowUtc, elements);
+                EvaluateNetwork(LogicNetwork.For(block), areaTags, valueLookup, mappingLookup, states, execute: true, nowUtc, elements);
             (state, reason) = BlockVerdict(output, failing, missing);
         }
 
@@ -130,26 +131,26 @@ public static class LogicStateEvaluator
     }
 
     /// <summary>
-    /// The machine's tags source a block reads its named tags from, together with the name the
-    /// block carries — so an unresolved reference can say which machine it looked in.
+    /// The area's tags a block reads its named tags from, together with the area's name the
+    /// block carries — so an unresolved reference can say which area it looked in.
     /// </summary>
     private readonly struct LogicTags
     {
-        public LogicTags(string? name, LogicTagSourceDto? source)
+        public LogicTags(string? name, LogicAreaTagsDto? tags)
         {
             Name = name?.Trim() ?? string.Empty;
-            Source = source;
+            Tags = tags;
         }
 
         public string Name { get; }
 
-        public LogicTagSourceDto? Source { get; }
+        public LogicAreaTagsDto? Tags { get; }
 
         public bool TryResolve(string? tag, out string sourceId, out string itemId) =>
-            LogicTagSources.TryResolve(Source, tag, out sourceId, out itemId);
+            LogicAreaTags.TryResolve(Tags, tag, out sourceId, out itemId);
 
         public string Unresolved(string? tag) =>
-            LogicTagSources.UnresolvedText(tag, Source, Name);
+            LogicAreaTags.UnresolvedText(tag, Tags, Name);
     }
 
     /// <summary>
@@ -185,7 +186,7 @@ public static class LogicStateEvaluator
 
     private static (string State, string? Reason) EvaluateSequence(
         LogicBlockDto block,
-        LogicTags machine,
+        LogicTags areaTags,
         Func<string, string, BridgeValueSnapshot?> valueLookup,
         Func<string, string, TagMapping?> mappingLookup,
         LogicStateStore? states,
@@ -201,17 +202,17 @@ public static class LogicStateEvaluator
         {
             // A disabled block never reaches here, so a step's coils always drive their relays.
             (bool? output, string? failing, string? missing) =
-                EvaluateNetwork(LogicNetwork.For(step), machine, valueLookup, mappingLookup, states, execute: true, nowUtc, elements);
+                EvaluateNetwork(LogicNetwork.For(step), areaTags, valueLookup, mappingLookup, states, execute: true, nowUtc, elements);
             bool stepDone = output == true;
 
-            // The handshake is either one of the machine's named tags or a direct pair.
+            // The handshake is either one of the area's named tags or a direct pair.
             bool completionConfigured = false;
             bool completionUnassigned = false;
             string? completionSourceId = step.CompletionSourceId;
             string? completionItemId = step.CompletionItemId;
             if (!string.IsNullOrWhiteSpace(step.CompletionTag))
             {
-                completionConfigured = machine.TryResolve(step.CompletionTag, out string namedSource, out string namedItem);
+                completionConfigured = areaTags.TryResolve(step.CompletionTag, out string namedSource, out string namedItem);
                 completionUnassigned = !completionConfigured;
                 completionSourceId = namedSource;
                 completionItemId = namedItem;
@@ -232,7 +233,7 @@ public static class LogicStateEvaluator
                 {
                     stepDone = false;
                     completionUnknown = true;
-                    completionText = "no data for " + machine.Unresolved(step.CompletionTag);
+                    completionText = "no data for " + areaTags.Unresolved(step.CompletionTag);
                 }
             }
             else if (stepDone && completionConfigured)
@@ -314,7 +315,7 @@ public static class LogicStateEvaluator
     /// </summary>
     private static (bool? Output, string? Failing, string? Missing) EvaluateNetwork(
         IReadOnlyList<LogicElementDto> roots,
-        LogicTags machine,
+        LogicTags areaTags,
         Func<string, string, BridgeValueSnapshot?> valueLookup,
         Func<string, string, TagMapping?> mappingLookup,
         LogicStateStore? states,
@@ -328,7 +329,7 @@ public static class LogicStateEvaluator
 
         foreach (LogicElementDto root in roots)
         {
-            bool? output = EvaluateElement(root, 0, machine, valueLookup, mappingLookup, states, execute, nowUtc, target, out string? reason, out string? missingLeaf);
+            bool? output = EvaluateElement(root, 0, areaTags, valueLookup, mappingLookup, states, execute, nowUtc, target, out string? reason, out string? missingLeaf);
             if (IsWarn(root))
             {
                 // A warn element at the root is reported but never gates the block.
@@ -358,7 +359,7 @@ public static class LogicStateEvaluator
     private static bool? EvaluateElement(
         LogicElementDto element,
         int depth,
-        LogicTags machine,
+        LogicTags areaTags,
         Func<string, string, BridgeValueSnapshot?> valueLookup,
         Func<string, string, TagMapping?> mappingLookup,
         LogicStateStore? states,
@@ -382,7 +383,7 @@ public static class LogicStateEvaluator
         List<string?> inputMissing = new();
         foreach (LogicElementDto input in element.Inputs)
         {
-            bool? value = EvaluateElement(input, depth + 1, machine, valueLookup, mappingLookup, states, execute, nowUtc, target, out string? inputReason, out string? inputMissingLeaf);
+            bool? value = EvaluateElement(input, depth + 1, areaTags, valueLookup, mappingLookup, states, execute, nowUtc, target, out string? inputReason, out string? inputMissingLeaf);
             // A warn element is reported but inert: it neither satisfies nor blocks its parent.
             if (!IsWarn(input))
             {
@@ -398,7 +399,7 @@ public static class LogicStateEvaluator
         {
             output = LogicElementKinds.IsRelayContact(element)
                 ? EvaluateRelayContact(element, row, states)
-                : EvaluateContact(element, row, machine, valueLookup, mappingLookup);
+                : EvaluateContact(element, row, areaTags, valueLookup, mappingLookup);
         }
         else
         {
@@ -414,7 +415,7 @@ public static class LogicStateEvaluator
             if (kind == LogicElementKinds.Contact)
             {
                 reason = output == false ? own : null;
-                missing = output is null ? LeafLabel(element, machine, mappingLookup) : null;
+                missing = output is null ? LeafLabel(element, areaTags, mappingLookup) : null;
             }
             else if (LogicElementKinds.IsGate(kind))
             {
@@ -453,7 +454,7 @@ public static class LogicStateEvaluator
     private static bool? EvaluateContact(
         LogicElementDto element,
         LogicElementStateDto row,
-        LogicTags machine,
+        LogicTags areaTags,
         Func<string, string, BridgeValueSnapshot?> valueLookup,
         Func<string, string, TagMapping?> mappingLookup)
     {
@@ -461,7 +462,7 @@ public static class LogicStateEvaluator
         string itemId = element.ItemId;
         if (!string.IsNullOrWhiteSpace(element.Tag))
         {
-            if (!machine.TryResolve(element.Tag, out sourceId, out itemId))
+            if (!areaTags.TryResolve(element.Tag, out sourceId, out itemId))
             {
                 // A named tag that is not assigned yet reads unknown — the operator sees the
                 // entry's name in the reason instead of a false contact.
@@ -702,7 +703,7 @@ public static class LogicStateEvaluator
     /// <summary>What a missing reading names: the tag (or relay) for a contact, else the element's sentence.</summary>
     private static string LeafLabel(
         LogicElementDto element,
-        LogicTags machine,
+        LogicTags areaTags,
         Func<string, string, TagMapping?> mappingLookup)
     {
         if (!string.Equals(element.Kind, LogicElementKinds.Contact, StringComparison.OrdinalIgnoreCase))
@@ -717,9 +718,9 @@ public static class LogicStateEvaluator
 
         if (!string.IsNullOrWhiteSpace(element.Tag))
         {
-            return machine.TryResolve(element.Tag, out string sourceId, out string itemId)
+            return areaTags.TryResolve(element.Tag, out string sourceId, out string itemId)
                 ? Label(sourceId, itemId, mappingLookup)
-                : machine.Unresolved(element.Tag);
+                : areaTags.Unresolved(element.Tag);
         }
 
         return Label(element.SourceId, element.ItemId, mappingLookup);

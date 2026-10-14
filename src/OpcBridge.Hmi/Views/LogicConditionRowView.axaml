@@ -38,11 +38,11 @@
           </ComboBox>
         </StackPanel>
         <StackPanel Classes="field" Width="210" IsVisible="{Binding !ShowsDirectTag}">
-          <TextBlock Classes="fieldLabel" Text="MACHINE TAG" />
+          <TextBlock Classes="fieldLabel" Text="AREA TAG" />
           <StackPanel Orientation="Horizontal" Spacing="4">
             <ComboBox Width="180" ItemsSource="{Binding TagEntries}" SelectedItem="{Binding SelectedBlockTag}"
-                      AutomationProperties.Name="Condition machine tag"
-                      ToolTip.Tip="One of this block's machine's tags (the Tags tab) — assigned once, read by every block of the machine.">
+                      AutomationProperties.Name="Condition area tag"
+                      ToolTip.Tip="One of this area's tags (the Tags tab) — assigned once, read by every block of the area.">
               <ComboBox.ItemTemplate>
                 <DataTemplate x:DataType="logic:LogicTagEntryViewModel">
                   <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
@@ -52,7 +52,7 @@
             <Button Classes="tool" Content="✕" Command="{Binding ClearBlockTagCommand}"
                     IsVisible="{Binding HasBlockTag}" VerticalAlignment="Center"
                     ToolTip.Tip="Read a direct bridge tag instead"
-                    AutomationProperties.Name="Clear machine tag" />
+                    AutomationProperties.Name="Clear area tag" />
           </StackPanel>
         </StackPanel>
         <StackPanel Classes="field" Width="150">

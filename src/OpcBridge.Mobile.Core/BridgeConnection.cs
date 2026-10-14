@@ -262,7 +262,7 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
         {
             SavedUtc = savedUtc,
             Blocks = Overview.Definitions.ToList(),
-            TagSources = Overview.TagSources.ToList(),
+            TagSources = Overview.AreaTags.ToList(),
             State = Overview.State,
             Tags = lastTags_.ToList(),
             NotesByBlock = new Dictionary<Guid, List<LogicNoteDto>>(notesByBlock_)

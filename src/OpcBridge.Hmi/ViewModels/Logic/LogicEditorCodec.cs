@@ -108,7 +108,7 @@ public static class LogicEditorCodec
         {
             Id = row.ConditionId,
             Text = row.Text.Trim(),
-            // A named tag's pair lives on the machine's tags source, never on the condition.
+            // A named tag's pair lives on the area's tags entry, never on the condition.
             SourceId = tag.Length > 0 ? string.Empty : row.SourceId,
             ItemId = tag.Length > 0 ? string.Empty : row.ItemId,
             Tag = tag,
@@ -125,7 +125,7 @@ public static class LogicEditorCodec
     /// One element from its row. Only the fields that belong to the kind are set — a gate keeps the
     /// DTO defaults, exactly like the bridge's own store does. A relay on a contact makes it a
     /// relay contact (tag fields cleared) and a relay on a coil is the relay it drives; a contact
-    /// naming one of the machine's tags keeps that name alone.
+    /// naming one of the area's tags keeps that name alone.
     /// </summary>
     public static LogicElementDto ElementFromRow(LogicElementRowViewModel row)
     {
@@ -211,7 +211,7 @@ public static class LogicEditorCodec
             Elements = new List<LogicElementDto>(),
             Conditions = row.Conditions.Select(ConditionFromRow).ToList(),
             NextStepText = TrimmedOrNull(row.NextStepText),
-            // A named handshake's pair lives on the machine's tags source, never on the step.
+            // A named handshake's pair lives on the area's tags entry, never on the step.
             CompletionSourceId = completionTag.Length > 0 ? null : row.CompletionSourceId,
             CompletionItemId = completionTag.Length > 0 ? null : row.CompletionItemId,
             CompletionTag = completionTag.Length > 0 ? completionTag : null,
@@ -241,7 +241,8 @@ public static class LogicEditorCodec
         string kind,
         bool enabled,
         string group,
-        string tagSource,
+        string area,
+        string areaTags,
         string description,
         string tagsText,
         IReadOnlyList<LogicConditionRowViewModel> conditions,
@@ -258,7 +259,8 @@ public static class LogicEditorCodec
             Enabled = enabled,
             Description = description.Trim(),
             Group = group.Trim(),
-            TagSource = tagSource.Trim(),
+            Area = area.Trim(),
+            TagSource = areaTags.Trim(),
             Order = stored?.Order ?? newOrder,
             Tags = ParseTags(tagsText),
             Actions = actions.Select(ActionFromRow).ToList()

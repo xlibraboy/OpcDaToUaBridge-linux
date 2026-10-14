@@ -5,10 +5,10 @@ using Xunit;
 namespace OpcBridge.LoadTest;
 
 /// <summary>
-/// The Logic page's Tags tab and the machine-tag references rows carry: a block reads its
-/// machine's named tags, assigned once (on the tab) and shared by every block that names the
-/// machine — including the "created empty, assigned later" flow, where an unassigned entry must
-/// keep a block savable and readable as unknown rather than as a silent false.
+/// The Logic page's Tags tab and the area-tag references rows carry: a block reads its area's
+/// named tags, assigned once (on the tab) and shared by every block of the area — including the
+/// "created empty, assigned later" flow, where an unassigned entry must keep a block savable and
+/// readable as unknown rather than as a silent false.
 /// </summary>
 public sealed class HmiLogicTagsTests
 {
@@ -23,9 +23,9 @@ public sealed class HmiLogicTagsTests
             new LogicTagOption("sim", DoneItemId, "Dry End Done", "Simulation", Writeable: true)
         });
 
-    private static LogicTagSourceDto Source(string name = "DRYEND", params (string Name, string ItemId)[] tags)
+    private static LogicAreaTagsDto Source(string name = "DRYEND", params (string Name, string ItemId)[] tags)
     {
-        LogicTagSourceDto source = new() { Name = name };
+        LogicAreaTagsDto source = new() { Name = name };
         foreach ((string tagName, string itemId) in tags)
         {
             source.Tags.Add(new LogicTagDto
@@ -60,7 +60,7 @@ public sealed class HmiLogicTagsTests
     [Fact]
     public void Load_ShowsTheMachinesEntriesAndTheNameTheBlockCarries()
     {
-        LogicTagSourceViewModel tab = new();
+        LogicAreaTagsViewModel tab = new();
         LogicBlockDto block = NamedBlock("START_PB");
 
         tab.Load(
@@ -84,24 +84,53 @@ public sealed class HmiLogicTagsTests
     }
 
     [Fact]
-    public void Load_DefaultsTheNameFromTheBlocksGroup()
+    public void Load_ReadsTheAreasTagsEvenWhenTheBlockStoresAnotherName()
     {
-        LogicTagSourceViewModel tab = new();
+        LogicAreaTagsViewModel tab = new();
+        LogicBlockDto block = NamedBlock("START_PB");
+        block.Area = "DRY END";
+
+        tab.Load(
+            block,
+            new[] { Source("DRYEND"), Source("DRY END", ("START_PB", StartItemId)) },
+            new[] { block },
+            Catalog());
+
+        // The area is the tag-sharing key: it wins over the name the block stores, and the area
+        // a loaded block carries is offered in the field's suggestions even before it is saved.
+        Assert.Equal("DRY END", tab.Name);
+        Assert.Equal(StartItemId, Assert.Single(tab.Entries).ItemId);
+        Assert.Contains("DRY END", tab.AreaNames);
+        Assert.True(tab.IsKnownArea);
+    }
+
+    [Fact]
+    public void Load_DefaultsTheNameFromTheAreaThenTheStoredNameThenTheGroup()
+    {
+        LogicAreaTagsViewModel tab = new();
         LogicBlockDto block = NamedBlock();
-        block.TagSource = string.Empty;
+        block.Area = "DRY END";
+        block.TagSource = "WETEND";
 
-        tab.Load(block, Array.Empty<LogicTagSourceDto>(), new[] { block }, Catalog());
+        tab.Load(block, Array.Empty<LogicAreaTagsDto>(), new[] { block }, Catalog());
 
-        // The store falls back to the group, so the tab shows the machine that will be used.
+        Assert.Equal("DRY END", tab.Name);
+        Assert.Empty(tab.Entries);
+
+        LogicBlockDto legacy = NamedBlock();
+        legacy.TagSource = string.Empty;
+
+        tab.Load(legacy, Array.Empty<LogicAreaTagsDto>(), new[] { legacy }, Catalog());
+
+        // No area and no stored name: the group fallback keeps the block resolving as before.
         Assert.Equal("DRYEND", tab.Name);
-        Assert.True(tab.IsKnownSource == false);
         Assert.Empty(tab.Entries);
     }
 
     [Fact]
     public void Load_CreatesAnEntryForAReferenceTheSourceDoesNotHold()
     {
-        LogicTagSourceViewModel tab = new();
+        LogicAreaTagsViewModel tab = new();
         LogicBlockDto block = NamedBlock("GHOST_PB");
 
         tab.Load(block, new[] { Source("DRYEND") }, new[] { block }, Catalog());
@@ -117,10 +146,10 @@ public sealed class HmiLogicTagsTests
     [Fact]
     public void Load_ASecondBlockOfAnotherMachineAdoptsItWithoutDuplicatingEntries()
     {
-        LogicTagSourceViewModel tab = new();
+        LogicAreaTagsViewModel tab = new();
         LogicBlockDto dry = NamedBlock("START_PB");
-        LogicTagSourceDto dryEnd = Source("DRYEND", ("START_PB", StartItemId));
-        LogicTagSourceDto wetEnd = Source("WETEND", ("PUMP_RUN", StartItemId));
+        LogicAreaTagsDto dryEnd = Source("DRYEND", ("START_PB", StartItemId));
+        LogicAreaTagsDto wetEnd = Source("WETEND", ("PUMP_RUN", StartItemId));
 
         tab.Load(dry, new[] { dryEnd, wetEnd }, new[] { dry }, Catalog());
         Assert.Equal("START_PB", Assert.Single(tab.Entries).Name);
@@ -142,9 +171,9 @@ public sealed class HmiLogicTagsTests
     [Fact]
     public void NewTag_AddsUniqueUnassignedEntriesAndDirtiesTheTab()
     {
-        LogicTagSourceViewModel tab = new();
+        LogicAreaTagsViewModel tab = new();
         LogicBlockDto block = NamedBlock();
-        tab.Load(block, Array.Empty<LogicTagSourceDto>(), new[] { block }, Catalog());
+        tab.Load(block, Array.Empty<LogicAreaTagsDto>(), new[] { block }, Catalog());
 
         LogicTagEntryViewModel first = tab.NewTag();
         LogicTagEntryViewModel second = tab.NewTag();
@@ -173,7 +202,7 @@ public sealed class HmiLogicTagsTests
     [Fact]
     public void EnsureEntry_ReusesTheEntryCarryingTheSameTagAndFindsNamesCaseInsensitively()
     {
-        LogicTagSourceViewModel tab = new();
+        LogicAreaTagsViewModel tab = new();
         LogicBlockDto block = NamedBlock();
         tab.Load(block, new[] { Source("DRYEND", ("START_PB", StartItemId)) }, new[] { block }, Catalog());
 
@@ -190,7 +219,7 @@ public sealed class HmiLogicTagsTests
     public void ConditionRow_CarriesTheMachineTagAloneAndHidesTheDirectPickers()
     {
         LogicBlockDto block = NamedBlock("START_PB");
-        LogicTagSourceViewModel tab = new();
+        LogicAreaTagsViewModel tab = new();
         tab.Load(block, new[] { Source("DRYEND", ("START_PB", StartItemId)) }, new[] { block }, Catalog());
 
         LogicConditionRowViewModel row = LogicEditorCodec.LoadConditions(
@@ -240,7 +269,7 @@ public sealed class HmiLogicTagsTests
     public void ElementRow_ANamedTagKeepsTheContactAPairAndARelayWins()
     {
         LogicBlockDto block = NamedBlock("START_PB");
-        LogicTagSourceViewModel tab = new();
+        LogicAreaTagsViewModel tab = new();
         tab.Load(block, new[] { Source("DRYEND", ("START_PB", StartItemId)) }, new[] { block }, Catalog());
 
         LogicElementDto named = new()
@@ -283,7 +312,7 @@ public sealed class HmiLogicTagsTests
     public void StepRow_CarriesTheCompletionTagOrTheDirectPair()
     {
         LogicBlockDto block = NamedBlock();
-        LogicTagSourceViewModel tab = new();
+        LogicAreaTagsViewModel tab = new();
         tab.Load(
             block,
             new[] { Source("DRYEND", ("START_PB", StartItemId), ("DONE_FB", DoneItemId)) },
@@ -321,7 +350,7 @@ public sealed class HmiLogicTagsTests
     public void ActionRow_CarriesTheMachineTagAlone()
     {
         LogicBlockDto block = NamedBlock();
-        LogicTagSourceViewModel tab = new();
+        LogicAreaTagsViewModel tab = new();
         tab.Load(block, new[] { Source("DRYEND", ("START_PB", StartItemId)) }, new[] { block }, Catalog());
 
         LogicActionDto action = new()
@@ -342,11 +371,13 @@ public sealed class HmiLogicTagsTests
     }
 
     [Fact]
-    public void Build_CarriesTheTagSourceAndRoundTripsTheStoredBlock()
+    public void Build_CarriesTheAreaAndTheAreaTagsAndRoundTripsTheStoredBlock()
     {
         LogicBlockDto stored = NamedBlock("START_PB");
-        LogicTagSourceViewModel tab = new();
-        tab.Load(stored, new[] { Source("DRYEND", ("START_PB", StartItemId)) }, new[] { stored }, Catalog());
+        stored.Area = "DRY END";
+        stored.TagSource = "DRY END";
+        LogicAreaTagsViewModel tab = new();
+        tab.Load(stored, new[] { Source("DRY END", ("START_PB", StartItemId)) }, new[] { stored }, Catalog());
         LogicTagCatalog catalog = Catalog();
 
         var conditions = LogicEditorCodec.LoadConditions(stored.Conditions, catalog, null, tab.Entries);
@@ -361,6 +392,7 @@ public sealed class HmiLogicTagsTests
             stored.Kind,
             stored.Enabled,
             stored.Group,
+            stored.Area,
             tab.Name,
             stored.Description,
             string.Empty,
@@ -370,14 +402,15 @@ public sealed class HmiLogicTagsTests
             actions);
 
         // A load that changed nothing must compare equal, or Save would light up on every select.
-        Assert.Equal("DRYEND", built.TagSource);
+        Assert.Equal("DRY END", built.Area);
+        Assert.Equal("DRY END", built.TagSource);
         Assert.True(LogicEditorCodec.Matches(built, stored));
     }
 
     [Fact]
     public void RefreshUsed_MarksOnlyTheEntriesTheBlockReferences()
     {
-        LogicTagSourceViewModel tab = new();
+        LogicAreaTagsViewModel tab = new();
         LogicBlockDto block = NamedBlock();
         tab.Load(block, new[] { Source("DRYEND", ("START_PB", StartItemId), ("FAULT", "")) }, new[] { block }, Catalog());
 

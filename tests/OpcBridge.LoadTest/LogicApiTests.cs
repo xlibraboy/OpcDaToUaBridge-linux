@@ -222,6 +222,7 @@ public sealed class LogicApiTests
                 Id = Guid.NewGuid(),
                 Name = "Dry end start",
                 Group = "DRYEND",
+                Area = "DRYEND",
                 Kind = LogicBlockKinds.Interlock,
                 Conditions =
                 {
@@ -247,6 +248,7 @@ public sealed class LogicApiTests
             using JsonDocument blockBody = JsonDocument.Parse(await blockSave.Content.ReadAsStringAsync());
             JsonElement storedBlock = blockBody.RootElement.GetProperty("block");
             Assert.Equal("DRYEND", storedBlock.GetProperty("tagSource").GetString());
+            Assert.Equal("DRYEND", storedBlock.GetProperty("area").GetString());
             JsonElement storedCondition = storedBlock.GetProperty("conditions")[0];
             Assert.Equal("START_PB", storedCondition.GetProperty("tag").GetString());
             Assert.Equal(string.Empty, storedCondition.GetProperty("itemId").GetString());
@@ -294,7 +296,7 @@ public sealed class LogicApiTests
             using HttpResponseMessage inUse = await app.Client.DeleteAsync("/api/logic/tagsources/DRYEND");
             Assert.Equal(HttpStatusCode.Conflict, inUse.StatusCode);
             using JsonDocument inUseBody = JsonDocument.Parse(await inUse.Content.ReadAsStringAsync());
-            Assert.Equal("1 block uses this tags source.", inUseBody.RootElement.GetProperty("error").GetString());
+            Assert.Equal("1 block uses these area tags.", inUseBody.RootElement.GetProperty("error").GetString());
 
             // Only once the block is gone may the machine's tags be removed.
             using HttpResponseMessage blockDelete = await app.Client.DeleteAsync($"/api/logic/blocks/{named.Id}");

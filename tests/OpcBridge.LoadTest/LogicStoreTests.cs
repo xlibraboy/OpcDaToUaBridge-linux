@@ -45,11 +45,11 @@ public sealed class LogicStoreTests : IDisposable
         }
     }
 
-    private static LogicTagSourceDto CreateTagSource(
+    private static LogicAreaTagsDto CreateAreaTags(
         string name = "DRYEND",
         params (string Name, string SourceId, string ItemId)[] tags)
     {
-        return new LogicTagSourceDto
+        return new LogicAreaTagsDto
         {
             Name = name,
             Tags = tags.Length == 0
@@ -775,12 +775,12 @@ public sealed class LogicStoreTests : IDisposable
     }
 
     [Fact]
-    public void TrySaveTagSource_NormalizesEntriesAndSharesTheVersion()
+    public void TrySaveAreaTags_NormalizesEntriesAndSharesTheVersion()
     {
         LogicStore store = CreateStore();
 
-        bool ok = store.TrySaveTagSource(
-            new LogicTagSourceDto
+        bool ok = store.TrySaveAreaTags(
+            new LogicAreaTagsDto
             {
                 Name = "  DRYEND  ",
                 Tags =
@@ -792,7 +792,7 @@ public sealed class LogicStoreTests : IDisposable
                     new LogicTagDto { Name = "RUNNING" }
                 }
             },
-            out LogicTagSourceDto saved,
+            out LogicAreaTagsDto saved,
             out long version,
             out string? error);
 
@@ -813,61 +813,61 @@ public sealed class LogicStoreTests : IDisposable
         // The block store and the sources share one version, so a binding change makes clients refetch.
         store.TrySave(CreateInterlock(), out _, out long blockVersion, out _);
         Assert.Equal(2, blockVersion);
-        Assert.Single(store.GetTagSources());
+        Assert.Single(store.GetAreaTags());
     }
 
     [Fact]
-    public void TrySaveTagSource_ReplacesByNameCaseInsensitively()
+    public void TrySaveAreaTags_ReplacesByNameCaseInsensitively()
     {
         LogicStore store = CreateStore();
-        store.TrySaveTagSource(CreateTagSource(), out _, out _, out _);
+        store.TrySaveAreaTags(CreateAreaTags(), out _, out _, out _);
 
-        bool ok = store.TrySaveTagSource(
-            CreateTagSource("dryend", ("START_PB", "sim", "ns=2;s=Status/Start2")),
-            out LogicTagSourceDto saved,
+        bool ok = store.TrySaveAreaTags(
+            CreateAreaTags("dryend", ("START_PB", "sim", "ns=2;s=Status/Start2")),
+            out LogicAreaTagsDto saved,
             out _,
             out string? error);
 
         Assert.True(ok);
         Assert.Null(error);
         Assert.Equal("dryend", saved.Name);
-        Assert.Single(store.GetTagSources());
-        Assert.Equal("ns=2;s=Status/Start2", store.GetTagSources()[0].Tags[0].ItemId);
+        Assert.Single(store.GetAreaTags());
+        Assert.Equal("ns=2;s=Status/Start2", store.GetAreaTags()[0].Tags[0].ItemId);
     }
 
     [Fact]
-    public void TrySaveTagSource_RejectsABlankNameAndAnOverlongTagName()
+    public void TrySaveAreaTags_RejectsABlankNameAndAnOverlongTagName()
     {
         LogicStore store = CreateStore();
 
-        Assert.False(store.TrySaveTagSource(CreateTagSource(name: "   "), out _, out _, out string? blankName));
-        Assert.Contains("tags source name", blankName, StringComparison.OrdinalIgnoreCase);
+        Assert.False(store.TrySaveAreaTags(CreateAreaTags(name: "   "), out _, out _, out string? blankName));
+        Assert.Contains("area name", blankName, StringComparison.OrdinalIgnoreCase);
 
-        Assert.False(store.TrySaveTagSource(
-            CreateTagSource(tags: (new string('X', LogicLimits.MaxTagNameLength + 1), "sim", "t")),
+        Assert.False(store.TrySaveAreaTags(
+            CreateAreaTags(tags: (new string('X', LogicLimits.MaxTagNameLength + 1), "sim", "t")),
             out _,
             out _,
             out string? longTag));
         Assert.Contains("tag name", longTag, StringComparison.OrdinalIgnoreCase);
-        Assert.Empty(store.GetTagSources());
+        Assert.Empty(store.GetAreaTags());
     }
 
     [Fact]
-    public void TryRemoveTagSource_IsRefusedWhileBlocksUseIt()
+    public void TryRemoveAreaTags_IsRefusedWhileBlocksUseIt()
     {
         LogicStore store = CreateStore();
-        store.TrySaveTagSource(CreateTagSource(), out _, out _, out _);
+        store.TrySaveAreaTags(CreateAreaTags(), out _, out _, out _);
         store.TrySave(CreateNamedTagInterlock("Dry end start"), out _, out _, out _);
         store.TrySave(CreateNamedTagInterlock("Dry end stop"), out _, out _, out _);
 
-        bool ok = store.TryRemoveTagSource("dryend", out _, out string? error);
+        bool ok = store.TryRemoveAreaTags("dryend", out _, out string? error);
 
         Assert.False(ok);
-        Assert.Equal("2 blocks use this tags source.", error);
-        Assert.Single(store.GetTagSources());
+        Assert.Equal("2 blocks use these area tags.", error);
+        Assert.Single(store.GetAreaTags());
 
         // A block that falls back to its group counts as a user of that group's source too.
-        store.TrySaveTagSource(CreateTagSource("WETEND"), out _, out _, out _);
+        store.TrySaveAreaTags(CreateAreaTags("WETEND"), out _, out _, out _);
         store.TrySave(
             new LogicBlockDto
             {
@@ -882,34 +882,78 @@ public sealed class LogicStoreTests : IDisposable
             out _);
 
         Assert.Equal("WETEND", stored.TagSource);
-        Assert.False(store.TryRemoveTagSource("WETEND", out _, out string? inUseByGroup));
-        Assert.Equal("1 block uses this tags source.", inUseByGroup);
+        Assert.False(store.TryRemoveAreaTags("WETEND", out _, out string? inUseByGroup));
+        Assert.Equal("1 block uses these area tags.", inUseByGroup);
     }
 
     [Fact]
-    public void TryRemoveTagSource_RemovesAnUnusedSource()
+    public void TrySave_ResolvesTheAreaTagsFromTheAreaAndPersistsTheName()
     {
         LogicStore store = CreateStore();
-        store.TrySaveTagSource(CreateTagSource(), out _, out _, out _);
+        store.TrySaveAreaTags(CreateAreaTags("DRY END"), out _, out _, out _);
+
+        LogicBlockDto block = CreateNamedTagInterlock("Dry end start");
+        block.Area = "DRY END";
+        block.Group = "Primary Arm";
+        block.TagSource = "PRIMARY ARM";
+
+        bool ok = store.TrySave(block, out LogicBlockDto stored, out _, out string? error);
+
+        // The area is the tag-sharing key: it wins over the name the block stores, and the store
+        // keeps the resolved name in tagSource so older clients resolve the block too.
+        Assert.True(ok);
+        Assert.Null(error);
+        Assert.Equal("DRY END", stored.Area);
+        Assert.Equal("DRY END", stored.TagSource);
+        Assert.Equal("START_PB", stored.Conditions[0].Tag);
+        Assert.Equal(1, store.CountBlocksUsing("DRY END"));
+        Assert.Equal(0, store.CountBlocksUsing("PRIMARY ARM"));
+    }
+
+    [Fact]
+    public void TrySave_KeepsTheLegacyFallbacksWhenNoAreaIsSet()
+    {
+        LogicStore store = CreateStore();
+
+        LogicBlockDto block = CreateNamedTagInterlock("Arm up");
+        block.Area = string.Empty;
+        block.Group = "Primary Arm";
+        block.TagSource = string.Empty;
+
+        bool ok = store.TrySave(block, out LogicBlockDto stored, out _, out string? error);
+
+        // No area, no stored name: the group is the last-resort fallback, so a block authored
+        // before areas existed keeps resolving exactly as it did.
+        Assert.True(ok);
+        Assert.Null(error);
+        Assert.Equal(string.Empty, stored.Area);
+        Assert.Equal("Primary Arm", stored.TagSource);
+    }
+
+    [Fact]
+    public void TryRemoveAreaTags_RemovesAnUnusedSource()
+    {
+        LogicStore store = CreateStore();
+        store.TrySaveAreaTags(CreateAreaTags(), out _, out _, out _);
         List<long> versions = new();
         store.Changed += versions.Add;
 
-        bool ok = store.TryRemoveTagSource("DRYEND", out long version, out string? error);
+        bool ok = store.TryRemoveAreaTags("DRYEND", out long version, out string? error);
 
         Assert.True(ok);
         Assert.Null(error);
         Assert.Equal(2, version);
-        Assert.Empty(store.GetTagSources());
+        Assert.Empty(store.GetAreaTags());
         Assert.Equal(new[] { 2L }, versions);
-        Assert.False(store.TryRemoveTagSource("DRYEND", out _, out string? missing));
-        Assert.Equal("Tags source not found.", missing);
+        Assert.False(store.TryRemoveAreaTags("DRYEND", out _, out string? missing));
+        Assert.Equal("Area tags not found.", missing);
     }
 
     [Fact]
     public void TrySave_KeepsANamedTagAndClearsTheDirectPair()
     {
         LogicStore store = CreateStore();
-        store.TrySaveTagSource(CreateTagSource(), out _, out _, out _);
+        store.TrySaveAreaTags(CreateAreaTags(), out _, out _, out _);
 
         store.TrySave(
             CreateNamedTagInterlock(group: "DRYEND"),
@@ -929,8 +973,8 @@ public sealed class LogicStoreTests : IDisposable
     public void TrySave_CarriesTheSourceIntoContactsActionsAndStepHandshakes()
     {
         LogicStore store = CreateStore();
-        store.TrySaveTagSource(
-            CreateTagSource("DRYEND", ("START_PB", "sim", "ns=2;s=Status/Start"), ("DONE_FB", "sim", "ns=2;s=Status/Done")),
+        store.TrySaveAreaTags(
+            CreateAreaTags("DRYEND", ("START_PB", "sim", "ns=2;s=Status/Start"), ("DONE_FB", "sim", "ns=2;s=Status/Done")),
             out _,
             out _,
             out _);
@@ -971,7 +1015,7 @@ public sealed class LogicStoreTests : IDisposable
     public void TrySave_KeepsANamedTagNetworkContactAndLetsTheRelayWin()
     {
         LogicStore store = CreateStore();
-        store.TrySaveTagSource(CreateTagSource(), out _, out _, out _);
+        store.TrySaveAreaTags(CreateAreaTags(), out _, out _, out _);
 
         LogicBlockDto block = new()
         {
@@ -1018,7 +1062,7 @@ public sealed class LogicStoreTests : IDisposable
     public void TrySave_CanonicalizesAReferenceToTheSourcesSpellingAndKeepsADanglingOne()
     {
         LogicStore store = CreateStore();
-        store.TrySaveTagSource(CreateTagSource(tags: ("Start_Pb", "sim", "ns=2;s=Status/Start")), out _, out _, out _);
+        store.TrySaveAreaTags(CreateAreaTags(tags: ("Start_Pb", "sim", "ns=2;s=Status/Start")), out _, out _, out _);
 
         store.TrySave(CreateNamedTagInterlock(tag: "start_pb"), out LogicBlockDto matched, out _, out _);
         store.TrySave(CreateNamedTagInterlock("Ghost", tag: "NOT_IN_THE_SOURCE"), out LogicBlockDto dangling, out _, out _);
@@ -1033,19 +1077,19 @@ public sealed class LogicStoreTests : IDisposable
     {
         LogicStore store = CreateStore();
 
-        LogicBlockDto block = CreateNamedTagInterlock(tagSource: new string('X', LogicLimits.MaxTagSourceNameLength + 1));
+        LogicBlockDto block = CreateNamedTagInterlock(tagSource: new string('X', LogicLimits.MaxAreaNameLength + 1));
         bool ok = store.TrySave(block, out _, out _, out string? error);
 
         Assert.False(ok);
-        Assert.Contains("tags source name", error, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("An area can be at most", error, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
     public void Persist_ReloadsTagsSourcesAfterRestart()
     {
         LogicStore store = CreateStore();
-        store.TrySaveTagSource(
-            CreateTagSource("DRYEND", ("START_PB", "sim", "ns=2;s=Status/Start"), ("FAULT", "", "")),
+        store.TrySaveAreaTags(
+            CreateAreaTags("DRYEND", ("START_PB", "sim", "ns=2;s=Status/Start"), ("FAULT", "", "")),
             out _,
             out _,
             out _);
@@ -1053,7 +1097,7 @@ public sealed class LogicStoreTests : IDisposable
 
         LogicStore reopened = new(Options.Create(new BridgeOptions()));
 
-        LogicTagSourceDto source = Assert.Single(reopened.GetTagSources());
+        LogicAreaTagsDto source = Assert.Single(reopened.GetAreaTags());
         Assert.Equal("DRYEND", source.Name);
         Assert.Equal(new[] { "START_PB", "FAULT" }, source.Tags.Select(tag => tag.Name));
         Assert.Single(reopened.GetSnapshot().Blocks);
@@ -1069,13 +1113,13 @@ public sealed class LogicStoreTests : IDisposable
             path,
             JsonSerializer.Serialize(new[]
             {
-                CreateTagSource("DRYEND"),
-                CreateTagSource("  ")
+                CreateAreaTags("DRYEND"),
+                CreateAreaTags("  ")
             }));
 
         LogicStore store = new(Options.Create(new BridgeOptions()));
 
-        Assert.Single(store.GetTagSources());
-        Assert.Equal("DRYEND", store.GetTagSources()[0].Name);
+        Assert.Single(store.GetAreaTags());
+        Assert.Equal("DRYEND", store.GetAreaTags()[0].Name);
     }
 }

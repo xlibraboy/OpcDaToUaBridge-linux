@@ -1766,9 +1766,9 @@ app.MapDelete("/api/interlinks/{id:guid}", (Guid id, InterlinkStore store) =>
 app.MapGet("/api/logic", (LogicStore store) =>
 {
     (IReadOnlyList<LogicBlockDto> blocks, long version) = store.GetSnapshot();
-    // The machines' tags sources travel with the definitions: a block's named tags resolve
-    // through them, so a client that shows a block needs them to label and write its tags.
-    return Results.Json(new { blocks, tagSources = store.GetTagSources(), version });
+    // The areas' tags travel with the definitions: a block's named tags resolve through them,
+    // so a client that shows a block needs them to label and write its tags.
+    return Results.Json(new { blocks, tagSources = store.GetAreaTags(), version });
 });
 app.MapPost("/api/logic/blocks", (LogicBlockSaveRequest request, LogicStore store) =>
 {
@@ -1795,14 +1795,14 @@ app.MapDelete("/api/logic/blocks/{id:guid}", (Guid id, LogicStore store) =>
 
     return Results.Json(new { version });
 });
-app.MapPost("/api/logic/tagsources", (LogicTagSourceSaveRequest request, LogicStore store) =>
+app.MapPost("/api/logic/tagsources", (LogicAreaTagsSaveRequest request, LogicStore store) =>
 {
     if (request.TagSource is null)
     {
-        return Results.BadRequest(new { error = "Tags source is required." });
+        return Results.BadRequest(new { error = "Area tags are required." });
     }
 
-    if (!store.TrySaveTagSource(request.TagSource, out LogicTagSourceDto saved, out long version, out string? error))
+    if (!store.TrySaveAreaTags(request.TagSource, out LogicAreaTagsDto saved, out long version, out string? error))
     {
         return Results.BadRequest(new { error });
     }
@@ -1811,10 +1811,10 @@ app.MapPost("/api/logic/tagsources", (LogicTagSourceSaveRequest request, LogicSt
 });
 app.MapDelete("/api/logic/tagsources/{name}", (string name, LogicStore store) =>
 {
-    if (!store.TryRemoveTagSource(name, out long version, out string? error))
+    if (!store.TryRemoveAreaTags(name, out long version, out string? error))
     {
         // In use: a 409 names how many blocks would lose their tags; missing is a 404.
-        return string.Equals(error, "Tags source not found.", StringComparison.Ordinal)
+        return string.Equals(error, "Area tags not found.", StringComparison.Ordinal)
             ? Results.NotFound(new { error })
             : Results.Conflict(new { error });
     }

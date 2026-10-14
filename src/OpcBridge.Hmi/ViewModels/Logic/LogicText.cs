@@ -380,26 +380,42 @@ public static class LogicText
         return seconds.ToString("0.##", CultureInfo.InvariantCulture) + " s";
     }
 
-    // ---- Tags source (the machine's named tags) ----
+    // ---- Area tags (the area's named tags) ----
 
     /// <summary>An entry that has been created but has no bridge tag yet.</summary>
     public const string TagNotAssigned = "(not assigned)";
 
-    /// <summary>What the Tags tab's name field means, and what saving it will do.</summary>
-    public static string TagSourceHint(bool blank, bool knownSource, string name) =>
+    /// <summary>What the Tags tab's area field means, and what saving it will do.</summary>
+    public static string AreaTagsHint(bool blank, bool knownArea, string name) =>
         blank
-            ? "Name the machine (e.g. DRYEND) — every block of that machine shares these tags."
-            : knownSource
-                ? $"Every {name} block shares these tags — assigning one here updates all of them."
-                : $"New tags source — saving creates it, and every block named {name} reads it.";
+            ? "Name the area (e.g. DRY END) — every block of that area shares these tags."
+            : knownArea
+                ? $"Every {name} block shares these tags — a tag picked on a row joins them here, and assigning one updates all of them."
+                : $"New area tags — a tag picked on a row joins them; saving creates the list for every {name} block.";
 
-    /// <summary>The save refusal when the machine has no name yet.</summary>
-    public const string TagSourceNameRequired =
-        "Name the tags source (e.g. DRYEND) first — a shared tags source needs its machine's name.";
+    /// <summary>The message when an area is typed and the block's direct tags join it (stored by Save).</summary>
+    public static string AreaTagsMoved(int count, string name) =>
+        $"Moved {(count == 1 ? "1 tag" : $"{count} tags")} into \"{name}\" — Save to store them.";
+
+    /// <summary>The save's note: the direct tags it carried joined the area and are shared by it.</summary>
+    public static string AreaTagsShared(int count, string name) =>
+        $"{(count == 1 ? "1 tag" : $"{count} tags")} now shared by \"{name}\".";
+
+    /// <summary>The save refusal when the block has no area yet.</summary>
+    public const string AreaNameRequired =
+        "Name the area (e.g. DRY END) first — the area's tags are shared by every block of the area.";
 
     /// <summary>The tab's empty state: nothing referenced, nothing created.</summary>
-    public const string TagSourceEmpty =
-        "No tags yet — add one for each signal this machine's blocks read, then assign the bridge tag.";
+    public const string AreaTagsEmpty =
+        "No tags yet — pick a tag on a row and it joins this area's tags, or add one here first and assign the bridge tag.";
+
+    /// <summary>
+    /// The scope line while the block has no area of its own: its tags resolve through the legacy
+    /// fallback (the name it stores, else its interlock group), and typing an area moves them.
+    /// </summary>
+    public static string AreaTagsFallbackHint(string name) => name.Length == 0
+        ? "No area set — type one (e.g. DRY END) so this block's named tags resolve."
+        : $"No area set — this block reads the \"{name}\" tags (its stored name or interlock group). Type an area to scope the tags by area.";
 
     /// <summary>
     /// The Tags tab's live chip: the tag's current value (1 / 0 for a bit, the number otherwise),

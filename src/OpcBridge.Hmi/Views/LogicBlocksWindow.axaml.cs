@@ -61,7 +61,14 @@ public partial class LogicBlocksWindow : Window
         }
     }
 
-    private void OnNewBlockClick(object? sender, RoutedEventArgs e) => Close();
+    private async void OnNewBlockClick(object? sender, RoutedEventArgs e)
+    {
+        // The New-block dialog (name, group and the AREA first) closes this window on success.
+        if (DataContext is LogicPanelViewModel panel && await panel.StartNewBlockAsync(this))
+        {
+            Close();
+        }
+    }
 
     private void OnCloseClick(object? sender, RoutedEventArgs e) => Close();
 }
