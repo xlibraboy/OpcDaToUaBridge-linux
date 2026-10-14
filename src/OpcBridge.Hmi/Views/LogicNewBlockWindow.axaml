@@ -1,0 +1,39 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="OpcBridge.Hmi.Views.LogicNewBlockWindow"
+        Title="New interlock block"
+        FontSize="11"
+        Width="460"
+        SizeToContent="Height"
+        MinWidth="380"
+        WindowStartupLocation="CenterOwner">
+  <DockPanel Margin="14">
+    <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="8" Margin="0,14,0,0" HorizontalAlignment="Right">
+      <Button Content="Cancel" Click="OnCancelClick" IsCancel="True" MinWidth="96" />
+      <Button x:Name="CreateButton" Classes="primary" Content="Create" Click="OnCreateClick" IsDefault="True" MinWidth="96" />
+    </StackPanel>
+    <StackPanel Spacing="10">
+      <StackPanel Classes="field">
+        <TextBlock Classes="fieldLabel" Text="NAME" />
+        <TextBox x:Name="NameBox" Watermark="Block name (e.g. Line 01 Start)"
+                 AutomationProperties.Name="Block name" />
+      </StackPanel>
+      <StackPanel Classes="field">
+        <TextBlock Classes="fieldLabel" Text="INTERLOCK GROUP" />
+        <AutoCompleteBox x:Name="GroupBox" FilterMode="Contains"
+                         Watermark="Optional (e.g. Primary Arm)"
+                         AutomationProperties.Name="Interlock group" />
+      </StackPanel>
+      <StackPanel Classes="field">
+        <TextBlock Classes="fieldLabel" Text="AREA" />
+        <AutoCompleteBox x:Name="AreaBox" FilterMode="Contains"
+                         Watermark="Plant area (e.g. DRY END)"
+                         AutomationProperties.Name="Area" />
+      </StackPanel>
+      <TextBlock Classes="hint" TextWrapping="Wrap"
+                 Text="The AREA is the tag-sharing scope: every block of the area reads one area-tags list, so a tag is assigned once and shared by all of them." />
+      <TextBlock Classes="hint warn" TextWrapping="Wrap"
+                 Text="Name the block and its area to create it." />
+    </StackPanel>
+  </DockPanel>
+</Window>

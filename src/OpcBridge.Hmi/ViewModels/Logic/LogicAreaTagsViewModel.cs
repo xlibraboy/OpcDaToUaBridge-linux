@@ -30,9 +30,6 @@ public sealed partial class LogicAreaTagsViewModel : ObservableObject
     /// <summary>Every area the bridge or the loaded blocks name, for the area field's suggestions.</summary>
     public ObservableCollection<string> AreaNames { get; } = new();
 
-    /// <summary>Set by the panel: converts this block's direct tags into entries of this area's tags.</summary>
-    public Func<Task>? MoveBlockTagsRequested { get; set; }
-
     /// <summary>Set by the panel: deletes this area's tags from the bridge (refused while blocks use them).</summary>
     public Func<Task>? DeleteSourceRequested { get; set; }
 
@@ -185,7 +182,7 @@ public sealed partial class LogicAreaTagsViewModel : ObservableObject
         return entry;
     }
 
-    /// <summary>Creates an entry for a direct tag the block used to read, or reuses the one carrying it.</summary>
+    /// <summary>Creates an entry for a tag a row picked, or reuses the entry already carrying it.</summary>
     public LogicTagEntryViewModel EnsureEntry(string name, string sourceId, string itemId)
     {
         LogicTagEntryViewModel? existing = Entries.FirstOrDefault(entry =>
@@ -194,6 +191,30 @@ public sealed partial class LogicAreaTagsViewModel : ObservableObject
             && string.Equals(entry.ItemId, itemId, StringComparison.OrdinalIgnoreCase));
         if (existing is not null)
         {
+            return existing;
+        }
+
+        LogicTagEntryViewModel created = AddEntry(new LogicTagDto { Name = name, SourceId = sourceId, ItemId = itemId });
+        RecomputeDirty();
+        return created;
+    }
+
+    /// <summary>
+    /// Keeps a row's reference resolvable when the area changed: an entry the adopted list does not
+    /// hold is added back with its binding, and a same-named entry still unassigned picks the
+    /// binding up — so re-scoping never turns a working row into "not assigned". An entry the list
+    /// already carries stays as it is: the area's own spelling and binding are the authority.
+    /// </summary>
+    public LogicTagEntryViewModel EnsureReference(string name, string sourceId, string itemId)
+    {
+        LogicTagEntryViewModel? existing = FindByName(name);
+        if (existing is not null)
+        {
+            if (!existing.IsAssigned && sourceId.Length > 0 && itemId.Length > 0)
+            {
+                existing.Assign(sourceId, itemId);
+            }
+
             return existing;
         }
 
@@ -246,7 +267,6 @@ public sealed partial class LogicAreaTagsViewModel : ObservableObject
             entry.CanEdit = canEdit;
         }
 
-        MoveBlockTagsCommand.NotifyCanExecuteChanged();
         DeleteSourceCommand.NotifyCanExecuteChanged();
         NewTagEntryCommand.NotifyCanExecuteChanged();
     }
@@ -271,10 +291,11 @@ public sealed partial class LogicAreaTagsViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Switching the area shows that area's tags: the entries are re-read from its list (with an
-    /// entry for every name this block references), so typing "DRY END" lands on DRY END's tags.
-    /// A name the bridge does not hold yet keeps the draft — that is the "author a new area's
-    /// tags" case, and Save creates the list with the entries as they stand.
+    /// Switching the area shows that area's tags: the entries are re-read from its list, so typing
+    /// "DRY END" lands on DRY END's tags. The panel re-anchors the rows onto the adopted list right
+    /// after, so a reference the new list does not hold is added back with its binding. A name the
+    /// bridge does not hold yet keeps the draft — that is the "author a new area's tags" case, and
+    /// Save creates the list with the entries as they stand.
     /// </summary>
     private void AdoptNamedArea()
     {
@@ -303,14 +324,6 @@ public sealed partial class LogicAreaTagsViewModel : ObservableObject
             AddEntry(tag);
         }
 
-        foreach (string used in usedNames_)
-        {
-            if (FindByName(used) is null)
-            {
-                AddEntry(new LogicTagDto { Name = used });
-            }
-        }
-
         OnPropertyChanged(nameof(HasEntries));
     }
 
@@ -322,9 +335,6 @@ public sealed partial class LogicAreaTagsViewModel : ObservableObject
 
     [RelayCommand(CanExecute = nameof(CanEditSource))]
     private void NewTagEntry() => NewTag();
-
-    [RelayCommand(CanExecute = nameof(CanEditSource))]
-    private Task MoveBlockTags() => MoveBlockTagsRequested?.Invoke() ?? Task.CompletedTask;
 
     [RelayCommand(CanExecute = nameof(CanEditSource))]
     private Task DeleteSource() => DeleteSourceRequested?.Invoke() ?? Task.CompletedTask;

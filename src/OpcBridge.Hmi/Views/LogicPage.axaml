@@ -453,10 +453,6 @@
                   <Button Content="+ New tag" Command="{Binding AreaTags.NewTagEntryCommand}"
                           IsEnabled="{Binding IsEditingEnabled}"
                           AutomationProperties.Name="Add a named tag" />
-                  <Button Content="Move tags into area" Command="{Binding AreaTags.MoveBlockTagsCommand}"
-                          IsEnabled="{Binding IsEditingEnabled}"
-                          ToolTip.Tip="Move this block's direct tags into its area's tags, one entry each."
-                          AutomationProperties.Name="Move block tags into the area tags" />
                   <Button Classes="danger" Content="Delete area tags" Command="{Binding AreaTags.DeleteSourceCommand}"
                           IsEnabled="{Binding IsEditingEnabled}"
                           AutomationProperties.Name="Delete the area tags" />

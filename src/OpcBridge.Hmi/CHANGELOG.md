@@ -28,12 +28,14 @@ its named tags resolve through the name it stores, else its interlock group (the
 which the tab names while offering to move the block onto an area. An entry can be created
 **empty** and bound later: the row pickers already offer it, the block evaluates **no data for
 START_PB (not assigned)** until a tag is picked, and the tab's **LIVE** column shows the bound
-tag's value so the assignment can be checked in place. Every row — a condition, a network contact,
-a step's completion handshake, an action — gained an **AREA TAG** picker listing the area's
-entries; picking one hides the direct SOURCE/TAG pickers (the `✕` clears it and the row reads a
-direct tag again), and the store keeps the two forms mutually exclusive. **`Move tags into area`**
-converts a block authored with direct tags (one entry per distinct tag, named after its display
-name, rows rewritten), **`Delete area tags`** is refused while blocks still read them (the bridge
+tag's value so the assignment can be checked in place. **New block** now asks for the block's
+**AREA** (and its interlock group) first, so the area is set before anything is authored — and
+every tag picked on a row afterwards **joins the area's tags automatically**: it becomes one named
+entry (named after the tag's display name) that every block of the area picks from its own **AREA
+TAG** list, which hides the direct SOURCE/TAG pickers while selected (the `✕` clears it and the row
+reads a direct tag again; the store keeps the two forms mutually exclusive). A block authored
+before areas existed joins its area the moment it is given one — or on its next save — so nothing
+has to be moved by hand. **`Delete area tags`** is refused while blocks still read them (the bridge
 names how many), and **Save** stores the tags and the block together, whichever changed
 (`✓ Area tags saved.` when only the area's tags moved). The Result tab labels a named contact as
 `START_PB · Line 01 Start Permit`, and the page's **Guide…** documents the whole flow.

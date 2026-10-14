@@ -390,8 +390,16 @@ public static class LogicText
         blank
             ? "Name the area (e.g. DRY END) — every block of that area shares these tags."
             : knownArea
-                ? $"Every {name} block shares these tags — assigning one here updates all of them."
-                : $"New area tags — saving creates them, and every block of {name} reads them.";
+                ? $"Every {name} block shares these tags — a tag picked on a row joins them here, and assigning one updates all of them."
+                : $"New area tags — a tag picked on a row joins them; saving creates the list for every {name} block.";
+
+    /// <summary>The message when an area is typed and the block's direct tags join it (stored by Save).</summary>
+    public static string AreaTagsMoved(int count, string name) =>
+        $"Moved {(count == 1 ? "1 tag" : $"{count} tags")} into \"{name}\" — Save to store them.";
+
+    /// <summary>The save's note: the direct tags it carried joined the area and are shared by it.</summary>
+    public static string AreaTagsShared(int count, string name) =>
+        $"{(count == 1 ? "1 tag" : $"{count} tags")} now shared by \"{name}\".";
 
     /// <summary>The save refusal when the block has no area yet.</summary>
     public const string AreaNameRequired =
@@ -399,7 +407,7 @@ public static class LogicText
 
     /// <summary>The tab's empty state: nothing referenced, nothing created.</summary>
     public const string AreaTagsEmpty =
-        "No tags yet — add one for each signal this area's blocks read, then assign the bridge tag.";
+        "No tags yet — pick a tag on a row and it joins this area's tags, or add one here first and assign the bridge tag.";
 
     /// <summary>
     /// The scope line while the block has no area of its own: its tags resolve through the legacy

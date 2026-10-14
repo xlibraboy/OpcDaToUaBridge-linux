@@ -12,7 +12,8 @@
         x:DataType="logic:LogicPanelViewModel">
   <DockPanel Margin="12">
     <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="8" Margin="0,10,0,0">
-      <Button Classes="primary" Content="New block" Command="{Binding NewBlockCommand}" Click="OnNewBlockClick" />
+      <Button Classes="primary" Content="New block" Click="OnNewBlockClick"
+              IsEnabled="{Binding IsEditingEnabled}" />
       <Button Content="Close" Click="OnCloseClick" IsCancel="True" MinWidth="90" />
       <TextBlock Classes="hint" VerticalAlignment="Center"
                  Text="Pick a block to edit it; ✕ deletes it. The list groups blocks under their area, then their interlock group." />

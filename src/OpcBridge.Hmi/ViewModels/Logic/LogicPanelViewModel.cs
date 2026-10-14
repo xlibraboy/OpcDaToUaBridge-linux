@@ -3,6 +3,7 @@ using System.Collections.Specialized;
 using System.ComponentModel;
 using System.Globalization;
 using System.Text;
+using Avalonia.Controls;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -52,7 +53,6 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         report_ = report;
         KindOptions = LogicOptions.BlockKinds;
         AreaTags.PropertyChanged += OnAreaTagsChanged;
-        AreaTags.MoveBlockTagsRequested = MoveTagsIntoAreaAsync;
         AreaTags.DeleteSourceRequested = DeleteAreaTagsAsync;
         AreaTags.ConfirmRemoveEntry = async name =>
             ConfirmAsync is null
@@ -67,6 +67,13 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
 
     /// <summary>Set by the page: asks the operator to confirm a destructive step. Null = proceed.</summary>
     public Func<string, string, string, Task<bool>>? ConfirmAsync { get; set; }
+
+    /// <summary>
+    /// Set by the page: asks for a new block's name, interlock group and AREA — the area first,
+    /// because it is the scope every tag picked afterwards is shared by. Null (no UI attached)
+    /// starts an empty draft instead.
+    /// </summary>
+    public Func<Window?, LogicNewBlockRequest, Task<LogicNewBlockDraft?>>? NewBlockPrompt { get; set; }
 
     // ---- Bridge selector ----
 
@@ -320,6 +327,18 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
             // tags (clearing it empties the scope). A draft load sets both without the sync.
             AreaTags.Name = value.Trim();
             RefreshAreaFallbackHint();
+
+            // The area is assigned first: a direct tag the block still carries joins that area's
+            // tags right away, so the area's other blocks find it — nothing to move by hand.
+            if (IsEditingEnabled && !AreaTags.IsNameBlank)
+            {
+                int shared = ConvertDirectRowsIntoArea();
+                if (shared > 0)
+                {
+                    AreaTags.RefreshUsed(ReferencedTagNames());
+                    EditorMessage = "✓ " + LogicText.AreaTagsMoved(shared, value.Trim());
+                }
+            }
         }
 
         DirtyChanged();
@@ -443,12 +462,63 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
     // ---- Commands ----
 
     [RelayCommand(CanExecute = nameof(CanEdit))]
-    private void NewBlock()
+    private Task NewBlock() => StartNewBlockAsync();
+
+    /// <summary>
+    /// Starts a new block: the dialog asks for the name, the interlock group and the AREA, so the
+    /// area — the tag-sharing scope — is assigned before anything is authored. False when the
+    /// operator cancelled.
+    /// </summary>
+    public async Task<bool> StartNewBlockAsync(Window? owner = null)
     {
+        LogicNewBlockDraft? draft = null;
+        if (NewBlockPrompt is { } prompt)
+        {
+            draft = await prompt(owner, BuildNewBlockRequest()).ConfigureAwait(true);
+            if (draft is null)
+            {
+                return false;
+            }
+        }
+
+        LogicBlockDto block = LogicEditorCodec.NewDraftBlock(CurrentBlockCount);
+        if (draft is not null)
+        {
+            block.Name = draft.Name.Trim();
+            block.Group = draft.Group.Trim();
+            block.Area = draft.Area.Trim();
+        }
+
         SelectedBlock = null;
         editingNewBlock_ = true;
-        LoadDraft(LogicEditorCodec.NewDraftBlock(CurrentBlockCount), null);
+        LoadDraft(block, null);
         EditorMessage = string.Empty;
+        return true;
+    }
+
+    /// <summary>The dialog's suggestions (the groups and areas in use) and its pre-filled values.</summary>
+    private LogicNewBlockRequest BuildNewBlockRequest()
+    {
+        List<string> groups = new();
+        HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+        foreach (LogicBlockDto block in SelectedBridge is { } bridge
+            ? Cache(bridge.BridgeId).Blocks ?? new List<LogicBlockDto>()
+            : new List<LogicBlockDto>())
+        {
+            string group = block.Group?.Trim() ?? string.Empty;
+            if (group.Length > 0 && seen.Add(group))
+            {
+                groups.Add(group);
+            }
+        }
+
+        string currentGroup = BlockGroup.Trim();
+        if (currentGroup.Length > 0 && seen.Add(currentGroup))
+        {
+            groups.Add(currentGroup);
+        }
+
+        return new LogicNewBlockRequest(groups, AreaTags.AreaNames.ToList(), currentGroup, BlockArea.Trim());
     }
 
     /// <summary>
@@ -500,6 +570,14 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
             return;
         }
 
+        // A block with an area shares its tags: a direct tag it still carries joins the area's
+        // tags as part of this save — the area is the point, not a separate move step.
+        int shared = ConvertDirectRowsIntoArea();
+        if (shared > 0)
+        {
+            AreaTags.RefreshUsed(ReferencedTagNames());
+        }
+
         bool tagsDirty = AreaTags.IsDirty;
         bool blockDirty = ComputeBlockDirty();
         if (tagsDirty && AreaTags.IsNameBlank)
@@ -545,6 +623,11 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         await ReloadDefinitionsAsync(bridge.BridgeId).ConfigureAwait(true);
         await RefreshStateAsync().ConfigureAwait(true);
         EditorMessage = blockDirty ? "✓ Saved." : "✓ Area tags saved.";
+        if (shared > 0)
+        {
+            EditorMessage += " " + LogicText.AreaTagsShared(shared, BlockArea.Trim());
+        }
+
         report_?.Invoke(blockDirty
             ? $"Logic block '{block.Name}' saved"
             : $"Area tags '{AreaTags.Name.Trim()}' saved");
@@ -1418,7 +1501,39 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
             return;
         }
 
+        TrySharePickedTag(sender, e.PropertyName);
         DirtyChanged();
+    }
+
+    /// <summary>
+    /// A tag picked on a row of a block that has an area joins that area's tags the moment it is
+    /// picked: it becomes a named entry (named from the tag's display name) and the row references
+    /// it, so every block of the area can pick it — no separate move step.
+    /// </summary>
+    private void TrySharePickedTag(object? sender, string? propertyName)
+    {
+        if (!IsEditingEnabled || BlockArea.Trim().Length == 0 || AreaTags.IsNameBlank)
+        {
+            return;
+        }
+
+        bool shared = propertyName switch
+        {
+            nameof(LogicConditionRowViewModel.SelectedTag) when sender is LogicConditionRowViewModel condition
+                => ShareConditionRow(condition),
+            nameof(LogicElementRowViewModel.SelectedTag) when sender is LogicElementRowViewModel element
+                => ShareElementRow(element),
+            nameof(LogicActionRowViewModel.SelectedTag) when sender is LogicActionRowViewModel action
+                => ShareActionRow(action),
+            nameof(LogicStepRowViewModel.CompletionTag) when sender is LogicStepRowViewModel step
+                => ShareCompletionRow(step),
+            _ => false
+        };
+
+        if (shared)
+        {
+            AreaTags.RefreshUsed(ReferencedTagNames());
+        }
     }
 
     /// <summary>A Tags-tab edit (the area's name, an entry, the dirty flag) is an editor edit.</summary>
@@ -1438,7 +1553,11 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
 
         if (string.Equals(e.PropertyName, nameof(LogicAreaTagsViewModel.Name), StringComparison.Ordinal))
         {
-            // The name belongs to the block's area, and renaming changes who shares the tags.
+            // The name belongs to the block's area, and renaming changes who shares the tags. A
+            // scope change adopts the new area's list — re-anchor the rows onto it at once, so no
+            // reference is left dangling and no picker is left blank.
+            ReanchorAreaReferences();
+            AreaTags.RefreshUsed(ReferencedTagNames());
             AreaTags.RefreshUsedCount(SelectedBridge is { } bridge
                 ? Cache(bridge.BridgeId).Blocks ?? new List<LogicBlockDto>()
                 : new List<LogicBlockDto>());
@@ -1596,129 +1715,171 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Moves this block's direct tags into its area's tags — the on-demand conversion for blocks
-    /// authored before area tags existed: one entry per distinct tag, named after its display
-    /// name, and the rows rewritten to reference it (the bindings are not saved until Save, and
-    /// the block evaluates the same either way).
+    /// Every direct tag the block still carries joins its area's tags: one entry per distinct tag,
+    /// named after its display name, with the rows rewritten to reference it (the pair lives on the
+    /// entry now). Runs per row when a tag is picked, when the block is given an area, and as part
+    /// of a save — the block evaluates the same before and after.
     /// </summary>
-    private async Task MoveTagsIntoAreaAsync()
+    private int ConvertDirectRowsIntoArea()
     {
-        if (!IsEditingEnabled || SelectedBridge is not { } bridge)
+        if (BlockArea.Trim().Length == 0 || AreaTags.IsNameBlank)
         {
-            EditorMessage = "Editing is disabled while the bridge is unreachable.";
-            return;
+            return 0;
         }
 
-        string name = AreaTags.Name.Trim();
-        if (AreaTags.IsNameBlank)
-        {
-            EditorMessage = "✗ " + LogicText.AreaNameRequired;
-            return;
-        }
-
-        if (ConfirmAsync is { } confirm
-            && !await confirm(
-                "Move tags into the area",
-                $"Move this block's tags into the \"{name}\" area tags? Every block of the area will share them.",
-                "Move").ConfigureAwait(true))
-        {
-            return;
-        }
-
-        int moved = MoveTagsIntoArea();
-        RefreshAreaTags();
-        DirtyChanged();
-        EditorMessage = moved == 0
-            ? "No direct tags to move — this block already reads its area's tags."
-            : $"Moved {moved} tag{(moved == 1 ? string.Empty : "s")} into \"{name}\" — Save to store them.";
-        report_?.Invoke($"Logic block '{BlockName.Trim()}' tags moved into '{name}' ({moved})");
-    }
-
-    private int MoveTagsIntoArea()
-    {
-        int moved = 0;
+        int shared = 0;
         foreach (LogicConditionRowViewModel row in Conditions)
         {
-            moved += MoveCondition(row);
+            shared += ShareConditionRow(row) ? 1 : 0;
         }
 
         foreach (LogicElementRowViewModel row in Elements)
         {
-            moved += MoveElement(row);
+            shared += ShareElementRow(row) ? 1 : 0;
         }
 
         foreach (LogicStepRowViewModel step in Steps)
         {
-            moved += MoveCompletion(step);
+            shared += ShareCompletionRow(step) ? 1 : 0;
             foreach (LogicConditionRowViewModel row in step.Conditions)
             {
-                moved += MoveCondition(row);
+                shared += ShareConditionRow(row) ? 1 : 0;
             }
         }
 
         foreach (LogicActionRowViewModel row in Actions)
         {
-            moved += MoveAction(row);
+            shared += ShareActionRow(row) ? 1 : 0;
         }
 
-        return moved;
+        return shared;
+    }
 
-        int MoveCondition(LogicConditionRowViewModel row)
+    private bool ShareConditionRow(LogicConditionRowViewModel row)
+    {
+        if (row.HasBlockTag || row.ItemId.Length == 0)
         {
-            if (row.HasBlockTag || row.ItemId.Length == 0)
-            {
-                return 0;
-            }
-
-            row.SelectedBlockTag = AreaTags.EnsureEntry(
-                UniqueTagName(TagNameFor(row.SourceId, row.ItemId)),
-                row.SourceId,
-                row.ItemId);
-            return 1;
+            return false;
         }
 
-        int MoveElement(LogicElementRowViewModel row)
-        {
-            if (!row.IsTagContact || row.ItemId.Length == 0)
-            {
-                return 0;
-            }
+        row.SelectedBlockTag = AreaTags.EnsureEntry(
+            UniqueTagName(TagNameFor(row.SourceId, row.ItemId)),
+            row.SourceId,
+            row.ItemId);
+        return true;
+    }
 
-            row.SelectedBlockTag = AreaTags.EnsureEntry(
-                UniqueTagName(TagNameFor(row.SourceId, row.ItemId)),
-                row.SourceId,
-                row.ItemId);
-            return 1;
+    private bool ShareElementRow(LogicElementRowViewModel row)
+    {
+        if (!row.IsTagContact || row.ItemId.Length == 0)
+        {
+            return false;
         }
 
-        int MoveAction(LogicActionRowViewModel row)
-        {
-            if (row.HasBlockTag || row.ItemId.Length == 0)
-            {
-                return 0;
-            }
+        row.SelectedBlockTag = AreaTags.EnsureEntry(
+            UniqueTagName(TagNameFor(row.SourceId, row.ItemId)),
+            row.SourceId,
+            row.ItemId);
+        return true;
+    }
 
-            row.SelectedBlockTag = AreaTags.EnsureEntry(
-                UniqueTagName(TagNameFor(row.SourceId, row.ItemId)),
-                row.SourceId,
-                row.ItemId);
-            return 1;
+    private bool ShareActionRow(LogicActionRowViewModel row)
+    {
+        if (row.HasBlockTag || row.ItemId.Length == 0)
+        {
+            return false;
         }
 
-        int MoveCompletion(LogicStepRowViewModel step)
+        row.SelectedBlockTag = AreaTags.EnsureEntry(
+            UniqueTagName(TagNameFor(row.SourceId, row.ItemId)),
+            row.SourceId,
+            row.ItemId);
+        return true;
+    }
+
+    private bool ShareCompletionRow(LogicStepRowViewModel step)
+    {
+        if (step.HasCompletionTag
+            || string.IsNullOrWhiteSpace(step.CompletionSourceId)
+            || string.IsNullOrWhiteSpace(step.CompletionItemId))
         {
-            if (step.HasCompletionTag
-                || string.IsNullOrWhiteSpace(step.CompletionSourceId)
-                || string.IsNullOrWhiteSpace(step.CompletionItemId))
+            return false;
+        }
+
+        step.SelectedCompletionTag = AreaTags.EnsureEntry(
+            UniqueTagName(TagNameFor(step.CompletionSourceId!, step.CompletionItemId!)),
+            step.CompletionSourceId!,
+            step.CompletionItemId!);
+        return true;
+    }
+
+    /// <summary>
+    /// Re-anchors every row onto the adopted area's tags after a scope change: the row's reference
+    /// is ensured in the list — with its binding when the entry is new or still unassigned — and
+    /// the row points at the list's own entry, so its picker shows it and a save keeps resolving.
+    /// </summary>
+    private void ReanchorAreaReferences()
+    {
+        foreach (LogicConditionRowViewModel row in Conditions)
+        {
+            ReanchorCondition(row);
+        }
+
+        foreach (LogicElementRowViewModel row in Elements)
+        {
+            if (row.SelectedBlockTag is { } reference)
             {
-                return 0;
+                LogicTagEntryViewModel entry = AreaTags.EnsureReference(
+                    reference.Name.Trim(), reference.SourceId, reference.ItemId);
+                if (!ReferenceEquals(entry, reference))
+                {
+                    row.SelectedBlockTag = entry;
+                }
+            }
+        }
+
+        foreach (LogicStepRowViewModel step in Steps)
+        {
+            if (step.SelectedCompletionTag is { } handshake)
+            {
+                LogicTagEntryViewModel entry = AreaTags.EnsureReference(
+                    handshake.Name.Trim(), handshake.SourceId, handshake.ItemId);
+                if (!ReferenceEquals(entry, handshake))
+                {
+                    step.SelectedCompletionTag = entry;
+                }
             }
 
-            step.SelectedCompletionTag = AreaTags.EnsureEntry(
-                UniqueTagName(TagNameFor(step.CompletionSourceId!, step.CompletionItemId!)),
-                step.CompletionSourceId!,
-                step.CompletionItemId!);
-            return 1;
+            foreach (LogicConditionRowViewModel row in step.Conditions)
+            {
+                ReanchorCondition(row);
+            }
+        }
+
+        foreach (LogicActionRowViewModel row in Actions)
+        {
+            if (row.SelectedBlockTag is { } reference)
+            {
+                LogicTagEntryViewModel entry = AreaTags.EnsureReference(
+                    reference.Name.Trim(), reference.SourceId, reference.ItemId);
+                if (!ReferenceEquals(entry, reference))
+                {
+                    row.SelectedBlockTag = entry;
+                }
+            }
+        }
+
+        void ReanchorCondition(LogicConditionRowViewModel row)
+        {
+            if (row.SelectedBlockTag is { } reference)
+            {
+                LogicTagEntryViewModel entry = AreaTags.EnsureReference(
+                    reference.Name.Trim(), reference.SourceId, reference.ItemId);
+                if (!ReferenceEquals(entry, reference))
+                {
+                    row.SelectedBlockTag = entry;
+                }
+            }
         }
     }
 

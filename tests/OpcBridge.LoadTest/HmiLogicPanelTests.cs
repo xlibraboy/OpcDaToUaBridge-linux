@@ -655,29 +655,31 @@ public sealed class HmiLogicPanelTests
     }
 
     [Fact]
-    public async Task MovingTagsIntoTheSourceRewritesTheRowsAndKeepsTheVerdict()
+    public async Task PickingATagAddsItToTheAreasTagsAndSharesThem()
     {
         await using TestAppHandle handle = await StartAsync(PermitTag());
-        await SaveBlockAsync(handle, Block("Dry end start", "DRYEND"));
-
         MainViewModel vm = NewViewModel(out string configPath);
         try
         {
             await ConnectAsync(vm, handle);
-            vm.Logic.IsTagsTab = true;
-            vm.Logic.SelectBlockCommand.Execute(Row(vm, "Dry end start"));
-            Assert.Empty(vm.Logic.AreaTags.Entries);
 
-            await vm.Logic.AreaTags.MoveBlockTagsCommand.ExecuteAsync(null);
+            // The area is assigned first (the New-block dialog's job); a pick then joins it.
+            vm.Logic.NewBlockPrompt = (_, _) =>
+                Task.FromResult<LogicNewBlockDraft?>(new LogicNewBlockDraft("Dry end start", "Primary Arm", "DRYEND"));
+            Assert.True(await vm.Logic.StartNewBlockAsync());
+            Assert.Equal("DRYEND", vm.Logic.AreaTags.Name);
 
+            LogicConditionRowViewModel row = Assert.Single(vm.Logic.Conditions);
+            row.Text = "Dry end start permit must be given";
+            row.SelectedSource = row.Sources.First(source => source.SourceId == "sim");
+            row.SelectedTag = row.Items.First();
+
+            // The pick is shared the moment it is made: one entry, named after the tag, and the
+            // row references it — no separate move step.
             LogicTagEntryViewModel entry = Assert.Single(vm.Logic.AreaTags.Entries);
             Assert.Equal("LINE_01_START_PERMIT", entry.Name);
             Assert.Equal("ns=2;s=Status/Line01.Permit", entry.ItemId);
             Assert.True(entry.UsedByThisBlock);
-            Assert.True(vm.Logic.IsDirty);
-            Assert.Contains("Moved 1 tag", vm.Logic.EditorMessage);
-
-            LogicConditionRowViewModel row = Assert.Single(vm.Logic.Conditions);
             Assert.Equal("LINE_01_START_PERMIT", row.Tag);
             Assert.False(row.ShowsDirectTag);
 
@@ -690,7 +692,18 @@ public sealed class HmiLogicPanelTests
             Assert.Equal("LINE_01_START_PERMIT", condition.GetProperty("tag").GetString());
             Assert.Equal(string.Empty, condition.GetProperty("itemId").GetString());
 
-            // The verdict is unchanged: the same boundary tag, now read through the machine's source.
+            // A second block of the same area finds the entry and can pick it — sharing, same
+            // area only.
+            vm.Logic.NewBlockPrompt = (_, _) =>
+                Task.FromResult<LogicNewBlockDraft?>(new LogicNewBlockDraft("Dry end stop", "Primary Arm", "DRYEND"));
+            Assert.True(await vm.Logic.StartNewBlockAsync());
+
+            LogicTagEntryViewModel shared = Assert.Single(vm.Logic.AreaTags.Entries);
+            Assert.Equal("LINE_01_START_PERMIT", shared.Name);
+            Assert.True(shared.IsAssigned);
+            Assert.Equal(1, vm.Logic.AreaTags.UsedByCount);
+
+            // The verdict is unchanged: the same boundary tag, now read through the area's tags.
             using JsonDocument state = await handle.GetJsonAsync("/api/logic/state");
             JsonElement blockState = state.RootElement.GetProperty("blocks")[0];
             Assert.Equal("unknown", blockState.GetProperty("state").GetString());
@@ -701,5 +714,184 @@ public sealed class HmiLogicPanelTests
             await vm.DisposeAsync();
             DeleteConfig(configPath);
         }
+    }
+
+    [Fact]
+    public async Task GivingALegacyBlockAnAreaConvertsItsDirectTags()
+    {
+        await using TestAppHandle handle = await StartAsync(PermitTag());
+        await SaveBlockAsync(handle, Block("Dry end start", ""));
+
+        MainViewModel vm = NewViewModel(out string configPath);
+        try
+        {
+            await ConnectAsync(vm, handle);
+            vm.Logic.SelectBlockCommand.Execute(Row(vm, "Dry end start"));
+            Assert.Empty(vm.Logic.AreaTags.Entries);
+
+            // Assigning the area converts: the block's direct tags become the area's entries.
+            vm.Logic.BlockArea = "DRYEND";
+
+            LogicTagEntryViewModel entry = Assert.Single(vm.Logic.AreaTags.Entries);
+            Assert.Equal("LINE_01_START_PERMIT", entry.Name);
+            Assert.True(entry.UsedByThisBlock);
+            Assert.Contains("Moved 1 tag", vm.Logic.EditorMessage);
+            LogicConditionRowViewModel row = Assert.Single(vm.Logic.Conditions);
+            Assert.Equal("LINE_01_START_PERMIT", row.Tag);
+            Assert.False(row.ShowsDirectTag);
+
+            await vm.Logic.SaveCommand.ExecuteAsync(null);
+
+            using JsonDocument document = await handle.GetJsonAsync("/api/logic");
+            Assert.Equal("DRYEND", document.RootElement.GetProperty("tagSources")[0].GetProperty("name").GetString());
+            JsonElement stored = document.RootElement.GetProperty("blocks")[0];
+            Assert.Equal("DRYEND", stored.GetProperty("tagSource").GetString());
+            Assert.Equal("LINE_01_START_PERMIT", stored.GetProperty("conditions")[0].GetProperty("tag").GetString());
+            Assert.Equal(string.Empty, stored.GetProperty("conditions")[0].GetProperty("itemId").GetString());
+        }
+        finally
+        {
+            await vm.DisposeAsync();
+            DeleteConfig(configPath);
+        }
+    }
+
+    [Fact]
+    public async Task SavingABlockWithAnAreaSharesADirectTagItStillCarried()
+    {
+        await using TestAppHandle handle = await StartAsync(PermitTag());
+        LogicBlockDto leftover = Block("Dry end start", "");
+        leftover.Area = "DRYEND"; // an area with a direct pair left over from before
+        await SaveBlockAsync(handle, leftover);
+
+        MainViewModel vm = NewViewModel(out string configPath);
+        try
+        {
+            await ConnectAsync(vm, handle);
+            vm.Logic.SelectBlockCommand.Execute(Row(vm, "Dry end start"));
+            LogicConditionRowViewModel row = Assert.Single(vm.Logic.Conditions);
+            Assert.False(row.HasBlockTag); // still a direct tag while it is only read
+            Assert.Empty(vm.Logic.AreaTags.Entries);
+
+            // Any save shares what the block still carries directly.
+            row.Text = "Dry end start permit must be given";
+            await vm.Logic.SaveCommand.ExecuteAsync(null);
+
+            Assert.StartsWith("✓ Saved.", vm.Logic.EditorMessage);
+            Assert.Contains("now shared by \"DRYEND\"", vm.Logic.EditorMessage);
+
+            using JsonDocument document = await handle.GetJsonAsync("/api/logic");
+            Assert.Equal(
+                "LINE_01_START_PERMIT",
+                document.RootElement.GetProperty("tagSources")[0].GetProperty("tags")[0].GetProperty("name").GetString());
+            Assert.Equal(
+                "LINE_01_START_PERMIT",
+                document.RootElement.GetProperty("blocks")[0].GetProperty("conditions")[0].GetProperty("tag").GetString());
+        }
+        finally
+        {
+            await vm.DisposeAsync();
+            DeleteConfig(configPath);
+        }
+    }
+
+    [Fact]
+    public async Task NewBlockAsksForTheAreaAndOpensTheDraftWithIt()
+    {
+        await using TestAppHandle handle = await StartAsync(PermitTag());
+        MainViewModel vm = NewViewModel(out string configPath);
+        try
+        {
+            await ConnectAsync(vm, handle);
+
+            LogicNewBlockRequest? asked = null;
+            vm.Logic.NewBlockPrompt = (_, request) =>
+            {
+                asked = request;
+                return Task.FromResult<LogicNewBlockDraft?>(
+                    new LogicNewBlockDraft("Dry end start", "Primary Arm", "DRYEND"));
+            };
+
+            Assert.True(await vm.Logic.StartNewBlockAsync());
+            Assert.NotNull(asked);
+            Assert.Equal("Dry end start", vm.Logic.BlockName);
+            Assert.Equal("Primary Arm", vm.Logic.BlockGroup);
+            Assert.Equal("DRYEND", vm.Logic.BlockArea);
+            Assert.Equal("DRYEND", vm.Logic.AreaTags.Name); // the area is set before any tag
+
+            // A cancelled dialog starts nothing and keeps the draft.
+            vm.Logic.NewBlockPrompt = (_, _) => Task.FromResult<LogicNewBlockDraft?>(null);
+            Assert.False(await vm.Logic.StartNewBlockAsync());
+            Assert.Equal("Dry end start", vm.Logic.BlockName);
+
+            // The next dialog is offered what the current draft carries, so siblings are quick.
+            vm.Logic.NewBlockPrompt = (_, request) =>
+            {
+                asked = request;
+                return Task.FromResult<LogicNewBlockDraft?>(null);
+            };
+            Assert.False(await vm.Logic.StartNewBlockAsync());
+            Assert.Equal("Primary Arm", asked!.Group);
+            Assert.Equal("DRYEND", asked.Area);
+        }
+        finally
+        {
+            await vm.DisposeAsync();
+            DeleteConfig(configPath);
+        }
+    }
+
+    [Fact]
+    public async Task SwitchingTheAreaKeepsEveryRowsReferenceResolvable()
+    {
+        await using TestAppHandle handle = await StartAsync(PermitTag());
+        LogicBlockDto block = Block("Dry end start", "");
+        block.Area = "DRYEND";
+        block.Conditions[0].Tag = "START_PB";
+        block.Conditions[0].SourceId = string.Empty;
+        block.Conditions[0].ItemId = string.Empty;
+        await SaveBlockAsync(handle, block);
+        await SaveAreaTagsAsync(handle, "DRYEND", new LogicTagDto
+        {
+            Name = "START_PB",
+            SourceId = "sim",
+            ItemId = "ns=2;s=Status/Line01.Permit"
+        });
+        await SaveAreaTagsAsync(handle, "WETEND", new LogicTagDto { Name = "OTHER" });
+
+        MainViewModel vm = NewViewModel(out string configPath);
+        try
+        {
+            await ConnectAsync(vm, handle);
+            vm.Logic.SelectBlockCommand.Execute(Row(vm, "Dry end start"));
+            LogicConditionRowViewModel row = Assert.Single(vm.Logic.Conditions);
+            Assert.Equal("START_PB", row.Tag);
+            Assert.True(row.SelectedBlockTag!.IsAssigned);
+
+            // Switching the area adopts the new list — the row's reference is added back with its
+            // binding instead of dangling (and its picker stays on the entry).
+            vm.Logic.BlockArea = "WETEND";
+
+            Assert.Equal("WETEND", vm.Logic.AreaTags.Name);
+            Assert.Contains(vm.Logic.AreaTags.Entries, entry => entry.Name == "OTHER");
+            LogicTagEntryViewModel kept = Assert.Single(vm.Logic.AreaTags.Entries, entry => entry.Name == "START_PB");
+            Assert.True(kept.IsAssigned);
+            Assert.Equal("ns=2;s=Status/Line01.Permit", kept.ItemId);
+            Assert.Equal("START_PB", row.Tag);
+            Assert.Same(kept, row.SelectedBlockTag);
+        }
+        finally
+        {
+            await vm.DisposeAsync();
+            DeleteConfig(configPath);
+        }
+    }
+
+    private static async Task SaveAreaTagsAsync(TestAppHandle handle, string name, LogicTagDto tag)
+    {
+        using HttpResponseMessage response = await handle.Client.PostAsJsonAsync(
+            "/api/logic/tagsources",
+            new { tagSource = new LogicAreaTagsDto { Name = name, Tags = { tag } } });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 }

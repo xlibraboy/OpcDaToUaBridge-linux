@@ -34,7 +34,7 @@ public sealed class HmiLogicGuideTests
         Assert.Contains("should 1 / actual 0", guide);
         Assert.Contains("AREA TAG", guide);
         Assert.Contains("not assigned", guide);
-        Assert.Contains("Move tags into area", guide);
+        Assert.Contains("Tags join the area as they are picked", guide);
         Assert.Contains("TON", guide);
         Assert.Contains("TOF", guide);
         Assert.Contains("TP", guide);

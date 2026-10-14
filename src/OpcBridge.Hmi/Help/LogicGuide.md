@@ -111,8 +111,9 @@ A block carries two headings:
 
 - **AREA** (e.g. `DRY END`) — the plant's main section, and the scope its tags are shared by: every
   block of the area reads one **area tags** list (the Tags tab), so a signal is assigned once per
-  area and re-used by all of its interlocks, whatever their group. New groups and interlocks filed
-  under the area pick from the tags already there.
+  area and re-used by all of its interlocks, whatever their group. **`New block` asks for the area
+  first**, so the block is authored inside its area from the start and every tag picked on its rows
+  joins the area's tags automatically.
 - **INTERLOCK GROUP** (e.g. `Primary Arm`) — a display heading only: the front list, the Blocks
   window and the phone collect blocks that share it under one heading, so a machine's up/down
   interlocks read together. Name the children after it (`Primary Arm Up`, `Primary Arm Down`) and
@@ -151,11 +152,14 @@ assigned **once per area** instead of once per condition:
 - In the editor, every row — a condition, a network contact, a step's completion handshake, an
   action — has an **AREA TAG** picker listing the area's entries; picking one hides the direct
   `SOURCE` / `TAG` pickers (the pair lives on the entry now). `✕` clears it and the row reads a
-  direct bridge tag again. Direct tags keep working exactly as before — nothing is converted behind
-  your back.
-- **`Move tags into area`** converts a block authored with direct tags: one entry per distinct tag,
-  named after the tag's display name, with the rows rewritten to reference it. The block evaluates
-  the same before and after; the mode is stored by **Save**.
+  direct bridge tag again.
+- **Tags join the area as they are picked.** Choosing a bridge tag on a row of a block that has an
+  area adds it to the area's tags — one entry, named after the tag's display name
+  (`LINE_01_START_PERMIT`, …) — and the row references it, so every block of the area finds it in
+  its own AREA TAG list. Rename the entry on the tab if the automatic name reads badly. A block
+  authored before areas existed joins its area the moment it is given one (or on its next save):
+  its direct tags become the area's entries and the block evaluates the same before and after.
+  Rows of a block *without* an area keep reading their direct tags — the legacy fallback.
 - **Save** stores the area's tags and the block together (whichever changed, and the tab's
   `used by` line tells you who shares them). **`Delete area tags`** removes the area's list; the
   bridge refuses while any block still reads it, naming how many.
