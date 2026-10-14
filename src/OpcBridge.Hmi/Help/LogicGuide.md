@@ -46,6 +46,17 @@ contact whose input is right but whose timer is still running shows the timer's 
 
 ---
 
+# Arranging rows
+
+Every row in the editor — a condition, a network element, a step, an action — carries its own order
+buttons beside `✕`: `+↑` and `+↓` insert a fresh row directly above or below it, so a list is built
+where you are reading instead of only appended at its end, and `↑` / `↓` move the row one place.
+In the network a row moves **with the rows nested under it** — a gate keeps its inputs — and insert
+places the new row beside it at the same nesting level (use `→` afterwards to make it an input).
+The buttons grey out at the ends of a level; nothing moves past its siblings.
+
+---
+
 # Network (IEC 61131-3)
 
 A block can be authored as a **network** instead of the flat list — `Convert to IEC network`

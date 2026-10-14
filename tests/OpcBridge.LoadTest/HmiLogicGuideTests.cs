@@ -21,6 +21,7 @@ public sealed class HmiLogicGuideTests
         Assert.Contains("# Logic (Interlocks, Permissives & Sequences)", guide);
         Assert.Contains("# Block kinds", guide);
         Assert.Contains("# Conditions (the simple form)", guide);
+        Assert.Contains("# Arranging rows", guide);
         Assert.Contains("# Network (IEC 61131-3)", guide);
         Assert.Contains("# Area and interlock group", guide);
         Assert.Contains("# Tags", guide);
@@ -30,6 +31,7 @@ public sealed class HmiLogicGuideTests
         Assert.Contains("# Result tab", guide);
 
         Assert.Contains("OR group", guide);
+        Assert.Contains("+↑", guide);
         Assert.Contains("warn only", guide);
         Assert.Contains("should 1 / actual 0", guide);
         Assert.Contains("AREA TAG", guide);

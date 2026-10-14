@@ -88,7 +88,7 @@ public sealed class HmiLogicEditorTests
             string.Join(", ", stored.Tags),
             LogicEditorCodec.LoadConditions(stored.Conditions, catalog, null),
             LogicEditorCodec.LoadElements(stored.Elements, catalog, null),
-            LogicEditorCodec.LoadSteps(stored.Steps, catalog, null, null, null),
+            LogicEditorCodec.LoadSteps(stored.Steps, catalog),
             LogicEditorCodec.LoadActions(stored.Actions, catalog, null));
     }
 
@@ -270,10 +270,7 @@ public sealed class HmiLogicEditorTests
             new List<LogicElementRowViewModel>(),
             LogicEditorCodec.LoadSteps(
                 new[] { new LogicStepDto { Id = Guid.NewGuid(), Name = "Step 1" } },
-                catalog,
-                null,
-                null,
-                null),
+                catalog),
             new List<LogicActionRowViewModel>());
 
         Assert.Empty(built.Conditions);
@@ -383,24 +380,24 @@ public sealed class HmiLogicEditorTests
     {
         LogicTagCatalog catalog = Catalog();
         var steps = new System.Collections.ObjectModel.ObservableCollection<LogicStepRowViewModel>();
+        var list = new LogicRowList<LogicStepRowViewModel>(steps);
         var step = new LogicStepRowViewModel(
             new LogicStepDto { Id = Guid.NewGuid(), Name = "Step 1" },
             catalog,
-            steps);
+            list);
         steps.Add(step);
-        Assert.True(step.MoveStepUpCommand.CanExecute(null) == false);
-        Assert.True(step.MoveStepDownCommand.CanExecute(null) == false);
+        Assert.True(step.MoveUpCommand.CanExecute(null) == false);
+        Assert.True(step.MoveDownCommand.CanExecute(null) == false);
 
         // A second step re-arms the first one's "down" and the second one's "up".
         var second = new LogicStepRowViewModel(
             new LogicStepDto { Id = Guid.NewGuid(), Name = "Step 2" },
             catalog,
-            steps);
+            list);
         steps.Add(second);
-        step.NotifyMoveCanExecuteChanged();
-        second.NotifyMoveCanExecuteChanged();
-        Assert.True(step.MoveStepDownCommand.CanExecute(null));
-        Assert.True(second.MoveStepUpCommand.CanExecute(null));
+        list.NotifyChanged();
+        Assert.True(step.MoveDownCommand.CanExecute(null));
+        Assert.True(second.MoveUpCommand.CanExecute(null));
 
         Assert.Null(step.CompletionSourceId);
         Assert.Null(step.CompletionItemId);
@@ -521,22 +518,154 @@ public sealed class HmiLogicEditorTests
     public void StepRow_AddConditionAndMove_GoWithCanEdit()
     {
         var steps = new System.Collections.ObjectModel.ObservableCollection<LogicStepRowViewModel>();
+        var list = new LogicRowList<LogicStepRowViewModel>(steps);
         var step = new LogicStepRowViewModel(
             new LogicStepDto { Id = Guid.NewGuid(), Name = "Step 1" },
             Catalog(),
-            steps);
+            list);
         steps.Add(step);
         steps.Add(new LogicStepRowViewModel(
             new LogicStepDto { Id = Guid.NewGuid(), Name = "Step 2" },
             Catalog(),
-            steps));
+            list));
+        list.NotifyChanged();
 
         Assert.True(step.AddConditionCommand.CanExecute(null));
-        Assert.True(step.MoveStepDownCommand.CanExecute(null));
+        Assert.True(step.MoveDownCommand.CanExecute(null));
         step.CanEdit = false;
         Assert.False(step.AddConditionCommand.CanExecute(null));
-        Assert.False(step.MoveStepDownCommand.CanExecute(null));
+        Assert.False(step.MoveDownCommand.CanExecute(null));
         Assert.False(step.RemoveStepCommand.CanExecute(null));
+    }
+
+    [Fact]
+    public void ElementRows_MoveCarriesTheNestedRows_AndInsertStaysAtTheLevel()
+    {
+        LogicTagCatalog catalog = Catalog();
+        var elements = new System.Collections.ObjectModel.ObservableCollection<LogicElementRowViewModel>();
+        LogicRowList<LogicElementRowViewModel> list = null!;
+        list = new LogicRowList<LogicElementRowViewModel>(
+            elements,
+            beside => new LogicElementRowViewModel(
+                new LogicElementDto { Id = Guid.NewGuid(), Kind = LogicElementKinds.Contact },
+                beside?.Indent ?? 0,
+                catalog,
+                rowList: list),
+            indentOf: row => row.Indent);
+
+        LogicElementRowViewModel Add(string kind, int indent)
+        {
+            var row = new LogicElementRowViewModel(
+                new LogicElementDto { Id = Guid.NewGuid(), Kind = kind },
+                indent,
+                catalog,
+                rowList: list);
+            elements.Add(row);
+            return row;
+        }
+
+        LogicElementRowViewModel and = Add(LogicElementKinds.And, 0);
+        LogicElementRowViewModel inputA = Add(LogicElementKinds.Contact, 1);
+        LogicElementRowViewModel inputB = Add(LogicElementKinds.Contact, 1);
+        LogicElementRowViewModel or = Add(LogicElementKinds.Or, 0);
+        LogicElementRowViewModel inputC = Add(LogicElementKinds.Contact, 1);
+        list.NotifyChanged();
+
+        // A row moves among its siblings only: the first input cannot go up, the last cannot go down.
+        Assert.False(inputA.MoveUpCommand.CanExecute(null));
+        Assert.True(inputA.MoveDownCommand.CanExecute(null));
+        Assert.True(inputC.MoveUpCommand.CanExecute(null) == false);
+        Assert.True(and.MoveUpCommand.CanExecute(null) == false);
+        Assert.True(and.MoveDownCommand.CanExecute(null));
+
+        // Moving the gate carries the rows nested under it: the tree is intact afterwards.
+        or.MoveUpCommand.Execute(null);
+        Assert.Equal(new[] { or, inputC, and, inputA, inputB }, elements);
+        Assert.Equal(new[] { 0, 1, 0, 1, 1 }, elements.Select(row => row.Indent));
+
+        // Insert above a child lands directly above it, at its level.
+        inputA.InsertAboveCommand.Execute(null);
+        Assert.Equal(6, elements.Count);
+        LogicElementRowViewModel insertedAbove = elements[3];
+        Assert.Equal(inputA, elements[4]);
+        Assert.Equal(1, insertedAbove.Indent);
+        Assert.DoesNotContain(insertedAbove, new[] { and, or, inputA, inputB, inputC });
+
+        // Insert below a gate's last child lands after its whole group, at the same level.
+        inputB.InsertBelowCommand.Execute(null);
+        Assert.Equal(7, elements.Count);
+        Assert.Equal(inputB, elements[5]);
+        Assert.Equal(and, elements[2]);
+        Assert.Equal(1, elements[6].Indent);
+    }
+
+    [Fact]
+    public async Task InsertAndMoveButtons_BuildEachListWhereTheOperatorIsWorking()
+    {
+        await using var connections = new BridgeConnectionManager(new BridgeManagerOptions(
+            PollInterval: TimeSpan.FromSeconds(5),
+            SnapshotRetryDelays: new[] { TimeSpan.Zero },
+            BridgeRetryDelays: new[] { TimeSpan.FromSeconds(5) },
+            HubTiming: new HmiHubTiming(TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15), new[] { TimeSpan.Zero })));
+        var panel = new LogicPanelViewModel(connections, work => work(), _ => { });
+        panel.SelectedBridge = new LogicBridgeOption("default", BridgeLinkState.Connected);
+        await panel.LoadSelectedBridgeAsync();
+        panel.NewBlockCommand.Execute(null);
+
+        // Conditions: the draft starts with one row, and a row's own button builds the list beside it.
+        LogicConditionRowViewModel first = Assert.Single(panel.Conditions);
+        Assert.True(first.InsertBelowCommand.CanExecute(null));
+        Assert.False(first.MoveUpCommand.CanExecute(null));
+        first.InsertBelowCommand.Execute(null);
+        Assert.Equal(new[] { first, panel.Conditions[1] }, panel.Conditions);
+
+        panel.Conditions[1].InsertAboveCommand.Execute(null);
+        Assert.Equal(3, panel.Conditions.Count);
+        Assert.Equal(first, panel.Conditions[0]);
+
+        // Moving a row re-numbers the list: the row moved up is the first, the one it passed is last.
+        LogicConditionRowViewModel middle = panel.Conditions[1];
+        LogicConditionRowViewModel last = panel.Conditions[2];
+        last.MoveUpCommand.Execute(null);
+        Assert.Equal(new[] { first, last, middle }, panel.Conditions);
+        Assert.False(middle.MoveDownCommand.CanExecute(null));
+        Assert.True(middle.MoveUpCommand.CanExecute(null));
+
+        // Elements: the first one flips the editor to the network, and insert stays at the level.
+        panel.AddElementCommand.Execute(null);
+        Assert.True(panel.ShowsNetwork);
+        Assert.False(panel.ShowsConditions);
+        LogicElementRowViewModel top = panel.Elements[0];
+        top.InsertBelowCommand.Execute(null);
+        Assert.Equal(2, panel.Elements.Count);
+        Assert.Equal(0, panel.Elements[1].Indent);
+
+        panel.Elements[1].IndentRowCommand.Execute(null);
+        panel.Elements[1].InsertBelowCommand.Execute(null);
+        Assert.Equal(new[] { 0, 1, 1 }, panel.Elements.Select(row => row.Indent));
+
+        // Removing a row re-arms the guards of the rows it left behind.
+        panel.Elements[1].RemoveElementCommand.Execute(null);
+        Assert.Equal(new[] { 0, 1 }, panel.Elements.Select(row => row.Indent));
+        Assert.False(top.MoveDownCommand.CanExecute(null));
+
+        // Steps: inserting one renumbers the sequence, and a move renumbers it again.
+        panel.SelectedKind = LogicSelectOption.Find(panel.KindOptions, LogicBlockKinds.Sequence);
+        panel.AddStepCommand.Execute(null);
+        LogicStepRowViewModel step = Assert.Single(panel.Steps);
+        step.InsertBelowCommand.Execute(null);
+        Assert.Equal(new[] { "STEP 1", "STEP 2" }, panel.Steps.Select(row => row.StepLabel));
+        panel.Steps[1].MoveUpCommand.Execute(null);
+        Assert.Equal(new[] { "STEP 1", "STEP 2" }, panel.Steps.Select(row => row.StepLabel));
+        Assert.False(panel.Steps[0].MoveUpCommand.CanExecute(null));
+
+        // Actions: the same buttons author the phone's button row.
+        panel.AddActionCommand.Execute(null);
+        LogicActionRowViewModel action = Assert.Single(panel.Actions);
+        action.InsertAboveCommand.Execute(null);
+        Assert.Equal(new[] { panel.Actions[0], action }, panel.Actions);
+        Assert.True(panel.Actions[0].Confirm);
+        Assert.False(panel.Actions[0].Label.Length > 0);
     }
 
     [Fact]
