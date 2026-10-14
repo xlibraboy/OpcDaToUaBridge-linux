@@ -16,6 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+**The Logic editor's rows insert and move where you are working.** Every row — a condition, a
+network element, a step, an action — now carries `+↑` / `+↓` beside `✕` to insert a fresh row
+directly above or below it, so a list is built where it is being read instead of only appended at
+its end, plus `↑` / `↓` to move the row up or down. In the network a row moves **with the rows
+nested under it** — a gate keeps its inputs instead of leaving them behind — and insert places the
+new row beside it at the same nesting level; the buttons grey out at the ends of a level.
+
 **The Logic page shares tags per area: an area's tags assigned once, read by all its blocks.**
 Beside Editor and Result, **Tags** edits the selected block's area's tags — type the area (`DRY
 END`, `WET END`, …) in the editor's new **AREA** field, or in the tab's own box (the same value),

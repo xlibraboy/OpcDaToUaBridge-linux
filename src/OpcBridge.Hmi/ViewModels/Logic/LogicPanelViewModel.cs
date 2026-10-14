@@ -42,6 +42,10 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
     private LogicTagCatalog catalog_ = LogicTagCatalog.Empty;
     private LogicBlockDto? storedBlock_;
     private Guid? pendingSelectId_;
+    private readonly LogicRowList<LogicConditionRowViewModel> conditionRows_;
+    private readonly LogicRowList<LogicElementRowViewModel> elementRows_;
+    private readonly LogicRowList<LogicStepRowViewModel> stepRows_;
+    private readonly LogicRowList<LogicActionRowViewModel> actionRows_;
 
     public LogicPanelViewModel(
         BridgeConnectionManager connections,
@@ -52,6 +56,14 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         post_ = post;
         report_ = report;
         KindOptions = LogicOptions.BlockKinds;
+        conditionRows_ = new LogicRowList<LogicConditionRowViewModel>(Conditions, _ => CreateConditionRow(NewCondition()), RowsChanged);
+        elementRows_ = new LogicRowList<LogicElementRowViewModel>(
+            Elements,
+            beside => CreateElementRow(NewElement(), beside?.Indent ?? 0),
+            RowsChanged,
+            row => row.Indent);
+        stepRows_ = new LogicRowList<LogicStepRowViewModel>(Steps, _ => CreateStepRow(NewStep()), RowsChanged);
+        actionRows_ = new LogicRowList<LogicActionRowViewModel>(Actions, _ => CreateActionRow(NewAction()), RowsChanged);
         AreaTags.PropertyChanged += OnAreaTagsChanged;
         AreaTags.DeleteSourceRequested = DeleteAreaTagsAsync;
         AreaTags.ConfirmRemoveEntry = async name =>
@@ -649,51 +661,22 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
     [RelayCommand(CanExecute = nameof(CanEdit))]
     private void AddCondition()
     {
-        AddConditionRow(new LogicConditionDto
-        {
-            Id = Guid.NewGuid(),
-            Op = LogicConditionOps.On,
-            Severity = LogicConditionSeverities.Block
-        });
-        DirtyChanged();
-        RefreshEditorMode();
+        AddConditionRow(NewCondition());
+        conditionRows_.NotifyChanged();
     }
 
     [RelayCommand(CanExecute = nameof(CanEdit))]
     private void AddElement()
     {
-        AddElementRow(
-            new LogicElementDto
-            {
-                Id = Guid.NewGuid(),
-                Kind = LogicElementKinds.Contact,
-                Op = LogicConditionOps.On,
-                Severity = LogicConditionSeverities.Block
-            },
-            0);
-        DirtyChanged();
-        RefreshEditorMode();
+        AddElementRow(NewElement(), 0);
+        elementRows_.NotifyChanged();
     }
 
     [RelayCommand(CanExecute = nameof(CanAddStep))]
     private void AddStep()
     {
-        AddStepRow(new LogicStepDto
-        {
-            Id = Guid.NewGuid(),
-            Conditions =
-            {
-                new LogicConditionDto
-                {
-                    Id = Guid.NewGuid(),
-                    Op = LogicConditionOps.On,
-                    Severity = LogicConditionSeverities.Block
-                }
-            }
-        });
-        RenumberSteps();
-        DirtyChanged();
-        RefreshEditorMode();
+        AddStepRow(NewStep());
+        stepRows_.NotifyChanged();
     }
 
     private bool CanAddStep() => CanEdit() && IsSequence;
@@ -701,9 +684,8 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
     [RelayCommand(CanExecute = nameof(CanEdit))]
     private void AddAction()
     {
-        AddActionRow(new LogicActionDto { Confirm = true });
-        DirtyChanged();
-        RefreshEditorMode();
+        AddActionRow(NewAction());
+        actionRows_.NotifyChanged();
     }
 
     /// <summary>Rewrites the flat condition list as the equivalent IEC network (the bridge expands it the same way).</summary>
@@ -746,12 +728,7 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         Elements.Clear();
         if (Conditions.Count == 0)
         {
-            AddConditionRow(new LogicConditionDto
-            {
-                Id = Guid.NewGuid(),
-                Op = LogicConditionOps.On,
-                Severity = LogicConditionSeverities.Block
-            });
+            AddConditionRow(NewCondition());
         }
 
         RefreshEditorMode();
@@ -1353,23 +1330,29 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
                 entry => string.Equals(entry.Key.BridgeId, bridge.BridgeId, StringComparison.OrdinalIgnoreCase)))
             : LogicTagCatalog.Empty;
 
-    private void AddConditionRow(LogicConditionDto condition)
+    private void AddConditionRow(LogicConditionDto condition) => Conditions.Add(CreateConditionRow(condition));
+
+    private LogicConditionRowViewModel CreateConditionRow(LogicConditionDto condition)
     {
-        var row = new LogicConditionRowViewModel(condition, catalog_, RemoveCondition, AreaTags.Entries);
+        var row = new LogicConditionRowViewModel(condition, catalog_, RemoveCondition, AreaTags.Entries, conditionRows_);
         row.PropertyChanged += OnEditorRowChanged;
-        Conditions.Add(row);
+        return row;
     }
 
-    private void AddElementRow(LogicElementDto element, int indent)
+    private void AddElementRow(LogicElementDto element, int indent) => Elements.Add(CreateElementRow(element, indent));
+
+    private LogicElementRowViewModel CreateElementRow(LogicElementDto element, int indent)
     {
-        var row = new LogicElementRowViewModel(element, indent, catalog_, RemoveElement, RelayNames, AreaTags.Entries);
+        var row = new LogicElementRowViewModel(element, indent, catalog_, RemoveElement, RelayNames, AreaTags.Entries, elementRows_);
         row.PropertyChanged += OnEditorRowChanged;
-        Elements.Add(row);
+        return row;
     }
 
-    private void AddStepRow(LogicStepDto step)
+    private void AddStepRow(LogicStepDto step) => Steps.Add(CreateStepRow(step));
+
+    private LogicStepRowViewModel CreateStepRow(LogicStepDto step)
     {
-        var row = new LogicStepRowViewModel(step, catalog_, Steps, RemoveStep, RenumberSteps, AreaTags.Entries);
+        var row = new LogicStepRowViewModel(step, catalog_, stepRows_, RemoveStep, AreaTags.Entries);
         row.PropertyChanged += OnEditorRowChanged;
         row.Conditions.CollectionChanged += OnStepConditionsChanged;
         foreach (LogicConditionRowViewModel condition in row.Conditions)
@@ -1377,7 +1360,7 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
             condition.PropertyChanged += OnEditorRowChanged;
         }
 
-        Steps.Add(row);
+        return row;
     }
 
     /// <summary>Keeps the dirty tracker attached to condition rows a step gains or loses later.</summary>
@@ -1398,44 +1381,77 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         DirtyChanged();
     }
 
-    private void AddActionRow(LogicActionDto action)
+    private void AddActionRow(LogicActionDto action) => Actions.Add(CreateActionRow(action));
+
+    private LogicActionRowViewModel CreateActionRow(LogicActionDto action)
     {
-        var row = new LogicActionRowViewModel(action, catalog_, RemoveAction, AreaTags.Entries);
+        var row = new LogicActionRowViewModel(action, catalog_, RemoveAction, AreaTags.Entries, actionRows_);
         row.PropertyChanged += OnEditorRowChanged;
-        Actions.Add(row);
+        return row;
     }
+
+    /// <summary>A fresh condition / element / step / action, as the Add buttons and a row's own
+    /// insert buttons both author it.</summary>
+    private static LogicConditionDto NewCondition() => new()
+    {
+        Id = Guid.NewGuid(),
+        Op = LogicConditionOps.On,
+        Severity = LogicConditionSeverities.Block
+    };
+
+    private static LogicElementDto NewElement() => new()
+    {
+        Id = Guid.NewGuid(),
+        Kind = LogicElementKinds.Contact,
+        Op = LogicConditionOps.On,
+        Severity = LogicConditionSeverities.Block
+    };
+
+    private static LogicStepDto NewStep() => new()
+    {
+        Id = Guid.NewGuid(),
+        Conditions = { NewCondition() }
+    };
+
+    private static LogicActionDto NewAction() => new() { Confirm = true };
 
     private void RemoveCondition(LogicConditionRowViewModel row)
     {
         Conditions.Remove(row);
-        DirtyChanged();
-        RefreshEditorMode();
+        conditionRows_.NotifyChanged();
     }
 
     private void RemoveElement(LogicElementRowViewModel row)
     {
         Elements.Remove(row);
-        DirtyChanged();
-        RefreshEditorMode();
+        elementRows_.NotifyChanged();
     }
 
     private void RemoveStep(LogicStepRowViewModel row)
     {
         Steps.Remove(row);
-        RenumberSteps();
-        DirtyChanged();
-        RefreshEditorMode();
+        stepRows_.NotifyChanged();
     }
 
     private void RemoveAction(LogicActionRowViewModel row)
     {
         Actions.Remove(row);
+        actionRows_.NotifyChanged();
+    }
+
+    /// <summary>
+    /// A row was inserted, moved or removed: the step labels, the dirty state, the empty-state
+    /// hints and every row's order guards follow the new list.
+    /// </summary>
+    private void RowsChanged()
+    {
+        RenumberSteps();
         DirtyChanged();
         RefreshEditorMode();
     }
 
     /// <summary>
-    /// Re-numbers the step labels and refreshes every step's move guards — an order change makes
+    /// Re-numbers the step labels and refreshes every step's order guards — an order change makes
     /// the first step's "up" and the last step's "down" unavailable.
     /// </summary>
     private void RenumberSteps()
@@ -1443,7 +1459,7 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         for (int i = 0; i < Steps.Count; i++)
         {
             Steps[i].StepLabel = $"STEP {i + 1}";
-            Steps[i].NotifyMoveCanExecuteChanged();
+            Steps[i].NotifyOrderChanged();
         }
     }
 

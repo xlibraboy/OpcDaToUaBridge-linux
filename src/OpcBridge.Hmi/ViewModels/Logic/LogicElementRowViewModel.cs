@@ -13,10 +13,11 @@ namespace OpcBridge.Hmi.ViewModels.Logic;
 /// a coil drives an internal relay, a timer its preset, a counter its preset, a gate or function
 /// block just its label.
 /// </summary>
-public partial class LogicElementRowViewModel : ObservableObject
+public partial class LogicElementRowViewModel : ObservableObject, ILogicOrderRow
 {
     private readonly LogicTagCatalog catalog_;
     private readonly Action<LogicElementRowViewModel>? onRemove_;
+    private readonly LogicRowList<LogicElementRowViewModel>? rowList_;
     private bool loading_;
 
     public LogicElementRowViewModel(
@@ -25,10 +26,12 @@ public partial class LogicElementRowViewModel : ObservableObject
         LogicTagCatalog catalog,
         Action<LogicElementRowViewModel>? onRemove = null,
         IEnumerable<string>? relayNames = null,
-        IEnumerable<LogicTagEntryViewModel>? tagEntries = null)
+        IEnumerable<LogicTagEntryViewModel>? tagEntries = null,
+        LogicRowList<LogicElementRowViewModel>? rowList = null)
     {
         catalog_ = catalog;
         onRemove_ = onRemove;
+        rowList_ = rowList;
         RelayNames = relayNames ?? Array.Empty<string>();
         ElementId = element.Id == Guid.Empty ? Guid.NewGuid() : element.Id;
         Kind = LogicSelectOption.Find(LogicOptions.ElementKinds, element.Kind) ?? LogicOptions.ElementKinds[0];
@@ -190,6 +193,7 @@ public partial class LogicElementRowViewModel : ObservableObject
         OutdentRowCommand.NotifyCanExecuteChanged();
         RemoveElementCommand.NotifyCanExecuteChanged();
         ClearBlockTagCommand.NotifyCanExecuteChanged();
+        NotifyOrderChanged();
     }
 
     partial void OnKindChanged(LogicSelectOption value)
@@ -245,12 +249,20 @@ public partial class LogicElementRowViewModel : ObservableObject
     private bool _canEdit = true;
 
     [RelayCommand(CanExecute = nameof(CanIndent))]
-    private void IndentRow() => Indent = Math.Min(Indent + 1, LogicLimits.MaxElementDepth);
+    private void IndentRow()
+    {
+        Indent = Math.Min(Indent + 1, LogicLimits.MaxElementDepth);
+        rowList_?.NotifyChanged();
+    }
 
     private bool CanIndent() => CanEdit && Indent < LogicLimits.MaxElementDepth;
 
     [RelayCommand(CanExecute = nameof(CanOutdent))]
-    private void OutdentRow() => Indent = Math.Max(Indent - 1, 0);
+    private void OutdentRow()
+    {
+        Indent = Math.Max(Indent - 1, 0);
+        rowList_?.NotifyChanged();
+    }
 
     private bool CanOutdent() => CanEdit && Indent > 0;
 
@@ -258,6 +270,36 @@ public partial class LogicElementRowViewModel : ObservableObject
     private void RemoveElement() => onRemove_?.Invoke(this);
 
     private bool CanRemoveRow() => CanEdit;
+
+    /// <summary>A fresh element above this row, at its own nesting level.</summary>
+    [RelayCommand(CanExecute = nameof(CanInsert))]
+    private void InsertAbove() => rowList_?.InsertBeside(this, above: true);
+
+    /// <summary>A fresh element below this row's whole group, at the same nesting level.</summary>
+    [RelayCommand(CanExecute = nameof(CanInsert))]
+    private void InsertBelow() => rowList_?.InsertBeside(this, above: false);
+
+    /// <summary>Moves this row — and the rows nested under it — past the sibling above it.</summary>
+    [RelayCommand(CanExecute = nameof(CanMoveRowUp))]
+    private void MoveUp() => rowList_?.MoveUp(this);
+
+    [RelayCommand(CanExecute = nameof(CanMoveRowDown))]
+    private void MoveDown() => rowList_?.MoveDown(this);
+
+    private bool CanInsert() => CanEdit && rowList_?.CanInsert(this) == true;
+
+    private bool CanMoveRowUp() => CanEdit && rowList_?.CanMoveUp(this) == true;
+
+    private bool CanMoveRowDown() => CanEdit && rowList_?.CanMoveDown(this) == true;
+
+    /// <summary>Keeps the row's order buttons in step with its place in the tree.</summary>
+    public void NotifyOrderChanged()
+    {
+        InsertAboveCommand.NotifyCanExecuteChanged();
+        InsertBelowCommand.NotifyCanExecuteChanged();
+        MoveUpCommand.NotifyCanExecuteChanged();
+        MoveDownCommand.NotifyCanExecuteChanged();
+    }
 
     private void LoadSourceAndItems(string sourceId, string itemId)
     {

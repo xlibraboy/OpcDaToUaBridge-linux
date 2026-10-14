@@ -10,26 +10,25 @@ namespace OpcBridge.Hmi.ViewModels.Logic;
 /// handshake tag and its own condition rows. The editor writes the conditions form; step action
 /// buttons are not authored here and are carried through the save untouched.
 /// </summary>
-public partial class LogicStepRowViewModel : ObservableObject
+public partial class LogicStepRowViewModel : ObservableObject, ILogicOrderRow
 {
     private readonly LogicTagCatalog catalog_;
-    private readonly ObservableCollection<LogicStepRowViewModel> steps_;
+    private readonly LogicRowList<LogicStepRowViewModel>? rowList_;
+    private readonly LogicRowList<LogicConditionRowViewModel> conditionRows_;
     private readonly Action<LogicStepRowViewModel>? onRemove_;
-    private readonly Action? onMoved_;
     private bool loadingCompletion_;
 
     public LogicStepRowViewModel(
         LogicStepDto step,
         LogicTagCatalog catalog,
-        ObservableCollection<LogicStepRowViewModel> steps,
+        LogicRowList<LogicStepRowViewModel>? rowList = null,
         Action<LogicStepRowViewModel>? onRemove = null,
-        Action? onMoved = null,
         IEnumerable<LogicTagEntryViewModel>? tagEntries = null)
     {
         catalog_ = catalog;
-        steps_ = steps;
+        rowList_ = rowList;
         onRemove_ = onRemove;
-        onMoved_ = onMoved;
+        conditionRows_ = new LogicRowList<LogicConditionRowViewModel>(Conditions, _ => NewConditionRow());
         StepId = step.Id == Guid.Empty ? Guid.NewGuid() : step.Id;
         StoredActions = step.Actions.ToList();
         Name = step.Name;
@@ -39,7 +38,7 @@ public partial class LogicStepRowViewModel : ObservableObject
         LoadCompletion(step.CompletionSourceId ?? string.Empty, step.CompletionItemId ?? string.Empty);
         foreach (LogicConditionDto condition in step.Conditions)
         {
-            Conditions.Add(new LogicConditionRowViewModel(condition, catalog, RemoveCondition, TagEntries));
+            Conditions.Add(NewConditionRow(condition));
         }
     }
 
@@ -150,15 +149,18 @@ public partial class LogicStepRowViewModel : ObservableObject
     }
 
     [RelayCommand(CanExecute = nameof(CanEdit))]
-    private void AddCondition() =>
-        Conditions.Add(new LogicConditionRowViewModel(
-            new LogicConditionDto { Id = Guid.NewGuid(), Op = LogicConditionOps.On, Severity = LogicConditionSeverities.Block },
-            catalog_,
-            RemoveCondition,
-            TagEntries));
+    private void AddCondition()
+    {
+        Conditions.Add(NewConditionRow());
+        conditionRows_.NotifyChanged();
+    }
 
     /// <summary>Removes one of the step's condition rows (also the remove callback the rows carry).</summary>
-    public void RemoveCondition(LogicConditionRowViewModel row) => Conditions.Remove(row);
+    public void RemoveCondition(LogicConditionRowViewModel row)
+    {
+        Conditions.Remove(row);
+        conditionRows_.NotifyChanged();
+    }
 
     [ObservableProperty]
     private bool _canEdit = true;
@@ -167,16 +169,8 @@ public partial class LogicStepRowViewModel : ObservableObject
     {
         RemoveStepCommand.NotifyCanExecuteChanged();
         AddConditionCommand.NotifyCanExecuteChanged();
-        MoveStepUpCommand.NotifyCanExecuteChanged();
-        MoveStepDownCommand.NotifyCanExecuteChanged();
         ClearCompletionTagCommand.NotifyCanExecuteChanged();
-    }
-
-    /// <summary>Re-evaluates the move guards after the step's position in the list changed.</summary>
-    public void NotifyMoveCanExecuteChanged()
-    {
-        MoveStepUpCommand.NotifyCanExecuteChanged();
-        MoveStepDownCommand.NotifyCanExecuteChanged();
+        NotifyOrderChanged();
     }
 
     [RelayCommand(CanExecute = nameof(CanRemoveRow))]
@@ -184,35 +178,45 @@ public partial class LogicStepRowViewModel : ObservableObject
 
     private bool CanRemoveRow() => CanEdit;
 
-    [RelayCommand(CanExecute = nameof(CanMoveStepUp))]
-    private void MoveStepUp()
+    /// <summary>A fresh step above this one.</summary>
+    [RelayCommand(CanExecute = nameof(CanInsert))]
+    private void InsertAbove() => rowList_?.InsertBeside(this, above: true);
+
+    /// <summary>A fresh step below this one.</summary>
+    [RelayCommand(CanExecute = nameof(CanInsert))]
+    private void InsertBelow() => rowList_?.InsertBeside(this, above: false);
+
+    [RelayCommand(CanExecute = nameof(CanMoveRowUp))]
+    private void MoveUp() => rowList_?.MoveUp(this);
+
+    [RelayCommand(CanExecute = nameof(CanMoveRowDown))]
+    private void MoveDown() => rowList_?.MoveDown(this);
+
+    private bool CanInsert() => CanEdit && rowList_?.CanInsert(this) == true;
+
+    private bool CanMoveRowUp() => CanEdit && rowList_?.CanMoveUp(this) == true;
+
+    private bool CanMoveRowDown() => CanEdit && rowList_?.CanMoveDown(this) == true;
+
+    /// <summary>Keeps the step's insert / move buttons in step with its place in the list.</summary>
+    public void NotifyOrderChanged()
     {
-        int index = steps_.IndexOf(this);
-        if (index > 0)
+        InsertAboveCommand.NotifyCanExecuteChanged();
+        InsertBelowCommand.NotifyCanExecuteChanged();
+        MoveUpCommand.NotifyCanExecuteChanged();
+        MoveDownCommand.NotifyCanExecuteChanged();
+    }
+
+    private LogicConditionRowViewModel NewConditionRow(LogicConditionDto condition) =>
+        new(condition, catalog_, RemoveCondition, TagEntries, conditionRows_);
+
+    private LogicConditionRowViewModel NewConditionRow() =>
+        NewConditionRow(new LogicConditionDto
         {
-            steps_.Move(index, index - 1);
-            onMoved_?.Invoke();
-        }
-    }
-
-    private bool CanMoveStepUp() => CanEdit && steps_.IndexOf(this) > 0;
-
-    [RelayCommand(CanExecute = nameof(CanMoveStepDown))]
-    private void MoveStepDown()
-    {
-        int index = steps_.IndexOf(this);
-        if (index >= 0 && index < steps_.Count - 1)
-        {
-            steps_.Move(index, index + 1);
-            onMoved_?.Invoke();
-        }
-    }
-
-    private bool CanMoveStepDown()
-    {
-        int index = steps_.IndexOf(this);
-        return CanEdit && index >= 0 && index < steps_.Count - 1;
-    }
+            Id = Guid.NewGuid(),
+            Op = LogicConditionOps.On,
+            Severity = LogicConditionSeverities.Block
+        });
 
     private void LoadCompletion(string sourceId, string itemId)
     {

@@ -147,7 +147,19 @@
                        AutomationProperties.LiveSetting="Polite" />
           </StackPanel>
           <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Bottom">
-            <Button Classes="tool" Content="→" Command="{Binding IndentRowCommand}"
+            <Button Classes="tool" Content="+↑" Command="{Binding InsertAboveCommand}"
+                    ToolTip.Tip="Insert a new element above this row, at its level"
+                    AutomationProperties.Name="Insert element above" />
+            <Button Classes="tool" Content="+↓" Command="{Binding InsertBelowCommand}"
+                    ToolTip.Tip="Insert a new element below this row's group, at the same level"
+                    AutomationProperties.Name="Insert element below" />
+            <Button Classes="tool" Content="↑" Command="{Binding MoveUpCommand}"
+                    ToolTip.Tip="Move this row — and the rows nested under it — up"
+                    AutomationProperties.Name="Move element up" />
+            <Button Classes="tool" Content="↓" Command="{Binding MoveDownCommand}"
+                    ToolTip.Tip="Move this row — and the rows nested under it — down"
+                    AutomationProperties.Name="Move element down" />
+            <Button Classes="tool" Content="→" Command="{Binding IndentRowCommand}" Margin="4,0,0,0"
                     ToolTip.Tip="Make this row an input of the row above" AutomationProperties.Name="Indent element" />
             <Button Classes="tool" Content="←" Command="{Binding OutdentRowCommand}"
                     ToolTip.Tip="Move this row out one level" AutomationProperties.Name="Outdent element" />

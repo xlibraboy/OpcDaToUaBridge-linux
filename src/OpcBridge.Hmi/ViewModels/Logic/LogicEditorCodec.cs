@@ -1,4 +1,3 @@
-using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Text.Json;
 using OpcBridge.Client;
@@ -58,28 +57,21 @@ public static class LogicEditorCodec
     }
 
     /// <summary>
-    /// Loads stored steps into editable rows. The owner supplies the live steps collection (rows
-    /// resolve their own position in it) and may attach its dirty tracker to the returned rows;
-    /// null skips the wiring for read-only or round-trip use.
+    /// Loads stored steps into editable rows. The owner is the live step list (rows resolve their
+    /// own place in it and the factory its insert buttons use); the caller may attach its dirty
+    /// tracker to the returned rows. Null skips both for read-only or round-trip use.
     /// </summary>
     public static List<LogicStepRowViewModel> LoadSteps(
         IEnumerable<LogicStepDto> steps,
         LogicTagCatalog catalog,
-        ObservableCollection<LogicStepRowViewModel>? owner,
-        Action<LogicStepRowViewModel>? onRemove,
-        Action? onMoved,
+        LogicRowList<LogicStepRowViewModel>? owner = null,
+        Action<LogicStepRowViewModel>? onRemove = null,
         IEnumerable<LogicTagEntryViewModel>? tagEntries = null)
     {
         var rows = new List<LogicStepRowViewModel>();
         foreach (LogicStepDto step in steps)
         {
-            rows.Add(new LogicStepRowViewModel(
-                step,
-                catalog,
-                owner ?? new ObservableCollection<LogicStepRowViewModel>(),
-                onRemove,
-                onMoved,
-                tagEntries));
+            rows.Add(new LogicStepRowViewModel(step, catalog, owner, onRemove, tagEntries));
         }
 
         return rows;

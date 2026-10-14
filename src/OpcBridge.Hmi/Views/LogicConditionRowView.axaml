@@ -110,8 +110,22 @@
                      AutomationProperties.LiveSetting="Polite"
                      ToolTip.Tip="Live state: 1 / 0 / no data for a bit, the value for a comparison." />
         </StackPanel>
-        <Button Classes="tool" Content="✕" Command="{Binding RemoveCommand}" VerticalAlignment="Bottom"
-                AutomationProperties.Name="Remove condition" />
+        <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Bottom">
+          <Button Classes="tool" Content="+↑" Command="{Binding InsertAboveCommand}"
+                  ToolTip.Tip="Insert a new condition above this row"
+                  AutomationProperties.Name="Insert condition above" />
+          <Button Classes="tool" Content="+↓" Command="{Binding InsertBelowCommand}"
+                  ToolTip.Tip="Insert a new condition below this row"
+                  AutomationProperties.Name="Insert condition below" />
+          <Button Classes="tool" Content="↑" Command="{Binding MoveUpCommand}"
+                  ToolTip.Tip="Move this condition up"
+                  AutomationProperties.Name="Move condition up" />
+          <Button Classes="tool" Content="↓" Command="{Binding MoveDownCommand}"
+                  ToolTip.Tip="Move this condition down"
+                  AutomationProperties.Name="Move condition down" />
+          <Button Classes="tool" Content="✕" Command="{Binding RemoveCommand}"
+                  AutomationProperties.Name="Remove condition" />
+        </StackPanel>
       </StackPanel>
     </Grid>
   </Border>

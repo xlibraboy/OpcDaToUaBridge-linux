@@ -13,20 +13,23 @@ namespace OpcBridge.Hmi.ViewModels.Logic;
 /// (the Tags tab's entries) — then the tag pickers hide and the pair lives on the shared source,
 /// so every block of the machine follows one assignment.
 /// </summary>
-public partial class LogicConditionRowViewModel : ObservableObject
+public partial class LogicConditionRowViewModel : ObservableObject, ILogicOrderRow
 {
     private readonly LogicTagCatalog catalog_;
     private readonly Action<LogicConditionRowViewModel>? onRemove_;
+    private readonly LogicRowList<LogicConditionRowViewModel>? rowList_;
     private bool loading_;
 
     public LogicConditionRowViewModel(
         LogicConditionDto condition,
         LogicTagCatalog catalog,
         Action<LogicConditionRowViewModel>? onRemove = null,
-        IEnumerable<LogicTagEntryViewModel>? tagEntries = null)
+        IEnumerable<LogicTagEntryViewModel>? tagEntries = null,
+        LogicRowList<LogicConditionRowViewModel>? rowList = null)
     {
         catalog_ = catalog;
         onRemove_ = onRemove;
+        rowList_ = rowList;
         ConditionId = condition.Id == Guid.Empty ? Guid.NewGuid() : condition.Id;
         Text = condition.Text;
         Op = LogicSelectOption.Find(LogicOptions.Ops, condition.Op) ?? LogicOptions.Ops[0];
@@ -158,12 +161,42 @@ public partial class LogicConditionRowViewModel : ObservableObject
     {
         RemoveCommand.NotifyCanExecuteChanged();
         ClearBlockTagCommand.NotifyCanExecuteChanged();
+        NotifyOrderChanged();
     }
 
     [RelayCommand(CanExecute = nameof(CanRemoveRow))]
     private void Remove() => onRemove_?.Invoke(this);
 
     private bool CanRemoveRow() => CanEdit;
+
+    /// <summary>A fresh condition above this row.</summary>
+    [RelayCommand(CanExecute = nameof(CanInsert))]
+    private void InsertAbove() => rowList_?.InsertBeside(this, above: true);
+
+    /// <summary>A fresh condition below this row.</summary>
+    [RelayCommand(CanExecute = nameof(CanInsert))]
+    private void InsertBelow() => rowList_?.InsertBeside(this, above: false);
+
+    [RelayCommand(CanExecute = nameof(CanMoveRowUp))]
+    private void MoveUp() => rowList_?.MoveUp(this);
+
+    [RelayCommand(CanExecute = nameof(CanMoveRowDown))]
+    private void MoveDown() => rowList_?.MoveDown(this);
+
+    private bool CanInsert() => CanEdit && rowList_?.CanInsert(this) == true;
+
+    private bool CanMoveRowUp() => CanEdit && rowList_?.CanMoveUp(this) == true;
+
+    private bool CanMoveRowDown() => CanEdit && rowList_?.CanMoveDown(this) == true;
+
+    /// <summary>Keeps the row's order buttons in step with its place in the list.</summary>
+    public void NotifyOrderChanged()
+    {
+        InsertAboveCommand.NotifyCanExecuteChanged();
+        InsertBelowCommand.NotifyCanExecuteChanged();
+        MoveUpCommand.NotifyCanExecuteChanged();
+        MoveDownCommand.NotifyCanExecuteChanged();
+    }
 
     private void LoadSourceAndItems(string sourceId, string itemId)
     {

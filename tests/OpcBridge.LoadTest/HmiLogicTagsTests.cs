@@ -327,7 +327,7 @@ public sealed class HmiLogicTagsTests
             Conditions = { new LogicConditionDto { Id = Guid.NewGuid(), Text = "start", Tag = "START_PB", Op = LogicConditionOps.On } }
         };
 
-        LogicStepRowViewModel row = new(step, Catalog(), new System.Collections.ObjectModel.ObservableCollection<LogicStepRowViewModel>(), null, null, tab.Entries);
+        LogicStepRowViewModel row = new(step, Catalog(), null, null, tab.Entries);
 
         Assert.Equal("DONE_FB", row.CompletionTagName);
         Assert.False(row.ShowsDirectCompletion);
@@ -382,7 +382,7 @@ public sealed class HmiLogicTagsTests
 
         var conditions = LogicEditorCodec.LoadConditions(stored.Conditions, catalog, null, tab.Entries);
         var elements = LogicEditorCodec.LoadElements(stored.Elements, catalog, null, null, tab.Entries);
-        var steps = LogicEditorCodec.LoadSteps(stored.Steps, catalog, null, null, null, tab.Entries);
+        var steps = LogicEditorCodec.LoadSteps(stored.Steps, catalog, null, null, tab.Entries);
         var actions = LogicEditorCodec.LoadActions(stored.Actions, catalog, null, tab.Entries);
 
         LogicBlockDto built = LogicEditorCodec.Build(

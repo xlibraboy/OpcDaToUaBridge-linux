@@ -10,20 +10,23 @@ namespace OpcBridge.Hmi.ViewModels.Logic;
 /// operator buttons; the HMI page authors them only — the write itself stays on the phone.
 /// Only writeable tags are offered.
 /// </summary>
-public partial class LogicActionRowViewModel : ObservableObject
+public partial class LogicActionRowViewModel : ObservableObject, ILogicOrderRow
 {
     private readonly LogicTagCatalog catalog_;
     private readonly Action<LogicActionRowViewModel>? onRemove_;
+    private readonly LogicRowList<LogicActionRowViewModel>? rowList_;
     private bool loading_;
 
     public LogicActionRowViewModel(
         LogicActionDto action,
         LogicTagCatalog catalog,
         Action<LogicActionRowViewModel>? onRemove = null,
-        IEnumerable<LogicTagEntryViewModel>? tagEntries = null)
+        IEnumerable<LogicTagEntryViewModel>? tagEntries = null,
+        LogicRowList<LogicActionRowViewModel>? rowList = null)
     {
         catalog_ = catalog;
         onRemove_ = onRemove;
+        rowList_ = rowList;
         Label = action.Label;
         Value = action.Value;
         Confirm = action.Confirm;
@@ -103,12 +106,42 @@ public partial class LogicActionRowViewModel : ObservableObject
     {
         RemoveCommand.NotifyCanExecuteChanged();
         ClearBlockTagCommand.NotifyCanExecuteChanged();
+        NotifyOrderChanged();
     }
 
     [RelayCommand(CanExecute = nameof(CanRemoveRow))]
     private void Remove() => onRemove_?.Invoke(this);
 
     private bool CanRemoveRow() => CanEdit;
+
+    /// <summary>A fresh action above this row.</summary>
+    [RelayCommand(CanExecute = nameof(CanInsert))]
+    private void InsertAbove() => rowList_?.InsertBeside(this, above: true);
+
+    /// <summary>A fresh action below this row.</summary>
+    [RelayCommand(CanExecute = nameof(CanInsert))]
+    private void InsertBelow() => rowList_?.InsertBeside(this, above: false);
+
+    [RelayCommand(CanExecute = nameof(CanMoveRowUp))]
+    private void MoveUp() => rowList_?.MoveUp(this);
+
+    [RelayCommand(CanExecute = nameof(CanMoveRowDown))]
+    private void MoveDown() => rowList_?.MoveDown(this);
+
+    private bool CanInsert() => CanEdit && rowList_?.CanInsert(this) == true;
+
+    private bool CanMoveRowUp() => CanEdit && rowList_?.CanMoveUp(this) == true;
+
+    private bool CanMoveRowDown() => CanEdit && rowList_?.CanMoveDown(this) == true;
+
+    /// <summary>Keeps the row's order buttons in step with its place in the list.</summary>
+    public void NotifyOrderChanged()
+    {
+        InsertAboveCommand.NotifyCanExecuteChanged();
+        InsertBelowCommand.NotifyCanExecuteChanged();
+        MoveUpCommand.NotifyCanExecuteChanged();
+        MoveDownCommand.NotifyCanExecuteChanged();
+    }
 
     private void LoadSourceAndItems(string sourceId, string itemId)
     {

@@ -259,8 +259,14 @@
                               <TextBlock Text="{Binding StateWord}" AutomationProperties.LiveSetting="Polite" />
                             </Border>
                             <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right">
-                              <Button Classes="tool" Content="↑" Command="{Binding MoveStepUpCommand}" AutomationProperties.Name="Move step up" />
-                              <Button Classes="tool" Content="↓" Command="{Binding MoveStepDownCommand}" AutomationProperties.Name="Move step down" />
+                              <Button Classes="tool" Content="+↑" Command="{Binding InsertAboveCommand}"
+                                      ToolTip.Tip="Insert a new step above this one" AutomationProperties.Name="Insert step above" />
+                              <Button Classes="tool" Content="+↓" Command="{Binding InsertBelowCommand}"
+                                      ToolTip.Tip="Insert a new step below this one" AutomationProperties.Name="Insert step below" />
+                              <Button Classes="tool" Content="↑" Command="{Binding MoveUpCommand}"
+                                      ToolTip.Tip="Move this step up" AutomationProperties.Name="Move step up" />
+                              <Button Classes="tool" Content="↓" Command="{Binding MoveDownCommand}"
+                                      ToolTip.Tip="Move this step down" AutomationProperties.Name="Move step down" />
                               <Button Classes="tool" Content="✕" Command="{Binding RemoveStepCommand}" AutomationProperties.Name="Remove step" />
                             </StackPanel>
                           </Grid>
@@ -418,8 +424,18 @@
                                         ToolTip.Tip="Ask the operator before the phone writes." />
                             </StackPanel>
                           </WrapPanel>
-                          <Button Grid.Column="1" Classes="tool" Content="✕" Command="{Binding RemoveCommand}"
-                                  Margin="0,0,0,6" VerticalAlignment="Top" AutomationProperties.Name="Remove action" />
+                          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" Margin="0,0,0,6" VerticalAlignment="Top">
+                            <Button Classes="tool" Content="+↑" Command="{Binding InsertAboveCommand}"
+                                    ToolTip.Tip="Insert a new action above this row" AutomationProperties.Name="Insert action above" />
+                            <Button Classes="tool" Content="+↓" Command="{Binding InsertBelowCommand}"
+                                    ToolTip.Tip="Insert a new action below this row" AutomationProperties.Name="Insert action below" />
+                            <Button Classes="tool" Content="↑" Command="{Binding MoveUpCommand}"
+                                    ToolTip.Tip="Move this action up" AutomationProperties.Name="Move action up" />
+                            <Button Classes="tool" Content="↓" Command="{Binding MoveDownCommand}"
+                                    ToolTip.Tip="Move this action down" AutomationProperties.Name="Move action down" />
+                            <Button Classes="tool" Content="✕" Command="{Binding RemoveCommand}"
+                                    AutomationProperties.Name="Remove action" />
+                          </StackPanel>
                         </Grid>
                       </Border>
                     </DataTemplate>
