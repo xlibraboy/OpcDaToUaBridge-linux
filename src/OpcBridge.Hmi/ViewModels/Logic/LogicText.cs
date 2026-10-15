@@ -397,6 +397,13 @@ public static class LogicText
     public static string AreaTagsMoved(int count, string name) =>
         $"Moved {(count == 1 ? "1 tag" : $"{count} tags")} into \"{name}\" — Save to store them.";
 
+    /// <summary>
+    /// The note when opening a block moved its direct tags into its area's tags: the rows read them
+    /// by name from then on, and the move is stored with the block — nothing is left to Save.
+    /// </summary>
+    public static string TagsMoved(int count, string name) =>
+        $"{(count == 1 ? "1 tag" : $"{count} tags")} moved into \"{name}\" — saved with the block.";
+
     /// <summary>The save's note: the direct tags it carried joined the area and are shared by it.</summary>
     public static string AreaTagsShared(int count, string name) =>
         $"{(count == 1 ? "1 tag" : $"{count} tags")} now shared by \"{name}\".";

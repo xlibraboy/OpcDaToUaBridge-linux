@@ -847,6 +847,59 @@ public sealed class HmiLogicPanelTests
     }
 
     [Fact]
+    public async Task SwitchingBlocksAfterAMovedDraftDoesNotAskToDiscardIt()
+    {
+        await using TestAppHandle handle = await StartAsync(PermitTag());
+        LogicBlockDto first = Block("Dry end start", "");
+        first.Area = "DRYEND";
+        LogicBlockDto second = Block("Dry end stop", "");
+        second.Area = "DRYEND";
+        await SaveBlockAsync(handle, first);
+        await SaveBlockAsync(handle, second);
+
+        MainViewModel vm = NewViewModel(out string configPath);
+        try
+        {
+            await ConnectAsync(vm, handle);
+
+            int prompts = 0;
+            vm.Logic.ConfirmAsync = (_, _, _) =>
+            {
+                prompts++;
+                return Task.FromResult(true);
+            };
+
+            vm.Logic.SelectBlockCommand.Execute(Row(vm, "Dry end start"));
+            Assert.False(vm.Logic.IsDirty);
+
+            // Moving a block's legacy pairs into its area's tags is the editor reading its data, not
+            // the operator's edit: the next block opens without asking to discard anything.
+            Assert.True(await vm.Logic.TrySelectBlockAsync(Row(vm, "Dry end stop")));
+            Assert.Equal(0, prompts);
+            Assert.False(vm.Logic.IsDirty);
+            Assert.Equal("LINE_01_START_PERMIT", Assert.Single(vm.Logic.Conditions).Tag);
+
+            // A draft the operator really edited still asks first — and Cancel keeps it.
+            vm.Logic.ConfirmAsync = (_, _, _) =>
+            {
+                prompts++;
+                return Task.FromResult(false);
+            };
+
+            vm.Logic.BlockName = "Dry end stop renamed";
+            Assert.True(vm.Logic.IsDirty);
+            Assert.False(await vm.Logic.TrySelectBlockAsync(Row(vm, "Dry end start")));
+            Assert.Equal(1, prompts);
+            Assert.Equal("Dry end stop renamed", vm.Logic.BlockName);
+        }
+        finally
+        {
+            await vm.DisposeAsync();
+            DeleteConfig(configPath);
+        }
+    }
+
+    [Fact]
     public async Task OpeningABlockWithAnAreaMovesItsDirectTagsIntoTheAreasTags()
     {
         await using TestAppHandle handle = await StartAsync(PermitTag());
@@ -866,13 +919,21 @@ public sealed class HmiLogicPanelTests
             Assert.Equal("LINE_01_START_PERMIT", entry.Name);
             Assert.Equal("ns=2;s=Status/Line01.Permit", entry.ItemId);
             Assert.True(entry.UsedByThisBlock);
-            Assert.Contains("Moved 1 tag", vm.Logic.EditorMessage);
+            Assert.Contains("saved with the block", vm.Logic.EditorMessage);
 
             LogicConditionRowViewModel row = Assert.Single(vm.Logic.Conditions);
             Assert.Equal("LINE_01_START_PERMIT", row.Tag);
             Assert.False(row.HasStoredTag);
 
-            // The move is unsaved — the bridge's copy still holds the direct pair — so Save stores it.
+            // The move is the editor normalizing what it read, not the operator's edit: the draft
+            // reads clean, so switching blocks does not ask to discard anything.
+            Assert.False(vm.Logic.IsDirty);
+            Assert.False(vm.Logic.HasUnsavedChanges);
+            Assert.False(vm.Logic.SaveCommand.CanExecute(null));
+
+            // Saving the block stores the list with it, so a saved block never names an entry the
+            // bridge cannot resolve.
+            row.Text = "Dry end start permit must still be given";
             Assert.True(vm.Logic.IsDirty);
             await vm.Logic.SaveCommand.ExecuteAsync(null);
 

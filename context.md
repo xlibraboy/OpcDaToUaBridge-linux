@@ -242,8 +242,10 @@ and the store canonicalizes every reference to its entry's spelling while cleari
 HMI editor assigns a tag **only** on the Tags tab: every editor row carries a **TAG** picker
 and no source of its own, so a block authored before areas existed has its direct pairs **moved
 into the area's tags the moment the draft opens** (or the moment it is given an area) — one entry
-per pair, named from the tag's display name, which the row then references, with the move stored by
-the next Save. A pair on a block with no area and no group has no list to join: the row shows it as
+per pair, named from the tag's display name, which the row then references; the load keeps a draft
+baseline so that move is **not** an unsaved edit (a draft only read stays clean, and switching blocks
+never prompts), and the entries are stored the first time the block itself is saved. A pair on a
+block with no area and no group has no list to join: the row shows it as
 a `Direct tag: …` line and the pair is kept through a save, so nothing the bridge still evaluates is
 dropped. `LogicStore` owns both
 files behind one version; `TryRemoveAreaTags` refuses while blocks read the list. The HMI's Logic

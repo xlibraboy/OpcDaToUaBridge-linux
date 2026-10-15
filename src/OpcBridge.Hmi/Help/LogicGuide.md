@@ -178,10 +178,12 @@ area** instead of once per condition:
 - **A block authored before areas existed still works.** Its rows carry a direct source/tag pair;
   the moment such a block is opened with an area (or given one), those pairs **join the area's tags**
   — one entry each, named after the tag's display name (`LINE_01_START_PERMIT`, …), which the row
-  then references — and **Save** stores the move. The editor says so (`Moved 1 tag into "DRYEND" —
-  Save to store them.`). Rename an entry on the tab if the automatic name reads badly. A pair from a
-  block with no area at all has no list to join: the row shows it as a `Direct tag: …` line instead,
-  keeps it through the save, and points you at the Tags tab — assign the area and it moves in.
+  then references. The editor says so (`1 tag moved into "DRYEND" — saved with the block.`), and the
+  move is **not unsaved work**: the draft still reads clean and the entries are stored the first time
+  the block itself is saved, so switching blocks never asks to discard a block you only read. Rename
+  an entry on the tab if the automatic name reads badly. A pair from a block with no area at all has
+  no list to join: the row shows it as a `Direct tag: …` line instead, keeps it through the save, and
+  points you at the Tags tab — assign the area and it moves in.
 - **`From bridge…` adds several tags at once.** It lists the bridge's mapped tags — source, tag and
   the reading each had when the window opened — with a filter box (`pump`, `ns=2;s=Status/Line`, or a
   source name); the tags the area's tags already hold are greyed out. Tick the signals you need

@@ -38,6 +38,14 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
     private bool reloadingDefinitions_;
     private bool suppressBridgeLoad_;
     private bool forceReloadDraft_;
+
+    /// <summary>
+    /// The draft exactly as the load left it: the dirty compare's own baseline, so what the editor
+    /// does by itself — moving a block's direct tags into its area's tags — is not an unsaved edit.
+    /// A draft merely re-read (selecting the same block again) therefore stays clean, while anything
+    /// the operator changes is still measured against the bridge's copy.
+    /// </summary>
+    private LogicBlockDto? loadedDraft_;
     private bool selectFirstAfterReload_;
     private LogicTagCatalog catalog_ = LogicTagCatalog.Empty;
     private LogicBlockDto? storedBlock_;
@@ -636,7 +644,7 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
             AreaTags.RefreshUsed(ReferencedTagNames());
         }
 
-        bool tagsDirty = AreaTags.IsDirty;
+        bool tagsDirty = AreaTags.IsDirty || ReferencesUnstoredEntries();
         bool blockDirty = ComputeBlockDirty();
         if (tagsDirty && AreaTags.IsNameBlank)
         {
@@ -1365,16 +1373,21 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
 
         // A block authored before the area's tags existed still carries direct pairs on its rows:
         // they join the area's list as the draft opens, so the editor reads the same tags the Tags
-        // tab edits and Save stores the moved binding.
+        // tab edits. That is the editor normalizing what it read, not the operator's edit — the
+        // load baseline below keeps the draft clean, and the entries are stored the first time the
+        // block itself is saved (SaveAsync sees a row naming an entry the bridge does not hold).
         if (IsEditingEnabled && !AreaTags.IsNameBlank)
         {
             int moved = ConvertDirectRowsIntoArea();
             if (moved > 0)
             {
                 AreaTags.RefreshUsed(ReferencedTagNames());
-                EditorMessage = "✓ " + LogicText.AreaTagsMoved(moved, AreaTags.Name.Trim());
+                AreaTags.MarkSaved(AreaTags.ToDto());
+                EditorMessage = "✓ " + LogicText.TagsMoved(moved, AreaTags.Name.Trim());
             }
         }
+
+        loadedDraft_ = BuildDraft();
 
         RefreshEditorMode();
         RefreshAreaTags();
@@ -1737,7 +1750,17 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
             return BlockName.Trim().Length > 0;
         }
 
-        return !LogicEditorCodec.Matches(BuildDraft(), storedBlock_);
+        LogicBlockDto draft = BuildDraft();
+
+        // The draft as the load left it is not an edit: a block whose tags the editor moved into the
+        // area's list reads clean — and stays clean when the same block is re-selected — while every
+        // operator change is still measured against the bridge's own copy below.
+        if (loadedDraft_ is { } loaded && LogicEditorCodec.Matches(draft, loaded))
+        {
+            return false;
+        }
+
+        return !LogicEditorCodec.Matches(draft, storedBlock_);
     }
 
     private LogicBlockDto BuildDraft() => LogicEditorCodec.Build(
@@ -1864,6 +1887,17 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         }
 
         return names;
+    }
+
+    /// <summary>
+    /// True while a row names an entry the bridge's list for this area does not hold — the state a
+    /// block is in while its moved tags are only in the editor. Saving the block stores the list
+    /// with it, so a saved block never refers to an entry the bridge cannot resolve.
+    /// </summary>
+    private bool ReferencesUnstoredEntries()
+    {
+        LogicAreaTagsDto? stored = CurrentAreaTags();
+        return ReferencedTagNames().Any(name => LogicAreaTags.FindTag(stored, name) is null);
     }
 
     /// <summary>
