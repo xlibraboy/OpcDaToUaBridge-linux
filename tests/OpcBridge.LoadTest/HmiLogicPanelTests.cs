@@ -778,6 +778,75 @@ public sealed class HmiLogicPanelTests
     }
 
     [Fact]
+    public async Task AddingTagsFromTheBridgeCreatesANamedEntryPerTagAndNeverDuplicates()
+    {
+        await using TestAppHandle handle = await StartAsync(PermitTag());
+        MainViewModel vm = NewViewModel(out string configPath);
+        try
+        {
+            await ConnectAsync(vm, handle);
+            vm.Logic.IsTagsTab = true;
+
+            vm.Logic.NewBlockCommand.Execute(null);
+            vm.Logic.BlockName = "Line 04 Start";
+            vm.Logic.BlockArea = "LINE 4";
+            Assert.True(vm.Logic.CanPickTagsFromBridge);
+
+            // The picker lists the bridge's mapped tags with their source, ready to tick.
+            LogicTagPickRow pick = Assert.Single(vm.Logic.BuildTagPickRows());
+            Assert.Equal("sim", pick.SourceId);
+            Assert.Equal("ns=2;s=Status/Line01.Permit", pick.ItemId);
+            Assert.Equal("Line 01 Start Permit", pick.Label);
+            Assert.True(pick.Enabled);
+            Assert.False(pick.HasMarker);
+
+            // Confirming one tag adds it as a named entry — named after the tag, like the move of a
+            // legacy pair — and the tab says what happened, unsaved until Save.
+            Assert.Equal(1, vm.Logic.AddTagsFromBridge(new[] { pick }));
+
+            LogicTagEntryViewModel entry = Assert.Single(vm.Logic.AreaTags.Entries);
+            Assert.Equal("LINE_01_START_PERMIT", entry.Name);
+            Assert.Equal("sim", entry.SourceId);
+            Assert.Equal("ns=2;s=Status/Line01.Permit", entry.ItemId);
+            Assert.True(entry.IsAssigned);
+            Assert.Equal("✓ " + LogicText.TagsAdded(1, "LINE 4"), vm.Logic.EditorMessage);
+            Assert.True(vm.Logic.IsDirty);
+
+            // Picking the same tag again changes nothing — the entry already carries it — and the
+            // picker now lists it greyed out as already in the area's tags.
+            Assert.Equal(0, vm.Logic.AddTagsFromBridge(vm.Logic.BuildTagPickRows()));
+            LogicTagPickRow listed = Assert.Single(vm.Logic.BuildTagPickRows());
+            Assert.False(listed.Enabled);
+            Assert.Equal(LogicText.TagPickListed, listed.Marker);
+            Assert.Single(vm.Logic.AreaTags.Entries);
+
+            // Save stores the entries with the block, which reads the new entry on its row.
+            LogicConditionRowViewModel row = Assert.Single(vm.Logic.Conditions);
+            row.Text = "Line 04 permit must be given";
+            row.SelectedBlockTag = entry;
+
+            await vm.Logic.SaveCommand.ExecuteAsync(null);
+
+            Assert.Equal("✓ Saved.", vm.Logic.EditorMessage);
+            using JsonDocument document = await handle.GetJsonAsync("/api/logic");
+            JsonElement source = document.RootElement.GetProperty("tagSources")[0];
+            Assert.Equal("LINE 4", source.GetProperty("name").GetString());
+            Assert.Equal("LINE_01_START_PERMIT", source.GetProperty("tags")[0].GetProperty("name").GetString());
+            Assert.Equal("ns=2;s=Status/Line01.Permit", source.GetProperty("tags")[0].GetProperty("itemId").GetString());
+
+            // A block with no area has no list to add to, so the picker stays closed.
+            vm.Logic.NewBlockCommand.Execute(null);
+            Assert.False(vm.Logic.CanPickTagsFromBridge);
+            Assert.Equal(0, vm.Logic.AddTagsFromBridge(new[] { listed }));
+        }
+        finally
+        {
+            await vm.DisposeAsync();
+            DeleteConfig(configPath);
+        }
+    }
+
+    [Fact]
     public async Task OpeningABlockWithAnAreaMovesItsDirectTagsIntoTheAreasTags()
     {
         await using TestAppHandle handle = await StartAsync(PermitTag());

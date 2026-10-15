@@ -247,7 +247,9 @@ the next Save. A pair on a block with no area and no group has no list to join: 
 a `Direct tag: …` line and the pair is kept through a save, so nothing the bridge still evaluates is
 dropped. `LogicStore` owns both
 files behind one version; `TryRemoveAreaTags` refuses while blocks read the list. The HMI's Logic
-page carries it as its **Tags** tab (the AREA field, entries with live values, `+ New tag`; **New
+page carries it as its **Tags** tab (the AREA field, entries with live values, `+ New tag` — which
+opens with its source already chosen — and **From bridge…**, which lists the bridge's mapped tags
+with their readings so several become named entries in one step; **New
 block** asks for the block's name, interlock group and AREA first, so the area is assigned before
 anything is authored), the block list reads AREA → interlock group → blocks, every editor row picks
 its tag from the area's entries (a tag whose source does not offer writes is flagged on the tab,

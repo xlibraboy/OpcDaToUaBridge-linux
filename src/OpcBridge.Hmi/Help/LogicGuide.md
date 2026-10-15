@@ -182,6 +182,12 @@ area** instead of once per condition:
   Save to store them.`). Rename an entry on the tab if the automatic name reads badly. A pair from a
   block with no area at all has no list to join: the row shows it as a `Direct tag: …` line instead,
   keeps it through the save, and points you at the Tags tab — assign the area and it moves in.
+- **`From bridge…` adds several tags at once.** It lists the bridge's mapped tags — source, tag and
+  the reading each had when the window opened — with a filter box (`pump`, `ns=2;s=Status/Line`, or a
+  source name); the tags the area's tags already hold are greyed out. Tick the signals you need
+  (Ctrl/Shift for several) and **Add tags**: each becomes one named entry, named after the tag's
+  display name (`LINE_01_START_PERMIT`), which you can rename on the tab. Tags that are not mapped
+  yet are not offered — map them in the dashboard (Tags ▸ Maps) first.
 - **Save** stores the area's tags and the block together (whichever changed, and the tab's
   `used by` line tells you who shares them). **`Delete area tags`** removes the area's list; the
   bridge refuses while any block still reads it, naming how many.

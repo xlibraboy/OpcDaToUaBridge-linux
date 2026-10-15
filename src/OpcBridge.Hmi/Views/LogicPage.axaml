@@ -472,6 +472,10 @@
                   <Button Content="+ New tag" Command="{Binding AreaTags.NewTagEntryCommand}"
                           IsEnabled="{Binding IsEditingEnabled}"
                           AutomationProperties.Name="Add a named tag" />
+                  <Button Content="From bridge…" Click="OnPickTagsClick"
+                          IsEnabled="{Binding CanPickTagsFromBridge}"
+                          AutomationProperties.Name="Add tags from the bridge"
+                          ToolTip.Tip="Pick the bridge's mapped tags from a list — one named entry each, several at a time." />
                   <Button Classes="danger" Content="Delete area tags" Command="{Binding AreaTags.DeleteSourceCommand}"
                           IsEnabled="{Binding IsEditingEnabled}"
                           AutomationProperties.Name="Delete the area tags" />

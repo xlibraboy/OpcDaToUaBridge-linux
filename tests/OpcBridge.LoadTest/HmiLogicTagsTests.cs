@@ -425,6 +425,52 @@ public sealed class HmiLogicTagsTests
     }
 
     [Fact]
+    public void TagPick_FiltersByNameSourceAndItemAndMarksWhatTheListAlreadyHolds()
+    {
+        LogicTagPickRow start = new("sim", StartItemId, "Dry End Start Permit", "Simulation", "1");
+        LogicTagPickRow done = new("sim", DoneItemId, "Dry End Done", "Simulation", "0", LogicText.TagPickListed, Enabled: false);
+        LogicTagPickRow other = new("line2", "Pump.Run", "Pump Running", "Line 2", "—");
+
+        LogicTagPickViewModel pick = new(new[] { start, done, other }, "DRYEND");
+
+        // The window names the list it adds to, lists every mapped tag, and confirms nothing yet.
+        Assert.Contains("DRYEND", pick.Title);
+        Assert.Equal(3, pick.Rows.Count);
+        Assert.False(pick.CanConfirm);
+        Assert.False(pick.ShowsEmptyText);
+        Assert.Equal(LogicText.TagPickHint, pick.Hint);
+
+        // A tag the area's tags already hold is marked — and greyed out, since adding it changes nothing.
+        Assert.True(done.HasMarker);
+        Assert.False(done.Enabled);
+        Assert.False(start.HasMarker);
+
+        // The filter matches the tag, its item id or its source.
+        pick.Filter = "pump";
+        Assert.Equal("Pump.Run", Assert.Single(pick.Rows).ItemId);
+
+        pick.Filter = "simulation";
+        Assert.Equal(2, pick.Rows.Count);
+
+        pick.Filter = "status/done";
+        Assert.Same(done, Assert.Single(pick.Rows));
+
+        pick.Filter = "nothing matches";
+        Assert.Empty(pick.Rows);
+        Assert.True(pick.ShowsEmptyText);
+        Assert.Contains("nothing matches", pick.EmptyText);
+
+        // Ticking rows arms the confirm button.
+        pick.SetSelectedCount(2);
+        Assert.True(pick.CanConfirm);
+
+        // An empty list says where mapped tags come from.
+        LogicTagPickViewModel none = new(Array.Empty<LogicTagPickRow>(), "DRYEND");
+        Assert.Equal(LogicText.TagPickNoTags, none.EmptyText);
+        Assert.True(none.ShowsEmptyText);
+    }
+
+    [Fact]
     public void Build_CarriesTheAreaAndTheAreaTagsAndRoundTripsTheStoredBlock()
     {
         LogicBlockDto stored = NamedBlock("START_PB");

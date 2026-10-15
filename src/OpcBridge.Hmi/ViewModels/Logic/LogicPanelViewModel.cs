@@ -401,12 +401,19 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
     /// <summary>The editor's pointer at the Tags tab while the area has no tags.</summary>
     public string AreaTagsPrompt => ShowsAreaTagsPrompt ? LogicText.AreaTagsPrompt : string.Empty;
 
+    /// <summary>
+    /// The Tags tab's "From bridge…" picker: it needs a connected bridge to read the mapped tags
+    /// from, and a named area to add them to.
+    /// </summary>
+    public bool CanPickTagsFromBridge => IsEditingEnabled && !AreaTags.IsNameBlank;
+
     private void RefreshAreaFallbackHint()
     {
         OnPropertyChanged(nameof(HasAreaFallback));
         OnPropertyChanged(nameof(AreaFallbackHint));
         OnPropertyChanged(nameof(ShowsAreaTagsPrompt));
         OnPropertyChanged(nameof(AreaTagsPrompt));
+        OnPropertyChanged(nameof(CanPickTagsFromBridge));
     }
 
     partial void OnBlockDescriptionChanged(string value) => DirtyChanged();
@@ -1599,6 +1606,81 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// The bridge's mapped tags as the Tags tab's "From bridge…" window lists them: one row per tag
+    /// with its source and the reading it had just now, and the tags the area's tags already hold
+    /// greyed out — adding one of those again would change nothing.
+    /// </summary>
+    public IReadOnlyList<LogicTagPickRow> BuildTagPickRows()
+    {
+        if (SelectedBridge is not { } bridge)
+        {
+            return Array.Empty<LogicTagPickRow>();
+        }
+
+        MultiBridgeTagCache cache = connections_.Cache;
+        List<LogicTagPickRow> rows = new();
+        foreach (LogicSourceOption source in catalog_.Sources)
+        {
+            foreach (LogicTagOption tag in catalog_.ItemsFor(source.SourceId))
+            {
+                bool listed = AreaTags.Entries.Any(entry =>
+                    entry.IsAssigned
+                    && string.Equals(entry.SourceId, tag.SourceId, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(entry.ItemId, tag.ItemId, StringComparison.OrdinalIgnoreCase));
+
+                string value = cache.TryGet(
+                    TagBindingKey.Create(bridge.BridgeId, tag.SourceId, tag.ItemId),
+                    out MultiBridgeTagEntry? entry)
+                        ? LogicText.TagLiveChip(entry)
+                        : "—";
+
+                rows.Add(new LogicTagPickRow(
+                    tag.SourceId,
+                    tag.ItemId,
+                    tag.Label,
+                    tag.SourceName,
+                    value,
+                    listed ? LogicText.TagPickListed : string.Empty,
+                    Enabled: !listed));
+            }
+        }
+
+        return rows;
+    }
+
+    /// <summary>
+    /// Adds one named entry per tag picked in that window — named after the tag's display name
+    /// (<c>LINE_01_START_PERMIT</c>), the same way a legacy pair is moved in — and says how many
+    /// joined the list. A tag an entry already carries is re-used, so picking one twice never
+    /// duplicates it; the save stores the entries with the block.
+    /// </summary>
+    public int AddTagsFromBridge(IEnumerable<LogicTagPickRow> tags)
+    {
+        if (!CanPickTagsFromBridge)
+        {
+            return 0;
+        }
+
+        int bound = AreaTags.Entries.Count(entry => entry.IsAssigned);
+        foreach (LogicTagPickRow tag in tags)
+        {
+            AreaTags.EnsureEntry(
+                UniqueTagName(TagNameFor(tag.SourceId, tag.ItemId)),
+                tag.SourceId,
+                tag.ItemId);
+        }
+
+        int added = AreaTags.Entries.Count(entry => entry.IsAssigned) - bound;
+        if (added > 0)
+        {
+            AreaTags.RefreshUsed(ReferencedTagNames());
+            EditorMessage = "✓ " + LogicText.TagsAdded(added, AreaTags.Name.Trim());
+        }
+
+        return added;
+    }
+
     /// <summary>A Tags-tab edit (the area's name, an entry, the dirty flag) is an editor edit.</summary>
     private void OnAreaTagsChanged(object? sender, PropertyChangedEventArgs e)
     {
@@ -1685,6 +1767,7 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ShowsNetwork));
         OnPropertyChanged(nameof(ShowsConditions));
         OnPropertyChanged(nameof(ShowsSteps));
+        OnPropertyChanged(nameof(CanPickTagsFromBridge));
         NotifyRowCounts();
         NotifyRowCommands();
         ConvertToNetworkCommand.NotifyCanExecuteChanged();

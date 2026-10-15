@@ -416,6 +416,23 @@ public static class LogicText
     public static string NoMappedTagsHint(string sourceName) =>
         $"No mapped tags on {sourceName} — map them in the dashboard (Tags ▸ Maps), then reopen this page.";
 
+    /// <summary>The "From bridge…" window's footer: its readings are a snapshot, not a live feed.</summary>
+    public const string TagPickHint = "Values are as read when this window opened. Nothing is saved until Save.";
+
+    /// <summary>The picker's note on a tag the area's tags already hold (the row is greyed out).</summary>
+    public const string TagPickListed = "in the area's tags";
+
+    /// <summary>The picker's empty list when the bridge has no mapped tags to offer.</summary>
+    public const string TagPickNoTags =
+        "No mapped tags on this bridge — map them in the dashboard (Tags ▸ Maps), then reopen this window.";
+
+    /// <summary>The picker's empty list when only the filter hides every row.</summary>
+    public static string TagPickNoMatch(string filter) => $"No tags match \"{filter}\".";
+
+    /// <summary>The note after "From bridge…" added the picked tags to the area's list.</summary>
+    public static string TagsAdded(int count, string name) =>
+        $"{(count == 1 ? "1 tag" : $"{count} tags")} added to \"{name}\" — Save to store them.";
+
     /// <summary>
     /// An editor row's note for a tag the block still carries directly: a block authored before
     /// the area's tags existed keeps reading it until the list holds it.

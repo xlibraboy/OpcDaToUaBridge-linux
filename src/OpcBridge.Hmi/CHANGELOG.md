@@ -28,7 +28,11 @@ picker when the area's list has no entry for it, and a pair with a list to join 
 area's tags by itself** — opening the block (or giving it an area) turns each pair into a named
 entry, named after the tag's display name, the row references it, the editor reports `Moved 1 tag
 into "DRYEND" — Save to store them.` and **Save** stores the move, so the block evaluates exactly as
-before while the assignment now lives on the tab. A tag the source does not offer for writing is
+before while the assignment now lives on the tab. **`From bridge…`** opens the bridge's mapped tags
+in their own window — source, tag and the reading each had when it opened, with a filter box, the
+tags the list already holds greyed out — and adds every ticked tag as one named entry, telling you
+how many joined (`3 tags added to "DRYEND" — Save to store them.`); picking a tag twice never
+duplicates an entry. A tag the source does not offer for writing is
 flagged where it is assigned (`read-only tag — an action cannot write it.`), because the action rows
 pick an entry now instead of a writeable tag.
 
