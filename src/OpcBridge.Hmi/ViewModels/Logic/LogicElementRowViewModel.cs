@@ -1,4 +1,3 @@
-using System.Collections.ObjectModel;
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -9,16 +8,19 @@ namespace OpcBridge.Hmi.ViewModels.Logic;
 /// <summary>
 /// One editable element row of the IEC 61131-3 network editor. Rows nest by indentation: a row's
 /// inputs are the rows under it at a deeper level, rebuilt into the tree on save. The fields shown
-/// follow the selected kind — a contact reads a tag (or an internal relay when a relay is typed),
-/// a coil drives an internal relay, a timer its preset, a counter its preset, a gate or function
-/// block just its label.
+/// follow the selected kind — a contact reads one of its area's named tags (the Tags tab's
+/// entries) or an internal relay when a relay is typed, a coil drives an internal relay, a timer
+/// its preset, a counter its preset, a gate or function block just its label. A stored direct
+/// (source, tag) pair is carried through a save until the area's list holds it, and reads as its
+/// own line while it is not in that list.
 /// </summary>
 public partial class LogicElementRowViewModel : ObservableObject, ILogicOrderRow
 {
     private readonly LogicTagCatalog catalog_;
     private readonly Action<LogicElementRowViewModel>? onRemove_;
     private readonly LogicRowList<LogicElementRowViewModel>? rowList_;
-    private bool loading_;
+    private readonly string storedSourceId_;
+    private readonly string storedItemId_;
 
     public LogicElementRowViewModel(
         LogicElementDto element,
@@ -32,6 +34,8 @@ public partial class LogicElementRowViewModel : ObservableObject, ILogicOrderRow
         catalog_ = catalog;
         onRemove_ = onRemove;
         rowList_ = rowList;
+        storedSourceId_ = element.SourceId ?? string.Empty;
+        storedItemId_ = element.ItemId ?? string.Empty;
         RelayNames = relayNames ?? Array.Empty<string>();
         ElementId = element.Id == Guid.Empty ? Guid.NewGuid() : element.Id;
         Kind = LogicSelectOption.Find(LogicOptions.ElementKinds, element.Kind) ?? LogicOptions.ElementKinds[0];
@@ -45,7 +49,6 @@ public partial class LogicElementRowViewModel : ObservableObject, ILogicOrderRow
         Indent = Math.Clamp(indent, 0, LogicLimits.MaxElementDepth);
         TagEntries = tagEntries ?? Array.Empty<LogicTagEntryViewModel>();
         SelectedBlockTag = FindTagEntry(element.Tag);
-        LoadSourceAndItems(element.SourceId, element.ItemId);
     }
 
     public Guid ElementId { get; }
@@ -58,10 +61,6 @@ public partial class LogicElementRowViewModel : ObservableObject, ILogicOrderRow
     public IReadOnlyList<LogicSelectOption> OpOptions => LogicOptions.Ops;
 
     public IReadOnlyList<LogicSelectOption> SeverityOptions => LogicOptions.Severities;
-
-    public ObservableCollection<LogicSourceOption> Sources { get; } = new();
-
-    public ObservableCollection<LogicTagOption> Items { get; } = new();
 
     [ObservableProperty]
     private LogicSelectOption _kind;
@@ -97,12 +96,6 @@ public partial class LogicElementRowViewModel : ObservableObject, ILogicOrderRow
     private int _indent;
 
     [ObservableProperty]
-    private LogicSourceOption? _selectedSource;
-
-    [ObservableProperty]
-    private LogicTagOption? _selectedTag;
-
-    [ObservableProperty]
     private string _liveText = "—";
 
     [ObservableProperty]
@@ -114,9 +107,13 @@ public partial class LogicElementRowViewModel : ObservableObject, ILogicOrderRow
     [ObservableProperty]
     private bool _isLiveWarn = true;
 
-    public string SourceId => SelectedSource?.SourceId ?? string.Empty;
+    /// <summary>
+    /// The direct pair the contact was stored with, "" when it is not a legacy row. It is not
+    /// edited here any more; it is carried through a save while the area's tags do not hold it yet.
+    /// </summary>
+    public string SourceId => storedSourceId_;
 
-    public string ItemId => SelectedTag?.ItemId ?? string.Empty;
+    public string ItemId => storedItemId_;
 
     public bool IsContact => string.Equals(Kind?.Value, LogicElementKinds.Contact, StringComparison.OrdinalIgnoreCase);
 
@@ -129,13 +126,13 @@ public partial class LogicElementRowViewModel : ObservableObject, ILogicOrderRow
     /// <summary>A contact that reads an internal relay instead of a tag.</summary>
     public bool IsRelayContact => IsContact && Relay.Trim().Length > 0;
 
-    /// <summary>The area's named tags a tag contact may read instead of a direct tag.</summary>
+    /// <summary>The area's named tags a tag contact may read — the ones the Tags tab assigns.</summary>
     public IEnumerable<LogicTagEntryViewModel> TagEntries { get; }
 
     [ObservableProperty]
     private LogicTagEntryViewModel? _selectedBlockTag;
 
-    /// <summary>The stored area-tags reference, "" when the contact reads a direct tag.</summary>
+    /// <summary>The stored area-tags reference, "" while the contact carries no name.</summary>
     public string Tag => SelectedBlockTag?.Name.Trim() ?? string.Empty;
 
     public bool HasBlockTag => Tag.Length > 0;
@@ -146,8 +143,11 @@ public partial class LogicElementRowViewModel : ObservableObject, ILogicOrderRow
     /// <summary>The named-tag picker: a contact (a relay contact reads a coil's relay instead).</summary>
     public bool ShowsBlockTag => IsContact;
 
-    /// <summary>The direct source/tag pickers: a tag contact that has not named an area tag.</summary>
-    public bool ShowsDirectTag => IsTagContact && !HasBlockTag;
+    /// <summary>A legacy tag contact waiting for the area's tags to hold it: shown, never edited here.</summary>
+    public bool HasStoredTag => IsTagContact && !HasBlockTag && (SourceId.Length > 0 || ItemId.Length > 0);
+
+    /// <summary>What a legacy contact reads, while the area's list has no entry for it.</summary>
+    public string StoredTagText => LogicText.StoredTagHint(catalog_.TagLabel(SourceId, ItemId));
 
     /// <summary>The relay field: a relay contact reads one, a coil drives one.</summary>
     public bool ShowsRelay => IsRelayContact || IsCoil;
@@ -164,7 +164,7 @@ public partial class LogicElementRowViewModel : ObservableObject, ILogicOrderRow
     {
         OnPropertyChanged(nameof(Tag));
         OnPropertyChanged(nameof(HasBlockTag));
-        OnPropertyChanged(nameof(ShowsDirectTag));
+        OnPropertyChanged(nameof(HasStoredTag));
         ClearBlockTagCommand.NotifyCanExecuteChanged();
     }
 
@@ -205,7 +205,7 @@ public partial class LogicElementRowViewModel : ObservableObject, ILogicOrderRow
         OnPropertyChanged(nameof(IsRelayContact));
         OnPropertyChanged(nameof(IsTagContact));
         OnPropertyChanged(nameof(ShowsBlockTag));
-        OnPropertyChanged(nameof(ShowsDirectTag));
+        OnPropertyChanged(nameof(HasStoredTag));
         OnPropertyChanged(nameof(ShowsRelay));
         OnPropertyChanged(nameof(ShowsSeverity));
         OnPropertyChanged(nameof(ShowsLabelOnly));
@@ -218,21 +218,13 @@ public partial class LogicElementRowViewModel : ObservableObject, ILogicOrderRow
     {
         OnPropertyChanged(nameof(IsRelayContact));
         OnPropertyChanged(nameof(IsTagContact));
-        OnPropertyChanged(nameof(ShowsDirectTag));
+        OnPropertyChanged(nameof(HasStoredTag));
         OnPropertyChanged(nameof(ShowsRelay));
 
         // A relay contact reads a bit: a numeric comparison has nothing to compare against.
         if (value.Trim().Length > 0 && LogicConditionOps.RequiresValue(Op?.Value))
         {
             Op = LogicOptions.Ops[0];
-        }
-    }
-
-    partial void OnSelectedSourceChanged(LogicSourceOption? value)
-    {
-        if (!loading_)
-        {
-            RebuildItems(string.Empty);
         }
     }
 
@@ -299,54 +291,5 @@ public partial class LogicElementRowViewModel : ObservableObject, ILogicOrderRow
         InsertBelowCommand.NotifyCanExecuteChanged();
         MoveUpCommand.NotifyCanExecuteChanged();
         MoveDownCommand.NotifyCanExecuteChanged();
-    }
-
-    private void LoadSourceAndItems(string sourceId, string itemId)
-    {
-        loading_ = true;
-        try
-        {
-            Sources.Clear();
-            foreach (LogicSourceOption source in catalog_.Sources)
-            {
-                Sources.Add(source);
-            }
-
-            if (sourceId.Length > 0
-                && !Sources.Any(source => string.Equals(source.SourceId, sourceId, StringComparison.OrdinalIgnoreCase)))
-            {
-                Sources.Add(new LogicSourceOption(sourceId, sourceId));
-            }
-
-            SelectedSource = Sources.FirstOrDefault(
-                source => string.Equals(source.SourceId, sourceId, StringComparison.OrdinalIgnoreCase));
-        }
-        finally
-        {
-            loading_ = false;
-        }
-
-        RebuildItems(itemId);
-    }
-
-    private void RebuildItems(string keepItemId)
-    {
-        string sourceId = SelectedSource?.SourceId ?? string.Empty;
-        Items.Clear();
-        foreach (LogicTagOption item in catalog_.ItemsFor(sourceId))
-        {
-            Items.Add(item);
-        }
-
-        LogicTagOption? match = keepItemId.Length == 0
-            ? null
-            : Items.FirstOrDefault(item => string.Equals(item.ItemId, keepItemId, StringComparison.OrdinalIgnoreCase));
-        if (match is null && keepItemId.Length > 0)
-        {
-            match = new LogicTagOption(sourceId, keepItemId, keepItemId, SelectedSource?.Name ?? sourceId, Writeable: true);
-            Items.Insert(0, match);
-        }
-
-        SelectedTag = match;
     }
 }

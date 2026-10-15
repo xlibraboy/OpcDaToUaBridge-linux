@@ -96,7 +96,7 @@ interlock into readable pieces instead of one deep tree:
   one of the relays the other blocks already drive. The coil's own output is what it wrote, so a
   coil can sit inside a gate like any other element.
 - **Relay contact** — a `Contact` with its `RELAY` field filled: `ON` reads the relay as 1, `OFF`
-  reads it as 0, and it is **not** a tag (the tag pickers disappear while a relay is typed). Its
+  reads it as 0, and it is **not** a tag (the tag picker disappears while a relay is typed). Its
   live chip and `should 1 · actual 0` line read the same as a tag contact's.
 - **Wiring across blocks** — relays are shared by the whole bridge, so a relay a coil drives in one
   block feeds **any** gate or function block — `AND`, `OR`, `XOR`, `NOT`, a timer's `IN`, a
@@ -126,16 +126,16 @@ A block carries two headings:
 - **AREA** (e.g. `DRY END`) — the plant's main section, and the scope its tags are shared by: every
   block of the area reads one **area tags** list (the Tags tab), so a signal is assigned once per
   area and re-used by all of its interlocks, whatever their group. **`New block` asks for the area
-  first**, so the block is authored inside its area from the start and every tag picked on its rows
-  joins the area's tags automatically.
+  first**, so the block is authored inside its area from the start and its rows pick from the area's
+  tags.
 - **INTERLOCK GROUP** (e.g. `Primary Arm`) — a display heading only: the front list, the Blocks
   window and the phone collect blocks that share it under one heading, so a machine's up/down
   interlocks read together. Name the children after it (`Primary Arm Up`, `Primary Arm Down`) and
   give them the same group.
 
 At most 40 characters each. A block without an area still works — its named tags resolve through
-the name it stores, else its interlock group (the legacy fallback) — and typing an area moves it
-onto the area's tags.
+the name it stores, else its interlock group (the legacy fallback) — and giving it an area moves its
+tags onto the area's list.
 
 ---
 
@@ -151,29 +151,36 @@ description or any tag.
 
 # Area tags (per area)
 
-A block does not have to name the bridge tag in every row. The **Tags** tab next to the editor
-holds its area's **area tags** — the named tags every block of that area reads — so a signal is
-assigned **once per area** instead of once per condition:
+A block does not name the bridge tag in every row: it reads the **named tags of its area**, and
+those are assigned in one place — the **Tags** tab next to the editor. The tab holds the area's
+**area tags** — the named tags every block of that area reads — so a signal is assigned **once per
+area** instead of once per condition:
 
 - Type the **area's name** (`DRY END`, `WET END`, …) in the editor's `AREA` field — or in the Tags
   tab's own box, which is the same value. Every block of the area shares one list of tags: assign a
   tag here and every one of those blocks follows. The tab says how many loaded blocks carry the
   area.
-- **`+ New tag`** creates an entry with a name you choose (`START_PB`, `FAULT`, …). **Name it, leave
-  it unassigned, and assign the bridge tag later** — a block authored against an unassigned entry
-  reads **unknown** with the entry named in the reason (`no data for START_PB (not assigned)`),
-  never a silent false. A name the area's tags do not hold reads `… (not in DRY END)`.
+- **This is where a tag gets its source.** Each row of the tab is one signal: the **NAME** a block's
+  rows carry (`START_PB`, `FAULT`, …), its **SOURCE** (`DRY END`'s own sources are listed, e.g. the
+  simulation PLC) and the **TAG** on that source. Name it, leave it unassigned, and assign the
+  bridge tag later — a block authored against an unassigned entry reads **unknown** with the entry
+  named in the reason (`no data for START_PB (not assigned)`), never a silent false. A name the
+  area's tags do not hold reads `… (not in DRY END)`.
+- **`+ New tag`** creates an entry with a name you choose; pick its source and tag on the same row.
+  The **TAG** column also marks a bound tag the source does not offer for writing
+  (`read-only tag — an action cannot write it.`), so an action button that could never write is
+  spotted where it is assigned rather than on the phone.
 - In the editor, every row — a condition, a network contact, a step's completion handshake, an
-  action — has an **AREA TAG** picker listing the area's entries; picking one hides the direct
-  `SOURCE` / `TAG` pickers (the pair lives on the entry now). `✕` clears it and the row reads a
-  direct bridge tag again.
-- **Tags join the area as they are picked.** Choosing a bridge tag on a row of a block that has an
-  area adds it to the area's tags — one entry, named after the tag's display name
-  (`LINE_01_START_PERMIT`, …) — and the row references it, so every block of the area finds it in
-  its own AREA TAG list. Rename the entry on the tab if the automatic name reads badly. A block
-  authored before areas existed joins its area the moment it is given one (or on its next save):
-  its direct tags become the area's entries and the block evaluates the same before and after.
-  Rows of a block *without* an area keep reading their direct tags — the legacy fallback.
+  action — carries one **AREA TAG** picker listing the area's entries. Pick a name there; the row
+  stores the name and nothing else, so the pair lives on the entry and moving it moves every block
+  of the area at once. `✕` clears the pick and leaves the row unassigned until you pick another name.
+- **A block authored before areas existed still works.** Its rows carry a direct source/tag pair;
+  the moment such a block is opened with an area (or given one), those pairs **join the area's tags**
+  — one entry each, named after the tag's display name (`LINE_01_START_PERMIT`, …), which the row
+  then references — and **Save** stores the move. The editor says so (`Moved 1 tag into "DRYEND" —
+  Save to store them.`). Rename an entry on the tab if the automatic name reads badly. A pair from a
+  block with no area at all has no list to join: the row shows it as a `Direct tag: …` line instead,
+  keeps it through the save, and points you at the Tags tab — assign the area and it moves in.
 - **Save** stores the area's tags and the block together (whichever changed, and the tab's
   `used by` line tells you who shares them). **`Delete area tags`** removes the area's list; the
   bridge refuses while any block still reads it, naming how many.
@@ -190,7 +197,8 @@ moves both at once.
 A block can carry action buttons (label, tag, value, confirm). The phone renders them as operator
 buttons; a press writes the value through the bridge's normal write path, so the target tag must
 allow writes and the caller's role must permit them. This page authors the buttons only — the write
-stays on the phone — and offers writeable tags for them.
+stays on the phone — and the button writes one of the area's tags: pick it in its `AREA TAG` field,
+and the Tags tab marks an entry whose tag the source does not offer for writing.
 
 ---
 

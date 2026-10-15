@@ -390,8 +390,8 @@ public static class LogicText
         blank
             ? "Name the area (e.g. DRY END) — every block of that area shares these tags."
             : knownArea
-                ? $"Every {name} block shares these tags — a tag picked on a row joins them here, and assigning one updates all of them."
-                : $"New area tags — a tag picked on a row joins them; saving creates the list for every {name} block.";
+                ? $"Every {name} block shares these tags — assign a tag here and every one of their rows reads it."
+                : $"New area tags — saving creates the list every {name} block's rows read.";
 
     /// <summary>The message when an area is typed and the block's direct tags join it (stored by Save).</summary>
     public static string AreaTagsMoved(int count, string name) =>
@@ -407,7 +407,21 @@ public static class LogicText
 
     /// <summary>The tab's empty state: nothing referenced, nothing created.</summary>
     public const string AreaTagsEmpty =
-        "No tags yet — pick a tag on a row and it joins this area's tags, or add one here first and assign the bridge tag.";
+        "No tags yet — add one with New tag, name it and assign its source and tag; the area's blocks read them from their AREA TAG lists.";
+
+    /// <summary>
+    /// An editor row's note for a tag the block still carries directly: a block authored before
+    /// the area's tags existed keeps reading it until the list holds it.
+    /// </summary>
+    public static string StoredTagHint(string label) =>
+        $"Direct tag: {label} — add it to this area's tags (the Tags tab) to assign it there.";
+
+    /// <summary>The editor's pointer at the Tags tab while the area holds no tags yet.</summary>
+    public const string AreaTagsPrompt =
+        "The block's rows pick their tag from the area's tags (the Tags tab) — none yet: add each signal here with its source and tag.";
+
+    /// <summary>The Tags tab's note for a bound tag that is not mapped for writing.</summary>
+    public const string ReadOnlyTagHint = "read-only tag — an action cannot write it.";
 
     /// <summary>
     /// The scope line while the block has no area of its own: its tags resolve through the legacy

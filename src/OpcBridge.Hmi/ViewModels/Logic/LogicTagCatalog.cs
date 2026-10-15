@@ -71,26 +71,34 @@ public sealed class LogicTagCatalog
         return new LogicTagCatalog(sources, tags);
     }
 
-    /// <summary>The tags of one source, in display order. A write-only picker lists writeable tags only.</summary>
-    public IReadOnlyList<LogicTagOption> ItemsFor(string sourceId, bool writeableOnly = false)
+    /// <summary>The tags of one source, in display order.</summary>
+    public IReadOnlyList<LogicTagOption> ItemsFor(string sourceId)
     {
         List<LogicTagOption> items = new();
         foreach (LogicTagOption tag in tags_)
         {
-            if (!string.Equals(tag.SourceId, sourceId, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(tag.SourceId, sourceId, StringComparison.OrdinalIgnoreCase))
             {
-                continue;
+                items.Add(tag);
             }
-
-            if (writeableOnly && !tag.Writeable)
-            {
-                continue;
-            }
-
-            items.Add(tag);
         }
 
         return items;
+    }
+
+    /// <summary>True while the tag is mapped for writing — an action may write it.</summary>
+    public bool IsWriteable(string sourceId, string itemId)
+    {
+        foreach (LogicTagOption tag in tags_)
+        {
+            if (string.Equals(tag.SourceId, sourceId, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(tag.ItemId, itemId, StringComparison.OrdinalIgnoreCase))
+            {
+                return tag.Writeable;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>Display name and source name for a stored (sourceId, itemId) pair, else the item id.</summary>

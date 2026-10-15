@@ -238,17 +238,20 @@ is `LogicAreaTags` (shared by the evaluator, the HMI and the phone): a bound ent
 value/mapping lookups, an unassigned one reads **unknown** with the entry named
 (`no data for START_PB (not assigned)`), a name the list does not hold reads `… (not in DRY END)`,
 and the store canonicalizes every reference to its entry's spelling while clearing the site's
-`SourceId`/`ItemId` (a reference and a pair are mutually exclusive — relay, once set, wins). The HMI
-converts a block's direct pairs into its area's tags automatically, so nothing is shared by a
-button: a tag **picked on a row** becomes an entry (named from its display name) the moment it is
-picked, a block **given an area** converts its rows right away, and a **save** sweeps whatever is
-still direct — a block with a real `Area` always shares its tags. Blocks without an area keep their
-direct pairs exactly as before (the legacy fallbacks are never rewritten). `LogicStore` owns both
+`SourceId`/`ItemId` (a reference and a pair are mutually exclusive — relay, once set, wins). The
+HMI editor assigns a tag **only** on the Tags tab: every editor row carries an **AREA TAG** picker
+and no source of its own, so a block authored before areas existed has its direct pairs **moved
+into the area's tags the moment the draft opens** (or the moment it is given an area) — one entry
+per pair, named from the tag's display name, which the row then references, with the move stored by
+the next Save. A pair on a block with no area and no group has no list to join: the row shows it as
+a `Direct tag: …` line and the pair is kept through a save, so nothing the bridge still evaluates is
+dropped. `LogicStore` owns both
 files behind one version; `TryRemoveAreaTags` refuses while blocks read the list. The HMI's Logic
 page carries it as its **Tags** tab (the AREA field, entries with live values, `+ New tag`; **New
 block** asks for the block's name, interlock group and AREA first, so the area is assigned before
-anything is authored), the block list reads AREA → interlock group → blocks, every editor row has an
-**AREA TAG** picker that hides the direct pickers, and the phone resolves labels, live values and
+anything is authored), the block list reads AREA → interlock group → blocks, every editor row picks
+its tag from the area's entries (a tag whose source does not offer writes is flagged on the tab,
+since the action rows point at entries), and the phone resolves labels, live values and
 action writes through the same list (its offline cache keeps the lists beside the blocks).
 
 ### Dashboard authentication & roles
@@ -320,19 +323,21 @@ that tab is gone, and the page is the whole editor (branch `feature/logic-web-ap
   connected one); definitions and state are cached per bridge in memory, and hub `logic` pushes
   are filtered to the selected bridge.
 - **Editor tab:** the block form (name, kind interlock/permissive/sequence, enabled, interlock
-  group, description, tags) and the three authoring surfaces — flat **conditions** (sentence,
-  source/tag pickers, ON/OFF/`>`/`<`/`=`, OR group, hold seconds, severity, next step), the
+  group, description, tags) and the three authoring surfaces — flat **conditions** (sentence, an
+  **AREA TAG** picker, ON/OFF/`>`/`<`/`=`, OR group, hold seconds, severity, next step), the
   **IEC 61131-3 network** (indented element rows with →/← nesting, contacts/gates/timers/counters/
   latches/edges and the **coil**, `Convert to IEC network` and back) and sequence **steps**
-  (condition rows plus an optional completion handshake), plus block-level **actions** (writeable
-  tags only). Every row carries the bridge's live state as a chip (1 / 0 / no data, or the live
+  (condition rows plus an optional completion handshake), plus block-level **actions**. A row
+  carries the **name** of one of the area's tags and nothing else — the source and the tag itself
+  are assigned on the Tags tab, so there is no direct picker left on a row to keep in sync. Every
+  row carries the bridge's live state as a chip (1 / 0 / no data, or the live
   value). Every row also carries `+↑` / `+↓` (insert a fresh row above/below it — a list is built
   where it is read, not only appended at its end) and `↑` / `↓` (move it one place); the rows of
   each list are ordered by `LogicRowList<T>`, which inserts and moves a network row in its whole
   group (the row plus the deeper rows under it) so a gate keeps its inputs. A network row's
   **RELAY** field (an `AutoCompleteBox` offering the relays the loaded
   blocks' coils already drive) turns a contact into a relay contact and names the relay a coil
-  drives; the tag pickers hide while a relay is typed and a numeric op coerces back to ON, because
+  drives; the tag picker hides while a relay is typed and a numeric op coerces back to ON, because
   a relay reads a bit. The rail is the picker; `Blocks…` opens `LogicBlocksWindow` — the same
   grouped list with `+ New block` and per-row delete, for creating and deleting blocks.
   Save/delete go through the bridge's own
@@ -352,7 +357,8 @@ that tab is gone, and the page is the whole editor (branch `feature/logic-web-ap
   the runtime (`Help/LogicGuide.md`, embedded) and opens from the page's **Guide…** button.
 - Wording and formatting live in `ViewModels/Logic/LogicText`; the tests pin the collect rules and
   the strings (`HmiLogicEditorTests`, `HmiLogicTextTests`, `HmiLogicPanelTests`,
-  `HmiLogicGuideTests`).
+  `HmiLogicGuideTests`) and the area-tags model end-to-end — the tab, the row references, and the
+  move of a legacy pair into the area's tags on load (`HmiLogicTagsTests`).
 
 `DashboardLogStore` is also wired as an `ILoggerProvider` (`DashboardLogProvider`), so `ILogger` calls under the `OpcBridge.*` categories at Information+ appear in the dashboard's Logs panel and docker logs. `OpcUaSourceClient` logs reconcile summaries (`subscription reconcile: desired=… active=… added=… removed=…`) — useful for verifying monitored-item behavior.
 

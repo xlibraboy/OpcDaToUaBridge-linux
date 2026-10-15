@@ -16,6 +16,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+**The Logic Tags tab is the one place a tag is assigned — an interlock's rows carry no source.**
+The Editor's rows lost their direct **SOURCE** / **TAG** pickers: a condition, a network contact, a
+step's completion handshake and an action each carry one **AREA TAG** picker, and what it reads is
+one of the selected block's area's tags — the signal, its source and the tag it is bound to are
+assigned in that one place, the **Tags** tab. Nothing a block already evaluates is dropped: a row
+that still stores a direct tag reads it as a `Direct tag: …` line instead of a picker when the
+area's list has no entry for it, and a pair with a list to join **moves into the area's tags by
+itself** — opening the block (or giving it an area) turns each pair into a named entry, named after
+the tag's display name, the row references it, the editor reports `Moved 1 tag into "DRYEND" — Save
+to store them.` and **Save** stores the move, so the block evaluates exactly as before while the
+assignment now lives on the tab. A tag the source does not offer for writing is flagged where it is
+assigned (`read-only tag — an action cannot write it.`), because the action rows pick an entry now
+instead of a writeable tag. An empty area shows where its tags are assigned — the editor says so and
+the tab's **New tag** creates the first entry.
+
 **The Logic editor is a denser authoring surface with a foldable block list.** The page packs its
 cards, rows and fields tighter than the app default — shorter row padding, tighter label and field
 spacing, and shorter inputs — so a whole block's conditions, network or steps fit on screen while it
@@ -44,16 +59,13 @@ which the tab names while offering to move the block onto an area. An entry can 
 **empty** and bound later: the row pickers already offer it, the block evaluates **no data for
 START_PB (not assigned)** until a tag is picked, and the tab's **LIVE** column shows the bound
 tag's value so the assignment can be checked in place. **New block** now asks for the block's
-**AREA** (and its interlock group) first, so the area is set before anything is authored — and
-every tag picked on a row afterwards **joins the area's tags automatically**: it becomes one named
-entry (named after the tag's display name) that every block of the area picks from its own **AREA
-TAG** list, which hides the direct SOURCE/TAG pickers while selected (the `✕` clears it and the row
-reads a direct tag again; the store keeps the two forms mutually exclusive). A block authored
-before areas existed joins its area the moment it is given one — or on its next save — so nothing
-has to be moved by hand. **`Delete area tags`** is refused while blocks still read them (the bridge
-names how many), and **Save** stores the tags and the block together, whichever changed
-(`✓ Area tags saved.` when only the area's tags moved). The Result tab labels a named contact as
-`START_PB · Line 01 Start Permit`, and the page's **Guide…** documents the whole flow.
+**AREA** (and its interlock group) first, so the area is set before anything is authored. A block
+authored before areas existed joins its area the moment it is given one — or the moment it is
+opened with one — so nothing has to be moved by hand. **`Delete area tags`** is refused while
+blocks still read them (the bridge names how many), and **Save** stores the tags and the block
+together, whichever changed (`✓ Area tags saved.` when only the area's tags moved). The Result tab
+labels a named contact as `START_PB · Line 01 Start Permit`, and the page's **Guide…** documents the
+whole flow.
 **The network editor authors internal relays (M coils).** The element kind list gained **Coil —
 drive internal relay (IN, M)**: it takes one input and drives the relay it names, and a contact
 row gained a **RELAY** field that turns it into a relay contact reading that relay instead of a

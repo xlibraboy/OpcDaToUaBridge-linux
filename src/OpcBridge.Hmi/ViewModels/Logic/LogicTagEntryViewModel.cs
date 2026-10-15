@@ -70,6 +70,15 @@ public partial class LogicTagEntryViewModel : ObservableObject
     /// <summary>A named, unassigned entry is the "create the empty tags, assign later" state.</summary>
     public bool IsAssigned => ItemId.Length > 0;
 
+    /// <summary>
+    /// A bound tag the source does not offer for writing: an action pointing at this entry could
+    /// not write it, so the assignment is flagged where it is made rather than at the phone.
+    /// </summary>
+    public bool IsReadOnly => IsAssigned && !catalog_.IsWriteable(SourceId, ItemId);
+
+    /// <summary>The tab's note for the read-only state.</summary>
+    public string ReadOnlyHint => LogicText.ReadOnlyTagHint;
+
     public string TagText => IsAssigned
         ? (string.IsNullOrWhiteSpace(SelectedTag?.Detail) ? ItemId : SelectedTag!.Detail)
         : LogicText.TagNotAssigned;
@@ -106,7 +115,11 @@ public partial class LogicTagEntryViewModel : ObservableObject
         }
     }
 
-    partial void OnSelectedTagChanged(LogicTagOption? value) => OnPropertyChanged(nameof(TagText));
+    partial void OnSelectedTagChanged(LogicTagOption? value)
+    {
+        OnPropertyChanged(nameof(TagText));
+        OnPropertyChanged(nameof(IsReadOnly));
+    }
 
     [RelayCommand(CanExecute = nameof(CanRemoveEntry))]
     private void Remove() => onRemove_?.Invoke(this);

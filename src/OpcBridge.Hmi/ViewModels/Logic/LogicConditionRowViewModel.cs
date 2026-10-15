@@ -1,4 +1,3 @@
-using System.Collections.ObjectModel;
 using System.Globalization;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -7,18 +6,19 @@ using OpcBridge.Client;
 namespace OpcBridge.Hmi.ViewModels.Logic;
 
 /// <summary>
-/// One editable condition row (the simple form). Source and tag are picked from a metadata
-/// snapshot; a stored tag that has left the cache stays selectable as its own entry, so a save
-/// cannot silently drop the reference. The row can instead read one of its area's named tags
-/// (the Tags tab's entries) — then the tag pickers hide and the pair lives on the shared source,
-/// so every block of the machine follows one assignment.
+/// One editable condition row (the simple form). The row reads one of its area's named tags —
+/// the Tags tab's entries, where the tag and its source are assigned once for every block of the
+/// area. A stored direct (source, tag) pair, left by a block authored before the area's tags
+/// existed, is carried through a save until the area's list holds it, and reads as its own line
+/// while it is not in that list.
 /// </summary>
 public partial class LogicConditionRowViewModel : ObservableObject, ILogicOrderRow
 {
     private readonly LogicTagCatalog catalog_;
     private readonly Action<LogicConditionRowViewModel>? onRemove_;
     private readonly LogicRowList<LogicConditionRowViewModel>? rowList_;
-    private bool loading_;
+    private readonly string storedSourceId_;
+    private readonly string storedItemId_;
 
     public LogicConditionRowViewModel(
         LogicConditionDto condition,
@@ -30,6 +30,8 @@ public partial class LogicConditionRowViewModel : ObservableObject, ILogicOrderR
         catalog_ = catalog;
         onRemove_ = onRemove;
         rowList_ = rowList;
+        storedSourceId_ = condition.SourceId ?? string.Empty;
+        storedItemId_ = condition.ItemId ?? string.Empty;
         ConditionId = condition.Id == Guid.Empty ? Guid.NewGuid() : condition.Id;
         Text = condition.Text;
         Op = LogicSelectOption.Find(LogicOptions.Ops, condition.Op) ?? LogicOptions.Ops[0];
@@ -40,7 +42,6 @@ public partial class LogicConditionRowViewModel : ObservableObject, ILogicOrderR
         NextStepText = condition.NextStepText ?? string.Empty;
         TagEntries = tagEntries ?? Array.Empty<LogicTagEntryViewModel>();
         SelectedBlockTag = FindTagEntry(condition.Tag);
-        LoadSourceAndItems(condition.SourceId, condition.ItemId);
     }
 
     public Guid ConditionId { get; }
@@ -48,10 +49,6 @@ public partial class LogicConditionRowViewModel : ObservableObject, ILogicOrderR
     public IReadOnlyList<LogicSelectOption> OpOptions => LogicOptions.Ops;
 
     public IReadOnlyList<LogicSelectOption> SeverityOptions => LogicOptions.Severities;
-
-    public ObservableCollection<LogicSourceOption> Sources { get; } = new();
-
-    public ObservableCollection<LogicTagOption> Items { get; } = new();
 
     [ObservableProperty]
     private string _text = string.Empty;
@@ -75,12 +72,6 @@ public partial class LogicConditionRowViewModel : ObservableObject, ILogicOrderR
     private string _nextStepText = string.Empty;
 
     [ObservableProperty]
-    private LogicSourceOption? _selectedSource;
-
-    [ObservableProperty]
-    private LogicTagOption? _selectedTag;
-
-    [ObservableProperty]
     private string _liveText = "—";
 
     [ObservableProperty]
@@ -92,31 +83,37 @@ public partial class LogicConditionRowViewModel : ObservableObject, ILogicOrderR
     [ObservableProperty]
     private bool _isLiveWarn = true;
 
-    /// <summary>The stored source id, "" when nothing is picked.</summary>
-    public string SourceId => SelectedSource?.SourceId ?? string.Empty;
+    /// <summary>
+    /// The direct pair the row was stored with, "" when it is not a legacy row. It is not edited
+    /// here any more; it is carried through a save while the area's tags do not hold it yet.
+    /// </summary>
+    public string SourceId => storedSourceId_;
 
-    /// <summary>The stored item id, "" when nothing is picked.</summary>
-    public string ItemId => SelectedTag?.ItemId ?? string.Empty;
+    /// <summary>The stored item id of a legacy row, "" when it reads a named tag.</summary>
+    public string ItemId => storedItemId_;
 
-    /// <summary>The area's named tags this row may read instead of a direct tag.</summary>
+    /// <summary>The area's named tags this row may read — the ones the Tags tab assigns.</summary>
     public IEnumerable<LogicTagEntryViewModel> TagEntries { get; }
 
     [ObservableProperty]
     private LogicTagEntryViewModel? _selectedBlockTag;
 
-    /// <summary>The stored area-tags reference, "" when the row reads a direct tag.</summary>
+    /// <summary>The stored area-tags reference, "" while the row carries no name.</summary>
     public string Tag => SelectedBlockTag?.Name.Trim() ?? string.Empty;
 
     public bool HasBlockTag => Tag.Length > 0;
 
-    /// <summary>The direct source/tag pickers: hidden while a named tag is selected.</summary>
-    public bool ShowsDirectTag => !HasBlockTag;
+    /// <summary>A legacy row waiting for the area's tags to hold it: shown, never edited here.</summary>
+    public bool HasStoredTag => !HasBlockTag && (SourceId.Length > 0 || ItemId.Length > 0);
+
+    /// <summary>What a legacy row reads, while the area's list has no entry for it.</summary>
+    public string StoredTagText => LogicText.StoredTagHint(catalog_.TagLabel(SourceId, ItemId));
 
     partial void OnSelectedBlockTagChanged(LogicTagEntryViewModel? value)
     {
         OnPropertyChanged(nameof(Tag));
         OnPropertyChanged(nameof(HasBlockTag));
-        OnPropertyChanged(nameof(ShowsDirectTag));
+        OnPropertyChanged(nameof(HasStoredTag));
         ClearBlockTagCommand.NotifyCanExecuteChanged();
     }
 
@@ -135,14 +132,6 @@ public partial class LogicConditionRowViewModel : ObservableObject, ILogicOrderR
     public bool NeedsValue => LogicConditionOps.RequiresValue(Op?.Value);
 
     partial void OnOpChanged(LogicSelectOption value) => OnPropertyChanged(nameof(NeedsValue));
-
-    partial void OnSelectedSourceChanged(LogicSourceOption? value)
-    {
-        if (!loading_)
-        {
-            RebuildItems(string.Empty);
-        }
-    }
 
     /// <summary>Applies the evaluated state to the live chip (1 / 0 / no data, or the live value).</summary>
     public void ApplyState(LogicElementStateDto? state)
@@ -196,55 +185,6 @@ public partial class LogicConditionRowViewModel : ObservableObject, ILogicOrderR
         InsertBelowCommand.NotifyCanExecuteChanged();
         MoveUpCommand.NotifyCanExecuteChanged();
         MoveDownCommand.NotifyCanExecuteChanged();
-    }
-
-    private void LoadSourceAndItems(string sourceId, string itemId)
-    {
-        loading_ = true;
-        try
-        {
-            Sources.Clear();
-            foreach (LogicSourceOption source in catalog_.Sources)
-            {
-                Sources.Add(source);
-            }
-
-            if (sourceId.Length > 0
-                && !Sources.Any(source => string.Equals(source.SourceId, sourceId, StringComparison.OrdinalIgnoreCase)))
-            {
-                Sources.Add(new LogicSourceOption(sourceId, sourceId));
-            }
-
-            SelectedSource = Sources.FirstOrDefault(
-                source => string.Equals(source.SourceId, sourceId, StringComparison.OrdinalIgnoreCase));
-        }
-        finally
-        {
-            loading_ = false;
-        }
-
-        RebuildItems(itemId);
-    }
-
-    private void RebuildItems(string keepItemId)
-    {
-        string sourceId = SelectedSource?.SourceId ?? string.Empty;
-        Items.Clear();
-        foreach (LogicTagOption item in catalog_.ItemsFor(sourceId))
-        {
-            Items.Add(item);
-        }
-
-        LogicTagOption? match = keepItemId.Length == 0
-            ? null
-            : Items.FirstOrDefault(item => string.Equals(item.ItemId, keepItemId, StringComparison.OrdinalIgnoreCase));
-        if (match is null && keepItemId.Length > 0)
-        {
-            match = new LogicTagOption(sourceId, keepItemId, keepItemId, SelectedSource?.Name ?? sourceId, Writeable: true);
-            Items.Insert(0, match);
-        }
-
-        SelectedTag = match;
     }
 
     internal static string FormatNumber(double value) => value.ToString("G", CultureInfo.InvariantCulture);

@@ -392,10 +392,21 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
     public string AreaFallbackHint =>
         HasAreaFallback ? LogicText.AreaTagsFallbackHint(AreaTags.Name.Trim()) : string.Empty;
 
+    /// <summary>
+    /// True while the block's area has no tags yet: the editor's rows pick their tag from that
+    /// list, so the editor says where the tags are assigned.
+    /// </summary>
+    public bool ShowsAreaTagsPrompt => !AreaTags.HasEntries;
+
+    /// <summary>The editor's pointer at the Tags tab while the area has no tags.</summary>
+    public string AreaTagsPrompt => ShowsAreaTagsPrompt ? LogicText.AreaTagsPrompt : string.Empty;
+
     private void RefreshAreaFallbackHint()
     {
         OnPropertyChanged(nameof(HasAreaFallback));
         OnPropertyChanged(nameof(AreaFallbackHint));
+        OnPropertyChanged(nameof(ShowsAreaTagsPrompt));
+        OnPropertyChanged(nameof(AreaTagsPrompt));
     }
 
     partial void OnBlockDescriptionChanged(string value) => DirtyChanged();
@@ -1345,6 +1356,19 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
             buildingRows_ = false;
         }
 
+        // A block authored before the area's tags existed still carries direct pairs on its rows:
+        // they join the area's list as the draft opens, so the editor reads the same tags the Tags
+        // tab edits and Save stores the moved binding.
+        if (IsEditingEnabled && !AreaTags.IsNameBlank)
+        {
+            int moved = ConvertDirectRowsIntoArea();
+            if (moved > 0)
+            {
+                AreaTags.RefreshUsed(ReferencedTagNames());
+                EditorMessage = "✓ " + LogicText.AreaTagsMoved(moved, AreaTags.Name.Trim());
+            }
+        }
+
         RefreshEditorMode();
         RefreshAreaTags();
         RefreshAreaFallbackHint();
@@ -1545,36 +1569,31 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
             return;
         }
 
-        TrySharePickedTag(sender, e.PropertyName);
+        RefreshAreaTagUsage(sender, e.PropertyName);
         DirtyChanged();
     }
 
     /// <summary>
-    /// A tag picked on a row of a block that has an area joins that area's tags the moment it is
-    /// picked: it becomes a named entry (named from the tag's display name) and the row references
-    /// it, so every block of the area can pick it — no separate move step.
+    /// A row's tag is a reference into the area's tags — the pick carries no source of its own —
+    /// so the tab's "used by this block" markers follow the pick the moment it changes.
     /// </summary>
-    private void TrySharePickedTag(object? sender, string? propertyName)
+    private void RefreshAreaTagUsage(object? sender, string? propertyName)
     {
-        if (!IsEditingEnabled || BlockArea.Trim().Length == 0 || AreaTags.IsNameBlank)
+        if (!IsEditingEnabled || AreaTags.IsNameBlank)
         {
             return;
         }
 
-        bool shared = propertyName switch
+        bool picked = propertyName switch
         {
-            nameof(LogicConditionRowViewModel.SelectedTag) when sender is LogicConditionRowViewModel condition
-                => ShareConditionRow(condition),
-            nameof(LogicElementRowViewModel.SelectedTag) when sender is LogicElementRowViewModel element
-                => ShareElementRow(element),
-            nameof(LogicActionRowViewModel.SelectedTag) when sender is LogicActionRowViewModel action
-                => ShareActionRow(action),
-            nameof(LogicStepRowViewModel.CompletionTag) when sender is LogicStepRowViewModel step
-                => ShareCompletionRow(step),
+            nameof(LogicConditionRowViewModel.SelectedBlockTag) when sender is LogicConditionRowViewModel => true,
+            nameof(LogicElementRowViewModel.SelectedBlockTag) when sender is LogicElementRowViewModel => true,
+            nameof(LogicActionRowViewModel.SelectedBlockTag) when sender is LogicActionRowViewModel => true,
+            nameof(LogicStepRowViewModel.SelectedCompletionTag) when sender is LogicStepRowViewModel => true,
             _ => false
         };
 
-        if (shared)
+        if (picked)
         {
             AreaTags.RefreshUsed(ReferencedTagNames());
         }
@@ -1593,6 +1612,12 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
             || string.Equals(e.PropertyName, nameof(LogicAreaTagsViewModel.UsedByCount), StringComparison.Ordinal))
         {
             DirtyChanged();
+        }
+
+        if (string.Equals(e.PropertyName, nameof(LogicAreaTagsViewModel.HasEntries), StringComparison.Ordinal))
+        {
+            OnPropertyChanged(nameof(ShowsAreaTagsPrompt));
+            OnPropertyChanged(nameof(AreaTagsPrompt));
         }
 
         if (string.Equals(e.PropertyName, nameof(LogicAreaTagsViewModel.Name), StringComparison.Ordinal))
@@ -1760,13 +1785,14 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// Every direct tag the block still carries joins its area's tags: one entry per distinct tag,
-    /// named after its display name, with the rows rewritten to reference it (the pair lives on the
-    /// entry now). Runs per row when a tag is picked, when the block is given an area, and as part
-    /// of a save — the block evaluates the same before and after.
+    /// named after its display name, with the rows rewritten to reference it — the pair lives on
+    /// the entry now, and that is the only place a tag is assigned. Runs when a draft loads, when
+    /// the block is given an area, and as part of a save, so the block evaluates the same before
+    /// and after.
     /// </summary>
     private int ConvertDirectRowsIntoArea()
     {
-        if (BlockArea.Trim().Length == 0 || AreaTags.IsNameBlank)
+        if (AreaTags.IsNameBlank)
         {
             return 0;
         }

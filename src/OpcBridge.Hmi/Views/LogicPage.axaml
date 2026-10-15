@@ -171,61 +171,67 @@
           <StackPanel Spacing="8">
 
             <Border Classes="card">
-              <WrapPanel Orientation="Horizontal">
-                <StackPanel Classes="field" Width="320">
-                  <TextBlock Classes="fieldLabel" Text="NAME" />
-                  <TextBox Text="{Binding BlockName}" Watermark="Block name (e.g. Line 01 Start)"
-                           IsEnabled="{Binding IsEditingEnabled}"
-                           AutomationProperties.Name="Block name" />
-                </StackPanel>
-                <StackPanel Classes="field" Width="220">
-                  <TextBlock Classes="fieldLabel" Text="KIND" />
-                  <ComboBox ItemsSource="{Binding KindOptions}" SelectedItem="{Binding SelectedKind}"
-                            IsEnabled="{Binding IsEditingEnabled}"
-                            AutomationProperties.Name="Block kind">
-                    <ComboBox.ItemTemplate>
-                      <DataTemplate x:DataType="logic:LogicSelectOption">
-                        <TextBlock Text="{Binding Label}" />
-                      </DataTemplate>
-                    </ComboBox.ItemTemplate>
-                  </ComboBox>
-                </StackPanel>
-                <StackPanel Classes="field" Width="240">
-                  <TextBlock Classes="fieldLabel" Text="INTERLOCK GROUP" />
-                  <TextBox Text="{Binding BlockGroup}" Watermark="Optional (e.g. Primary Arm)"
-                           IsEnabled="{Binding IsEditingEnabled}"
-                           AutomationProperties.Name="Interlock group"
-                           ToolTip.Tip="A display heading only: blocks sharing a group list under one heading, here and on the phone. The tags a block reads are shared by its AREA." />
-                </StackPanel>
-                <StackPanel Classes="field" Width="240">
-                  <TextBlock Classes="fieldLabel" Text="AREA" />
-                  <AutoCompleteBox Text="{Binding BlockArea}" ItemsSource="{Binding AreaTags.AreaNames}"
-                                   FilterMode="Contains" Watermark="Plant area (e.g. DRY END)"
-                                   IsEnabled="{Binding IsEditingEnabled}"
-                                   AutomationProperties.Name="Area"
-                                   ToolTip.Tip="The plant area whose tags this block shares — every block of the area reads one area-tags list (the Tags tab), so a signal is assigned once per area." />
-                </StackPanel>
-                <StackPanel Classes="field" Width="140">
-                  <TextBlock Classes="fieldLabel" Text="ENABLED" />
-                  <CheckBox IsChecked="{Binding BlockEnabled}" Margin="0,3,0,0"
-                            IsEnabled="{Binding IsEditingEnabled}"
-                            AutomationProperties.Name="Block enabled"
-                            ToolTip.Tip="A disabled block evaluates but never counts as ready." />
-                </StackPanel>
-                <StackPanel Classes="field" Width="420">
-                  <TextBlock Classes="fieldLabel" Text="DESCRIPTION" />
-                  <TextBox Text="{Binding BlockDescription}" Watermark="Optional operator note"
-                           IsEnabled="{Binding IsEditingEnabled}"
-                           AutomationProperties.Name="Block description" />
-                </StackPanel>
-                <StackPanel Classes="field" Width="360">
-                  <TextBlock Classes="fieldLabel" Text="TAGS" />
-                  <TextBox Text="{Binding BlockTags}" Watermark="Comma-separated (e.g. Line 1, Safety)"
-                           IsEnabled="{Binding IsEditingEnabled}"
-                           AutomationProperties.Name="Block tags" />
-                  <TextBlock Classes="hint" Margin="0,3,0,0" Text="Up to 8 labels of 24 characters." />
-                </StackPanel>
-              </WrapPanel>
+              <StackPanel Spacing="6">
+                <WrapPanel Orientation="Horizontal">
+                  <StackPanel Classes="field" Width="320">
+                    <TextBlock Classes="fieldLabel" Text="NAME" />
+                    <TextBox Text="{Binding BlockName}" Watermark="Block name (e.g. Line 01 Start)"
+                             IsEnabled="{Binding IsEditingEnabled}"
+                             AutomationProperties.Name="Block name" />
+                  </StackPanel>
+                  <StackPanel Classes="field" Width="220">
+                    <TextBlock Classes="fieldLabel" Text="KIND" />
+                    <ComboBox ItemsSource="{Binding KindOptions}" SelectedItem="{Binding SelectedKind}"
+                              IsEnabled="{Binding IsEditingEnabled}"
+                              AutomationProperties.Name="Block kind">
+                      <ComboBox.ItemTemplate>
+                        <DataTemplate x:DataType="logic:LogicSelectOption">
+                          <TextBlock Text="{Binding Label}" />
+                        </DataTemplate>
+                      </ComboBox.ItemTemplate>
+                    </ComboBox>
+                  </StackPanel>
+                  <StackPanel Classes="field" Width="240">
+                    <TextBlock Classes="fieldLabel" Text="INTERLOCK GROUP" />
+                    <TextBox Text="{Binding BlockGroup}" Watermark="Optional (e.g. Primary Arm)"
+                             IsEnabled="{Binding IsEditingEnabled}"
+                             AutomationProperties.Name="Interlock group"
+                             ToolTip.Tip="A display heading only: blocks sharing a group list under one heading, here and on the phone. The tags a block reads are shared by its AREA." />
+                  </StackPanel>
+                  <StackPanel Classes="field" Width="240">
+                    <TextBlock Classes="fieldLabel" Text="AREA" />
+                    <AutoCompleteBox Text="{Binding BlockArea}" ItemsSource="{Binding AreaTags.AreaNames}"
+                                     FilterMode="Contains" Watermark="Plant area (e.g. DRY END)"
+                                     IsEnabled="{Binding IsEditingEnabled}"
+                                     AutomationProperties.Name="Area"
+                                     ToolTip.Tip="The plant area whose tags this block shares — every block of the area reads one area-tags list (the Tags tab), so a signal is assigned once per area." />
+                  </StackPanel>
+                  <StackPanel Classes="field" Width="140">
+                    <TextBlock Classes="fieldLabel" Text="ENABLED" />
+                    <CheckBox IsChecked="{Binding BlockEnabled}" Margin="0,3,0,0"
+                              IsEnabled="{Binding IsEditingEnabled}"
+                              AutomationProperties.Name="Block enabled"
+                              ToolTip.Tip="A disabled block evaluates but never counts as ready." />
+                  </StackPanel>
+                  <StackPanel Classes="field" Width="420">
+                    <TextBlock Classes="fieldLabel" Text="DESCRIPTION" />
+                    <TextBox Text="{Binding BlockDescription}" Watermark="Optional operator note"
+                             IsEnabled="{Binding IsEditingEnabled}"
+                             AutomationProperties.Name="Block description" />
+                  </StackPanel>
+                  <StackPanel Classes="field" Width="360">
+                    <TextBlock Classes="fieldLabel" Text="TAGS" />
+                    <TextBox Text="{Binding BlockTags}" Watermark="Comma-separated (e.g. Line 1, Safety)"
+                             IsEnabled="{Binding IsEditingEnabled}"
+                             AutomationProperties.Name="Block tags" />
+                    <TextBlock Classes="hint" Margin="0,3,0,0" Text="Up to 8 labels of 24 characters." />
+                  </StackPanel>
+                </WrapPanel>
+                <!-- A row's tag is a reference into the area's tags, so while the area holds none
+                     the editor says where the assignment is made. -->
+                <TextBlock Classes="hint warn" Margin="0,6,0,0" TextWrapping="Wrap"
+                           Text="{Binding AreaTagsPrompt}" IsVisible="{Binding ShowsAreaTagsPrompt}" />
+              </StackPanel>
             </Border>
 
             <!-- Conditions (the simple form) -->
@@ -335,7 +341,7 @@
                                 <ComboBox Width="180" ItemsSource="{Binding TagEntries}" SelectedItem="{Binding SelectedCompletionTag}"
                                           IsEnabled="{Binding $parent[UserControl].((logic:LogicPanelViewModel)DataContext).IsEditingEnabled}"
                                           AutomationProperties.Name="Completion area tag"
-                                          ToolTip.Tip="One of this area's tags (the Tags tab) — assigned once, read by every block of the area.">
+                                          ToolTip.Tip="One of this area's tags — assigned in the Tags tab. Optional handshake: the step completes once this tag is true.">
                                   <ComboBox.ItemTemplate>
                                     <DataTemplate x:DataType="logic:LogicTagEntryViewModel">
                                       <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
@@ -344,37 +350,11 @@
                                 </ComboBox>
                                 <Button Classes="tool" Content="✕" Command="{Binding ClearCompletionTagCommand}"
                                         IsVisible="{Binding HasCompletionTag}" VerticalAlignment="Center"
-                                        ToolTip.Tip="Use a direct handshake tag instead"
+                                        ToolTip.Tip="Clear the handshake this step waits on"
                                         AutomationProperties.Name="Clear completion area tag" />
                               </StackPanel>
-                            </StackPanel>
-                            <StackPanel Classes="field" Width="150" IsVisible="{Binding ShowsDirectCompletion}">
-                              <TextBlock Classes="fieldLabel" Text="COMPLETION SOURCE" />
-                              <ComboBox ItemsSource="{Binding CompletionSources}" SelectedItem="{Binding CompletionSource}"
-                                        IsEnabled="{Binding $parent[UserControl].((logic:LogicPanelViewModel)DataContext).IsEditingEnabled}"
-                                        AutomationProperties.Name="Completion source"
-                                        AutomationProperties.HelpText="{Binding CompletionSource.Detail}">
-                                <ComboBox.ItemTemplate>
-                                  <DataTemplate x:DataType="logic:LogicSourceOption">
-                                    <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
-                                  </DataTemplate>
-                                </ComboBox.ItemTemplate>
-                              </ComboBox>
-                            </StackPanel>
-                            <StackPanel Classes="field" Width="260" IsVisible="{Binding ShowsDirectCompletion}">
-                              <TextBlock Classes="fieldLabel" Text="COMPLETION TAG" />
-                              <ComboBox ItemsSource="{Binding CompletionItems}" SelectedItem="{Binding CompletionTag}"
-                                        IsEnabled="{Binding $parent[UserControl].((logic:LogicPanelViewModel)DataContext).IsEditingEnabled}"
-                                        AutomationProperties.Name="Completion tag"
-                                        AutomationProperties.HelpText="{Binding CompletionTag.Detail}">
-                                <ComboBox.ItemTemplate>
-                                  <DataTemplate x:DataType="logic:LogicTagOption">
-                                    <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
-                                  </DataTemplate>
-                                </ComboBox.ItemTemplate>
-                              </ComboBox>
-                              <TextBlock Classes="hint" Margin="0,3,0,0" TextWrapping="Wrap"
-                                         Text="Optional handshake: completes once this tag is true (pick both fields or neither, or one area tag)." />
+                              <TextBlock Classes="hint" Margin="0,3,0,0" MaxWidth="200" TextWrapping="Wrap"
+                                         Text="{Binding StoredTagText}" IsVisible="{Binding HasStoredTag}" />
                             </StackPanel>
                           </WrapPanel>
                           <TextBlock Classes="hint" Text="{Binding Reason}" TextWrapping="Wrap" IsVisible="{Binding HasReason}" />
@@ -400,7 +380,7 @@
                 <Grid ColumnDefinitions="Auto,*,Auto">
                   <TextBlock Grid.Column="0" Classes="sectionLabel" Text="ACTIONS" VerticalAlignment="Center" />
                   <TextBlock Grid.Column="1" Classes="hint" Margin="12,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap"
-                             Text="Write buttons the phone renders for the operator — authored here, executed on the phone. Only writeable tags are offered." />
+                             Text="Write buttons the phone renders for the operator — authored here, executed on the phone. Each writes one of the area's tags; the Tags tab flags a tag that cannot be written." />
                   <Button Grid.Column="2" Content="Add action" Command="{Binding AddActionCommand}" />
                 </Grid>
                 <TextBlock Classes="hint" Text="No actions — optional write buttons for the phone." IsVisible="{Binding !HasActions}" />
@@ -420,7 +400,7 @@
                               <StackPanel Orientation="Horizontal" Spacing="4">
                                 <ComboBox Width="180" ItemsSource="{Binding TagEntries}" SelectedItem="{Binding SelectedBlockTag}"
                                           AutomationProperties.Name="Action area tag"
-                                          ToolTip.Tip="One of this area's tags (the Tags tab) — assigned once, written by every block of the area.">
+                                          ToolTip.Tip="One of this area's tags — assigned in the Tags tab, where a tag that cannot be written is flagged.">
                                   <ComboBox.ItemTemplate>
                                     <DataTemplate x:DataType="logic:LogicTagEntryViewModel">
                                       <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
@@ -429,33 +409,11 @@
                                 </ComboBox>
                                 <Button Classes="tool" Content="✕" Command="{Binding ClearBlockTagCommand}"
                                         IsVisible="{Binding HasBlockTag}" VerticalAlignment="Center"
-                                        ToolTip.Tip="Write a direct bridge tag instead"
+                                        ToolTip.Tip="Clear the tag this button writes"
                                         AutomationProperties.Name="Clear action area tag" />
                               </StackPanel>
-                            </StackPanel>
-                            <StackPanel Classes="field" Width="150" IsVisible="{Binding ShowsDirectTag}">
-                              <TextBlock Classes="fieldLabel" Text="SOURCE" />
-                              <ComboBox ItemsSource="{Binding Sources}" SelectedItem="{Binding SelectedSource}"
-                                        AutomationProperties.Name="Action source"
-                                        AutomationProperties.HelpText="{Binding SelectedSource.Detail}">
-                                <ComboBox.ItemTemplate>
-                                  <DataTemplate x:DataType="logic:LogicSourceOption">
-                                    <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
-                                  </DataTemplate>
-                                </ComboBox.ItemTemplate>
-                              </ComboBox>
-                            </StackPanel>
-                            <StackPanel Classes="field" Width="210" IsVisible="{Binding ShowsDirectTag}">
-                              <TextBlock Classes="fieldLabel" Text="TAG" />
-                              <ComboBox ItemsSource="{Binding Items}" SelectedItem="{Binding SelectedTag}"
-                                        AutomationProperties.Name="Action tag"
-                                        AutomationProperties.HelpText="{Binding SelectedTag.Detail}">
-                                <ComboBox.ItemTemplate>
-                                  <DataTemplate x:DataType="logic:LogicTagOption">
-                                    <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
-                                  </DataTemplate>
-                                </ComboBox.ItemTemplate>
-                              </ComboBox>
+                              <TextBlock Classes="hint" Margin="0,3,0,0" MaxWidth="200" TextWrapping="Wrap"
+                                         Text="{Binding StoredTagText}" IsVisible="{Binding HasStoredTag}" />
                             </StackPanel>
                             <StackPanel Classes="field" Width="140">
                               <TextBlock Classes="fieldLabel" Text="VALUE" />
@@ -569,6 +527,9 @@
                             </ComboBox>
                             <TextBlock Classes="hint" Margin="0,2,0,0" FontSize="11" Text="{Binding TagText}"
                                        IsVisible="{Binding !IsAssigned}" />
+                            <TextBlock Classes="hint warn" Margin="0,2,0,0" FontSize="11" Text="{Binding ReadOnlyHint}"
+                                       IsVisible="{Binding IsReadOnly}"
+                                       ToolTip.Tip="The source does not offer this tag for writing, so an action that writes it cannot work. Pick a writeable tag, or keep this entry for the blocks that only read it." />
                           </StackPanel>
                           <TextBlock Grid.Column="3" Classes="mono" FontSize="13" TextAlignment="Center"
                                      VerticalAlignment="Center" Text="{Binding LiveText}"

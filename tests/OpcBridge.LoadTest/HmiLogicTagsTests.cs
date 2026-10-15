@@ -6,9 +6,10 @@ namespace OpcBridge.LoadTest;
 
 /// <summary>
 /// The Logic page's Tags tab and the area-tag references rows carry: a block reads its area's
-/// named tags, assigned once (on the tab) and shared by every block of the area — including the
-/// "created empty, assigned later" flow, where an unassigned entry must keep a block savable and
-/// readable as unknown rather than as a silent false.
+/// named tags, assigned once (on the tab, source and tag together) and shared by every block of
+/// the area — including the "created empty, assigned later" flow, where an unassigned entry must
+/// keep a block savable and readable as unknown rather than as a silent false. A row picks a name
+/// and nothing else; the direct pair a block was stored with is only carried until the list holds it.
 /// </summary>
 public sealed class HmiLogicTagsTests
 {
@@ -22,6 +23,10 @@ public sealed class HmiLogicTagsTests
             new LogicTagOption("sim", StartItemId, "Dry End Start Permit", "Simulation", Writeable: true),
             new LogicTagOption("sim", DoneItemId, "Dry End Done", "Simulation", Writeable: true)
         });
+
+    private static LogicTagCatalog ReadOnlyCatalog() => new(
+        new[] { new LogicSourceOption("sim", "Simulation") },
+        new[] { new LogicTagOption("sim", StartItemId, "Dry End Start Permit", "Simulation", Writeable: false) });
 
     private static LogicAreaTagsDto Source(string name = "DRYEND", params (string Name, string ItemId)[] tags)
     {
@@ -216,7 +221,7 @@ public sealed class HmiLogicTagsTests
     }
 
     [Fact]
-    public void ConditionRow_CarriesTheMachineTagAloneAndHidesTheDirectPickers()
+    public void ConditionRow_CarriesTheAreaTagAndCarriesNoSourceOfItsOwn()
     {
         LogicBlockDto block = NamedBlock("START_PB");
         LogicAreaTagsViewModel tab = new();
@@ -227,7 +232,7 @@ public sealed class HmiLogicTagsTests
 
         Assert.Equal("START_PB", row.Tag);
         Assert.True(row.HasBlockTag);
-        Assert.False(row.ShowsDirectTag);
+        Assert.False(row.HasStoredTag);
         Assert.Same(tab.Entries[0], row.SelectedBlockTag);
 
         LogicConditionDto saved = LogicEditorCodec.ConditionFromRow(row);
@@ -235,17 +240,20 @@ public sealed class HmiLogicTagsTests
         Assert.Equal(string.Empty, saved.SourceId);
         Assert.Equal(string.Empty, saved.ItemId);
 
-        // Clearing the machine tag brings the direct pickers back, and the pair is written again.
+        // The picker is the row's one tag field: clearing it leaves the row unassigned — there is
+        // no source to fall back on, and the assignment belongs to the Tags tab.
         row.ClearBlockTagCommand.Execute(null);
         Assert.False(row.HasBlockTag);
-        Assert.True(row.ShowsDirectTag);
-        LogicConditionDto direct = LogicEditorCodec.ConditionFromRow(row);
-        Assert.Equal(string.Empty, direct.Tag);
-        Assert.Equal(LogicConditionOps.On, direct.Op);
+        Assert.False(row.HasStoredTag);
+        LogicConditionDto cleared = LogicEditorCodec.ConditionFromRow(row);
+        Assert.Equal(string.Empty, cleared.Tag);
+        Assert.Equal(string.Empty, cleared.SourceId);
+        Assert.Equal(string.Empty, cleared.ItemId);
+        Assert.Equal(LogicConditionOps.On, cleared.Op);
     }
 
     [Fact]
-    public void ConditionRow_WithoutAMachineTagKeepsTheStoredDirectPair()
+    public void ConditionRow_ShowsALegacyPairItCannotAssignAndKeepsItThroughASave()
     {
         LogicConditionDto condition = new()
         {
@@ -258,6 +266,11 @@ public sealed class HmiLogicTagsTests
 
         LogicConditionRowViewModel row = new(condition, Catalog());
 
+        // Nothing to pick (no area tags were handed in): the pair reads as its own line, and it
+        // survives the save so a block authored before the area's tags existed still evaluates.
+        Assert.True(row.HasStoredTag);
+        Assert.Contains("Dry End Start Permit", row.StoredTagText);
+
         LogicConditionDto saved = LogicEditorCodec.ConditionFromRow(row);
 
         Assert.Equal(string.Empty, saved.Tag);
@@ -266,7 +279,7 @@ public sealed class HmiLogicTagsTests
     }
 
     [Fact]
-    public void ElementRow_ANamedTagKeepsTheContactAPairAndARelayWins()
+    public void ElementRow_AContactReadsTheAreaTagAndARelayWins()
     {
         LogicBlockDto block = NamedBlock("START_PB");
         LogicAreaTagsViewModel tab = new();
@@ -283,7 +296,7 @@ public sealed class HmiLogicTagsTests
         LogicElementRowViewModel row = new(named, 0, Catalog(), null, null, tab.Entries);
 
         Assert.True(row.ShowsBlockTag);
-        Assert.False(row.ShowsDirectTag);
+        Assert.False(row.HasStoredTag);
         Assert.Equal("START_PB", row.Tag);
 
         LogicElementDto saved = LogicEditorCodec.ElementFromRow(row);
@@ -291,25 +304,24 @@ public sealed class HmiLogicTagsTests
         Assert.Equal(string.Empty, saved.SourceId);
         Assert.Equal(string.Empty, saved.ItemId);
 
-        // A relay on a contact wins: the machine tag is dropped, exactly like a direct pair.
+        // A relay on a contact wins: the area tag is dropped, exactly like a direct pair.
         row.Relay = "M01";
         Assert.True(row.IsRelayContact);
-        Assert.False(row.ShowsDirectTag);
+        Assert.False(row.HasStoredTag);
         saved = LogicEditorCodec.ElementFromRow(row);
         Assert.Equal("M01", saved.Relay);
         Assert.Equal(string.Empty, saved.Tag);
 
-        // And a direct contact keeps its pair with no machine tag.
+        // And clearing the pick leaves the contact with no tag of its own.
         row.Relay = string.Empty;
         row.ClearBlockTagCommand.Execute(null);
-        Assert.True(row.ShowsDirectTag);
         saved = LogicEditorCodec.ElementFromRow(row);
         Assert.Equal(string.Empty, saved.Tag);
         Assert.Equal(string.Empty, saved.ItemId);
     }
 
     [Fact]
-    public void StepRow_CarriesTheCompletionTagOrTheDirectPair()
+    public void StepRow_CarriesTheCompletionAreaTag()
     {
         LogicBlockDto block = NamedBlock();
         LogicAreaTagsViewModel tab = new();
@@ -330,14 +342,14 @@ public sealed class HmiLogicTagsTests
         LogicStepRowViewModel row = new(step, Catalog(), null, null, tab.Entries);
 
         Assert.Equal("DONE_FB", row.CompletionTagName);
-        Assert.False(row.ShowsDirectCompletion);
+        Assert.False(row.HasStoredTag);
         LogicStepDto saved = LogicEditorCodec.StepFromRow(row);
         Assert.Equal("DONE_FB", saved.CompletionTag);
         Assert.Null(saved.CompletionSourceId);
         Assert.Null(saved.CompletionItemId);
 
-        // The step's own condition carries the machine tag too; clearing the handshake leaves
-        // the direct pair unset (an optional handshake needs both fields or a machine tag).
+        // The step's own condition carries the area tag too; clearing the handshake leaves the
+        // step with none, since the handshake is a reference into the area's tags now.
         Assert.Equal("START_PB", Assert.Single(saved.Conditions).Tag);
         row.ClearCompletionTagCommand.Execute(null);
         saved = LogicEditorCodec.StepFromRow(row);
@@ -347,7 +359,7 @@ public sealed class HmiLogicTagsTests
     }
 
     [Fact]
-    public void ActionRow_CarriesTheMachineTagAlone()
+    public void ActionRow_CarriesTheAreaTagAlone()
     {
         LogicBlockDto block = NamedBlock();
         LogicAreaTagsViewModel tab = new();
@@ -364,10 +376,26 @@ public sealed class HmiLogicTagsTests
         LogicActionRowViewModel row = new(action, Catalog(), null, tab.Entries);
 
         Assert.Equal("START_PB", row.Tag);
-        Assert.False(row.ShowsDirectTag);
+        Assert.False(row.HasStoredTag);
         LogicActionDto saved = LogicEditorCodec.ActionFromRow(row);
         Assert.Equal("START_PB", saved.Tag);
         Assert.Equal(string.Empty, saved.ItemId);
+    }
+
+    [Fact]
+    public void Entry_FlagsABoundTagThatCannotBeWritten()
+    {
+        LogicTagDto start = new() { Name = "START_PB", SourceId = "sim", ItemId = StartItemId };
+
+        LogicTagEntryViewModel readOnly = new(start, ReadOnlyCatalog());
+        LogicTagEntryViewModel writable = new(start, Catalog());
+        LogicTagEntryViewModel unassigned = new(new LogicTagDto { Name = "TAG1" }, ReadOnlyCatalog());
+
+        // The action rows point at entries, so the write check lives where the assignment is made.
+        Assert.True(readOnly.IsReadOnly);
+        Assert.Equal(LogicText.ReadOnlyTagHint, readOnly.ReadOnlyHint);
+        Assert.False(writable.IsReadOnly);
+        Assert.False(unassigned.IsReadOnly);
     }
 
     [Fact]

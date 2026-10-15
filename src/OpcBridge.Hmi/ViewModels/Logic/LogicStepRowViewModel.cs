@@ -7,8 +7,10 @@ namespace OpcBridge.Hmi.ViewModels.Logic;
 
 /// <summary>
 /// One ordered step of a sequence block: its name, its next-step text, an optional completion
-/// handshake tag and its own condition rows. The editor writes the conditions form; step action
-/// buttons are not authored here and are carried through the save untouched.
+/// handshake tag and its own condition rows. The handshake reads one of the area's named tags
+/// (the Tags tab's entries, where the tag and its source are assigned); a stored direct pair is
+/// carried through a save until the area's list holds it. The editor writes the conditions form;
+/// step action buttons are not authored here and are carried through the save untouched.
 /// </summary>
 public partial class LogicStepRowViewModel : ObservableObject, ILogicOrderRow
 {
@@ -16,7 +18,8 @@ public partial class LogicStepRowViewModel : ObservableObject, ILogicOrderRow
     private readonly LogicRowList<LogicStepRowViewModel>? rowList_;
     private readonly LogicRowList<LogicConditionRowViewModel> conditionRows_;
     private readonly Action<LogicStepRowViewModel>? onRemove_;
-    private bool loadingCompletion_;
+    private readonly string? storedCompletionSourceId_;
+    private readonly string? storedCompletionItemId_;
 
     public LogicStepRowViewModel(
         LogicStepDto step,
@@ -29,13 +32,14 @@ public partial class LogicStepRowViewModel : ObservableObject, ILogicOrderRow
         rowList_ = rowList;
         onRemove_ = onRemove;
         conditionRows_ = new LogicRowList<LogicConditionRowViewModel>(Conditions, _ => NewConditionRow());
+        storedCompletionSourceId_ = step.CompletionSourceId;
+        storedCompletionItemId_ = step.CompletionItemId;
         StepId = step.Id == Guid.Empty ? Guid.NewGuid() : step.Id;
         StoredActions = step.Actions.ToList();
         Name = step.Name;
         NextStepText = step.NextStepText ?? string.Empty;
         TagEntries = tagEntries ?? Array.Empty<LogicTagEntryViewModel>();
         SelectedCompletionTag = FindTagEntry(step.CompletionTag);
-        LoadCompletion(step.CompletionSourceId ?? string.Empty, step.CompletionItemId ?? string.Empty);
         foreach (LogicConditionDto condition in step.Conditions)
         {
             Conditions.Add(NewConditionRow(condition));
@@ -48,19 +52,24 @@ public partial class LogicStepRowViewModel : ObservableObject, ILogicOrderRow
     [ObservableProperty]
     private LogicTagEntryViewModel? _selectedCompletionTag;
 
-    /// <summary>The stored handshake reference, "" when the step has a direct pair or none.</summary>
+    /// <summary>The stored handshake reference, "" when the step has no named handshake.</summary>
     public string CompletionTagName => SelectedCompletionTag?.Name.Trim() ?? string.Empty;
 
     public bool HasCompletionTag => CompletionTagName.Length > 0;
 
-    /// <summary>The direct source/tag pickers: hidden while a named handshake is selected.</summary>
-    public bool ShowsDirectCompletion => !HasCompletionTag;
+    /// <summary>A legacy handshake waiting for the area's tags to hold it: shown, never edited here.</summary>
+    public bool HasStoredTag =>
+        !HasCompletionTag && (!string.IsNullOrWhiteSpace(CompletionSourceId) || !string.IsNullOrWhiteSpace(CompletionItemId));
+
+    /// <summary>What a legacy handshake waits on, while the area's list has no entry for it.</summary>
+    public string StoredTagText => LogicText.StoredTagHint(
+        catalog_.TagLabel(CompletionSourceId ?? string.Empty, CompletionItemId ?? string.Empty));
 
     partial void OnSelectedCompletionTagChanged(LogicTagEntryViewModel? value)
     {
         OnPropertyChanged(nameof(CompletionTagName));
         OnPropertyChanged(nameof(HasCompletionTag));
-        OnPropertyChanged(nameof(ShowsDirectCompletion));
+        OnPropertyChanged(nameof(HasStoredTag));
         ClearCompletionTagCommand.NotifyCanExecuteChanged();
     }
 
@@ -82,10 +91,6 @@ public partial class LogicStepRowViewModel : ObservableObject, ILogicOrderRow
 
     public ObservableCollection<LogicConditionRowViewModel> Conditions { get; } = new();
 
-    public ObservableCollection<LogicSourceOption> CompletionSources { get; } = new();
-
-    public ObservableCollection<LogicTagOption> CompletionItems { get; } = new();
-
     [ObservableProperty]
     private string _name = string.Empty;
 
@@ -95,12 +100,6 @@ public partial class LogicStepRowViewModel : ObservableObject, ILogicOrderRow
     /// <summary>"STEP 1" — renumbered by the panel whenever the order changes.</summary>
     [ObservableProperty]
     private string _stepLabel = string.Empty;
-
-    [ObservableProperty]
-    private LogicSourceOption? _completionSource;
-
-    [ObservableProperty]
-    private LogicTagOption? _completionTag;
 
     [ObservableProperty]
     private string _stateWord = "No data";
@@ -122,21 +121,16 @@ public partial class LogicStepRowViewModel : ObservableObject, ILogicOrderRow
 
     public bool HasReason => Reason.Length > 0;
 
-    public string? CompletionSourceId =>
-        string.IsNullOrWhiteSpace(CompletionSource?.SourceId) ? null : CompletionSource!.SourceId;
+    /// <summary>
+    /// The direct handshake pair the step was stored with, or null when it is not a legacy row.
+    /// It is not edited here any more; it is carried through a save while the area's tags do not
+    /// hold it yet.
+    /// </summary>
+    public string? CompletionSourceId => storedCompletionSourceId_;
 
-    public string? CompletionItemId =>
-        string.IsNullOrWhiteSpace(CompletionTag?.ItemId) ? null : CompletionTag!.ItemId;
+    public string? CompletionItemId => storedCompletionItemId_;
 
     partial void OnReasonChanged(string value) => OnPropertyChanged(nameof(HasReason));
-
-    partial void OnCompletionSourceChanged(LogicSourceOption? value)
-    {
-        if (!loadingCompletion_)
-        {
-            RebuildCompletionItems(string.Empty);
-        }
-    }
 
     public void ApplyState(LogicStepStateDto? state)
     {
@@ -217,53 +211,4 @@ public partial class LogicStepRowViewModel : ObservableObject, ILogicOrderRow
             Op = LogicConditionOps.On,
             Severity = LogicConditionSeverities.Block
         });
-
-    private void LoadCompletion(string sourceId, string itemId)
-    {
-        loadingCompletion_ = true;
-        try
-        {
-            CompletionSources.Clear();
-            foreach (LogicSourceOption source in catalog_.Sources)
-            {
-                CompletionSources.Add(source);
-            }
-
-            if (sourceId.Length > 0
-                && !CompletionSources.Any(source => string.Equals(source.SourceId, sourceId, StringComparison.OrdinalIgnoreCase)))
-            {
-                CompletionSources.Add(new LogicSourceOption(sourceId, sourceId));
-            }
-
-            CompletionSource = CompletionSources.FirstOrDefault(
-                source => string.Equals(source.SourceId, sourceId, StringComparison.OrdinalIgnoreCase));
-        }
-        finally
-        {
-            loadingCompletion_ = false;
-        }
-
-        RebuildCompletionItems(itemId);
-    }
-
-    private void RebuildCompletionItems(string keepItemId)
-    {
-        string sourceId = CompletionSource?.SourceId ?? string.Empty;
-        CompletionItems.Clear();
-        foreach (LogicTagOption item in catalog_.ItemsFor(sourceId))
-        {
-            CompletionItems.Add(item);
-        }
-
-        LogicTagOption? match = keepItemId.Length == 0
-            ? null
-            : CompletionItems.FirstOrDefault(item => string.Equals(item.ItemId, keepItemId, StringComparison.OrdinalIgnoreCase));
-        if (match is null && keepItemId.Length > 0)
-        {
-            match = new LogicTagOption(sourceId, keepItemId, keepItemId, CompletionSource?.Name ?? sourceId, Writeable: true);
-            CompletionItems.Insert(0, match);
-        }
-
-        CompletionTag = match;
-    }
 }
