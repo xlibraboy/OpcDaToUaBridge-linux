@@ -5,7 +5,7 @@
              x:DataType="logic:LogicConditionRowViewModel">
   <!-- One condition, as its own row: the fields wrap, each carries its label, and the live
        reading stays pinned at the right edge. -->
-  <Border Classes="editorRow" Margin="0,0,0,6" IsEnabled="{Binding CanEdit}">
+  <Border Classes="editorRow" Margin="0,0,0,4" IsEnabled="{Binding CanEdit}">
     <Grid ColumnDefinitions="*,Auto">
       <WrapPanel Grid.Column="0" Orientation="Horizontal">
         <StackPanel Classes="field" Width="300">
@@ -100,7 +100,7 @@
                    AutomationProperties.Name="Next step text" />
         </StackPanel>
       </WrapPanel>
-      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" Margin="0,0,0,6" VerticalAlignment="Top">
+      <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" Margin="0,0,0,4" VerticalAlignment="Top">
         <StackPanel MinWidth="52">
           <TextBlock Classes="fieldLabel" Text="LIVE" />
           <TextBlock Classes="mono" FontSize="13" TextAlignment="Center" Text="{Binding LiveText}"

@@ -706,6 +706,29 @@ public sealed class HmiLogicEditorTests
     }
 
     [Fact]
+    public async Task TheBlocksRail_HidesAndShows_AndTheButtonNamesTheNextClick()
+    {
+        await using var connections = new BridgeConnectionManager();
+        var panel = new LogicPanelViewModel(connections, work => work(), _ => { });
+
+        // The rail stands beside the editor until it is folded away, and the one control that
+        // brings it back names what the next click does.
+        Assert.True(panel.IsBlocksRailVisible);
+        Assert.Equal("◀ Blocks", panel.BlocksRailToggleText);
+        Assert.Equal("Hide the block list", panel.BlocksRailToggleName);
+
+        panel.ToggleBlocksRailCommand.Execute(null);
+        Assert.False(panel.IsBlocksRailVisible);
+        Assert.Equal("▶ Blocks", panel.BlocksRailToggleText);
+        Assert.Equal("Show the block list", panel.BlocksRailToggleName);
+
+        panel.ToggleBlocksRailCommand.Execute(null);
+        Assert.True(panel.IsBlocksRailVisible);
+        Assert.Equal("◀ Blocks", panel.BlocksRailToggleText);
+        Assert.Equal("Hide the block list", panel.BlocksRailToggleName);
+    }
+
+    [Fact]
     public void RelayRows_RoundTripTheCoilAndTheRelayContact()
     {
         LogicTagCatalog catalog = Catalog();

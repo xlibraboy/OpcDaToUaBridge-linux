@@ -187,6 +187,34 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private string _editorMessage = string.Empty;
 
+    // ---- Blocks rail ----
+
+    /// <summary>
+    /// The block list beside the editor: it stands there while a block is chosen, and can be
+    /// hidden so the editor uses the whole page while a block is authored. Session state only —
+    /// a fresh window opens with the rail in sight, and the Blocks… window lists the same blocks
+    /// while it is hidden.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isBlocksRailVisible = true;
+
+    /// <summary>The rail toggle's own label: the arrow points the way the list will go.</summary>
+    public string BlocksRailToggleText => IsBlocksRailVisible ? "◀ Blocks" : "▶ Blocks";
+
+    /// <summary>What the toggle does next — its accessible name and its tooltip.</summary>
+    public string BlocksRailToggleName => IsBlocksRailVisible
+        ? "Hide the block list"
+        : "Show the block list";
+
+    partial void OnIsBlocksRailVisibleChanged(bool value)
+    {
+        OnPropertyChanged(nameof(BlocksRailToggleText));
+        OnPropertyChanged(nameof(BlocksRailToggleName));
+    }
+
+    [RelayCommand]
+    private void ToggleBlocksRail() => IsBlocksRailVisible = !IsBlocksRailVisible;
+
     // ---- Block list ----
 
     public ObservableCollection<LogicAreaViewModel> BlockAreas { get; } = new();

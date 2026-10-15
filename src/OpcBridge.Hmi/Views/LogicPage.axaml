@@ -5,7 +5,41 @@
              xmlns:converters="using:Avalonia.Data.Converters"
              x:Class="OpcBridge.Hmi.Views.LogicPage"
              x:DataType="logic:LogicPanelViewModel">
-  <Grid RowDefinitions="Auto,*" Margin="12">
+  <!-- The editor is a dense authoring surface: this page packs the shared card / row / field
+       metrics tighter than the app default so a block's rows fit on one screen. Only the logic
+       views are descendants of these styles, and no token changes — spacing only. -->
+  <UserControl.Styles>
+    <Style Selector="Border.card">
+      <Setter Property="Padding" Value="10" />
+    </Style>
+    <Style Selector="Border.editorRow">
+      <Setter Property="Padding" Value="8,5" />
+    </Style>
+    <Style Selector="StackPanel.field">
+      <Setter Property="Margin" Value="0,0,6,3" />
+    </Style>
+    <Style Selector="TextBlock.fieldLabel">
+      <Setter Property="Margin" Value="0,0,0,1" />
+    </Style>
+    <Style Selector="TextBox">
+      <Setter Property="MinHeight" Value="28" />
+      <Setter Property="Padding" Value="8,2" />
+    </Style>
+    <Style Selector="ComboBox">
+      <Setter Property="MinHeight" Value="28" />
+    </Style>
+    <Style Selector="AutoCompleteBox">
+      <Setter Property="MinHeight" Value="28" />
+    </Style>
+    <Style Selector="CheckBox">
+      <Setter Property="MinHeight" Value="28" />
+    </Style>
+    <Style Selector="Button">
+      <Setter Property="MinHeight" Value="28" />
+    </Style>
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="Auto,*" Margin="10">
 
     <!-- ======== Bridge + block actions ======== -->
     <Border Grid.Row="0" Classes="card" Padding="10">
@@ -49,10 +83,12 @@
 
     <!-- ======== Blocks rail + work surface ========
          The rail is the page's one list of blocks: it stands beside both tabs, so the block
-         being edited is chosen and kept in sight from the screen that edits it. -->
-    <Grid Grid.Row="1" ColumnDefinitions="340,*" Margin="0,10,0,0">
+         being edited is chosen and kept in sight from the screen that edits it. Its column is
+         sized by the rail itself, so hiding the rail hands the editor the whole width. -->
+    <Grid Grid.Row="1" ColumnDefinitions="Auto,*" Margin="0,8,0,0">
 
-      <Border Grid.Column="0" Classes="card" Margin="0,0,10,0">
+      <Border Grid.Column="0" Classes="card" Width="330" Margin="0,0,8,0"
+              IsVisible="{Binding IsBlocksRailVisible}">
         <DockPanel>
           <TextBlock DockPanel.Dock="Top" Classes="sectionLabel" Text="LOGIC BLOCKS" />
           <TextBlock DockPanel.Dock="Top" Classes="hint" Margin="0,0,0,8" TextWrapping="Wrap" Text="{Binding SummaryText}" />
@@ -113,17 +149,26 @@
       <Grid Grid.Column="1" RowDefinitions="Auto,*">
 
         <!-- ======== Editor / Tags / Result tabs ======== -->
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="6" Margin="0,0,0,8">
-          <RadioButton Classes="seg" GroupName="LogicTabs" Content="Editor" IsChecked="{Binding IsEditorTab}" />
-          <RadioButton Classes="seg" GroupName="LogicTabs" Content="Tags" IsChecked="{Binding IsTagsTab}" />
-          <RadioButton Classes="seg" GroupName="LogicTabs" Content="Result" IsChecked="{Binding IsResultTab}" />
-          <TextBlock Classes="hint warn" VerticalAlignment="Center" Margin="10,0,0,0" Text="unsaved changes"
-                     IsVisible="{Binding HasUnsavedChanges}" />
-        </StackPanel>
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,6">
+          <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6">
+            <RadioButton Classes="seg" GroupName="LogicTabs" Content="Editor" IsChecked="{Binding IsEditorTab}" />
+            <RadioButton Classes="seg" GroupName="LogicTabs" Content="Tags" IsChecked="{Binding IsTagsTab}" />
+            <RadioButton Classes="seg" GroupName="LogicTabs" Content="Result" IsChecked="{Binding IsResultTab}" />
+            <TextBlock Classes="hint warn" VerticalAlignment="Center" Margin="10,0,0,0" Text="unsaved changes"
+                       IsVisible="{Binding HasUnsavedChanges}" />
+          </StackPanel>
+          <!-- The rail folds away while a block is authored, so the editor uses the whole page.
+               The button names what the next click does; while the rail is hidden the Blocks…
+               window still lists and selects the blocks. -->
+          <Button Grid.Column="2" Content="{Binding BlocksRailToggleText}"
+                  Command="{Binding ToggleBlocksRailCommand}"
+                  AutomationProperties.Name="{Binding BlocksRailToggleName}"
+                  ToolTip.Tip="{Binding BlocksRailToggleName}" />
+        </Grid>
 
         <!-- ======== EDITOR ======== -->
         <ScrollViewer Grid.Row="1" IsVisible="{Binding IsEditorTab}" VerticalScrollBarVisibility="Auto">
-          <StackPanel Spacing="10">
+          <StackPanel Spacing="8">
 
             <Border Classes="card">
               <WrapPanel Orientation="Horizontal">
@@ -185,7 +230,7 @@
 
             <!-- Conditions (the simple form) -->
             <Border Classes="card" IsVisible="{Binding ShowsConditions}">
-              <StackPanel Spacing="8">
+              <StackPanel Spacing="6">
                 <Grid ColumnDefinitions="Auto,*,Auto">
                   <TextBlock Grid.Column="0" Classes="sectionLabel" Text="CONDITIONS" VerticalAlignment="Center" />
                   <TextBlock Grid.Column="1" Classes="hint" Margin="12,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap"
@@ -209,7 +254,7 @@
 
             <!-- Network (IEC 61131-3) -->
             <Border Classes="card" IsVisible="{Binding ShowsNetwork}">
-              <StackPanel Spacing="8">
+              <StackPanel Spacing="6">
                 <Grid ColumnDefinitions="Auto,*,Auto">
                   <TextBlock Grid.Column="0" Classes="sectionLabel" Text="NETWORK (IEC 61131-3)" VerticalAlignment="Center" />
                   <TextBlock Grid.Column="1" Classes="hint" Margin="12,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap"
@@ -234,7 +279,7 @@
 
             <!-- Steps (sequences) -->
             <Border Classes="card" IsVisible="{Binding ShowsSteps}">
-              <StackPanel Spacing="8">
+              <StackPanel Spacing="6">
                 <Grid ColumnDefinitions="Auto,*,Auto">
                   <TextBlock Grid.Column="0" Classes="sectionLabel" Text="STEPS" VerticalAlignment="Center" />
                   <TextBlock Grid.Column="1" Classes="hint" Margin="12,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap"
@@ -245,7 +290,7 @@
                 <ItemsControl ItemsSource="{Binding Steps}" IsVisible="{Binding HasSteps}">
                   <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="logic:LogicStepRowViewModel">
-                      <Border Classes="cardDark" Margin="0,0,0,8" Padding="10"
+                      <Border Classes="cardDark" Margin="0,0,0,6" Padding="8"
                               IsEnabled="{Binding CanEdit}">
                         <StackPanel Spacing="6">
                           <Grid ColumnDefinitions="Auto,Auto,*">
@@ -351,7 +396,7 @@
 
             <!-- Actions -->
             <Border Classes="card">
-              <StackPanel Spacing="8">
+              <StackPanel Spacing="6">
                 <Grid ColumnDefinitions="Auto,*,Auto">
                   <TextBlock Grid.Column="0" Classes="sectionLabel" Text="ACTIONS" VerticalAlignment="Center" />
                   <TextBlock Grid.Column="1" Classes="hint" Margin="12,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap"
@@ -362,7 +407,7 @@
                 <ItemsControl ItemsSource="{Binding Actions}" IsVisible="{Binding HasActions}">
                   <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="logic:LogicActionRowViewModel">
-                      <Border Classes="editorRow" Margin="0,0,0,6" IsEnabled="{Binding CanEdit}">
+                      <Border Classes="editorRow" Margin="0,0,0,4" IsEnabled="{Binding CanEdit}">
                         <Grid ColumnDefinitions="*,Auto">
                           <WrapPanel Grid.Column="0" Orientation="Horizontal">
                             <StackPanel Classes="field" Width="230">
@@ -424,7 +469,7 @@
                                         ToolTip.Tip="Ask the operator before the phone writes." />
                             </StackPanel>
                           </WrapPanel>
-                          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" Margin="0,0,0,6" VerticalAlignment="Top">
+                          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" Margin="0,0,0,4" VerticalAlignment="Top">
                             <Button Classes="tool" Content="+↑" Command="{Binding InsertAboveCommand}"
                                     ToolTip.Tip="Insert a new action above this row" AutomationProperties.Name="Insert action above" />
                             <Button Classes="tool" Content="+↓" Command="{Binding InsertBelowCommand}"
@@ -451,7 +496,7 @@
              tag is assigned once here and re-used by all of its interlocks. -->
         <ScrollViewer Grid.Row="1" IsVisible="{Binding IsTagsTab}" VerticalScrollBarVisibility="Auto">
           <Border Classes="card">
-            <StackPanel Spacing="10">
+            <StackPanel Spacing="8">
               <Grid ColumnDefinitions="Auto,Auto,*,Auto" RowDefinitions="Auto,Auto,Auto">
                 <TextBlock Grid.Row="0" Grid.Column="0" Classes="listHeader" Text="AREA TAGS"
                            VerticalAlignment="Center" Margin="0,0,8,0" />
@@ -494,7 +539,7 @@
                 <ItemsControl ItemsSource="{Binding AreaTags.Entries}">
                   <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="logic:LogicTagEntryViewModel">
-                      <Border Classes="editorRow" Margin="0,0,0,6" IsEnabled="{Binding CanEdit}">
+                      <Border Classes="editorRow" Margin="0,0,0,4" IsEnabled="{Binding CanEdit}">
                         <Grid ColumnDefinitions="240,150,210,90,70,Auto">
                           <StackPanel Grid.Column="0" Classes="field" Margin="0,0,10,0">
                             <TextBox Text="{Binding Name}" Watermark="START_PB"
@@ -590,7 +635,7 @@
                   <ItemsControl ItemsSource="{Binding ResultSteps}" IsVisible="{Binding ResultShowsSteps}">
                     <ItemsControl.ItemTemplate>
                       <DataTemplate x:DataType="logic:LogicResultStepRowViewModel">
-                        <Border Classes="cardDark" Margin="0,0,0,8" Padding="10">
+                        <Border Classes="cardDark" Margin="0,0,0,6" Padding="8">
                           <StackPanel Spacing="6">
                             <Grid ColumnDefinitions="Auto,Auto,*">
                               <TextBlock Grid.Column="0" FontSize="14" FontWeight="SemiBold" Text="{Binding Name}"

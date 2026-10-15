@@ -28,7 +28,7 @@
     <!-- One element, as its own row. Only the fields the kind reads are shown: a contact a tag
          (or a relay) and a reading, a coil the relay it drives, a timer its preset, a counter its
          preset, a gate just its label. -->
-    <Border Grid.Column="1" Classes="editorRow" Margin="0,0,0,6" IsEnabled="{Binding CanEdit}">
+    <Border Grid.Column="1" Classes="editorRow" Margin="0,0,0,4" IsEnabled="{Binding CanEdit}">
       <Grid ColumnDefinitions="*,Auto">
         <WrapPanel Grid.Column="0" Orientation="Horizontal">
           <StackPanel Classes="field" Width="250">
@@ -137,7 +137,7 @@
             </ComboBox>
           </StackPanel>
         </WrapPanel>
-        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" Margin="0,0,0,6" VerticalAlignment="Top">
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" Margin="0,0,0,4" VerticalAlignment="Top">
           <StackPanel MinWidth="52">
             <TextBlock Classes="fieldLabel" Text="LIVE" />
             <TextBlock Classes="mono" FontSize="13" TextAlignment="Center" Text="{Binding LiveText}"
