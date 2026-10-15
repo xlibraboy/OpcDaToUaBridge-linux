@@ -472,7 +472,31 @@ public sealed class LogicStoreTests : IDisposable
         bool ok = store.TrySave(block, out _, out _, out string? error);
 
         Assert.False(ok);
-        Assert.Equal("NOT takes exactly 1 input(s).", error);
+        Assert.Equal("NOT takes at most 1 input(s).", error);
+    }
+
+    [Fact]
+    public void TrySave_AcceptsAnElementWhoseInputsAreNotWiredYet()
+    {
+        LogicStore store = CreateStore();
+        LogicBlockDto block = CreateInterlock();
+        block.Conditions.Clear();
+        block.Elements = new List<LogicElementDto>
+        {
+            // The reported case: a gate row is added, then its inputs are picked — saving in
+            // between must not be refused. A coil and a timer wait the same way.
+            new() { Kind = LogicElementKinds.Or, Text = "Either start permit" },
+            new() { Kind = LogicElementKinds.Coil, Relay = "M01" },
+            new() { Kind = LogicElementKinds.Ton, Text = "Flow must hold", PtMs = 3000 }
+        };
+
+        bool ok = store.TrySave(block, out LogicBlockDto saved, out _, out string? error);
+
+        Assert.True(ok, error);
+        Assert.Equal(3, saved.Elements.Count);
+        Assert.All(saved.Elements, element => Assert.Empty(element.Inputs));
+        Assert.Equal("M01", saved.Elements[1].Relay);
+        Assert.Equal(3000, saved.Elements[2].PtMs);
     }
 
     [Fact]
@@ -584,7 +608,7 @@ public sealed class LogicStoreTests : IDisposable
     }
 
     [Fact]
-    public void TrySave_CoilNeedsARelayTakesOneInputAndAlwaysBlocks()
+    public void TrySave_CoilNeedsARelayTakesAtMostOneInputAndAlwaysBlocks()
     {
         LogicStore store = CreateStore();
 
@@ -597,11 +621,14 @@ public sealed class LogicStoreTests : IDisposable
         Assert.False(store.TrySave(missing, out _, out _, out string? missingError));
         Assert.Equal("A coil needs a relay (e.g. M01).", missingError);
 
-        LogicBlockDto noInput = CreateInterlock();
-        noInput.Conditions.Clear();
-        noInput.Elements = new List<LogicElementDto> { new() { Kind = LogicElementKinds.Coil, Relay = "M01" } };
-        Assert.False(store.TrySave(noInput, out _, out _, out string? arityError));
-        Assert.Equal("COIL takes exactly 1 input(s).", arityError);
+        LogicBlockDto tooMany = CreateInterlock();
+        tooMany.Conditions.Clear();
+        tooMany.Elements = new List<LogicElementDto>
+        {
+            new() { Kind = LogicElementKinds.Coil, Relay = "M01", Inputs = { Contact(), Contact() } }
+        };
+        Assert.False(store.TrySave(tooMany, out _, out _, out string? arityError));
+        Assert.Equal("COIL takes at most 1 input(s).", arityError);
 
         LogicBlockDto warn = CreateInterlock();
         warn.Conditions.Clear();

@@ -73,7 +73,10 @@ Rows nest by indentation: a row's inputs are the rows under it at a deeper level
 rows are the block's roots — all of them must be true (the block's AND). Use `→` to indent a row
 under the one above and `←` to move it back out. The bridge evaluates the network with
 three-valued logic (a value that has not arrived reads *unknown*, never silently true), and the
-phone lists every element, indented, with its own live state. A **warn** element is reported but
+phone lists every element, indented, with its own live state. An element may be **saved before it
+is wired**: a gate, function block or coil with nothing under it yet reads *unknown* with
+`(not wired yet)` as its cause (`no data for OR (not wired yet)`), so a network is built row by row
+and a half-built one is never reported as satisfied. A **warn** element is reported but
 inert: it neither satisfies nor blocks its parent. A network holds at most 256 elements and nests
 at most 16 levels; a deeper or larger save is refused with the reason, never truncated.
 
@@ -88,7 +91,7 @@ it exactly the same way when it evaluates.
 A network can also use **internal relays** — the PLC's `M` bits, `M01`, `M02`, … — to split a big
 interlock into readable pieces instead of one deep tree:
 
-- **Coil** (`Coil — drive internal relay (IN, M)`) — takes exactly one input and **drives** the
+- **Coil** (`Coil — drive internal relay (IN, M)`) — takes one input and **drives** the
   relay it names with that input, every evaluation. Type a new name in the `RELAY` field or pick
   one of the relays the other blocks already drive. The coil's own output is what it wrote, so a
   coil can sit inside a gate like any other element.

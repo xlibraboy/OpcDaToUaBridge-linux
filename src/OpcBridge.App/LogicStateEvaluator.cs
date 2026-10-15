@@ -21,7 +21,10 @@ namespace OpcBridge.App;
 /// contact reads it from any block, and a relay no coil has driven reads unknown. A contact may
 /// also name one of its area's tags entries instead of a direct tag: the entry's pair
 /// is what is read, and an entry still waiting for its tag reads unknown with the entry named —
-/// never a silent false. Every element keeps the reading it must show
+/// never a silent false. A gate, function block or coil that has no inputs yet — a row saved
+/// while the network is still being wired — reads unknown too, with "(not wired yet)" as its
+/// cause, so nothing half-built is ever reported as satisfied. Every element keeps the reading it
+/// must show
 /// (<see cref="LogicElementStateDto.Should"/>) and whether the live value satisfies it
 /// (<see cref="LogicElementStateDto.Matches"/>), which is what the phone renders as
 /// "should 1 / actual 0"; a timer or counter reports its progress alongside.
@@ -394,8 +397,17 @@ public static class LogicStateEvaluator
         }
 
         string kind = element.Kind.ToLowerInvariant();
+        // A row saved before it was wired: nothing decides its output, so it reads unknown — an
+        // empty AND is not "everything satisfied", and a half-built interlock is never ready.
+        bool unwired = !string.Equals(kind, LogicElementKinds.Contact, StringComparison.OrdinalIgnoreCase)
+            && element.Inputs.Count == 0;
         bool? output;
-        if (kind == LogicElementKinds.Contact)
+        if (unwired)
+        {
+            row.ValueText = "—";
+            output = null;
+        }
+        else if (kind == LogicElementKinds.Contact)
         {
             output = LogicElementKinds.IsRelayContact(element)
                 ? EvaluateRelayContact(element, row, states)
@@ -412,6 +424,9 @@ public static class LogicStateEvaluator
         missing = null;
         if (!IsWarn(element))
         {
+            // An element with no inputs yet names itself as pending, so the operator reads
+            // "OR (not wired yet)" instead of hunting for a tag that was never named.
+            string? notWired = unwired ? own + " (not wired yet)" : null;
             if (kind == LogicElementKinds.Contact)
             {
                 reason = output == false ? own : null;
@@ -423,14 +438,16 @@ public static class LogicStateEvaluator
                 // the input that decided it. A missing reading always points at the tag.
                 bool named = !string.IsNullOrWhiteSpace(element.Text);
                 reason = output == false ? (named ? own : FirstCause(inputs, inputReasons, false) ?? own) : null;
-                missing = output is null ? FirstCause(inputs, inputMissing, null) ?? own : null;
+                missing = output is null
+                    ? notWired ?? FirstCause(inputs, inputMissing, null) ?? own
+                    : null;
             }
             else
             {
                 // A function block is its own cause: the time has not elapsed, the count is not
                 // reached, the latch is unset.
                 reason = output == false ? own : null;
-                missing = output is null ? own : null;
+                missing = output is null ? notWired ?? own : null;
             }
         }
 

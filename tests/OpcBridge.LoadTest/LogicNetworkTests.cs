@@ -289,10 +289,13 @@ public sealed class LogicNetworkTests
         Assert.False(LogicElementKinds.IsValid("widget"));
         Assert.True(LogicElementKinds.IsGate(LogicElementKinds.Xor));
         Assert.True(LogicElementKinds.IsFunctionBlock(LogicElementKinds.Ctu));
-        Assert.Equal((1, 1), LogicElementKinds.InputRange(LogicElementKinds.Not));
-        Assert.Equal((2, 2), LogicElementKinds.InputRange(LogicElementKinds.Sr));
-        Assert.Equal((1, 2), LogicElementKinds.InputRange(LogicElementKinds.Ctu));
-        Assert.Equal((1, 1), LogicElementKinds.InputRange(LogicElementKinds.Ton));
+        Assert.Equal((0, 1), LogicElementKinds.InputRange(LogicElementKinds.Not));
+        Assert.Equal((0, 2), LogicElementKinds.InputRange(LogicElementKinds.Sr));
+        Assert.Equal((0, 2), LogicElementKinds.InputRange(LogicElementKinds.Ctu));
+        Assert.Equal((0, 1), LogicElementKinds.InputRange(LogicElementKinds.Ton));
+        // Every kind that reads inputs accepts none: an element is saved when its row is added
+        // and wired afterwards (an unwired one evaluates unknown).
+        Assert.Equal((0, 32), LogicElementKinds.InputRange(LogicElementKinds.Or));
     }
 
     [Fact]

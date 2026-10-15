@@ -203,17 +203,24 @@ an `and` over the roots when there is more than one). The wrappers' ids are **de
 source condition (`LogicElementIds.Derived`), so a timer's memory survives every evaluation — that is
 what `LogicStateStore` keys on. `LogicStore` bounds the tree (16 levels, 256 elements —
 `LogicLimits.MaxElementDepth` / `MaxElementsPerBlock`, shared with the editor), clears the
-fields that do not belong to an element's kind, and rejects a block that carries both forms.
+fields that do not belong to an element's kind, and rejects a block that carries both forms. An
+element's input count is bounded at the **top** only: `LogicElementKinds.InputRange` returns a
+minimum of 0 for every kind that reads inputs (1 max for `NOT`/a timer/an edge trigger/a coil, 2 for
+`SR`/`RS`/a counter, 32 for a gate), so a row added in the editor can be saved before it is wired —
+the store's refusal above the maximum reads `X takes at most N input(s).`
 
 `LogicStateEvaluator` walks the tree in drawing order with three-valued (Kleene) logic — an unknown
 input keeps a gate undecided, never silently true — and reports the block's reason from the first
 root that is not satisfied (a labelled gate names itself, a bare one points at the input that
-failed, a missing reading names the tag). A **warn** element is reported but inert: it neither
-satisfies nor blocks its parent. Function blocks and coils read `LogicStateStore` (default per pass,
-pruned by `BeginPass`/`EndPass`, in-memory so a restart re-times timers and reloads counters —
-internal relay values ride the same store, re-derived by their coils on the first pass after a
-restart); the hub broadcaster keeps evaluating while a timer is running so its progress reaches the
-apps. The phone
+failed, a missing reading names the tag). An element with **no inputs yet** (a row saved before it
+was wired — any kind but a contact) reads unknown too, with `(not wired yet)` as the cause
+(`no data for OR (not wired yet)`), so an empty `AND` is never "everything satisfied", an unwired
+coil writes nothing and its relay keeps whatever it had. A **warn** element is reported but inert:
+it neither satisfies nor blocks its parent. Function blocks and coils read `LogicStateStore`
+(default per pass, pruned by `BeginPass`/`EndPass`, in-memory so a restart re-times timers and
+reloads counters — internal relay values ride the same store, re-derived by their coils on the
+first pass after a restart); the hub broadcaster keeps evaluating while a timer is running so its
+progress reaches the apps. The phone
 renders one row per element — indented by `Depth`, with the contact's `should`/`matches` and the
 timer's/counter's progress — and the HMI's network editor authors the same tree as indented element rows.
 

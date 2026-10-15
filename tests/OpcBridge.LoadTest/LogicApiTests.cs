@@ -133,6 +133,42 @@ public sealed class LogicApiTests
     }
 
     [Fact]
+    public async Task Blocks_SaveANetworkWhoseElementIsNotWiredYet()
+    {
+        TestAppHandle app = await TestAppHandle.StartAsync(static _ => { });
+        await using (app)
+        {
+            // The editor's own flow: the gate row is added first and its inputs picked after, so
+            // the save in between must be accepted — and the element must read unknown rather
+            // than count as a satisfied gate.
+            LogicElementDto gate = new()
+            {
+                Id = Guid.NewGuid(),
+                Kind = LogicElementKinds.Or,
+                Text = "Either start permit"
+            };
+            LogicBlockDto block = new()
+            {
+                Id = Guid.NewGuid(),
+                Name = "Line 01 Start",
+                Kind = LogicBlockKinds.Interlock,
+                Elements = { gate }
+            };
+
+            using HttpResponseMessage save = await app.Client.PostAsJsonAsync("/api/logic/blocks", new { block });
+            Assert.Equal(HttpStatusCode.OK, save.StatusCode);
+
+            JsonDocument state = await app.GetJsonAsync("/api/logic/state");
+            JsonElement blockState = state.RootElement.GetProperty("blocks")[0];
+            Assert.Equal("unknown", blockState.GetProperty("state").GetString());
+            Assert.Equal(
+                "no data for Either start permit (not wired yet)",
+                blockState.GetProperty("reason").GetString());
+            Assert.Equal("unknown", blockState.GetProperty("elements")[0].GetProperty("state").GetString());
+        }
+    }
+
+    [Fact]
     public async Task Blocks_DeleteRemovesAndReportsNotFoundAfterwards()
     {
         (TestAppHandle app, Guid blockId) = await StartWithBlockAsync();

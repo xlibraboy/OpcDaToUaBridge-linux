@@ -436,9 +436,12 @@ public static class LogicElementKinds
         string.Equals(kind, Ctd, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
-    /// How many inputs the kind reads: a fixed count where the standard fixes it (NOT takes
-    /// one, the timers and edge triggers one, SR / RS two, a coil exactly one), a range where
-    /// it varies (CTU takes CU and an optional R, CTD takes CD and an optional LD).
+    /// How many inputs the kind reads: no more than the standard allows where it is fixed (NOT
+    /// takes one, the timers and edge triggers one, SR / RS two, a coil exactly one), up to the
+    /// range where the count varies (CTU takes CU and an optional R, CTD takes CD and an optional
+    /// LD, a gate any number). The minimum is zero for every kind: an element is saved the moment
+    /// its row is added and wired afterwards, so a half-built network is authored in place
+    /// instead of being refused — an unwired element evaluates as unknown, never as satisfied.
     /// </summary>
     public static (int Min, int Max) InputRange(string? kind)
     {
@@ -448,25 +451,25 @@ public static class LogicElementKinds
             string.Equals(kind, RisingEdge, StringComparison.OrdinalIgnoreCase) ||
             string.Equals(kind, FallingEdge, StringComparison.OrdinalIgnoreCase))
         {
-            return (1, 1);
+            return (0, 1);
         }
 
         if (string.Equals(kind, Sr, StringComparison.OrdinalIgnoreCase) ||
             string.Equals(kind, Rs, StringComparison.OrdinalIgnoreCase))
         {
-            return (2, 2);
+            return (0, 2);
         }
 
         if (IsCounter(kind))
         {
-            return (1, 2);
+            return (0, 2);
         }
 
         if (IsGate(kind))
         {
             // A gate may also stand alone (a single input passes through), which keeps the
             // editor tolerant while a row is being built.
-            return (1, 32);
+            return (0, 32);
         }
 
         return (0, 0);
