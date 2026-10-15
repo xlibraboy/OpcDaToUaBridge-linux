@@ -724,13 +724,14 @@ public sealed class LogicStore
             return false;
         }
 
-        (int minInputs, int maxInputs) = LogicElementKinds.InputRange(kind);
-        if (element.Inputs.Count < minInputs || element.Inputs.Count > maxInputs)
+        // Only the ceiling is enforced: a network is saved while it is still being built — the
+        // editor adds an element row first and wires it afterwards — and an element with no
+        // inputs yet evaluates as unknown, never as satisfied.
+        int maxInputs = LogicElementKinds.InputRange(kind).Max;
+        if (element.Inputs.Count > maxInputs)
         {
             normalized = default!;
-            error = minInputs == maxInputs
-                ? $"{KindName(kind)} takes exactly {minInputs} input(s)."
-                : $"{KindName(kind)} takes between {minInputs} and {maxInputs} inputs.";
+            error = $"{KindName(kind)} takes at most {maxInputs} input(s).";
             return false;
         }
 

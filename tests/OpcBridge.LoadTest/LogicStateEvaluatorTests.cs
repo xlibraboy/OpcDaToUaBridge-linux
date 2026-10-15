@@ -609,6 +609,70 @@ public sealed class LogicStateEvaluatorTests
         Assert.NotEqual(LogicStateEvaluator.Signature(first), LogicStateEvaluator.Signature(changed));
     }
 
+    // ---- A row saved before it is wired ----
+
+    [Fact]
+    public void UnwiredGate_ReadsUnknown_AndNeverSatisfiesTheBlock()
+    {
+        // The reported case: a gate row is added, then its inputs are picked — the row saves in
+        // between. Until it is wired it reads unknown: an empty AND is not "everything
+        // satisfied", and an empty OR is not a blocked interlock either.
+        LogicElementDto bare = Gate(LogicElementKinds.And);
+        LogicElementDto labelled = Gate(LogicElementKinds.Or);
+        labelled.Text = "Either start permit";
+        LogicBlockDto block = Network(bare, labelled);
+
+        LogicBlockStateDto state = LogicStateEvaluator.EvaluateBlock(block, Values(), Mappings());
+
+        Assert.Equal(LogicBlockStates.Unknown, state.State);
+        Assert.Equal("no data for AND (not wired yet)", state.Reason);
+        Assert.Equal(LogicConditionStates.Unknown, Row(state, bare).State);
+        Assert.Equal("—", Row(state, bare).ValueText);
+        Assert.Equal(LogicConditionStates.Unknown, Row(state, labelled).State);
+    }
+
+    [Fact]
+    public void UnwiredTimerUnderAWiredGate_NamesItselfAsThePendingCause()
+    {
+        LogicElementDto held = new()
+        {
+            Id = Guid.NewGuid(),
+            Kind = LogicElementKinds.Ton,
+            Text = "Flow must hold",
+            PtMs = 3000
+        };
+        LogicElementDto gate = Gate(
+            LogicElementKinds.And,
+            TagContact("PS1", "Pressure switch PS1 must read 1"),
+            held);
+        LogicBlockDto block = Network(gate);
+
+        LogicBlockStateDto state = LogicStateEvaluator.EvaluateBlock(
+            block, Values(("sim", "PS1", true, true)), Mappings());
+
+        // The wired input is satisfied; the unwired one is what the block waits for, and the
+        // reason names it rather than the gate.
+        Assert.Equal(LogicBlockStates.Unknown, state.State);
+        Assert.Equal("no data for Flow must hold (not wired yet)", state.Reason);
+        Assert.Equal(LogicConditionStates.True, Row(state, gate.Inputs[0]).State);
+        Assert.Equal(LogicConditionStates.Unknown, Row(state, held).State);
+    }
+
+    [Fact]
+    public void UnwiredCoil_WritesNothing_AndItsRelayStaysUnknown()
+    {
+        LogicStateStore states = new();
+        LogicElementDto unwired = new() { Id = Guid.NewGuid(), Kind = LogicElementKinds.Coil, Relay = "M02" };
+        LogicBlockDto block = Network(unwired);
+
+        LogicBlockStateDto state = LogicStateEvaluator.EvaluateBlock(block, Values(), Mappings(), states);
+
+        Assert.Equal(LogicBlockStates.Unknown, state.State);
+        Assert.Equal("no data for write M02 (not wired yet)", state.Reason);
+        Assert.Equal(LogicConditionStates.Unknown, Row(state, unwired).State);
+        Assert.Null(states.TryGetRelay("M02"));
+    }
+
     // ---- Internal relays (coils and relay contacts) ----
 
     private static LogicElementDto RelayContact(string relay, string op = LogicConditionOps.On) => new()

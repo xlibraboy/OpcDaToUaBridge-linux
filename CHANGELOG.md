@@ -144,6 +144,18 @@ echoed back untouched, and the comparison re-runs so the row settles under its n
 
 ### Fixed
 
+**A logic element saves before it is wired.** The store enforced the standard's *minimum* input
+count too, so a network could only be saved once every element was complete: a gate row added in
+the editor and its inputs picked afterwards refused the save with "OR takes between 1 and 32
+inputs" — the row the author was working on could not be kept, and the draft had to be finished in
+one sitting. Only the ceiling is enforced now (a kind that reads inputs reads *at most* the
+standard's count: 1 for `NOT`/a timer/an edge trigger/a coil, 2 for `SR`/`RS`/a counter, 32 for a
+gate), so a network is authored in place and saved as it stands. An element with no inputs under it
+is honest about it rather than counted as satisfied: it evaluates **unknown** with
+`(not wired yet)` as its cause — `no data for OR (not wired yet)` — so an empty `AND` is never
+"everything satisfied" and a half-built interlock can never read ready; its coils write nothing and
+its relay keeps whatever it had.
+
 **Editing a tag no longer drops its DA group association.** The tag payload the mapping API accepts
 never carried `daGroup`, so a save that echoed the stored mapping — the faceplate's *Apply*, an
 *Update descriptions*, or a rename in the import dialog — silently cleared the group a DA tag was

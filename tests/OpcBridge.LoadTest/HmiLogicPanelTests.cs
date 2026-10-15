@@ -623,6 +623,12 @@ public sealed class HmiLogicPanelTests
             // Created empty and saved: the block is stored and reads unknown, naming the entry —
             // never a silent false.
             await vm.Logic.SaveCommand.ExecuteAsync(null);
+
+            // The save's own push moves the store version, so the panel refetches the definitions
+            // (and re-reads the Tags tab) a moment later. Let it land before editing the entry,
+            // or the reload would replace the edit this test is about to make.
+            await SettleBroadcastAsync();
+
             using (JsonDocument unassigned = await handle.GetJsonAsync("/api/logic/state"))
             {
                 Assert.Equal(
