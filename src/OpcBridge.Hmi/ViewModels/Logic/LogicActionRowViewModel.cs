@@ -1,4 +1,3 @@
-using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using OpcBridge.Client;
@@ -8,14 +7,17 @@ namespace OpcBridge.Hmi.ViewModels.Logic;
 /// <summary>
 /// One block-level action button (label, tag, value, confirm). The phone renders these as
 /// operator buttons; the HMI page authors them only — the write itself stays on the phone.
-/// Only writeable tags are offered.
+/// The button writes one of its area's named tags (the Tags tab's entries, where the tag and
+/// its source are assigned); the Tags tab marks an entry whose tag cannot be written. A stored
+/// direct (source, tag) pair is carried through a save until the area's list holds it.
 /// </summary>
 public partial class LogicActionRowViewModel : ObservableObject, ILogicOrderRow
 {
     private readonly LogicTagCatalog catalog_;
     private readonly Action<LogicActionRowViewModel>? onRemove_;
     private readonly LogicRowList<LogicActionRowViewModel>? rowList_;
-    private bool loading_;
+    private readonly string storedSourceId_;
+    private readonly string storedItemId_;
 
     public LogicActionRowViewModel(
         LogicActionDto action,
@@ -27,17 +29,14 @@ public partial class LogicActionRowViewModel : ObservableObject, ILogicOrderRow
         catalog_ = catalog;
         onRemove_ = onRemove;
         rowList_ = rowList;
+        storedSourceId_ = action.SourceId ?? string.Empty;
+        storedItemId_ = action.ItemId ?? string.Empty;
         Label = action.Label;
         Value = action.Value;
         Confirm = action.Confirm;
         TagEntries = tagEntries ?? Array.Empty<LogicTagEntryViewModel>();
         SelectedBlockTag = FindTagEntry(action.Tag);
-        LoadSourceAndItems(action.SourceId, action.ItemId);
     }
-
-    public ObservableCollection<LogicSourceOption> Sources { get; } = new();
-
-    public ObservableCollection<LogicTagOption> Items { get; } = new();
 
     [ObservableProperty]
     private string _label = string.Empty;
@@ -48,35 +47,36 @@ public partial class LogicActionRowViewModel : ObservableObject, ILogicOrderRow
     [ObservableProperty]
     private bool _confirm = true;
 
-    [ObservableProperty]
-    private LogicSourceOption? _selectedSource;
+    /// <summary>
+    /// The direct pair the button was stored with, "" when it is not a legacy row. It is not
+    /// edited here any more; it is carried through a save while the area's tags do not hold it yet.
+    /// </summary>
+    public string SourceId => storedSourceId_;
 
-    [ObservableProperty]
-    private LogicTagOption? _selectedTag;
+    public string ItemId => storedItemId_;
 
-    public string SourceId => SelectedSource?.SourceId ?? string.Empty;
-
-    public string ItemId => SelectedTag?.ItemId ?? string.Empty;
-
-    /// <summary>The area's named tags this button may write instead of a direct tag.</summary>
+    /// <summary>The area's named tags this button may write — the ones the Tags tab assigns.</summary>
     public IEnumerable<LogicTagEntryViewModel> TagEntries { get; }
 
     [ObservableProperty]
     private LogicTagEntryViewModel? _selectedBlockTag;
 
-    /// <summary>The stored area-tags reference, "" when the button writes a direct tag.</summary>
+    /// <summary>The stored area-tags reference, "" while the button carries no name.</summary>
     public string Tag => SelectedBlockTag?.Name.Trim() ?? string.Empty;
 
     public bool HasBlockTag => Tag.Length > 0;
 
-    /// <summary>The direct source/tag pickers: hidden while a named tag is selected.</summary>
-    public bool ShowsDirectTag => !HasBlockTag;
+    /// <summary>A legacy button waiting for the area's tags to hold it: shown, never edited here.</summary>
+    public bool HasStoredTag => !HasBlockTag && (SourceId.Length > 0 || ItemId.Length > 0);
+
+    /// <summary>What a legacy button writes, while the area's list has no entry for it.</summary>
+    public string StoredTagText => LogicText.StoredTagHint(catalog_.TagLabel(SourceId, ItemId));
 
     partial void OnSelectedBlockTagChanged(LogicTagEntryViewModel? value)
     {
         OnPropertyChanged(nameof(Tag));
         OnPropertyChanged(nameof(HasBlockTag));
-        OnPropertyChanged(nameof(ShowsDirectTag));
+        OnPropertyChanged(nameof(HasStoredTag));
         ClearBlockTagCommand.NotifyCanExecuteChanged();
     }
 
@@ -90,14 +90,6 @@ public partial class LogicActionRowViewModel : ObservableObject, ILogicOrderRow
             ? null
             : TagEntries.FirstOrDefault(entry =>
                 string.Equals(entry.Name.Trim(), name.Trim(), StringComparison.OrdinalIgnoreCase));
-
-    partial void OnSelectedSourceChanged(LogicSourceOption? value)
-    {
-        if (!loading_)
-        {
-            RebuildItems(string.Empty);
-        }
-    }
 
     [ObservableProperty]
     private bool _canEdit = true;
@@ -141,54 +133,5 @@ public partial class LogicActionRowViewModel : ObservableObject, ILogicOrderRow
         InsertBelowCommand.NotifyCanExecuteChanged();
         MoveUpCommand.NotifyCanExecuteChanged();
         MoveDownCommand.NotifyCanExecuteChanged();
-    }
-
-    private void LoadSourceAndItems(string sourceId, string itemId)
-    {
-        loading_ = true;
-        try
-        {
-            Sources.Clear();
-            foreach (LogicSourceOption source in catalog_.Sources)
-            {
-                Sources.Add(source);
-            }
-
-            if (sourceId.Length > 0
-                && !Sources.Any(source => string.Equals(source.SourceId, sourceId, StringComparison.OrdinalIgnoreCase)))
-            {
-                Sources.Add(new LogicSourceOption(sourceId, sourceId));
-            }
-
-            SelectedSource = Sources.FirstOrDefault(
-                source => string.Equals(source.SourceId, sourceId, StringComparison.OrdinalIgnoreCase));
-        }
-        finally
-        {
-            loading_ = false;
-        }
-
-        RebuildItems(itemId);
-    }
-
-    private void RebuildItems(string keepItemId)
-    {
-        string sourceId = SelectedSource?.SourceId ?? string.Empty;
-        Items.Clear();
-        foreach (LogicTagOption item in catalog_.ItemsFor(sourceId, writeableOnly: true))
-        {
-            Items.Add(item);
-        }
-
-        LogicTagOption? match = keepItemId.Length == 0
-            ? null
-            : Items.FirstOrDefault(item => string.Equals(item.ItemId, keepItemId, StringComparison.OrdinalIgnoreCase));
-        if (match is null && keepItemId.Length > 0)
-        {
-            match = new LogicTagOption(sourceId, keepItemId, keepItemId, SelectedSource?.Name ?? sourceId, Writeable: true);
-            Items.Insert(0, match);
-        }
-
-        SelectedTag = match;
     }
 }

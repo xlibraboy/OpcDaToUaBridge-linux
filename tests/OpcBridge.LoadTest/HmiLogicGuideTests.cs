@@ -34,9 +34,11 @@ public sealed class HmiLogicGuideTests
         Assert.Contains("+↑", guide);
         Assert.Contains("warn only", guide);
         Assert.Contains("should 1 / actual 0", guide);
-        Assert.Contains("AREA TAG", guide);
+        Assert.Contains("carries one **TAG** picker", guide);
         Assert.Contains("not assigned", guide);
-        Assert.Contains("Tags join the area as they are picked", guide);
+        Assert.Contains("This is where a tag gets its source", guide);
+        Assert.Contains("join the area's tags", guide);
+        Assert.Contains("read-only tag", guide);
         Assert.Contains("TON", guide);
         Assert.Contains("TOF", guide);
         Assert.Contains("TP", guide);

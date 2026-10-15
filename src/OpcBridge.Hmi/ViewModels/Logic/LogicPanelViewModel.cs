@@ -38,6 +38,14 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
     private bool reloadingDefinitions_;
     private bool suppressBridgeLoad_;
     private bool forceReloadDraft_;
+
+    /// <summary>
+    /// The draft exactly as the load left it: the dirty compare's own baseline, so what the editor
+    /// does by itself — moving a block's direct tags into its area's tags — is not an unsaved edit.
+    /// A draft merely re-read (selecting the same block again) therefore stays clean, while anything
+    /// the operator changes is still measured against the bridge's copy.
+    /// </summary>
+    private LogicBlockDto? loadedDraft_;
     private bool selectFirstAfterReload_;
     private LogicTagCatalog catalog_ = LogicTagCatalog.Empty;
     private LogicBlockDto? storedBlock_;
@@ -392,10 +400,28 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
     public string AreaFallbackHint =>
         HasAreaFallback ? LogicText.AreaTagsFallbackHint(AreaTags.Name.Trim()) : string.Empty;
 
+    /// <summary>
+    /// True while the block's area has no tags yet: the editor's rows pick their tag from that
+    /// list, so the editor says where the tags are assigned.
+    /// </summary>
+    public bool ShowsAreaTagsPrompt => !AreaTags.HasEntries;
+
+    /// <summary>The editor's pointer at the Tags tab while the area has no tags.</summary>
+    public string AreaTagsPrompt => ShowsAreaTagsPrompt ? LogicText.AreaTagsPrompt : string.Empty;
+
+    /// <summary>
+    /// The Tags tab's "From bridge…" picker: it needs a connected bridge to read the mapped tags
+    /// from, and a named area to add them to.
+    /// </summary>
+    public bool CanPickTagsFromBridge => IsEditingEnabled && !AreaTags.IsNameBlank;
+
     private void RefreshAreaFallbackHint()
     {
         OnPropertyChanged(nameof(HasAreaFallback));
         OnPropertyChanged(nameof(AreaFallbackHint));
+        OnPropertyChanged(nameof(ShowsAreaTagsPrompt));
+        OnPropertyChanged(nameof(AreaTagsPrompt));
+        OnPropertyChanged(nameof(CanPickTagsFromBridge));
     }
 
     partial void OnBlockDescriptionChanged(string value) => DirtyChanged();
@@ -618,7 +644,7 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
             AreaTags.RefreshUsed(ReferencedTagNames());
         }
 
-        bool tagsDirty = AreaTags.IsDirty;
+        bool tagsDirty = AreaTags.IsDirty || ReferencesUnstoredEntries();
         bool blockDirty = ComputeBlockDirty();
         if (tagsDirty && AreaTags.IsNameBlank)
         {
@@ -1345,6 +1371,24 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
             buildingRows_ = false;
         }
 
+        // A block authored before the area's tags existed still carries direct pairs on its rows:
+        // they join the area's list as the draft opens, so the editor reads the same tags the Tags
+        // tab edits. That is the editor normalizing what it read, not the operator's edit — the
+        // load baseline below keeps the draft clean, and the entries are stored the first time the
+        // block itself is saved (SaveAsync sees a row naming an entry the bridge does not hold).
+        if (IsEditingEnabled && !AreaTags.IsNameBlank)
+        {
+            int moved = ConvertDirectRowsIntoArea();
+            if (moved > 0)
+            {
+                AreaTags.RefreshUsed(ReferencedTagNames());
+                AreaTags.MarkSaved(AreaTags.ToDto());
+                EditorMessage = "✓ " + LogicText.TagsMoved(moved, AreaTags.Name.Trim());
+            }
+        }
+
+        loadedDraft_ = BuildDraft();
+
         RefreshEditorMode();
         RefreshAreaTags();
         RefreshAreaFallbackHint();
@@ -1545,39 +1589,109 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
             return;
         }
 
-        TrySharePickedTag(sender, e.PropertyName);
+        RefreshAreaTagUsage(sender, e.PropertyName);
         DirtyChanged();
     }
 
     /// <summary>
-    /// A tag picked on a row of a block that has an area joins that area's tags the moment it is
-    /// picked: it becomes a named entry (named from the tag's display name) and the row references
-    /// it, so every block of the area can pick it — no separate move step.
+    /// A row's tag is a reference into the area's tags — the pick carries no source of its own —
+    /// so the tab's "used by this block" markers follow the pick the moment it changes.
     /// </summary>
-    private void TrySharePickedTag(object? sender, string? propertyName)
+    private void RefreshAreaTagUsage(object? sender, string? propertyName)
     {
-        if (!IsEditingEnabled || BlockArea.Trim().Length == 0 || AreaTags.IsNameBlank)
+        if (!IsEditingEnabled || AreaTags.IsNameBlank)
         {
             return;
         }
 
-        bool shared = propertyName switch
+        bool picked = propertyName switch
         {
-            nameof(LogicConditionRowViewModel.SelectedTag) when sender is LogicConditionRowViewModel condition
-                => ShareConditionRow(condition),
-            nameof(LogicElementRowViewModel.SelectedTag) when sender is LogicElementRowViewModel element
-                => ShareElementRow(element),
-            nameof(LogicActionRowViewModel.SelectedTag) when sender is LogicActionRowViewModel action
-                => ShareActionRow(action),
-            nameof(LogicStepRowViewModel.CompletionTag) when sender is LogicStepRowViewModel step
-                => ShareCompletionRow(step),
+            nameof(LogicConditionRowViewModel.SelectedBlockTag) when sender is LogicConditionRowViewModel => true,
+            nameof(LogicElementRowViewModel.SelectedBlockTag) when sender is LogicElementRowViewModel => true,
+            nameof(LogicActionRowViewModel.SelectedBlockTag) when sender is LogicActionRowViewModel => true,
+            nameof(LogicStepRowViewModel.SelectedCompletionTag) when sender is LogicStepRowViewModel => true,
             _ => false
         };
 
-        if (shared)
+        if (picked)
         {
             AreaTags.RefreshUsed(ReferencedTagNames());
         }
+    }
+
+    /// <summary>
+    /// The bridge's mapped tags as the Tags tab's "From bridge…" window lists them: one row per tag
+    /// with its source and the reading it had just now, and the tags the area's tags already hold
+    /// greyed out — adding one of those again would change nothing.
+    /// </summary>
+    public IReadOnlyList<LogicTagPickRow> BuildTagPickRows()
+    {
+        if (SelectedBridge is not { } bridge)
+        {
+            return Array.Empty<LogicTagPickRow>();
+        }
+
+        MultiBridgeTagCache cache = connections_.Cache;
+        List<LogicTagPickRow> rows = new();
+        foreach (LogicSourceOption source in catalog_.Sources)
+        {
+            foreach (LogicTagOption tag in catalog_.ItemsFor(source.SourceId))
+            {
+                bool listed = AreaTags.Entries.Any(entry =>
+                    entry.IsAssigned
+                    && string.Equals(entry.SourceId, tag.SourceId, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(entry.ItemId, tag.ItemId, StringComparison.OrdinalIgnoreCase));
+
+                string value = cache.TryGet(
+                    TagBindingKey.Create(bridge.BridgeId, tag.SourceId, tag.ItemId),
+                    out MultiBridgeTagEntry? entry)
+                        ? LogicText.TagLiveChip(entry)
+                        : "—";
+
+                rows.Add(new LogicTagPickRow(
+                    tag.SourceId,
+                    tag.ItemId,
+                    tag.Label,
+                    tag.SourceName,
+                    value,
+                    listed ? LogicText.TagPickListed : string.Empty,
+                    Enabled: !listed));
+            }
+        }
+
+        return rows;
+    }
+
+    /// <summary>
+    /// Adds one named entry per tag picked in that window — named after the tag's display name
+    /// (<c>LINE_01_START_PERMIT</c>), the same way a legacy pair is moved in — and says how many
+    /// joined the list. A tag an entry already carries is re-used, so picking one twice never
+    /// duplicates it; the save stores the entries with the block.
+    /// </summary>
+    public int AddTagsFromBridge(IEnumerable<LogicTagPickRow> tags)
+    {
+        if (!CanPickTagsFromBridge)
+        {
+            return 0;
+        }
+
+        int bound = AreaTags.Entries.Count(entry => entry.IsAssigned);
+        foreach (LogicTagPickRow tag in tags)
+        {
+            AreaTags.EnsureEntry(
+                UniqueTagName(TagNameFor(tag.SourceId, tag.ItemId)),
+                tag.SourceId,
+                tag.ItemId);
+        }
+
+        int added = AreaTags.Entries.Count(entry => entry.IsAssigned) - bound;
+        if (added > 0)
+        {
+            AreaTags.RefreshUsed(ReferencedTagNames());
+            EditorMessage = "✓ " + LogicText.TagsAdded(added, AreaTags.Name.Trim());
+        }
+
+        return added;
     }
 
     /// <summary>A Tags-tab edit (the area's name, an entry, the dirty flag) is an editor edit.</summary>
@@ -1593,6 +1707,12 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
             || string.Equals(e.PropertyName, nameof(LogicAreaTagsViewModel.UsedByCount), StringComparison.Ordinal))
         {
             DirtyChanged();
+        }
+
+        if (string.Equals(e.PropertyName, nameof(LogicAreaTagsViewModel.HasEntries), StringComparison.Ordinal))
+        {
+            OnPropertyChanged(nameof(ShowsAreaTagsPrompt));
+            OnPropertyChanged(nameof(AreaTagsPrompt));
         }
 
         if (string.Equals(e.PropertyName, nameof(LogicAreaTagsViewModel.Name), StringComparison.Ordinal))
@@ -1630,7 +1750,17 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
             return BlockName.Trim().Length > 0;
         }
 
-        return !LogicEditorCodec.Matches(BuildDraft(), storedBlock_);
+        LogicBlockDto draft = BuildDraft();
+
+        // The draft as the load left it is not an edit: a block whose tags the editor moved into the
+        // area's list reads clean — and stays clean when the same block is re-selected — while every
+        // operator change is still measured against the bridge's own copy below.
+        if (loadedDraft_ is { } loaded && LogicEditorCodec.Matches(draft, loaded))
+        {
+            return false;
+        }
+
+        return !LogicEditorCodec.Matches(draft, storedBlock_);
     }
 
     private LogicBlockDto BuildDraft() => LogicEditorCodec.Build(
@@ -1660,6 +1790,7 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ShowsNetwork));
         OnPropertyChanged(nameof(ShowsConditions));
         OnPropertyChanged(nameof(ShowsSteps));
+        OnPropertyChanged(nameof(CanPickTagsFromBridge));
         NotifyRowCounts();
         NotifyRowCommands();
         ConvertToNetworkCommand.NotifyCanExecuteChanged();
@@ -1759,14 +1890,26 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
+    /// True while a row names an entry the bridge's list for this area does not hold — the state a
+    /// block is in while its moved tags are only in the editor. Saving the block stores the list
+    /// with it, so a saved block never refers to an entry the bridge cannot resolve.
+    /// </summary>
+    private bool ReferencesUnstoredEntries()
+    {
+        LogicAreaTagsDto? stored = CurrentAreaTags();
+        return ReferencedTagNames().Any(name => LogicAreaTags.FindTag(stored, name) is null);
+    }
+
+    /// <summary>
     /// Every direct tag the block still carries joins its area's tags: one entry per distinct tag,
-    /// named after its display name, with the rows rewritten to reference it (the pair lives on the
-    /// entry now). Runs per row when a tag is picked, when the block is given an area, and as part
-    /// of a save — the block evaluates the same before and after.
+    /// named after its display name, with the rows rewritten to reference it — the pair lives on
+    /// the entry now, and that is the only place a tag is assigned. Runs when a draft loads, when
+    /// the block is given an area, and as part of a save, so the block evaluates the same before
+    /// and after.
     /// </summary>
     private int ConvertDirectRowsIntoArea()
     {
-        if (BlockArea.Trim().Length == 0 || AreaTags.IsNameBlank)
+        if (AreaTags.IsNameBlank)
         {
             return 0;
         }

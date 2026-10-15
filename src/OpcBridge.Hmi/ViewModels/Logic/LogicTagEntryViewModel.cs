@@ -70,9 +70,30 @@ public partial class LogicTagEntryViewModel : ObservableObject
     /// <summary>A named, unassigned entry is the "create the empty tags, assign later" state.</summary>
     public bool IsAssigned => ItemId.Length > 0;
 
+    /// <summary>
+    /// A bound tag the source does not offer for writing: an action pointing at this entry could
+    /// not write it, so the assignment is flagged where it is made rather than at the phone.
+    /// </summary>
+    public bool IsReadOnly => IsAssigned && !catalog_.IsWriteable(SourceId, ItemId);
+
+    /// <summary>The tab's note for the read-only state.</summary>
+    public string ReadOnlyHint => LogicText.ReadOnlyTagHint;
+
     public string TagText => IsAssigned
         ? (string.IsNullOrWhiteSpace(SelectedTag?.Detail) ? ItemId : SelectedTag!.Detail)
         : LogicText.TagNotAssigned;
+
+    /// <summary>
+    /// What the TAG cell says while nothing is bound — which step is missing: a source to list its
+    /// tags, no mapped tags on the chosen source, or simply no tag picked yet. Empty once bound.
+    /// </summary>
+    public string TagHint => IsAssigned
+        ? string.Empty
+        : SelectedSource is null
+            ? LogicText.TagSourceFirstHint
+            : Items.Count == 0
+                ? LogicText.NoMappedTagsHint(SelectedSource.Label)
+                : TagText;
 
     /// <summary>The stored entry for a save; a blank name is dropped by the bridge's store.</summary>
     public LogicTagDto ToDto() => new()
@@ -106,7 +127,12 @@ public partial class LogicTagEntryViewModel : ObservableObject
         }
     }
 
-    partial void OnSelectedTagChanged(LogicTagOption? value) => OnPropertyChanged(nameof(TagText));
+    partial void OnSelectedTagChanged(LogicTagOption? value)
+    {
+        OnPropertyChanged(nameof(TagText));
+        OnPropertyChanged(nameof(TagHint));
+        OnPropertyChanged(nameof(IsReadOnly));
+    }
 
     [RelayCommand(CanExecute = nameof(CanRemoveEntry))]
     private void Remove() => onRemove_?.Invoke(this);
@@ -161,5 +187,9 @@ public partial class LogicTagEntryViewModel : ObservableObject
         }
 
         SelectedTag = match;
+
+        // The cell's note follows the source's list, not only the selection: picking a source with
+        // no mapped tags has to say so, or the row just looks empty.
+        OnPropertyChanged(nameof(TagHint));
     }
 }

@@ -376,15 +376,31 @@ public sealed class HmiLogicEditorTests
     }
 
     [Fact]
-    public void StepRow_HandshakeIsBothOrNeither_AndMoveCommandsReport()
+    public void StepRow_HandshakeIsAnAreaTagAndMoveCommandsReport()
     {
         LogicTagCatalog catalog = Catalog();
+        LogicAreaTagsViewModel tab = new();
+        LogicBlockDto block = new() { Id = Guid.NewGuid(), Name = "Dry end start", TagSource = "DRYEND" };
+        tab.Load(
+            block,
+            new[]
+            {
+                new LogicAreaTagsDto
+                {
+                    Name = "DRYEND",
+                    Tags = { new LogicTagDto { Name = "DONE_FB", SourceId = "sim", ItemId = "Handshake" } }
+                }
+            },
+            new[] { block },
+            catalog);
         var steps = new System.Collections.ObjectModel.ObservableCollection<LogicStepRowViewModel>();
         var list = new LogicRowList<LogicStepRowViewModel>(steps);
         var step = new LogicStepRowViewModel(
             new LogicStepDto { Id = Guid.NewGuid(), Name = "Step 1" },
             catalog,
-            list);
+            list,
+            null,
+            tab.Entries);
         steps.Add(step);
         Assert.True(step.MoveUpCommand.CanExecute(null) == false);
         Assert.True(step.MoveDownCommand.CanExecute(null) == false);
@@ -393,24 +409,29 @@ public sealed class HmiLogicEditorTests
         var second = new LogicStepRowViewModel(
             new LogicStepDto { Id = Guid.NewGuid(), Name = "Step 2" },
             catalog,
-            list);
+            list,
+            null,
+            tab.Entries);
         steps.Add(second);
         list.NotifyChanged();
         Assert.True(step.MoveDownCommand.CanExecute(null));
         Assert.True(second.MoveUpCommand.CanExecute(null));
 
+        // The handshake is a reference into the area's tags: the step stores no pair of its own,
+        // now that a tag is assigned on the Tags tab and nowhere else.
         Assert.Null(step.CompletionSourceId);
         Assert.Null(step.CompletionItemId);
+        Assert.Equal(string.Empty, step.CompletionTagName);
 
-        step.CompletionSource = new LogicSourceOption("sim", "Simulation");
-        step.CompletionTag = new LogicTagOption("sim", "Handshake", "Handshake", "Simulation", true);
-        Assert.Equal("sim", step.CompletionSourceId);
-        Assert.Equal("Handshake", step.CompletionItemId);
+        step.SelectedCompletionTag = tab.Entries[0];
+        Assert.Equal("DONE_FB", step.CompletionTagName);
+        Assert.True(step.HasCompletionTag);
+        Assert.Equal("DONE_FB", LogicEditorCodec.StepFromRow(step).CompletionTag);
 
-        // Half a handshake never becomes a stored id.
-        step.CompletionSource = null;
-        Assert.Null(step.CompletionSourceId);
-        Assert.Null(step.CompletionItemId);
+        // Clearing it leaves the step with no handshake at all.
+        step.ClearCompletionTagCommand.Execute(null);
+        Assert.Equal(string.Empty, step.CompletionTagName);
+        Assert.Null(LogicEditorCodec.StepFromRow(step).CompletionSourceId);
     }
 
     [Fact]
@@ -427,9 +448,13 @@ public sealed class HmiLogicEditorTests
             },
             catalog);
 
+        // A tag the catalog no longer holds stays readable as the row's own line, and a save keeps
+        // the pair — nothing the block still evaluates is dropped by the editor.
         Assert.Equal("gone", row.SourceId);
         Assert.Equal("Old.Tag", row.ItemId);
-        Assert.Equal("Old.Tag", row.SelectedTag?.Label);
+        Assert.True(row.HasStoredTag);
+        Assert.Contains("Old.Tag", row.StoredTagText);
+        Assert.Equal("Old.Tag", LogicEditorCodec.ConditionFromRow(row).ItemId);
     }
 
     [Fact]
@@ -774,17 +799,19 @@ public sealed class HmiLogicEditorTests
 
         Assert.Equal(JsonSerializer.Serialize(stored.Elements), JsonSerializer.Serialize(rebuilt));
         Assert.True(rows[0].IsCoil);
-        Assert.False(rows[0].ShowsDirectTag);
+        Assert.False(rows[0].ShowsBlockTag);
         Assert.False(rows[0].ShowsSeverity);
         Assert.True(rows[0].ShowsRelay);
         Assert.Contains("M01", rows[0].RelayNames);
 
-        // The coil's input is an ordinary tag contact, and the second root reads the relay.
-        Assert.True(rows[1].ShowsDirectTag);
+        // The coil's input is an ordinary tag contact — it shows the stored pair it carries as its
+        // own line — and the second root reads the relay, so it carries no tag at all.
+        Assert.True(rows[1].ShowsBlockTag);
+        Assert.True(rows[1].HasStoredTag);
         Assert.False(rows[1].ShowsRelay);
         Assert.True(rows[2].IsRelayContact);
         Assert.True(rows[2].ShowsRelay);
-        Assert.False(rows[2].ShowsDirectTag);
+        Assert.False(rows[2].HasStoredTag);
     }
 
     [Fact]
@@ -813,7 +840,7 @@ public sealed class HmiLogicEditorTests
         Assert.Equal(LogicConditionOps.On, row.Op.Value);
         Assert.False(row.NeedsValue);
         Assert.True(row.IsRelayContact);
-        Assert.False(row.ShowsDirectTag);
+        Assert.False(row.HasStoredTag);
 
         LogicElementDto built = LogicEditorCodec.ElementFromRow(row);
         Assert.Equal("M01", built.Relay);

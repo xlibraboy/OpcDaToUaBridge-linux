@@ -41,6 +41,24 @@ public partial class LogicPage : UserControl
         }
     }
 
+    /// <summary>
+    /// The Tags tab's "From bridge…": the page shows the picker, the panel turns the confirmed
+    /// tags into the area's named entries.
+    /// </summary>
+    private void OnPickTagsClick(object? sender, RoutedEventArgs e)
+    {
+        if (Panel is not { } panel)
+        {
+            return;
+        }
+
+        var viewModel = new LogicTagPickViewModel(panel.BuildTagPickRows(), panel.AreaTags.Name.Trim());
+        LogicTagPickWindow.ShowFor(
+            TopLevel.GetTopLevel(this) as Window,
+            viewModel,
+            tags => panel.AddTagsFromBridge(tags));
+    }
+
     private void OnGuideClick(object? sender, RoutedEventArgs e) =>
         LogicGuideWindow.ShowFor(TopLevel.GetTopLevel(this) as Window);
 }
