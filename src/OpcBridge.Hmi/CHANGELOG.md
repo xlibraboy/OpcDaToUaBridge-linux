@@ -16,6 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+**The Logic editor is a denser authoring surface with a foldable block list.** The page packs its
+cards, rows and fields tighter than the app default — shorter row padding, tighter label and field
+spacing, and shorter inputs — so a whole block's conditions, network or steps fit on screen while it
+is being wired, with no change to the app's colours, type or controls. Beside the Editor / Tags /
+Result tabs a **◀ Blocks** button folds the block list away and hands the editor the whole page; it
+reads **▶ Blocks** while the list is hidden and clicking it brings the list back, the page opens
+with the list in sight, and **Blocks…** still lists and selects the blocks while it is folded.
+
 **The Logic editor's rows insert and move where you are working.** Every row — a condition, a
 network element, a step, an action — now carries `+↑` / `+↓` beside `✕` to insert a fresh row
 directly above or below it, so a list is built where it is being read instead of only appended at
