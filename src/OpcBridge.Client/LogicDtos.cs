@@ -414,6 +414,11 @@ public static class LogicElementKinds
         string.Equals(kind, Xor, StringComparison.OrdinalIgnoreCase) ||
         string.Equals(kind, Not, StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>The AND gate: the one gate that is associative, so its inputs and its siblings
+    /// that are ANDed in beside it mean the same thing.</summary>
+    public static bool IsAnd(string? kind) =>
+        string.Equals(kind, And, StringComparison.OrdinalIgnoreCase);
+
     /// <summary>TON / TOF / TP / CTU / CTD / SR / RS / R_TRIG / F_TRIG.</summary>
     public static bool IsFunctionBlock(string? kind) =>
         string.Equals(kind, Ton, StringComparison.OrdinalIgnoreCase) ||

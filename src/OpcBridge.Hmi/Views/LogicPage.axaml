@@ -7,42 +7,93 @@
              x:DataType="logic:LogicPanelViewModel">
   <!-- The editor is a dense authoring surface: this page packs the shared card / row / field
        metrics tighter than the app default so a block's rows fit on one screen. Only the logic
-       views are descendants of these styles, and no token changes — spacing only. -->
+       views are descendants of these styles, and no token changes — spacing and type size only.
+       The page also carries its own type scale, a step under the app's: 12px in the boxes, 10px
+       field labels, 11px hints, over 22px controls instead of the app's 28. The boxes carry a
+       height, not just a minimum: the theme's own text-control padding sets a taller floor. -->
   <UserControl.Styles>
     <Style Selector="Border.card">
-      <Setter Property="Padding" Value="10" />
+      <Setter Property="Padding" Value="8" />
+    </Style>
+    <Style Selector="Border.cardDark">
+      <Setter Property="Padding" Value="6" />
     </Style>
     <Style Selector="Border.editorRow">
-      <Setter Property="Padding" Value="8,5" />
+      <Setter Property="Padding" Value="6,3" />
     </Style>
     <Style Selector="StackPanel.field">
-      <Setter Property="Margin" Value="0,0,6,3" />
+      <Setter Property="Margin" Value="0,0,5,2" />
     </Style>
     <Style Selector="TextBlock.fieldLabel">
-      <Setter Property="Margin" Value="0,0,0,1" />
+      <Setter Property="FontSize" Value="10" />
+      <Setter Property="Margin" Value="0" />
     </Style>
+    <Style Selector="TextBlock.hint">
+      <Setter Property="FontSize" Value="11" />
+    </Style>
+    <Style Selector="TextBlock.mono">
+      <Setter Property="FontSize" Value="11" />
+    </Style>
+    <Style Selector="Border.pill">
+      <Setter Property="Padding" Value="7,1" />
+    </Style>
+    <Style Selector="Border.pill > TextBlock">
+      <Setter Property="FontSize" Value="10" />
+    </Style>
+    <!-- The boxes carry a height, not just a minimum: the theme's own text-control padding sets a
+         taller floor, and a box cut to the height clips its own text unless the padding goes with
+         it. The combo and the autocomplete hide their editor inside, so their padding is zeroed
+         and the inner editor is the sized box. -->
     <Style Selector="TextBox">
-      <Setter Property="MinHeight" Value="28" />
-      <Setter Property="Padding" Value="8,2" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Height" Value="22" />
+      <Setter Property="MinHeight" Value="22" />
+      <Setter Property="Padding" Value="6,0" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
     <Style Selector="ComboBox">
-      <Setter Property="MinHeight" Value="28" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Height" Value="22" />
+      <Setter Property="MinHeight" Value="22" />
+      <Setter Property="Padding" Value="6,0" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
     <Style Selector="AutoCompleteBox">
-      <Setter Property="MinHeight" Value="28" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Height" Value="22" />
+      <Setter Property="MinHeight" Value="22" />
+      <Setter Property="Padding" Value="0" />
+    </Style>
+    <Style Selector="AutoCompleteBox /template/ TextBox">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Height" Value="20" />
+      <Setter Property="MinHeight" Value="20" />
+      <Setter Property="Padding" Value="4,0" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
     </Style>
     <Style Selector="CheckBox">
-      <Setter Property="MinHeight" Value="28" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="MinHeight" Value="22" />
     </Style>
     <Style Selector="Button">
-      <Setter Property="MinHeight" Value="28" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="MinHeight" Value="20" />
+      <Setter Property="Padding" Value="8,2" />
+    </Style>
+    <Style Selector="Button.tool">
+      <Setter Property="MinWidth" Value="22" />
+      <Setter Property="Padding" Value="4,1" />
+    </Style>
+    <Style Selector="RadioButton.seg">
+      <Setter Property="MinHeight" Value="22" />
+      <Setter Property="Padding" Value="10,2" />
     </Style>
   </UserControl.Styles>
 
-  <Grid RowDefinitions="Auto,*" Margin="10">
+  <Grid RowDefinitions="Auto,*" Margin="8">
 
     <!-- ======== Bridge + block actions ======== -->
-    <Border Grid.Row="0" Classes="card" Padding="10">
+    <Border Grid.Row="0" Classes="card">
       <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto" RowDefinitions="Auto,Auto">
         <TextBlock Grid.Row="0" Grid.Column="0" Classes="listHeader" Text="BRIDGE"
                    VerticalAlignment="Center" Margin="0,0,8,0" />
@@ -85,9 +136,9 @@
          The rail is the page's one list of blocks: it stands beside both tabs, so the block
          being edited is chosen and kept in sight from the screen that edits it. Its column is
          sized by the rail itself, so hiding the rail hands the editor the whole width. -->
-    <Grid Grid.Row="1" ColumnDefinitions="Auto,*" Margin="0,8,0,0">
+    <Grid Grid.Row="1" ColumnDefinitions="Auto,*" Margin="0,6,0,0">
 
-      <Border Grid.Column="0" Classes="card" Width="330" Margin="0,0,8,0"
+      <Border Grid.Column="0" Classes="card" Width="300" Margin="0,0,6,0"
               IsVisible="{Binding IsBlocksRailVisible}">
         <DockPanel>
           <TextBlock DockPanel.Dock="Top" Classes="sectionLabel" Text="LOGIC BLOCKS" />
@@ -116,7 +167,7 @@
                                             CommandParameter="{Binding}">
                                       <StackPanel Spacing="1">
                                         <Grid ColumnDefinitions="*,Auto,Auto">
-                                          <TextBlock Grid.Column="0" FontSize="13" FontWeight="SemiBold" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                          <TextBlock Grid.Column="0" FontSize="12" FontWeight="SemiBold" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
                                           <TextBlock Grid.Column="1" Classes="hint" Margin="8,0,0,0" Text="{Binding KindLabel}" VerticalAlignment="Center" />
                                           <Border Grid.Column="2" Classes="pill" Margin="8,0,0,0"
                                                   Classes.ok="{Binding IsOk}"
@@ -168,18 +219,18 @@
 
         <!-- ======== EDITOR ======== -->
         <ScrollViewer Grid.Row="1" IsVisible="{Binding IsEditorTab}" VerticalScrollBarVisibility="Auto">
-          <StackPanel Spacing="8">
+          <StackPanel Spacing="6">
 
             <Border Classes="card">
               <StackPanel Spacing="6">
                 <WrapPanel Orientation="Horizontal">
-                  <StackPanel Classes="field" Width="320">
+                  <StackPanel Classes="field" Width="260">
                     <TextBlock Classes="fieldLabel" Text="NAME" />
                     <TextBox Text="{Binding BlockName}" Watermark="Block name (e.g. Line 01 Start)"
                              IsEnabled="{Binding IsEditingEnabled}"
                              AutomationProperties.Name="Block name" />
                   </StackPanel>
-                  <StackPanel Classes="field" Width="220">
+                  <StackPanel Classes="field" Width="180">
                     <TextBlock Classes="fieldLabel" Text="KIND" />
                     <ComboBox ItemsSource="{Binding KindOptions}" SelectedItem="{Binding SelectedKind}"
                               IsEnabled="{Binding IsEditingEnabled}"
@@ -191,14 +242,14 @@
                       </ComboBox.ItemTemplate>
                     </ComboBox>
                   </StackPanel>
-                  <StackPanel Classes="field" Width="240">
+                  <StackPanel Classes="field" Width="205">
                     <TextBlock Classes="fieldLabel" Text="INTERLOCK GROUP" />
                     <TextBox Text="{Binding BlockGroup}" Watermark="Optional (e.g. Primary Arm)"
                              IsEnabled="{Binding IsEditingEnabled}"
                              AutomationProperties.Name="Interlock group"
                              ToolTip.Tip="A display heading only: blocks sharing a group list under one heading, here and on the phone. The tags a block reads are shared by its AREA." />
                   </StackPanel>
-                  <StackPanel Classes="field" Width="240">
+                  <StackPanel Classes="field" Width="205">
                     <TextBlock Classes="fieldLabel" Text="AREA" />
                     <AutoCompleteBox Text="{Binding BlockArea}" ItemsSource="{Binding AreaTags.AreaNames}"
                                      FilterMode="Contains" Watermark="Plant area (e.g. DRY END)"
@@ -206,25 +257,25 @@
                                      AutomationProperties.Name="Area"
                                      ToolTip.Tip="The plant area whose tags this block shares — every block of the area reads one area-tags list (the Tags tab), so a signal is assigned once per area." />
                   </StackPanel>
-                  <StackPanel Classes="field" Width="140">
+                  <StackPanel Classes="field" Width="110">
                     <TextBlock Classes="fieldLabel" Text="ENABLED" />
                     <CheckBox IsChecked="{Binding BlockEnabled}" Margin="0,3,0,0"
                               IsEnabled="{Binding IsEditingEnabled}"
                               AutomationProperties.Name="Block enabled"
                               ToolTip.Tip="A disabled block evaluates but never counts as ready." />
                   </StackPanel>
-                  <StackPanel Classes="field" Width="420">
+                  <StackPanel Classes="field" Width="340">
                     <TextBlock Classes="fieldLabel" Text="DESCRIPTION" />
                     <TextBox Text="{Binding BlockDescription}" Watermark="Optional operator note"
                              IsEnabled="{Binding IsEditingEnabled}"
                              AutomationProperties.Name="Block description" />
                   </StackPanel>
-                  <StackPanel Classes="field" Width="360">
+                  <StackPanel Classes="field" Width="300">
                     <TextBlock Classes="fieldLabel" Text="TAGS" />
                     <TextBox Text="{Binding BlockTags}" Watermark="Comma-separated (e.g. Line 1, Safety)"
                              IsEnabled="{Binding IsEditingEnabled}"
                              AutomationProperties.Name="Block tags" />
-                    <TextBlock Classes="hint" Margin="0,3,0,0" Text="Up to 8 labels of 24 characters." />
+                    <TextBlock Classes="hint" Margin="0,2,0,0" Text="Up to 8 labels of 24 characters." />
                   </StackPanel>
                 </WrapPanel>
                 <!-- A row's tag is a reference into the area's tags, so while the area holds none
@@ -266,6 +317,9 @@
                   <TextBlock Grid.Column="1" Classes="hint" Margin="12,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap"
                              Text="Rows nest by indentation: a row's inputs are the rows under it at a deeper level; the outermost rows are the block's roots (all must be true). A coil (RELAY M01) drives an internal relay and a relay contact reads it — any block's gate can read it." />
                   <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+                    <Button Content="Auto format" Command="{Binding AutoFormatLevelsCommand}"
+                            AutomationProperties.Name="Nest the network's rows by kind"
+                            ToolTip.Tip="Give every row the inputs its kind reads: one for a NOT, a timer, an edge, a latch or a coil, two for a gate — and once a gate has its two, the contacts after it belong to it (an AND takes everything after it). Rows nobody takes stay roots, which the block ANDs together." />
                     <Button Content="Add element" Command="{Binding AddElementCommand}" />
                     <Button Content="Back to conditions" Command="{Binding BackToConditionsCommand}"
                             ToolTip.Tip="Drop the network and go back to the flat condition list." />
@@ -296,7 +350,7 @@
                 <ItemsControl ItemsSource="{Binding Steps}" IsVisible="{Binding HasSteps}">
                   <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="logic:LogicStepRowViewModel">
-                      <Border Classes="cardDark" Margin="0,0,0,6" Padding="8"
+                      <Border Classes="cardDark" Margin="0,0,0,5"
                               IsEnabled="{Binding CanEdit}">
                         <StackPanel Spacing="6">
                           <Grid ColumnDefinitions="Auto,Auto,*">
@@ -322,23 +376,23 @@
                             </StackPanel>
                           </Grid>
                           <WrapPanel Orientation="Horizontal">
-                            <StackPanel Classes="field" Width="320">
+                            <StackPanel Classes="field" Width="260">
                               <TextBlock Classes="fieldLabel" Text="STEP NAME" />
                               <TextBox Text="{Binding Name}" Watermark="Open inlet valve"
                                        IsEnabled="{Binding $parent[UserControl].((logic:LogicPanelViewModel)DataContext).IsEditingEnabled}"
                                        AutomationProperties.Name="Step name" />
                             </StackPanel>
-                            <StackPanel Classes="field" Width="320">
+                            <StackPanel Classes="field" Width="260">
                               <TextBlock Classes="fieldLabel" Text="NEXT STEP" />
                               <TextBox Text="{Binding NextStepText}"
                                        Watermark="What to do while this is the current step"
                                        IsEnabled="{Binding $parent[UserControl].((logic:LogicPanelViewModel)DataContext).IsEditingEnabled}"
                                        AutomationProperties.Name="Step next step text" />
                             </StackPanel>
-                            <StackPanel Classes="field" Width="210">
+                            <StackPanel Classes="field" Width="185">
                               <TextBlock Classes="fieldLabel" Text="TAG" />
                               <StackPanel Orientation="Horizontal" Spacing="4">
-                                <ComboBox Width="180" ItemsSource="{Binding TagEntries}" SelectedItem="{Binding SelectedCompletionTag}"
+                                <ComboBox Width="155" ItemsSource="{Binding TagEntries}" SelectedItem="{Binding SelectedCompletionTag}"
                                           IsEnabled="{Binding $parent[UserControl].((logic:LogicPanelViewModel)DataContext).IsEditingEnabled}"
                                           AutomationProperties.Name="Completion tag"
                                           ToolTip.Tip="One of this area's tags — assigned in the Tags tab. Optional handshake: the step completes once this tag is true.">
@@ -353,7 +407,7 @@
                                         ToolTip.Tip="Clear the handshake this step waits on"
                                         AutomationProperties.Name="Clear completion tag" />
                               </StackPanel>
-                              <TextBlock Classes="hint" Margin="0,3,0,0" MaxWidth="200" TextWrapping="Wrap"
+                              <TextBlock Classes="hint" Margin="0,2,0,0" MaxWidth="170" TextWrapping="Wrap"
                                          Text="{Binding StoredTagText}" IsVisible="{Binding HasStoredTag}" />
                             </StackPanel>
                           </WrapPanel>
@@ -387,18 +441,18 @@
                 <ItemsControl ItemsSource="{Binding Actions}" IsVisible="{Binding HasActions}">
                   <ItemsControl.ItemTemplate>
                     <DataTemplate x:DataType="logic:LogicActionRowViewModel">
-                      <Border Classes="editorRow" Margin="0,0,0,4" IsEnabled="{Binding CanEdit}">
+                      <Border Classes="editorRow" Margin="0,0,0,3" IsEnabled="{Binding CanEdit}">
                         <Grid ColumnDefinitions="*,Auto">
                           <WrapPanel Grid.Column="0" Orientation="Horizontal">
-                            <StackPanel Classes="field" Width="230">
+                            <StackPanel Classes="field" Width="200">
                               <TextBlock Classes="fieldLabel" Text="LABEL" />
                               <TextBox Text="{Binding Label}" Watermark="Start conveyor"
                                        AutomationProperties.Name="Action label" />
                             </StackPanel>
-                            <StackPanel Classes="field" Width="210">
+                            <StackPanel Classes="field" Width="185">
                               <TextBlock Classes="fieldLabel" Text="TAG" />
                               <StackPanel Orientation="Horizontal" Spacing="4">
-                                <ComboBox Width="180" ItemsSource="{Binding TagEntries}" SelectedItem="{Binding SelectedBlockTag}"
+                                <ComboBox Width="155" ItemsSource="{Binding TagEntries}" SelectedItem="{Binding SelectedBlockTag}"
                                           AutomationProperties.Name="Action tag"
                                           ToolTip.Tip="One of this area's tags — assigned in the Tags tab, where a tag that cannot be written is flagged.">
                                   <ComboBox.ItemTemplate>
@@ -412,22 +466,22 @@
                                         ToolTip.Tip="Clear the tag this button writes"
                                         AutomationProperties.Name="Clear action tag" />
                               </StackPanel>
-                              <TextBlock Classes="hint" Margin="0,3,0,0" MaxWidth="200" TextWrapping="Wrap"
+                              <TextBlock Classes="hint" Margin="0,2,0,0" MaxWidth="170" TextWrapping="Wrap"
                                          Text="{Binding StoredTagText}" IsVisible="{Binding HasStoredTag}" />
                             </StackPanel>
-                            <StackPanel Classes="field" Width="140">
+                            <StackPanel Classes="field" Width="110">
                               <TextBlock Classes="fieldLabel" Text="VALUE" />
                               <TextBox Text="{Binding Value}" Watermark="1 / true"
                                        AutomationProperties.Name="Action value" />
                             </StackPanel>
-                            <StackPanel Classes="field" Width="120">
+                            <StackPanel Classes="field" Width="100">
                               <TextBlock Classes="fieldLabel" Text="CONFIRM" />
                               <CheckBox IsChecked="{Binding Confirm}" Margin="0,3,0,0"
                                         AutomationProperties.Name="Ask the operator to confirm"
                                         ToolTip.Tip="Ask the operator before the phone writes." />
                             </StackPanel>
                           </WrapPanel>
-                          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" Margin="0,0,0,4" VerticalAlignment="Top">
+                          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="3" Margin="0,0,0,3" VerticalAlignment="Top">
                             <Button Classes="tool" Content="+↑" Command="{Binding InsertAboveCommand}"
                                     ToolTip.Tip="Insert a new action above this row" AutomationProperties.Name="Insert action above" />
                             <Button Classes="tool" Content="+↓" Command="{Binding InsertBelowCommand}"
@@ -600,7 +654,7 @@
                   <ItemsControl ItemsSource="{Binding ResultSteps}" IsVisible="{Binding ResultShowsSteps}">
                     <ItemsControl.ItemTemplate>
                       <DataTemplate x:DataType="logic:LogicResultStepRowViewModel">
-                        <Border Classes="cardDark" Margin="0,0,0,6" Padding="8">
+                        <Border Classes="cardDark" Margin="0,0,0,5">
                           <StackPanel Spacing="6">
                             <Grid ColumnDefinitions="Auto,Auto,*">
                               <TextBlock Grid.Column="0" FontSize="14" FontWeight="SemiBold" Text="{Binding Name}"

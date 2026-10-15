@@ -726,6 +726,34 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         elementRows_.NotifyChanged();
     }
 
+    /// <summary>
+    /// Nests the network's rows by kind in one click (see <see cref="LogicNetworkLayout"/>), so a
+    /// network authored top to bottom does not need an indent click on every row.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanAutoFormatLevels))]
+    private void AutoFormatLevels()
+    {
+        int[] levels = LogicNetworkLayout.Levels(Elements.Select(row => row.Kind.Value).ToArray());
+        bool moved = false;
+        for (int index = 0; index < Elements.Count; index++)
+        {
+            if (Elements[index].Indent == levels[index])
+            {
+                continue;
+            }
+
+            Elements[index].Indent = levels[index];
+            moved = true;
+        }
+
+        elementRows_.NotifyChanged();
+        EditorMessage = moved
+            ? "✓ Rows nested by kind — Save to keep it."
+            : "Rows already nest by kind — nothing to move.";
+    }
+
+    private bool CanAutoFormatLevels() => IsEditingEnabled && Elements.Count > 1;
+
     [RelayCommand(CanExecute = nameof(CanAddStep))]
     private void AddStep()
     {
@@ -1795,6 +1823,7 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         NotifyRowCommands();
         ConvertToNetworkCommand.NotifyCanExecuteChanged();
         BackToConditionsCommand.NotifyCanExecuteChanged();
+        AutoFormatLevelsCommand.NotifyCanExecuteChanged();
     }
 
     /// <summary>Keeps every row's remove / indent / move guards in step with the bridge's editability.</summary>
@@ -2189,6 +2218,7 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         AddActionCommand.NotifyCanExecuteChanged();
         ConvertToNetworkCommand.NotifyCanExecuteChanged();
         BackToConditionsCommand.NotifyCanExecuteChanged();
+        AutoFormatLevelsCommand.NotifyCanExecuteChanged();
     }
 
     private void ApplyBlockStates(BridgeCache cache)

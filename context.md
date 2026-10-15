@@ -1,6 +1,6 @@
 # context.md — OpcBridge
 
-Instruction file for AI agents working in this repo. All facts below are verified against the working tree as of 2026-10-14 (branch `feature/logic-area-tags`: logic area tags — the AREA is assigned at block creation and a picked tag joins the area's tags automatically, no move step; `main` at `8367374`).
+Instruction file for AI agents working in this repo. All facts below are verified against the working tree as of 2026-10-15 (`main`: the Logic editor's own dense type scale, and the network's **Auto format** button — a row's level derived from its kind in one click).
 
 ## What this project is
 
@@ -326,11 +326,20 @@ that tab is gone, and the page is the whole editor (branch `feature/logic-web-ap
   bridge (a selector over `BridgeConnectionManager.LinkStatuses`, defaulting to the first
   connected one); definitions and state are cached per bridge in memory, and hub `logic` pushes
   are filtered to the selected bridge.
+- **Density:** the page carries its own type scale and control metrics, a step under the app's —
+  12px in the boxes, 10px field labels, 11px hints and live readings, 22px controls where the
+  shared styles use 28, tighter card / row / field padding, and field widths sized to the longest
+  value each one carries — so an eight-row interlock and its actions fit one screen. The styles sit
+  in `LogicPage.axaml`'s `UserControl.Styles`, which only the logic views descend from, and they
+  change spacing and size only: no colour or type token moves. The boxes carry an explicit `Height`,
+  not just a `MinHeight`: the theme's own text-control padding sets a taller floor, and a box cut to
+  the height clips its own text unless the ComboBox / AutoCompleteBox padding comes down with it.
 - **Editor tab:** the block form (name, kind interlock/permissive/sequence, enabled, interlock
   group, description, tags) and the three authoring surfaces — flat **conditions** (sentence, a
   **TAG** picker, ON/OFF/`>`/`<`/`=`, OR group, hold seconds, severity, next step), the
   **IEC 61131-3 network** (indented element rows with →/← nesting, contacts/gates/timers/counters/
-  latches/edges and the **coil**, `Convert to IEC network` and back) and sequence **steps**
+  latches/edges and the **coil**, `Convert to IEC network`, **Auto format** and back) and sequence
+  **steps**
   (condition rows plus an optional completion handshake), plus block-level **actions**. A row
   carries the **name** of one of the area's tags and nothing else — the source and the tag itself
   are assigned on the Tags tab, so there is no direct picker left on a row to keep in sync. Every
@@ -348,7 +357,19 @@ that tab is gone, and the page is the whole editor (branch `feature/logic-web-ap
   `/api/logic*` API and surface its errors verbatim (a duplicate name reads "Block name already
   exists."); Save greys out until the draft actually differs. `ViewModels/Logic/LogicEditorCodec`
   holds the collect rules (sequence → steps only; element rows present → the network only;
-  otherwise the conditions) and the dirty compare.
+  otherwise the conditions) and the dirty compare. **Auto format** sets every row's level from its
+  kind (`ViewModels/Logic/LogicNetworkLayout`): a row takes the rows written behind it — one for a
+  NOT, a timer, an edge, a latch or a coil, two for a gate — so a network authored top to bottom
+  nests in one click instead of one indent click per row. A gate then keeps taking what follows it:
+  an OR or an XOR takes the contacts after it and stops at a row that reads inputs of its own, which
+  stays a root beside the gate, because OR(C1, AND(C2, C3)) is not OR(C1) ∧ AND(C2, C3); an AND takes
+  everything, which cannot change what the block evaluates — an AND is associative and the block ANDs
+  its roots anyway (`LogicElementKinds.IsAnd`). Rows nobody takes stay roots, so a half-built row is
+  left unwired (`not wired yet`) and never silently satisfied, and the second input of a latch or a
+  counter (its reset, its load) is left to the author. The layout is idempotent and never reshapes a
+  network the bridge itself built: the levels it gives `LogicNetwork.Expand`'s output are that tree's
+  own depths. Levels clamp at `LogicLimits.MaxElementDepth`, and the command disables itself below
+  two rows.
 - **Result tab:** the selected block's evaluated configuration the way the phone presents it — its
   network as rows (`✓`/`✗`/`—`, kind label, `should 1 · actual 0`, timer/counter progress,
   next-step text) or its step cards; the block list itself is the rail beside the tabs.
@@ -361,7 +382,9 @@ that tab is gone, and the page is the whole editor (branch `feature/logic-web-ap
   the runtime (`Help/LogicGuide.md`, embedded) and opens from the page's **Guide…** button.
 - Wording and formatting live in `ViewModels/Logic/LogicText`; the tests pin the collect rules and
   the strings (`HmiLogicEditorTests`, `HmiLogicTextTests`, `HmiLogicPanelTests`,
-  `HmiLogicGuideTests`) and the area-tags model end-to-end — the tab, the row references, and the
+  `HmiLogicGuideTests`), the network's layout by kind (`LogicNetworkLayoutTests` — including that the
+  bridge's own `Expand` output comes back unchanged, with `HmiLogicEditorTests` covering the button
+  itself), and the area-tags model end-to-end — the tab, the row references, and the
   move of a legacy pair into the area's tags on load (`HmiLogicTagsTests`).
 
 `DashboardLogStore` is also wired as an `ILoggerProvider` (`DashboardLogProvider`), so `ILogger` calls under the `OpcBridge.*` categories at Information+ appear in the dashboard's Logs panel and docker logs. `OpcUaSourceClient` logs reconcile summaries (`subscription reconcile: desired=… active=… added=… removed=…`) — useful for verifying monitored-item behavior.
@@ -412,7 +435,7 @@ docker run --rm -v "$PWD/<worktree>":/src -w /src -v "$HOME/.nuget-cache":/home/
   -e HOME=/home/build -e DOTNET_CLI_HOME=/home/build --user "$(id -u):$(id -g)" \
   mcr.microsoft.com/dotnet/sdk:8.0 dotnet test tests/OpcBridge.LoadTest/OpcBridge.LoadTest.csproj
 ```
-`--user` keeps build artifacts iwan-owned (rootful daemon). Full suite: **1578 tests** (xUnit, `tests/OpcBridge.LoadTest`), ~4 min in Docker on this host with `$HOME/.nuget-cache` mounted — trust the run's own total over the wall time. The count dropped from 1113 when the MX Component source (and its PLC Groups and Pause/Resume coverage) was removed (#31), then rose by the Maps import coverage (#30) and its source-scan rework (reconciliation + selection), the HMI link-state coverage, and the mobile logic viewer (its `Mobile.Core` half: bridge list, hub link, group headings, element rows, the offline cache) with the IEC network model (expansion, gates, function blocks, store validation, internal relays — coils/relay contacts and their composability across blocks and gate types), the HMI logic page (editor model, row insert/move, wording, panel end-to-end, guide), the per-machine tags sources (store, evaluator resolution, API, HMI Tags tab, phone labels and cache), the area-first sharing flow (the New-block dialog, pick/area/save conversion, the re-anchor on a scope change) and the viewer's offline detail (per-block notes cache, old-cache back-compat, the list's empty-state wording). Known flaky: `InfluxApiTests.InfluxConfig_Post_Persists_EnabledFlag` (historically failed in full-suite order, passes isolated — green in the latest full run). The two snapshot tests in `HmiLogicPanelTests` (`EvaluatedStateLandsOnTheResultRows`, `SwitchingBlocks_NeverShowsThePreviousBlocksState`) used to be flaky in full-suite order: the bridge's own `logic` push (unknown — this host has no source values) is applied on the dispatcher thread and raced the synthetic snapshot the test applies and asserts in the same breath; they now wait out the broadcast flush window (`SettleBroadcastAsync`) after saving and before connecting, so the push has gone out to nobody and cannot land in the assertion window (kept: the settled runs fail none, the racing runs failed ~1 in 3). Known environmental failure under the `--user $(id -u)` container: `DaWorkerIdentityTests.CurrentAccountName_IsNotEmpty` — the mapped uid has no passwd entry, so `Environment.UserName` is empty; it fails the same way on `main` (the only failure in the latest full run: 1566 passed / 1 failed).
+`--user` keeps build artifacts iwan-owned (rootful daemon). Full suite: **1602 tests** (xUnit, `tests/OpcBridge.LoadTest`), ~4 min in Docker on this host with `$HOME/.nuget-cache` mounted — trust the run's own total over the wall time. The count dropped from 1113 when the MX Component source (and its PLC Groups and Pause/Resume coverage) was removed (#31), then rose by the Maps import coverage (#30) and its source-scan rework (reconciliation + selection), the HMI link-state coverage, and the mobile logic viewer (its `Mobile.Core` half: bridge list, hub link, group headings, element rows, the offline cache) with the IEC network model (expansion, gates, function blocks, store validation, internal relays — coils/relay contacts and their composability across blocks and gate types), the HMI logic page (editor model, row insert/move, wording, panel end-to-end, guide, the network's layout by kind), the per-machine tags sources (store, evaluator resolution, API, HMI Tags tab, phone labels and cache), the area-first sharing flow (the New-block dialog, pick/area/save conversion, the re-anchor on a scope change) and the viewer's offline detail (per-block notes cache, old-cache back-compat, the list's empty-state wording). Known flaky: `InfluxApiTests.InfluxConfig_Post_Persists_EnabledFlag` (historically failed in full-suite order, passes isolated — green in the latest full run). The two snapshot tests in `HmiLogicPanelTests` (`EvaluatedStateLandsOnTheResultRows`, `SwitchingBlocks_NeverShowsThePreviousBlocksState`) used to be flaky in full-suite order: the bridge's own `logic` push (unknown — this host has no source values) is applied on the dispatcher thread and raced the synthetic snapshot the test applies and asserts in the same breath; they now wait out the broadcast flush window (`SettleBroadcastAsync`) after saving and before connecting, so the push has gone out to nobody and cannot land in the assertion window (kept: the settled runs fail none, the racing runs failed ~1 in 3). Known environmental failure under the `--user $(id -u)` container: `DaWorkerIdentityTests.CurrentAccountName_IsNotEmpty` — the mapped uid has no passwd entry, so `Environment.UserName` is empty; it fails the same way on `main` (the only failure in the latest full run: 1601 passed / 1 failed).
 
 **Worktree workflow (session convention):** fixes live in `git worktree add .worktrees/<branch-slug> -b <branch> main`; one worktree per branch; full suite per branch before merge; merge to main with `--no-ff`; push to origin. **Tool path quirk:** `edit`/`write` with relative `.worktrees/...` paths sometimes land in the main checkout — always use absolute paths and verify with grep after. `.dockerignore` excludes `.worktrees/` (7+ GB) so images can be built from the main checkout.
 

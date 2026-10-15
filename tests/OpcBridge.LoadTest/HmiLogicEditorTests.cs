@@ -694,6 +694,69 @@ public sealed class HmiLogicEditorTests
     }
 
     [Fact]
+    public async Task AutoFormatLevels_NestsTheRowsByKind_AndTheBlockIsReadyToSave()
+    {
+        await using var connections = new BridgeConnectionManager(new BridgeManagerOptions(
+            PollInterval: TimeSpan.FromSeconds(5),
+            SnapshotRetryDelays: new[] { TimeSpan.Zero },
+            BridgeRetryDelays: new[] { TimeSpan.FromSeconds(5) },
+            HubTiming: new HmiHubTiming(TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(15), new[] { TimeSpan.Zero })));
+        var panel = new LogicPanelViewModel(connections, work => work(), _ => { });
+        panel.SelectedBridge = new LogicBridgeOption("default", BridgeLinkState.Connected);
+        await panel.LoadSelectedBridgeAsync();
+        panel.NewBlockCommand.Execute(null);
+        Assert.Empty(panel.Elements);
+
+        // A network authored the way it is read: every row added lands at the root, and the levels
+        // are what the button is for.
+        LogicElementRowViewModel Add(string kind)
+        {
+            panel.AddElementCommand.Execute(null);
+            LogicElementRowViewModel row = panel.Elements[^1];
+            row.Kind = LogicSelectOption.Find(LogicOptions.ElementKinds, kind)!;
+            return row;
+        }
+
+        Assert.False(panel.AutoFormatLevelsCommand.CanExecute(null));
+
+        Add(LogicElementKinds.Contact);
+        Assert.False(panel.AutoFormatLevelsCommand.CanExecute(null));      // one row: nothing to nest
+
+        Add(LogicElementKinds.Not);
+        Add(LogicElementKinds.Contact);
+        Add(LogicElementKinds.Xor);
+        Add(LogicElementKinds.Contact);
+        Add(LogicElementKinds.Contact);
+        Assert.True(panel.AutoFormatLevelsCommand.CanExecute(null));
+        Assert.Equal(new[] { 0, 0, 0, 0, 0, 0 }, panel.Elements.Select(row => row.Indent));
+
+        // The contact written behind the NOT is a root until the layout nests it, and its own
+        // buttons follow the level it lands on.
+        LogicElementRowViewModel operand = panel.Elements[2];
+        Assert.False(operand.OutdentRowCommand.CanExecute(null));
+
+        panel.AutoFormatLevelsCommand.Execute(null);
+
+        // The NOT took the contact written behind it, the XOR its two, and the row that moved says
+        // what to do next.
+        Assert.Equal(new[] { 0, 0, 1, 0, 1, 1 }, panel.Elements.Select(row => row.Indent));
+        Assert.True(operand.OutdentRowCommand.CanExecute(null));
+        Assert.Equal("✓ Rows nested by kind — Save to keep it.", panel.EditorMessage);
+
+        // What Save writes is the nested network, and the bridge accepts it.
+        List<LogicElementDto> tree = LogicEditorCodec.ElementTreeFromRows(panel.Elements);
+        Assert.Equal(3, tree.Count);
+        Assert.Equal(LogicElementKinds.Not, tree[1].Kind);
+        Assert.Single(tree[1].Inputs);
+        Assert.Equal(LogicElementKinds.Xor, tree[2].Kind);
+        Assert.Equal(2, tree[2].Inputs.Count);
+
+        // Pressing it on a network that is already laid out moves nothing and says so.
+        panel.AutoFormatLevelsCommand.Execute(null);
+        Assert.Equal("Rows already nest by kind — nothing to move.", panel.EditorMessage);
+    }
+
+    [Fact]
     public async Task LosingTheLink_DisablesTheRowControlsAndReQueriesTheAddButtons()
     {
         await using var connections = new BridgeConnectionManager(new BridgeManagerOptions(

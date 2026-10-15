@@ -5,7 +5,7 @@
              x:DataType="logic:LogicElementRowViewModel">
   <Grid ColumnDefinitions="Auto,*">
     <!-- The nesting rail: one guide per enclosing level, beside the row card. -->
-    <ItemsControl Grid.Column="0" ItemsSource="{Binding Guides}" Margin="8,0,0,0"
+    <ItemsControl Grid.Column="0" ItemsSource="{Binding Guides}" Margin="6,0,0,0"
                   VerticalAlignment="Stretch">
       <ItemsControl.ItemsPanel>
         <ItemsPanelTemplate>
@@ -19,7 +19,7 @@
       </ItemsControl.Styles>
       <ItemsControl.ItemTemplate>
         <DataTemplate>
-          <Border Width="18" BorderThickness="1,0,0,0" BorderBrush="{DynamicResource GridLineBrush}"
+          <Border Width="14" BorderThickness="1,0,0,0" BorderBrush="{DynamicResource GridLineBrush}"
                   VerticalAlignment="Stretch" />
         </DataTemplate>
       </ItemsControl.ItemTemplate>
@@ -28,10 +28,10 @@
     <!-- One element, as its own row. Only the fields the kind reads are shown: a contact a tag
          (or a relay) and a reading, a coil the relay it drives, a timer its preset, a counter its
          preset, a gate just its label. -->
-    <Border Grid.Column="1" Classes="editorRow" Margin="0,0,0,4" IsEnabled="{Binding CanEdit}">
+    <Border Grid.Column="1" Classes="editorRow" Margin="0,0,0,3" IsEnabled="{Binding CanEdit}">
       <Grid ColumnDefinitions="*,Auto">
         <WrapPanel Grid.Column="0" Orientation="Horizontal">
-          <StackPanel Classes="field" Width="250">
+          <StackPanel Classes="field" Width="290">
             <TextBlock Classes="fieldLabel" Text="KIND" />
             <ComboBox ItemsSource="{Binding KindOptions}" SelectedItem="{Binding Kind}"
                       AutomationProperties.Name="Element kind">
@@ -42,15 +42,15 @@
               </ComboBox.ItemTemplate>
             </ComboBox>
           </StackPanel>
-          <StackPanel Classes="field" Width="260">
+          <StackPanel Classes="field" Width="220">
             <TextBlock Classes="fieldLabel" Text="SENTENCE / LABEL" />
             <TextBox Text="{Binding Text}" Watermark="Guard closed"
                      AutomationProperties.Name="Element label" />
           </StackPanel>
-          <StackPanel Classes="field" Width="210" IsVisible="{Binding ShowsBlockTag}">
+          <StackPanel Classes="field" Width="185" IsVisible="{Binding ShowsBlockTag}">
             <TextBlock Classes="fieldLabel" Text="TAG" />
             <StackPanel Orientation="Horizontal" Spacing="4">
-              <ComboBox Width="180" ItemsSource="{Binding TagEntries}" SelectedItem="{Binding SelectedBlockTag}"
+              <ComboBox Width="155" ItemsSource="{Binding TagEntries}" SelectedItem="{Binding SelectedBlockTag}"
                         AutomationProperties.Name="Element tag"
                         ToolTip.Tip="One of this area's tags — assigned in the Tags tab, read by every block of the area.">
                 <ComboBox.ItemTemplate>
@@ -64,17 +64,17 @@
                       ToolTip.Tip="Clear the tag this contact reads"
                       AutomationProperties.Name="Clear tag" />
             </StackPanel>
-            <TextBlock Classes="hint" Margin="0,3,0,0" MaxWidth="200" TextWrapping="Wrap"
+            <TextBlock Classes="hint" Margin="0,2,0,0" MaxWidth="170" TextWrapping="Wrap"
                        Text="{Binding StoredTagText}" IsVisible="{Binding HasStoredTag}" />
           </StackPanel>
-          <StackPanel Classes="field" Width="150" IsVisible="{Binding ShowsRelay}">
+          <StackPanel Classes="field" Width="130" IsVisible="{Binding ShowsRelay}">
             <TextBlock Classes="fieldLabel" Text="RELAY" />
             <AutoCompleteBox ItemsSource="{Binding RelayNames}" Text="{Binding Relay}"
                              FilterMode="Contains" Watermark="M01"
                              AutomationProperties.Name="Internal relay"
                              ToolTip.Tip="Internal relay (e.g. M01). On a contact it reads the relay; on a coil it drives one — any block can read it." />
           </StackPanel>
-          <StackPanel Classes="field" Width="170" IsVisible="{Binding IsContact}">
+          <StackPanel Classes="field" Width="145" IsVisible="{Binding IsContact}">
             <TextBlock Classes="fieldLabel" Text="OP" />
             <ComboBox ItemsSource="{Binding OpOptions}" SelectedItem="{Binding Op}"
                       AutomationProperties.Name="Contact operator">
@@ -85,24 +85,24 @@
               </ComboBox.ItemTemplate>
             </ComboBox>
           </StackPanel>
-          <StackPanel Classes="field" Width="90" IsVisible="{Binding NeedsValue}">
+          <StackPanel Classes="field" Width="72" IsVisible="{Binding NeedsValue}">
             <TextBlock Classes="fieldLabel" Text="VALUE" />
             <TextBox Text="{Binding ValueText}" Watermark="value"
                      AutomationProperties.Name="Comparison value" />
           </StackPanel>
-          <StackPanel Classes="field" Width="90" IsVisible="{Binding IsTimer}">
+          <StackPanel Classes="field" Width="72" IsVisible="{Binding IsTimer}">
             <TextBlock Classes="fieldLabel" Text="PT s" />
             <TextBox Text="{Binding PtSeconds}" Watermark="3"
                      AutomationProperties.Name="Timer preset seconds"
                      ToolTip.Tip="Preset time (PT) in seconds." />
           </StackPanel>
-          <StackPanel Classes="field" Width="90" IsVisible="{Binding IsCounter}">
+          <StackPanel Classes="field" Width="72" IsVisible="{Binding IsCounter}">
             <TextBlock Classes="fieldLabel" Text="PV" />
             <TextBox Text="{Binding PvText}" Watermark="5"
                      AutomationProperties.Name="Counter preset"
                      ToolTip.Tip="Preset count (PV)." />
           </StackPanel>
-          <StackPanel Classes="field" Width="110">
+          <StackPanel Classes="field" Width="95">
             <TextBlock Classes="fieldLabel" Text="SEVERITY" IsVisible="{Binding ShowsSeverity}" />
             <ComboBox ItemsSource="{Binding SeverityOptions}" SelectedItem="{Binding Severity}"
                       IsVisible="{Binding ShowsSeverity}"
@@ -115,16 +115,16 @@
             </ComboBox>
           </StackPanel>
         </WrapPanel>
-        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" Margin="0,0,0,4" VerticalAlignment="Top">
-          <StackPanel MinWidth="52">
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="5" Margin="0,0,0,3" VerticalAlignment="Top">
+          <StackPanel MinWidth="44">
             <TextBlock Classes="fieldLabel" Text="LIVE" />
-            <TextBlock Classes="mono" FontSize="13" TextAlignment="Center" Text="{Binding LiveText}"
+            <TextBlock Classes="mono" FontSize="11" TextAlignment="Center" Text="{Binding LiveText}"
                        Classes.stateOk="{Binding IsLiveOk}"
                        Classes.stateBad="{Binding IsLiveBad}"
                        Classes.stateWarn="{Binding IsLiveWarn}"
                        AutomationProperties.LiveSetting="Polite" />
           </StackPanel>
-          <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Bottom">
+          <StackPanel Orientation="Horizontal" Spacing="3" VerticalAlignment="Bottom">
             <Button Classes="tool" Content="+↑" Command="{Binding InsertAboveCommand}"
                     ToolTip.Tip="Insert a new element above this row, at its level"
                     AutomationProperties.Name="Insert element above" />

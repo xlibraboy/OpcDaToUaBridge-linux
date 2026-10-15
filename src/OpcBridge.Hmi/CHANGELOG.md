@@ -41,10 +41,29 @@ pick an entry now instead of a writeable tag.
 **The Logic editor is a denser authoring surface with a foldable block list.** The page packs its
 cards, rows and fields tighter than the app default — shorter row padding, tighter label and field
 spacing, and shorter inputs — so a whole block's conditions, network or steps fit on screen while it
-is being wired, with no change to the app's colours, type or controls. Beside the Editor / Tags /
+is being wired. It carries its own type scale, half a step under the app's: 12px in the boxes, 10px
+field labels, 11px hints and live readings, over 22px controls in place of the app's 28, and the wide
+fields — the element kind, a sentence, the tag pickers — are sized to the longest value each one
+carries. A network row is 48px instead of 63 and its boxes 22px instead of 29, so an eight-row
+interlock and the actions below it are all in sight at once. Beside the Editor / Tags /
 Result tabs a **◀ Blocks** button folds the block list away and hands the editor the whole page; it
 reads **▶ Blocks** while the list is hidden and clicking it brings the list back, the page opens
 with the list in sight, and **Blocks…** still lists and selects the blocks while it is folded.
+
+**The network lays itself out by kind — `Auto format`.** An element row carries its level, and
+setting the levels by hand costs one `→` click per operand. **Auto format**, in the network's toolbar
+beside `Add element`, reads the kinds in the order they are written and nests them: a row takes the
+rows behind it as its inputs — one for a NOT, a timer, an edge, a latch or a coil, two for a gate —
+so a network authored top to bottom, the gate and then its operands, lays out in one click. A gate
+then keeps taking what follows it: an OR or an XOR takes the contacts after it and stops at a row
+that reads inputs of its own, which stays a root beside the gate, because OR(C1, AND(C2, C3)) is not
+OR(C1) ∧ AND(C2, C3) — while an AND takes everything, which cannot change what the block evaluates,
+since an AND is associative and the block ANDs its roots anyway. Rows nobody takes stay roots, so a
+half-built row is left unwired and reported as `(not wired yet)` rather than as satisfied, the second
+input of a latch or a counter (its reset, its load) is left to the author, and the levels stop at the
+sixteen the bridge accepts. The button only ever sets levels, so pressing it on a network that is
+already laid out — including one the bridge expanded from a block's flat conditions — moves nothing
+and says so, and what it does move is a draft change until **Save**.
 
 **The Logic editor's rows insert and move where you are working.** Every row — a condition, a
 network element, a step, an action — now carries `+↑` / `+↓` beside `✕` to insert a fresh row
