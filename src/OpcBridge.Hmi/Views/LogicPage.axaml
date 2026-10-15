@@ -336,11 +336,11 @@
                                        AutomationProperties.Name="Step next step text" />
                             </StackPanel>
                             <StackPanel Classes="field" Width="210">
-                              <TextBlock Classes="fieldLabel" Text="AREA TAG" />
+                              <TextBlock Classes="fieldLabel" Text="TAG" />
                               <StackPanel Orientation="Horizontal" Spacing="4">
                                 <ComboBox Width="180" ItemsSource="{Binding TagEntries}" SelectedItem="{Binding SelectedCompletionTag}"
                                           IsEnabled="{Binding $parent[UserControl].((logic:LogicPanelViewModel)DataContext).IsEditingEnabled}"
-                                          AutomationProperties.Name="Completion area tag"
+                                          AutomationProperties.Name="Completion tag"
                                           ToolTip.Tip="One of this area's tags — assigned in the Tags tab. Optional handshake: the step completes once this tag is true.">
                                   <ComboBox.ItemTemplate>
                                     <DataTemplate x:DataType="logic:LogicTagEntryViewModel">
@@ -351,7 +351,7 @@
                                 <Button Classes="tool" Content="✕" Command="{Binding ClearCompletionTagCommand}"
                                         IsVisible="{Binding HasCompletionTag}" VerticalAlignment="Center"
                                         ToolTip.Tip="Clear the handshake this step waits on"
-                                        AutomationProperties.Name="Clear completion area tag" />
+                                        AutomationProperties.Name="Clear completion tag" />
                               </StackPanel>
                               <TextBlock Classes="hint" Margin="0,3,0,0" MaxWidth="200" TextWrapping="Wrap"
                                          Text="{Binding StoredTagText}" IsVisible="{Binding HasStoredTag}" />
@@ -396,10 +396,10 @@
                                        AutomationProperties.Name="Action label" />
                             </StackPanel>
                             <StackPanel Classes="field" Width="210">
-                              <TextBlock Classes="fieldLabel" Text="AREA TAG" />
+                              <TextBlock Classes="fieldLabel" Text="TAG" />
                               <StackPanel Orientation="Horizontal" Spacing="4">
                                 <ComboBox Width="180" ItemsSource="{Binding TagEntries}" SelectedItem="{Binding SelectedBlockTag}"
-                                          AutomationProperties.Name="Action area tag"
+                                          AutomationProperties.Name="Action tag"
                                           ToolTip.Tip="One of this area's tags — assigned in the Tags tab, where a tag that cannot be written is flagged.">
                                   <ComboBox.ItemTemplate>
                                     <DataTemplate x:DataType="logic:LogicTagEntryViewModel">
@@ -410,7 +410,7 @@
                                 <Button Classes="tool" Content="✕" Command="{Binding ClearBlockTagCommand}"
                                         IsVisible="{Binding HasBlockTag}" VerticalAlignment="Center"
                                         ToolTip.Tip="Clear the tag this button writes"
-                                        AutomationProperties.Name="Clear action area tag" />
+                                        AutomationProperties.Name="Clear action tag" />
                               </StackPanel>
                               <TextBlock Classes="hint" Margin="0,3,0,0" MaxWidth="200" TextWrapping="Wrap"
                                          Text="{Binding StoredTagText}" IsVisible="{Binding HasStoredTag}" />
@@ -525,8 +525,8 @@
                                 </DataTemplate>
                               </ComboBox.ItemTemplate>
                             </ComboBox>
-                            <TextBlock Classes="hint" Margin="0,2,0,0" FontSize="11" Text="{Binding TagText}"
-                                       IsVisible="{Binding !IsAssigned}" />
+                            <TextBlock Classes="hint" Margin="0,2,0,0" FontSize="11" Text="{Binding TagHint}"
+                                       IsVisible="{Binding TagHint, Converter={x:Static converters:StringConverters.IsNotNullOrEmpty}}" />
                             <TextBlock Classes="hint warn" Margin="0,2,0,0" FontSize="11" Text="{Binding ReadOnlyHint}"
                                        IsVisible="{Binding IsReadOnly}"
                                        ToolTip.Tip="The source does not offer this tag for writing, so an action that writes it cannot work. Pick a writeable tag, or keep this entry for the blocks that only read it." />

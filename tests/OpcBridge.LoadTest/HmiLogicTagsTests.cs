@@ -205,6 +205,32 @@ public sealed class HmiLogicTagsTests
     }
 
     [Fact]
+    public void NewTag_OpensReadyToBindAndSaysWhichStepIsMissing()
+    {
+        LogicAreaTagsViewModel tab = new();
+        LogicBlockDto block = NamedBlock();
+        tab.Load(block, Array.Empty<LogicAreaTagsDto>(), new[] { block }, Catalog());
+
+        // A new row is ready to bind: a source is already chosen, so its mapped tags are listed to
+        // pick from — the operator does not have to guess that the source cell is the first step.
+        LogicTagEntryViewModel entry = tab.NewTag();
+        Assert.Equal("sim", entry.SourceId);
+        Assert.False(entry.IsAssigned);
+        Assert.NotEmpty(entry.Items);
+        Assert.Equal(LogicText.TagNotAssigned, entry.TagHint);
+
+        // With no source there is nothing to list, and the cell points at the source.
+        LogicTagEntryViewModel sourceLess = tab.NewTag();
+        sourceLess.SelectedSource = null;
+        Assert.Equal(LogicText.TagSourceFirstHint, sourceLess.TagHint);
+
+        // A source with nothing mapped says where to map the tag.
+        LogicTagEntryViewModel unmapped = new(new LogicTagDto { Name = "TAG9" }, Catalog());
+        unmapped.SelectedSource = new LogicSourceOption("ghost", "Ghost PLC");
+        Assert.Equal(LogicText.NoMappedTagsHint("Ghost PLC"), unmapped.TagHint);
+    }
+
+    [Fact]
     public void EnsureEntry_ReusesTheEntryCarryingTheSameTagAndFindsNamesCaseInsensitively()
     {
         LogicAreaTagsViewModel tab = new();

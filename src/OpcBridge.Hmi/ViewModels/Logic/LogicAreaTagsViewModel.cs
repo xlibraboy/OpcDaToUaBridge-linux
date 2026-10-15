@@ -178,6 +178,10 @@ public sealed partial class LogicAreaTagsViewModel : ObservableObject
         }
 
         LogicTagEntryViewModel entry = AddEntry(new LogicTagDto { Name = "TAG" + number });
+
+        // Ready to bind: the first source is chosen, so the TAG cell lists its mapped tags straight
+        // away instead of an empty box. The name and the source both stay the operator's to change.
+        entry.SelectedSource = entry.Sources.FirstOrDefault();
         RecomputeDirty();
         return entry;
     }

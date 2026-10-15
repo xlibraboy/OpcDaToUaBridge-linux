@@ -83,6 +83,18 @@ public partial class LogicTagEntryViewModel : ObservableObject
         ? (string.IsNullOrWhiteSpace(SelectedTag?.Detail) ? ItemId : SelectedTag!.Detail)
         : LogicText.TagNotAssigned;
 
+    /// <summary>
+    /// What the TAG cell says while nothing is bound — which step is missing: a source to list its
+    /// tags, no mapped tags on the chosen source, or simply no tag picked yet. Empty once bound.
+    /// </summary>
+    public string TagHint => IsAssigned
+        ? string.Empty
+        : SelectedSource is null
+            ? LogicText.TagSourceFirstHint
+            : Items.Count == 0
+                ? LogicText.NoMappedTagsHint(SelectedSource.Label)
+                : TagText;
+
     /// <summary>The stored entry for a save; a blank name is dropped by the bridge's store.</summary>
     public LogicTagDto ToDto() => new()
     {
@@ -118,6 +130,7 @@ public partial class LogicTagEntryViewModel : ObservableObject
     partial void OnSelectedTagChanged(LogicTagOption? value)
     {
         OnPropertyChanged(nameof(TagText));
+        OnPropertyChanged(nameof(TagHint));
         OnPropertyChanged(nameof(IsReadOnly));
     }
 
@@ -174,5 +187,9 @@ public partial class LogicTagEntryViewModel : ObservableObject
         }
 
         SelectedTag = match;
+
+        // The cell's note follows the source's list, not only the selection: picking a source with
+        // no mapped tags has to say so, or the row just looks empty.
+        OnPropertyChanged(nameof(TagHint));
     }
 }

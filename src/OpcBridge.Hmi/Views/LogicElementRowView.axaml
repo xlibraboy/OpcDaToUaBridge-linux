@@ -48,10 +48,10 @@
                      AutomationProperties.Name="Element label" />
           </StackPanel>
           <StackPanel Classes="field" Width="210" IsVisible="{Binding ShowsBlockTag}">
-            <TextBlock Classes="fieldLabel" Text="AREA TAG" />
+            <TextBlock Classes="fieldLabel" Text="TAG" />
             <StackPanel Orientation="Horizontal" Spacing="4">
               <ComboBox Width="180" ItemsSource="{Binding TagEntries}" SelectedItem="{Binding SelectedBlockTag}"
-                        AutomationProperties.Name="Area tag"
+                        AutomationProperties.Name="Element tag"
                         ToolTip.Tip="One of this area's tags — assigned in the Tags tab, read by every block of the area.">
                 <ComboBox.ItemTemplate>
                   <DataTemplate x:DataType="logic:LogicTagEntryViewModel">
@@ -62,7 +62,7 @@
               <Button Classes="tool" Content="✕" Command="{Binding ClearBlockTagCommand}"
                       IsVisible="{Binding HasBlockTag}" VerticalAlignment="Center"
                       ToolTip.Tip="Clear the tag this contact reads"
-                      AutomationProperties.Name="Clear area tag" />
+                      AutomationProperties.Name="Clear tag" />
             </StackPanel>
             <TextBlock Classes="hint" Margin="0,3,0,0" MaxWidth="200" TextWrapping="Wrap"
                        Text="{Binding StoredTagText}" IsVisible="{Binding HasStoredTag}" />

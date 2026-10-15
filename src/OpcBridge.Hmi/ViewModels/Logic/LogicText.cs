@@ -407,7 +407,14 @@ public static class LogicText
 
     /// <summary>The tab's empty state: nothing referenced, nothing created.</summary>
     public const string AreaTagsEmpty =
-        "No tags yet — add one with New tag, name it and assign its source and tag; the area's blocks read them from their AREA TAG lists.";
+        "No tags yet — add one with New tag, name it and assign its source and tag; every block's rows pick it from their TAG list.";
+
+    /// <summary>The tab's hint on a <c>+ New tag</c> row, before a source is chosen (its tags list here).</summary>
+    public const string TagSourceFirstHint = "Choose a source — its mapped tags list here.";
+
+    /// <summary>The tab's hint when the chosen source has no mapped tags to bind.</summary>
+    public static string NoMappedTagsHint(string sourceName) =>
+        $"No mapped tags on {sourceName} — map them in the dashboard (Tags ▸ Maps), then reopen this page.";
 
     /// <summary>
     /// An editor row's note for a tag the block still carries directly: a block authored before

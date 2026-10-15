@@ -166,12 +166,13 @@ area** instead of once per condition:
   bridge tag later — a block authored against an unassigned entry reads **unknown** with the entry
   named in the reason (`no data for START_PB (not assigned)`), never a silent false. A name the
   area's tags do not hold reads `… (not in DRY END)`.
-- **`+ New tag`** creates an entry with a name you choose; pick its source and tag on the same row.
-  The **TAG** column also marks a bound tag the source does not offer for writing
+- **`+ New tag`** creates an entry with a name you choose; its **SOURCE** is already chosen, so the
+  **TAG** cell lists that source's mapped tags — pick one and the entry is bound. The **TAG** column
+  also marks a bound tag the source does not offer for writing
   (`read-only tag — an action cannot write it.`), so an action button that could never write is
   spotted where it is assigned rather than on the phone.
 - In the editor, every row — a condition, a network contact, a step's completion handshake, an
-  action — carries one **AREA TAG** picker listing the area's entries. Pick a name there; the row
+  action — carries one **TAG** picker that lists the area's entries. Pick a name there; the row
   stores the name and nothing else, so the pair lives on the entry and moving it moves every block
   of the area at once. `✕` clears the pick and leaves the row unassigned until you pick another name.
 - **A block authored before areas existed still works.** Its rows carry a direct source/tag pair;
@@ -197,7 +198,7 @@ moves both at once.
 A block can carry action buttons (label, tag, value, confirm). The phone renders them as operator
 buttons; a press writes the value through the bridge's normal write path, so the target tag must
 allow writes and the caller's role must permit them. This page authors the buttons only — the write
-stays on the phone — and the button writes one of the area's tags: pick it in its `AREA TAG` field,
+stays on the phone — and the button writes one of the area's tags: pick it in its `TAG` field,
 and the Tags tab marks an entry whose tag the source does not offer for writing.
 
 ---

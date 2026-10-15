@@ -239,7 +239,7 @@ value/mapping lookups, an unassigned one reads **unknown** with the entry named
 (`no data for START_PB (not assigned)`), a name the list does not hold reads `… (not in DRY END)`,
 and the store canonicalizes every reference to its entry's spelling while clearing the site's
 `SourceId`/`ItemId` (a reference and a pair are mutually exclusive — relay, once set, wins). The
-HMI editor assigns a tag **only** on the Tags tab: every editor row carries an **AREA TAG** picker
+HMI editor assigns a tag **only** on the Tags tab: every editor row carries a **TAG** picker
 and no source of its own, so a block authored before areas existed has its direct pairs **moved
 into the area's tags the moment the draft opens** (or the moment it is given an area) — one entry
 per pair, named from the tag's display name, which the row then references, with the move stored by
@@ -323,8 +323,8 @@ that tab is gone, and the page is the whole editor (branch `feature/logic-web-ap
   connected one); definitions and state are cached per bridge in memory, and hub `logic` pushes
   are filtered to the selected bridge.
 - **Editor tab:** the block form (name, kind interlock/permissive/sequence, enabled, interlock
-  group, description, tags) and the three authoring surfaces — flat **conditions** (sentence, an
-  **AREA TAG** picker, ON/OFF/`>`/`<`/`=`, OR group, hold seconds, severity, next step), the
+  group, description, tags) and the three authoring surfaces — flat **conditions** (sentence, a
+  **TAG** picker, ON/OFF/`>`/`<`/`=`, OR group, hold seconds, severity, next step), the
   **IEC 61131-3 network** (indented element rows with →/← nesting, contacts/gates/timers/counters/
   latches/edges and the **coil**, `Convert to IEC network` and back) and sequence **steps**
   (condition rows plus an optional completion handshake), plus block-level **actions**. A row

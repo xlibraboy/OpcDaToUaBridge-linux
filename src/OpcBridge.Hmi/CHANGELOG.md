@@ -18,18 +18,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **The Logic Tags tab is the one place a tag is assigned — an interlock's rows carry no source.**
 The Editor's rows lost their direct **SOURCE** / **TAG** pickers: a condition, a network contact, a
-step's completion handshake and an action each carry one **AREA TAG** picker, and what it reads is
-one of the selected block's area's tags — the signal, its source and the tag it is bound to are
-assigned in that one place, the **Tags** tab. Nothing a block already evaluates is dropped: a row
-that still stores a direct tag reads it as a `Direct tag: …` line instead of a picker when the
-area's list has no entry for it, and a pair with a list to join **moves into the area's tags by
-itself** — opening the block (or giving it an area) turns each pair into a named entry, named after
-the tag's display name, the row references it, the editor reports `Moved 1 tag into "DRYEND" — Save
-to store them.` and **Save** stores the move, so the block evaluates exactly as before while the
-assignment now lives on the tab. A tag the source does not offer for writing is flagged where it is
-assigned (`read-only tag — an action cannot write it.`), because the action rows pick an entry now
-instead of a writeable tag. An empty area shows where its tags are assigned — the editor says so and
-the tab's **New tag** creates the first entry.
+step's completion handshake and an action each carry one **TAG** picker, and what it reads is one of
+the selected block's area's tags — the signal, its source and the tag it is bound to are assigned in
+that one place, the **Tags** tab. **`+ New tag`** opens ready to bind: its source is already chosen,
+so the **TAG** cell lists that source's mapped tags and says which step is missing when it does not
+(pick a source; no mapped tags on it — map them in the dashboard). Nothing a block already evaluates
+is dropped: a row that still stores a direct tag reads it as a `Direct tag: …` line instead of a
+picker when the area's list has no entry for it, and a pair with a list to join **moves into the
+area's tags by itself** — opening the block (or giving it an area) turns each pair into a named
+entry, named after the tag's display name, the row references it, the editor reports `Moved 1 tag
+into "DRYEND" — Save to store them.` and **Save** stores the move, so the block evaluates exactly as
+before while the assignment now lives on the tab. A tag the source does not offer for writing is
+flagged where it is assigned (`read-only tag — an action cannot write it.`), because the action rows
+pick an entry now instead of a writeable tag.
 
 **The Logic editor is a denser authoring surface with a foldable block list.** The page packs its
 cards, rows and fields tighter than the app default — shorter row padding, tighter label and field
