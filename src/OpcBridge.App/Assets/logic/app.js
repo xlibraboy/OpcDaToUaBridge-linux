@@ -315,6 +315,7 @@ function renderEditor() {
   }
 
   editor.appendChild(renderHead());
+  editor.appendChild(renderPin());
 
   if (draftForm !== 'network') {
     editor.appendChild(h('p', { class: 'readonly-note' },
@@ -393,7 +394,7 @@ function renderHead() {
   // "which tags does this block resolve through" while its rows are authored.
   const stateBox = h('div', { class: 'muted small', id: 'areaState' });
   head.appendChild(stateBox);
-  setTimeout(renderAreaState, 0);
+  setTimeout(() => { renderAreaState(); syncNetPinning(); }, 0);
   return head;
 }
 
@@ -416,13 +417,16 @@ function renderAreaState() {
   box.appendChild(h('span', { text: 'Area ' + name + ': ' + list.tags.length + ' tags (' + bound + ' assigned) · the area and its tags are on the Tags tab' }));
 }
 
+// The box the row kept at the top is written into: empty and taking no room in the flow, because
+// the strip rides over the rows rather than pushing them down (see .pin-wrap). syncNetPinning fills
+// it and shows it, and hides it again when the row at the top of the editor has no parent.
+function renderPin() {
+  return h('div', { class: 'pin-wrap', id: 'pinWrap', hidden: true });
+}
+
 function renderNet() {
   const net = h('div', { class: 'net', id: 'net' });
-  const add = (element, path) => {
-    net.appendChild(renderElement(element, path));
-    for (let i = 0; i < element.inputs.length; i++) add(element.inputs[i], path.concat(i));
-  };
-  (draft.elements || []).forEach((element, index) => add(element, [index]));
+  (draft.elements || []).forEach((element, index) => net.appendChild(renderNode(element, [index])));
   const count = countElements(draft.elements);
   net.appendChild(h('div', { class: 'el-edit', style: 'margin-top:4px' },
     h('button', {
@@ -431,7 +435,113 @@ function renderNet() {
     }, '+ root element'),
     h('span', { class: 'muted small', text: 'Roots are ANDed: every root must hold for the block to be ready.' })
   ));
+  syncNetPinning();
   return net;
+}
+
+// One element and the inputs under it, written as nested nodes rather than as one flat list of
+// indented rows. A row rides the top of the editor while its own children are still on screen —
+// and a sticky box is only released at the end of its containing block, which here is the row
+// plus its children. Written flat, every parent would stay pinned to the end of the network
+// instead of to the end of its own children, and the leaf rows would carry the same offset for
+// nothing.
+function renderNode(element, path) {
+  const node = h('div', { class: 'el-node' });
+  node.appendChild(renderElement(element, path));
+  if (!element.inputs.length) return node;
+  const kids = h('div', { class: 'el-kids' });
+  for (let i = 0; i < element.inputs.length; i++) kids.appendChild(renderNode(element.inputs[i], path.concat(i)));
+  node.appendChild(kids);
+  return node;
+}
+
+// What the rows ride under: the head of whichever tab is open — the editor's properties, the
+// result's own verdict — because it rides the same scroll, so what they have to clear is its
+// height. That depends on the window (the note under the fields wraps) and on the text the poll
+// writes into the result head, so it is measured after every render rather than assumed. The
+// editor's top pad is read back from the stylesheet: a sticky offset measures from the editor's
+// content box, and the head's box top sits exactly that far above it.
+//
+// The strip on that line is the parent of the rows below it: both tabs write their rows nested
+// (.el-node / .rl-node), so the row that owns what is on screen rides above it, and it leaves when
+// the last of its children has gone. Which row that is changes with the scroll and cannot be said
+// in the stylesheet, so the script reads it here. The row the head is cutting through is taken
+// first, when it has children of its own under it: it is the parent of everything below from the
+// moment it meets the head, and the strip is what keeps its name and its reading while the head
+// takes its row. Only then does the question fall to the row above the first one the head has not
+// already taken — and a row with nothing under it is never shown, as it parents nothing that is on
+// screen. The strip carries the row's own reading rather than a copy of its controls: what the
+// parent is and what it says, while the row itself is off the screen, and nowhere a second place
+// to edit it.
+function syncNetPinning() {
+  const editor = el('editor');
+  const head = editor ? editor.querySelector('.ed-head, .res-head') : null;
+  if (!editor || !head) return;
+  const padTop = parseFloat(getComputedStyle(editor).getPropertyValue('--pad-top')) || 0;
+  // On the editor itself: the strip rides that line while the rows only inherit it.
+  editor.style.setProperty('--net-stick-top', Math.round(head.offsetHeight - padTop) + 'px');
+
+  const strip = el('pinWrap');
+  if (!strip) return;
+  const line = head.getBoundingClientRect().bottom;
+  let first = null;
+  let cutByHead = false;
+  for (const row of editor.querySelectorAll('.el-node > .el, .rl-node > .rl')) {
+    const rect = row.getBoundingClientRect();
+    if (rect.bottom > line + 1) { first = row; cutByHead = rect.top < line; break; }
+  }
+
+  const node = first ? first.parentElement : null;
+  let parentRow = null;
+  if (node) {
+    // A node holds its row first and the children under it second, so one child means none.
+    const ownChildren = node.children.length > 1;
+    if (cutByHead && ownChildren) {
+      parentRow = first;
+    } else if (node.parentElement && (node.parentElement.classList.contains('el-kids') || node.parentElement.classList.contains('rl-kids'))) {
+      parentRow = node.parentElement.previousElementSibling;
+    }
+  }
+
+  const id = parentRow ? parentRow.dataset.id : '';
+  if (strip.dataset.parent === id) return;
+
+  strip.dataset.parent = id;
+  strip.textContent = '';
+  strip.hidden = !parentRow;
+  if (!parentRow) return;
+  strip.appendChild(pinCopy(parentRow));
+}
+
+// The row kept at the top, as the strip shows it: the editor row's own live line, or the head of a
+// result card. Both are what the row reads, in the row's own ground and indent, and both carry the
+// row's id and its live hook so the poll repaints the copy exactly as it repaints the row.
+function pinCopy(row) {
+  if (row.classList.contains('rl')) {
+    const card = row.querySelector('.rl-card');
+    const head = card ? card.querySelector('.rl-head') : null;
+    const copy = h('div', { class: card ? card.className : 'rl-card' }, head ? head.cloneNode(true) : null);
+    // A card is repainted from the definition it carries; a copy without it would drift.
+    if (card) copy.__def = card.__def;
+    return h('div', {
+      class: 'rl pin-strip', 'data-id': row.dataset.id, 'data-live': '1',
+      style: '--depth:' + (row.style.getPropertyValue('--depth') || '0')
+    }, copy);
+  }
+
+  const live = row.querySelector('.el-live');
+  return h('div', {
+    class: 'el pin-strip', 'data-id': row.dataset.id, 'data-live': '1',
+    style: '--depth:' + (row.style.getPropertyValue('--depth') || '0')
+  }, live ? live.cloneNode(true) : null);
+}
+
+// The strip follows the scroll, not every event's worth of it: one measurement per frame is all it
+// needs, and the measurement itself forces the layout.
+let pinFrame = 0;
+function schedulePinnedRows() {
+  if (pinFrame) return;
+  pinFrame = requestAnimationFrame(() => { pinFrame = 0; syncNetPinning(); });
 }
 
 function renderElement(element, path) {
@@ -966,6 +1076,41 @@ function resultRow(state, def) {
 
 const STEP_WORD = { done: 'Done', current: 'Current', pending: 'Pending', unknown: 'No data' };
 
+// The evaluation arrives as one flat list with a depth per element. It is written nested — one node
+// per element, the deeper ones under the one above them — the way the editor's own network is, so
+// the row that owns what is on screen can be read from the rows (see syncNetPinning). Flat, no row
+// could say whose child it was, and a parent scrolled away could not be handed back.
+function resultTree(elements) {
+  const roots = [];
+  const open = [];
+  for (const element of elements) {
+    // A depth deeper than the elements before it allow is read as one level down: the bridge names
+    // a parent before its child, and a stray depth must not break the list open.
+    const depth = Math.max(0, Math.min(element.depth || 0, open.length));
+    const node = { element, children: [] };
+    (depth ? open[depth - 1].children : roots).push(node);
+    open.length = depth;
+    open.push(node);
+  }
+  return roots;
+}
+
+function resultNode(node, index) {
+  const box = h('div', { class: 'rl-node' });
+  box.appendChild(resultRow(node.element, index.byId.get(node.element.id)));
+  if (!node.children.length) return box;
+  const kids = h('div', { class: 'rl-kids' });
+  for (const child of node.children) kids.appendChild(resultNode(child, index));
+  box.appendChild(kids);
+  return box;
+}
+
+function resultNet(elements, index) {
+  const net = h('div', { class: 'net' });
+  for (const node of resultTree(elements)) net.appendChild(resultNode(node, index));
+  return net;
+}
+
 function resultSteps(state, elements, index) {
   const assignments = stepAssignments(draft, elements);
   const stepStates = new Map(((state && state.steps) || []).map((s) => [s.id, s]));
@@ -982,14 +1127,9 @@ function resultSteps(state, elements, index) {
         })),
       stepState && stepState.reason ? h('span', { class: 'rl-line rl-step-reason muted', text: stepState.reason }) : null);
 
-    let rows = 0;
-    elements.forEach((element, i) => {
-      if (assignments[i] !== stepIndex) return;
-      rows += 1;
-      card.appendChild(resultRow(element, index.byId.get(element.id)));
-    });
-
-    if (!rows) card.appendChild(h('span', { class: 'rl-line muted', text: 'No evaluated elements.' }));
+    const stepElements = elements.filter((element, i) => assignments[i] === stepIndex);
+    if (stepElements.length) card.appendChild(resultNet(stepElements, index));
+    else card.appendChild(h('span', { class: 'rl-line muted', text: 'No evaluated elements.' }));
     box.appendChild(card);
   });
 
@@ -1016,6 +1156,9 @@ function renderResultTab(editor) {
     draft.description ? h('p', { class: 'muted small', text: draft.description }) : null,
     progress ? h('p', { class: 'rl-line warn', id: 'resProgress', text: progress }) : null,
     h('p', { class: 'res-reason', id: 'resReason', text: '' })));
+  // The verdict rides the scroll with the rows, and keeps the parent of what is on screen — the
+  // editor's own treatment, on the tab that is read rather than authored.
+  editor.appendChild(renderPin());
 
   if (!state) {
     // Four different facts, never one sentence: an empty store, a draft that was never saved, a
@@ -1037,9 +1180,7 @@ function renderResultTab(editor) {
     editor.appendChild(h('p', { class: 'muted small', text: 'This block has no elements to evaluate yet.' }));
   } else {
     editor.appendChild(h('div', { class: 'section-title', text: 'Network' + (draftForm === 'conditions' ? ' (the bridge\'s expansion of the flat conditions)' : '') }));
-    const net = h('div', { class: 'net' });
-    for (const element of elements) net.appendChild(resultRow(element, index.byId.get(element.id)));
-    editor.appendChild(net);
+    editor.appendChild(resultNet(elements, index));
   }
 
   editor.appendChild(h('p', { class: 'muted small', text: 'definitions v' + version + ' · ' + elements.length + ' elements evaluated' }));
@@ -1076,6 +1217,10 @@ function refreshResultHeader() {
     fresh.className = 'res-fresh mono small' + (text.startsWith('stale') ? ' stale' : '');
     fresh.title = lastEvaluated ? 'evaluated ' + formatTime(lastEvaluated) : '';
   }
+
+  // What the rows ride under is this head, and the poll writes text into it (the reason, the
+  // progress): its height is re-measured here, so the line the strip rides never goes stale.
+  syncNetPinning();
 }
 
 // The freshness line, the HMI's own wording: the feed's own state wins over the snapshot's age, so
@@ -1781,6 +1926,12 @@ function initTheme() {
 function start() {
   el('btnNew').addEventListener('click', newBlockForm);
   initTheme();
+  // The network's rows hold the top of the editor while their own children are on screen, and which
+  // of them is holding it is read from the scroll — see syncNetPinning.
+  el('editor').addEventListener('scroll', schedulePinnedRows, { passive: true });
+  // The rows pin under the head, whose height follows the window (a narrower one wraps its note):
+  // the offset the network cleared at the last render is re-measured when the window changes.
+  window.addEventListener('resize', syncNetPinning);
   document.addEventListener('keydown', (event) => {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
       event.preventDefault();

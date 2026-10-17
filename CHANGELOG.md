@@ -215,6 +215,36 @@ assigned to and left it on the rate fallback. `daGroup` now round-trips through
 
 ### Changed
 
+**The Logic page's Result tab reads the way its Editor is scrolled.** The Result tab showed the
+bridge's evaluation as one flat list of cards, so a long one carried the **verdict** — the block, what
+the bridge makes of it and why — out of sight as it scrolled, and every parent card with it: a deep
+expansion read as a wall of rows with nothing on screen saying whose child a row was. The verdict now
+rides the top of the editor (in the editor's own ground, with a rule under it, re-measured as the
+poll writes the reason into it) and the parent of what is on screen rides under it — the Editor tab's
+own treatment, taken from the moment a parent's card meets the head until the last of its children
+has gone. The evaluation arrives as one flat list with a depth per element, so it is folded back into
+the nesting the editor's own rows are written in and read the same way; the strip shows the parent
+card's head (its mark, its form, its sentence and its bit) and carries the definition, so the poll
+repaints the copy exactly as it repaints the row it came from. Sequence blocks keep their step cards,
+with each step's own rows nested inside them. `LogicPageTests.Script_KeepsTheResultsParentOnScreen`
+pins the folding, the shared strip and the pinned verdict.
+
+**The Logic page keeps a parent in view while its children are.** The editor's rows nest by
+indentation, and scrolling into a deep network used to lose the element a group of rows belongs to:
+a contact three levels down scrolled away from the gate that reads it, and nothing on screen said
+whose child it was. The row that owns what is on screen now rides just under the block's properties
+head — a read-only copy of that row's own live line (its state chip, its kind, its label) — from the
+moment its row meets the head, so its name and its reading stay put while the head takes the row,
+until the last of its children has gone. Shown is the row the head is cutting through when it has
+children under it, otherwise the row that owns the first row the head has not taken; a row with
+nothing under it is never shown, as it parents nothing that is on screen. The parent is *read* while
+it sits there and is never offered a second time as a place to edit it. The strip takes no room in
+the flow — it is written over the rows — so a parent arriving or leaving as the network is scrolled
+never moves what is under it, and it is only ever one row: the ancestors above it are not stacked up
+on top of the network. `LogicPageTests.Script_KeepsTheRowsParentOnScreen` pins the nesting the parent
+is read from, the rule that picks it, the line the strip rides (the properties head's own measured
+height, not a number of its own) and the poll that keeps the copy painted with the rows.
+
 **The Logic page's block fields and its save ride the editor's own scroll.** A network longer than
 the window used to carry the whole block head — its name, kind, group, note and labels — and the
 **Save** / **Revert** / **Delete block** bar away with the rows: the fields an edit starts from and

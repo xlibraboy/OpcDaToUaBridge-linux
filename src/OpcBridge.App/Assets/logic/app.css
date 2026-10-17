@@ -244,13 +244,13 @@ body {
 .editor > .ed-head {
   position: sticky;
   top: calc(-1 * var(--pad-top));
-  z-index: 2;
+  z-index: 3;
 }
 
 .editor > .savebar {
   position: sticky;
   bottom: calc(-1 * var(--pad-bottom));
-  z-index: 2;
+  z-index: 3;
   /* The bar's 4px margin is paid as padding instead, so its box starts at the last row's edge:
      a margin would leave a gap above the border for the rows to show through on their way down. */
   margin-top: 0;
@@ -343,6 +343,37 @@ select { cursor: pointer; }
 /* Network rows ------------------------------------------------------------ */
 
 .net { display: flex; flex-direction: column; gap: 6px; }
+
+/* One row and the rows under it, nested — app.js writes .el-node / .el-kids for the editor's own
+   network and .rl-node / .rl-kids for the evaluated one, rather than one flat list of indented
+   rows, so the row that owns what is on screen can be found from the rows: the strip below is
+   written from that node's own row. The spacings are the flat lists', a row and the children under
+   it apiece. */
+.el-node, .el-kids { display: flex; flex-direction: column; gap: 6px; }
+.rl-node, .rl-kids { display: flex; flex-direction: column; gap: 6px; }
+
+/* The parent, kept on screen while its children are: the script points this box at the row the
+   rows under the head belong to, and the line it rides is that head's own height —
+   --net-stick-top, measured in the script. The box takes no room in the flow and the strip sits
+   over the rows, so a parent coming and going never shifts the network (a box the height of which
+   grew and shrank as it scrolled would move everything under it by that much each time). */
+.pin-wrap {
+  position: sticky;
+  top: var(--net-stick-top, 0px);
+  height: 0;
+  z-index: 2;
+}
+
+/* A read-only copy of the row's own reading — the editor row's live line, the result card's head —
+   in the row's own ground and indent: what the parent is and what it says. The shadow is what
+   tells it apart from the rows running under it. */
+.pin-strip {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, .12);
+}
 
 .el {
   border: 1px solid var(--border);
@@ -500,6 +531,20 @@ select { cursor: pointer; }
 /* Result tab ------------------------------------------------------------- */
 
 .res-head { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+
+/* The verdict rides the editor's scroll with the rows — the properties head's own treatment, on the
+   tab that is read rather than authored — so a long evaluation always says which block it is and
+   what the bridge makes of it. Its margin is paid as padding and it carries the editor's ground
+   and its own rule: nothing may show through the space above the rows while it holds the top. */
+.editor > .res-head {
+  position: sticky;
+  top: calc(-1 * var(--pad-top));
+  z-index: 3;
+  margin-bottom: 0;
+  padding-bottom: 14px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
 .res-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .res-name { font-size: var(--fs-title); font-weight: 600; }
 .res-fresh { color: var(--muted); margin-left: auto; }
