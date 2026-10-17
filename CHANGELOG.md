@@ -215,6 +215,23 @@ assigned to and left it on the rate fallback. `daGroup` now round-trips through
 
 ### Changed
 
+**The Logic page's tags are assigned on the Tags tab alone.** The page's Editor tab let a row
+assign its own reading: a contact could name one of the area's tags, pick "(direct tag)" and type a
+source and an item on the row itself, or read an internal relay — three ways to say what a signal
+is, one of them stored on the block instead of in the area's shared list. The row's **TAG** field now
+offers the area's tags by name and the relay route, and nothing else, so a signal is defined once:
+the assignment — a name bound to its source and tag — is made on the Tags tab, and every block of
+the area reads the same pair from it. A row authored before the area's tags existed keeps its direct
+pair exactly as it was: it is shown read-only (`Direct tag: …`, with the whole sentence in the mark's
+tooltip), the pair survives a save, and picking a named entry is what moves the row into the area's
+list. The Tags tab is also where the block's **AREA** lives now — the field beside the area's list,
+with the stored areas offered as suggestions and the list following the name as it is typed — rather
+than a name that only chose which list was on screen while the block's own area was set on the
+Editor, so the two can no longer disagree; the list is stored with **Save list** and the block with
+**Save**, which rides that tab too (the area is saved with the block). **New block** no longer asks
+for the area — a block is created from a name, a kind and a group — and a list's unsaved edits now
+follow their area, so typing another name, or opening another block, drops nothing.
+
 **The Logic authoring surface moved out of the dashboard into the HMI runtime.** The Tags ▸ Logic
 tab — the block editor, the IEC 61131-3 network editor and the live state chips — is now the
 **OpcBridge HMI** runtime's **Logic** page (View ▸ Logic, Ctrl+4), which adds the evaluated

@@ -11,6 +11,12 @@
 // The element vocabulary below is a contract with the bridge
 // (LogicElementKinds / LogicConditionOps / LogicElementKinds.InputRange in
 // OpcBridge.Client) and LogicPageTests pins it against the C# lists.
+//
+// The three tabs split the work the way the HMI's Logic page splits it: Editor authors the block
+// and its rows, each row picking one of the area's tags by name (or the internal relay it reads);
+// Tags owns every assignment — the block's area and the area's list of named tags, each bound to
+// its source and tag — so a signal is assigned once and only there; Result is the read-only
+// operator view of the bridge's own evaluation.
 
 const KINDS = ['contact', 'coil', 'and', 'or', 'xor', 'not', 'ton', 'tof', 'tp', 'ctu', 'ctd', 'sr', 'rs', 'r_trig', 'f_trig'];
 const OPS = ['on', 'off', 'gt', 'lt', 'eq'];
@@ -30,7 +36,6 @@ const OP_LABEL = { on: 'on (NO)', off: 'off (NC)', gt: '>', lt: '<', eq: '=' };
 const SEV_LABEL = { block: 'blocks', warn: 'warn only' };
 
 const POLL_MS = 1000;
-const DIRECT = '__direct__';
 const RELAY = '__relay__';
 
 const api = {
@@ -52,8 +57,9 @@ let lastPollOk = 0;
 let tab = 'editor';   // editor | tags | result
 let catalog = null;   // the bridge's mapped tags (GET /api/hmi/tags), for the Tags tab
 let catalogSources = []; // those tags, grouped by source
-let tagArea = '';     // the area whose tag list the Tags tab is editing
+let tagArea = '';     // the area whose tag list the Tags tab is editing — the block's own area
 let tagDraft = null;  // that list, edited locally until Save
+let tagDrafts = new Map(); // a list's unsaved edits by area name, so switching areas never drops them
 let lastEvaluated = null; // the snapshot's EvaluatedUtc, for the Result tab's freshness
 let catalogFetchedAt = 0; // when the bridge's tag snapshot was last read
 let feedState = 'unknown'; // live | reconnecting | failed — the Result header's freshness follows it
@@ -355,11 +361,6 @@ function renderHead() {
       id: 'fKind',
       onchange: (e) => { draft.kind = e.target.value; markDirty(); }
     }, BLOCK_KINDS.map((k) => h('option', { value: k, text: k, selected: draft.kind === k }))),
-    h('label', { for: 'fArea', text: 'Area' }),
-    h('input', {
-      type: 'text', id: 'fArea', list: 'areaNames', value: draft.area || '', maxlength: 40,
-      oninput: (e) => { draft.area = e.target.value; markDirty(); renderAreaState(); }
-    }),
     h('label', { for: 'fGroup', text: 'Group' }),
     h('input', {
       type: 'text', id: 'fGroup', list: 'groupNames', value: draft.group || '', maxlength: 40,
@@ -384,13 +385,13 @@ function renderHead() {
     })
   ));
 
-  const datalistArea = h('datalist', { id: 'areaNames' }, areas.map((a) => h('option', { value: a.name || '' })));
   const groups = Array.from(new Set(defs.blocks.map((b) => (b.group || '').trim()).filter((g) => g)));
   const datalistGroup = h('datalist', { id: 'groupNames' }, groups.map((g) => h('option', { value: g })));
-  head.appendChild(datalistArea);
   head.appendChild(datalistGroup);
 
-  const stateBox = h('div', { class: 'field', id: 'areaState' });
+  // The block's AREA and its tags are assigned on the Tags tab; this is the read-only answer to
+  // "which tags does this block resolve through" while its rows are authored.
+  const stateBox = h('div', { class: 'muted small', id: 'areaState' });
   head.appendChild(stateBox);
   setTimeout(renderAreaState, 0);
   return head;
@@ -404,15 +405,15 @@ function renderAreaState() {
   const name = blockArea(draft);
   const list = areaTags(name);
   if (!name) {
-    box.appendChild(h('span', { class: 'warnline', text: 'No area — named tags cannot resolve. Set the area this block belongs to.' }));
+    box.appendChild(h('span', { class: 'warnline', text: 'No area — named tags cannot resolve. Set this block\'s area on the Tags tab.' }));
     return;
   }
   if (!list) {
-    box.appendChild(h('span', { class: 'warnline', text: 'The bridge has no tags for area "' + name + '". Contacts can still carry direct tags.' }));
+    box.appendChild(h('span', { class: 'warnline', text: 'The bridge has no tags for area "' + name + '". Assign them on the Tags tab.' }));
     return;
   }
   const bound = (list.tags || []).filter((t) => (t.sourceId || '').trim() && (t.itemId || '').trim()).length;
-  box.appendChild(h('span', { class: 'muted small', text: 'Area tags: ' + list.tags.length + ' (' + bound + ' assigned)' }));
+  box.appendChild(h('span', { text: 'Area ' + name + ': ' + list.tags.length + ' tags (' + bound + ' assigned) · the area and its tags are on the Tags tab' }));
 }
 
 function renderNet() {
@@ -553,38 +554,26 @@ function renderControls(element, path) {
   ];
 
   if (isContact(element)) {
-    const named = (element.tag || '').trim();
-    const direct = !named && !(element.relay || '').trim();
-    parts.push(h('select', {
-      class: 'w-tag', 'aria-label': 'Tag reference', onchange: (e) => {
-        const value = e.target.value;
-        if (value === RELAY) { element.relay = element.relay || 'M01'; element.tag = ''; element.sourceId = ''; element.itemId = ''; }
-        else if (value === DIRECT) { element.relay = ''; element.tag = ''; }
-        else { element.relay = ''; element.tag = value; element.sourceId = ''; element.itemId = ''; }
-        rerender();
-      }
-    },
-      named && !areaTags(blockArea(draft)) ? h('option', { value: named, text: named, selected: true }) : null,
-      h('option', { value: '', selected: direct, text: '(direct tag)' }),
-      (areaTags(blockArea(draft)) ? areaTags(blockArea(draft)).tags : []).map((t) =>
-        h('option', { value: t.name, text: t.name + (((t.sourceId || '').trim() && (t.itemId || '').trim()) ? '' : ' · unassigned'), selected: named === t.name })),
-      h('option', { value: RELAY, selected: readsRelay(element), text: '(internal relay)' })
-    ));
-
+    // The row's TAG field picks one of the area's tags by name, or the internal relay it reads.
+    // The assignment itself — a name bound to a source and a tag — is made on the Tags tab, the
+    // page's one tag editor, so a row never assigns a pair of its own and a signal has one home.
+    parts.push(tagPickSelect(element, rerender));
     if (readsRelay(element)) {
       parts.push(h('input', {
         class: 'w-relay mono', type: 'text', 'aria-label': 'Relay', placeholder: 'M01', maxlength: 16,
         value: element.relay || '', oninput: (e) => { element.relay = e.target.value.toUpperCase(); markDirty(); }
       }));
     } else {
-      if (!named) {
-        parts.push(h('input', {
-          class: 'w-pair', type: 'text', 'aria-label': 'Source id', placeholder: 'source id',
-          value: element.sourceId || '', oninput: (e) => { element.sourceId = e.target.value; markDirty(); }
-        }));
-        parts.push(h('input', {
-          class: 'w-pair', type: 'text', 'aria-label': 'Item id', placeholder: 'item id',
-          value: element.itemId || '', oninput: (e) => { element.itemId = e.target.value; markDirty(); }
+      // A row authored before the area's tags existed keeps its direct pair: the pair is shown,
+      // kept through a save, and replaced the moment the row picks a named entry.
+      if (isStoredPair(element)) {
+        parts.push(h('span', {
+          class: 'info-mark', title: storedTagHint(element), 'aria-label': 'Direct tag',
+          'aria-describedby': 'directTagNote'
+        }, 'i'));
+        parts.push(h('span', {
+          class: 'stored-tag mono small', title: storedTagHint(element),
+          text: 'Direct tag: ' + storedTagLabel(element)
         }));
       }
       parts.push(h('select', {
@@ -631,6 +620,49 @@ function renderControls(element, path) {
 
   return h('div', { class: 'el-edit' }, parts, h('span', { class: 'spacer' }), tools);
 }
+
+// The row's TAG field, the way the HMI's own editor works it: the picker offers the block's area's
+// tags by name — assigned on the Tags tab, where a name's source and tag live — and the internal
+// relay route. Nothing else: a row cannot invent a source/tag pair of its own.
+function tagPickSelect(element, rerender) {
+  const named = (element.tag || '').trim();
+  const list = areaTags(blockArea(draft));
+  const direct = !named && !readsRelay(element);
+  return h('select', {
+    class: 'w-tag', 'aria-label': 'Tag reference',
+    title: 'One of this area\'s tags — assigned in the Tags tab, read by every block of the area.',
+    onchange: (e) => {
+      const value = e.target.value;
+      if (value === '') return;   // the row's current state, shown, not re-selectable
+      if (value === RELAY) { element.relay = element.relay || 'M01'; element.tag = ''; element.sourceId = ''; element.itemId = ''; }
+      else { element.relay = ''; element.tag = value; element.sourceId = ''; element.itemId = ''; }
+      rerender();
+    }
+  },
+    named && !list ? h('option', { value: named, text: named, selected: true }) : null,
+    direct ? h('option', { value: '', selected: true, text: isStoredPair(element) ? '(direct tag)' : '' }) : null,
+    (list ? list.tags : []).map((t) =>
+      h('option', { value: t.name, text: t.name + (((t.sourceId || '').trim() && (t.itemId || '').trim()) ? '' : ' · unassigned'), selected: named === t.name })),
+    h('option', { value: RELAY, selected: readsRelay(element), text: '(internal relay)' })
+  );
+}
+
+// A row that still carries the legacy direct pair — a source and a tag on the element itself
+// instead of a name in the area's tags. It is shown as it is and kept through a save (nothing the
+// bridge still evaluates is dropped); picking a named entry is what moves it into the area's list.
+function isStoredPair(element) {
+  return (((element.sourceId || '').trim() + (element.itemId || '').trim()).length > 0);
+}
+
+function storedTagLabel(element) {
+  const label = tagLabel(element);
+  if (label) return label;
+  return ((element.sourceId || '') + ' / ' + (element.itemId || '')).trim().replace(/^\W+|\W+$/g, '');
+}
+
+// The HMI's own sentence, so the plant reads the same thing on both surfaces.
+const storedTagHint = (element) =>
+  'Direct tag: ' + storedTagLabel(element) + ' — add it to this area\'s tags (the Tags tab) to assign it there.';
 
 function renderSaveBarNode() {
   return h('div', { class: 'savebar', id: 'savebar' },
@@ -1181,67 +1213,127 @@ function tagEntryRow(entry, index, used) {
   return row;
 }
 
+// The Tags tab is the page's assignment surface: the block's own AREA, the area's shared list of
+// named tags (each bound to its source and tag), and the save of both. The Editor tab's rows pick
+// a name from that list — they never carry a pair of their own — so a signal is assigned here and
+// only here, and every block of the area reads the same binding.
 function renderTagsTab(editor) {
-  const ownArea = blockArea(draft);
-  if (!tagArea) tagArea = ownArea;
-  if (!tagDraft || tagDraft.name !== tagArea) {
-    const list = areaTags(tagArea);
-    tagDraft = list ? { name: list.name, tags: clone(list.tags || []) } : { name: tagArea, tags: [] };
-  }
+  syncTagDraft();
 
   if (!catalog) {
     editor.appendChild(h('p', { class: 'muted small', text: 'Reading the bridge\'s tags…' }));
     loadCatalog().then(() => { if (tab === 'tags') renderEditor(); });
   }
 
-  const known = new Set([...(defs.tagSources || []).map((a) => a.name), ownArea].filter((n) => n && n.trim()));
-  const used = usedNames(draft);
+  editor.appendChild(renderTagsToolbar());
+  const body = h('div', { id: 'tagBody' });
+  editor.appendChild(body);
+  fillTagBody(body);
+  editor.appendChild(renderSaveBarNode());
+}
 
-  const toolbar = h('div', { class: 'tag-toolbar' },
-    h('label', { for: 'tagAreaPick', class: 'rl-kind', text: 'Area' }),
-    known.size
-      ? h('select', {
-        id: 'tagAreaPick', onchange: (e) => { tagArea = e.target.value; tagDraft = null; renderEditor(); }
-      }, [...known].sort().map((name) => h('option', { value: name, text: name, selected: name === tagArea })))
-      : h('span', { class: 'warnline', text: 'no area yet — set the block\'s Area on the Editor tab' }),
+function renderTagsToolbar() {
+  const known = Array.from(new Set([...(defs.tagSources || []).map((a) => a.name), blockArea(draft)]
+    .filter((n) => n && n.trim()))).sort((a, b) => a.localeCompare(b));
+
+  return h('div', { class: 'tag-toolbar' },
+    h('label', { for: 'fArea', class: 'rl-kind', text: 'AREA' }),
+    // The block's own area: typing it switches the list below to that area's tags, and the block
+    // is what stores the name (Save), so the area and the list it reads can never disagree.
+    h('input', {
+      type: 'text', id: 'fArea', class: 'tag-area', list: 'areaNames', value: draft.area || '',
+      maxlength: 40, placeholder: 'DRY END', 'aria-label': 'Area',
+      oninput: (e) => { draft.area = e.target.value; markDirty(); refreshTagList(); }
+    }),
+    h('datalist', { id: 'areaNames' }, known.map((name) => h('option', { value: name }))),
     h('span', { class: 'grow' }),
     h('button', {
-      class: 'btn', type: 'button', disabled: !tagArea, onclick: () => { tagDraft.tags.push({ name: '', sourceId: '', itemId: '' }); renderEditor(); }
+      class: 'btn', type: 'button', id: 'btnNewTag', disabled: !tagArea,
+      onclick: () => { tagDraft.tags.push({ name: '', sourceId: '', itemId: '' }); renderEditor(); }
     }, '+ New tag'),
     h('button', {
-      class: 'btn', type: 'button', disabled: !tagArea || !catalog, onclick: openTagPicker
+      class: 'btn', type: 'button', id: 'btnPickTags', disabled: !tagArea || !catalog, onclick: openTagPicker
     }, 'From bridge…'),
     deleteAreaTagsControl(),
     h('button', {
-      class: 'btn primary', type: 'button', disabled: !tagArea, onclick: saveAreaTags
+      class: 'btn primary', type: 'button', id: 'btnSaveList', disabled: !tagArea, onclick: saveAreaTags
     }, 'Save list'));
+}
 
-  editor.appendChild(toolbar);
-  if (tagArea) {
-    editor.appendChild(h('p', { class: 'muted small', text: 'Every ' + tagArea + ' block shares these tags — assign a tag here and every one of their rows reads it.' }));
-  }
-
+// The area's list and, under it, the block's own rows: rebuilt in place while the area's name is
+// typed, so the box keeps the focus and the table follows the area as it is named.
+function fillTagBody(body) {
   if (!tagArea) {
-    editor.appendChild(h('p', { class: 'readonly-note', text: 'No area set — type one (e.g. DRY END) so this block\'s named tags resolve.' }));
-    return;
+    body.appendChild(h('p', { class: 'warnline', text: 'No area yet — type one above (e.g. DRY END) so this block\'s named tags resolve.' }));
+  } else {
+    body.appendChild(h('p', { class: 'muted small', text: 'Every ' + tagArea + ' block shares these tags — assign a tag here and every one of their rows reads it.' }));
+    if (!(draft.area || '').trim()) {
+      // The legacy fallbacks: a block with no area of its own resolves through the name it stores
+      // (its group, or a tag source an older client wrote). Saying so is what makes it fixable.
+      body.appendChild(h('p', { class: 'warnline', text: 'This block has no AREA of its own: it reads "' + tagArea + '" through its group or the name it stores. Type the area above to make the sharing explicit.' }));
+    }
   }
 
-  if (!tagDraft.tags.length) {
-    editor.appendChild(h('p', { class: 'muted small', text: 'No tags yet — add one with New tag, name it and assign its source and tag; every block\'s rows pick it from their TAG list.' }));
-    return;
+  if (tagArea) {
+    const used = usedNames(draft);
+    if (!tagDraft.tags.length) {
+      body.appendChild(h('p', { class: 'muted small', text: 'No tags yet — add one with New tag, name it and assign its source and tag; every block\'s rows pick it from their TAG list.' }));
+    } else {
+      body.appendChild(h('div', { class: 'tag-head' },
+        h('span', { text: 'NAME' }), h('span', { text: 'SOURCE' }), h('span', { text: 'TAG' }),
+        h('span', { text: 'LIVE' }), h('span', { text: 'USED' }), h('span')));
+      const list = h('div', { class: 'tag-list' });
+      tagDraft.tags.forEach((entry, index) => list.appendChild(tagEntryRow(entry, index, used)));
+      body.appendChild(list);
+
+      const unbound = tagDraft.tags.filter((t) => !(t.sourceId || '').trim() || !(t.itemId || '').trim()).length;
+      const unnamed = tagDraft.tags.filter((t) => !(t.name || '').trim()).length;
+      if (unnamed) body.appendChild(h('p', { class: 'warnline', text: unnamed + ' entr' + (unnamed === 1 ? 'y has' : 'ies have') + ' no name — a block cannot reference it.' }));
+      if (unbound) body.appendChild(h('p', { class: 'muted small', text: unbound + ' entr' + (unbound === 1 ? 'y is' : 'ies are') + ' not assigned yet: its readers evaluate unknown, never false.' }));
+    }
   }
+}
 
-  editor.appendChild(h('div', { class: 'tag-head' },
-    h('span', { text: 'NAME' }), h('span', { text: 'SOURCE' }), h('span', { text: 'TAG' }),
-    h('span', { text: 'LIVE' }), h('span', { text: 'USED' }), h('span')));
-  const list = h('div', { class: 'tag-list' });
-  tagDraft.tags.forEach((entry, index) => list.appendChild(tagEntryRow(entry, index, used)));
-  editor.appendChild(list);
+// Typing the area re-resolves the edited list in place. The draft of the area being left is kept
+// (tagDrafts), so stepping to another area — or a name typed letter by letter — drops nothing.
+function refreshTagList() {
+  syncTagDraft();
+  const body = el('tagBody');
+  if (!body) { renderEditor(); return; }
+  body.textContent = '';
+  fillTagBody(body);
 
-  const unbound = tagDraft.tags.filter((t) => !(t.sourceId || '').trim() || !(t.itemId || '').trim()).length;
-  const unnamed = tagDraft.tags.filter((t) => !(t.name || '').trim()).length;
-  if (unnamed) editor.appendChild(h('p', { class: 'warnline', text: unnamed + ' entr' + (unnamed === 1 ? 'y has' : 'ies have') + ' no name — a block cannot reference it.' }));
-  if (unbound) editor.appendChild(h('p', { class: 'muted small', text: unbound + ' entr' + (unbound === 1 ? 'y is' : 'ies are') + ' not assigned yet: its readers evaluate unknown, never false.' }));
+  const gate = !tagArea;
+  for (const id of ['btnNewTag', 'btnDeleteTags', 'btnSaveList']) {
+    const button = el(id);
+    if (button) button.disabled = gate;
+  }
+  const pick = el('btnPickTags');
+  if (pick) pick.disabled = gate || !catalog;
+}
+
+// The block's own area decides which list is edited; the names are matched case-insensitively,
+// the way the store and the evaluator match them.
+function syncTagDraft() {
+  const next = (blockArea(draft) || '').trim();
+  if (tagDraft && tagDraft.name.trim().toLowerCase() === next.toLowerCase()) return;
+  if (tagDraft) rememberTagDraft();
+
+  const list = areaTags(next);
+  tagDraft = list ? { name: list.name, tags: clone(list.tags || []) } : { name: next, tags: [] };
+  const held = tagDrafts.get(next.toLowerCase());
+  if (held) tagDraft = clone(held);
+  tagArea = tagDraft.name.trim() || next;
+}
+
+// A list's unsaved edits are kept per area — and a draft that matches the store is forgotten — so
+// nothing the author typed is lost by stepping to another area and back.
+function rememberTagDraft() {
+  const key = (tagDraft.name || '').trim().toLowerCase();
+  if (!key) return;
+  const stored = areaTags(tagDraft.name);
+  if (JSON.stringify((stored && stored.tags) || []) === JSON.stringify(tagDraft.tags || [])) tagDrafts.delete(key);
+  else tagDrafts.set(key, clone(tagDraft));
 }
 
 function saveAreaTags() {
@@ -1256,6 +1348,8 @@ function saveAreaTags() {
       if (index >= 0) defs.tagSources[index] = saved; else defs.tagSources.push(saved);
       areas = defs.tagSources;
       tagDraft = { name: saved.name, tags: clone(saved.tags || []) };
+      tagArea = saved.name.trim();
+      tagDrafts.delete(tagArea.toLowerCase());
       version = body.version || version;
       renderEditor();
       toast((saved.tags || []).length + ' tags now shared by "' + saved.name + '".', 'ok');
@@ -1266,7 +1360,7 @@ function saveAreaTags() {
 // Deleting an area's list is a two-step, in-page action like the block delete; the bridge
 // refuses while blocks read the list, and its message names how many would break.
 function deleteAreaTagsControl() {
-  const button = h('button', { class: 'btn danger', type: 'button', disabled: !tagArea }, 'Delete area tags');
+  const button = h('button', { class: 'btn danger', type: 'button', id: 'btnDeleteTags', disabled: !tagArea }, 'Delete area tags');
   let armed = false;
   let timer = null;
   const disarm = () => { armed = false; clearTimeout(timer); button.classList.remove('armed'); button.textContent = 'Delete area tags'; };
@@ -1285,6 +1379,7 @@ function deleteAreaTagsControl() {
         defs.tagSources = (defs.tagSources || []).filter((a) => (a.name || '').trim().toLowerCase() !== tagArea.trim().toLowerCase());
         areas = defs.tagSources;
         version = body.version || version;
+        tagDrafts.delete(tagArea.trim().toLowerCase());
         tagDraft = { name: tagArea, tags: [] };
         renderEditor();
         toast('Deleted the tags of ' + tagArea, 'ok');
@@ -1405,6 +1500,7 @@ function selectBlock(id) {
   draft = clone(block);
   draftForm = formOf(block);
   tab = 'editor';
+  tagArea = '';
   tagDraft = null;
   dirty = false;
   renderRail();
@@ -1461,7 +1557,6 @@ function newBlockForm() {
   renderRail();
   const editor = el('editor');
   editor.textContent = '';
-  const areaList = h('datalist', { id: 'areaNames' }, areas.map((a) => h('option', { value: a.name || '' })));
   const groups = Array.from(new Set(defs.blocks.map((b) => (b.group || '').trim()).filter((g) => g)));
   const groupList = h('datalist', { id: 'groupNames' }, groups.map((g) => h('option', { value: g })));
 
@@ -1476,25 +1571,22 @@ function newBlockForm() {
       h('select', { id: 'nbKind' }, BLOCK_KINDS.map((k) => h('option', { value: k, text: k })))
     ),
     h('div', { class: 'field' },
-      h('label', { for: 'nbArea', text: 'Area' }),
-      h('input', { type: 'text', id: 'nbArea', list: 'areaNames', maxlength: 40, placeholder: 'the plant section whose tags it shares' })
-    ),
-    h('div', { class: 'field' },
       h('label', { for: 'nbGroup', text: 'Group' }),
       h('input', { type: 'text', id: 'nbGroup', list: 'groupNames', maxlength: 40, placeholder: 'optional heading, e.g. Primary Arm' })
     ),
-    areaList, groupList,
+    groupList,
     h('div', { class: 'savebar' },
-      h('span', { class: 'msg', text: 'A new block starts with one contact — give it a sentence and a tag; the bridge refuses a block with no wired condition.' }),
+      h('span', { class: 'msg', text: 'A new block starts with one contact — give it a sentence on the Editor tab; its area and its rows\' tags are assigned on the Tags tab, and the bridge refuses a block with no wired condition.' }),
       h('span', { class: 'grow' }),
       h('button', { class: 'btn', type: 'button', onclick: () => { renderEditor(); } }, 'Cancel'),
       h('button', {
         class: 'btn primary', type: 'button', onclick: () => {
           const name = val('nbName').trim();
           if (!name) { toast('A block needs a name.', 'err'); return; }
-          draft = newBlock(name, val('nbKind'), val('nbArea').trim(), val('nbGroup').trim());
+          draft = newBlock(name, val('nbKind'), '', val('nbGroup').trim());
           draftForm = 'network';
           tab = 'editor';
+          tagArea = '';
           tagDraft = null;
           dirty = true;
           renderEditor();

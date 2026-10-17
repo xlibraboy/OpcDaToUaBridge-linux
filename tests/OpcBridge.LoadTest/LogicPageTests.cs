@@ -6,7 +6,7 @@ using Xunit;
 namespace OpcBridge.LoadTest;
 
 /// <summary>
-/// The Logic page (src/OpcBridge.App/wwwroot/logic) is a second authoring surface for the
+/// The Logic page (src/OpcBridge.App/Assets/logic) is a second authoring surface for the
 /// plant-logic store the Avalonia HMI's Logic page writes, so these tests pin the pieces that
 /// would otherwise drift silently: it is served by the bridge, it stays reachable without a
 /// session like the dashboard shell, it edits the same endpoints, its element vocabulary is the
@@ -33,6 +33,16 @@ public sealed class LogicPageTests
 
     private static string OnDisk(string relativePath) =>
         File.ReadAllText(Path.Combine(RepoRoot(), relativePath)).Replace("\r\n", "\n");
+
+    /// <summary>The script between two markers — one region of app.js, for a structural assertion.</summary>
+    private static string Between(string script, string from, string to)
+    {
+        int start = script.IndexOf(from, StringComparison.Ordinal);
+        Assert.True(start >= 0, from + " is not declared in app.js");
+        int end = script.IndexOf(to, start + from.Length, StringComparison.Ordinal);
+        Assert.True(end > start, to + " does not follow " + from + " in app.js");
+        return script[start..end];
+    }
 
     private static List<string> StringList(string script, string name)
     {
@@ -164,6 +174,50 @@ public sealed class LogicPageTests
         Assert.Contains("def.nextStepText && state.state !== 'true'", script);
         Assert.Contains("PIN_LABEL", script);
         Assert.Contains("ton: 'TON IN'", script);
+    }
+
+    [Fact]
+    public void Script_SplitsEditorAndTagsTheWayTheHmiDoes()
+    {
+        string script = OnDisk(ScriptFile);
+
+        // The HMI's own split, surface for surface: the Editor authors the block and its rows, and
+        // the Tags tab owns the assignment — the block's AREA and the area's list, each named tag
+        // bound to its source and tag. A row picks a name; it never assigns a source/tag itself.
+        string head = Between(script, "function renderHead(", "function renderAreaState(");
+        Assert.DoesNotContain("fArea", head);
+
+        string tags = Between(script, "function renderTagsTab(", "function saveAreaTags(");
+        Assert.Contains("id: 'fArea'", tags);
+        Assert.Contains("JSON.stringify", script);   // the list is saved through the tagsources API
+        // The Tags tab lists the area's tags and nothing else: no per-row section (the rows pick
+        // their tag on the Editor tab, the way the HMI's rows do).
+        Assert.DoesNotContain("renderBlockRows", tags);
+        // The block's own save rides the tab: the area it names is stored with the block.
+        Assert.Contains("renderSaveBarNode()", tags);
+        // The list being edited is the block's area's, and it follows the name as it is typed.
+        Assert.Contains("function syncTagDraft(", tags);
+        Assert.Contains("draft.area = e.target.value; markDirty(); refreshTagList();", tags);
+        // A list's unsaved edits are kept per area, so stepping to another one drops nothing.
+        Assert.Contains("function rememberTagDraft(", tags);
+
+        // The Editor row keeps its TAG field — the area's entries by name plus the relay route —
+        // and offers no way to type a pair: the assignment lives on the Tags tab.
+        string controls = Between(script, "function renderControls(", "function tagPickSelect(");
+        Assert.Contains("tagPickSelect(element, rerender)", controls);
+        Assert.DoesNotContain("w-pair", controls);
+        // The two raw-pair inputs the row used to carry are gone from the page entirely.
+        Assert.DoesNotContain("'aria-label': 'Source id'", script);
+        Assert.DoesNotContain("'aria-label': 'Item id'", script);
+        Assert.DoesNotContain("'__direct__'", script);
+        Assert.Contains("text: '(internal relay)'", script);
+
+        // A row still carrying the legacy pair shows it the HMI's way: read-only, with the whole
+        // sentence in the mark's tooltip, and the pair itself kept through a save.
+        Assert.Contains("function isStoredPair(", script);
+        Assert.Contains("class: 'info-mark'", controls);
+        Assert.Contains("class: 'stored-tag mono small'", controls);
+        Assert.Contains("'Direct tag: ' + storedTagLabel(element) + ' — add it to this area\\'s tags (the Tags tab) to assign it there.'", script);
     }
 
     [Fact]

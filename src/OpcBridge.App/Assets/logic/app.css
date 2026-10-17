@@ -368,12 +368,28 @@ select { cursor: pointer; }
 .el-edit { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .el-edit .w-kind { flex: 0 0 108px; }
 .el-edit .w-text { flex: 1 1 220px; }
-.el-edit .w-tag { flex: 0 1 190px; }
-.el-edit .w-pair { flex: 1 1 180px; }
 .el-edit .w-op { flex: 0 0 96px; }
 .el-edit .w-num { flex: 0 0 84px; }
 .el-edit .w-sev { flex: 0 0 84px; }
 .el-edit .w-relay { flex: 0 0 90px; text-transform: uppercase; }
+/* A row still carrying the legacy direct pair: the HMI's own treatment — a boxed mark whose
+   tooltip holds the whole sentence, beside the value, both read-only. The assignment belongs to
+   the area's tags, so nothing here offers to edit the pair. */
+.el-edit .info-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  border: 1px solid var(--border2);
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: help;
+}
+.el-edit .stored-tag { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
 .el-edit .spacer { flex: 1 1 auto; }
 .el-edit .tools { display: flex; gap: 4px; }
 
@@ -544,6 +560,8 @@ select { cursor: pointer; }
 .tag-row { border: 1px solid var(--border); background: var(--panel); border-radius: 2px; padding: 6px 8px; }
 .tag-row .tag-name { text-transform: uppercase; }
 .tag-row .tag-live { text-align: center; color: var(--muted-strong); }
+/* The block's own area field, beside the list it names. */
+.tag-toolbar .tag-area { flex: 0 0 220px; text-transform: uppercase; }
 
 @media (max-width: 1000px) {
   .tag-head { display: none; }
