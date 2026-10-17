@@ -245,6 +245,13 @@ public sealed class LogicPageTests
         Assert.Contains("state.state === 'true' ? '✓' : state.state === 'false' ? '✗' : '—'", script);
         Assert.Contains("if (kind === 'coil') return 'COIL';", script);
 
+        // The Editor's network section carries the HMI's own section name, IEC number and all
+        // (the page's .section-title is uppercased in the stylesheet, so it is written as a name);
+        // the count stays its tail, and a flat-conditions block's read-only expansion is named the
+        // same way rather than under a second name for the same thing.
+        Assert.Contains("text: 'Network (IEC 61131-3) · '", script);
+        Assert.Contains("text: 'Network (IEC 61131-3) — read-only'", script);
+
         // LogicText.Actual: the bit a contact reads, flipped for a normally closed one, "?" unknown,
         // and a comparison keeps its own value.
         Assert.Contains("function actualBit(", script);

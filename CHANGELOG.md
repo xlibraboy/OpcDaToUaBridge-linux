@@ -215,6 +215,13 @@ assigned to and left it on the rate fallback. `daGroup` now round-trips through
 
 ### Changed
 
+**The Logic page's network section is named for the standard it is drawn in.** The Editor tab headed
+its network "Network · N / 256 elements", which said what the rows below it were but not the form
+they are authored in. It now carries the HMI's own section name, **NETWORK (IEC 61131-3)**, with the
+element count beside it, and the read-only expansion a flat-conditions block shows is named the same
+way and marked `read-only` — one name for one thing, on both authoring surfaces.
+`LogicPageTests.Script_MatchesTheHmisOwnWording` pins it.
+
 **The Logic page's Result tab reads the way its Editor is scrolled.** The Result tab showed the
 bridge's evaluation as one flat list of cards, so a long one carried the **verdict** — the block, what
 the bridge makes of it and why — out of sight as it scrolled, and every parent card with it: a deep
