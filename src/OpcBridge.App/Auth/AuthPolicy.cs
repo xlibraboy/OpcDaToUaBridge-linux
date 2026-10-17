@@ -16,6 +16,10 @@ public static class AuthPolicy
         "/health",
         "/",
         "/favicon.ico",
+        // The Logic page and its assets (Assets/logic, embedded in the assembly). A page shell,
+        // like the dashboard shell above: the data it reads and writes follows the normal role
+        // table.
+        "/logic",
         "/api/auth/login",
         "/api/auth/logout",
         "/api/auth/me",

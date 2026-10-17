@@ -48,6 +48,15 @@
     <EmbeddedResource Include="..\..\ISSUES.md" LogicalName="OpcBridge.App.ISSUES.md" />
   </ItemGroup>
 
+  <!-- The Logic page — authoring plant logic in a browser, served at /logic — ships inside the
+       assembly the same way, so it travels with every deployment (the service, the MSI, a
+       self-contained publish, the test host) with no wwwroot directory to copy. -->
+  <ItemGroup>
+    <EmbeddedResource Include="Assets\logic\index.html" LogicalName="OpcBridge.App.logic.index.html" />
+    <EmbeddedResource Include="Assets\logic\app.css" LogicalName="OpcBridge.App.logic.app.css" />
+    <EmbeddedResource Include="Assets\logic\app.js" LogicalName="OpcBridge.App.logic.app.js" />
+  </ItemGroup>
+
   <ItemGroup>
     <InternalsVisibleTo Include="OpcBridge.LoadTest" />
   </ItemGroup>
