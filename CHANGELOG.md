@@ -19,6 +19,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+**Plant logic gained a second authoring surface: a web page at `/logic`.** The bridge now serves
+the logic editor as plain HTML (`src/OpcBridge.App/Assets/logic`, embedded in the assembly so it
+travels with every deployment — the service, the MSI, a self-contained publish and the test host
+alike — with one page, one stylesheet, one script, and nothing loaded from the network, because a
+plant host has no internet), so a network can be
+authored and watched from any browser on the LAN. It reads and writes the same store the HMI's
+Logic page and the phone use, over the same endpoints (`GET /api/logic`, `POST /api/logic/blocks`,
+`DELETE /api/logic/blocks/{id}`), and follows the evaluation by polling `GET /api/logic/state`
+once a second while the page is open. It is served by the bridge, so the page shares the API's
+origin — the same-origin rule is what keeps the API reachable with no CORS configuration at all.
+Every element row carries its own live reading while it is edited — the element's state, what a
+contact needs (`needs 1`) against what the plant reads (`actual 0`), a timer's ET against its PT,
+a counter's CV — and the block list, the result panel and the rail dots follow the same snapshot,
+so authoring a network and seeing why it is blocked happen in one view. The page carries the HMI's
+own three surfaces — **Editor**, **Tags** and **Result** — as tabs: **Tags** edits the area's
+shared tag list (a name plus the source and tag it is assigned to, assigned once for every block
+of the area) with **From bridge…** adding the bridge's mapped tags several at a time and a live
+column showing what each binding reads, and **Result** is the read-only operator view — the
+verdict, the reason, how fresh the evaluation is, the step a sequence has reached, and one card
+per evaluated element: its marking, the form it takes (NO / NC / a comparison, or the input pin a
+function block watches — TON IN, CTU CU), the sentence that explains it, the bit it reads
+**and** the raw reading behind it, the comparison line (`should 1 · actual 0`), what a timer or
+counter is doing (`holding 2 s of 3 s`, `count 2 of 2`), the tag in the plant's own names, and
+what to do next while the row is not satisfied. The block list's rows carry the same state word
+and the reason it is blocked, with a sequence's progress (`1/2 steps · Start the pump`), and the
+rail summarises every block at once (`N ready · M blocked · K no data`). Scope for now:
+the network form is editable, while a block authored in the flat conditions form or as sequence
+steps shows the bridge's own evaluation read-only. The page shell is public like the dashboard
+shell (`/`); the data behind it follows the normal role table. The element vocabulary, the
+per-kind input caps and the depth and element limits are the bridge's own (`LogicElementKinds`,
+`LogicLimits`), pinned by `LogicPageTests`.
+
 **Logic blocks read their area's shared tags — a tag assigned once per area, not once per
 block.** An **area** (`DRY END`, `WET END`, …) is the plant's main section and the scope that
 separates the tags, and the block's new `area` field names it: every block of the area — whatever

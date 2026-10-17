@@ -293,6 +293,22 @@ app.MapGet("/", (HttpContext ctx) => {
     ctx.Response.Headers["Expires"] = "0";
     return Results.Bytes(System.Text.Encoding.UTF8.GetBytes(DashboardPage.FullHtml), "text/html; charset=utf-8");
 });
+// The Logic page: plant-logic authoring as a plain web page, reading and writing the same store
+// the HMI's Logic page and the phone do. It ships inside the assembly (Assets/logic, see
+// LogicPage) rather than as wwwroot files, so it travels with the app in every deployment — the
+// service, the MSI, a self-contained publish — the same way the release notes do. Serving it from
+// the bridge is what lets the page share the API's origin, so the API and the hub stay reachable
+// with no CORS configuration at all.
+app.MapGet("/logic", (HttpContext ctx) => LogicAsset(ctx, LogicPage.Html, LogicPage.HtmlType));
+app.MapGet("/logic/app.css", (HttpContext ctx) => LogicAsset(ctx, LogicPage.StyleSheet, LogicPage.StyleSheetType));
+app.MapGet("/logic/app.js", (HttpContext ctx) => LogicAsset(ctx, LogicPage.Script, LogicPage.ScriptType));
+
+static IResult LogicAsset(HttpContext ctx, byte[] bytes, string contentType)
+{
+    // A rebuilt bridge must never serve a stale page.
+    ctx.Response.Headers["Cache-Control"] = "no-cache, no-store, must-revalidate";
+    return Results.Bytes(bytes, contentType);
+}
 app.MapGet("/api/values", (BridgeState state) => Results.Json(new { values = state.GetValues() }));
 app.MapGet("/api/hmi/tags", (MappingStore mappingStore, BridgeState state, DaRuntimeSettings daSettings) =>
     Results.Json(HmiTagSnapshot.Build(mappingStore, state, daSettings.GetSnapshot())));

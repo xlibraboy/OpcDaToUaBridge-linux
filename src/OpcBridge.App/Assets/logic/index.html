@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpcBridge · Logic</title>
+<!-- Root-relative, not relative: the page is served at /logic (no trailing slash), so a bare
+     "app.css" would resolve to /app.css. -->
+<link rel="stylesheet" href="/logic/app.css">
+<script src="/logic/app.js" defer></script>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="title">Logic</span>
+    <span class="sub">plant interlocks, permissives and sequences</span>
+  </div>
+  <div class="topbar-right">
+    <span class="pill" id="linkState" role="status" aria-live="polite">connecting…</span>
+    <span class="pill mono" id="evaluated" title="When the bridge last evaluated the network">—</span>
+    <a class="btn" href="/">Dashboard</a>
+  </div>
+</header>
+
+<main class="shell">
+  <aside class="rail">
+    <div class="rail-head">
+      <span class="rail-title">Blocks</span>
+      <button class="btn small" id="btnNew" type="button">+ New</button>
+    </div>
+    <div class="rail-list" id="blockList"></div>
+
+    <div class="rail-head">
+      <span class="rail-title">Result</span>
+    </div>
+    <div class="result" id="result"><p class="muted">No block selected.</p></div>
+  </aside>
+
+  <section class="editor" id="editor">
+    <div class="placeholder" id="placeholder">
+      <p>Pick a block on the left to edit its network, or press <b>+ New</b> for a new one.</p>
+      <p class="muted small">Live state updates once a second while this page is open. Saving writes the block to the bridge, the same store the HMI and the phone read.</p>
+    </div>
+  </section>
+</main>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>
