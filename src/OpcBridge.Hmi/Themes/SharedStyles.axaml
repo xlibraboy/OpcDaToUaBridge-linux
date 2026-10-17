@@ -65,6 +65,25 @@
     <Setter Property="Foreground" Value="{DynamicResource WarnFgBrush}" />
   </Style>
 
+  <!-- Info mark: the compact stand-in for a paragraph of field help. The words hang off its
+       tooltip, so a row keeps a one-line note instead of a wrapped block. -->
+  <Style Selector="Border.infoMark">
+    <Setter Property="Width" Value="14" />
+    <Setter Property="Height" Value="14" />
+    <Setter Property="CornerRadius" Value="3" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="BorderBrush" Value="{DynamicResource CardBorderBrush}" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+
+  <Style Selector="Border.infoMark > TextBlock">
+    <Setter Property="FontSize" Value="9" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="{DynamicResource MutedFgBrush}" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+    <Setter Property="VerticalAlignment" Value="Center" />
+  </Style>
+
   <!-- Text that is present but cannot be used right now -->
   <Style Selector="TextBlock.disabled">
     <Setter Property="Foreground" Value="{DynamicResource DisabledFgBrush}" />

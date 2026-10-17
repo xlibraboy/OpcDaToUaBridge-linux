@@ -129,6 +129,15 @@ button carries the logic guide the dashboard used to describe.
 
 ### Fixed
 
+**A legacy row's direct tag reads as one line, not a paragraph.** A row still carrying a tag of its
+own printed the whole sentence under its TAG field — `Direct tag: Valve 02 Position · UA Sim — add
+it to this area's tags (the Tags tab) to assign it there.` — wrapped over four lines, in every
+condition, contact, step handshake and action of the block, so the rows that needed the most room
+took the most. The line is now the tag's own name in the row's instrument font, trimmed when the
+name is long, with a small **i** mark in front of it, and the sentence hangs off the mark's
+tooltip: a hover says what the row reads and what to do about it, the row keeps its one-line
+height, and the tag it reads stays in sight without hovering.
+
 **The Logic page's empty list says which of the four things happened.** Reading the blocks for
 the first time, an unreachable bridge, a definitions read the bridge refused, and a genuinely
 empty list all read as "No logic blocks yet" — a failed fetch looked like an empty plant. The
