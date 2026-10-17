@@ -44,6 +44,16 @@ public sealed class LogicPageTests
         return script[start..end];
     }
 
+    /// <summary>One selector's own block in app.css: the declarations between its brace and the first close.</summary>
+    private static string Rule(string css, string selector)
+    {
+        int start = css.IndexOf(selector, StringComparison.Ordinal);
+        Assert.True(start >= 0, selector + " is not declared in app.css");
+        int end = css.IndexOf('}', start);
+        Assert.True(end > start, selector + " is never closed");
+        return css[start..end];
+    }
+
     private static List<string> StringList(string script, string name)
     {
         Match match = Regex.Match(script, @"const " + name + @" = \[([^\]]*)\]");
@@ -368,31 +378,20 @@ public sealed class LogicPageTests
     {
         string css = OnDisk(CssFile);
 
-        // One selector's own block: the declaration list between its opening brace and the first
-        // close, which reaches every flat rule this test reads.
-        string Rule(string selector)
-        {
-            int start = css.IndexOf(selector, StringComparison.Ordinal);
-            Assert.True(start >= 0, selector + " is not declared in app.css");
-            int end = css.IndexOf('}', start);
-            Assert.True(end > start, selector + " is never closed");
-            return css[start..end];
-        }
-
         // The editor is the page's own scroll region (body is 100dvh and clipped), so the block's
         // fields and its Save / Revert / Delete have to ride that scroll: a network longer than the
         // window would otherwise carry both away, and the page's save would live at the bottom of a
         // page the operator may never reach. The padding is read back by name: a sticky offset
         // measures from the editor's content box, so the pinned pair cancels it to reach the edges.
-        string editor = Rule(".editor {");
+        string editor = Rule(css, ".editor {");
         Assert.Contains("--pad-top: 14px;", editor);
         Assert.Contains("--pad-bottom: 40px;", editor);
 
-        string head = Rule(".editor > .ed-head {");
+        string head = Rule(css, ".editor > .ed-head {");
         Assert.Contains("position: sticky", head);
         Assert.Contains("top: calc(-1 * var(--pad-top));", head);
 
-        string bar = Rule(".editor > .savebar {");
+        string bar = Rule(css, ".editor > .savebar {");
         Assert.Contains("position: sticky", bar);
         Assert.Contains("bottom: calc(-1 * var(--pad-bottom));", bar);
         // An opaque ground in the editor's own colour, or the rows would read through the bar.
@@ -400,7 +399,104 @@ public sealed class LogicPageTests
 
         // The tabs stay in the flow by design — they leave with the rows as the network is scrolled
         // and are back once the editor is scrolled to the top again.
-        Assert.DoesNotContain("position: sticky", Rule(".tabs {"));
+        Assert.DoesNotContain("position: sticky", Rule(css, ".tabs {"));
+    }
+
+    [Fact]
+    public void Script_KeepsTheRowsParentOnScreen()
+    {
+        string script = OnDisk(ScriptFile);
+        string css = OnDisk(CssFile);
+
+        // The network is written nested — one node per element with the inputs under it — so the row
+        // that owns what is on screen can be read from the rows themselves: the row the editor's top
+        // belongs to is the node's own first child, and the parent is the previous sibling of the
+        // children container it sits in. Written flat, no row could say whose child it was.
+        Assert.Contains("function renderNode(", script);
+        Assert.Contains("kids.appendChild(renderNode(element.inputs[i], path.concat(i)))", script);
+        Assert.Contains("node.parentElement.previousElementSibling", script);
+
+        // The parent is the row the head is cutting through, when it has children of its own under
+        // it — from the moment its row meets the head, so what it is and what it reads survive the
+        // head taking it — and otherwise the row that owns the first one the head has not taken. A
+        // row with nothing under it is never shown: it parents nothing that is on screen.
+        Assert.Contains("if (rect.bottom > line + 1) { first = row; cutByHead = rect.top < line; break; }", script);
+        Assert.Contains("const ownChildren = node.children.length > 1;", script);
+        Assert.Contains("if (cutByHead && ownChildren) {", script);
+        Assert.Contains("parentRow = first;", script);
+        Assert.Contains("node.parentElement.previousElementSibling", script);
+
+        // The parent is kept as a readonly copy of its own live line — what it is and what it reads,
+        // never a second set of the row's controls — and the poll keeps it painted with the rows,
+        // because the copy carries the row's id and its live hook.
+        Assert.Contains("function renderPin(", script);
+        Assert.Contains("class: 'pin-wrap'", script);
+        Assert.Contains("function pinCopy(", script);
+        Assert.Contains("class: 'el pin-strip', 'data-id': row.dataset.id, 'data-live': '1'", script);
+        Assert.Contains("live.cloneNode(true)", script);
+        // Nothing at the top of the network means no parent, and the strip is put away again.
+        Assert.Contains("strip.hidden = !parentRow;", script);
+
+        // The line it rides is the head's own height, measured rather than assumed, and the head is
+        // what the script reads it from — on either tab (see the Result test for the other head).
+        Assert.Contains("function syncNetPinning(", script);
+        Assert.Contains("editor.querySelector('.ed-head, .res-head')", script);
+        Assert.Contains("editor.style.setProperty('--net-stick-top'", script);
+        Assert.Contains("head.offsetHeight - padTop", script);
+        // It follows the scroll one frame at a time, and the editor's scroll is where it listens.
+        Assert.Contains("requestAnimationFrame(() => { pinFrame = 0; syncNetPinning(); })", script);
+        Assert.Contains("el('editor').addEventListener('scroll', schedulePinnedRows", script);
+
+        // The strip takes no room in the flow: it rides over the rows, so a parent appearing or
+        // leaving as the network is scrolled never moves what is under it.
+        string wrap = Rule(css, ".pin-wrap {");
+        Assert.Contains("position: sticky;", wrap);
+        Assert.Contains("top: var(--net-stick-top, 0px);", wrap);
+        Assert.Contains("height: 0;", wrap);
+        Assert.Contains("position: absolute;", Rule(css, ".pin-strip {"));
+    }
+
+    [Fact]
+    public void Script_KeepsTheResultsParentOnScreen()
+    {
+        string script = OnDisk(ScriptFile);
+        string css = OnDisk(CssFile);
+
+        // The evaluation arrives as one flat list with a depth per element, and the flat list cannot
+        // say whose child a row is. It is folded back into the nesting the editor's own network is
+        // written in — one node per element, the deeper ones under it — and written the same way.
+        Assert.Contains("const depth = Math.max(0, Math.min(element.depth || 0, open.length));", script);
+        Assert.Contains("(depth ? open[depth - 1].children : roots).push(node);", script);
+        Assert.Contains("function resultNode(", script);
+        Assert.Contains("function resultNet(", script);
+        Assert.Contains("class: 'rl-node'", script);
+        Assert.Contains("class: 'rl-kids'", script);
+        // Both tabs' rows are read by the one strip, so the parent is kept on the Result tab too.
+        Assert.Contains("editor.querySelectorAll('.el-node > .el, .rl-node > .rl')", script);
+        Assert.Contains("node.parentElement.classList.contains('rl-kids')", script);
+        // The card the strip shows is its head, and it carries the definition so the poll repaints
+        // the copy exactly as it repaints the row it came from.
+        Assert.Contains("if (row.classList.contains('rl'))", script);
+        Assert.Contains("head.cloneNode(true)", script);
+        Assert.Contains("copy.__def = card.__def;", script);
+        Assert.Contains("class: 'rl pin-strip', 'data-id': row.dataset.id, 'data-live': '1'", script);
+        // The strip is written into the Result tab as well, and the poll's own text — the reason,
+        // the progress — is what its head's height is re-measured from.
+        Assert.Contains("editor.appendChild(renderPin());", script);
+        string refresh = Between(script, "function refreshResultHeader(", "\n}\n");
+        Assert.Contains("syncNetPinning();", refresh);
+
+        // The verdict itself rides the scroll, carrying the editor's ground and its own rule so
+        // nothing shows through the space above the rows while it holds the top.
+        string head = Rule(css, ".editor > .res-head {");
+        Assert.Contains("position: sticky;", head);
+        Assert.Contains("top: calc(-1 * var(--pad-top));", head);
+        Assert.Contains("background: var(--bg);", head);
+        Assert.Contains("border-bottom: 1px solid var(--border);", head);
+        // The evaluated rows nest with the flat list's own spacing.
+        string kids = Rule(css, ".rl-node, .rl-kids {");
+        Assert.Contains("display: flex;", kids);
+        Assert.Contains("gap: 6px;", kids);
     }
 
     [Theory]
