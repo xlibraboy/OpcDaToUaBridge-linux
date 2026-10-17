@@ -225,7 +225,40 @@ body {
 
 /* Editor ------------------------------------------------------------------ */
 
-.editor { flex: 1 1 auto; min-width: 0; overflow-y: auto; padding: 14px 18px 40px; }
+.editor {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-y: auto;
+  /* Named, because the pinned children below have to cancel them: a sticky offset measures from
+     the editor's content box, so a bare `top: 0` would leave the top pad as a strip of scrolling
+     rows above the head. */
+  --pad-top: 14px;
+  --pad-bottom: 40px;
+  padding: var(--pad-top) 18px var(--pad-bottom);
+}
+
+/* What the editor's own scroll carries with it: the block's properties head stays at the top and
+   its save bar at the bottom, so a network that outgrows the window keeps its fields and its
+   Save / Revert / Delete in reach. The tabs are deliberately not pinned — they leave with the
+   rows and are back once the editor is scrolled to the top again. */
+.editor > .ed-head {
+  position: sticky;
+  top: calc(-1 * var(--pad-top));
+  z-index: 2;
+}
+
+.editor > .savebar {
+  position: sticky;
+  bottom: calc(-1 * var(--pad-bottom));
+  z-index: 2;
+  /* The bar's 4px margin is paid as padding instead, so its box starts at the last row's edge:
+     a margin would leave a gap above the border for the rows to show through on their way down. */
+  margin-top: 0;
+  padding-top: 14px;
+  padding-bottom: 10px;
+  /* The editor's own colour: the rows pass under the bar, not through it. */
+  background: var(--bg);
+}
 
 .placeholder { max-width: 520px; color: var(--muted); display: flex; flex-direction: column; gap: 10px; }
 

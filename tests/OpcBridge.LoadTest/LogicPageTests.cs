@@ -363,6 +363,46 @@ public sealed class LogicPageTests
             + "; dark only: " + string.Join(", ", darkColours.Except(lightColours)));
     }
 
+    [Fact]
+    public void StyleSheet_PinsTheEditorChromeButNotItsTabs()
+    {
+        string css = OnDisk(CssFile);
+
+        // One selector's own block: the declaration list between its opening brace and the first
+        // close, which reaches every flat rule this test reads.
+        string Rule(string selector)
+        {
+            int start = css.IndexOf(selector, StringComparison.Ordinal);
+            Assert.True(start >= 0, selector + " is not declared in app.css");
+            int end = css.IndexOf('}', start);
+            Assert.True(end > start, selector + " is never closed");
+            return css[start..end];
+        }
+
+        // The editor is the page's own scroll region (body is 100dvh and clipped), so the block's
+        // fields and its Save / Revert / Delete have to ride that scroll: a network longer than the
+        // window would otherwise carry both away, and the page's save would live at the bottom of a
+        // page the operator may never reach. The padding is read back by name: a sticky offset
+        // measures from the editor's content box, so the pinned pair cancels it to reach the edges.
+        string editor = Rule(".editor {");
+        Assert.Contains("--pad-top: 14px;", editor);
+        Assert.Contains("--pad-bottom: 40px;", editor);
+
+        string head = Rule(".editor > .ed-head {");
+        Assert.Contains("position: sticky", head);
+        Assert.Contains("top: calc(-1 * var(--pad-top));", head);
+
+        string bar = Rule(".editor > .savebar {");
+        Assert.Contains("position: sticky", bar);
+        Assert.Contains("bottom: calc(-1 * var(--pad-bottom));", bar);
+        // An opaque ground in the editor's own colour, or the rows would read through the bar.
+        Assert.Contains("background: var(--bg);", bar);
+
+        // The tabs stay in the flow by design — they leave with the rows as the network is scrolled
+        // and are back once the editor is scrolled to the top again.
+        Assert.DoesNotContain("position: sticky", Rule(".tabs {"));
+    }
+
     [Theory]
     [InlineData(HtmlFile)]
     [InlineData(CssFile)]
