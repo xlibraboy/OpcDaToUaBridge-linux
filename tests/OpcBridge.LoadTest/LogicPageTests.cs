@@ -260,6 +260,55 @@ public sealed class LogicPageTests
         }
     }
 
+    [Fact]
+    public void Page_ThemeSwitcherOffersLightDarkAndSystem()
+    {
+        string html = OnDisk(HtmlFile);
+        string script = OnDisk(ScriptFile);
+
+        // Three preferences with visible labels; "system" follows the operating system. The key
+        // is the dashboard's, so a choice made on either surface is the other's choice.
+        Assert.Contains("role=\"group\" aria-label=\"Color theme\"", html);
+        Assert.Contains("name=\"theme\" value=\"light\"", html);
+        Assert.Contains("name=\"theme\" value=\"dark\"", html);
+        Assert.Contains("name=\"theme\" value=\"system\"", html);
+        // The head resolves the stored choice before first paint, so dark never flashes light.
+        Assert.Contains("opcbridge.theme", html);
+        Assert.Contains("prefers-color-scheme: dark", html);
+        Assert.Contains("const THEME_KEY = 'opcbridge.theme';", script);
+        Assert.Contains("function applyTheme(", script);
+        Assert.Contains("function initTheme(", script);
+        // A system choice follows the OS while the page is open, not only at load.
+        Assert.Contains("systemTheme.addEventListener('change', followSystem)", script);
+    }
+
+    [Fact]
+    public void StyleSheet_DefinesEveryColourInBothThemes()
+    {
+        string css = OnDisk(CssFile);
+
+        static HashSet<string> Colours(string block) =>
+            Regex.Matches(block, @"(--[a-z0-9-]+)\s*:\s*(?:#|rgba?\()")
+                .Select(match => match.Groups[1].Value)
+                .ToHashSet(StringComparer.Ordinal);
+
+        Match light = Regex.Match(css, @":root \{(.*?)\n\}", RegexOptions.Singleline);
+        Match dark = Regex.Match(css, @":root\[data-theme=""dark""\] \{(.*?)\n\}", RegexOptions.Singleline);
+        Assert.True(light.Success, ":root carries no token block");
+        Assert.True(dark.Success, "the dark token block is missing");
+        Assert.Contains("color-scheme: dark;", dark.Value);
+
+        // Dark redefines the same names: a token only the light block carries would keep its
+        // light value on a dark ground.
+        HashSet<string> lightColours = Colours(light.Groups[1].Value);
+        HashSet<string> darkColours = Colours(dark.Groups[1].Value);
+        Assert.True(
+            lightColours.SetEquals(darkColours),
+            "colour tokens differ between the themes — light only: "
+            + string.Join(", ", lightColours.Except(darkColours))
+            + "; dark only: " + string.Join(", ", darkColours.Except(lightColours)));
+    }
+
     [Theory]
     [InlineData(HtmlFile)]
     [InlineData(CssFile)]

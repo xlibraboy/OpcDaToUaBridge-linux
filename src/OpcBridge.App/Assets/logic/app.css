@@ -19,6 +19,7 @@
   --warn: #8a5a00;
   --info: #1f4e79;
   --focus: #1d4ed8;
+  --overlay: rgba(20,24,26,.45);
   --good-bg: #eaf2ec; --good-border: #bcd3c4; --good-text: #0b4d2c;
   --warn-bg: #f8f1e2; --warn-border: #ddc9a0; --warn-text: #6b4500;
   --bad-bg: #f7e9e8; --bad-border: #e0b6b2; --bad-text: #8a1c14;
@@ -48,6 +49,7 @@
   --warn: #d9a441;
   --info: #6fb0e0;
   --focus: #7aa2ff;
+  --overlay: rgba(0,0,0,.62);
   --good-bg: #16291e; --good-border: #2c5138; --good-text: #8ed7ac;
   --warn-bg: #2a2114; --warn-border: #5c4a24; --warn-text: #e3b563;
   --bad-bg: #2b1917; --bad-border: #5e322d; --bad-text: #f2938a;
@@ -107,6 +109,33 @@ body {
 .pill.live { background: var(--good-bg); border-color: var(--good-border); color: var(--good-text); }
 .pill.stale { background: var(--warn-bg); border-color: var(--warn-border); color: var(--warn-text); }
 .pill.down { background: var(--bad-bg); border-color: var(--bad-border); color: var(--bad-text); }
+
+/* Theme picker: three settings with visible labels; ink marks the active one. The
+   dashboard's own control under the same stored key, so a choice made here is the
+   choice it opens with, and the reverse. */
+.theme-switch { display: flex; align-items: center; border-left: 1px solid var(--border); padding-left: 14px; }
+.theme-opt {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  cursor: pointer;
+}
+.theme-opt + .theme-opt { margin-left: 2px; }
+.theme-opt:hover { color: var(--text); background: var(--panel2); }
+.theme-opt input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.theme-opt:has(input:checked) { color: var(--panel); background: var(--text); border-color: var(--text); }
+.theme-opt:has(input:focus-visible) { outline: 2px solid var(--focus); outline-offset: 1px; }
+.theme-ico { width: 12px; height: 12px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 
 /* Shell ------------------------------------------------------------------- */
 
@@ -379,6 +408,17 @@ select { cursor: pointer; }
 @media (max-width: 860px) {
   .shell { flex-direction: column; }
   .rail { flex: 0 0 auto; max-height: 40vh; border-right: none; border-bottom: 1px solid var(--border); }
+  /* The bar carries five controls now (two pills, the theme picker, Dashboard) and one
+     of them is a labelled three-way picker, so below the stacking breakpoint the two
+     rails wrap and the picker keeps its labels rather than being cut off. */
+  .topbar { flex-wrap: wrap; }
+  .topbar-right { flex-wrap: wrap; justify-content: flex-end; margin-left: auto; }
+  .theme-switch { border-left: none; padding-left: 0; }
+}
+
+/* Touch is physical: the picker chips take a finger even though the label stays small. */
+@media (pointer: coarse) {
+  .theme-opt { min-height: 44px; min-width: 44px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

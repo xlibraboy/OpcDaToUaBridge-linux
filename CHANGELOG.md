@@ -19,6 +19,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+**The Logic page carries the dashboard's theme picker, and can be read on a dark ground.** The page
+took its appearance from the dashboard's stored choice but offered no way to change it: it opened
+in whatever a dashboard visit had left behind, or the operating system's answer, with no control on
+the page itself. **Light** / **Dark** / **System** now sit in the top bar and write the same
+`opcbridge.theme` key the dashboard's picker does, so a choice made on either surface is the choice
+the other opens with, `System` follows the operating system while the page stays open (the media
+query is watched, not read once), and an explicit choice is remembered per browser. The theme stays
+a browser preference rather than a bridge setting: one operator switching to dark cannot change
+another station's screens, and the bridge has nothing to store or serve. Every colour on the page
+already read back from the token set, so the switch repaints the whole surface — rail, editor rows,
+live chips, result cards, the tag picker — with no reload; the head resolves the stored choice
+before first paint, so opening in dark no longer starts white and flips.
+
 **Plant logic gained a second authoring surface: a web page at `/logic`.** The bridge now serves
 the logic editor as plain HTML (`src/OpcBridge.App/Assets/logic`, embedded in the assembly so it
 travels with every deployment — the service, the MSI, a self-contained publish and the test host
@@ -175,6 +188,12 @@ else the tag carries (description, DA group and rate, MQTT/Influx settings, the 
 echoed back untouched, and the comparison re-runs so the row settles under its new name.
 
 ### Fixed
+
+**The tag picker's backdrop was transparent.** The picker's overlay painted `var(--overlay)`, a
+token the page defined in neither theme, so the sheet floated over the page with nothing dimmed
+behind it and the rows underneath stayed as prominent as the picker itself. The token exists in both
+token sets now (`rgba(20,24,26,.45)` on the light ground, `rgba(0,0,0,.62)` on the dark one, the
+dashboard's own values), so the picker stands on a scrim either way.
 
 **A logic element saves before it is wired.** The store enforced the standard's *minimum* input
 count too, so a network could only be saved once every element was complete: a gate row added in
