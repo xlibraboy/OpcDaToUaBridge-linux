@@ -1640,14 +1640,55 @@ function poll() {
     });
 }
 
+// Theme ---------------------------------------------------------------------
+//
+// The dashboard's engine under the dashboard's own key: the choice is a browser
+// preference, not a bridge setting, so one operator picking dark cannot change the
+// plant's screens — and because the key is shared, this page and the dashboard open
+// in the same theme. <html data-theme> is the single switch (every colour reads back
+// from the CSS tokens), and index.html resolves it before first paint.
+
+const THEME_KEY = 'opcbridge.theme';
+const THEME_PREFS = ['light', 'dark', 'system'];
+const systemTheme = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+
+function storedThemePref() {
+  try {
+    const stored = localStorage.getItem(THEME_KEY);
+    if (THEME_PREFS.indexOf(stored) >= 0) return stored;
+  } catch (e) { /* private mode */ }
+  return 'system';
+}
+
+function resolvedTheme(pref) {
+  if (pref !== 'system') return pref;
+  return systemTheme && systemTheme.matches ? 'dark' : 'light';
+}
+
+let themePref = storedThemePref();
+
+function applyTheme(pref, persist) {
+  themePref = THEME_PREFS.indexOf(pref) >= 0 ? pref : 'system';
+  document.documentElement.setAttribute('data-theme', resolvedTheme(themePref));
+  if (persist) { try { localStorage.setItem(THEME_KEY, themePref); } catch (e) { /* private mode */ } }
+  for (const input of document.querySelectorAll('input[name="theme"]')) input.checked = input.value === themePref;
+}
+
+function initTheme() {
+  applyTheme(themePref, false);
+  for (const input of document.querySelectorAll('input[name="theme"]')) {
+    input.addEventListener('change', () => { if (input.checked) applyTheme(input.value, true); });
+  }
+
+  if (!systemTheme) return;
+  const followSystem = () => { if (themePref === 'system') applyTheme('system', false); };
+  if (systemTheme.addEventListener) systemTheme.addEventListener('change', followSystem);
+  else if (systemTheme.addListener) systemTheme.addListener(followSystem);
+}
+
 function start() {
   el('btnNew').addEventListener('click', newBlockForm);
-  // Match the dashboard's theme choice.
-  let theme = null;
-  try { theme = localStorage.getItem('opcbridge.theme'); } catch (e) { /* private mode */ }
-  if (theme === 'dark' || (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-    document.documentElement.setAttribute('data-theme', 'dark');
-  }
+  initTheme();
   document.addEventListener('keydown', (event) => {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
       event.preventDefault();
