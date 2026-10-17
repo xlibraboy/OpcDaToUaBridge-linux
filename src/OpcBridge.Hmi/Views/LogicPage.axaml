@@ -407,8 +407,15 @@
                                         ToolTip.Tip="Clear the handshake this step waits on"
                                         AutomationProperties.Name="Clear completion tag" />
                               </StackPanel>
-                              <TextBlock Classes="hint" Margin="0,2,0,0" MaxWidth="170" TextWrapping="Wrap"
-                                         Text="{Binding StoredTagText}" IsVisible="{Binding HasStoredTag}" />
+                              <Grid ColumnDefinitions="Auto,*" Margin="0,2,0,0" IsVisible="{Binding HasStoredTag}">
+                                <Border Grid.Column="0" Classes="infoMark" ToolTip.Tip="{Binding StoredTagText}">
+                                  <TextBlock Text="i" AutomationProperties.Name="Direct tag"
+                                             AutomationProperties.HelpText="{Binding StoredTagText}" />
+                                </Border>
+                                <TextBlock Grid.Column="1" Classes="hint mono" Margin="5,0,0,0" VerticalAlignment="Center"
+                                           Text="{Binding StoredTagLabel}" TextTrimming="CharacterEllipsis"
+                                           ToolTip.Tip="{Binding StoredTagText}" />
+                              </Grid>
                             </StackPanel>
                           </WrapPanel>
                           <TextBlock Classes="hint" Text="{Binding Reason}" TextWrapping="Wrap" IsVisible="{Binding HasReason}" />
@@ -466,8 +473,15 @@
                                         ToolTip.Tip="Clear the tag this button writes"
                                         AutomationProperties.Name="Clear action tag" />
                               </StackPanel>
-                              <TextBlock Classes="hint" Margin="0,2,0,0" MaxWidth="170" TextWrapping="Wrap"
-                                         Text="{Binding StoredTagText}" IsVisible="{Binding HasStoredTag}" />
+                              <Grid ColumnDefinitions="Auto,*" Margin="0,2,0,0" IsVisible="{Binding HasStoredTag}">
+                                <Border Grid.Column="0" Classes="infoMark" ToolTip.Tip="{Binding StoredTagText}">
+                                  <TextBlock Text="i" AutomationProperties.Name="Direct tag"
+                                             AutomationProperties.HelpText="{Binding StoredTagText}" />
+                                </Border>
+                                <TextBlock Grid.Column="1" Classes="hint mono" Margin="5,0,0,0" VerticalAlignment="Center"
+                                           Text="{Binding StoredTagLabel}" TextTrimming="CharacterEllipsis"
+                                           ToolTip.Tip="{Binding StoredTagText}" />
+                              </Grid>
                             </StackPanel>
                             <StackPanel Classes="field" Width="110">
                               <TextBlock Classes="fieldLabel" Text="VALUE" />

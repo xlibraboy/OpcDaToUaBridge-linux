@@ -61,9 +61,12 @@ public partial class LogicStepRowViewModel : ObservableObject, ILogicOrderRow
     public bool HasStoredTag =>
         !HasCompletionTag && (!string.IsNullOrWhiteSpace(CompletionSourceId) || !string.IsNullOrWhiteSpace(CompletionItemId));
 
-    /// <summary>What a legacy handshake waits on, while the area's list has no entry for it.</summary>
-    public string StoredTagText => LogicText.StoredTagHint(
-        catalog_.TagLabel(CompletionSourceId ?? string.Empty, CompletionItemId ?? string.Empty));
+    /// <summary>The tag a legacy handshake waits on, while the area's list has no entry for it.</summary>
+    public string StoredTagLabel =>
+        catalog_.TagLabel(CompletionSourceId ?? string.Empty, CompletionItemId ?? string.Empty);
+
+    /// <summary>The note the row's info mark carries: what that direct tag needs.</summary>
+    public string StoredTagText => LogicText.StoredTagHint(StoredTagLabel);
 
     partial void OnSelectedCompletionTagChanged(LogicTagEntryViewModel? value)
     {

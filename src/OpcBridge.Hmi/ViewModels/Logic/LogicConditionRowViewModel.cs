@@ -106,8 +106,11 @@ public partial class LogicConditionRowViewModel : ObservableObject, ILogicOrderR
     /// <summary>A legacy row waiting for the area's tags to hold it: shown, never edited here.</summary>
     public bool HasStoredTag => !HasBlockTag && (SourceId.Length > 0 || ItemId.Length > 0);
 
-    /// <summary>What a legacy row reads, while the area's list has no entry for it.</summary>
-    public string StoredTagText => LogicText.StoredTagHint(catalog_.TagLabel(SourceId, ItemId));
+    /// <summary>The tag a legacy row reads, while the area's list has no entry for it.</summary>
+    public string StoredTagLabel => catalog_.TagLabel(SourceId, ItemId);
+
+    /// <summary>The note the row's info mark carries: what that direct tag needs.</summary>
+    public string StoredTagText => LogicText.StoredTagHint(StoredTagLabel);
 
     partial void OnSelectedBlockTagChanged(LogicTagEntryViewModel? value)
     {
