@@ -323,7 +323,7 @@ function renderEditor() {
       draftForm === 'steps'
         ? 'Its steps are edited in the HMI\'s Logic page; the Result tab here shows their live state.'
         : 'Its network below is the bridge\'s own expansion, shown read-only — the Result tab shows the same live; edit the conditions in the HMI\'s Logic page.'));
-    editor.appendChild(h('div', { class: 'section-title', text: 'Network (read-only)' }));
+    editor.appendChild(h('div', { class: 'section-title', text: 'Network (IEC 61131-3) — read-only' }));
     const net = h('div', { class: 'net' });
     const state = blockStates.get(draft.id);
     const list = state ? state.elements : [];
@@ -337,7 +337,7 @@ function renderEditor() {
     return;
   }
 
-  editor.appendChild(h('div', { class: 'section-title', text: 'Network · ' + countElements(draft.elements) + ' / ' + LIMITS.elements + ' elements' }));
+  editor.appendChild(h('div', { class: 'section-title', text: 'Network (IEC 61131-3) · ' + countElements(draft.elements) + ' / ' + LIMITS.elements + ' elements' }));
   editor.appendChild(renderNet());
   editor.appendChild(renderSaveBarNode());
 }
