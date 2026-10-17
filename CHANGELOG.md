@@ -215,6 +215,17 @@ assigned to and left it on the rate fallback. `daGroup` now round-trips through
 
 ### Changed
 
+**The Logic page's block fields and its save ride the editor's own scroll.** A network longer than
+the window used to carry the whole block head — its name, kind, group, note and labels — and the
+**Save** / **Revert** / **Delete block** bar away with the rows: the fields an edit starts from and
+the button that commits it could only be reached by scrolling back to the top and down to the
+bottom. On the Editor and Tags tabs the properties head now stays at the top of the editor and the
+save bar at its bottom, both flush with the editor's edges, while the rows scroll between them; a
+block short enough not to scroll is laid out exactly as before. The tabs are deliberately left in
+the flow — they leave with the rows as the network is scrolled and are back once the editor is
+scrolled to the top again, so no vertical space is taken from the network while it is being worked
+on (`LogicPageTests.StyleSheet_PinsTheEditorChromeButNotItsTabs`).
+
 **The Logic page's tags are assigned on the Tags tab alone.** The page's Editor tab let a row
 assign its own reading: a contact could name one of the area's tags, pick "(direct tag)" and type a
 source and an item on the row itself, or read an internal relay — three ways to say what a signal
