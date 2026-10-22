@@ -194,7 +194,15 @@ body {
 .block-row:hover { background: var(--panel2); }
 .block-row.on { background: var(--panel2); border-color: var(--border2); border-left-color: var(--ink2); }
 .block-row .n { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.block-row .kind { font-size: var(--fs-micro); color: var(--muted); }
+.block-row .kind {
+  flex: 1 0 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-micro);
+  color: var(--muted);
+}
 
 .state-dot {
   flex: 0 0 auto;
