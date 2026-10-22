@@ -189,6 +189,12 @@ echoed back untouched, and the comparison re-runs so the row settles under its n
 
 ### Fixed
 
+**The Logic page's block rail always stacks a block's kind and group.** The rail row laid
+"Interlock · Primary Arm" beside the block name when the two fitted and wrapped it under the name
+when they did not, so two blocks in the same list read in two different shapes. The metadata now
+always takes its own line under the name, truncated with an ellipsis when the rail is narrow,
+whatever the block's name or group is.
+
 **The tag picker's backdrop was transparent.** The picker's overlay painted `var(--overlay)`, a
 token the page defined in neither theme, so the sheet floated over the page with nothing dimmed
 behind it and the rows underneath stayed as prominent as the picker itself. The token exists in both
