@@ -24,6 +24,12 @@
   --warn-bg: #f8f1e2; --warn-border: #ddc9a0; --warn-text: #6b4500;
   --bad-bg: #f7e9e8; --bad-border: #e0b6b2; --bad-text: #8a1c14;
   --info-bg: #ebf0f6; --info-border: #c3d0de;
+  /* The editor network's depth ramp: the root row carries the strongest ink, each level under
+     it one shade lighter (see .el.d0 … .el.d3). */
+  --depth-0: #3b4544;
+  --depth-1: #6b7572;
+  --depth-2: #99a09c;
+  --depth-3: #c2c7c1;
   --font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', 'Segoe UI Mono', Consolas, 'Liberation Mono', monospace;
   --fs-micro: 11px;
@@ -54,6 +60,11 @@
   --warn-bg: #2a2114; --warn-border: #5c4a24; --warn-text: #e3b563;
   --bad-bg: #2b1917; --bad-border: #5e322d; --bad-text: #f2938a;
   --info-bg: #16232e; --info-border: #2f4a5e;
+  /* Depth ramp, dark ground: the root row is the brightest neutral and each level recedes. */
+  --depth-0: #c2c9c4;
+  --depth-1: #9aa49f;
+  --depth-2: #6d7773;
+  --depth-3: #454e4b;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -396,9 +407,12 @@ select { cursor: pointer; }
   position: relative;
 }
 .el:hover { border-color: var(--border2); }
-.el.sel { border-left-color: var(--ink2); }
-.el.gate { border-left-color: var(--info); }
-.el.fb { border-left-color: var(--warn); }
+/* The stripe shades with the row's nesting depth — the root row darkest, every level under it
+   one shade lighter — so the shape of the network reads at a glance without colouring kinds. */
+.el.d0 { border-left-color: var(--depth-0); }
+.el.d1 { border-left-color: var(--depth-1); }
+.el.d2 { border-left-color: var(--depth-2); }
+.el.d3 { border-left-color: var(--depth-3); }
 .el.readonly { opacity: .92; }
 
 .el-live {

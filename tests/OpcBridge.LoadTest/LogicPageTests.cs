@@ -439,7 +439,7 @@ public sealed class LogicPageTests
         Assert.Contains("function renderPin(", script);
         Assert.Contains("class: 'pin-wrap'", script);
         Assert.Contains("function pinCopy(", script);
-        Assert.Contains("class: 'el pin-strip', 'data-id': row.dataset.id, 'data-live': '1'", script);
+        Assert.Contains("class: 'el pin-strip d' + level, 'data-id': row.dataset.id, 'data-live': '1'", script);
         Assert.Contains("live.cloneNode(true)", script);
         // Nothing at the top of the network means no parent, and the strip is put away again.
         Assert.Contains("strip.hidden = !parentRow;", script);
@@ -504,6 +504,28 @@ public sealed class LogicPageTests
         string kids = Rule(css, ".rl-node, .rl-kids {");
         Assert.Contains("display: flex;", kids);
         Assert.Contains("gap: 6px;", kids);
+    }
+
+    [Fact]
+    public void Script_ShadesTheEditorsRowsByNestingDepth()
+    {
+        string script = OnDisk(ScriptFile);
+        string css = OnDisk(CssFile);
+
+        // The editor's stripe says how deep a row sits in the network — the root darkest, every
+        // level under it one shade lighter, clamped at the third level. It never says which kind
+        // the row is: the gate / function-block colours are gone, so a timer and an AND no longer
+        // read as different things.
+        Assert.Contains("const cls = 'el d' + Math.min(depth, 3);", script);
+        Assert.Contains("class: 'el readonly d' + Math.min(item.depth || 0, 3)", script);
+        Assert.Contains("class: 'el pin-strip d' + level", script);
+        Assert.Contains(".el.d0 { border-left-color: var(--depth-0); }", css);
+        Assert.Contains(".el.d1 { border-left-color: var(--depth-1); }", css);
+        Assert.Contains(".el.d2 { border-left-color: var(--depth-2); }", css);
+        Assert.Contains(".el.d3 { border-left-color: var(--depth-3); }", css);
+        Assert.DoesNotContain(".el.gate", css);
+        Assert.DoesNotContain(".el.fb", css);
+        Assert.DoesNotContain(".el.parent", css);
     }
 
     [Theory]

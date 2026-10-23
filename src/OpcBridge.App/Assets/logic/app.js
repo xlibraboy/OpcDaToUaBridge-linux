@@ -93,7 +93,6 @@ const clone = (value) => JSON.parse(JSON.stringify(value));
 
 function isContact(e) { return e.kind === 'contact'; }
 function isCoil(e) { return e.kind === 'coil'; }
-function isGate(e) { return e.kind === 'and' || e.kind === 'or' || e.kind === 'xor' || e.kind === 'not'; }
 function isTimer(e) { return e.kind === 'ton' || e.kind === 'tof' || e.kind === 'tp'; }
 function isCounter(e) { return e.kind === 'ctu' || e.kind === 'ctd'; }
 function maxInputs(e) { return INPUT_MAX[e.kind] || 0; }
@@ -329,7 +328,7 @@ function renderEditor() {
     const list = state ? state.elements : [];
     if (!list.length) net.appendChild(h('p', { class: 'muted small', text: 'The bridge has not evaluated this block yet.' }));
     for (const item of list) {
-      net.appendChild(h('div', { class: 'el readonly', 'data-id': item.id, 'data-live': '1', style: '--depth:' + item.depth },
+      net.appendChild(h('div', { class: 'el readonly d' + Math.min(item.depth || 0, 3), 'data-id': item.id, 'data-live': '1', style: '--depth:' + item.depth },
         renderLive(item.kind, '', item)
       ));
     }
@@ -530,8 +529,9 @@ function pinCopy(row) {
   }
 
   const live = row.querySelector('.el-live');
+  const level = Math.min(parseInt(row.style.getPropertyValue('--depth'), 10) || 0, 3);
   return h('div', {
-    class: 'el pin-strip', 'data-id': row.dataset.id, 'data-live': '1',
+    class: 'el pin-strip d' + level, 'data-id': row.dataset.id, 'data-live': '1',
     style: '--depth:' + (row.style.getPropertyValue('--depth') || '0')
   }, live ? live.cloneNode(true) : null);
 }
@@ -547,7 +547,7 @@ function schedulePinnedRows() {
 function renderElement(element, path) {
   const depth = path.length - 1;
   const state = elementStates.get(element.id);
-  const cls = 'el' + (isGate(element) ? ' gate' : (isTimer(element) || isCounter(element) || element.kind === 'sr' || element.kind === 'rs' || element.kind === 'r_trig' || element.kind === 'f_trig' ? ' fb' : ''));
+  const cls = 'el d' + Math.min(depth, 3);
   const row = h('div', { class: cls, 'data-id': element.id, 'data-live': '1', style: '--depth:' + depth });
   row.appendChild(renderLive(element.kind, element.text, state));
   row.appendChild(renderControls(element, path));
