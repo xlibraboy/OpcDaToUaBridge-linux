@@ -527,6 +527,40 @@ public sealed class LogicPageTests
     }
 
     [Fact]
+    public void Script_KeepsTheEditorsScrollWhenItRebuilds()
+    {
+        string script = OnDisk(ScriptFile);
+
+        // The editor is the page's own scroll region, and every row edit rewrites it from the top.
+        // The offset is read before the rebuild and put back after it, so adding a row while
+        // scrolled down keeps the author where they were instead of throwing the view to the top.
+        string render = Between(script, "function renderEditor(", "\n}\n");
+        Assert.Contains("const scrollTop = resetScroll ? 0 : editor.scrollTop;", render);
+        Assert.Contains("drawEditor(editor);", render);
+        Assert.Contains("if (editor.scrollTop !== scrollTop) editor.scrollTop = scrollTop;", render);
+        // The pinned parent is measured from the restored scroll, not from the top it started at.
+        Assert.Contains("syncNetPinning();", render);
+
+        // Adding a row at any level is a rebuild of this document and keeps the offset. The new
+        // row itself is brought into view by the least scroll that clears the head pinned above
+        // it and the save bar stuck below it — it never throws the author to the top instead.
+        Assert.Contains("function addElementRow(list, at) {", script);
+        Assert.Contains("onclick: () => { addElementRow(siblings, index + 1); }", script);
+        Assert.Contains("onclick: () => { addElementRow(element.inputs, element.inputs.length); }", script);
+        Assert.Contains("onclick: () => { addElementRow(draft.elements, draft.elements.length); }", script);
+        Assert.Contains("revealElementId = fresh.id;", script);
+        Assert.Contains("if (revealElementId) {", render);
+        Assert.Contains("revealRow(editor, revealElementId);", render);
+        Assert.Contains("function revealRow(editor, id) {", script);
+        Assert.Contains("const bottom = Math.min(barTop, view.bottom);", script);
+        Assert.Contains("editor.scrollTop += box.bottom - bottom + 6;", script);
+
+        // A block or tab switch is a move to another document and starts at the top.
+        Assert.Contains("onclick: () => { tab = id; renderEditor(true); }", script);
+        Assert.Contains("renderEditor(true);\n  renderResult();", script);
+    }
+
+    [Fact]
     public void Script_ShadesTheEditorsRowsByNestingDepth()
     {
         string script = OnDisk(ScriptFile);

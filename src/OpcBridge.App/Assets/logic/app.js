@@ -62,6 +62,7 @@ let tagArea = '';     // the area whose tag list the Tags tab is editing — the
 let tagDraft = null;  // that list, edited locally until Save
 let tagDrafts = new Map(); // a list's unsaved edits by area name, so switching areas never drops them
 let newTagForId = ''; // the editor row whose TAG picker is naming a new tag
+let revealElementId = ''; // the row an add is writing, which the next rebuild brings into view
 let lastEvaluated = null; // the snapshot's EvaluatedUtc, for the Result tab's freshness
 let catalogFetchedAt = 0; // when the bridge's tag snapshot was last read
 let feedState = 'unknown'; // live | reconnecting | failed — the Result header's freshness follows it
@@ -153,6 +154,34 @@ function newElement() {
   // sentence."), so a new row starts with a placeholder the author overwrites. The tag is the
   // author's to choose, and the store says so plainly if it is missing.
   return { id: uuid(), kind: 'contact', text: 'New condition', sourceId: '', itemId: '', tag: '', op: 'on', value: null, relay: '', ptMs: 0, pv: 0, inputs: [], severity: 'block', nextStepText: null };
+}
+
+// A row is added where the author asked, and the rebuild keeps the offset (renderEditor) — so a row
+// added at the bottom of a long network would land under the fold. It is revealed explicitly: the
+// least scroll that shows it whole, never a jump to the top of the network.
+function addElementRow(list, at) {
+  const fresh = newElement();
+  list.splice(at, 0, fresh);
+  revealElementId = fresh.id;
+  markDirty();
+  renderEditor();
+}
+
+// What "whole" means between the two sticky overlays: the head while it rides the top, the save bar
+// while it is stuck at the bottom. Both sit over the rows, so the scrollport alone overstates the
+// room the row has; a bar still in the flow is no boundary at all (its top is below the window).
+function revealRow(editor, id) {
+  const row = editor.querySelector('.el[data-id="' + id + '"]');
+  if (!row) return;
+  const view = editor.getBoundingClientRect();
+  const head = editor.querySelector('.ed-head');
+  const bar = editor.querySelector('.savebar');
+  const top = head ? head.getBoundingClientRect().bottom : view.top;
+  const barTop = bar ? bar.getBoundingClientRect().top : view.bottom;
+  const bottom = Math.min(barTop, view.bottom);
+  const box = row.getBoundingClientRect();
+  if (box.bottom > bottom) editor.scrollTop += box.bottom - bottom + 6;
+  else if (box.top < top) editor.scrollTop -= top - box.top + 6;
 }
 
 function newBlock(name, kind, area, group) {
@@ -352,8 +381,25 @@ function renderResult() {
   box.appendChild(h('p', { class: 'sub small', text: blockSummary() }));
 }
 
-function renderEditor() {
+// The editor is the page's own scroll region and every render rewrites it from the top, so a
+// rebuild would otherwise throw the view back to the top of the network — the row just added, or
+// the row being edited, would be gone from under the author. The offset is read before the rebuild
+// and put back after it (the browser clamps it when the network shrank); only a switch of block or
+// tab passes resetScroll, because that is a move to another document, not a redraw of this one.
+function renderEditor(resetScroll) {
   const editor = el('editor');
+  const scrollTop = resetScroll ? 0 : editor.scrollTop;
+  drawEditor(editor);
+  if (editor.scrollTop !== scrollTop) editor.scrollTop = scrollTop;
+  if (revealElementId) {
+    revealRow(editor, revealElementId);
+    revealElementId = '';
+  }
+  // The strip rides the restored scroll rather than the top the rebuild started from.
+  syncNetPinning();
+}
+
+function drawEditor(editor) {
   editor.textContent = '';
   if (!draft) {
     editor.appendChild(h('div', { class: 'placeholder' },
@@ -558,7 +604,7 @@ function renderNet() {
   net.appendChild(h('div', { class: 'el-edit', style: 'margin-top:4px' },
     h('button', {
       class: 'btn small', type: 'button', disabled: count >= LIMITS.elements,
-      onclick: () => { draft.elements.push(newElement()); markDirty(); renderEditor(); }
+      onclick: () => { addElementRow(draft.elements, draft.elements.length); }
     }, '+ root element'),
     h('span', { class: 'muted small', text: 'Roots are ANDed: every root must hold for the block to be ready.' })
   ));
@@ -737,12 +783,12 @@ function renderControls(element, path) {
   tools.appendChild(h('button', {
     class: 'btn small icon', type: 'button', title: 'Add a sibling right after', 'aria-label': 'Add sibling after',
     disabled: countElements(draft.elements) >= LIMITS.elements,
-    onclick: () => { siblings.splice(index + 1, 0, newElement()); rerender(); }
+    onclick: () => { addElementRow(siblings, index + 1); }
   }, '+ after'));
   tools.appendChild(h('button', {
     class: 'btn small icon', type: 'button', title: 'Add an input inside this element', 'aria-label': 'Add input',
     disabled: maxInputs(element) === 0 || element.inputs.length >= maxInputs(element) || countElements(draft.elements) >= LIMITS.elements,
-    onclick: () => { element.inputs.push(newElement()); rerender(); }
+    onclick: () => { addElementRow(element.inputs, element.inputs.length); }
   }, '+ in'));
   tools.appendChild(h('button', {
     class: 'btn small icon', type: 'button', title: 'Move up', 'aria-label': 'Move up', disabled: index === 0,
@@ -1017,7 +1063,7 @@ function renderTabs() {
     ['editor', 'tags', 'result'].map((id) => h('button', {
       class: 'tab' + (tab === id ? ' on' : ''), type: 'button', role: 'tab',
       'aria-selected': tab === id ? 'true' : 'false',
-      onclick: () => { tab = id; renderEditor(); }
+      onclick: () => { tab = id; renderEditor(true); }
     }, labels[id])));
 }
 
@@ -1881,7 +1927,7 @@ function selectBlock(id) {
   newTagForId = '';
   dirty = false;
   renderRail();
-  renderEditor();
+  renderEditor(true);
   renderResult();
 }
 
@@ -1998,7 +2044,7 @@ function newBlockForm() {
           tagDraft = null;
           newTagForId = '';
           dirty = true;
-          renderEditor();
+          renderEditor(true);
         }
       }, 'Create')
     )
