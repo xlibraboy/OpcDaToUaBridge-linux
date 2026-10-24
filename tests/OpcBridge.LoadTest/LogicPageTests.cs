@@ -507,15 +507,15 @@ public sealed class LogicPageTests
         Assert.Contains("head.cloneNode(true)", script);
         Assert.Contains("copy.__def = card.__def;", script);
         Assert.Contains("class: 'rl pin-strip', 'data-id': row.dataset.id, 'data-live': '1'", script);
-        // The strip is written into the Result tab as well, and the poll's own text — the reason,
-        // the progress — is what its head's height is re-measured from.
-        Assert.Contains("editor.appendChild(renderPin());", script);
+        // The strip is written into the Result tab's column as well, and the poll's own text — the
+        // reason, the progress — is what its head's height is re-measured from.
+        Assert.Contains("view.appendChild(renderPin());", script);
         string refresh = Between(script, "function refreshResultHeader(", "\n}\n");
         Assert.Contains("syncNetPinning();", refresh);
 
         // The verdict itself rides the scroll, carrying the editor's ground and its own rule so
         // nothing shows through the space above the rows while it holds the top.
-        string head = Rule(css, ".editor > .res-head {");
+        string head = Rule(css, ".res-view > .res-head {");
         Assert.Contains("position: sticky;", head);
         Assert.Contains("top: calc(-1 * var(--pad-top));", head);
         Assert.Contains("background: var(--bg);", head);
@@ -524,6 +524,36 @@ public sealed class LogicPageTests
         string kids = Rule(css, ".rl-node, .rl-kids {");
         Assert.Contains("display: flex;", kids);
         Assert.Contains("gap: 6px;", kids);
+    }
+
+    [Fact]
+    public void Script_OpensTheResultInANarrowColumnWithAWideControl()
+    {
+        string script = OnDisk(ScriptFile);
+        string css = OnDisk(CssFile);
+
+        // The tab's board is half the editor wide by default — with a readable floor — and the Wide
+        // option opens it to the full width. Both widths belong to the tab's one column, so the
+        // verdict, the pinned parent and the rows share an edge.
+        string view = Rule(css, ".res-view {");
+        Assert.Contains("width: max(50%, 320px);", view);
+        Assert.Contains("max-width: 100%;", view);
+        Assert.Contains("width: 100%;", Rule(css, ".res-view.wide {"));
+        Assert.Contains("editor.appendChild(view);", script);
+        Assert.Contains("class: 'res-view' + (resultWide ? ' wide' : '')", script);
+
+        // Narrow is the default: only a stored "wide" opens it, and the header's two options say
+        // which width is showing.
+        Assert.Contains("const RESULT_WIDTH_KEY = 'opcbridge.resultWidth';", script);
+        Assert.Contains("return localStorage.getItem(RESULT_WIDTH_KEY) === 'wide';", script);
+        Assert.Contains("let resultWide = storedResultWide();", script);
+        Assert.Contains("renderWidthSwitch()", script);
+        Assert.Contains("role: 'group', 'aria-label': 'Result width'", script);
+        Assert.Contains("option('Narrow', false)", script);
+        Assert.Contains("option('Wide', true)", script);
+        Assert.Contains("onclick: () => setResultWidth(wide)", script);
+        // The choice is remembered per browser, like the theme.
+        Assert.Contains("localStorage.setItem(RESULT_WIDTH_KEY, resultWide ? 'wide' : 'narrow')", script);
     }
 
     [Fact]

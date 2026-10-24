@@ -665,13 +665,22 @@ select { cursor: pointer; }
 
 /* Result tab ------------------------------------------------------------- */
 
+/* The Result tab is a column, not a full-width board: half the editor's width by default, so the
+   cards read as one list instead of stretching their sentence across the screen. The header's
+   Narrow / Wide control opens it to the full width. 320px is the floor — half a small window would
+   be too little to read a comparison line in, and max-width keeps the floor from overflowing. */
+.res-view { width: max(50%, 320px); max-width: 100%; }
+.res-view.wide { width: 100%; }
+
+.res-width { display: inline-flex; gap: 2px; }
+
 .res-head { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
 
 /* The verdict rides the editor's scroll with the rows — the properties head's own treatment, on the
    tab that is read rather than authored — so a long evaluation always says which block it is and
    what the bridge makes of it. Its margin is paid as padding and it carries the editor's ground
    and its own rule: nothing may show through the space above the rows while it holds the top. */
-.editor > .res-head {
+.res-view > .res-head {
   position: sticky;
   top: calc(-1 * var(--pad-top));
   z-index: 3;
