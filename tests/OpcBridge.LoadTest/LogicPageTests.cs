@@ -515,7 +515,7 @@ public sealed class LogicPageTests
 
         // The verdict itself rides the scroll, carrying the editor's ground and its own rule so
         // nothing shows through the space above the rows while it holds the top.
-        string head = Rule(css, ".res-view > .res-head {");
+        string head = Rule(css, ".editor > .res-head {");
         Assert.Contains("position: sticky;", head);
         Assert.Contains("top: calc(-1 * var(--pad-top));", head);
         Assert.Contains("background: var(--bg);", head);
@@ -532,9 +532,8 @@ public sealed class LogicPageTests
         string script = OnDisk(ScriptFile);
         string css = OnDisk(CssFile);
 
-        // The tab's board is half the editor wide by default — with a readable floor — and the Wide
-        // option opens it to the full width. Both widths belong to the tab's one column, so the
-        // verdict, the pinned parent and the rows share an edge.
+        // The board is half the editor wide by default — with a readable floor — and the Wide
+        // option opens it to the full width. The pinned parent and the rows share that column.
         string view = Rule(css, ".res-view {");
         Assert.Contains("width: max(50%, 320px);", view);
         Assert.Contains("max-width: 100%;", view);
@@ -542,7 +541,18 @@ public sealed class LogicPageTests
         Assert.Contains("editor.appendChild(view);", script);
         Assert.Contains("class: 'res-view' + (resultWide ? ' wide' : '')", script);
 
-        // Narrow is the default: only a stored "wide" opens it, and the header's two options say
+        // The verdict header is untouched: it stays a direct child of the editor at full width,
+        // and the width control rides the board's first heading instead.
+        Assert.Contains("editor.appendChild(h('div', { class: 'res-head' },", script);
+        string header = Between(script, "editor.appendChild(h('div', { class: 'res-head' },", "const view = h('div'");
+        Assert.DoesNotContain("renderWidthSwitch()", header);
+        Assert.Contains("function resultHeading(", script);
+        Assert.Contains("h('span', { class: 'res-heading-text', text: text })", script);
+        Assert.Contains("renderWidthSwitch());", script);
+        Assert.Contains("view.appendChild(resultHeading(", script);
+        Assert.Contains("justify-content: space-between;", Rule(css, ".res-heading {"));
+
+        // Narrow is the default: only a stored "wide" opens it, and the heading's two options say
         // which width is showing.
         Assert.Contains("const RESULT_WIDTH_KEY = 'opcbridge.resultWidth';", script);
         Assert.Contains("return localStorage.getItem(RESULT_WIDTH_KEY) === 'wide';", script);

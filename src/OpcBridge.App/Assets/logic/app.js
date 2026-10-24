@@ -1380,7 +1380,7 @@ function resultSteps(state, elements, index) {
   return box;
 }
 
-// The Result tab opens as a readable column — half the editor's width — and the header's own
+// The Result tab's board opens as a readable column — half the editor's width — and its own
 // Narrow / Wide control opens it to the full width. The choice is a browser preference, like the
 // theme, so it survives a reload; nothing stored means Narrow.
 const RESULT_WIDTH_KEY = 'opcbridge.resultWidth';
@@ -1408,6 +1408,14 @@ function renderWidthSwitch() {
     option('Wide', true));
 }
 
+// The board's first heading carries the width control: the verdict header above keeps the
+// editor's full width, and the control sits with the rows it resizes.
+function resultHeading(text) {
+  return h('div', { class: 'section-title res-heading' },
+    h('span', { class: 'res-heading-text', text: text }),
+    renderWidthSwitch());
+}
+
 function setResultWidth(wide) {
   resultWide = wide;
   const view = document.querySelector('.res-view');
@@ -1431,22 +1439,23 @@ function renderResultTab(editor) {
   // same one the Tags tab's picker uses. Until it arrives the rows show the raw pair.
   if (!catalog) loadCatalog().then(repaintResultTags);
 
-  // One column for the whole tab: the verdict, the pinned parent and the rows share the width,
-  // so the strip covers exactly the cards under it.
-  const view = h('div', { class: 'res-view' + (resultWide ? ' wide' : '') });
-  editor.appendChild(view);
-
-  view.appendChild(h('div', { class: 'res-head' },
+  // The verdict keeps the editor's full width, as it always has: the width control belongs to the
+  // board under it, not to the header.
+  editor.appendChild(h('div', { class: 'res-head' },
     h('div', { class: 'res-title' },
       h('span', { class: 'res-name', text: draft.name || '(unnamed)' }),
       h('span', { class: 'rl-kind', text: blockKindLabel(draft.kind) }),
       h('span', { class: 'pill', id: 'resStamp', role: 'status', text: displayWord(state) }),
       h('span', { class: 'pill out-pill', id: 'resOutput', text: '', hidden: !(draft.outputTag || '').trim() }),
-      h('span', { class: 'res-fresh mono small', id: 'resFresh', text: '' }),
-      renderWidthSwitch()),
+      h('span', { class: 'res-fresh mono small', id: 'resFresh', text: '' })),
     draft.description ? h('p', { class: 'muted small', text: draft.description }) : null,
     progress ? h('p', { class: 'rl-line warn', id: 'resProgress', text: progress }) : null,
     h('p', { class: 'res-reason', id: 'resReason', text: '' })));
+
+  // One column for the evaluated board: the pinned parent and the rows share the width, so the
+  // strip covers exactly the cards under it.
+  const view = h('div', { class: 'res-view' + (resultWide ? ' wide' : '') });
+  editor.appendChild(view);
   // The verdict rides the scroll with the rows, and keeps the parent of what is on screen — the
   // editor's own treatment, on the tab that is read rather than authored.
   view.appendChild(renderPin());
@@ -1461,16 +1470,16 @@ function renderResultTab(editor) {
         : feedState === 'failed'
           ? ['COULD NOT READ', 'The bridge is unreachable — its evaluation will appear when it answers.']
           : ['READING…', 'Reading the bridge\'s evaluation…'];
-    view.appendChild(h('p', { class: 'section-title', text: empty[0] }));
+    view.appendChild(resultHeading(empty[0]));
     view.appendChild(h('p', { class: 'muted small', text: empty[1] }));
   } else if (draftForm === 'steps') {
-    view.appendChild(h('div', { class: 'section-title', text: 'Steps' }));
+    view.appendChild(resultHeading('Steps'));
     view.appendChild(resultSteps(state, elements, index));
   } else if (!elements.length) {
-    view.appendChild(h('p', { class: 'section-title', text: 'NOTHING TO EVALUATE' }));
+    view.appendChild(resultHeading('NOTHING TO EVALUATE'));
     view.appendChild(h('p', { class: 'muted small', text: 'This block has no elements to evaluate yet.' }));
   } else {
-    view.appendChild(h('div', { class: 'section-title', text: 'Network' + (draftForm === 'conditions' ? ' (the bridge\'s expansion of the flat conditions)' : '') }));
+    view.appendChild(resultHeading('Network' + (draftForm === 'conditions' ? ' (the bridge\'s expansion of the flat conditions)' : '')));
     view.appendChild(resultNet(elements, index));
   }
 
