@@ -668,9 +668,80 @@ select { cursor: pointer; }
 /* The Result tab's board is a column, not a full-width sheet: half the editor's width by default,
    so the cards read as one list instead of stretching their sentence across the screen. The board's
    own Narrow / Wide control opens it to the full width. 320px is the floor — half a small window
-   would be too little to read a comparison line in, and max-width keeps the floor from overflowing. */
-.res-view { width: max(50%, 320px); max-width: 100%; }
+   would be too little to read a comparison line in, and max-width keeps the floor from overflowing.
+   The tag inspector takes the space beside it; the two wrap when the window is too narrow for both. */
+.res-split { display: flex; align-items: flex-start; gap: 18px; flex-wrap: wrap; }
+.res-view { flex: 0 0 auto; width: max(50%, 320px); max-width: 100%; }
 .res-view.wide { width: 100%; }
+
+/* The tag inspector: the empty half beside the narrowed board answers the row's tag — where it
+   comes from and which blocks read it. It rides under the verdict while the rows scroll, and never
+   grows past the window; [hidden] must beat the display below when no tag is selected. */
+.res-side {
+  flex: 1 1 320px;
+  min-width: 0;
+  max-width: 100%;
+  position: sticky;
+  top: var(--net-stick-top, 0px);
+  max-height: calc(100dvh - var(--net-stick-top, 0px) - 40px);
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.res-side[hidden] { display: none; }
+.res-side-head { display: flex; align-items: baseline; gap: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.res-side-title { flex: 1 1 auto; min-width: 0; font-size: var(--fs-title); font-weight: 600; overflow-wrap: anywhere; }
+.res-side-tabs { display: flex; flex-wrap: wrap; gap: 2px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.res-side-body { display: flex; flex-direction: column; gap: 6px; }
+.res-side-row { display: flex; align-items: baseline; gap: 10px; }
+.res-side-label { flex: 0 0 84px; font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.res-side-value { flex: 1 1 auto; min-width: 0; color: var(--ink2); overflow-wrap: anywhere; }
+.res-side .warnline { display: block; }
+.res-side-section { margin-top: 6px; font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+.res-use {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border2);
+  border-radius: 2px;
+  background: var(--panel2);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.res-use:hover { border-color: var(--border2); background: var(--panel); }
+.res-use-head { display: flex; align-items: center; gap: 8px; }
+.res-use-name { flex: 1 1 auto; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.res-use-meta { overflow-wrap: anywhere; }
+.res-use .rl-line { color: var(--ink2); }
+
+/* A result tag opens the inspector: the label is dotted-underlined and the count says how many
+   blocks read it before the click. */
+.tag-link {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.tag-link-label { text-decoration: underline dotted; text-underline-offset: 2px; }
+.tag-link:hover .tag-link-label { text-decoration-style: solid; }
+.tag-link.on { color: var(--info); }
+.tag-link-count { color: var(--muted); font-family: var(--font-ui); white-space: nowrap; }
 
 .res-width { display: inline-flex; gap: 2px; }
 /* The control rides a section heading, whose small caps and tracking are for the heading's own

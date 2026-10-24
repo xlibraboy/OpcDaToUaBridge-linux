@@ -538,7 +538,8 @@ public sealed class LogicPageTests
         Assert.Contains("width: max(50%, 320px);", view);
         Assert.Contains("max-width: 100%;", view);
         Assert.Contains("width: 100%;", Rule(css, ".res-view.wide {"));
-        Assert.Contains("editor.appendChild(view);", script);
+        Assert.Contains("editor.appendChild(split);", script);
+        Assert.Contains("split.appendChild(view);", script);
         Assert.Contains("class: 'res-view' + (resultWide ? ' wide' : '')", script);
 
         // The verdict header is untouched: it stays a direct child of the editor at full width,
@@ -564,6 +565,70 @@ public sealed class LogicPageTests
         Assert.Contains("onclick: () => setResultWidth(wide)", script);
         // The choice is remembered per browser, like the theme.
         Assert.Contains("localStorage.setItem(RESULT_WIDTH_KEY, resultWide ? 'wide' : 'narrow')", script);
+    }
+
+    [Fact]
+    public void Script_OpensATagInspectorForItsSourceAndReaders()
+    {
+        string script = OnDisk(ScriptFile);
+        string css = OnDisk(CssFile);
+
+        // A result row's tag is a button. Its identity is the area's mapped (source, item) pair when
+        // bound, else the name inside its area; an internal relay has no source tag and stays plain.
+        Assert.Contains("function tagReference(", script);
+        Assert.Contains("const pairTagKey = (sourceId, itemId) =>", script);
+        Assert.Contains("const nameTagKey = (area, name) =>", script);
+        Assert.Contains("if ((def.relay || '').trim()) return null;", script);
+        // A coil has no tag of its own; its tag is the block's OUTPUT tag, so the coil row itself
+        // opens the driver's tag. The coil is not counted as a reader of its own output.
+        Assert.Contains("def.kind === 'coil' ? (block.outputTag || '').trim() : ''", script);
+        Assert.Contains("if (element.kind !== 'coil') add(block, element, element.text, 'read');", script);
+        Assert.Contains("function tagUsageIndex(", script);
+        Assert.Contains("function tagUsage(", script);
+        Assert.Contains("const tagDrivers = (ref) =>", script);
+        Assert.Contains("const tagReaders = (ref) =>", script);
+        Assert.Contains("function invalidateTagUsage(", script);
+        Assert.Contains("roles: []", script);
+        // A block's output/coil drives the tag; that is the source the inspector names.
+        Assert.Contains("'output ' + (block.outputTag || 'coil'), 'output'", script);
+        Assert.Contains("function renderTagLine(", script);
+        Assert.Contains("const count = tagReaders(ref).length;", script);
+        Assert.Contains("class: 'tag-link' + (tagFocus && tagFocus.ref.key === ref.key ? ' on' : '')", script);
+        Assert.Contains("'data-tag-key': ref.key", script);
+        Assert.Contains("onclick: () => openTagPanel(ref)", script);
+        Assert.Contains("text: uses", script);
+
+        // The inspector is the board's sibling, hidden until a tag is chosen. Source names the
+        // block that drives it and the mapped source, Used by lists the blocks reading it.
+        Assert.Contains("class: 'res-split'", script);
+        Assert.Contains("id: 'resSide'", script);
+        Assert.Contains("function renderTagPanel(", script);
+        Assert.Contains("function tagPanelSource(", script);
+        Assert.Contains("function tagPanelUsage(", script);
+        Assert.Contains("function tagUseCard(", script);
+        Assert.Contains("tagPanelOption('Source', 'source')", script);
+        Assert.Contains("tagPanelOption('Used by (' + uses.length + ')', 'usage')", script);
+        Assert.Contains("'aria-label': 'Tag details'", script);
+        Assert.Contains("text: 'Driven by'", script);
+        Assert.Contains("text: 'Mapped source'", script);
+        Assert.Contains("onclick: closeTagPanel", script);
+        // A block card lands on that block's Result tab and keeps the inspector beside it.
+        Assert.Contains("onclick: () => selectBlock(use.block.id, 'result')", script);
+        Assert.Contains("tab = target === 'result' ? 'result' : 'editor';", script);
+        Assert.Contains("if (target !== 'result') tagFocus = null;", script);
+        // The bridge snapshot feeds its live value, refreshed with the Tags tab's slower cadence.
+        Assert.Contains("'data-live-tag': ref.sourceId + '|' + ref.itemId", script);
+        Assert.Contains("tab === 'result' && tagFocus", script);
+
+        // The inspector takes the space beside the narrow board and wraps under it if need be.
+        string split = Rule(css, ".res-split {");
+        Assert.Contains("display: flex;", split);
+        Assert.Contains("flex-wrap: wrap;", split);
+        string side = Rule(css, ".res-side {");
+        Assert.Contains("flex: 1 1 320px;", side);
+        Assert.Contains("position: sticky;", side);
+        Assert.Contains("display: none;", Rule(css, ".res-side[hidden] {"));
+        Assert.Contains("text-decoration: underline dotted;", Rule(css, ".tag-link-label {"));
     }
 
     [Fact]

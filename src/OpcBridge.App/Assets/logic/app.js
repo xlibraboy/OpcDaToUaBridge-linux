@@ -66,6 +66,8 @@ let revealElementId = ''; // the row an add is writing, which the next rebuild b
 let lastEvaluated = null; // the snapshot's EvaluatedUtc, for the Result tab's freshness
 let catalogFetchedAt = 0; // when the bridge's tag snapshot was last read
 let feedState = 'unknown'; // live | reconnecting | failed — the Result header's freshness follows it
+let tagFocus = null;       // the tag whose details the Result tab's side panel shows: { ref, view }
+let tagUsageCache = null;  // tag key → the blocks that read it, rebuilt when the definitions change
 
 const el = (id) => document.getElementById(id);
 
@@ -239,6 +241,7 @@ function reloadDefs(keepSelection) {
     defs = { blocks: body.blocks || [], tagSources: body.tagSources || [], version: body.version || 0 };
     version = defs.version;
     areas = defs.tagSources || [];
+    tagUsageCache = null;
     renderRail();
     if (keepSelection && draft && defs.blocks.some((b) => b.id === draft.id)) {
       const fresh = defs.blocks.find((b) => b.id === draft.id);
@@ -1251,13 +1254,15 @@ function shouldLine(state, def) {
 // legacy relay element names its relay where a tag contact names its tag (the mapped tag's display
 // name and its source's name), a named entry also shows the tag it is bound to, and an entry that
 // cannot resolve says which of the three reasons applies.
-function tagLabel(def) {
-  if (!def) return '';
+function tagLabel(def, block = draft) {
+  if (!def || !block) return '';
   if ((def.relay || '').trim()) return 'internal relay ' + def.relay.trim();
 
-  const name = (def.tag || '').trim();
+  // A coil authored here is the block's output: its tag line names the block's OUTPUT tag.
+  const name = (def.tag || '').trim() ||
+    (def.kind === 'coil' ? (block.outputTag || '').trim() : '');
   if (name) {
-    const areaName = blockArea(draft);
+    const areaName = blockArea(block);
     const list = areaTags(areaName);
     const entry = (list && list.tags || []).find((t) => (t.name || '').trim().toLowerCase() === name.toLowerCase());
     if (!list || !entry) {
@@ -1269,6 +1274,28 @@ function tagLabel(def) {
   }
 
   return def.itemId ? catalogLabel(def.sourceId, def.itemId) : '';
+}
+
+// A result row's tag line: a button when the row reads a real tag, so its source and its readers
+// are one click away. An internal relay stays plain — it has no source tag.
+function renderTagLine(def) {
+  const label = tagLabel(def);
+  if (!label) return null;
+  const ref = tagReference(draft, def);
+  if (!ref) return h('span', { class: 'rl-line rl-tag muted', text: label });
+
+  const count = tagReaders(ref).length;
+  const uses = count ? count + (count === 1 ? ' block' : ' blocks') : 'unused';
+  return h('span', { class: 'rl-line rl-tag muted' },
+    h('button', {
+      class: 'tag-link' + (tagFocus && tagFocus.ref.key === ref.key ? ' on' : ''),
+      type: 'button',
+      'data-tag-key': ref.key,
+      title: 'Where this tag comes from, and which blocks use it',
+      onclick: () => openTagPanel(ref)
+    },
+      h('span', { class: 'tag-link-label', text: label }),
+      h('span', { class: 'tag-link-count', text: uses })));
 }
 
 // A stored (sourceId, itemId) pair as the plant reads it: the tag's display name and its source's
@@ -1307,8 +1334,8 @@ function resultRow(state, def, depth) {
   const progress = progressLine(state, def);
   if (progress) card.appendChild(h('span', { class: 'rl-line rl-progress warn', text: progress }));
 
-  const label = tagLabel(def);
-  if (label) card.appendChild(h('span', { class: 'rl-line rl-tag muted', text: label }));
+  const tagLine = renderTagLine(def);
+  if (tagLine) card.appendChild(tagLine);
 
   if (def && def.nextStepText && state.state !== 'true') {
     card.appendChild(h('span', { class: 'rl-line warn', text: def.nextStepText }));
@@ -1378,6 +1405,112 @@ function resultSteps(state, elements, index) {
   });
 
   return box;
+}
+
+// ---------------------------------------------------------------- tag details
+//
+// A row's tag line is a door: it opens the Result tab's side panel, which answers the two
+// questions a plant reader has about a tag — where it comes from, and which blocks read it. A
+// tag's identity is the mapped (source, item) pair when the area binds it, else the name inside
+// its area; two areas that bind the same name to the same pair therefore share one identity.
+
+const pairTagKey = (sourceId, itemId) =>
+  'pair|' + (sourceId || '').trim().toLowerCase() + '|' + (itemId || '').trim().toLowerCase();
+const nameTagKey = (area, name) =>
+  'name|' + (area || '').trim().toLowerCase() + '|' + (name || '').trim().toLowerCase();
+
+function tagReference(block, def) {
+  if (!block || !def) return null;
+  if ((def.relay || '').trim()) return null; // an internal relay has no source tag
+
+  // A coil authored here has no tag of its own: it is the block's output, the block's OUTPUT tag.
+  const named = (def.tag || '').trim() ||
+    (def.kind === 'coil' ? (block.outputTag || '').trim() : '');
+  if (named) {
+    const areaName = blockArea(block);
+    const list = areaTags(areaName);
+    const entry = (list && list.tags || []).find((t) => (t.name || '').trim().toLowerCase() === named.toLowerCase());
+    const sourceId = ((entry && entry.sourceId) || '').trim();
+    const itemId = ((entry && entry.itemId) || '').trim();
+    return {
+      named: true,
+      name: named,
+      area: areaName,
+      sourceId: sourceId,
+      itemId: itemId,
+      key: sourceId && itemId ? pairTagKey(sourceId, itemId) : nameTagKey(areaName, named)
+    };
+  }
+
+  const itemId = (def.itemId || '').trim();
+  if (!itemId) return null;
+  const sourceId = (def.sourceId || '').trim();
+  return { named: false, name: '', area: '', sourceId: sourceId, itemId: itemId, key: pairTagKey(sourceId, itemId) };
+}
+
+function tagRefTitle(ref) {
+  if (ref.name) return ref.name;
+  const tag = ref.sourceId && ref.itemId ? catalogTag(ref.sourceId, ref.itemId) : null;
+  return (tag && tag.displayName) || ref.itemId || ref.sourceId || 'Tag';
+}
+
+// Every place the definitions read a tag, indexed once per definitions version: the result rows
+// ask for their own count, the panel asks for the blocks behind it.
+function tagUsageIndex() {
+  if (tagUsageCache) return tagUsageCache;
+  const index = new Map();
+  const add = (block, def, line, role) => {
+    const ref = tagReference(block, def);
+    if (!ref) return;
+    let uses = index.get(ref.key);
+    if (!uses) { uses = []; index.set(ref.key, uses); }
+    let entry = uses.find((use) => use.block.id === block.id);
+    if (!entry) { entry = { block: block, lines: [], roles: [] }; uses.push(entry); }
+    if (entry.roles.indexOf(role) < 0) entry.roles.push(role);
+    const text = (line || '').trim();
+    if (text && entry.lines.indexOf(text) < 0) entry.lines.push(text);
+  };
+
+  for (const block of defs.blocks) {
+    const walk = (list) => {
+      for (const element of list || []) {
+        // The coil is the block's output, indexed once below as the 'output' role, not a read.
+        if (element.kind !== 'coil') add(block, element, element.text, 'read');
+        walk(element.inputs);
+      }
+    };
+    walk(block.elements);
+    for (const condition of block.conditions || []) add(block, condition, condition.text, 'read');
+    for (const step of block.steps || []) {
+      walk(step.elements);
+      for (const condition of step.conditions || []) add(block, condition, condition.text, 'read');
+      add(block, {
+        tag: step.completionTag || '',
+        sourceId: step.completionSourceId || '',
+        itemId: step.completionItemId || ''
+      }, (step.name || 'Step') + ' completion', 'read');
+    }
+    for (const action of block.actions || []) add(block, action, action.label, 'write');
+    // The block's output/coil is what drives its named output tag for every other block; the
+    // coil element itself carries no tag, so this is the one place that says who the source is.
+    add(block, { tag: block.outputTag || '' }, 'output ' + (block.outputTag || 'coil'), 'output');
+  }
+
+  tagUsageCache = index;
+  return index;
+}
+
+function tagUsage(ref) {
+  const uses = tagUsageIndex().get(ref.key) || [];
+  return uses.slice().sort((a, b) => (a.block.name || '').localeCompare(b.block.name || ''));
+}
+
+// The blocks whose coil/output drives the tag, and the blocks that read or write it.
+const tagDrivers = (ref) => tagUsage(ref).filter((use) => use.roles.indexOf('output') >= 0);
+const tagReaders = (ref) => tagUsage(ref).filter((use) => use.roles.some((role) => role !== 'output'));
+
+function invalidateTagUsage() {
+  tagUsageCache = null;
 }
 
 // The Result tab's board opens as a readable column — half the editor's width — and its own
@@ -1452,10 +1585,14 @@ function renderResultTab(editor) {
     progress ? h('p', { class: 'rl-line warn', id: 'resProgress', text: progress }) : null,
     h('p', { class: 'res-reason', id: 'resReason', text: '' })));
 
-  // One column for the evaluated board: the pinned parent and the rows share the width, so the
-  // strip covers exactly the cards under it.
+  // The board and the tag inspector share the Result tab's body: the board keeps its column and
+  // the inspector takes the space beside it (wrapping under it on a window too narrow for both).
+  const split = h('div', { class: 'res-split' });
+  editor.appendChild(split);
   const view = h('div', { class: 'res-view' + (resultWide ? ' wide' : '') });
-  editor.appendChild(view);
+  split.appendChild(view);
+  const side = h('div', { class: 'res-side', id: 'resSide', hidden: true });
+  split.appendChild(side);
   // The verdict rides the scroll with the rows, and keeps the parent of what is on screen — the
   // editor's own treatment, on the tab that is read rather than authored.
   view.appendChild(renderPin());
@@ -1484,7 +1621,163 @@ function renderResultTab(editor) {
   }
 
   view.appendChild(h('p', { class: 'muted small', text: 'definitions v' + version + ' · ' + elements.length + ' elements evaluated' }));
+  renderTagPanel();
   refreshResultHeader();
+}
+
+// The Result tab's side panel: one tag, read two ways. "Source" answers where the tag comes from
+// (the area entry and the bridge's mapped tag); "Used by" lists every block whose network reads
+// it, with the sentence that does.
+function tagPanelOption(label, view) {
+  const on = tagFocus && tagFocus.view === view;
+  return h('button', {
+    class: 'btn small' + (on ? ' primary' : ''),
+    type: 'button',
+    'aria-pressed': on ? 'true' : 'false',
+    onclick: () => { if (!tagFocus) return; tagFocus.view = view; renderTagPanel(); }
+  }, label);
+}
+
+function tagPanelRow(label, value, mono) {
+  return h('div', { class: 'res-side-row' },
+    h('span', { class: 'res-side-label', text: label }),
+    h('span', { class: 'res-side-value' + (mono ? ' mono' : ''), text: value || '—' }));
+}
+
+// One block in the inspector. The whole card is the action: it opens that block's Result tab,
+// so its interlock network and the tag they share are one click away.
+function tagUseCard(use) {
+  const state = blockStates.get(use.block.id);
+  const meta = [blockKindLabel(use.block.kind), blockArea(use.block), (use.block.group || '').trim()]
+    .filter((part) => part)
+    .join(' · ');
+  return h('button', {
+    class: 'res-use', type: 'button', title: 'Open this block on the Result tab',
+    onclick: () => selectBlock(use.block.id, 'result')
+  },
+    h('div', { class: 'res-use-head' },
+      h('span', { class: 'res-use-name', text: use.block.name || '(unnamed)' }),
+      h('span', { class: 'pill ' + blockStatePill(state && state.state), text: displayWord(state) })),
+    meta ? h('div', { class: 'res-use-meta muted small', text: meta }) : null,
+    use.lines.map((line) => h('div', { class: 'rl-line', text: line })));
+}
+
+function tagPanelSource(ref) {
+  const area = ref.named ? areaTags(ref.area) : null;
+  const entry = area
+    ? (area.tags || []).find((t) => (t.name || '').trim().toLowerCase() === ref.name.toLowerCase())
+    : null;
+  const tag = ref.sourceId && ref.itemId ? catalogTag(ref.sourceId, ref.itemId) : null;
+  const source = ref.sourceId
+    ? catalogSources.find((s) => s.id.toLowerCase() === ref.sourceId.toLowerCase())
+    : null;
+  const drivers = tagDrivers(ref);
+  const rows = [];
+
+  if (ref.named) {
+    rows.push(tagPanelRow('Tag', ref.name, true));
+    rows.push(tagPanelRow('Area', ref.area));
+    if (!ref.area) {
+      rows.push(h('p', { class: 'warnline', text: 'This block has no area — the name cannot resolve to a source.' }));
+    } else if (!entry) {
+      rows.push(h('p', { class: 'warnline', text: 'No tag named ' + ref.name + ' in ' + ref.area + ' — add it on the Tags tab.' }));
+    } else if ((!ref.sourceId || !ref.itemId) && !drivers.length) {
+      rows.push(h('p', { class: 'warnline', text: ref.name + ' is not assigned a source and tag yet — assign it on the Tags tab.' }));
+    }
+  } else {
+    rows.push(tagPanelRow('Tag', (tag && tag.displayName) || ref.itemId, true));
+  }
+
+  rows.push(h('div', { class: 'res-side-section', text: 'Driven by' }));
+  if (drivers.length) {
+    for (const use of drivers) rows.push(tagUseCard(use));
+  } else {
+    rows.push(h('p', {
+      class: 'muted small',
+      text: ref.sourceId && ref.itemId
+        ? 'No block drives this tag — it comes from the mapped source below.'
+        : 'No block drives this tag.'
+    }));
+  }
+
+  rows.push(h('div', { class: 'res-side-section', text: 'Mapped source' }));
+  rows.push(tagPanelRow('Source', source ? source.name : (ref.sourceId || 'not assigned')));
+  rows.push(tagPanelRow('Source id', ref.sourceId, true));
+  if (tag && tag.sourceType) rows.push(tagPanelRow('Source type', tag.sourceType));
+  rows.push(tagPanelRow('Item', ref.itemId, true));
+
+  if (tag) {
+    rows.push(tagPanelRow('Display', tag.displayName));
+    rows.push(tagPanelRow('Type', tag.dataType));
+    if (tag.unit && tag.unit.trim()) rows.push(tagPanelRow('Unit', tag.unit.trim()));
+    rows.push(h('div', { class: 'res-side-row' },
+      h('span', { class: 'res-side-label', text: 'Live' }),
+      h('span', {
+        class: 'res-side-value mono',
+        'data-live-tag': ref.sourceId + '|' + ref.itemId,
+        text: liveText(tag)
+      })));
+    rows.push(tagPanelRow('Quality', tag.isGood === false ? 'bad' : tag.isGood === true ? 'good' : '—'));
+    if (tag.updateRateMs) rows.push(tagPanelRow('Rate', tag.updateRateMs + ' ms'));
+    rows.push(tagPanelRow('Writable', tag.writeable ? 'yes' : 'no'));
+  } else if (ref.sourceId && ref.itemId) {
+    rows.push(h('p', { class: 'warnline', text: 'The bridge has no mapped tag for ' + ref.sourceId + ' / ' + ref.itemId + '.' }));
+  }
+
+  return h('div', { class: 'res-side-body' }, rows);
+}
+
+function tagPanelUsage(ref) {
+  const uses = tagReaders(ref);
+  const rows = [h('p', {
+    class: 'muted small',
+    text: uses.length
+      ? uses.length + ' block' + (uses.length === 1 ? '' : 's') + ' use this tag — open one for its Result tab.'
+      : 'No block reads this tag.'
+  })];
+
+  for (const use of uses) rows.push(tagUseCard(use));
+  return h('div', { class: 'res-side-body' }, rows);
+}
+
+function renderTagPanel() {
+  const side = el('resSide');
+  if (!side) return;
+  side.hidden = !tagFocus;
+  side.textContent = '';
+  if (!tagFocus) return;
+
+  const ref = tagFocus.ref;
+  const uses = tagReaders(ref);
+  side.appendChild(h('div', { class: 'res-side-head' },
+    h('span', { class: 'res-side-title', text: tagRefTitle(ref) }),
+    h('button', {
+      class: 'btn small icon', type: 'button', 'aria-label': 'Close tag details',
+      onclick: closeTagPanel
+    }, '×')));
+  side.appendChild(h('p', {
+    class: 'muted small',
+    text: ref.named ? (ref.area ? 'Area ' + ref.area : 'No area') : 'Direct tag pair'
+  }));
+  side.appendChild(h('div', { class: 'res-side-tabs', role: 'group', 'aria-label': 'Tag details' },
+    tagPanelOption('Source', 'source'),
+    tagPanelOption('Used by (' + uses.length + ')', 'usage')));
+  side.appendChild(tagFocus.view === 'usage' ? tagPanelUsage(ref) : tagPanelSource(ref));
+}
+
+function openTagPanel(ref) {
+  if (tagFocus && tagFocus.ref.key === ref.key) { closeTagPanel(); return; }
+  tagFocus = { ref: ref, view: tagFocus ? tagFocus.view : 'source' };
+  for (const button of document.querySelectorAll('.tag-link')) {
+    button.classList.toggle('on', button.dataset.tagKey === ref.key);
+  }
+  renderTagPanel();
+}
+
+function closeTagPanel() {
+  tagFocus = null;
+  for (const button of document.querySelectorAll('.tag-link.on')) button.classList.remove('on');
+  renderTagPanel();
 }
 
 // The verdict, reason and freshness of the Result tab's header, refreshed on every poll so the
@@ -1838,6 +2131,7 @@ function saveAreaTags() {
       const index = (defs.tagSources || []).findIndex((a) => (a.name || '').trim().toLowerCase() === (saved.name || '').trim().toLowerCase());
       if (index >= 0) defs.tagSources[index] = saved; else defs.tagSources.push(saved);
       areas = defs.tagSources;
+      invalidateTagUsage();
       tagDraft = { name: saved.name, tags: clone(saved.tags || []) };
       tagArea = saved.name.trim();
       tagDrafts.delete(tagArea.toLowerCase());
@@ -1869,6 +2163,7 @@ function deleteAreaTagsControl() {
       .then((body) => {
         defs.tagSources = (defs.tagSources || []).filter((a) => (a.name || '').trim().toLowerCase() !== tagArea.trim().toLowerCase());
         areas = defs.tagSources;
+        invalidateTagUsage();
         version = body.version || version;
         tagDrafts.delete(tagArea.trim().toLowerCase());
         tagDraft = { name: tagArea, tags: [] };
@@ -1977,7 +2272,9 @@ function openTagPicker() {
 
 // ---------------------------------------------------------------- commands
 
-function selectBlock(id) {
+// A rail click opens the block's Editor; a tag panel's card opens its Result tab and keeps the
+// inspector open, so the tag's source/readers and the block's network are read together.
+function selectBlock(id, target) {
   const block = defs.blocks.find((b) => b.id === id);
   if (!block) return;
   // Never drop unsaved edits on a block switch, and never with a blocking dialog: say what to do
@@ -1988,9 +2285,19 @@ function selectBlock(id) {
     return;
   }
 
+  // Re-opening the block already in hand only moves the tab: re-cloning here would discard the
+  // unsaved edits the guard above protects on a switch.
+  if (dirty && draft && draft.id === id) {
+    tab = target === 'result' ? 'result' : 'editor';
+    if (target !== 'result') tagFocus = null;
+    renderEditor(true);
+    return;
+  }
+
+  if (target !== 'result') tagFocus = null;
   draft = clone(block);
   draftForm = formOf(block);
-  tab = 'editor';
+  tab = target === 'result' ? 'result' : 'editor';
   tagArea = '';
   tagDraft = null;
   newTagForId = '';
@@ -2033,6 +2340,7 @@ function saveDraft(quiet) {
       const saved = body.block;
       const index = defs.blocks.findIndex((b) => b.id === saved.id);
       if (index >= 0) defs.blocks[index] = saved; else defs.blocks.push(saved);
+      invalidateTagUsage();
       draft = clone(saved);
       draftForm = formOf(saved);
       newTagForId = '';
@@ -2048,6 +2356,8 @@ function deleteBlock(block) {
   fetchJson(api.del(block.id), { method: 'DELETE' })
     .then(() => {
       defs.blocks = defs.blocks.filter((b) => b.id !== block.id);
+      invalidateTagUsage();
+      tagFocus = null;
       draft = null;
       dirty = false;
       renderRail();
@@ -2065,6 +2375,7 @@ function newBlockForm() {
     return;
   }
 
+  tagFocus = null;
   draft = null;
   dirty = false;
   renderRail();
@@ -2191,9 +2502,10 @@ function applyState(snapshot) {
   refreshOutputLive();
   refreshResultHeader();
 
-  // The Tags tab's live column comes from the bridge's tag snapshot rather than the logic state,
-  // so it is refreshed on a slower cadence while that tab is open.
-  if (tab === 'tags' && catalog && Date.now() - catalogFetchedAt > 5000) {
+  // The Tags tab's live column and the tag inspector's live value come from the bridge's tag
+  // snapshot rather than the logic state, so they refresh on a slower cadence while on screen.
+  const tagLiveOnScreen = tab === 'tags' || (tab === 'result' && tagFocus);
+  if (tagLiveOnScreen && catalog && Date.now() - catalogFetchedAt > 5000) {
     loadCatalog().then(() => { for (const cell of document.querySelectorAll('[data-live-tag]')) paintTagLive(cell); });
   }
 
@@ -2235,13 +2547,15 @@ function paintTagLive(cell) {
 // The tag lines of the rendered result rows, re-labelled once the bridge's names arrive.
 function repaintResultTags() {
   for (const card of document.querySelectorAll('.rl-card')) {
-    const label = card.querySelector('.rl-tag');
-    if (!label || !card.__def) continue;
+    const line = card.querySelector('.rl-tag');
+    if (!line || !card.__def) continue;
     const text = tagLabel(card.__def);
+    const label = line.querySelector('.tag-link-label') || line;
     if (text) label.textContent = text;
   }
 
   for (const cell of document.querySelectorAll('[data-live-tag]')) paintTagLive(cell);
+  renderTagPanel();
 }
 
 function poll() {
