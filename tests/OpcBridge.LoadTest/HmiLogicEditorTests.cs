@@ -111,6 +111,18 @@ public sealed class HmiLogicEditorTests
     }
 
     [Fact]
+    public void AnHmiSaveKeepsTheOutputTagAuthoredOnTheWebPage()
+    {
+        LogicBlockDto stored = StoredInterlock();
+        stored.OutputTag = "PUMP_RUN";
+
+        LogicBlockDto built = BuildFromStored(stored);
+
+        Assert.Equal("PUMP_RUN", built.OutputTag);
+        Assert.True(LogicEditorCodec.Matches(built, stored));
+    }
+
+    [Fact]
     public void AChangedRow_BreaksTheMatch()
     {
         LogicBlockDto stored = StoredInterlock();

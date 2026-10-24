@@ -98,6 +98,7 @@ public static class LogicStateEvaluator
 
         string state;
         string? reason;
+        bool? interlockOutput;
 
         if (!block.Enabled)
         {
@@ -111,26 +112,119 @@ public static class LogicStateEvaluator
 
             state = LogicBlockStates.Disabled;
             reason = "block is disabled";
+            interlockOutput = null;
         }
         else if (string.Equals(block.Kind, LogicBlockKinds.Sequence, StringComparison.OrdinalIgnoreCase))
         {
-            (state, reason) = EvaluateSequence(block, areaTags, valueLookup, mappingLookup, states, nowUtc, elements, steps);
+            (state, reason, interlockOutput) = EvaluateSequence(block, areaTags, valueLookup, mappingLookup, states, nowUtc, elements, steps);
         }
         else
         {
             (bool? output, string? failing, string? missing) =
                 EvaluateNetwork(LogicNetwork.For(block), areaTags, valueLookup, mappingLookup, states, execute: true, nowUtc, elements);
             (state, reason) = BlockVerdict(output, failing, missing);
+            interlockOutput = output;
         }
+
+        LogicBlockOutputStateDto outputState = EvaluateOutput(
+            block, areaTags, interlockOutput, valueLookup, mappingLookup, block.Enabled, ref state, ref reason);
 
         return new LogicBlockStateDto
         {
             Id = block.Id,
             State = state,
             Reason = reason,
+            Output = outputState,
             Elements = elements,
             Steps = steps
         };
+    }
+
+    /// <summary>
+    /// The block's output-tag feedback check. The tag is read only; <paramref name="expected"/> is
+    /// the interlock result, so a mismatch can only decide the block once the interlock permits
+    /// (expected true). While the interlock is not permitting, the check is reported for display
+    /// but the interlock's verdict stands.
+    /// </summary>
+    private static LogicBlockOutputStateDto EvaluateOutput(
+        LogicBlockDto block,
+        LogicTags areaTags,
+        bool? expected,
+        Func<string, string, BridgeValueSnapshot?> valueLookup,
+        Func<string, string, TagMapping?> mappingLookup,
+        bool enabled,
+        ref string state,
+        ref string? reason)
+    {
+        string tag = block.OutputTag?.Trim() ?? string.Empty;
+        LogicBlockOutputStateDto output = new()
+        {
+            Tag = tag,
+            State = LogicOutputStates.None
+        };
+
+        // No output named, or a disabled block: nothing is verified.
+        if (!enabled || tag.Length == 0)
+        {
+            return output;
+        }
+
+        output.Expected = expected;
+
+        if (!areaTags.TryResolve(tag, out string sourceId, out string itemId))
+        {
+            output.State = LogicOutputStates.Unknown;
+            output.Reason = "no data for " + areaTags.Unresolved(tag);
+            if (expected == true)
+            {
+                state = LogicBlockStates.Unknown;
+                reason = output.Reason;
+            }
+
+            return output;
+        }
+
+        BridgeValueSnapshot? snapshot = valueLookup(sourceId, itemId);
+        TagMapping? mapping = mappingLookup(sourceId, itemId);
+        output.ValueText = FormatValueText(snapshot?.Value, mapping);
+        if (snapshot is null || !snapshot.IsGood)
+        {
+            output.State = LogicOutputStates.Unknown;
+            output.Reason = "no data for " + Label(sourceId, itemId, mappingLookup);
+            if (expected == true)
+            {
+                state = LogicBlockStates.Unknown;
+                reason = output.Reason;
+            }
+
+            return output;
+        }
+
+        output.Actual = TagDigital.CoerceBool(snapshot.Value);
+        if (expected is null)
+        {
+            // The interlock result is undecided, so the output cannot be verified.
+            output.State = LogicOutputStates.Unknown;
+            return output;
+        }
+
+        if (expected.Value == output.Actual.Value)
+        {
+            output.State = LogicOutputStates.Match;
+            return output;
+        }
+
+        output.State = LogicOutputStates.Mismatch;
+        output.Reason = expected.Value
+            ? "Output " + tag + " is not on."
+            : "Output " + tag + " is still on.";
+        if (expected.Value)
+        {
+            state = LogicBlockStates.Blocked;
+            reason = output.Reason;
+        }
+
+        return output;
     }
 
     /// <summary>
@@ -167,7 +261,11 @@ public static class LogicStateEvaluator
         StringBuilder builder = new();
         foreach (LogicBlockStateDto block in snapshot.Blocks)
         {
-            builder.Append(block.Id).Append(':').Append(block.State).Append(':').Append(block.Reason).Append('|');
+            builder.Append(block.Id).Append(':').Append(block.State).Append(':').Append(block.Reason).Append(':')
+                .Append(block.Output?.State).Append(':')
+                .Append(block.Output?.Expected switch { true => '1', false => '0', _ => '?' }).Append(':')
+                .Append(block.Output?.Actual switch { true => '1', false => '0', _ => '?' })
+                .Append('|');
 
             foreach (LogicElementStateDto element in block.Elements)
             {
@@ -187,7 +285,7 @@ public static class LogicStateEvaluator
         return builder.ToString();
     }
 
-    private static (string State, string? Reason) EvaluateSequence(
+    private static (string State, string? Reason, bool? Output) EvaluateSequence(
         LogicBlockDto block,
         LogicTags areaTags,
         Func<string, string, BridgeValueSnapshot?> valueLookup,
@@ -298,15 +396,15 @@ public static class LogicStateEvaluator
 
         if (allDone)
         {
-            return (LogicBlockStates.Ready, null);
+            return (LogicBlockStates.Ready, null, true);
         }
 
         if (current is not null && current.State == LogicStepStates.Unknown)
         {
-            return (LogicBlockStates.Unknown, current.Reason);
+            return (LogicBlockStates.Unknown, current.Reason, null);
         }
 
-        return (LogicBlockStates.Blocked, current?.Reason);
+        return (LogicBlockStates.Blocked, current?.Reason, false);
     }
 
     /// <summary>
@@ -554,7 +652,7 @@ public static class LogicStateEvaluator
                 // the value through, so it can sit inside any gate. An unknown input writes
                 // nothing — the relay keeps the value the last pass's coil gave it.
                 row.ValueText = first is null ? "—" : first.Value ? "1" : "0";
-                if (execute && first is not null && states is not null)
+                if (execute && first is not null && states is not null && !string.IsNullOrWhiteSpace(element.Relay))
                 {
                     states.SetRelay(element.Relay, first.Value);
                 }
@@ -706,7 +804,7 @@ public static class LogicStateEvaluator
 
         if (LogicElementKinds.IsCoil(element.Kind))
         {
-            return "write " + element.Relay;
+            return string.IsNullOrWhiteSpace(element.Relay) ? KindLabel(element.Kind) : "write " + element.Relay;
         }
 
         if (LogicElementKinds.IsRelayContact(element))

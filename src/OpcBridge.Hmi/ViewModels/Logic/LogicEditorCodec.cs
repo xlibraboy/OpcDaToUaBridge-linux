@@ -253,6 +253,9 @@ public static class LogicEditorCodec
             Group = group.Trim(),
             Area = area.Trim(),
             TagSource = areaTags.Trim(),
+            // The output tag is authored on the Logic web page; carry it through an HMI save so
+            // opening a block here cannot silently drop it.
+            OutputTag = stored?.OutputTag ?? string.Empty,
             Order = stored?.Order ?? newOrder,
             Tags = ParseTags(tagsText),
             Actions = actions.Select(ActionFromRow).ToList()

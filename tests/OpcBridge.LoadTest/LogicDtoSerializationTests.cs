@@ -24,6 +24,7 @@ public sealed class LogicDtoSerializationTests
             Id = Guid.NewGuid(),
             Name = "Line 01 Start",
             Group = "Primary Arm",
+            OutputTag = "PUMP_RUN",
             Description = "Start-up permissives for line 01",
             Kind = LogicBlockKinds.Sequence,
             Enabled = true,
@@ -78,6 +79,7 @@ public sealed class LogicDtoSerializationTests
         Assert.Contains("\"confirm\":true", json, StringComparison.Ordinal);
         Assert.Contains("\"tags\":[\"Line 1\",\"Safety\"]", json, StringComparison.Ordinal);
         Assert.Contains("\"group\":\"Primary Arm\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"outputTag\":\"PUMP_RUN\"", json, StringComparison.Ordinal);
         Assert.Contains("\"group\":\"Start permissive\"", json, StringComparison.Ordinal);
         Assert.Contains("\"holdMs\":3000", json, StringComparison.Ordinal);
         Assert.DoesNotContain("\"Kind\"", json, StringComparison.Ordinal);
@@ -88,6 +90,7 @@ public sealed class LogicDtoSerializationTests
         Assert.Equal(block.Id, copy!.Id);
         Assert.Equal(LogicBlockKinds.Sequence, copy.Kind);
         Assert.Equal("Line 01 Start", copy.Name);
+        Assert.Equal("PUMP_RUN", copy.OutputTag);
         Assert.Equal(new[] { "Line 1", "Safety" }, copy.Tags);
         Assert.Single(copy.Steps);
         Assert.Equal("Turn the permit key", copy.Steps[0].NextStepText);
@@ -110,6 +113,15 @@ public sealed class LogicDtoSerializationTests
                     Id = Guid.NewGuid(),
                     State = LogicBlockStates.Blocked,
                     Reason = "Line 01 start permit must be given",
+                    Output = new LogicBlockOutputStateDto
+                    {
+                        Tag = "PUMP_RUN",
+                        State = LogicOutputStates.Mismatch,
+                        Expected = true,
+                        Actual = false,
+                        ValueText = "Stopped",
+                        Reason = "Output PUMP_RUN is not on."
+                    },
                     Elements =
                     {
                         new LogicElementStateDto
@@ -154,6 +166,8 @@ public sealed class LogicDtoSerializationTests
         Assert.Contains("\"kind\":\"ton\",\"depth\":0", json, StringComparison.Ordinal);
         Assert.Contains("\"ptMs\":3000,\"elapsedMs\":1500", json, StringComparison.Ordinal);
         Assert.Contains("\"count\":2", json, StringComparison.Ordinal);
+        Assert.Contains("\"output\":{\"tag\":\"PUMP_RUN\",\"state\":\"mismatch\",\"expected\":true,\"actual\":false", json, StringComparison.Ordinal);
+        Assert.Contains("\"valueText\":\"Stopped\"", json, StringComparison.Ordinal);
 
         LogicStateSnapshot? copy = JsonSerializer.Deserialize<LogicStateSnapshot>(json, CamelCase);
 
@@ -165,6 +179,12 @@ public sealed class LogicDtoSerializationTests
         Assert.Equal(LogicElementKinds.Ton, copy.Blocks[0].Elements[1].Kind);
         Assert.Equal(1500, copy.Blocks[0].Elements[1].ElapsedMs);
         Assert.Equal(2, copy.Blocks[0].Elements[2].Count);
+        Assert.NotNull(copy.Blocks[0].Output);
+        Assert.Equal("PUMP_RUN", copy.Blocks[0].Output!.Tag);
+        Assert.Equal(LogicOutputStates.Mismatch, copy.Blocks[0].Output.State);
+        Assert.True(copy.Blocks[0].Output.Expected);
+        Assert.False(copy.Blocks[0].Output.Actual);
+        Assert.Equal("Output PUMP_RUN is not on.", copy.Blocks[0].Output.Reason);
     }
 
     [Fact]

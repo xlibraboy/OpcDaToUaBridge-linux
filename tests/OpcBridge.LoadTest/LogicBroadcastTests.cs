@@ -19,7 +19,33 @@ public sealed class LogicBroadcastTests : IDisposable
     // The store persists to a fixed file under AppContext.BaseDirectory, which is also the
     // directory the app-backed tests copy their instance from: clear it at the end of each
     // test (xUnit disposes each test instance) so no block leaks into another test app.
-    public void Dispose() => DeleteLogicFile();
+    public void Dispose() => DeleteLogicFiles();
+
+    [Fact]
+    public void PushLogicIfChanged_PushesAFeedbackOnlyChange()
+    {
+        HmiBroadcastService service = CreateService(out BridgeState values, out _, out FakeHubContext hub, outputTag: "PUMP_RUN");
+
+        values.SetValue(new BridgeValue("sim", "Permit", true, DateTime.UtcNow, 192, true));
+        values.SetValue(new BridgeValue("sim", "Pump", true, DateTime.UtcNow, 192, true));
+        service.PushLogicIfChanged();
+
+        Assert.Single(hub.Sent);
+        LogicStateSnapshot first = Assert.IsType<LogicStateSnapshot>(hub.Sent[0].Payload);
+        Assert.Equal(LogicBlockStates.Ready, first.Blocks[0].State);
+        Assert.Equal(LogicOutputStates.Match, first.Blocks[0].Output!.State);
+
+        // The interlock still permits; only the output feedback drops. That is a state change.
+        values.SetValue(new BridgeValue("sim", "Pump", false, DateTime.UtcNow, 192, true));
+        service.PushLogicIfChanged();
+
+        Assert.Equal(2, hub.Sent.Count);
+        LogicStateSnapshot second = Assert.IsType<LogicStateSnapshot>(hub.Sent[1].Payload);
+        Assert.Equal(LogicBlockStates.Blocked, second.Blocks[0].State);
+        Assert.Equal("Output PUMP_RUN is not on.", second.Blocks[0].Reason);
+        Assert.Equal(LogicOutputStates.Mismatch, second.Blocks[0].Output!.State);
+    }
+
     [Fact]
     public void PushLogicIfChanged_SendsOnceAndThenOnlyOnStateChange()
     {
@@ -83,15 +109,29 @@ public sealed class LogicBroadcastTests : IDisposable
     private static HmiBroadcastService CreateService(
         out BridgeState values,
         out LogicStore logic,
-        out FakeHubContext hub)
+        out FakeHubContext hub,
+        string? outputTag = null)
     {
-        DeleteLogicFile();
+        DeleteLogicFiles();
         logic = new LogicStore(Options.Create(new BridgeOptions()));
+        if (outputTag is not null)
+        {
+            Assert.True(logic.TrySaveAreaTags(
+                new LogicAreaTagsDto
+                {
+                    Name = "DRYEND",
+                    Tags = { new LogicTagDto { Name = outputTag, SourceId = "sim", ItemId = "Pump" } }
+                },
+                out _, out _, out _));
+        }
+
         LogicBlockDto block = new()
         {
             Id = Guid.NewGuid(),
             Name = "Line 01 Start",
             Kind = LogicBlockKinds.Interlock,
+            TagSource = outputTag is null ? string.Empty : "DRYEND",
+            OutputTag = outputTag ?? string.Empty,
             Conditions =
             {
                 new LogicConditionDto
@@ -112,12 +152,15 @@ public sealed class LogicBroadcastTests : IDisposable
         return new HmiBroadcastService(values, mappings, logic, hub, Options.Create(new HmiOptions { BroadcastFlushMs = 1000 }));
     }
 
-    private static void DeleteLogicFile()
+    private static void DeleteLogicFiles()
     {
-        string path = Path.Combine(AppContext.BaseDirectory, "logic.json");
-        if (File.Exists(path))
+        foreach (string name in new[] { "logic.json", "logic-tags.json" })
         {
-            File.Delete(path);
+            string path = Path.Combine(AppContext.BaseDirectory, name);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
         }
     }
 

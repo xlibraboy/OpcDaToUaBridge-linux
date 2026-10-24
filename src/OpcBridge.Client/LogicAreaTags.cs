@@ -179,6 +179,8 @@ public static class LogicAreaTags
             Add(condition.Tag);
         }
 
+        Add(block.OutputTag);
+
         foreach (LogicStepDto step in block.Steps)
         {
             Add(step.CompletionTag);

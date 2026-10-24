@@ -13,10 +13,11 @@
 // OpcBridge.Client) and LogicPageTests pins it against the C# lists.
 //
 // The three tabs split the work the way the HMI's Logic page splits it: Editor authors the block
-// and its rows, each row picking one of the area's tags by name (or the internal relay it reads);
-// Tags owns every assignment — the block's area and the area's list of named tags, each bound to
-// its source and tag — so a signal is assigned once and only there; Result is the read-only
-// operator view of the bridge's own evaluation.
+// and its rows, each row picking one of the area's tags by name, and names the block's one OUTPUT
+// tag (read as feedback and checked against the interlock result; the page authors no internal
+// relays); Tags owns every assignment — the block's area and the area's list of named tags, each
+// bound to its source and tag — so a signal is assigned once and only there; Result is the
+// read-only operator view of the bridge's own evaluation.
 
 const KINDS = ['contact', 'coil', 'and', 'or', 'xor', 'not', 'ton', 'tof', 'tp', 'ctu', 'ctd', 'sr', 'rs', 'r_trig', 'f_trig'];
 const OPS = ['on', 'off', 'gt', 'lt', 'eq'];
@@ -26,7 +27,7 @@ const INPUT_MAX = { contact: 0, coil: 1, and: 32, or: 32, xor: 32, not: 1, ton: 
 const LIMITS = { depth: 16, elements: 256 };
 
 const KIND_LABEL = {
-  contact: 'Contact', coil: 'Coil (relay)',
+  contact: 'Contact', coil: 'Coil (output)',
   and: 'AND gate', or: 'OR gate', xor: 'XOR gate', not: 'NOT gate',
   ton: 'TON on-delay', tof: 'TOF off-delay', tp: 'TP pulse',
   ctu: 'CTU up counter', ctd: 'CTD down counter',
@@ -36,7 +37,6 @@ const OP_LABEL = { on: 'on (NO)', off: 'off (NC)', gt: '>', lt: '<', eq: '=' };
 const SEV_LABEL = { block: 'blocks', warn: 'warn only' };
 
 const POLL_MS = 1000;
-const RELAY = '__relay__';
 const NEW_TAG = '__new__';
 
 const api = {
@@ -98,7 +98,19 @@ function isCoil(e) { return e.kind === 'coil'; }
 function isTimer(e) { return e.kind === 'ton' || e.kind === 'tof' || e.kind === 'tp'; }
 function isCounter(e) { return e.kind === 'ctu' || e.kind === 'ctd'; }
 function maxInputs(e) { return INPUT_MAX[e.kind] || 0; }
-function readsRelay(e) { return isContact(e) && (e.relay || '') !== ''; }
+// A relay may still arrive on a block authored in the HMI; the page shows it read-only.
+function hasLegacyRelay(e) { return (e.relay || '').trim() !== ''; }
+
+// The area's tags the page offers: the Tags tab's unsaved draft wins while it is the one being
+// edited, so a name just added there is offered before Save list.
+function areaEntries(areaName) {
+  const name = (areaName || '').trim();
+  const list = areaTags(name);
+  const local = name && tagDraft && (tagDraft.name || '').trim().toLowerCase() === name.toLowerCase()
+    ? tagDraft.tags
+    : null;
+  return local || (list ? list.tags : []);
+}
 
 function areaTags(areaName) {
   const wanted = (areaName || '').trim().toLowerCase();
@@ -145,7 +157,7 @@ function newElement() {
 
 function newBlock(name, kind, area, group) {
   return {
-    id: uuid(), name: name, group: group || '', area: area || '', tagSource: '', description: '',
+    id: uuid(), name: name, group: group || '', area: area || '', tagSource: '', outputTag: '', description: '',
     kind: kind || 'interlock', enabled: true, order: defs.blocks.length,
     tags: [], elements: [newElement()], conditions: [], steps: [], actions: []
   };
@@ -231,20 +243,64 @@ function renderRail() {
     list.appendChild(h('div', { class: 'group-head', text: area }));
     for (const block of blocks) {
       const state = blockStates.get(block.id);
+      const output = state ? state.output : null;
+      const outputTag = (block.outputTag || '').trim();
       const row = h('button', {
         class: 'block-row' + (draft && draft.id === block.id ? ' on' : ''),
         type: 'button',
         'data-block': block.id,
         onclick: () => selectBlock(block.id)
       },
-        h('span', { class: 'state-dot ' + (state ? state.state : ''), 'aria-hidden': 'true' }),
+        h('span', { class: 'state-dot ' + (state ? displayKey(state) : ''), 'aria-hidden': 'true' }),
         h('span', { class: 'n', text: block.name || '(unnamed)' }),
+        outputTag ? h('span', { class: 'block-output mono', text: outputTag, title: 'Output tag — read-only feedback' }) : null,
+        outputTag ? h('span', { class: 'out-dot ' + (output ? output.state : 'none'), title: outputTitle(output), 'aria-hidden': 'true' }) : null,
         h('span', { class: 'kind', text: blockKindLabel(block.kind) + ((block.group || '').trim() ? ' · ' + block.group.trim() : '') }),
-        h('span', { class: 'block-why', text: blockWhy(block, state) })
+        h('span', { class: 'block-why', text: blockWhy(block, state) }),
+        outputTag ? h('span', { class: 'block-out ' + (output ? (output.state || 'none') : 'none'), text: outputLine(block, state) }) : null
       );
       list.appendChild(row);
     }
   }
+}
+
+// The interlock verdict lifted by the output feedback: a block is READY only when both agree.
+// The shared state word stays the interlock's; this is display only.
+function displayWord(state) {
+  const output = state ? state.output : null;
+  if (output && output.expected === true) {
+    if (output.state === 'mismatch') return 'MISMATCH';
+    if (output.state === 'unknown') return 'UNVERIFIED';
+  }
+
+  return blockStateWord(state && state.state);
+}
+
+// The main dot's class: the verdict, or the output's disagreement when it decides the block.
+function displayKey(state) {
+  if (!state) return '';
+  const word = displayWord(state);
+  if (word === 'MISMATCH') return 'mismatch';
+  if (word === 'UNVERIFIED') return 'unverified';
+  return state.state;
+}
+
+// The Result stamp's pill classes: the verdict's own colour, with the output's disagreement
+// carrying the blinking warning treatment.
+function displayPill(state) {
+  const word = displayWord(state);
+  if (word === 'MISMATCH') return 'warn out-mismatch';
+  if (word === 'UNVERIFIED') return 'muted';
+  return blockStatePill(state && state.state);
+}
+
+// The second line of the output check, under the block reason.
+function outputLine(block, state) {
+  const tag = ((block && block.outputTag) || '').trim();
+  if (!tag) return '';
+  const output = state ? state.output : null;
+  if (!output) return 'OUTPUT ' + tag + ' · reading…';
+  return 'OUTPUT ' + tag + ' · ' + outputWord(output) + outputActual(output);
 }
 
 // The block row's second line, the way the retired app's result list read it: the state word and
@@ -252,7 +308,7 @@ function renderRail() {
 function blockWhy(block, state) {
   const why = !state ? 'reading…' : state.state === 'ready' ? 'all conditions met' : (state.reason || '');
   const progress = sequenceProgress(block, state);
-  return [blockStateWord(state && state.state), why, progress].filter((part) => part).join(' · ');
+  return [displayWord(state), why, progress].filter((part) => part).join(' · ');
 }
 
 // How the plant is doing overall: the retired app's one-line summary over every block.
@@ -276,13 +332,17 @@ function renderResult() {
   box.textContent = '';
   if (!draft) { box.appendChild(h('p', { class: 'muted', text: 'No block selected.' })); return; }
   const state = blockStates.get(draft.id);
-  const word = state ? state.state : 'unknown';
+  const word = displayKey(state);
 
   box.appendChild(h('div', { class: 'verdict' },
-    h('span', { class: 'stamp ' + word, text: blockStateWord(word) }),
+    h('span', { class: 'stamp ' + word, text: displayWord(state) }),
     h('span', { class: 'muted small', text: draft.enabled ? '' : 'disabled block' })
   ));
   if (state && state.reason) box.appendChild(h('p', { class: 'reason', text: state.reason }));
+  if ((draft.outputTag || '').trim()) {
+    const output = state ? state.output : null;
+    box.appendChild(h('p', { class: 'reason out-line ' + (output ? output.state : 'none'), text: outputLine(draft, state) }));
+  }
   if (state && (state.steps || []).length) {
     for (const step of state.steps) {
       box.appendChild(h('p', { class: 'sub mono small', text: step.state + ' · ' + (step.reason || '') }));
@@ -387,6 +447,28 @@ function renderHead() {
     })
   ));
 
+  // The block's output/coil name: one of the area's tags, shown here and verified against the
+  // interlock result. It is read-only feedback — the page never writes the tag. A new name is
+  // authored here and joins the area's list unassigned, like a row's + New tag.
+  const outputEntries = areaEntries(blockArea(draft));
+  head.appendChild(h('div', { class: 'field' },
+    h('label', { for: 'fOutput', text: 'Output' }),
+    h('input', {
+      type: 'text', id: 'fOutput', class: 'w-output', list: 'outputTags', value: draft.outputTag || '', maxlength: 32,
+      placeholder: 'e.g. PUMP1_RUN',
+      title: 'This block\'s output/coil tag — read as feedback only. Its source and tag are assigned on the Tags tab.',
+      oninput: (e) => { draft.outputTag = e.target.value; markDirty(); refreshOutputLive(); },
+      onchange: (e) => {
+        const name = e.target.value.trim();
+        draft.outputTag = name;
+        if (name) rememberTagName(name);
+        refreshOutputLive();
+      }
+    }),
+    h('datalist', { id: 'outputTags' }, outputEntries.map((t) => h('option', { value: t.name }))),
+    h('span', { class: 'out-live', id: 'outputLive' })
+  ));
+
   const groups = Array.from(new Set(defs.blocks.map((b) => (b.group || '').trim()).filter((g) => g)));
   const datalistGroup = h('datalist', { id: 'groupNames' }, groups.map((g) => h('option', { value: g })));
   head.appendChild(datalistGroup);
@@ -395,8 +477,52 @@ function renderHead() {
   // "which tags does this block resolve through" while its rows are authored.
   const stateBox = h('div', { class: 'muted small', id: 'areaState' });
   head.appendChild(stateBox);
-  setTimeout(() => { renderAreaState(); syncNetPinning(); }, 0);
+  setTimeout(() => { renderAreaState(); refreshOutputLive(); syncNetPinning(); }, 0);
   return head;
+}
+
+// The output feedback's word and number, shared by the editor header, the rail and the Result
+// header. The output is read only; these helpers never write it.
+function outputWord(output) {
+  if (!output) return '—';
+  if (output.state === 'match') return 'VERIFIED';
+  if (output.state === 'mismatch') return 'MISMATCH';
+  if (output.state === 'unknown') return 'UNVERIFIED';
+  return '—';
+}
+
+function outputActual(output) {
+  if (!output) return '';
+  const expected = output.expected === true ? '1' : output.expected === false ? '0' : '—';
+  const actual = output.actual === true ? '1' : output.actual === false ? '0' : '—';
+  return ' · expected ' + expected + ' · actual ' + actual;
+}
+
+function outputTitle(output) {
+  if (!output) return '';
+  const tag = (output.tag || '').trim();
+  const value = output.valueText && output.valueText !== '—' ? ' · ' + output.valueText : '';
+  return [tag, outputWord(output), output.reason || ''].filter((part) => part).join(' · ') + value;
+}
+
+// The header's live chip: the output tag's feedback and whether it agrees with the interlock.
+function refreshOutputLive() {
+  const box = el('outputLive');
+  if (!box || !draft) return;
+  box.textContent = '';
+  const tag = (draft.outputTag || '').trim();
+  if (!tag) {
+    box.appendChild(h('span', { class: 'muted small', text: 'no output tag' }));
+    return;
+  }
+
+  const block = blockStates.get(draft.id);
+  const output = block ? block.output : null;
+  box.appendChild(h('span', {
+    class: 'out-chip ' + (output ? (output.state || 'none') : 'unknown'),
+    title: outputTitle(output),
+    text: output && output.state === 'none' ? '—' : outputWord(output)
+  }));
 }
 
 // What tags the block's sentences resolve through: the area's list, and whether the area exists.
@@ -666,16 +792,21 @@ function renderControls(element, path) {
   ];
 
   if (isContact(element)) {
-    // The row's TAG field picks one of the area's tags by name, or the internal relay it reads.
-    // The assignment itself — a name bound to a source and a tag — is made on the Tags tab, the
-    // page's one tag editor, so a row never assigns a pair of its own and a signal has one home.
+    // The row's TAG field picks one of the area's tags by name, or a new name. The assignment
+    // itself — a name bound to a source and a tag — is made on the Tags tab, the page's one tag
+    // editor, so a row never assigns a pair of its own and a signal has one home.
     parts.push(tagPickSelect(element, rerender));
     if (newTagForId === element.id) parts.push(newTagInput(element));
-    if (readsRelay(element)) {
-      parts.push(h('input', {
-        class: 'w-relay mono', type: 'text', 'aria-label': 'Relay', placeholder: 'M01', maxlength: 16,
-        value: element.relay || '', oninput: (e) => { element.relay = e.target.value.toUpperCase(); markDirty(); }
+    if (hasLegacyRelay(element)) {
+      // A relay contact authored in the HMI. The page no longer authors relays: the relay is
+      // shown read-only and kept through a save; picking a tag above converts the row.
+      parts.push(h('span', {
+        class: 'legacy-relay mono small', title: 'Internal relay authored in the HMI — pick one of the area\'s tags to convert this row.',
+        text: 'internal relay ' + element.relay.trim()
       }));
+      parts.push(h('select', {
+        class: 'w-op', 'aria-label': 'Comparison', onchange: (e) => { element.op = e.target.value === 'off' ? 'off' : 'on'; rerender(); }
+      }, ['on', 'off'].map((o) => h('option', { value: o, text: OP_LABEL[o], selected: (element.op || 'on') === o }))));
     } else {
       // A row authored before the area's tags existed keeps its direct pair: the pair is shown,
       // kept through a save, and replaced the moment the row picks a named entry.
@@ -707,9 +838,15 @@ function renderControls(element, path) {
   }
 
   if (isCoil(element)) {
-    parts.push(h('input', {
-      class: 'w-relay mono', type: 'text', 'aria-label': 'Relay the coil drives', placeholder: 'M01', maxlength: 16,
-      value: element.relay || '', oninput: (e) => { element.relay = e.target.value.toUpperCase(); markDirty(); }
+    // The coil is the block's output rung: its name is the block's OUTPUT tag, set in the
+    // header. A relay authored in the HMI is shown read-only.
+    const output = (draft.outputTag || '').trim();
+    parts.push(h('span', {
+      class: 'legacy-relay mono small',
+      title: hasLegacyRelay(element)
+        ? 'Internal relay authored in the HMI (kept as-is).'
+        : 'The block\'s OUTPUT tag is set in the header — this coil is its output rung.',
+      text: hasLegacyRelay(element) ? 'internal relay ' + element.relay.trim() : 'OUTPUT ' + (output || '—')
     }));
   }
 
@@ -734,42 +871,36 @@ function renderControls(element, path) {
   return h('div', { class: 'el-edit' }, parts, h('span', { class: 'spacer' }), tools);
 }
 
-// The row's TAG field, the way the HMI's own editor works it: the picker offers the block's area's
-// tags by name — assigned on the Tags tab, where a name's source and tag live — the internal relay
-// route, and a new name. A new name is authored here and joins the area's list unassigned, so the
-// Tags tab is still the one place a source and a tag are chosen. A row never assigns a pair itself.
+// The row's TAG field: the picker offers the block's area's tags by name — assigned on the Tags
+// tab, where a name's source and tag live — and a new name. A new name is authored here and joins
+// the area's list unassigned, so the Tags tab is still the one place a source and a tag are
+// chosen. A legacy relay contact shows its relay read-only; picking a tag converts the row.
 function tagPickSelect(element, rerender) {
   const named = (element.tag || '').trim();
-  const areaName = (blockArea(draft) || '').trim();
-  const list = areaTags(areaName);
-  // The Tags tab's unsaved list wins while it is the one being edited, so a name just added (or
-  // removed) there is offered here before Save list.
-  const local = areaName && tagDraft && (tagDraft.name || '').trim().toLowerCase() === areaName.toLowerCase()
-    ? tagDraft.tags
-    : null;
-  const entries = local || (list ? list.tags : []);
+  const entries = areaEntries(blockArea(draft));
   const creating = newTagForId === element.id;
-  const direct = !named && !readsRelay(element) && !creating;
+  const legacy = hasLegacyRelay(element);
+  const direct = !named && !legacy && !creating;
   const listed = entries.some((t) => (t.name || '').trim().toLowerCase() === named.toLowerCase());
   return h('select', {
     class: 'w-tag', 'aria-label': 'Tag reference',
-    title: 'One of this area\'s tags, a new name (its source and tag are assigned in the Tags tab), or the internal relay it reads.',
+    title: 'One of this area\'s tags, or a new name (its source and tag are assigned in the Tags tab).',
     onchange: (e) => {
       const value = e.target.value;
       if (value === '') return;   // the row's current state, shown, not re-selectable
       newTagForId = value === NEW_TAG ? element.id : '';
-      if (value === NEW_TAG) { element.tag = ''; element.relay = ''; element.sourceId = ''; element.itemId = ''; }
-      else if (value === RELAY) { element.relay = element.relay || 'M01'; element.tag = ''; element.sourceId = ''; element.itemId = ''; }
-      else { element.relay = ''; element.tag = value; element.sourceId = ''; element.itemId = ''; }
+      element.relay = '';
+      if (value === NEW_TAG) { element.tag = ''; element.sourceId = ''; element.itemId = ''; }
+      else { element.tag = value; element.sourceId = ''; element.itemId = ''; }
       rerender();
     }
   },
+    legacy ? h('option', { value: '', selected: true, text: 'Internal relay ' + element.relay.trim() }) : null,
     named && !listed ? h('option', { value: named, text: named, selected: true }) : null,
     direct ? h('option', { value: '', selected: true, text: isStoredPair(element) ? '(direct tag)' : '' }) : null,
     entries.map((t) =>
       h('option', { value: t.name, text: t.name + (((t.sourceId || '').trim() && (t.itemId || '').trim()) ? '' : ' · unassigned'), selected: named === t.name })),
-    h('option', { value: NEW_TAG, selected: creating, text: '+ New tag…' }),
-    h('option', { value: RELAY, selected: readsRelay(element), text: '(internal relay)' })
+    h('option', { value: NEW_TAG, selected: creating, text: '+ New tag…' })
   );
 }
 
@@ -1058,12 +1189,12 @@ function shouldLine(state, def) {
 }
 
 // Where the element's reading comes from, in the operator's words, the way the HMI builds it: a
-// relay element names its relay where a tag contact names its tag (the mapped tag's display name
-// and its source's name), a named entry also shows the tag it is bound to, and an entry that
+// legacy relay element names its relay where a tag contact names its tag (the mapped tag's display
+// name and its source's name), a named entry also shows the tag it is bound to, and an entry that
 // cannot resolve says which of the three reasons applies.
 function tagLabel(def) {
   if (!def) return '';
-  if ((def.relay || '').trim()) return 'relay ' + def.relay.trim();
+  if ((def.relay || '').trim()) return 'internal relay ' + def.relay.trim();
 
   const name = (def.tag || '').trim();
   if (name) {
@@ -1194,7 +1325,6 @@ function renderResultTab(editor) {
   const state = blockStates.get(draft.id);
   const index = indexBlock(draft);
   const elements = (state && state.elements) || [];
-  const word = state ? state.state : 'unknown';
   const progress = sequenceProgress(draft, state);
 
   // The tag lines read as the plant's own names, which come from the bridge's tag snapshot — the
@@ -1205,7 +1335,8 @@ function renderResultTab(editor) {
     h('div', { class: 'res-title' },
       h('span', { class: 'res-name', text: draft.name || '(unnamed)' }),
       h('span', { class: 'rl-kind', text: blockKindLabel(draft.kind) }),
-      h('span', { class: 'pill', id: 'resStamp', role: 'status', text: blockStateWord(word) }),
+      h('span', { class: 'pill', id: 'resStamp', role: 'status', text: displayWord(state) }),
+      h('span', { class: 'pill out-pill', id: 'resOutput', text: '', hidden: !(draft.outputTag || '').trim() }),
       h('span', { class: 'res-fresh mono small', id: 'resFresh', text: '' })),
     draft.description ? h('p', { class: 'muted small', text: draft.description }) : null,
     progress ? h('p', { class: 'rl-line warn', id: 'resProgress', text: progress }) : null,
@@ -1247,9 +1378,21 @@ function refreshResultHeader() {
   const stamp = el('resStamp');
   if (!stamp || !draft) return;
   const state = blockStates.get(draft.id);
-  const word = state ? state.state : 'unknown';
-  stamp.className = 'pill ' + blockStatePill(word);
-  stamp.textContent = blockStateWord(word);
+  const word = displayWord(state);
+  stamp.className = 'pill ' + displayPill(state);
+  stamp.textContent = word;
+
+  const outputPill = el('resOutput');
+  if (outputPill) {
+    const output = state ? state.output : null;
+    // The state carries the tag it was evaluated against; the draft may be older when another
+    // client saved while this page was open.
+    const tag = (output && output.tag ? output.tag : (draft.outputTag || '')).trim();
+    outputPill.hidden = !tag;
+    outputPill.className = 'pill out-pill ' + (output ? (output.state || 'none') : 'unknown');
+    outputPill.textContent = tag ? 'OUTPUT ' + tag + ' · ' + outputWord(output) : '';
+    outputPill.title = outputTitle(output);
+  }
 
   const progress = el('resProgress');
   if (progress) progress.textContent = sequenceProgress(draft, state);
@@ -1258,10 +1401,10 @@ function refreshResultHeader() {
   if (reason) {
     const why = state && state.reason ? state.reason : '';
     reason.textContent = !state ? ''
-      : word === 'ready' ? 'all conditions met'
-        : word === 'blocked' || word === 'unknown' ? (why ? 'Blocked by: ' + why : '')
+      : word === 'READY' ? 'all conditions met'
+        : word === 'BLOCKED' || word === 'UNVERIFIED' || word === 'NO DATA' ? (why ? 'Blocked by: ' + why : '')
           : why;
-    reason.className = 'res-reason ' + (word === 'ready' ? 'ok' : word === 'blocked' ? 'bad' : 'warn');
+    reason.className = 'res-reason ' + (word === 'READY' ? 'ok' : word === 'BLOCKED' ? 'bad' : 'warn');
   }
 
   const fresh = el('resFresh');
@@ -1271,6 +1414,8 @@ function refreshResultHeader() {
     fresh.className = 'res-fresh mono small' + (text.startsWith('stale') ? ' stale' : '');
     fresh.title = lastEvaluated ? 'evaluated ' + formatTime(lastEvaluated) : '';
   }
+
+  refreshOutputLive();
 
   // What the rows ride under is this head, and the poll writes text into it (the reason, the
   // progress): its height is re-measured here, so the line the strip rides never goes stale.
@@ -1319,6 +1464,7 @@ function referencedTagNames(block) {
     }
   };
   for (const condition of block.conditions || []) add(condition.tag);
+  add(block.outputTag);
   walk(block.elements);
   for (const step of block.steps || []) {
     add(step.completionTag);
@@ -1739,8 +1885,28 @@ function selectBlock(id) {
   renderResult();
 }
 
+// A coil authored here has no relay: its output is the block's OUTPUT tag. Without that tag the
+// store would reject the save with its relay wording, which no longer matches this page.
+function hasBareCoil(block) {
+  const walk = (list) => {
+    for (const element of list || []) {
+      if (isCoil(element) && !hasLegacyRelay(element)) return true;
+      if (walk(element.inputs)) return true;
+    }
+    return false;
+  };
+  if (walk(block.elements)) return true;
+  for (const step of block.steps || []) if (walk(step.elements)) return true;
+  return false;
+}
+
 function saveBlock() {
   if (!draft) return;
+  if (!(draft.outputTag || '').trim() && hasBareCoil(draft)) {
+    setSaveMessage('Set the block\'s OUTPUT tag before saving a coil.', 'err');
+    return;
+  }
+
   saveDraft(false);
 }
 
@@ -1867,11 +2033,22 @@ function applyState(snapshot) {
   for (const row of document.querySelectorAll('.block-row')) {
     const state = blockStates.get(row.dataset.block);
     const dot = row.querySelector('.state-dot');
-    dot.className = 'state-dot ' + (state ? state.state : '');
+    if (dot) dot.className = 'state-dot ' + (state ? displayKey(state) : '');
+    const outDot = row.querySelector('.out-dot');
+    if (outDot) {
+      const output = state ? state.output : null;
+      outDot.className = 'out-dot ' + (output ? (output.state || 'none') : 'none');
+      outDot.title = outputTitle(output);
+    }
     const block = defs.blocks.find((b) => b.id === row.dataset.block);
     const why = row.querySelector('.block-why');
     if (why && block) why.textContent = blockWhy(block, state);
-    row.title = state && state.reason ? state.state + ' — ' + state.reason : (state ? state.state : '');
+    const outLine = row.querySelector('.block-out');
+    if (outLine && block) {
+      outLine.className = 'block-out ' + (state && state.output ? (state.output.state || 'none') : 'none');
+      outLine.textContent = outputLine(block, state);
+    }
+    row.title = state && state.reason ? displayWord(state) + ' — ' + state.reason : displayWord(state);
   }
 
   renderResult();
@@ -1896,6 +2073,7 @@ function applyState(snapshot) {
   }
 
   for (const cell of document.querySelectorAll('[data-live-tag]')) paintTagLive(cell);
+  refreshOutputLive();
   refreshResultHeader();
 
   // The Tags tab's live column comes from the bridge's tag snapshot rather than the logic state,

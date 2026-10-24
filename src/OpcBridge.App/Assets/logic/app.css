@@ -18,6 +18,7 @@
   --bad: #a52118;
   --warn: #8a5a00;
   --info: #1f4e79;
+  --verify: #0b6e6e;
   --focus: #1d4ed8;
   --overlay: rgba(20,24,26,.45);
   --good-bg: #eaf2ec; --good-border: #bcd3c4; --good-text: #0b4d2c;
@@ -54,6 +55,7 @@
   --bad: #f0736a;
   --warn: #d9a441;
   --info: #6fb0e0;
+  --verify: #5fd1c9;
   --focus: #7aa2ff;
   --overlay: rgba(0,0,0,.62);
   --good-bg: #16291e; --good-border: #2c5138; --good-text: #8ed7ac;
@@ -226,6 +228,45 @@ body {
 .state-dot.blocked { background: var(--bad); border-color: var(--bad); }
 .state-dot.unknown { background: var(--warn); border-color: var(--warn); }
 .state-dot.disabled { background: var(--paper); border-color: var(--border2); }
+.state-dot.mismatch { background: var(--warn); border-color: var(--warn); animation: output-blink 1.2s step-end infinite; }
+.state-dot.unverified { background: var(--muted); border-color: var(--muted); }
+
+/* The block's output tag: its name rides beside the block name, and a second dot carries the
+   output verification so it can be read apart from the interlock dot. */
+.block-output {
+  flex: 0 1 auto;
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-micro);
+  color: var(--muted-strong);
+  border: 1px solid var(--border2);
+  border-radius: 2px;
+  padding: 0 4px;
+}
+.out-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border: 1px solid var(--border2);
+  background: var(--panel2);
+  border-radius: 50%;
+}
+.out-dot.match { background: var(--verify); border-color: var(--verify); }
+.out-dot.mismatch { background: var(--warn); border-color: var(--warn); animation: output-blink 1.2s step-end infinite; }
+.out-dot.unknown, .out-dot.none { background: var(--paper); border-color: var(--border2); }
+.block-out {
+  flex: 1 0 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  color: var(--muted);
+}
+.block-out.match { color: var(--verify); }
+.block-out.mismatch { color: var(--warn); }
 
 .result { padding: 10px 12px 20px; display: flex; flex-direction: column; gap: 8px; }
 .result .verdict { display: flex; align-items: center; gap: 8px; }
@@ -239,7 +280,13 @@ body {
 .result .verdict .stamp.blocked { color: var(--bad); }
 .result .verdict .stamp.unknown { color: var(--warn); }
 .result .verdict .stamp.disabled { color: var(--muted); }
+.result .verdict .stamp.mismatch { color: var(--warn); }
+.result .verdict .stamp.unverified { color: var(--muted); }
 .result .reason { color: var(--ink2); }
+.result .reason.out-line { font-family: var(--font-mono); font-size: var(--fs-micro); }
+.result .reason.out-line.match { color: var(--verify); }
+.result .reason.out-line.mismatch { color: var(--warn); }
+.result .reason.out-line.unknown, .result .reason.out-line.none { color: var(--muted); }
 .result .sub { color: var(--muted); }
 
 /* Editor ------------------------------------------------------------------ */
@@ -457,8 +504,41 @@ select { cursor: pointer; }
 .el-edit .w-op { flex: 0 0 96px; }
 .el-edit .w-num { flex: 0 0 84px; }
 .el-edit .w-sev { flex: 0 0 84px; }
-.el-edit .w-relay { flex: 0 0 90px; text-transform: uppercase; }
 .el-edit .w-tag-new { flex: 0 0 150px; }
+/* A relay authored in the HMI is shown read-only on the page: the page authors no relays. */
+.el-edit .legacy-relay {
+  flex: 0 0 auto;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  border: 1px dashed var(--border2);
+  border-radius: 2px;
+  padding: 1px 6px;
+}
+/* The block header's output feedback chip. */
+.field .w-output { flex: 1 1 auto; width: auto; }
+.out-live { flex: 0 0 auto; min-width: 0; }
+.out-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  white-space: nowrap;
+  padding: 1px 6px;
+  border: 1px solid var(--border2);
+  border-radius: 2px;
+  background: var(--panel2);
+  color: var(--muted-strong);
+}
+.out-chip.match { color: var(--verify); border-color: var(--verify); }
+.out-chip.mismatch { color: var(--warn); border-color: var(--warn); animation: output-blink 1.2s step-end infinite; }
+.out-chip.unknown, .out-chip.none { color: var(--muted); }
 /* A row still carrying the legacy direct pair: the HMI's own treatment — a boxed mark whose
    tooltip holds the whole sentence, beside the value, both read-only. The assignment belongs to
    the area's tags, so nothing here offers to edit the pair. */
@@ -550,6 +630,19 @@ select { cursor: pointer; }
 .pill.bad { background: var(--bad-bg); border-color: var(--bad-border); color: var(--bad-text); }
 .pill.warn { background: var(--warn-bg); border-color: var(--warn-border); color: var(--warn-text); }
 .pill.muted { color: var(--muted); }
+
+/* The Result header's output verification: a colour of its own, blinking while the live output
+   disagrees with the interlock result. */
+.out-pill { font-family: var(--font-mono); font-size: var(--fs-micro); }
+.out-pill.match { background: transparent; border-color: var(--verify); color: var(--verify); }
+.out-pill.mismatch { background: var(--warn-bg); border-color: var(--warn-border); color: var(--warn-text); animation: output-blink 1.2s step-end infinite; }
+.out-pill.unknown, .out-pill.none { color: var(--muted); }
+.out-mismatch { animation: output-blink 1.2s step-end infinite; }
+
+@keyframes output-blink { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) {
+  .state-dot.mismatch, .out-dot.mismatch, .out-chip.mismatch, .out-pill.mismatch, .out-mismatch { animation: none; }
+}
 
 /* Result tab ------------------------------------------------------------- */
 

@@ -220,7 +220,15 @@ public sealed class LogicPageTests
         Assert.DoesNotContain("'aria-label': 'Source id'", script);
         Assert.DoesNotContain("'aria-label': 'Item id'", script);
         Assert.DoesNotContain("'__direct__'", script);
-        Assert.Contains("text: '(internal relay)'", script);
+
+        // One output tag per block, named in the Editor header; the page authors no relays.
+        Assert.Contains("id: 'fOutput'", script);
+        Assert.Contains("draft.outputTag", script);
+        Assert.Contains("function refreshOutputLive(", script);
+        Assert.Contains("function displayWord(", script);
+        Assert.Contains("function outputLine(", script);
+        Assert.Contains("add(block.outputTag);", script);
+        Assert.DoesNotContain("text: '(internal relay)'", script);
 
         // A new name is authored on the row itself. It joins the area's list unassigned, so the
         // Tags tab still owns the one assignment — the source and the tag behind that name.
@@ -284,7 +292,7 @@ public sealed class LogicPageTests
         Assert.Contains("? label + ' · ' + tag.sourceName.trim() : label;", script);
         Assert.Contains("return name + ' (not assigned)';", script);
         Assert.Contains("return name + (areaName ? ' (not in ' + areaName + ')' : ' (no area)');", script);
-        Assert.Contains("return 'relay ' + def.relay.trim();", script);
+        Assert.Contains("return 'internal relay ' + def.relay.trim();", script);
 
         // LogicText.TagLiveChip: the Tags tab's raw chip, quality included.
         Assert.Contains("if (tag.isGood === false) return 'bad';", script);
@@ -538,6 +546,42 @@ public sealed class LogicPageTests
         Assert.DoesNotContain(".el.gate", css);
         Assert.DoesNotContain(".el.fb", css);
         Assert.DoesNotContain(".el.parent", css);
+    }
+
+    [Fact]
+    public void Script_ShowsTheOutputTagAndItsSecondCheck()
+    {
+        string script = OnDisk(ScriptFile);
+        string css = OnDisk(CssFile);
+
+        // The output tag is one per block, read as feedback only; a new name joins the area's
+        // list unassigned, like a row's + New tag.
+        Assert.Contains("outputTag: ''", script);
+        Assert.Contains("title: 'This block\\'s output/coil tag — read as feedback only. Its source and tag are assigned on the Tags tab.'", script);
+        Assert.Contains("if (name) rememberTagName(name);", script);
+
+        // The rail names the tag beside the block and carries a second dot for the output, so
+        // the interlock check and the feedback check read apart.
+        Assert.Contains("class: 'block-output mono', text: outputTag", script);
+        Assert.Contains("class: 'out-dot ' + (output ? output.state : 'none')", script);
+        Assert.Contains("if (output.state === 'mismatch') return 'MISMATCH';", script);
+        Assert.Contains("if (output.state === 'unknown') return 'UNVERIFIED';", script);
+        Assert.Contains("return 'OUTPUT ' + tag + ' · ' + outputWord(output) + outputActual(output);", script);
+
+        // The Result header's own pill, and the blink that marks a disagreement.
+        Assert.Contains("id: 'resOutput'", script);
+        Assert.Contains("outputPill.className = 'pill out-pill ' + (output ? (output.state || 'none') : 'unknown');", script);
+        Assert.Contains("@keyframes output-blink", css);
+        Assert.Contains("@media (prefers-reduced-motion: reduce)", css);
+
+        // The page authors no relays: a relay from an HMI-authored block is shown read-only.
+        Assert.DoesNotContain("class: 'w-relay", script);
+        Assert.DoesNotContain("'Relay the coil drives'", script);
+        Assert.DoesNotContain("text: '(internal relay)'", script);
+        Assert.Contains("class: 'legacy-relay mono small'", script);
+
+        // The verified colour is a token in both themes; the theme test also holds the sets equal.
+        Assert.Contains("--verify:", css);
     }
 
     [Theory]

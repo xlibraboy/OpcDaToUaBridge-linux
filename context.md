@@ -406,11 +406,16 @@ that tab is gone, and the page is the whole editor (branch `feature/logic-web-ap
 **The same plants are authored in a browser too:** the bridge serves this window's whole surface as
 the HTML page at `/logic` (Editor | Tags | Result), which reads and writes the same store over the
 same `/api/logic*` endpoints, and splits the work the way this page does. Its Editor authors the
-block and its rows, each row picking one of the area's tags **by name** (or the internal relay it
-reads) and never assigning a source/tag pair of its own — a row can also name a **new** tag, which
+block and its rows, each row picking one of the area's tags **by name**
+and never assigning a source/tag pair of its own — a row can also name a **new** tag, which
 joins the area's list unassigned; the raw `source id`/`item id` inputs are
 gone, a legacy pair shows read-only the HMI's own way (`Direct tag: …`, the whole sentence in the
-mark's tooltip) and is kept through a save until the row picks a named entry. Its **Tags tab owns
+mark's tooltip) and is kept through a save until the row picks a named entry. The block header
+carries its one **OUTPUT** tag — one of the area's tags, read as feedback only: the bridge
+verifies the live output against the interlock result and the page shows a second, differently
+coloured dot beside the interlock dot (blinking while they disagree, grey while unverified), so a
+block is READY only when both agree. The page authors no internal relays: a relay row authored in
+the HMI is shown read-only and kept, and a coil is the block's output rung. Its **Tags tab owns
 the assignment**: the block's own **AREA** (stored areas as suggestions, the list following the name
 as it is typed, so the area and the list it reads cannot disagree) beside the area's list with its
 live chips, `+ New tag`, `From bridge…`, `Save list` (the separate `/api/logic/tagsources` save) —

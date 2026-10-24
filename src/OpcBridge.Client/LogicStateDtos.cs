@@ -28,6 +28,12 @@ public sealed class LogicBlockStateDto
     public string? Reason { get; set; }
 
     /// <summary>
+    /// The block's output-tag feedback check: whether the live output agrees with the interlock
+    /// result. null on snapshots written before this field existed.
+    /// </summary>
+    public LogicBlockOutputStateDto? Output { get; set; }
+
+    /// <summary>
     /// Every element of the block's network, depth-first in drawing order — contacts, gates and
     /// function blocks both, each with its own state. The simple conditions form appears here
     /// as its expansion, so a client only ever renders this list.
@@ -36,6 +42,50 @@ public sealed class LogicBlockStateDto
 
     /// <summary>Per-step state for sequence blocks; empty for interlocks / permissives.</summary>
     public List<LogicStepStateDto> Steps { get; set; } = new();
+}
+
+/// <summary>
+/// The block's output-tag feedback check. <see cref="Expected"/> is what the interlock result
+/// asks the output to be; <see cref="Actual"/> is the live tag. The output tag is read only —
+/// the evaluator never writes it.
+/// </summary>
+public sealed class LogicBlockOutputStateDto
+{
+    /// <summary>The area's tags entry name the block's output reads (e.g. "PUMP1_RUN").</summary>
+    public string Tag { get; set; } = string.Empty;
+
+    /// <summary>One of <see cref="LogicOutputStates"/>.</summary>
+    public string State { get; set; } = LogicOutputStates.None;
+
+    /// <summary>The interlock result: should the output be on? null when it is undecided.</summary>
+    public bool? Expected { get; set; }
+
+    /// <summary>The live tag bit; null when no good value has arrived.</summary>
+    public bool? Actual { get; set; }
+
+    /// <summary>The live value rendered the way the plant reads it (on/off text, number + unit).</summary>
+    public string ValueText { get; set; } = "—";
+
+    /// <summary>Why the verification is unknown or mismatched, in the operator's words.</summary>
+    public string? Reason { get; set; }
+}
+
+/// <summary>Evaluated states of a block's output-tag verification.</summary>
+public static class LogicOutputStates
+{
+    /// <summary>No output tag, or a disabled block — nothing to verify.</summary>
+    public const string None = "none";
+
+    /// <summary>The tag is unresolved, unassigned, or has no good value.</summary>
+    public const string Unknown = "unknown";
+
+    /// <summary>The live output agrees with the interlock result.</summary>
+    public const string Match = "match";
+
+    /// <summary>The live output disagrees with the interlock result.</summary>
+    public const string Mismatch = "mismatch";
+
+    public static readonly string[] All = { None, Unknown, Match, Mismatch };
 }
 
 /// <summary>

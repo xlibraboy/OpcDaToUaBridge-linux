@@ -45,6 +45,15 @@ public sealed class LogicBlockDto
     /// </summary>
     public string TagSource { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Name of the area's tags entry that is this block's output/coil feedback (e.g.
+    /// "PUMP1_RUN"). The block's output is represented by this name; the entry holds its source
+    /// and tag. Empty = no output verification. The output is read as feedback only — the
+    /// evaluator never writes it; the block reads READY only when the interlock passes and the
+    /// live output agrees.
+    /// </summary>
+    public string OutputTag { get; set; } = string.Empty;
+
     /// <summary>Optional operator note rendered under the name.</summary>
     public string Description { get; set; } = string.Empty;
 
@@ -351,9 +360,9 @@ public static class LogicElementKinds
     public const string Contact = "contact";
 
     /// <summary>
-    /// A coil: drives its single input onto an internal relay (e.g. "M01") every evaluation.
-    /// The relay a coil drives is what any other block's contacts and gates read — the PLC's
-    /// internal memory, used to split complex logic across blocks.
+    /// A coil: passes its single input through every evaluation. The Logic web page uses it as
+    /// the block's output rung whose feedback is the block's <see cref="LogicBlockDto.OutputTag"/>;
+    /// a legacy coil still drives its internal <see cref="LogicElementDto.Relay"/>.
     /// </summary>
     public const string Coil = "coil";
 

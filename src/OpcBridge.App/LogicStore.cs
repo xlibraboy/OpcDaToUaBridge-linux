@@ -345,6 +345,10 @@ public sealed class LogicStore
         }
 
         LogicAreaTagsDto? areaTags = LogicAreaTags.Find(area_tags_, resolvedName);
+        // The block's output feedback is one of the area's named tags; a name that is not in the
+        // list yet is kept as authored (the Tags tab lists it for assignment).
+        string outputTag = LogicAreaTags.CanonicalName(areaTags, block.OutputTag);
+        bool hasOutputTag = outputTag.Length > 0;
 
         string kind = block.Kind.ToLowerInvariant();
         bool isSequence = kind == LogicBlockKinds.Sequence;
@@ -352,7 +356,7 @@ public sealed class LogicStore
         // A block carries its logic either as an IEC network or as the simple conditions form;
         // the two are alternatives, never both, so there is one source of truth to evaluate.
         List<LogicElementDto> elements = new();
-        if (!TryNormalizeElements(block.Elements, areaTags, out elements, out error))
+        if (!TryNormalizeElements(block.Elements, areaTags, hasOutputTag, out elements, out error))
         {
             normalized = default!;
             return false;
@@ -406,7 +410,7 @@ public sealed class LogicStore
             HashSet<string> stepNames = new(StringComparer.OrdinalIgnoreCase);
             foreach (LogicStepDto step in block.Steps)
             {
-                if (!TryNormalizeStep(step, areaTags, out LogicStepDto normalizedStep, out error))
+                if (!TryNormalizeStep(step, areaTags, hasOutputTag, out LogicStepDto normalizedStep, out error))
                 {
                     normalized = default!;
                     return false;
@@ -442,6 +446,7 @@ public sealed class LogicStore
             Group = blockGroup,
             Area = blockArea,
             TagSource = resolvedName,
+            OutputTag = outputTag,
             Description = block.Description?.Trim() ?? string.Empty,
             Kind = kind,
             Enabled = block.Enabled,
@@ -459,6 +464,7 @@ public sealed class LogicStore
     private static bool TryNormalizeStep(
         LogicStepDto step,
         LogicAreaTagsDto? areaTags,
+        bool hasOutputTag,
         out LogicStepDto normalized,
         out string? error)
     {
@@ -471,7 +477,7 @@ public sealed class LogicStore
         }
 
         List<LogicElementDto> stepElements = new();
-        if (!TryNormalizeElements(step.Elements, areaTags, out stepElements, out error))
+        if (!TryNormalizeElements(step.Elements, areaTags, hasOutputTag, out stepElements, out error))
         {
             normalized = default!;
             return false;
@@ -559,6 +565,7 @@ public sealed class LogicStore
     private static bool TryNormalizeElements(
         IReadOnlyList<LogicElementDto>? elements,
         LogicAreaTagsDto? areaTags,
+        bool hasOutputTag,
         out List<LogicElementDto> normalized,
         out string? error)
     {
@@ -567,7 +574,7 @@ public sealed class LogicStore
 
         foreach (LogicElementDto element in elements ?? Array.Empty<LogicElementDto>())
         {
-            if (!TryNormalizeElement(element, 0, ref budget, areaTags, out LogicElementDto child, out error))
+            if (!TryNormalizeElement(element, 0, ref budget, areaTags, hasOutputTag, out LogicElementDto child, out error))
             {
                 return false;
             }
@@ -584,6 +591,7 @@ public sealed class LogicStore
         int depth,
         ref int budget,
         LogicAreaTagsDto? areaTags,
+        bool hasOutputTag,
         out LogicElementDto normalized,
         out string? error)
     {
@@ -717,7 +725,7 @@ public sealed class LogicStore
             return true;
         }
 
-        if (LogicElementKinds.IsCoil(kind) && relay.Length == 0)
+        if (LogicElementKinds.IsCoil(kind) && relay.Length == 0 && !hasOutputTag)
         {
             normalized = default!;
             error = "A coil needs a relay (e.g. M01).";
@@ -752,7 +760,7 @@ public sealed class LogicStore
         List<LogicElementDto> inputs = new();
         foreach (LogicElementDto input in element.Inputs)
         {
-            if (!TryNormalizeElement(input, depth + 1, ref budget, areaTags, out LogicElementDto child, out error))
+            if (!TryNormalizeElement(input, depth + 1, ref budget, areaTags, hasOutputTag, out LogicElementDto child, out error))
             {
                 normalized = default!;
                 return false;

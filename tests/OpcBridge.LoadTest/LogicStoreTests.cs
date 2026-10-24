@@ -651,6 +651,59 @@ public sealed class LogicStoreTests : IDisposable
     }
 
     [Fact]
+    public void TrySave_OutputTagIsCanonicalizedKeptAndUsed()
+    {
+        LogicStore store = CreateStore();
+        store.TrySaveAreaTags(
+            CreateAreaTags("DRYEND", ("START_PB", "sim", "Start"), ("pump_run", "sim", "Pump")),
+            out _, out _, out _);
+
+        LogicBlockDto block = CreateNamedTagInterlock();
+        block.OutputTag = " PUMP_RUN ";
+        bool ok = store.TrySave(block, out LogicBlockDto saved, out _, out string? error);
+
+        Assert.True(ok, error);
+        // The area's own spelling wins, and the output is a name the Tags tab must list.
+        Assert.Equal("pump_run", saved.OutputTag);
+        Assert.Contains(LogicAreaTags.UsedNames(saved), name => string.Equals(name, "pump_run", StringComparison.OrdinalIgnoreCase));
+
+        // A name the list does not hold yet is kept as authored (the Tags tab lists it unassigned).
+        block.OutputTag = " NOT_IN_LIST ";
+        ok = store.TrySave(block, out saved, out _, out error);
+        Assert.True(ok, error);
+        Assert.Equal("NOT_IN_LIST", saved.OutputTag);
+
+        LogicStore reloaded = new(Options.Create(new BridgeOptions()));
+        (IReadOnlyList<LogicBlockDto> blocks, _) = reloaded.GetSnapshot();
+        Assert.Equal("NOT_IN_LIST", Assert.Single(blocks).OutputTag);
+    }
+
+    [Fact]
+    public void TrySave_CoilWithoutARelayNeedsTheBlocksOutputTag()
+    {
+        LogicStore store = CreateStore();
+        store.TrySaveAreaTags(CreateAreaTags(), out _, out _, out _);
+
+        LogicBlockDto block = CreateNamedTagInterlock();
+        block.Conditions.Clear();
+        block.Elements = new List<LogicElementDto>
+        {
+            new() { Kind = LogicElementKinds.Coil, Inputs = { Contact() } }
+        };
+        block.OutputTag = "START_PB";
+
+        bool ok = store.TrySave(block, out LogicBlockDto saved, out _, out string? error);
+
+        Assert.True(ok, error);
+        Assert.Equal(string.Empty, Assert.Single(saved.Elements).Relay);
+
+        // Without the block's output tag the coil still needs its legacy relay.
+        block.OutputTag = string.Empty;
+        Assert.False(store.TrySave(block, out _, out _, out string? missingOutput));
+        Assert.Equal("A coil needs a relay (e.g. M01).", missingOutput);
+    }
+
+    [Fact]
     public void TrySave_KeepsARelayContactBesideTagContactsInOneGate()
     {
         LogicStore store = CreateStore();

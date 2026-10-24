@@ -1184,4 +1184,193 @@ public sealed class LogicStateEvaluatorTests
         Assert.Equal(LogicBlockStates.Ready, done.State);
         Assert.Equal(LogicStepStates.Done, Assert.Single(done.Steps).State);
     }
+
+    // ---- Block output feedback (read-only verification) ----
+
+    private static LogicBlockDto OutputBlock(string area, string outputTag)
+    {
+        LogicBlockDto block = NamedFlat(area, "START_PB");
+        block.OutputTag = outputTag;
+        return block;
+    }
+
+    [Fact]
+    public void Output_Match_KeepsAnOtherwiseReadyBlockReady()
+    {
+        LogicAreaTagsDto source = AreaTags("DRYEND", ("START_PB", "Permit"), ("PUMP", "Pump"));
+
+        LogicBlockStateDto state = LogicStateEvaluator.EvaluateBlock(
+            OutputBlock("DRYEND", "PUMP"),
+            Values(("sim", "Permit", true, true), ("sim", "Pump", true, true)),
+            Mappings(),
+            states: null,
+            nowUtc: Now,
+            tagSources: new[] { source });
+
+        Assert.Equal(LogicBlockStates.Ready, state.State);
+        Assert.NotNull(state.Output);
+        Assert.Equal(LogicOutputStates.Match, state.Output!.State);
+        Assert.True(state.Output.Expected);
+        Assert.True(state.Output.Actual);
+        Assert.Null(state.Output.Reason);
+    }
+
+    [Fact]
+    public void Output_Mismatch_BlocksAnOtherwiseReadyBlock()
+    {
+        LogicAreaTagsDto source = AreaTags("DRYEND", ("START_PB", "Permit"), ("PUMP", "Pump"));
+        LogicBlockDto block = OutputBlock("DRYEND", "PUMP");
+
+        LogicBlockStateDto state = LogicStateEvaluator.EvaluateBlock(
+            block,
+            Values(("sim", "Permit", true, true), ("sim", "Pump", false, true)),
+            Mappings(),
+            states: null,
+            nowUtc: Now,
+            tagSources: new[] { source });
+
+        // The interlock permits, but the plant's output feedback does not follow it.
+        Assert.Equal(LogicBlockStates.Blocked, state.State);
+        Assert.Equal("Output PUMP is not on.", state.Reason);
+        Assert.Equal(LogicOutputStates.Mismatch, state.Output!.State);
+        Assert.True(state.Output.Expected);
+        Assert.False(state.Output.Actual);
+    }
+
+    [Fact]
+    public void Output_ReportsAMismatchWithoutOverridingABlockedInterlock()
+    {
+        LogicAreaTagsDto source = AreaTags("DRYEND", ("START_PB", "Permit"), ("PUMP", "Pump"));
+
+        LogicBlockStateDto state = LogicStateEvaluator.EvaluateBlock(
+            OutputBlock("DRYEND", "PUMP"),
+            Values(("sim", "Permit", false, true), ("sim", "Pump", true, true)),
+            Mappings(),
+            states: null,
+            nowUtc: Now,
+            tagSources: new[] { source });
+
+        // The interlock's own reason stands; the second check is still reported (the output is on
+        // while it should be off).
+        Assert.Equal(LogicBlockStates.Blocked, state.State);
+        Assert.Equal("START_PB must be given", state.Reason);
+        Assert.Equal(LogicOutputStates.Mismatch, state.Output!.State);
+        Assert.False(state.Output.Expected);
+        Assert.True(state.Output.Actual);
+        Assert.Equal("Output PUMP is still on.", state.Output.Reason);
+    }
+
+    [Fact]
+    public void Output_UnassignedEntry_MakesAnOtherwiseReadyBlockUnknown()
+    {
+        LogicAreaTagsDto source = AreaTags("DRYEND", ("START_PB", "Permit"), ("PUMP", ""));
+
+        LogicBlockStateDto state = LogicStateEvaluator.EvaluateBlock(
+            OutputBlock("DRYEND", "PUMP"),
+            Values(("sim", "Permit", true, true)),
+            Mappings(),
+            states: null,
+            nowUtc: Now,
+            tagSources: new[] { source });
+
+        Assert.Equal(LogicBlockStates.Unknown, state.State);
+        Assert.Equal("no data for PUMP (not assigned)", state.Reason);
+        Assert.Equal(LogicOutputStates.Unknown, state.Output!.State);
+        Assert.True(state.Output.Expected);
+        Assert.Null(state.Output.Actual);
+    }
+
+    [Fact]
+    public void Output_NoneWithoutATag_OrOnADisabledBlock()
+    {
+        LogicAreaTagsDto source = AreaTags("DRYEND", ("START_PB", "Permit"), ("PUMP", "Pump"));
+
+        LogicBlockStateDto noTag = LogicStateEvaluator.EvaluateBlock(
+            OutputBlock("DRYEND", ""),
+            Values(("sim", "Permit", true, true)),
+            Mappings(),
+            states: null,
+            nowUtc: Now,
+            tagSources: new[] { source });
+
+        Assert.Equal(LogicBlockStates.Ready, noTag.State);
+        Assert.Equal(LogicOutputStates.None, noTag.Output!.State);
+        Assert.Null(noTag.Output.Expected);
+
+        LogicBlockDto disabled = OutputBlock("DRYEND", "PUMP");
+        disabled.Enabled = false;
+        LogicBlockStateDto off = LogicStateEvaluator.EvaluateBlock(
+            disabled,
+            Values(("sim", "Permit", true, true), ("sim", "Pump", true, true)),
+            Mappings(),
+            states: null,
+            nowUtc: Now,
+            tagSources: new[] { source });
+
+        Assert.Equal(LogicBlockStates.Disabled, off.State);
+        Assert.Equal(LogicOutputStates.None, off.Output!.State);
+        Assert.Null(off.Output.Expected);
+    }
+
+    [Fact]
+    public void Output_Sequence_ExpectsTheOutputOnlyWhenEveryStepIsDone()
+    {
+        LogicAreaTagsDto source = AreaTags("DRYEND", ("START_PB", "Permit"), ("PUMP", "Pump"));
+        LogicBlockDto block = Sequence(Step("Start", null, Condition(tag: "START_PB")));
+        block.TagSource = "DRYEND";
+        block.OutputTag = "PUMP";
+
+        LogicBlockStateDto running = LogicStateEvaluator.EvaluateBlock(
+            block,
+            Values(("sim", "Permit", false, true), ("sim", "Pump", false, true)),
+            Mappings(),
+            states: null,
+            nowUtc: Now,
+            tagSources: new[] { source });
+        LogicBlockStateDto done = LogicStateEvaluator.EvaluateBlock(
+            block,
+            Values(("sim", "Permit", true, true), ("sim", "Pump", true, true)),
+            Mappings(),
+            states: null,
+            nowUtc: Now,
+            tagSources: new[] { source });
+        LogicBlockStateDto late = LogicStateEvaluator.EvaluateBlock(
+            block,
+            Values(("sim", "Permit", true, true), ("sim", "Pump", false, true)),
+            Mappings(),
+            states: null,
+            nowUtc: Now,
+            tagSources: new[] { source });
+
+        Assert.Equal(LogicBlockStates.Blocked, running.State);
+        Assert.Equal(LogicOutputStates.Match, running.Output!.State);
+        Assert.False(running.Output.Expected);
+
+        Assert.Equal(LogicBlockStates.Ready, done.State);
+        Assert.Equal(LogicOutputStates.Match, done.Output!.State);
+        Assert.True(done.Output.Expected);
+
+        Assert.Equal(LogicBlockStates.Blocked, late.State);
+        Assert.Equal("Output PUMP is not on.", late.Reason);
+        Assert.Equal(LogicOutputStates.Mismatch, late.Output!.State);
+    }
+
+    [Fact]
+    public void Signature_ChangesWhenOnlyTheOutputFeedbackChanges()
+    {
+        LogicAreaTagsDto source = AreaTags("DRYEND", ("START_PB", "Permit"), ("PUMP", "Pump"));
+        LogicBlockDto block = OutputBlock("DRYEND", "PUMP");
+
+        LogicStateSnapshot on = LogicStateEvaluator.Evaluate(
+            new[] { block }, 1,
+            Values(("sim", "Permit", true, true), ("sim", "Pump", true, true)),
+            Mappings(), Now, states: null, tagSources: new[] { source });
+        LogicStateSnapshot off = LogicStateEvaluator.Evaluate(
+            new[] { block }, 1,
+            Values(("sim", "Permit", true, true), ("sim", "Pump", false, true)),
+            Mappings(), Now, states: null, tagSources: new[] { source });
+
+        Assert.NotEqual(LogicStateEvaluator.Signature(on), LogicStateEvaluator.Signature(off));
+        Assert.Equal(LogicOutputStates.Mismatch, Assert.Single(off.Blocks).Output!.State);
+    }
 }
