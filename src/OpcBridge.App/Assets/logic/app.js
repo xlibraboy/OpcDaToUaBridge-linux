@@ -435,11 +435,7 @@ function drawEditor(editor) {
     const state = blockStates.get(draft.id);
     const list = state ? state.elements : [];
     if (!list.length) net.appendChild(h('p', { class: 'muted small', text: 'The bridge has not evaluated this block yet.' }));
-    for (const item of list) {
-      net.appendChild(h('div', { class: 'el readonly d' + Math.min(item.depth || 0, 3), 'data-id': item.id, 'data-live': '1', style: '--depth:' + item.depth },
-        renderLive(item.kind, '', item)
-      ));
-    }
+    for (const node of resultTree(list)) net.appendChild(readOnlyNode(node, 0));
     editor.appendChild(net);
     return;
   }
@@ -612,6 +608,20 @@ function renderNet() {
   return net;
 }
 
+// The bridge's own expansion of a block that is authored in the flat forms: the same elements and
+// depths the Result tab reads, written nested the way the editor's own network is, so those rows sit
+// behind the same guides and the read-only network reads as a tree too.
+function readOnlyNode(node, depth) {
+  const box = h('div', { class: 'el-node' });
+  box.appendChild(h('div', { class: 'el readonly d' + Math.min(depth, 3), 'data-id': node.element.id, 'data-live': '1', style: '--depth:' + depth },
+    renderLive(node.element.kind, '', node.element)));
+  if (!node.children.length) return box;
+  const kids = h('div', { class: 'el-kids', style: '--depth:' + (depth + 1) });
+  for (const child of node.children) kids.appendChild(readOnlyNode(child, depth + 1));
+  box.appendChild(kids);
+  return box;
+}
+
 // One element and the inputs under it, written as nested nodes rather than as one flat list of
 // indented rows. A row rides the top of the editor while its own children are still on screen —
 // and a sticky box is only released at the end of its containing block, which here is the row
@@ -619,10 +629,13 @@ function renderNet() {
 // instead of to the end of its own children, and the leaf rows would carry the same offset for
 // nothing.
 function renderNode(element, path) {
+  const depth = path.length - 1;
   const node = h('div', { class: 'el-node' });
   node.appendChild(renderElement(element, path));
   if (!element.inputs.length) return node;
-  const kids = h('div', { class: 'el-kids' });
+  // The container carries the depth of the rows inside it: it draws the guides they sit behind, one
+  // line per level above them (see .el-kids).
+  const kids = h('div', { class: 'el-kids', style: '--depth:' + (depth + 1) });
   for (let i = 0; i < element.inputs.length; i++) kids.appendChild(renderNode(element.inputs[i], path.concat(i)));
   node.appendChild(kids);
   return node;
@@ -1270,8 +1283,8 @@ function catalogLabel(sourceId, itemId) {
 // One evaluated element, the way the retired Logic app presented it: the mark, the form it takes,
 // the sentence that explains it, the bit it reads and the raw value behind it, then the small
 // print (the comparison, progress, the tag, what to do next).
-function resultRow(state, def) {
-  const row = h('div', { class: 'rl', 'data-id': state.id, 'data-live': '1', style: '--depth:' + (state.depth || 0) });
+function resultRow(state, def, depth) {
+  const row = h('div', { class: 'rl', 'data-id': state.id, 'data-live': '1', style: '--depth:' + depth });
   const card = h('div', { class: 'rl-card ' + statePill(state.state) },
     h('div', { class: 'rl-head' },
       h('span', { class: 'rl-mark', text: state.state === 'true' ? '✓' : state.state === 'false' ? '✗' : '—' }),
@@ -1326,19 +1339,19 @@ function resultTree(elements) {
   return roots;
 }
 
-function resultNode(node, index) {
+function resultNode(node, index, depth) {
   const box = h('div', { class: 'rl-node' });
-  box.appendChild(resultRow(node.element, index.byId.get(node.element.id)));
+  box.appendChild(resultRow(node.element, index.byId.get(node.element.id), depth));
   if (!node.children.length) return box;
-  const kids = h('div', { class: 'rl-kids' });
-  for (const child of node.children) kids.appendChild(resultNode(child, index));
+  const kids = h('div', { class: 'rl-kids', style: '--depth:' + (depth + 1) });
+  for (const child of node.children) kids.appendChild(resultNode(child, index, depth + 1));
   box.appendChild(kids);
   return box;
 }
 
 function resultNet(elements, index) {
   const net = h('div', { class: 'net' });
-  for (const node of resultTree(elements)) net.appendChild(resultNode(node, index));
+  for (const node of resultTree(elements)) net.appendChild(resultNode(node, index, 0));
   return net;
 }
 

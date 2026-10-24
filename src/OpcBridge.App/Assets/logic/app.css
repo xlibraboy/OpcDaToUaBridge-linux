@@ -418,6 +418,25 @@ select { cursor: pointer; }
 .el-node, .el-kids { display: flex; flex-direction: column; gap: 6px; }
 .rl-node, .rl-kids { display: flex; flex-direction: column; gap: 6px; }
 
+/* The nesting rail: one guide per level a row sits behind, beside it — the HMI's own treatment,
+   whose element rows carry a guide per enclosing level (LogicElementRowView /
+   LogicResultElementRowView). The children's container draws them here, because a box spans its
+   whole group: the lines run unbroken from the row above to the last row under it, where a guide
+   per row would break at every gap between the cards. Its --depth is the depth its own rows are
+   drawn at — app.js writes them the children's — so the innermost line lands exactly on the card
+   edge of the row that owns the level, and the rows indenting on that same 18px step line up with
+   them. */
+.el-kids, .rl-kids { position: relative; }
+.el-kids::before, .rl-kids::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: calc(var(--depth, 0) * 18px);
+  background: repeating-linear-gradient(to right, var(--border2) 0 1px, transparent 1px 18px);
+}
+
 /* The parent, kept on screen while its children are: the script points this box at the row the
    rows under the head belong to, and the line it rides is that head's own height —
    --net-stick-top, measured in the script. The box takes no room in the flow and the strip sits

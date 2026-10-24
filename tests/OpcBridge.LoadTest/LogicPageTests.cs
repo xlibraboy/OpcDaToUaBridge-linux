@@ -527,6 +527,45 @@ public sealed class LogicPageTests
     }
 
     [Fact]
+    public void Script_DrawsTheNestingRailsTheHmiDraws()
+    {
+        string script = OnDisk(ScriptFile);
+        string css = OnDisk(CssFile);
+
+        // The HMI's own rail: an element row carries one guide per level enclosing it, beside the row
+        // card, so a deep network reads as a tree (LogicElementRowView, and the same on the result
+        // rows). Here the children's container draws them — a box spans its whole group, so the
+        // lines hold across the gaps between the cards, where a guide per row would break — and the
+        // container carries the depth of the rows inside it.
+        Assert.Contains("class: 'el-kids', style: '--depth:' + (depth + 1)", script);
+        Assert.Contains("class: 'rl-kids', style: '--depth:' + (depth + 1)", script);
+        Assert.Contains("position: relative;", Rule(css, ".el-kids, .rl-kids {"));
+        string rail = Rule(css, ".el-kids::before, .rl-kids::before {");
+        Assert.Contains("position: absolute;", rail);
+        Assert.Contains("top: 0;", rail);
+        Assert.Contains("bottom: 0;", rail);
+        Assert.Contains("width: calc(var(--depth, 0) * 18px);", rail);
+        Assert.Contains("background: repeating-linear-gradient(to right, var(--border2) 0 1px, transparent 1px 18px);", rail);
+
+        // A guide every 18px is only beside the row that owns its level because a row indents on that
+        // same step: the innermost line lands on the card edge of the row above.
+        Assert.Contains("margin-left: calc(var(--depth, 0) * 18px);", Rule(css, ".el {"));
+        Assert.Contains("margin-left: calc(var(--depth, 0) * 18px);", Rule(css, ".rl {"));
+
+        // The evaluated rows are drawn at the depth the flat list was folded to, not the number the
+        // bridge sent, because the lines are drawn for the folded depth (resultTree); and the
+        // read-only expansion of a flat-conditions block nests the same way, so the Editor tab draws
+        // its rows behind the same guides whether the network is editable or not.
+        Assert.Contains("function resultNode(node, index, depth)", script);
+        Assert.Contains("resultRow(node.element, index.byId.get(node.element.id), depth)", script);
+        Assert.Contains("net.appendChild(resultNode(node, index, 0))", script);
+        Assert.Contains("style: '--depth:' + depth", script);
+        Assert.Contains("function readOnlyNode(", script);
+        Assert.Contains("for (const node of resultTree(list)) net.appendChild(readOnlyNode(node, 0));", script);
+        Assert.Contains("class: 'el readonly d' + Math.min(depth, 3)", script);
+    }
+
+    [Fact]
     public void Script_KeepsTheEditorsScrollWhenItRebuilds()
     {
         string script = OnDisk(ScriptFile);
@@ -571,7 +610,7 @@ public sealed class LogicPageTests
         // the row is: the gate / function-block colours are gone, so a timer and an AND no longer
         // read as different things.
         Assert.Contains("const cls = 'el d' + Math.min(depth, 3);", script);
-        Assert.Contains("class: 'el readonly d' + Math.min(item.depth || 0, 3)", script);
+        Assert.Contains("class: 'el readonly d' + Math.min(depth, 3)", script);
         Assert.Contains("class: 'el pin-strip d' + level", script);
         Assert.Contains(".el.d0 { border-left-color: var(--depth-0); }", css);
         Assert.Contains(".el.d1 { border-left-color: var(--depth-1); }", css);
