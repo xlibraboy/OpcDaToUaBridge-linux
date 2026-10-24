@@ -458,6 +458,7 @@ select { cursor: pointer; }
 .el-edit .w-num { flex: 0 0 84px; }
 .el-edit .w-sev { flex: 0 0 84px; }
 .el-edit .w-relay { flex: 0 0 90px; text-transform: uppercase; }
+.el-edit .w-tag-new { flex: 0 0 150px; }
 /* A row still carrying the legacy direct pair: the HMI's own treatment — a boxed mark whose
    tooltip holds the whole sentence, beside the value, both read-only. The assignment belongs to
    the area's tags, so nothing here offers to edit the pair. */

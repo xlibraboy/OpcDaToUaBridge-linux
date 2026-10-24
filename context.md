@@ -407,13 +407,16 @@ that tab is gone, and the page is the whole editor (branch `feature/logic-web-ap
 the HTML page at `/logic` (Editor | Tags | Result), which reads and writes the same store over the
 same `/api/logic*` endpoints, and splits the work the way this page does. Its Editor authors the
 block and its rows, each row picking one of the area's tags **by name** (or the internal relay it
-reads) and never assigning a source/tag pair of its own — the raw `source id`/`item id` inputs are
+reads) and never assigning a source/tag pair of its own — a row can also name a **new** tag, which
+joins the area's list unassigned; the raw `source id`/`item id` inputs are
 gone, a legacy pair shows read-only the HMI's own way (`Direct tag: …`, the whole sentence in the
 mark's tooltip) and is kept through a save until the row picks a named entry. Its **Tags tab owns
 the assignment**: the block's own **AREA** (stored areas as suggestions, the list following the name
 as it is typed, so the area and the list it reads cannot disagree) beside the area's list with its
-live chips, `+ New tag`, `From bridge…`, `Save list` (the separate `/api/logic/tagsources` save),
-and the block's own save bar — **New block** asks for a name, a kind and a group, and a list's
+live chips, `+ New tag`, `From bridge…`, `Save list` (the separate `/api/logic/tagsources` save) —
+every name the open block references is listed there even before the list stores it, so a name
+typed on a row always has a place for its source and tag — and the block's own save bar — **New
+block** asks for a name, a kind, a group and an **AREA**, and a list's
 unsaved edits are kept per area, so switching areas or blocks drops nothing. The editor's chrome
 rides its own scroll: the properties head stays at the top of the editor and the save bar —
 **Save** / **Revert** / **Delete block** — at its bottom, both flush with the editor's edges, so a

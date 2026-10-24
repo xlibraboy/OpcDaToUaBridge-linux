@@ -222,6 +222,18 @@ public sealed class LogicPageTests
         Assert.DoesNotContain("'__direct__'", script);
         Assert.Contains("text: '(internal relay)'", script);
 
+        // A new name is authored on the row itself. It joins the area's list unassigned, so the
+        // Tags tab still owns the one assignment — the source and the tag behind that name.
+        Assert.Contains("text: '+ New tag…'", script);
+        Assert.Contains("function newTagInput(", script);
+        Assert.Contains("function rememberTagName(", script);
+        Assert.Contains("function referencedTagNames(", script);
+        Assert.Contains("function mergeReferencedTagNames(", script);
+        // A new block asks for its AREA, so its rows have a list to name tags into from the start.
+        string form = Between(script, "function newBlockForm(", "\nconst val = ");
+        Assert.Contains("id: 'nbArea'", form);
+        Assert.Contains("newBlock(name, val('nbKind'), val('nbArea').trim(), val('nbGroup').trim())", form);
+
         // A row still carrying the legacy pair shows it the HMI's way: read-only, with the whole
         // sentence in the mark's tooltip, and the pair itself kept through a save.
         Assert.Contains("function isStoredPair(", script);
