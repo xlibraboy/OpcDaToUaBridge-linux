@@ -612,6 +612,36 @@ public sealed class LogicStateEvaluatorTests
     // ---- A row saved before it is wired ----
 
     [Fact]
+    public void DerivedWrappers_CarryTheirDefinitionIntoTheState()
+    {
+        // The simple form expands into wrappers the block never authored (a TON around a held
+        // contact, an OR group). The state has to carry the wrapper's sentence, severity and
+        // next step, or a client reading only the evaluation can only print the bare kind.
+        LogicConditionDto held = Condition(
+            text: "Pump running",
+            holdMs: 2000,
+            severity: LogicConditionSeverities.Warn,
+            nextStep: "Start the pump",
+            group: "either");
+        LogicConditionDto other = Condition(text: "Permit given", group: "either");
+        LogicBlockDto block = Flat(held, other);
+
+        LogicBlockStateDto state = LogicStateEvaluator.EvaluateBlock(
+            block, Values(("sim", "Permit", true, true)), Mappings());
+
+        LogicElementStateDto ton = Assert.Single(state.Elements, element => element.Kind == LogicElementKinds.Ton);
+        Assert.Equal("Pump running", ton.Text);
+        Assert.Equal(2000, ton.PtMs);
+        Assert.Equal(LogicConditionSeverities.Warn, ton.Severity);
+        Assert.Equal("Start the pump", ton.NextStepText);
+        Assert.Equal(LogicConditionOps.On, ton.Op);
+
+        LogicElementStateDto or = Assert.Single(state.Elements, element => element.Kind == LogicElementKinds.Or);
+        Assert.Equal("either", or.Text);
+        Assert.Equal(LogicConditionSeverities.Block, or.Severity);
+    }
+
+    [Fact]
     public void UnwiredGate_ReadsUnknown_AndNeverSatisfiesTheBlock()
     {
         // The reported case: a gate row is added, then its inputs are picked — the row saves in

@@ -19,6 +19,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+**The Logic page's Result tab keeps the sentence on the network the bridge derived from flat
+conditions.** A block authored as flat conditions is expanded by the bridge into an AND, an OR per
+group and a TON around a held contact; the page could name those wrapper rows only by their kind
+(`TON IN`, `OR`), because the evaluated state carried no definition text. The state now carries
+each element's text, contact form, relay, counter preset, severity and next-step text, and the page
+falls back to it for a wrapper — so a held condition reads `TON IN · Pump running · holding 1.2 s
+of 2 s` and an OR group reads `OR · either`, matching the HMI. The fields are additive; older
+clients ignore them.
+
 **A logic tag can record the external device's own NO/NC contact form, so the Logic page shows the
 action at the field device.** An interlock row's contact form (`NO` / `NC`) says what the tag bit
 must read; it says nothing about how the field device behind that tag is wired, so an NO row on an

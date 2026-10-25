@@ -139,6 +139,11 @@ public sealed class LogicDtoSerializationTests
                         {
                             Id = Guid.NewGuid(),
                             Kind = LogicElementKinds.Ton,
+                            Text = "Pump held 3 s",
+                            Op = LogicConditionOps.On,
+                            Pv = 0,
+                            Severity = LogicConditionSeverities.Warn,
+                            NextStepText = "Start the pump",
                             Depth = 0,
                             State = LogicConditionStates.False,
                             PtMs = 3000,
@@ -148,6 +153,7 @@ public sealed class LogicDtoSerializationTests
                         {
                             Id = Guid.NewGuid(),
                             Kind = LogicElementKinds.Ctu,
+                            Pv = 3,
                             Depth = 0,
                             State = LogicConditionStates.True,
                             Count = 2
@@ -163,9 +169,15 @@ public sealed class LogicDtoSerializationTests
         Assert.Contains("\"valueText\":\"Blocked\"", json, StringComparison.Ordinal);
         Assert.Contains("\"should\":\"1\"", json, StringComparison.Ordinal);
         Assert.Contains("\"matches\":false", json, StringComparison.Ordinal);
-        Assert.Contains("\"kind\":\"ton\",\"depth\":0", json, StringComparison.Ordinal);
+        Assert.Contains("\"kind\":\"ton\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"text\":\"Pump held 3 s\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"op\":\"on\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"severity\":\"warn\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"nextStepText\":\"Start the pump\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"depth\":0", json, StringComparison.Ordinal);
         Assert.Contains("\"ptMs\":3000,\"elapsedMs\":1500", json, StringComparison.Ordinal);
         Assert.Contains("\"count\":2", json, StringComparison.Ordinal);
+        Assert.Contains("\"pv\":3", json, StringComparison.Ordinal);
         Assert.Contains("\"output\":{\"tag\":\"PUMP_RUN\",\"state\":\"mismatch\",\"expected\":true,\"actual\":false", json, StringComparison.Ordinal);
         Assert.Contains("\"valueText\":\"Stopped\"", json, StringComparison.Ordinal);
 
@@ -177,8 +189,13 @@ public sealed class LogicDtoSerializationTests
         Assert.Equal(LogicStepStates.Current, copy.Blocks[0].Steps[0].State);
         Assert.False(copy.Blocks[0].Elements[0].Matches);
         Assert.Equal(LogicElementKinds.Ton, copy.Blocks[0].Elements[1].Kind);
+        Assert.Equal("Pump held 3 s", copy.Blocks[0].Elements[1].Text);
+        Assert.Equal(LogicConditionOps.On, copy.Blocks[0].Elements[1].Op);
+        Assert.Equal(LogicConditionSeverities.Warn, copy.Blocks[0].Elements[1].Severity);
+        Assert.Equal("Start the pump", copy.Blocks[0].Elements[1].NextStepText);
         Assert.Equal(1500, copy.Blocks[0].Elements[1].ElapsedMs);
         Assert.Equal(2, copy.Blocks[0].Elements[2].Count);
+        Assert.Equal(3, copy.Blocks[0].Elements[2].Pv);
         Assert.NotNull(copy.Blocks[0].Output);
         Assert.Equal("PUMP_RUN", copy.Blocks[0].Output!.Tag);
         Assert.Equal(LogicOutputStates.Mismatch, copy.Blocks[0].Output.State);

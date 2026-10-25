@@ -101,6 +101,29 @@ public sealed class LogicElementStateDto
     /// <summary>One of <see cref="LogicElementKinds"/>.</summary>
     public string Kind { get; set; } = LogicElementKinds.Contact;
 
+    /// <summary>
+    /// The element's sentence, copied from the definition. It matters most for the wrappers the
+    /// bridge derives from a block's flat conditions (a TON around a held contact, an OR group):
+    /// those elements have no authored definition of their own, so a client can only name them
+    /// from the state. Empty for a gate whose definition carries no sentence.
+    /// </summary>
+    public string Text { get; set; } = string.Empty;
+
+    /// <summary>Contact form (<c>on</c>/<c>off</c>/<c>gt</c>/<c>lt</c>/<c>eq</c>), copied from the definition.</summary>
+    public string Op { get; set; } = LogicConditionOps.On;
+
+    /// <summary>Internal relay the element reads or drives, copied from the definition; empty otherwise.</summary>
+    public string Relay { get; set; } = string.Empty;
+
+    /// <summary>Counter preset (PV), copied from the definition; 0 for every other kind.</summary>
+    public int Pv { get; set; }
+
+    /// <summary>Block or warn, copied from the definition — a warn wrapper keeps its marking in the state.</summary>
+    public string Severity { get; set; } = LogicConditionSeverities.Block;
+
+    /// <summary>"What to do next" text, copied from the definition; null when there is none.</summary>
+    public string? NextStepText { get; set; }
+
     /// <summary>Depth in the network (0 = a root) — the phone indents by it.</summary>
     public int Depth { get; set; }
 

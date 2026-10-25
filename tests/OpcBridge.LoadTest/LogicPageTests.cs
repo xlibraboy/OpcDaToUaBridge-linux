@@ -353,6 +353,21 @@ public sealed class LogicPageTests
     }
 
     [Fact]
+    public void Script_ReadsDerivedWrappersFromTheState()
+    {
+        string script = OnDisk(ScriptFile);
+        string result = Between(script, "function resultRow(", "const STEP_WORD");
+
+        // The bridge expands a block's flat conditions into wrappers (a TON around a held contact,
+        // an OR group, the AND over the roots). Those wrappers have no authored definition, so the
+        // state carries the definition fields and the row falls back to it.
+        Assert.Contains("def = def || state;", result);
+        Assert.Contains("def.text", result);
+        Assert.Contains("def.severity", result);
+        Assert.Contains("def.nextStepText", result);
+    }
+
+    [Fact]
     public void Script_VocabularyMatchesTheBridge()
     {
         string script = OnDisk(ScriptFile);

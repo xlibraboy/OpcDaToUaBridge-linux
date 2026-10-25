@@ -474,6 +474,12 @@ public static class LogicStateEvaluator
         {
             Id = element.Id,
             Kind = element.Kind.ToLowerInvariant(),
+            Text = element.Text,
+            Op = element.Op,
+            Relay = element.Relay,
+            Pv = element.Pv,
+            Severity = element.Severity,
+            NextStepText = element.NextStepText,
             Depth = depth,
             State = LogicConditionStates.Unknown
         };
