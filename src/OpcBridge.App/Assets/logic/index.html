@@ -19,6 +19,9 @@
 <!-- Root-relative, not relative: the page is served at /logic (no trailing slash), so a bare
      "app.css" would resolve to /app.css. -->
 <link rel="stylesheet" href="/logic/app.css">
+<!-- The vendored SignalR client (signalR global) before the page's own script: app.js subscribes
+     to the /hmi hub's logic push with it. Both are deferred, so they run in this order. -->
+<script src="/logic/signalr.min.js" defer></script>
 <script src="/logic/app.js" defer></script>
 </head>
 <body>
@@ -56,7 +59,7 @@
   <section class="editor" id="editor">
     <div class="placeholder" id="placeholder">
       <p>Pick a block on the left to edit its network, or press <b>+ New</b> for a new one.</p>
-      <p class="muted small">Live state updates once a second while this page is open. Saving writes the block to the bridge, the same store the HMI and the phone read.</p>
+      <p class="muted small">Live state is pushed from the bridge as it is evaluated. Saving writes the block to the bridge, the same store the HMI and the phone read.</p>
     </div>
   </section>
 </main>

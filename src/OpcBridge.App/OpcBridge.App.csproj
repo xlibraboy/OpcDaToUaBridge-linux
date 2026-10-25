@@ -55,6 +55,10 @@
     <EmbeddedResource Include="Assets\logic\index.html" LogicalName="OpcBridge.App.logic.index.html" />
     <EmbeddedResource Include="Assets\logic\app.css" LogicalName="OpcBridge.App.logic.app.css" />
     <EmbeddedResource Include="Assets\logic\app.js" LogicalName="OpcBridge.App.logic.app.js" />
+    <!-- The official SignalR JavaScript client, vendored beside the page (MIT, banner and license
+         in the file): the page takes its live evaluation from the /hmi hub instead of polling,
+         and a plant host has no internet to fetch the client from. -->
+    <EmbeddedResource Include="Assets\logic\signalr.min.js" LogicalName="OpcBridge.App.logic.signalr.min.js" />
   </ItemGroup>
 
   <ItemGroup>

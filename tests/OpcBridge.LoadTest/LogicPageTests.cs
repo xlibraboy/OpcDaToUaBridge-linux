@@ -91,6 +91,7 @@ public sealed class LogicPageTests
         // Root-relative asset URLs: the page is served at "/logic" with no trailing slash, so a
         // bare "app.css" resolves to "/app.css" and the page arrives unstyled and inert.
         Assert.Contains("href=\"/logic/app.css\"", html);
+        Assert.Contains("src=\"/logic/signalr.min.js\"", html);
         Assert.Contains("src=\"/logic/app.js\"", html);
         Assert.DoesNotContain("href=\"app.css\"", html);
         Assert.DoesNotContain("src=\"app.js\"", html);
@@ -108,6 +109,18 @@ public sealed class LogicPageTests
         using HttpResponseMessage css = await app.Client.GetAsync("/logic/app.css");
         Assert.Equal(System.Net.HttpStatusCode.OK, css.StatusCode);
         Assert.Equal("text/css", css.Content.Headers.ContentType!.MediaType);
+
+        using HttpResponseMessage client = await app.Client.GetAsync("/logic/signalr.min.js");
+        Assert.Equal(System.Net.HttpStatusCode.OK, client.StatusCode);
+        Assert.Equal("text/javascript", client.Content.Headers.ContentType!.MediaType);
+        string clientScript = await client.Content.ReadAsStringAsync();
+        // The official browser build, at the version the page was written against, with its MIT
+        // notice travelling beside it — a plant host has no internet to fetch either.
+        Assert.Contains("ASP.NET Core SignalR JavaScript client 8.0.7", clientScript);
+        Assert.Contains("Licensed under the MIT License", clientScript);
+        Assert.Contains("HubConnectionBuilder", clientScript);
+        // The map is not shipped, so the directive must not ask the browser for it.
+        Assert.DoesNotContain("//# sourceMappingURL=", clientScript);
     }
 
     [Fact]
@@ -119,6 +132,7 @@ public sealed class LogicPageTests
         Assert.True(AuthPolicy.IsPublic("/logic/"));
         Assert.True(AuthPolicy.IsPublic("/logic/app.js"));
         Assert.True(AuthPolicy.IsPublic("/logic/app.css"));
+        Assert.True(AuthPolicy.IsPublic("/logic/signalr.min.js"));
 
         Assert.False(AuthPolicy.IsPublic("/api/logic"));
         Assert.False(AuthPolicy.IsPublic("/api/logic/blocks"));
@@ -813,6 +827,60 @@ public sealed class LogicPageTests
         Assert.Contains("--verify:", css);
     }
 
+    [Fact]
+    public void Script_TakesTheEvaluationFromTheHub()
+    {
+        string html = OnDisk(HtmlFile);
+        string script = OnDisk(ScriptFile);
+
+        // The vendored client loads before the page's own script (both deferred, so in order), or
+        // `signalR` would not exist when start() runs.
+        int client = html.IndexOf("src=\"/logic/signalr.min.js\"", StringComparison.Ordinal);
+        int own = html.IndexOf("src=\"/logic/app.js\"", StringComparison.Ordinal);
+        Assert.True(client >= 0, "the page does not load the vendored SignalR client");
+        Assert.True(own > client, "app.js must load after the SignalR client");
+
+        // The bridge's own hub and event, subscribed with the HMI's retry schedule: at once, then
+        // 1/2/5 s, then every 5 s (HmiHubTiming).
+        Assert.Contains("const HUB_PATH = '/hmi';", script);
+        Assert.Contains("new signalR.HubConnectionBuilder()", script);
+        Assert.Contains(".withUrl(HUB_PATH)", script);
+        Assert.Contains(".withAutomaticReconnect({", script);
+        Assert.Contains("nextRetryDelayInMilliseconds:", script);
+        // The first retry is 0 ms — a falsy-zero fallback would put it on the 5 s tail instead.
+        Assert.Contains("retry.previousRetryCount < HUB_RETRY_MS.length", script);
+        // An initial start failure retries too; the fallback poll carries the page until it takes.
+        Assert.Contains("setTimeout(startHub, 5000)", script);
+        Assert.Contains("hub.on('logic', (snapshot) => {", script);
+
+        // A push lands through the same apply path as a poll and never rebuilds the page: the
+        // rows' node identity, the focus and anything typed must survive it.
+        string handler = Between(script, "hub.on('logic'", "hub.onreconnecting(");
+        Assert.Contains("noteState();", handler);
+        Assert.Contains("applyState(snapshot);", handler);
+        Assert.DoesNotContain("renderEditor(", handler);
+        Assert.DoesNotContain("drawEditor(", handler);
+
+        // The 1 Hz poll is the fallback, not the feed: the push moves the loop to the slow
+        // refresh, and a lost hub puts it back on the second.
+        Assert.Contains("const POLL_MS = 1000;", script);
+        Assert.Contains("const LIVE_REFRESH_MS = 5000;", script);
+        Assert.Contains("const period = hubLive ? LIVE_REFRESH_MS : POLL_MS;", script);
+        Assert.Contains("hub.onreconnecting(() => { hubLive = false; schedulePoll(); });", script);
+        Assert.Contains("hub.onclose(() => { hubLive = false; schedulePoll(); });", script);
+        // A reconnect reads the state at once: the bridge does not re-push a signature it already
+        // sent, so a snapshot missed while the link was down would otherwise never arrive.
+        Assert.Contains("hub.onreconnected(() => { hubLive = true; schedulePoll(); poll(); });", script);
+        Assert.Contains("hub.start()", script);
+        Assert.Contains("startHub();", script);
+        // The fallback still reads the same endpoint the push carries.
+        Assert.Contains("state: '/api/logic/state'", script);
+    }
+
+    // The vendored SignalR client is deliberately not in this theory: its code is a build-time
+    // copy of the official browser client, and its diagnostics mention Microsoft documentation
+    // URLs. What matters is that the page *loads* nothing from the network, which the three files
+    // it authors are held to here.
     [Theory]
     [InlineData(HtmlFile)]
     [InlineData(CssFile)]

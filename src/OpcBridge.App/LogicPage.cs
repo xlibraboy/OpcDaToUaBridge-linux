@@ -23,16 +23,26 @@ internal static class LogicPage
     private const string HtmlResource = "OpcBridge.App.logic.index.html";
     private const string StyleSheetResource = "OpcBridge.App.logic.app.css";
     private const string ScriptResource = "OpcBridge.App.logic.app.js";
+    private const string SignalRScriptResource = "OpcBridge.App.logic.signalr.min.js";
 
     private static readonly Lazy<byte[]> Html_ = new(() => Bytes(Read(HtmlResource)));
     private static readonly Lazy<byte[]> StyleSheet_ = new(() => Bytes(Read(StyleSheetResource)));
     private static readonly Lazy<byte[]> Script_ = new(() => Bytes(Read(ScriptResource)));
+    private static readonly Lazy<byte[]> SignalRScript_ = new(() => Bytes(Read(SignalRScriptResource)));
 
     public static byte[] Html => Html_.Value;
 
     public static byte[] StyleSheet => StyleSheet_.Value;
 
     public static byte[] Script => Script_.Value;
+
+    /// <summary>
+    /// The vendored ASP.NET Core SignalR JavaScript client (MIT). The page subscribes to the
+    /// <c>/hmi</c> hub's <c>logic</c> push with it, so the evaluation arrives as the bridge
+    /// derives it rather than on a poll; it is served from the same assembly as the page because
+    /// a plant host has no internet.
+    /// </summary>
+    public static byte[] SignalRScript => SignalRScript_.Value;
 
     private static byte[] Bytes(string text) => Encoding.UTF8.GetBytes(text);
 

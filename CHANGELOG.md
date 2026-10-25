@@ -19,6 +19,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+**The Logic page takes the bridge's evaluation as a push, so a one-pass edge is no longer stepped
+over.** The page followed the plant by polling `GET /api/logic/state` once a second — the same
+snapshot the bridge already broadcasts on the `/hmi` hub's `logic` event — so a momentary pulse (an
+R_TRIG / F_TRIG that came and went inside the second) could pass unshown. The page now subscribes to
+that hub with the official ASP.NET Core SignalR JavaScript client (8.0.7, MIT), vendored beside the
+page and served from the assembly at `/logic/signalr.min.js` because a plant host has no internet,
+and applies every `logic` snapshot in place — the same path a poll's snapshot takes, so the rows,
+their node identity, the focus and anything typed survive it. The 1 Hz poll remains only as the
+fallback while the hub is not carrying the page (a blocked WebSocket, an unreachable bridge), and a
+slow five-second refresh stays under the push: the bridge re-pushes only when a *derived* state
+changes, so a raw value drifting inside an already-satisfied comparison still reaches the page. A
+reconnect resyncs at once, because a snapshot the bridge deduplicated while the link was down is not
+re-sent by itself. Proven on the sweep rig by stopping the page's own poll timer: changing a manual
+tag moved its block from READY to BLOCKED in under 300 ms through the hub alone.
+
 **The Logic page's Result tab keeps the sentence on the network the bridge derived from flat
 conditions.** A block authored as flat conditions is expanded by the bridge into an AND, an OR per
 group and a TON around a held contact; the page could name those wrapper rows only by their kind
@@ -57,13 +72,15 @@ before first paint, so opening in dark no longer starts white and flips.
 **Plant logic gained a second authoring surface: a web page at `/logic`.** The bridge now serves
 the logic editor as plain HTML (`src/OpcBridge.App/Assets/logic`, embedded in the assembly so it
 travels with every deployment — the service, the MSI, a self-contained publish and the test host
-alike — with one page, one stylesheet, one script, and nothing loaded from the network, because a
+alike — with one page, one stylesheet, its scripts, and nothing loaded from the network, because a
 plant host has no internet), so a network can be
 authored and watched from any browser on the LAN. It reads and writes the same store the HMI's
 Logic page and the phone use, over the same endpoints (`GET /api/logic`, `POST /api/logic/blocks`,
-`DELETE /api/logic/blocks/{id}`), and follows the evaluation by polling `GET /api/logic/state`
-once a second while the page is open. It is served by the bridge, so the page shares the API's
-origin — the same-origin rule is what keeps the API reachable with no CORS configuration at all.
+`DELETE /api/logic/blocks/{id}`), and follows the evaluation from the bridge's own SignalR hub
+(`/hmi`, the `logic` event), with a one-second `GET /api/logic/state` fallback while the hub is not
+connected. It is served by the bridge, so the page shares the API's
+origin — the same-origin rule is what keeps the API and the hub reachable with no CORS
+configuration at all.
 Every element row carries its own live reading while it is edited — the element's state, what a
 contact needs (`needs 1`) against what the plant reads (`actual 0`), a timer's ET against its PT,
 a counter's CV — and the block list, the result panel and the rail dots follow the same snapshot,

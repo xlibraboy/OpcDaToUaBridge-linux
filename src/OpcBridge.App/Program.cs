@@ -302,6 +302,9 @@ app.MapGet("/", (HttpContext ctx) => {
 app.MapGet("/logic", (HttpContext ctx) => LogicAsset(ctx, LogicPage.Html, LogicPage.HtmlType));
 app.MapGet("/logic/app.css", (HttpContext ctx) => LogicAsset(ctx, LogicPage.StyleSheet, LogicPage.StyleSheetType));
 app.MapGet("/logic/app.js", (HttpContext ctx) => LogicAsset(ctx, LogicPage.Script, LogicPage.ScriptType));
+// The vendored SignalR client the page uses to subscribe to the /hmi hub's logic push. Served
+// from the assembly like the page itself: the plant host has no internet to fetch it from.
+app.MapGet("/logic/signalr.min.js", (HttpContext ctx) => LogicAsset(ctx, LogicPage.SignalRScript, LogicPage.ScriptType));
 
 static IResult LogicAsset(HttpContext ctx, byte[] bytes, string contentType)
 {

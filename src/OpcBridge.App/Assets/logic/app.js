@@ -6,7 +6,14 @@
 //   GET  /api/logic              blocks + area tag lists + version
 //   POST /api/logic/blocks       { block } -> saved block (or { error })
 //   DELETE /api/logic/blocks/{id}
-//   GET  /api/logic/state        live evaluated state (polled; the HMI hub pushes the same DTO)
+//   GET  /api/logic/state        the same evaluated state the /hmi hub pushes on `logic`
+//
+// The evaluation is pushed by the bridge over its own SignalR hub (/hmi, the `logic` event) as it
+// is derived — a one-pass edge trigger is visible here, where a poll could step over it. A 1 Hz
+// state fetch is the fallback while the hub is not carrying the page (a blocked WebSocket, a
+// bridge that cannot be reached), and a slow refresh stays under the push: the bridge re-pushes
+// only when a *derived* state changes, so a raw value that drifts inside a satisfied comparison
+// would otherwise age on screen.
 //
 // The element vocabulary below is a contract with the bridge
 // (LogicElementKinds / LogicConditionOps / LogicElementKinds.InputRange in
@@ -39,7 +46,10 @@ const SEV_LABEL = { block: 'blocks', warn: 'warn only' };
 const CONTACT_FORMS = ['no', 'nc'];
 const CONTACT_LABEL = { no: 'NO', nc: 'NC' };
 
-const POLL_MS = 1000;
+const POLL_MS = 1000;         // the fallback cadence while the hub is not carrying the page
+const LIVE_REFRESH_MS = 5000; // the safety refresh under the push (raw value text, definitions)
+const HUB_PATH = '/hmi';      // the bridge's SignalR hub: `logic` snapshots, the HMI's own feed
+const HUB_RETRY_MS = [0, 1000, 2000, 5000];
 const NEW_TAG = '__new__';
 
 const api = {
@@ -57,7 +67,11 @@ let dirty = false;
 let blockStates = new Map();
 let elementStates = new Map();
 let areas = [];            // area tag lists, by name
-let lastPollOk = 0;
+let lastStateAt = 0;       // when the last evaluation arrived, from either feed
+let hub = null;            // the /hmi connection, when the vendored client is present
+let hubLive = false;       // true while the hub is pushing the evaluation
+let pollTimer = null;      // the one poll loop, at the cadence the feed needs
+let pollPeriod = 0;
 let tab = 'editor';   // editor | tags | result
 let catalog = null;   // the bridge's mapped tags (GET /api/hmi/tags), for the Tags tab
 let catalogSources = []; // those tags, grouped by source
@@ -410,7 +424,7 @@ function drawEditor(editor) {
   if (!draft) {
     editor.appendChild(h('div', { class: 'placeholder' },
       h('p', { text: 'Pick a block on the left to edit its network, or press + New for a new one.' }),
-      h('p', { class: 'muted small', text: 'Live state updates once a second while this page is open.' })
+      h('p', { class: 'muted small', text: 'Live state is pushed from the bridge as it is evaluated.' })
     ));
     return;
   }
@@ -2716,28 +2730,91 @@ function repaintResultTags() {
   renderTagPanel();
 }
 
+// One evaluation, from either feed: the hub's push (below) or this state read. Everything is
+// repainted in place, so the row an operator is reading — and anything typed into it — survives.
+function noteState() {
+  lastStateAt = Date.now();
+  feedState = 'live';
+  const pill = el('linkState');
+  if (!pill) return;
+  pill.className = 'pill live';
+  pill.textContent = 'live';
+  pill.title = hubLive ? 'Pushed by the bridge as it evaluates' : 'Polled from the bridge';
+  pill.dataset.feed = hubLive ? 'push' : 'poll';
+}
+
 function poll() {
   if (document.hidden) return;
   fetchJson(api.state)
     .then((snapshot) => {
-      lastPollOk = Date.now();
-      feedState = 'live';
-      const pill = el('linkState');
-      pill.className = 'pill live';
-      pill.textContent = 'live';
+      noteState();
       applyState(snapshot);
       if (snapshot.version && snapshot.version !== version) return reloadDefs(false);
       return null;
     })
     .catch((error) => {
-      const recent = Date.now() - lastPollOk < 5000;
-      feedState = recent ? 'reconnecting' : 'failed';
-      const pill = el('linkState');
-      pill.className = 'pill ' + (recent ? 'stale' : 'down');
-      pill.textContent = recent ? 'reconnecting…' : 'no link';
-      if (error && /Sign in/.test(error.message)) pill.textContent = 'sign in required';
+      // A failed refresh under a live hub says nothing about the page's feed.
+      if (!hubLive) {
+        const recent = Date.now() - lastStateAt < 5000;
+        feedState = recent ? 'reconnecting' : 'failed';
+        const pill = el('linkState');
+        pill.className = 'pill ' + (recent ? 'stale' : 'down');
+        pill.textContent = recent ? 'reconnecting…' : 'no link';
+        pill.title = error && error.message ? error.message : '';
+        pill.dataset.feed = '';
+        if (error && /Sign in/.test(error.message)) pill.textContent = 'sign in required';
+      }
+
       refreshResultHeader();
     });
+}
+
+// The bridge's own push: `logic` carries the same snapshot /api/logic/state returns, sent as soon
+// as a derived state changes. It is what makes a one-pass edge visible here — the page sees the
+// pulse the 1 Hz fallback could step over — and it goes through the same applyState path a poll
+// does, never a rebuild.
+function startHub() {
+  if (!window.signalR || !window.signalR.HubConnectionBuilder) return;
+  hub = new signalR.HubConnectionBuilder()
+    .withUrl(HUB_PATH)
+    .withAutomaticReconnect({
+      // The HMI's own schedule (HmiHubTiming): at once, then 1/2/5 s, then every 5 s.
+      nextRetryDelayInMilliseconds: (retry) => retry.previousRetryCount < HUB_RETRY_MS.length
+        ? HUB_RETRY_MS[retry.previousRetryCount]
+        : 5000
+    })
+    .configureLogging(signalR.LogLevel.Warning)
+    .build();
+
+  hub.on('logic', (snapshot) => {
+    hubLive = true;
+    noteState();
+    applyState(snapshot);
+    if (snapshot.version && snapshot.version !== version) reloadDefs(false);
+  });
+
+  // While the hub is away the 1 Hz fallback carries the page; a push puts it back on the slow
+  // refresh. A reconnect resyncs at once — a snapshot skipped while the link was down is not
+  // re-pushed by itself, because the bridge's dedupe already saw the same signature.
+  hub.onreconnecting(() => { hubLive = false; schedulePoll(); });
+  hub.onreconnected(() => { hubLive = true; schedulePoll(); poll(); });
+  hub.onclose(() => { hubLive = false; schedulePoll(); });
+
+  hub.start()
+    .then(() => { hubLive = true; schedulePoll(); poll(); })
+    // A page opened while the bridge was between restarts: the fallback poll carries it, and the
+    // push is tried again until it takes.
+    .catch(() => { hubLive = false; schedulePoll(); setTimeout(startHub, 5000); });
+}
+
+// One poll loop, at the cadence the feed needs: the 1 Hz fallback while the hub is not pushing,
+// a slow refresh under it (see the file header). Re-armed, not multiplied, when the feed changes.
+function schedulePoll() {
+  const period = hubLive ? LIVE_REFRESH_MS : POLL_MS;
+  if (pollTimer && pollPeriod === period) return;
+  if (pollTimer) clearInterval(pollTimer);
+  pollPeriod = period;
+  pollTimer = setInterval(poll, period);
 }
 
 // Theme ---------------------------------------------------------------------
@@ -2802,8 +2879,15 @@ function start() {
     }
   });
 
-  reloadDefs(false).then(() => { poll(); setInterval(poll, POLL_MS); })
-    .catch((error) => toast(error.message, 'err'));
+  // A tab that comes back reads the state at once: intervals throttle while hidden, and the
+  // push may have been parked with the page.
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); });
+
+  reloadDefs(false).then(() => {
+    poll();
+    startHub();
+    schedulePoll();
+  }).catch((error) => toast(error.message, 'err'));
 }
 
 document.addEventListener('DOMContentLoaded', start);
