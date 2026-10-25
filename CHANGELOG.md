@@ -19,6 +19,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+**A logic tag can record the external device's own NO/NC contact form, so the Logic page shows the
+action at the field device.** An interlock row's contact form (`NO` / `NC`) says what the tag bit
+must read; it says nothing about how the field device behind that tag is wired, so an NO row on an
+NC-wired device and the same row on an NO-wired device read identically. The Logic page's Tags tab
+gained a **DEVICE** column: each area tag records its device as `NO` (actuated at tag 1) or `NC`
+(actuated at tag 0), stored once per area tag in `logic-tags.json` and shared by every block of the
+area. The recorded form is shown beside the live bit on the Tags tab, in the Editor's and Result's
+contact rows (`device NC · actuated when 0 · field at rest`), and in the Result tab's tag inspector
+(**Device contact** and **Field**). It is a reading of the source, not a new verdict: the
+interlock's own `NO` / `NC` is still compared against the tag bit exactly as before, and a tag with
+no device form recorded shows nothing extra. The HMI's Tags tab carries the field through its own
+save, so opening it cannot clear what the web page recorded.
+
 **The Logic page carries the dashboard's theme picker, and can be read on a dark ground.** The page
 took its appearance from the dashboard's stored choice but offered no way to change it: it opened
 in whatever a dashboard visit had left behind, or the operating system's answer, with no control on

@@ -207,7 +207,13 @@ public sealed class LogicDtoSerializationTests
             Name = "DRYEND",
             Tags =
             {
-                new LogicTagDto { Name = "START_PB", SourceId = "sim", ItemId = "ns=2;s=Status/Start" },
+                new LogicTagDto
+                {
+                    Name = "START_PB",
+                    SourceId = "sim",
+                    ItemId = "ns=2;s=Status/Start",
+                    Contact = LogicContactForms.NormallyClosed
+                },
                 new LogicTagDto { Name = "FAULT" }
             }
         };
@@ -215,6 +221,7 @@ public sealed class LogicDtoSerializationTests
         string json = JsonSerializer.Serialize(source, CamelCase);
         Assert.Contains("\"name\":\"DRYEND\"", json, StringComparison.Ordinal);
         Assert.Contains("\"tags\":[", json, StringComparison.Ordinal);
+        Assert.Contains("\"contact\":\"nc\"", json, StringComparison.Ordinal);
         Assert.DoesNotContain("\"Name\"", json, StringComparison.Ordinal);
         Assert.DoesNotContain("\"SourceId\"", json, StringComparison.Ordinal);
 
@@ -222,7 +229,9 @@ public sealed class LogicDtoSerializationTests
         Assert.NotNull(copy);
         Assert.Equal(new[] { "START_PB", "FAULT" }, copy!.Tags.Select(tag => tag.Name));
         Assert.Equal("ns=2;s=Status/Start", copy.Tags[0].ItemId);
+        Assert.Equal(LogicContactForms.NormallyClosed, copy.Tags[0].Contact);
         Assert.Equal(string.Empty, copy.Tags[1].ItemId);
+        Assert.Equal(string.Empty, copy.Tags[1].Contact);
 
         LogicBlockDto block = new()
         {
@@ -270,6 +279,12 @@ public sealed class LogicDtoSerializationTests
         Assert.Equal("gt", LogicConditionOps.GreaterThan);
         Assert.Equal("lt", LogicConditionOps.LessThan);
         Assert.Equal("eq", LogicConditionOps.Equal);
+        Assert.Equal("no", LogicContactForms.NormallyOpen);
+        Assert.Equal("nc", LogicContactForms.NormallyClosed);
+        Assert.True(LogicContactForms.IsValid("NO"));
+        Assert.True(LogicContactForms.IsValid("nc"));
+        Assert.False(LogicContactForms.IsValid(""));
+        Assert.False(LogicContactForms.IsValid("bogus"));
         Assert.Equal("ready", LogicBlockStates.Ready);
         Assert.Equal("blocked", LogicBlockStates.Blocked);
         Assert.Equal("unknown", LogicBlockStates.Unknown);

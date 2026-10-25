@@ -35,6 +35,9 @@ const KIND_LABEL = {
 };
 const OP_LABEL = { on: 'on (NO)', off: 'off (NC)', gt: '>', lt: '<', eq: '=' };
 const SEV_LABEL = { block: 'blocks', warn: 'warn only' };
+// The external device's contact form, recorded per area tag (LogicContactForms in the bridge).
+const CONTACT_FORMS = ['no', 'nc'];
+const CONTACT_LABEL = { no: 'NO', nc: 'NC' };
 
 const POLL_MS = 1000;
 const NEW_TAG = '__new__';
@@ -437,8 +440,9 @@ function drawEditor(editor) {
     const net = h('div', { class: 'net' });
     const state = blockStates.get(draft.id);
     const list = state ? state.elements : [];
+    const defsById = indexBlock(draft).byId;
     if (!list.length) net.appendChild(h('p', { class: 'muted small', text: 'The bridge has not evaluated this block yet.' }));
-    for (const node of resultTree(list)) net.appendChild(readOnlyNode(node, 0));
+    for (const node of resultTree(list)) net.appendChild(readOnlyNode(node, 0, defsById));
     editor.appendChild(net);
     return;
   }
@@ -614,13 +618,13 @@ function renderNet() {
 // The bridge's own expansion of a block that is authored in the flat forms: the same elements and
 // depths the Result tab reads, written nested the way the editor's own network is, so those rows sit
 // behind the same guides and the read-only network reads as a tree too.
-function readOnlyNode(node, depth) {
+function readOnlyNode(node, depth, defsById) {
   const box = h('div', { class: 'el-node' });
   box.appendChild(h('div', { class: 'el readonly d' + Math.min(depth, 3), 'data-id': node.element.id, 'data-live': '1', style: '--depth:' + depth },
-    renderLive(node.element.kind, '', node.element)));
+    renderLive(node.element.kind, '', node.element, defsById.get(node.element.id) || null)));
   if (!node.children.length) return box;
   const kids = h('div', { class: 'el-kids', style: '--depth:' + (depth + 1) });
-  for (const child of node.children) kids.appendChild(readOnlyNode(child, depth + 1));
+  for (const child of node.children) kids.appendChild(readOnlyNode(child, depth + 1, defsById));
   box.appendChild(kids);
   return box;
 }
@@ -739,7 +743,7 @@ function renderElement(element, path) {
   const state = elementStates.get(element.id);
   const cls = 'el d' + Math.min(depth, 3);
   const row = h('div', { class: cls, 'data-id': element.id, 'data-live': '1', style: '--depth:' + depth });
-  row.appendChild(renderLive(element.kind, element.text, state));
+  row.appendChild(renderLive(element.kind, element.text, state, element));
   row.appendChild(renderControls(element, path));
   return row;
 }
@@ -755,14 +759,16 @@ function liveChip(state) {
   return state.state === 'true' ? '1' : state.state === 'false' ? '0' : 'no data';
 }
 
-function renderLive(kind, text, state) {
+function renderLive(kind, text, state, def) {
   const label = KIND_LABEL[kind] || kind;
   const box = h('div', { class: 'el-live' });
+  box.__def = def || null;
   box.appendChild(h('div', { class: 'lead' },
     h('span', { class: 'q unknown', text: '—' }),
     h('span', { class: 'el-kind', text: label }),
     text ? h('span', { class: 'el-note', text: text }) : null));
   box.appendChild(h('span', { class: 'reading', text: '' }));
+  box.appendChild(h('span', { class: 'field-line', text: '', hidden: true }));
   if (state) paintLive(box, kind, state);
   return box;
 }
@@ -770,23 +776,33 @@ function renderLive(kind, text, state) {
 function paintLive(row, kind, state) {
   const q = row.querySelector('.q');
   const reading = row.querySelector('.reading');
+  const def = row.__def || null;
   const verdict = state.state;
   q.className = 'q ' + (verdict === 'true' ? 'on' : verdict === 'false' ? 'off' : 'unknown');
   q.textContent = liveChip(state);
 
   const bits = [];
   if (kind === 'contact') {
-    const comparison = shouldLine(state, null);
+    const comparison = shouldLine(state, def);
     if (comparison) bits.push(comparison);
     if (state.valueText && state.valueText !== '—') bits.push(state.valueText);
   } else {
-    const progress = progressLine(state, null);
+    const progress = progressLine(state, def);
     if (progress) bits.push(progress);
   }
   reading.textContent = bits.join(' · ');
   if (kind === 'contact' && state.matches === false && verdict !== 'unknown') reading.className = 'reading match-no';
   else if (kind === 'contact' && state.matches === true) reading.className = 'reading match-ok';
   else reading.className = 'reading';
+
+  // What the external device is doing, when its contact form is recorded — beside the reading,
+  // never in place of it.
+  const field = row.querySelector('.field-line');
+  if (field) {
+    const text = kind === 'contact' ? fieldLine(state, def) : '';
+    field.textContent = text;
+    field.hidden = !text;
+  }
 }
 
 function renderControls(element, path) {
@@ -1206,6 +1222,69 @@ function kindLabelFor(state, def) {
   return PIN_LABEL[kind] || kind;
 }
 
+// ---------------------------------------------------------------- external device
+//
+// The interlock's own contact form (def.op) is compared against the tag bit. The field device has
+// a contact form of its own, recorded once per area tag: an NO device is actuated while the tag
+// reads 1, an NC device while it reads 0. Pairing the two lets the page name the action at the
+// source — never changing the verdict, which stays the tag's.
+
+const isContactForm = (form) => form === 'no' || form === 'nc';
+
+// The area entry a row reads when it names one; the device contact form lives there.
+function areaEntryFor(def, block = draft) {
+  if (!def || !block) return null;
+  const name = (def.tag || '').trim();
+  if (!name) return null;
+  const list = areaTags(blockArea(block));
+  return ((list && list.tags) || []).find(
+    (tag) => (tag.name || '').trim().toLowerCase() === name.toLowerCase()) || null;
+}
+
+// The external device's contact form as recorded on the area tag; '' when it is not recorded.
+function deviceContact(def, block = draft) {
+  const entry = areaEntryFor(def, block);
+  const form = (((entry && entry.contact) || '') + '').trim().toLowerCase();
+  return isContactForm(form) ? form : '';
+}
+
+// What the recorded wiring means for the tag bit, in the operator's words.
+function deviceContactText(form) {
+  return isContactForm(form)
+    ? 'device ' + CONTACT_LABEL[form] + ' · actuated when ' + (form === 'nc' ? '0' : '1')
+    : '';
+}
+
+// The device's physical state for a live bit: NO is actuated at 1, NC at 0. '' while the form or
+// the bit is unknown, so the page never invents a field state.
+function fieldState(form, bit) {
+  if (!isContactForm(form) || bit === null || bit === undefined) return '';
+  const actuated = form === 'nc' ? !bit : bit;
+  return actuated ? 'actuated' : 'at rest';
+}
+
+// The tag's raw bit, the bridge's own digital coercion: any non-zero / true reads 1.
+function tagBit(tag) {
+  if (!tag || tag.isGood === false) return null;
+  const value = tag.value;
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'boolean') return value ? 1 : 0;
+  if (typeof value === 'number') return value !== 0 ? 1 : 0;
+  if (typeof value === 'string') return value === '1' || value.trim().toLowerCase() === 'true' ? 1 : 0;
+  return null;
+}
+
+// A contact row's field line: the recorded device form and what the live bit says it is doing.
+// Display only — the interlock still compares its own NO/NC against the tag bit.
+function fieldLine(state, def) {
+  const form = deviceContact(def);
+  if (!form || !def || (def.op !== 'on' && def.op !== 'off')) return '';
+  const bitText = actualBit(state, def);
+  const bit = bitText === '1' ? 1 : bitText === '0' ? 0 : null;
+  const live = fieldState(form, bit);
+  return deviceContactText(form) + (live ? ' · field ' + live : '');
+}
+
 // The bit the row reads: an NO contact is satisfied by 1, an NC contact by 0, so the actual column
 // shows the state of the requirement, not of the tag. A comparison keeps its own value.
 function actualBit(state, def) {
@@ -1330,6 +1409,11 @@ function resultRow(state, def, depth) {
       text: comparison
     }));
   }
+
+  // The external device's own contact form, and what the live bit says it is doing. A reading of
+  // the source beside the interlock's reading — the verdict itself stays the tag's.
+  const field = fieldLine(state, def);
+  if (field) card.appendChild(h('span', { class: 'rl-line rl-field muted', text: field }));
 
   const progress = progressLine(state, def);
   if (progress) card.appendChild(h('span', { class: 'rl-line rl-progress warn', text: progress }));
@@ -1677,6 +1761,24 @@ function tagPanelSource(ref) {
   if (ref.named) {
     rows.push(tagPanelRow('Tag', ref.name, true));
     rows.push(tagPanelRow('Area', ref.area));
+    // The external device's wiring, recorded on the area tag: the form itself and what the live
+    // bit says the field is doing. The interlock's own row still reads the tag bit.
+    if (entry) {
+      const form = ((entry.contact || '') + '').trim().toLowerCase();
+      rows.push(tagPanelRow('Device contact', isContactForm(form) ? CONTACT_LABEL[form] : 'not recorded'));
+      if (isContactForm(form)) {
+        // Painted with the tag's live reading, so the inspector never shows a stale field state.
+        rows.push(h('div', { class: 'res-side-row' },
+          h('span', { class: 'res-side-label', text: 'Field' }),
+          h('span', {
+            class: 'res-side-value mono',
+            'data-panel-field': ref.sourceId + '|' + ref.itemId,
+            'data-contact': form,
+            text: fieldState(form, tagBit(tag)) || '—'
+          })));
+      }
+    }
+
     if (!ref.area) {
       rows.push(h('p', { class: 'warnline', text: 'This block has no area — the name cannot resolve to a source.' }));
     } else if (!entry) {
@@ -1930,6 +2032,9 @@ function liveText(tag) {
 function tagEntryRow(entry, index, used) {
   const sourceOption = (sourceId) => catalogSources.find((s) => s.id === sourceId);
   const sourceTags = sourceOption(entry.sourceId);
+  const bound = catalogTag(entry.sourceId, entry.itemId);
+  const form = ((entry.contact || '') + '').trim().toLowerCase();
+  const field = fieldState(form, tagBit(bound));
   const row = h('div', { class: 'tag-row' });
 
   row.appendChild(h('input', {
@@ -1961,14 +2066,32 @@ function tagEntryRow(entry, index, used) {
         text: (tag.displayName || tag.itemId) + (tag.unit && tag.unit.trim() ? ' · ' + tag.unit : '')
       }))),
     // The HMI's own note: a tag that is not mapped for writing cannot carry an action.
-    (() => {
-      const bound = catalogTag(entry.sourceId, entry.itemId);
-      return bound && bound.writeable === false
-        ? h('span', { class: 'warnline', text: 'read-only tag — an action cannot write it.' })
-        : null;
-    })()));
+    bound && bound.writeable === false
+      ? h('span', { class: 'warnline', text: 'read-only tag — an action cannot write it.' })
+      : null));
 
-  row.appendChild(h('span', { class: 'tag-live mono', 'data-live-tag': entry.sourceId + '|' + entry.itemId, text: liveText(catalogTag(entry.sourceId, entry.itemId)) }));
+  // The external device's own contact form: recorded once here, next to the source and tag, so
+  // every block of the area reads one wiring. It never changes a row's verdict — the row's own
+  // NO/NC still tests the tag bit — it says what the field device is doing at that bit.
+  row.appendChild(h('div', { class: 'tag-device' },
+    h('select', {
+      class: 'tag-contact', 'aria-label': 'Device contact',
+      title: 'The external device\'s own contact form — NO is actuated at tag 1, NC at tag 0. The row\'s NO/NC still decides the interlock against the tag bit.',
+      onchange: (e) => { entry.contact = e.target.value; renderEditor(); }
+    },
+      h('option', { value: '', text: '—', selected: !isContactForm(form) }),
+      CONTACT_FORMS.map((value) => h('option', {
+        value: value, text: CONTACT_LABEL[value], selected: form === value
+      }))),
+    h('span', {
+      class: 'tag-field muted small',
+      'data-field-tag': entry.sourceId + '|' + entry.itemId,
+      'data-contact': isContactForm(form) ? form : '',
+      text: field,
+      hidden: !field
+    })));
+
+  row.appendChild(h('span', { class: 'tag-live mono', 'data-live-tag': entry.sourceId + '|' + entry.itemId, text: liveText(bound) }));
   row.appendChild(h('span', {
     class: 'pill ' + (used.has((entry.name || '').trim().toLowerCase()) ? 'ok' : 'muted'),
     text: used.has((entry.name || '').trim().toLowerCase()) ? 'used' : '',
@@ -2065,7 +2188,7 @@ function fillTagBody(body) {
     } else {
       body.appendChild(h('div', { class: 'tag-head' },
         h('span', { text: 'NAME' }), h('span', { text: 'SOURCE' }), h('span', { text: 'TAG' }),
-        h('span', { text: 'LIVE' }), h('span', { text: 'USED' }), h('span')));
+        h('span', { text: 'DEVICE' }), h('span', { text: 'LIVE' }), h('span', { text: 'USED' }), h('span')));
       const list = h('div', { class: 'tag-list' });
       tagDraft.tags.forEach((entry, index) => list.appendChild(tagEntryRow(entry, index, used)));
       body.appendChild(list);
@@ -2499,6 +2622,7 @@ function applyState(snapshot) {
   }
 
   for (const cell of document.querySelectorAll('[data-live-tag]')) paintTagLive(cell);
+  paintTagPanelField();
   refreshOutputLive();
   refreshResultHeader();
 
@@ -2506,7 +2630,10 @@ function applyState(snapshot) {
   // snapshot rather than the logic state, so they refresh on a slower cadence while on screen.
   const tagLiveOnScreen = tab === 'tags' || (tab === 'result' && tagFocus);
   if (tagLiveOnScreen && catalog && Date.now() - catalogFetchedAt > 5000) {
-    loadCatalog().then(() => { for (const cell of document.querySelectorAll('[data-live-tag]')) paintTagLive(cell); });
+    loadCatalog().then(() => {
+      for (const cell of document.querySelectorAll('[data-live-tag]')) paintTagLive(cell);
+      paintTagPanelField();
+    });
   }
 
   // Another author (the HMI) saved while this page was open.
@@ -2535,13 +2662,39 @@ function paintResultCard(card, state) {
     should.textContent = shouldLine(state, def);
   }
 
+  const field = card.querySelector('.rl-field');
+  if (field) {
+    const text = fieldLine(state, def);
+    field.textContent = text;
+    field.hidden = !text;
+  }
+
   const progress = card.querySelector('.rl-progress');
   if (progress) progress.textContent = progressLine(state, def);
 }
 
 function paintTagLive(cell) {
   const parts = (cell.dataset.liveTag || '').split('|');
-  cell.textContent = parts[0] && parts[1] ? liveText(catalogTag(parts[0], parts[1])) : '—';
+  const tag = parts[0] && parts[1] ? catalogTag(parts[0], parts[1]) : null;
+  cell.textContent = parts[0] && parts[1] ? liveText(tag) : '—';
+
+  // The device's field state rides the same reading: the selector's form against the live bit.
+  const field = cell.parentElement ? cell.parentElement.querySelector('[data-field-tag]') : null;
+  if (field) {
+    const text = fieldState((field.dataset.contact || '').toLowerCase(), tagBit(tag));
+    field.textContent = text;
+    field.hidden = !text;
+  }
+}
+
+// The tag inspector's Field row, when it is open: the same derivation, kept in step with its
+// Live row without rebuilding the panel (its buttons keep focus).
+function paintTagPanelField() {
+  const field = document.querySelector('[data-panel-field]');
+  if (!field) return;
+  const parts = (field.dataset.panelField || '').split('|');
+  const tag = parts[0] && parts[1] ? catalogTag(parts[0], parts[1]) : null;
+  field.textContent = fieldState((field.dataset.contact || '').toLowerCase(), tagBit(tag)) || '—';
 }
 
 // The tag lines of the rendered result rows, re-labelled once the bridge's names arrive.

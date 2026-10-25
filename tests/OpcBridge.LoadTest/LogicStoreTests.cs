@@ -897,6 +897,74 @@ public sealed class LogicStoreTests : IDisposable
     }
 
     [Fact]
+    public void TrySaveAreaTags_NormalizesTheDeviceContactForm()
+    {
+        LogicStore store = CreateStore();
+
+        bool ok = store.TrySaveAreaTags(
+            new LogicAreaTagsDto
+            {
+                Name = "DRYEND",
+                Tags =
+                {
+                    new LogicTagDto { Name = "START_PB", SourceId = "sim", ItemId = "t1", Contact = " NC " },
+                    new LogicTagDto { Name = "FAULT", SourceId = "sim", ItemId = "t2", Contact = "no" },
+                    new LogicTagDto { Name = "RUNNING", SourceId = "sim", ItemId = "t3" }
+                }
+            },
+            out LogicAreaTagsDto saved,
+            out _,
+            out string? error);
+
+        Assert.True(ok);
+        Assert.Null(error);
+        Assert.Equal(new[] { "nc", "no", "" }, saved.Tags.Select(tag => tag.Contact));
+        Assert.Equal(new[] { "nc", "no", "" }, store.GetAreaTags()[0].Tags.Select(tag => tag.Contact));
+    }
+
+    [Fact]
+    public void TrySaveAreaTags_RejectsAnUnknownDeviceContactForm()
+    {
+        LogicStore store = CreateStore();
+
+        bool ok = store.TrySaveAreaTags(
+            new LogicAreaTagsDto
+            {
+                Name = "DRYEND",
+                Tags =
+                {
+                    new LogicTagDto { Name = "START_PB", SourceId = "sim", ItemId = "t1", Contact = "maybe" }
+                }
+            },
+            out _,
+            out _,
+            out string? error);
+
+        Assert.False(ok);
+        Assert.Contains("device contact", error, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(store.GetAreaTags());
+    }
+
+    [Fact]
+    public void Persist_ReloadsTheDeviceContactForm()
+    {
+        LogicStore store = CreateStore();
+        store.TrySaveAreaTags(
+            new LogicAreaTagsDto
+            {
+                Name = "DRYEND",
+                Tags = { new LogicTagDto { Name = "START_PB", SourceId = "sim", ItemId = "t1", Contact = "nc" } }
+            },
+            out _,
+            out _,
+            out _);
+
+        LogicStore reopened = new(Options.Create(new BridgeOptions()));
+
+        Assert.Equal("nc", Assert.Single(Assert.Single(reopened.GetAreaTags()).Tags).Contact);
+    }
+
+    [Fact]
     public void TrySaveAreaTags_ReplacesByNameCaseInsensitively()
     {
         LogicStore store = CreateStore();

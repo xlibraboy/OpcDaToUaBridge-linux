@@ -242,14 +242,15 @@ public sealed class LogicApiTests
                         name = "DRYEND",
                         tags = new[]
                         {
-                            new { name = "START_PB", sourceId = "sim", itemId = "ns=2;s=Status/Line01.Permit" },
-                            new { name = "FAULT", sourceId = string.Empty, itemId = string.Empty }
+                            new { name = "START_PB", sourceId = "sim", itemId = "ns=2;s=Status/Line01.Permit", contact = "nc" },
+                            new { name = "FAULT", sourceId = string.Empty, itemId = string.Empty, contact = string.Empty }
                         }
                     }
                 });
             Assert.Equal(HttpStatusCode.OK, save.StatusCode);
             using JsonDocument saveBody = JsonDocument.Parse(await save.Content.ReadAsStringAsync());
             Assert.Equal("DRYEND", saveBody.RootElement.GetProperty("tagSource").GetProperty("name").GetString());
+            Assert.Equal("nc", saveBody.RootElement.GetProperty("tagSource").GetProperty("tags")[0].GetProperty("contact").GetString());
             Assert.Equal(2, saveBody.RootElement.GetProperty("version").GetInt64());
 
             // A block that reads the machine's named tags: the pair lives on the source.
@@ -292,6 +293,7 @@ public sealed class LogicApiTests
             JsonDocument list = await app.GetJsonAsync("/api/logic");
             JsonElement sources = list.RootElement.GetProperty("tagSources");
             Assert.Equal("DRYEND", sources[0].GetProperty("name").GetString());
+            Assert.Equal("nc", sources[0].GetProperty("tags")[0].GetProperty("contact").GetString());
 
             // Evaluation resolves through the source: no values arrive in this host, so the
             // reason names the real tag for the bound entry and the entry itself when unassigned.

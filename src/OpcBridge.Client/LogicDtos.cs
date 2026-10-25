@@ -291,6 +291,16 @@ public sealed class LogicTagDto
     public string SourceId { get; set; } = string.Empty;
 
     public string ItemId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The external device's own contact form — <see cref="LogicContactForms.NormallyOpen"/> or
+    /// <see cref="LogicContactForms.NormallyClosed"/>; blank when it has not been recorded. This
+    /// is the device's wiring, not the interlock's requirement: an element's
+    /// <see cref="LogicElementDto.Op"/> is still compared against the live tag bit. The two are
+    /// read together to say what the field device is doing — an NO device is actuated while the
+    /// tag reads 1, an NC device while it reads 0.
+    /// </summary>
+    public string Contact { get; set; } = string.Empty;
 }
 
 /// <summary>An operator note (or acknowledgement) attached to a block, optionally to one condition.</summary>
@@ -344,6 +354,24 @@ public static class LogicConditionOps
         string.Equals(op, GreaterThan, StringComparison.OrdinalIgnoreCase) ||
         string.Equals(op, LessThan, StringComparison.OrdinalIgnoreCase) ||
         string.Equals(op, Equal, StringComparison.OrdinalIgnoreCase);
+}
+
+/// <summary>
+/// The external device's contact form, recorded once per area tag. It says how the device is
+/// wired — a normally open device is actuated while the tag reads 1, a normally closed one while
+/// it reads 0 — so the page can name the field state and the action at the source. It never
+/// changes the interlock's verdict: a contact element's <see cref="LogicElementDto.Op"/> is still
+/// compared against the tag bit.
+/// </summary>
+public static class LogicContactForms
+{
+    public const string NormallyOpen = "no";
+    public const string NormallyClosed = "nc";
+
+    public static readonly string[] All = { NormallyOpen, NormallyClosed };
+
+    public static bool IsValid(string? form) =>
+        form is not null && Array.Exists(All, f => string.Equals(f, form, StringComparison.OrdinalIgnoreCase));
 }
 
 /// <summary>

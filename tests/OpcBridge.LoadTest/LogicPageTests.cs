@@ -320,6 +320,39 @@ public sealed class LogicPageTests
     }
 
     [Fact]
+    public void Script_ReadsTheExternalDeviceContactFormWithoutChangingTheVerdict()
+    {
+        string script = OnDisk(ScriptFile);
+
+        // The external device's form is the bridge's own vocabulary and is recorded on the area
+        // tag, beside the source and tag — not on each interlock row, where it would drift per block.
+        Assert.Equal(LogicContactForms.All, StringList(script, "CONTACT_FORMS"));
+        Assert.Contains("const CONTACT_LABEL = { no: 'NO', nc: 'NC' };", script);
+        string row = Between(script, "function tagEntryRow(", "function renderTagsTab(");
+        Assert.Contains("'aria-label': 'Device contact'", row);
+        Assert.Contains("CONTACT_FORMS.map", row);
+        Assert.Contains("'data-field-tag'", row);
+
+        // NO is actuated at 1, NC at 0 — the page's one derivation, used by the row, the Result
+        // card and the tag inspector.
+        Assert.Contains("const actuated = form === 'nc' ? !bit : bit;", script);
+        Assert.Contains("'device ' + CONTACT_LABEL[form] + ' · actuated when '", script);
+        Assert.Contains("function fieldLine(state, def)", script);
+        Assert.Contains("function fieldState(form, bit)", script);
+
+        // The interlock verdict stays the tag's: the field line is added beside should/actual and
+        // never writes the compared reading.
+        string live = Between(script, "function paintLive(", "function renderControls(");
+        Assert.Contains("fieldLine(state, def)", live);
+        Assert.Contains("shouldLine(state, def)", live);
+        Assert.DoesNotContain("state.matches = ", live);
+
+        string result = Between(script, "function resultRow(", "const STEP_WORD");
+        Assert.Contains("fieldLine(state, def)", result);
+        Assert.Contains("class: 'rl-line rl-field muted'", result);
+    }
+
+    [Fact]
     public void Script_VocabularyMatchesTheBridge()
     {
         string script = OnDisk(ScriptFile);
@@ -666,7 +699,10 @@ public sealed class LogicPageTests
         Assert.Contains("net.appendChild(resultNode(node, index, 0))", script);
         Assert.Contains("style: '--depth:' + depth", script);
         Assert.Contains("function readOnlyNode(", script);
-        Assert.Contains("for (const node of resultTree(list)) net.appendChild(readOnlyNode(node, 0));", script);
+        // The read-only rows carry their definitions too, so a flat-conditions block's contacts
+        // show the same external-device reading as the editable network.
+        Assert.Contains("const defsById = indexBlock(draft).byId;", script);
+        Assert.Contains("for (const node of resultTree(list)) net.appendChild(readOnlyNode(node, 0, defsById));", script);
         Assert.Contains("class: 'el readonly d' + Math.min(depth, 3)", script);
     }
 

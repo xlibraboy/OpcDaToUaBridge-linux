@@ -508,6 +508,22 @@ public sealed class HmiLogicTagsTests
     }
 
     [Fact]
+    public void Tags_KeepTheDeviceContactFormThroughTheHmisOwnSave()
+    {
+        LogicAreaTagsDto stored = Source("DRYEND", ("START_PB", StartItemId));
+        stored.Tags[0].Contact = LogicContactForms.NormallyClosed;
+
+        LogicAreaTagsViewModel tab = new();
+        LogicBlockDto block = NamedBlock("START_PB");
+        tab.Load(block, new[] { stored }, new[] { block }, Catalog());
+
+        // The HMI does not edit the device form, but an HMI save must not clear what the web
+        // Logic page recorded for the same area tag.
+        Assert.False(tab.IsDirty);
+        Assert.Equal(LogicContactForms.NormallyClosed, Assert.Single(tab.ToDto().Tags).Contact);
+    }
+
+    [Fact]
     public void RefreshUsed_MarksOnlyTheEntriesTheBlockReferences()
     {
         LogicAreaTagsViewModel tab = new();

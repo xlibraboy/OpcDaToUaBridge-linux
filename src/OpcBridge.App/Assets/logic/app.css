@@ -490,6 +490,8 @@ select { cursor: pointer; }
 }
 .el-live .lead { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .el-live .reading { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink2); }
+/* The external device's own reading, under the tag's: what its NO/NC wiring makes of the bit. */
+.el-live .field-line { flex: 1 0 100%; font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--muted-strong); }
 
 .q {
   font-family: var(--font-mono);
@@ -845,7 +847,7 @@ select { cursor: pointer; }
 .tag-toolbar .grow { flex: 1 1 auto; }
 .tag-head, .tag-row {
   display: grid;
-  grid-template-columns: 200px 190px minmax(180px, 1fr) 110px 58px 34px;
+  grid-template-columns: 190px 170px minmax(160px, 1fr) 92px 110px 58px 34px;
   gap: 8px;
   align-items: center;
 }
@@ -856,11 +858,15 @@ select { cursor: pointer; }
   color: var(--muted);
   padding: 0 2px 4px;
 }
-.tag-head span:nth-child(4) { text-align: center; }
+.tag-head span:nth-child(5) { text-align: center; }
 .tag-list { display: flex; flex-direction: column; gap: 5px; }
 .tag-row { border: 1px solid var(--border); background: var(--panel); border-radius: 2px; padding: 6px 8px; }
 .tag-row .tag-name { text-transform: uppercase; }
 .tag-row .tag-live { text-align: center; color: var(--muted-strong); }
+/* The external device's NO/NC form, and the field state it gives the live bit. */
+.tag-row .tag-device { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tag-row .tag-contact { width: 100%; }
+.tag-row .tag-field { text-align: center; }
 /* The block's own area field, beside the list it names. */
 .tag-toolbar .tag-area { flex: 0 0 220px; text-transform: uppercase; }
 

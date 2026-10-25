@@ -26,6 +26,7 @@ public partial class LogicTagEntryViewModel : ObservableObject
         catalog_ = catalog;
         onRemove_ = onRemove;
         Name = tag.Name;
+        Contact = tag.Contact;
         LoadSourceAndItems(tag.SourceId, tag.ItemId);
     }
 
@@ -62,6 +63,12 @@ public partial class LogicTagEntryViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _canEdit = true;
+
+    /// <summary>
+    /// The external device's contact form, authored on the web Logic page's Tags tab. This tab
+    /// does not edit it, but carries it through a save so opening it cannot clear the field.
+    /// </summary>
+    public string Contact { get; }
 
     public string SourceId => SelectedSource?.SourceId ?? string.Empty;
 
@@ -100,7 +107,8 @@ public partial class LogicTagEntryViewModel : ObservableObject
     {
         Name = Name.Trim(),
         SourceId = SourceId,
-        ItemId = ItemId
+        ItemId = ItemId,
+        Contact = Contact
     };
 
     /// <summary>Binds the entry to a bridge tag — the "created empty, assigned later" assignment.</summary>

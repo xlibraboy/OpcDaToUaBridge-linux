@@ -1059,11 +1059,20 @@ public sealed class LogicStore
             }
 
             string itemId = tag.ItemId?.Trim() ?? string.Empty;
+            string contact = tag.Contact?.Trim().ToLowerInvariant() ?? string.Empty;
+            if (contact.Length > 0 && !LogicContactForms.IsValid(contact))
+            {
+                normalized = default!;
+                error = "A device contact must be NO, NC or blank.";
+                return false;
+            }
+
             tags.Add(new LogicTagDto
             {
                 Name = tagName,
                 SourceId = itemId.Length == 0 ? string.Empty : NormalizeSourceId(tag.SourceId),
-                ItemId = itemId
+                ItemId = itemId,
+                Contact = contact
             });
         }
 
