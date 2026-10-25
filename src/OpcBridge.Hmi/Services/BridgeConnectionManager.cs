@@ -85,6 +85,22 @@ public sealed class BridgeConnectionManager : IAsyncDisposable
         }
     }
 
+    /// <summary>The configured base URL of a bridge session, when that bridge is known.</summary>
+    public bool TryGetBaseUrl(string bridgeId, out string baseUrl)
+    {
+        lock (sync_)
+        {
+            if (sessions_.TryGetValue(bridgeId, out BridgeSession? session))
+            {
+                baseUrl = session.BaseUrl;
+                return true;
+            }
+        }
+
+        baseUrl = string.Empty;
+        return false;
+    }
+
     public event Func<string, Task>? BridgeReconnected;
     public event Func<string, HmiMappingsChanged, Task>? MappingsChanged;
     public event Action? CacheChanged;

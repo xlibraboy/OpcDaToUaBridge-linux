@@ -131,7 +131,7 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         }
     }
 
-    // ---- Editor / Tags / Result tabs ----
+    // ---- Editor / Tags / Result / Web tabs ----
 
     [ObservableProperty]
     private bool _isEditorTab = true;
@@ -141,6 +141,18 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private bool _isResultTab;
+
+    /// <summary>
+    /// The bridge's own <c>/logic</c> page. The runtime embeds it with WebView2 on Windows; on
+    /// other hosts the tab offers the page in the system browser instead.
+    /// </summary>
+    [ObservableProperty]
+    private bool _isWebTab;
+
+    /// <summary>The selected bridge's own logic page. Empty while no bridge is selected.</summary>
+    public string WebPageUrl => SelectedBridge?.PageUrl ?? string.Empty;
+
+    public bool HasWebPageUrl => WebPageUrl.Length > 0;
 
     /// <summary>
     /// The selected block's area's named tags: one list shared by every block of the area, so a
@@ -159,6 +171,11 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         {
             IsTagsTab = false;
         }
+
+        if (value && IsWebTab)
+        {
+            IsWebTab = false;
+        }
     }
 
     partial void OnIsTagsTabChanged(bool value)
@@ -171,6 +188,11 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         if (value && IsResultTab)
         {
             IsResultTab = false;
+        }
+
+        if (value && IsWebTab)
+        {
+            IsWebTab = false;
         }
 
         if (value)
@@ -189,6 +211,29 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         if (value && IsTagsTab)
         {
             IsTagsTab = false;
+        }
+
+        if (value && IsWebTab)
+        {
+            IsWebTab = false;
+        }
+    }
+
+    partial void OnIsWebTabChanged(bool value)
+    {
+        if (value && IsEditorTab)
+        {
+            IsEditorTab = false;
+        }
+
+        if (value && IsTagsTab)
+        {
+            IsTagsTab = false;
+        }
+
+        if (value && IsResultTab)
+        {
+            IsResultTab = false;
         }
     }
 
@@ -1022,7 +1067,10 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
     {
         string? selectedId = SelectedBridge?.BridgeId;
         List<LogicBridgeOption> options = connections_.LinkStatuses
-            .Select(status => new LogicBridgeOption(status.BridgeId, status.State))
+            .Select(status => new LogicBridgeOption(
+                status.BridgeId,
+                status.State,
+                connections_.TryGetBaseUrl(status.BridgeId, out string baseUrl) ? baseUrl : string.Empty))
             .ToList();
 
         if (!Bridges.SequenceEqual(options))
@@ -1071,6 +1119,8 @@ public sealed partial class LogicPanelViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(IsBridgeWarn));
         OnPropertyChanged(nameof(IsBridgeBad));
         OnPropertyChanged(nameof(IsResultStale));
+        OnPropertyChanged(nameof(WebPageUrl));
+        OnPropertyChanged(nameof(HasWebPageUrl));
         OnPropertyChanged(nameof(EmptyBlocksMessage));
         OnPropertyChanged(nameof(ResultEmptyTitle));
         OnPropertyChanged(nameof(ResultEmptyMessage));

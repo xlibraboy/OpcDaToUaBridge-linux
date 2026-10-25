@@ -43,6 +43,37 @@
     <Icon Id="ProductIcon" SourceFile="src/OpcBridge.Hmi/Assets/opcbridge-hmi.ico" />
     <Property Id="ARPPRODUCTICON" Value="ProductIcon" />
 
+    <!-- The embedded Logic page needs the Microsoft Edge WebView2 runtime. Windows 11 ships
+         it; a Windows 10 host may not. These searches carry the runtime's version when it is
+         installed (per-machine through the 32-bit EdgeUpdate view, plus per-user), and the
+         bootstrapper below runs only when neither is present. It is best-effort: a host with
+         no route to Microsoft's servers still installs the runtime, and the Logic page's
+         Open in browser fallback keeps working. -->
+    <Property Id="WEBVIEW2_RUNTIME_VERSION">
+      <RegistrySearch Id="WebView2RuntimeMachine" Root="HKLM"
+                      Key="SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+                      Name="pv" Type="version" Win64="yes" />
+    </Property>
+    <Property Id="WEBVIEW2_RUNTIME_VERSION_USER">
+      <RegistrySearch Id="WebView2RuntimeUser" Root="HKCU"
+                      Key="Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+                      Name="pv" Type="version" Win64="yes" />
+    </Property>
+
+    <Binary Id="WebView2Bootstrapper" SourceFile="build/webview2/MicrosoftEdgeWebview2Setup.exe" />
+    <CustomAction Id="InstallWebView2Runtime"
+                  BinaryRef="WebView2Bootstrapper"
+                  ExeCommand="/silent /install"
+                  Execute="deferred"
+                  Impersonate="no"
+                  Return="ignore" />
+
+    <InstallExecuteSequence>
+      <Custom Action="InstallWebView2Runtime" Before="InstallFinalize">
+        <![CDATA[NOT Installed AND NOT REMOVE AND NOT WEBVIEW2_RUNTIME_VERSION AND NOT WEBVIEW2_RUNTIME_VERSION_USER]]>
+      </Custom>
+    </InstallExecuteSequence>
+
     <ui:WixUI Id="WixUI_FeatureTree" />
     <WixVariable Id="WixUILicenseRtf" Value="packaging/msi/License.rtf" />
 

@@ -205,6 +205,8 @@
             <RadioButton Classes="seg" GroupName="LogicTabs" Content="Editor" IsChecked="{Binding IsEditorTab}" />
             <RadioButton Classes="seg" GroupName="LogicTabs" Content="Tags" IsChecked="{Binding IsTagsTab}" />
             <RadioButton Classes="seg" GroupName="LogicTabs" Content="Result" IsChecked="{Binding IsResultTab}" />
+            <RadioButton Classes="seg" GroupName="LogicTabs" Content="Web page" IsChecked="{Binding IsWebTab}"
+                         ToolTip.Tip="The same logic page the bridge serves at /logic, embedded on Windows and opened in the system browser on other hosts." />
             <TextBlock Classes="hint warn" VerticalAlignment="Center" Margin="10,0,0,0" Text="unsaved changes"
                        IsVisible="{Binding HasUnsavedChanges}" />
           </StackPanel>
@@ -626,6 +628,47 @@
             </StackPanel>
           </Border>
         </ScrollViewer>
+
+        <!-- ======== WEB PAGE (the bridge's own /logic) ========
+             The same page the HMI's own editor writes to, hosted by the bridge: embedded with
+             WebView2 on Windows, opened in the system browser everywhere else. -->
+        <Grid Grid.Row="1" IsVisible="{Binding IsWebTab}" RowDefinitions="Auto,*">
+          <Border Grid.Row="0" Classes="card" Margin="0,0,0,6">
+            <StackPanel Spacing="3">
+              <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8">
+                <TextBlock Grid.Column="0" Classes="listHeader" Text="BRIDGE PAGE" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1" Classes="mono" VerticalAlignment="Center"
+                           Text="{Binding WebPageUrl}" TextTrimming="CharacterEllipsis"
+                           ToolTip.Tip="{Binding WebPageUrl}"
+                           AutomationProperties.Name="Logic web page address" />
+                <Button x:Name="ReloadWebButton" Grid.Column="2" Content="Reload"
+                        Click="OnReloadWebClick"
+                        AutomationProperties.Name="Reload the embedded logic page"
+                        IsVisible="False" />
+                <Button Grid.Column="3" Classes="primary" Content="Open in browser"
+                        Click="OnOpenInBrowserClick"
+                        IsEnabled="{Binding HasWebPageUrl}"
+                        AutomationProperties.Name="Open the logic page in the system browser"
+                        ToolTip.Tip="Open this bridge's /logic page in the system browser — the same page, in a separate window." />
+              </Grid>
+              <TextBlock x:Name="WebStatusText" Classes="hint warn" TextWrapping="Wrap" IsVisible="False" />
+            </StackPanel>
+          </Border>
+          <Panel Grid.Row="1">
+            <ContentControl x:Name="WebHost" IsVisible="False" />
+            <StackPanel x:Name="WebFallback" VerticalAlignment="Center" HorizontalAlignment="Center"
+                        MaxWidth="560" Spacing="10" Margin="0,24">
+              <TextBlock x:Name="WebFallbackTitle" FontSize="16" FontWeight="SemiBold"
+                         HorizontalAlignment="Center" TextWrapping="Wrap" />
+              <TextBlock x:Name="WebFallbackMessage" Classes="hint" TextAlignment="Center" TextWrapping="Wrap" />
+              <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="8">
+                <Button Classes="primary" Content="Open in browser" Click="OnOpenInBrowserClick"
+                        IsEnabled="{Binding HasWebPageUrl}" />
+                <Button x:Name="RetryWebButton" Content="Retry" Click="OnReloadWebClick" IsVisible="False" />
+              </StackPanel>
+            </StackPanel>
+          </Panel>
+        </Grid>
 
         <!-- ======== RESULT ======== -->
         <Border Grid.Row="1" Classes="card" IsVisible="{Binding IsResultTab}">

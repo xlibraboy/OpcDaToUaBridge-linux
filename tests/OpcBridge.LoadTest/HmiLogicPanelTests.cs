@@ -1087,6 +1087,44 @@ public sealed class HmiLogicPanelTests
         }
     }
 
+    [Fact]
+    public async Task WebTabShowsTheSelectedBridgesOwnLogicPage()
+    {
+        await using TestAppHandle handle = await StartAsync(PermitTag());
+        MainViewModel vm = NewViewModel(out string configPath);
+        try
+        {
+            await ConnectAsync(vm, handle);
+
+            // The Web tab reads the selected bridge's own address, so the embedded page is the
+            // same origin as the /api/logic* data it edits.
+            string expected = handle.Client.BaseAddress!.ToString().TrimEnd('/') + "/logic";
+            Assert.Equal(expected, vm.Logic.WebPageUrl);
+            Assert.True(vm.Logic.HasWebPageUrl);
+
+            // The tab is a fourth surface, exclusive with the other three.
+            vm.Logic.IsWebTab = true;
+            Assert.True(vm.Logic.IsWebTab);
+            Assert.False(vm.Logic.IsEditorTab);
+            Assert.False(vm.Logic.IsTagsTab);
+            Assert.False(vm.Logic.IsResultTab);
+
+            vm.Logic.IsResultTab = true;
+            Assert.False(vm.Logic.IsWebTab);
+            Assert.True(vm.Logic.IsResultTab);
+
+            vm.Logic.IsEditorTab = true;
+            Assert.True(vm.Logic.IsEditorTab);
+            Assert.False(vm.Logic.IsResultTab);
+            Assert.Equal(expected, vm.Logic.WebPageUrl);
+        }
+        finally
+        {
+            await vm.DisposeAsync();
+            DeleteConfig(configPath);
+        }
+    }
+
     private static async Task SaveAreaTagsAsync(TestAppHandle handle, string name, LogicTagDto tag)
     {
         using HttpResponseMessage response = await handle.Client.PostAsJsonAsync(

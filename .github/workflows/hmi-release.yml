@@ -73,6 +73,27 @@ jobs:
           # Start Menu shortcut attaches to it.
           python scripts/msi/harvest.py build/publish-hmi build/wix/HmiFiles.wxs HmiFolder HmiFiles OpcBridge.Hmi.exe
 
+      - name: Fetch the WebView2 runtime bootstrapper
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dir = 'build/webview2'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          $path = Join-Path $dir 'MicrosoftEdgeWebview2Setup.exe'
+
+          # Microsoft's evergreen bootstrapper (the runtime the embedded Logic page uses).
+          # The link is a stable redirect, so verify the downloaded file is signed by
+          # Microsoft before embedding it in the MSI.
+          Invoke-WebRequest -Uri 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile $path
+          $signature = Get-AuthenticodeSignature $path
+          if ($signature.Status -ne 'Valid') {
+            throw "WebView2 bootstrapper signature is $($signature.Status)"
+          }
+          if ($signature.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') {
+            throw "WebView2 bootstrapper is signed by an unexpected publisher: $($signature.SignerCertificate.Subject)"
+          }
+          Write-Host "WebView2 bootstrapper: $($signature.SignerCertificate.Subject)"
+
       - name: Install WiX 5.0.2 and its extensions
         shell: pwsh
         run: |

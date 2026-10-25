@@ -16,6 +16,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+**The Logic page opens the bridge's own HTML logic page in a Web page tab.** Beside Editor | Tags |
+Result, **Web page** shows the same `/logic` page the dashboard's browser serves — the editor,
+Tags tab, Result tab and theme picker the bridge hosts, embedded in the runtime with the Microsoft
+Edge WebView2 runtime on Windows. The page is the bridge's own address, so it is same-origin with
+`/api/logic*` and the `/hmi` hub; the bridge selector above is the one the page follows. **Reload**
+refreshes the embedded page, and **Open in browser** opens the same address in the system browser.
+On hosts without the embedded control (Linux, or a Windows machine without the WebView2 runtime)
+the tab keeps the address and the Open in browser button instead of a blank surface, so the page
+is still one click away. The Windows installer installs the WebView2 runtime when it is missing
+— best-effort, so an offline host still installs and keeps the browser fallback. The runtime's
+Avalonia libraries move to 11.3.22.
+
 **The Logic Tags tab is the one place a tag is assigned — an interlock's rows carry no source.**
 The Editor's rows lost their direct **SOURCE** / **TAG** pickers: a condition, a network contact, a
 step's completion handshake and an action each carry one **TAG** picker, and what it reads is one of

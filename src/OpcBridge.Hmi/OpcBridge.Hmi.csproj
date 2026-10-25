@@ -30,12 +30,17 @@
     <EmbeddedResource Include="Help/LogicGuide.md" LogicalName="OpcBridge.Hmi.LogicGuide.md" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="11.2.1" />
-    <PackageReference Include="Avalonia.Desktop" Version="11.2.1" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.2.1" />
-    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.2.1" />
+    <PackageReference Include="Avalonia" Version="11.3.22" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.22" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.22" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.22" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="8.0.11" />
+    <!-- The Logic page's embedded web view. Only the Windows backend is referenced: the HMI
+         embeds /logic with WebView2 on Windows and opens the page in the system browser
+         elsewhere, where a GTK/WebKit control would fight Avalonia's own HarfBuzz. -->
+    <PackageReference Include="WebView.Avalonia" Version="11.0.0.1" />
+    <PackageReference Include="WebView.Avalonia.Windows" Version="11.0.0.1" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\OpcBridge.Client\OpcBridge.Client.csproj" />
