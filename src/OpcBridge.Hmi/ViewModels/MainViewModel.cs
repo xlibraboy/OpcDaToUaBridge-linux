@@ -57,13 +57,12 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
             connections_.Cache,
             OpenFaceplateFor,
             WriteForBindingAsync);
-        Logic = new LogicPanelViewModel(connections_, PostToUiAsync, message => StatusMessage = message);
+        Logic = new LogicPageViewModel(connections_);
         connections_.CacheChanged += OnCacheChanged;
         connections_.MappingsChanged += OnMappingsChangedAsync;
         connections_.InfluxStatusChanged += OnInfluxStatusChanged;
         connections_.LinkStateChanged += OnLinkStateChanged;
         connections_.BridgeReconnected += OnBridgeReconnectedAsync;
-        connections_.LogicChanged += OnLogicChanged;
         DisplaySurface.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(DisplaySurfaceViewModel.HasDocument) or nameof(DisplaySurfaceViewModel.DisplayName))
@@ -121,8 +120,8 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
 
     public DisplaySurfaceViewModel DisplaySurface { get; }
 
-    /// <summary>Plant-logic page: the block editor and the live evaluated result.</summary>
-    public LogicPanelViewModel Logic { get; }
+    /// <summary>Plant-logic page: the selected bridge's own /logic page.</summary>
+    public LogicPageViewModel Logic { get; }
 
     // ---- Page navigation (SCADA shell) ----
 
@@ -136,7 +135,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
     /// <summary>Saved trend groups page.</summary>
     public bool IsTrendsPage => CurrentPage == HmiPage.Trends;
 
-    /// <summary>Plant-logic page: authoring editor and the evaluated result.</summary>
+    /// <summary>Plant-logic page: the selected bridge's own /logic page.</summary>
     public bool IsLogicPage => CurrentPage == HmiPage.Logic;
 
     partial void OnCurrentPageChanged(HmiPage value)
@@ -418,12 +417,7 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         PostToUiAsync(() =>
         {
             StatusMessage = $"Reconnected to {bridgeId} — values refreshed";
-            Logic.OnBridgeReconnected(bridgeId);
         });
-
-    /// <summary>A bridge pushed a new evaluated logic state; the page applies it in place.</summary>
-    private void OnLogicChanged(string bridgeId, LogicStateSnapshot snapshot) =>
-        _ = PostToUiAsync(() => Logic.ApplyState(bridgeId, snapshot));
 
     /// <summary>Re-derives the status strip from the manager's live bridge link states.</summary>
     private void RecomputeLinkState()
@@ -1351,7 +1345,6 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
                 await connections_.RefreshBridgeSnapshotAsync(bridgeId, CancellationToken.None).ConfigureAwait(true);
                 // Tags can appear/disappear with the mappings, so the saved groups' rows follow.
                 RefreshTrendGroupRows();
-                Logic.OnMappingsChanged(bridgeId);
                 StatusMessage = $"Mappings changed on {bridgeId} (v{msg.Version})";
             }
             catch (Exception ex)
@@ -1738,8 +1731,6 @@ public partial class MainViewModel : ObservableObject, IAsyncDisposable
         connections_.InfluxStatusChanged -= OnInfluxStatusChanged;
         connections_.LinkStateChanged -= OnLinkStateChanged;
         connections_.BridgeReconnected -= OnBridgeReconnectedAsync;
-        connections_.LogicChanged -= OnLogicChanged;
-        Logic.Dispose();
         foreach (DisplayStoreClient client in storeClients_.Values)
         {
             client.Dispose();

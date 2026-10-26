@@ -16,175 +16,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-**The Logic page opens the bridge's own HTML logic page in a Web page tab.** Beside Editor | Tags |
-Result, **Web page** shows the same `/logic` page the dashboard's browser serves — the editor,
-Tags tab, Result tab and theme picker the bridge hosts, embedded in the runtime with the Microsoft
-Edge WebView2 runtime on Windows. The page is the bridge's own address, so it is same-origin with
-`/api/logic*` and the `/hmi` hub; the bridge selector above is the one the page follows. **Reload**
-refreshes the embedded page, and **Open in browser** opens the same address in the system browser.
-On hosts without the embedded control (Linux, or a Windows machine without the WebView2 runtime)
-the tab keeps the address and the Open in browser button instead of a blank surface, so the page
-is still one click away. The Windows installer installs the WebView2 runtime when it is missing
-— best-effort, so an offline host still installs and keeps the browser fallback. The runtime's
-Avalonia libraries move to 11.3.22.
-
-**The Logic Tags tab is the one place a tag is assigned — an interlock's rows carry no source.**
-The Editor's rows lost their direct **SOURCE** / **TAG** pickers: a condition, a network contact, a
-step's completion handshake and an action each carry one **TAG** picker, and what it reads is one of
-the selected block's area's tags — the signal, its source and the tag it is bound to are assigned in
-that one place, the **Tags** tab. **`+ New tag`** opens ready to bind: its source is already chosen,
-so the **TAG** cell lists that source's mapped tags and says which step is missing when it does not
-(pick a source; no mapped tags on it — map them in the dashboard). Nothing a block already evaluates
-is dropped: a row that still stores a direct tag reads it as a `Direct tag: …` line instead of a
-picker when the area's list has no entry for it, and a pair with a list to join **moves into the
-area's tags by itself** — opening the block (or giving it an area) turns each pair into a named
-entry, named after the tag's display name, the row references it and the editor reports `1 tag moved
-into "DRYEND" — saved with the block.`. That move is **not unsaved work**: the draft keeps reading
-clean (so switching blocks never asks to discard a block that was only read, and selecting the same
-block again cannot re-dirty it), the block evaluates exactly as before, and the entries are stored
-the first time the block itself is saved. **`From bridge…`** opens the bridge's mapped tags
-in their own window — source, tag and the reading each had when it opened, with a filter box, the
-tags the list already holds greyed out — and adds every ticked tag as one named entry, telling you
-how many joined (`3 tags added to "DRYEND" — Save to store them.`); picking a tag twice never
-duplicates an entry. A tag the source does not offer for writing is
-flagged where it is assigned (`read-only tag — an action cannot write it.`), because the action rows
-pick an entry now instead of a writeable tag.
-
-**The Logic editor is a denser authoring surface with a foldable block list.** The page packs its
-cards, rows and fields tighter than the app default — shorter row padding, tighter label and field
-spacing, and shorter inputs — so a whole block's conditions, network or steps fit on screen while it
-is being wired. It carries its own type scale, half a step under the app's: 12px in the boxes, 10px
-field labels, 11px hints and live readings, over 22px controls in place of the app's 28, and the wide
-fields — the element kind, a sentence, the tag pickers — are sized to the longest value each one
-carries. A network row is 48px instead of 63 and its boxes 22px instead of 29, so an eight-row
-interlock and the actions below it are all in sight at once. Beside the Editor / Tags /
-Result tabs a **◀ Blocks** button folds the block list away and hands the editor the whole page; it
-reads **▶ Blocks** while the list is hidden and clicking it brings the list back, the page opens
-with the list in sight, and **Blocks…** still lists and selects the blocks while it is folded.
-
-**The network lays itself out by kind — `Auto format`.** An element row carries its level, and
-setting the levels by hand costs one `→` click per operand. **Auto format**, in the network's toolbar
-beside `Add element`, reads the kinds in the order they are written and nests them: a row takes the
-rows behind it as its inputs — one for a NOT, a timer, an edge, a latch or a coil, two for a gate —
-so a network authored top to bottom, the gate and then its operands, lays out in one click. A gate
-then keeps taking what follows it: an OR or an XOR takes the contacts after it and stops at a row
-that reads inputs of its own, which stays a root beside the gate, because OR(C1, AND(C2, C3)) is not
-OR(C1) ∧ AND(C2, C3) — while an AND takes everything, which cannot change what the block evaluates,
-since an AND is associative and the block ANDs its roots anyway. Rows nobody takes stay roots, so a
-half-built row is left unwired and reported as `(not wired yet)` rather than as satisfied, the second
-input of a latch or a counter (its reset, its load) is left to the author, and the levels stop at the
-sixteen the bridge accepts. The button only ever sets levels, so pressing it on a network that is
-already laid out — including one the bridge expanded from a block's flat conditions — moves nothing
-and says so, and what it does move is a draft change until **Save**.
-
-**The Logic editor's rows insert and move where you are working.** Every row — a condition, a
-network element, a step, an action — now carries `+↑` / `+↓` beside `✕` to insert a fresh row
-directly above or below it, so a list is built where it is being read instead of only appended at
-its end, plus `↑` / `↓` to move the row up or down. In the network a row moves **with the rows
-nested under it** — a gate keeps its inputs instead of leaving them behind — and insert places the
-new row beside it at the same nesting level; the buttons grey out at the ends of a level.
-
-**The Logic page shares tags per area: an area's tags assigned once, read by all its blocks.**
-Beside Editor and Result, **Tags** edits the selected block's area's tags — type the area (`DRY
-END`, `WET END`, …) in the editor's new **AREA** field, or in the tab's own box (the same value),
-then `+ New tag` for each signal the area's blocks read. Every block of the area shares one list,
-so a new group or interlock filed under the area re-uses the tags already there instead of starting
-its own: a signal is assigned **once per area**, the tab shows **used by N blocks**, and the block
-list (and the **Blocks…** window) now reads two levels — **AREA**, then the interlock group, then
-the blocks. The interlock group is a display heading only; a block with no area keeps working —
-its named tags resolve through the name it stores, else its interlock group (the legacy fallback),
-which the tab names while offering to move the block onto an area. An entry can be created
-**empty** and bound later: the row pickers already offer it, the block evaluates **no data for
-START_PB (not assigned)** until a tag is picked, and the tab's **LIVE** column shows the bound
-tag's value so the assignment can be checked in place. **New block** now asks for the block's
-**AREA** (and its interlock group) first, so the area is set before anything is authored. A block
-authored before areas existed joins its area the moment it is given one — or the moment it is
-opened with one — so nothing has to be moved by hand. **`Delete area tags`** is refused while
-blocks still read them (the bridge names how many), and **Save** stores the tags and the block
-together, whichever changed (`✓ Area tags saved.` when only the area's tags moved). The Result tab
-labels a named contact as `START_PB · Line 01 Start Permit`, and the page's **Guide…** documents the
-whole flow.
-**The network editor authors internal relays (M coils).** The element kind list gained **Coil —
-drive internal relay (IN, M)**: it takes one input and drives the relay it names, and a contact
-row gained a **RELAY** field that turns it into a relay contact reading that relay instead of a
-tag — its tag pickers disappear while a relay is typed and a numeric comparison is coerced back
-to ON/OFF, because a relay reads a bit. The relay field suggests the relays the loaded blocks'
-coils already drive, so a relay authored in one block is nameable in the next, and a coil row
-hides SEVERITY (an output has no "warn only"). Editor rows and the Result tab label relay
-elements with the relay they read or drive (`COIL · relay M01 · 1`), the indent clamp follows the
-engine's raised bound (16 levels, 256 elements), and the page's **Guide…** documents the
-scan-order rules: a coil's write is visible to everything evaluated after it, a relay nobody
-drives reads unknown, and a disabled block's coils do not drive anything.
-
-**The runtime authors and watches the plant logic.** A new **Logic** page (View ▸ Logic, Ctrl+4)
-carries the whole logic surface, per bridge: the block form (name, kind, enabled, interlock group,
-description, tags), the flat **condition** editor (sentence, source/tag pickers,
-ON/OFF/`>`/`<`/`=`, OR group, hold timer, severity, next step), the **IEC 61131-3 network** editor
-(indented element rows — contacts, AND/OR/XOR/NOT, TON/TOF/TP, CTU/CTD, SR/RS, R_TRIG/F_TRIG —
-with `Convert to IEC network` and back), sequence **steps** with an optional completion handshake,
-and **actions** the phone renders. Every editor row is its own bordered line with a label on each
-field — nothing is keyed off a column header — and a network row carries a rail for each level it
-nests under, so both forms reflow with the window instead of scrolling sideways. Every row shows
-the bridge's live state as a chip (1 / 0 / no data, or the live value); the **block list** stands
-beside both tabs, every block under its interlock group heading with its state pill, first reason
-and sequence progress, so the block being edited is picked and kept in sight from the screen that
-edits it, and the **Blocks…** window is where blocks are created and deleted. The **Result** tab
-renders the selected block's evaluated configuration the way the phone does — every element its
-own bordered row, the live reading in large mono digits, with `should 1 · actual 0`, timer and
-counter progress and the tag it reads under it, nested by a rail for every level — fed by the
-bridge's `logic` hub push plus a once-a-second state poll while the page is open; it names the
-time the state last arrived, never rebuilds rows under the operator, and shows a newly picked
-block's state at once instead of the one before it. Definitions save through the bridge's own
-`/api/logic*` API (its errors shown verbatim, Save greyed until the draft differs); while a bridge
-is unreachable the page keeps the last known blocks on screen and disables editing. A **Guide…**
-button carries the logic guide the dashboard used to describe.
-
-### Fixed
-
-**A legacy row's direct tag reads as one line, not a paragraph.** A row still carrying a tag of its
-own printed the whole sentence under its TAG field — `Direct tag: Valve 02 Position · UA Sim — add
-it to this area's tags (the Tags tab) to assign it there.` — wrapped over four lines, in every
-condition, contact, step handshake and action of the block, so the rows that needed the most room
-took the most. The line is now the tag's own name in the row's instrument font, trimmed when the
-name is long, with a small **i** mark in front of it, and the sentence hangs off the mark's
-tooltip: a hover says what the row reads and what to do about it, the row keeps its one-line
-height, and the tag it reads stays in sight without hovering.
-
-**The Logic page's empty list says which of the four things happened.** Reading the blocks for
-the first time, an unreachable bridge, a definitions read the bridge refused, and a genuinely
-empty list all read as "No logic blocks yet" — a failed fetch looked like an empty plant. The
-list, the blocks summary and the Result pane's empty state each name the actual state now, and a
-read that fails no longer caches an empty list: the next load retries.
-
-**Editing greys out in the same tick as the link drop.** The rows' own add, remove, indent and
-move controls only followed the bridge's editability on the next draft reload, so a link that
-dropped while the page sat open left them live against a draft that could not be saved. They now
-follow the link state as it changes, beside the "Editing is disabled" hint.
-
-**The Result pane's freshness line names a dead feed.** The line already counted up the age of
-the last snapshot, but a bridge that dropped only said so up in the bridge bar, never in the pane
-showing the frozen readings. It now reads "stale — bridge unreachable" (or "stale — reconnecting")
-in the warning colour, and switching bridges no longer carries the previous bridge's timestamp.
-
-**The confirm dialog's safe answer is the default one.** The destructive confirmations (delete a
-block, discard unsaved changes, drop a network) offered the destructive button first, focused and
-default, so a stray Enter triggered the very loss the dialog was asking about. Cancel is now the
-first, focused and default action; the destructive button takes an explicit Tab. **A cancelled
-block pick in the Blocks… window no longer closes the window** — declining the unsaved-changes
-confirm kept the draft but still dismissed the picker, so the operator had to reopen it to choose
-another block.
+**The Logic page is the bridge's own `/logic` page.** The runtime's Logic page (View ▸ Logic,
+Ctrl+4) now opens the selected bridge's `/logic` page — the same editor, Tags tab, Result tab and
+theme picker the dashboard's browser serves — instead of carrying a second, native editor. The page
+is the bridge's own address, so it is same-origin with `/api/logic*` and the `/hmi` hub; the bridge
+selector above is the one the page follows. The bridge-hosted page authors the same interlocks,
+permissives and sequences the phone renders: flat conditions, the IEC 61131-3 network, sequence
+steps, actions and an area's shared tags. **Reload** refreshes the embedded page, and **Open in
+browser** opens the same address in the system browser. On Windows it is embedded with the
+Microsoft Edge WebView2 runtime; on hosts without the embedded control (Linux, or a Windows machine
+without the WebView2 runtime) the page keeps the address and the Open in browser button instead of
+a blank surface, so it is still one click away. The Windows installer installs the WebView2
+runtime when it is missing — best-effort, so an offline host still installs and keeps the browser
+fallback. The runtime's Avalonia libraries move to 11.3.22.
 
 ### Accessibility
 
-**The app is usable without a pointer.** The destructive confirms focus their safe answer; the
-Blocks… window, the trend-group picker (its filter box), the guide and the release notes (their
-Close button) and the faceplate (its write box, on a writeable tag) each open with the control
-their task starts on. The display surface's widgets answer Enter and Space to open the faceplate,
-the keyboard equivalent of the click, and block rows announce name, kind, state and reason as one
-stable name so a truncated row stays readable to a screen reader. The logic page's tag and source
-pickers now carry the full tag identity (name and source) as their accessible description rather
-than only in a hover tooltip, step rows read name and state as one announcement, and the Config
-page's display picker is named.
+**The app is usable without a pointer.** The trend-group picker (its filter box), the release notes
+(their Close button) and the faceplate (its write box, on a writeable tag) each open with the
+control their task starts on. The display surface's widgets answer Enter and Space to open the
+faceplate, the keyboard equivalent of the click, and the Config page's display picker is named.
 
 ## [1.8.2] - 2026-10-06
 

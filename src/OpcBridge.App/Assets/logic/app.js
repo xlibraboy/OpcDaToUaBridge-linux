@@ -1196,8 +1196,8 @@ function sequenceProgress(block, state) {
 const stateWord = (state) => (state === 'true' ? '1' : state === 'false' ? '0' : '—');
 const statePill = (state) => (state === 'true' ? 'ok' : state === 'false' ? 'bad' : 'warn');
 
-// Block and step words, from the HMI's LogicText so every surface reads the same: the state word
-// always sits next to the colour, never colour alone.
+// Block and step words, kept from the retired Avalonia editor so the plant reads the same as it
+// did there: the state word always sits next to the colour, never colour alone.
 const BLOCK_KIND_LABEL = { interlock: 'Interlock', permissive: 'Permissive', sequence: 'Sequence' };
 const blockKindLabel = (kind) => BLOCK_KIND_LABEL[(kind || '').toLowerCase()] || 'Interlock';
 
@@ -1211,7 +1211,7 @@ function blockStateWord(state) {
 
 const blockStatePill = (state) => (state === 'ready' ? 'ok' : state === 'blocked' ? 'bad' : state === 'disabled' ? 'muted' : 'warn');
 
-// Contact forms and function-block input pins, the way the HMI's LogicText labels a row: a
+// Contact forms and function-block input pins, the way the HMI's editor labelled a row: a
 // contact reads as the form it takes (NO / NC / > / < / =), a block as the input it watches
 // (TON IN, CTU CU, SR S1 …). A coil is just COIL — its relay is named in the tag line.
 const PIN_LABEL = {
@@ -2031,7 +2031,7 @@ function loadCatalog() {
 const catalogTag = (sourceId, itemId) =>
   (catalog || []).find((t) => t.sourceId === sourceId && t.itemId === itemId) || null;
 
-// The Tags tab's live chip, the way the HMI's LogicText.TagLiveChip reads it: bad quality says so,
+// The Tags tab's live chip, the way the HMI's editor read it: bad quality says so,
 // a bit reads 1 / 0, a number keeps up to three decimals and its unit, and a tag that is not
 // assigned or has never delivered reads "—".
 function liveText(tag) {

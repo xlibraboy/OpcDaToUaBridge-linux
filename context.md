@@ -2,21 +2,13 @@
 
 Instruction file for AI agents working in this repo. All facts below are verified against the working tree as of 2026-10-25 (`main` after the Logic page moved onto the bridge's `/hmi` push — the page is embedded in the HMI and fed by the hub, not by a poll).
 
-## Next actions — the Logic window moving to HTML
+## The Logic window is the bridge's HTML page
 
-The goal: the HMI's Logic window becomes an HTML/JS page (richer elements, libraries and visuals than Avalonia), while the rest of the HMI stays Avalonia. The page is **hosted by the bridge** so it is same-origin with `/api/logic*` and the `/hmi` hub — no CORS work, which is the reason for that choice; do not move it to another origin.
+The HMI's Logic window is the **bridge-served HTML/JS page** (`src/OpcBridge.App/Assets/logic`), while the rest of the HMI stays Avalonia. The page is **hosted by the bridge** so it is same-origin with `/api/logic*` and the `/hmi` hub — that is the reason for the choice; do not move it to another origin.
 
-**Phases 1 and 2 are done.** Phase 1: `src/OpcBridge.App/LogicPage.cs` serves the embedded `Assets/logic/{index.html,app.css,app.js,signalr.min.js}` at `/logic` (one route — ASP.NET treats `/logic` and `/logic/` as the same), a public shell like `/` while the data behind it follows the normal role table. The page carries the HMI's surfaces as tabs (Editor | Tags | Result), authors the same three forms as the HMI — flat conditions, the IEC network, sequence steps and actions. **The evaluation is pushed, not polled:** the official ASP.NET Core SignalR JavaScript client (8.0.7, MIT) is vendored beside the page and served at `/logic/signalr.min.js` (a plant host has no internet), the page subscribes to `/hmi` and applies each `logic` snapshot in place, and `GET /api/logic/state` at 1 Hz is only the fallback while the hub is not connected — a 5 s refresh stays under the push because the bridge re-pushes only when a *derived* state changes. Its Result tab, wording and field set were diffed field-by-field against the HMI's `LogicText` / `LogicResultRowViewModels` and are pinned by `LogicPageTests.Script_MatchesTheHmisOwnWording` (24 tests in `tests/OpcBridge.LoadTest/LogicPageTests.cs`).
+**All three phases are done.** The bridge serves the embedded `Assets/logic/{index.html,app.css,app.js,signalr.min.js}` at `/logic` (a public shell like `/`, while the data behind it follows the normal role table). The page carries the HMI's surfaces as tabs (Editor | Tags | Result), authors flat conditions, the IEC network, sequence steps and actions, and draws the Avalonia-style per-level nesting guide rails on both the editor and result networks. **The evaluation is pushed, not polled:** the official ASP.NET Core SignalR JavaScript client (8.0.7, MIT) is vendored beside the page and served at `/logic/signalr.min.js` (a plant host has no internet), the page subscribes to `/hmi` and applies each `logic` snapshot in place, and `GET /api/logic/state` at 1 Hz is only the fallback while the hub is not connected — a 5 s refresh stays under the push because the bridge re-pushes only when a *derived* state changes. Its Result tab, wording and field set were swept field-by-field against the then-native editor with a 16-block SWEEP fixture (area `SWEEP`, group `Sweep`) and are pinned by `LogicPageTests` (24 tests in `tests/OpcBridge.LoadTest/LogicPageTests.cs`).
 
-**Phase 2: the HMI embeds the page.** `src/OpcBridge.Hmi/Views/LogicPage.axaml` has a fourth **Web page** tab beside Editor | Tags | Result. It is created lazily and points at the selected bridge's own `<BaseUrl>/logic`, so the embedded page and its `/api/logic*` calls are same origin. **Reload** refreshes the control; **Open in browser** opens the same address in the system browser. The embed is the MIT `WebView.Avalonia` **Windows backend** (`WebView.Avalonia.Windows`) over the Microsoft Edge WebView2 runtime — the GTK/WebKit backend is deliberately not referenced. On Linux, or a Windows host without the WebView2 runtime, the tab shows the address plus **Open in browser** instead of a blank surface. `OpcBridge.Hmi` and `OpcBridge.Hmi.Designer` are on **Avalonia 11.3.22**; `Dockerfile.hmi` carries `xdg-utils` for the browser fallback; `packaging/msi/OpcBridge.Hmi.wxs` detects the WebView2 runtime and runs Microsoft's Evergreen bootstrapper when it is absent (best-effort, `Return="ignore"`), which `hmi-release.yml` downloads and Authenticode-verifies before building the MSI.
-
-**The data sweep is done.** A 16-block **SWEEP** fixture (area `SWEEP`, group `Sweep`) runs on the dev bridge (`:8092`, extended to `:18080` for the rebuilt page) over a UA simulator + manual tags: TON/TOF/TP, CTU/CTD, R_TRIG/F_TRIG, SR/RS, numeric `>`/`<`/`=` comparisons, coils and relay contacts, a gate tree, the flat-conditions expansion (hold + OR group) and a three-step sequence. The page's Result tab and the HMI's `LogicPanelViewModel` result rows were compared shape by shape: kind labels, marks, `should`/`actual`, live values, timer/counter progress, nesting, relay lines and step cards agree. The sweep found and fixed **one page gap**: the wrappers the bridge derives from a flat block (the TON around a held contact, an OR group, the AND over the roots) had no authored definition, so the page could print only the bare kind. `LogicElementStateDto` now carries the element's `Text`/`Op`/`Relay`/`Pv`/`Severity`/`NextStepText` (additive; older clients ignore them) and the page's `resultRow` falls back to the state (`def = def || state`), so wrappers read like the HMI (`TON IN · Pump running · holding 1.2 s of 2 s`, `OR · either`). Remaining differences are deliberate page-only readings (the device field line and the tag-link reader count), the page's `internal relay` wording where the HMI says `relay`, and a CTU CV that can exceed its preset (`count 4 of 3`) on both surfaces — the live CV, not a clamp. A one-pass R_TRIG/F_TRIG pulse is now visible on the page: the hub push arrives as the bridge evaluates it, and with the page's own poll timer stopped a manual-tag change moved its block from READY to BLOCKED in under 300 ms on the sweep rig.
-
-**The small polish is done.** The page takes the `/hmi` hub's `logic` push (vendored `signalr.min.js`; the 1 Hz state poll is the fallback while the hub is down) and draws the Avalonia-style per-level nesting guide rails on both the editor and result networks — `.el-kids::before` / `.rl-kids::before`, one line per level, on the same 18 px step the rows indent by, pinned by `Script_DrawsTheNestingRailsTheHmiDraws`.
-
-**Next action: retire the Avalonia Logic views.** With the sweep's findings settled and the page standing on its own — push-fed, rails drawn, Editor/Tags/Result split — retire the Avalonia Logic views and their tests (`HmiLogicEditorTests`, `HmiLogicTextTests`, `HmiLogicPanelTests`, `HmiLogicGuideTests`, `HmiLogicTagsTests`, `LogicNetworkLayoutTests`) **only** once that retirement is explicitly taken up, not as a drive-by. The HMI keeps the **Web page** tab that embeds `/logic`.
-
-**Settled decisions — do not re-litigate:** the assets are **embedded resources** (the test harness copies files but not directories, so `wwwroot` does not reach the test host); asset URLs are **root-relative** (`/logic/app.css`, `/logic/app.js`, `/logic/signalr.min.js`); the **SignalR client is vendored** (a plant host has no internet) and shipped inside the assembly, and the hub push is the feed with the 1 Hz poll only as its fallback; neither the push nor the fallback may **rebuild the DOM** (node identity, focus and typed text survive it); blocking `confirm()` is replaced by in-page two-step confirmations. The embed stays **Windows WebView2 only**: `Avalonia.Controls.WebView` requires a paid Avalonia Accelerate licence on 11.x (it is FOSS only from Avalonia 12, a separate upgrade), and `WebView.Avalonia`'s GTK backend segfaults in-process against Avalonia's HarfBuzz (confirmed with gdb) — the Linux path is the system browser, never an in-process GTK/WebKit control.
+**The HMI embeds the page; the native editor retired.** `src/OpcBridge.Hmi/Views/LogicPage.axaml` is the bridge selector plus the selected bridge's own `<BaseUrl>/logic`: **Reload** refreshes the control, **Open in browser** opens the same address in the system browser. The embed is the MIT `WebView.Avalonia` **Windows backend** (`WebView.Avalonia.Windows`) over the Microsoft Edge WebView2 runtime — the GTK/WebKit backend is deliberately not referenced. On Linux, or a Windows host without the WebView2 runtime, the page shows the address plus **Open in browser** instead of a blank surface. `OpcBridge.Hmi` and `OpcBridge.Hmi.Designer` are on **Avalonia 11.3.22**; `Dockerfile.hmi` carries `xdg-utils` for the browser fallback; `packaging/msi/OpcBridge.Hmi.wxs` detects the WebView2 runtime and runs Microsoft's Evergreen bootstrapper when it is absent (best-effort, `Return="ignore"`), which `hmi-release.yml` downloads and Authenticode-verifies before building the MSI. The retired editor's views, view models, guide and tests were removed with it, along with the HMI's now-dead logic REST client methods and its `/hmi` `logic` subscription — the bridge-hosted page owns that work now.
 
 ## What this project is
 
@@ -27,7 +19,7 @@ A bridge that mirrors OPC DA tag values into an OPC UA server, with a web dashbo
 - **UA inbound sources**: `SourceType=OpcUa` connects outbound as a UA client (`OpcUaSourceClient`) to external servers; feeds the same `BridgeState` → UA node pipeline.
 - **PLC drivers**: `SourceType=MelsecA3n` → `MelsecA3nClient` (1C Frame serial), `SourceType=S7200Ppi` → `S7200Client` (PPI serial); UI under Connectivity → Drivers.
 - **Dashboard**: ASP.NET Core minimal API + single-page HTML dashboard for sources, mappings, browsing, live values (with data-type column), MQTT, InfluxDB writer config, and Diagram topology.
-- **HMI**: Avalonia desktop operator Runtime (`OpcBridge.Hmi`) and standalone Designer (`OpcBridge.Hmi.Designer`). Runtime loads process displays from primary-bridge `/api/hmi/displays`, shows live multi-bridge tags, authors and watches the plant logic (the **Logic** page, View ▸ Logic / Ctrl+4), and opens popup faceplate/trend windows; Designer authors JSON display documents. Both talk HTTP + SignalR only (no DA/UA/COM). Faceplate chart loads history via bridge `GET /api/hmi/trends` (Influx proxy — HMI never holds an Influx token). Bridge can log opt-in tags to InfluxDB 2.x/3.x via writer. Dashboard sign-in with roles (Admin / Engineer / Operator / Viewer) is built in, opt-in via `Auth:Enabled`; Android remains a deferred non-goal. Each Avalonia app embeds its own `CHANGELOG.md` and shows it under **Help ▸ Release notes**.
+- **HMI**: Avalonia desktop operator Runtime (`OpcBridge.Hmi`) and standalone Designer (`OpcBridge.Hmi.Designer`). Runtime loads process displays from primary-bridge `/api/hmi/displays`, shows live multi-bridge tags, opens the bridge-hosted plant logic in its **Logic** page (View ▸ Logic / Ctrl+4 — the selected bridge's own `/logic`, embedded with WebView2 on Windows and opened in the system browser elsewhere), and opens popup faceplate/trend windows; Designer authors JSON display documents. Both talk HTTP + SignalR only (no DA/UA/COM). Faceplate chart loads history via bridge `GET /api/hmi/trends` (Influx proxy — HMI never holds an Influx token). Bridge can log opt-in tags to InfluxDB 2.x/3.x via writer. Dashboard sign-in with roles (Admin / Engineer / Operator / Viewer) is built in, opt-in via `Auth:Enabled`; Android remains a deferred non-goal. Each Avalonia app embeds its own `CHANGELOG.md` and shows it under **Help ▸ Release notes**.
 
 ## Project map
 
@@ -43,7 +35,7 @@ Projects under `src/`, all .NET 8, `ImplicitUsings` + `Nullable` enabled.
 | `OpcBridge.Influx` | `net8.0` | Continuous opt-in historical writer to InfluxDB 2.x/3.x (`IInfluxWriter`). |
 | `OpcBridge.Client` | `net8.0` | Shared HMI/App/mobile wire DTOs and tag-cache merge helpers: `HmiTagDto`, `HmiTagsResponse`, `HmiValueDelta`, `HmiWriteRequest`/`HmiWriteResponse`, `HmiMappingsChanged`, `HmiTagCache`, `HmiTrendPoint`, `HmiTrendResponse`, and the plant-logic contract (`LogicBlockDto`, `LogicConditionDto`, `LogicStepDto`, `LogicActionDto`, `LogicElementDto` + `LogicElementKinds`, `LogicStateSnapshot`, `LogicNoteDto`, the kind/op/state constants) plus `LogicNetwork` — the pure expansion of a block's flat conditions into its IEC 61131-3 element network (`For`/`Expand`/`Walk`, with `LogicElementIds.Derived` keeping the wrapper elements' ids stable so a timer keeps its memory). No framework deps. |
 | `OpcBridge.Hmi.Core` | `net8.0` | Pure HMI models: `TagBindingKey`, `MultiBridgeTagCache`, `HmiClientConfig`, saved trend groups (`TrendGroupDefinition`, `TrendGroupStore` → `hmi-trendgroups.json`) plus their layout/axis mode constants, tag-browser filter options (`SourceFilterOption`/`BridgeFilterOption`, `SourceTypeLabels`), display helpers. No Avalonia. |
-| `OpcBridge.Hmi` | `net8.0` (WinExe) | Avalonia 11.3 Runtime: hybrid process display, tag browser separated by bridge and source, a saved **trend groups** page (`TrendGroupsPage`, Ctrl+3), the plant-logic **Logic** page (`Views/LogicPage.axaml`, Ctrl+4 — editor + evaluated result + the **Web page** tab that embeds the bridge's `/logic` with WebView2 on Windows and falls back to the system browser elsewhere, its view models under `ViewModels/Logic/`, guide embedded from `Help/LogicGuide.md`), popup faceplate/trend, v1 widgets. References Client + Core + Hmi.Core; SignalR client for `/hmi` (`values`, `mappingsChanged` and the `logic` snapshot). |
+| `OpcBridge.Hmi` | `net8.0` (WinExe) | Avalonia 11.3 Runtime: hybrid process display, tag browser separated by bridge and source, a saved **trend groups** page (`TrendGroupsPage`, Ctrl+3), the plant-logic **Logic** page (`Views/LogicPage.axaml`, Ctrl+4 — the bridge selector plus the selected bridge's own `/logic`, embedded with WebView2 on Windows and opened in the system browser elsewhere; its view model is `ViewModels/Logic/LogicPageViewModel`), popup faceplate/trend, v1 widgets. References Client + Core + Hmi.Core; SignalR client for `/hmi` (`values`, `mappingsChanged`). |
 | `OpcBridge.Hmi.Designer` | `net8.0` (WinExe) | Avalonia 11 Designer: palette, add widgets, Open/Save displays on primary store. |
 | `OpcBridge.Mobile.Core` | `net8.0` | The Android viewer's testable half (covered by `OpcBridge.LoadTest`): `LogicApiClient` (definitions/state/tags/write/notes/sign-in, its cookie container shared with the hub), `MobileHubClient` (`/hmi` hub: `logic` + `values`), `BridgeProbe` (probes `/api/auth/me`, which stays anonymous with Auth on), the saved-bridge store (`SavedBridge`/`BridgeListCodec`/`BridgeConnection`/`BridgeCoordinator` — several bridges per phone, one live link, per-bridge tags in the shared cache), the **offline cache** (`IBridgeCacheStore` + `BridgeCacheCodec`/`BridgeCacheSnapshot`: the last definitions, state, values and per-block notes per bridge, shown on start-up and after a failed call), `LogicListText` (the list's empty-state wording — no bridge, filter miss, connected-but-empty, never-synced — so an empty list never reads like an empty plant), `LogicOverviewViewModel` (cards grouped under their interlock group's collapsible heading, search + tag/state filters) and `LogicBlockDetailViewModel` (one **element row** per network element — indented by depth, kind label, live state, `should` vs `actual` for contacts, timer/counter progress — plus the step flow, notes and action command), and `LogicTagText`. |
 | `OpcBridge.Mobile` | `net8.0-android` (MAUI) | OpcBridge Logic, the operator Android app: bridge picker + overview (interlock-group headings, collapsible) + block detail (the IEC network element by element) + settings (saved-bridge list, sign-in), live via the hub (refreshed when the Logic tab opens) and the on-disk offline cache for a lost link — the list, the block detail and its notes all read from the last-synced data when the bridge is away. **Listed in `OpcBridge.sln` but excluded from its build configurations** (it needs the maui-android workload the plain SDK container lacks) — released as a **Release** APK (assemblies embedded, signed with the keystore under `packaging/android`) on `mobile-v*` (`mobile-release.yml`, local recipe `Dockerfile.mobile`); logic lives in `OpcBridge.Mobile.Core`. |
@@ -165,7 +157,7 @@ ASP.NET Core minimal API, listens on `http://0.0.0.0:8080` (runtime port from `B
 
 Endpoints (all in `Program.cs`):
 - `GET /` — dashboard HTML
-- `GET /logic` (+ `/logic/app.css`, `/logic/app.js`, `/logic/signalr.min.js`) — the plant-logic web page, served from the assembly's embedded `Assets/logic/*` like the dashboard shell (a public path in `AuthPolicy`; the `/api/logic*` data behind it follows the normal role table). The page takes its evaluation from the `/hmi` hub's `logic` event through the vendored SignalR client, with the 1 Hz `/api/logic/state` poll as its fallback. See **Next actions** for what it still lacks.
+- `GET /logic` (+ `/logic/app.css`, `/logic/app.js`, `/logic/signalr.min.js`) — the plant-logic web page, served from the assembly's embedded `Assets/logic/*` like the dashboard shell (a public path in `AuthPolicy`; the `/api/logic*` data behind it follows the normal role table). The page takes its evaluation from the `/hmi` hub's `logic` event through the vendored SignalR client, with the 1 Hz `/api/logic/state` poll as its fallback. The HMI embeds it in its Logic page (see **HMI Logic page** below).
 - `GET /api/values` — current `BridgeState` values
 - `GET /api/dashboard?limit=&sourceId=` — Live Values payload: `values[]` with `{sourceId, itemId, value, timestampUtc, daQuality, isGood, dataType, updateRate}` (dataType + updateRate resolved via `DashboardValues`; `updateRate` = effective ms per tag — per-tag `PollRateMs` wins, else the source default), `valuesTotal`, plus bridge/UA status blocks
 - `GET /api/status` | `/api/diagnostics` — bridge + UA status; diagnostics includes writeQueue stats, uaBandwidth, UA sessions/subscriptions, plus dashboard-facing sections: `runtime` (bridge/DA state, counters), `uaServer` (clients/nodes), `uptimeSeconds`, `mqtt` + `influx` health, `problems` (disconnected/bad-quality tags). Sections are individually guarded (`DiagnosticsSections.Safe`) — one failing section degrades to null instead of 500-ing the payload. Dashboard: Diagnostics tab = health overview; Ops ▸ Sessions tab = per-source/session detail (DA sources, time sync, UA sessions/subs/bandwidth).
@@ -251,12 +243,12 @@ the HMI, the phone and older clients resolve a block without knowing about areas
 a network contact, a step handshake (`CompletionTag`) and an action each carry a `Tag` name that
 resolves through that area's `LogicAreaTagsDto` in `logic-tags.json` (entries are name + optional
 source/item pair; an entry created empty and assigned later is a first-class state). The resolver
-is `LogicAreaTags` (shared by the evaluator, the HMI and the phone): a bound entry feeds the normal
+is `LogicAreaTags` (shared by the evaluator, the bridge page and the phone): a bound entry feeds the normal
 value/mapping lookups, an unassigned one reads **unknown** with the entry named
 (`no data for START_PB (not assigned)`), a name the list does not hold reads `… (not in DRY END)`,
 and the store canonicalizes every reference to its entry's spelling while clearing the site's
 `SourceId`/`ItemId` (a reference and a pair are mutually exclusive — relay, once set, wins). The
-HMI editor assigns a tag **only** on the Tags tab: every editor row carries a **TAG** picker
+bridge page's Tags tab assigns a tag **only** there: every editor row carries a **TAG** picker
 and no source of its own, so a block authored before areas existed has its direct pairs **moved
 into the area's tags the moment the draft opens** (or the moment it is given an area) — one entry
 per pair, named from the tag's display name, which the row then references; the load keeps a draft
@@ -265,8 +257,8 @@ never prompts), and the entries are stored the first time the block itself is sa
 block with no area and no group has no list to join: the row shows it as
 a `Direct tag: …` line and the pair is kept through a save, so nothing the bridge still evaluates is
 dropped. `LogicStore` owns both
-files behind one version; `TryRemoveAreaTags` refuses while blocks read the list. The HMI's Logic
-page carries it as its **Tags** tab (the AREA field, entries with live values, `+ New tag` — which
+files behind one version; `TryRemoveAreaTags` refuses while blocks read the list. The bridge-hosted
+Logic page carries it as its **Tags** tab (the AREA field, entries with live values, `+ New tag` — which
 opens with its source already chosen — and **From bridge…**, which lists the bridge's mapped tags
 with their readings so several become named entries in one step; **New
 block** asks for the block's name, interlock group and AREA first, so the area is assigned before
@@ -331,134 +323,14 @@ The Runtime has a third shell page — **Trend groups** (`Views/TrendGroupsPage.
 - Tags are resolved by key against the tag cache when a group opens: a tag on a disconnected bridge, gone from the bridge, or without InfluxDB history is skipped with a count in the status strip, and **stays in the saved group** so it returns with the bridge.
 - Group rows refresh on demand (load, connect, mappings change, edit, chart close) — deliberately **not** from `RebuildTagsFromCache`, which runs on every value batch.
 
-### HMI Logic page (plant logic authoring + evaluated result)
+### HMI Logic page (the bridge's own /logic)
 
-The Runtime carries the plant-logic surface the dashboard's old Tags ▸ Logic tab used to author —
-that tab is gone, and the page is the whole editor (branch `feature/logic-web-app`):
+The Runtime's **Logic** page (View ▸ Logic, Ctrl+4) is the bridge-hosted page: a bridge selector at the top and, below it, the selected bridge's own `<BaseUrl>/logic` — the same Editor | Tags | Result page the dashboard's browser opens, same-origin with `/api/logic*` and the `/hmi` hub. The page authors the plant logic: its Editor writes the block and its rows (flat conditions, the IEC 61131-3 network, sequence steps, actions), the Tags tab assigns an area's named tags, and the Result tab reads the evaluated state the bridge pushes over `/hmi` (the 1 Hz `GET /api/logic/state` poll is the fallback while the hub is away). A relay row authored by the retired editor shows read-only and is kept; the page authors no internal relays, and a coil is the block's output rung. The HTML page itself is documented in the server changelog; the HMI does not carry a second editor.
 
-- **Shell:** `Views/LogicPage.axaml` + `ViewModels/Logic/LogicPanelViewModel` on `HmiPage.Logic`
-  (View menu / **Ctrl+4**). The page is a block rail beside the tabbed work surface: the rail
-  (`LOGIC BLOCKS` + the block summary) carries the whole grouped list with its live pills under
-  both tabs, and the work surface switches between the Editor and the Result. The page is per
-  bridge (a selector over `BridgeConnectionManager.LinkStatuses`, defaulting to the first
-  connected one); definitions and state are cached per bridge in memory, and hub `logic` pushes
-  are filtered to the selected bridge.
-- **Web page tab:** the fourth tab embeds the selected bridge's own `<BaseUrl>/logic` — the same
-  HTML page the dashboard browser opens, same-origin with `/api/logic*`. The control is created
-  lazily the first time the tab is selected and re-navigated when the bridge changes; **Reload**
-  refreshes it and **Open in browser** opens the address in the system browser. Only the MIT
-  `WebView.Avalonia.Windows` backend is referenced (WebView2); on Linux, or a Windows host without
-  the WebView2 runtime, the tab shows the address plus Open in browser instead of a blank surface.
-  Do not add the GTK/WebKit backend — it segfaults against Avalonia's HarfBuzz in-process.
-- **Density:** the page carries its own type scale and control metrics, a step under the app's —
-  12px in the boxes, 10px field labels, 11px hints and live readings, 22px controls where the
-  shared styles use 28, tighter card / row / field padding, and field widths sized to the longest
-  value each one carries — so an eight-row interlock and its actions fit one screen. The styles sit
-  in `LogicPage.axaml`'s `UserControl.Styles`, which only the logic views descend from, and they
-  change spacing and size only: no colour or type token moves. The boxes carry an explicit `Height`,
-  not just a `MinHeight`: the theme's own text-control padding sets a taller floor, and a box cut to
-  the height clips its own text unless the ComboBox / AutoCompleteBox padding comes down with it.
-- **Editor tab:** the block form (name, kind interlock/permissive/sequence, enabled, interlock
-  group, description, tags) and the three authoring surfaces — flat **conditions** (sentence, a
-  **TAG** picker, ON/OFF/`>`/`<`/`=`, OR group, hold seconds, severity, next step), the
-  **IEC 61131-3 network** (indented element rows with →/← nesting, contacts/gates/timers/counters/
-  latches/edges and the **coil**, `Convert to IEC network`, **Auto format** and back) and sequence
-  **steps**
-  (condition rows plus an optional completion handshake), plus block-level **actions**. A row
-  carries the **name** of one of the area's tags and nothing else — the source and the tag itself
-  are assigned on the Tags tab, so there is no direct picker left on a row to keep in sync. Every
-  row carries the bridge's live state as a chip (1 / 0 / no data, or the live
-  value). Every row also carries `+↑` / `+↓` (insert a fresh row above/below it — a list is built
-  where it is read, not only appended at its end) and `↑` / `↓` (move it one place); the rows of
-  each list are ordered by `LogicRowList<T>`, which inserts and moves a network row in its whole
-  group (the row plus the deeper rows under it) so a gate keeps its inputs. A network row's
-  **RELAY** field (an `AutoCompleteBox` offering the relays the loaded
-  blocks' coils already drive) turns a contact into a relay contact and names the relay a coil
-  drives; the tag picker hides while a relay is typed and a numeric op coerces back to ON, because
-  a relay reads a bit. The rail is the picker; `Blocks…` opens `LogicBlocksWindow` — the same
-  grouped list with `+ New block` and per-row delete, for creating and deleting blocks.
-  Save/delete go through the bridge's own
-  `/api/logic*` API and surface its errors verbatim (a duplicate name reads "Block name already
-  exists."); Save greys out until the draft actually differs. `ViewModels/Logic/LogicEditorCodec`
-  holds the collect rules (sequence → steps only; element rows present → the network only;
-  otherwise the conditions) and the dirty compare. **Auto format** sets every row's level from its
-  kind (`ViewModels/Logic/LogicNetworkLayout`): a row takes the rows written behind it — one for a
-  NOT, a timer, an edge, a latch or a coil, two for a gate — so a network authored top to bottom
-  nests in one click instead of one indent click per row. A gate then keeps taking what follows it:
-  an OR or an XOR takes the contacts after it and stops at a row that reads inputs of its own, which
-  stays a root beside the gate, because OR(C1, AND(C2, C3)) is not OR(C1) ∧ AND(C2, C3); an AND takes
-  everything, which cannot change what the block evaluates — an AND is associative and the block ANDs
-  its roots anyway (`LogicElementKinds.IsAnd`). Rows nobody takes stay roots, so a half-built row is
-  left unwired (`not wired yet`) and never silently satisfied, and the second input of a latch or a
-  counter (its reset, its load) is left to the author. The layout is idempotent and never reshapes a
-  network the bridge itself built: the levels it gives `LogicNetwork.Expand`'s output are that tree's
-  own depths. Levels clamp at `LogicLimits.MaxElementDepth`, and the command disables itself below
-  two rows.
-- **Result tab:** the selected block's evaluated configuration the way the phone presents it — its
-  network as rows (`✓`/`✗`/`—`, kind label, `should 1 · actual 0`, timer/counter progress,
-  next-step text) or its step cards; the block list itself is the rail beside the tabs.
-- **Live data:** the hub `logic` snapshot is applied in place (rows matched by element id, never
-  rebuilt), plus a 1 s `GET /api/logic/state` poll while the page is visible — a pure value move
-  does not re-push the signature, so the poll keeps the readings fresh. A state whose version has
-  moved past the loaded definitions refetches them (another client edited).
-- **Unreachable bridge:** the page keeps the last known blocks on screen, flags the link in the
-  header and disables editing until it is back. The guide the dashboard used to carry ships inside
-  the runtime (`Help/LogicGuide.md`, embedded) and opens from the page's **Guide…** button.
-- Wording and formatting live in `ViewModels/Logic/LogicText`; the tests pin the collect rules and
-  the strings (`HmiLogicEditorTests`, `HmiLogicTextTests`, `HmiLogicPanelTests`,
-  `HmiLogicGuideTests`), the network's layout by kind (`LogicNetworkLayoutTests` — including that the
-  bridge's own `Expand` output comes back unchanged, with `HmiLogicEditorTests` covering the button
-  itself), and the area-tags model end-to-end — the tab, the row references, and the
-  move of a legacy pair into the area's tags on load (`HmiLogicTagsTests`).
-
-**The same plants are authored in a browser too:** the bridge serves this window's whole surface as
-the HTML page at `/logic` (Editor | Tags | Result), which reads and writes the same store over the
-same `/api/logic*` endpoints, and splits the work the way this page does. Its Editor authors the
-block and its rows, each row picking one of the area's tags **by name**
-and never assigning a source/tag pair of its own — a row can also name a **new** tag, which
-joins the area's list unassigned; the raw `source id`/`item id` inputs are
-gone, a legacy pair shows read-only the HMI's own way (`Direct tag: …`, the whole sentence in the
-mark's tooltip) and is kept through a save until the row picks a named entry. The block header
-carries its one **OUTPUT** tag — one of the area's tags, read as feedback only: the bridge
-verifies the live output against the interlock result and the page shows a second, differently
-coloured dot beside the interlock dot (blinking while they disagree, grey while unverified), so a
-block is READY only when both agree. The page authors no internal relays: a relay row authored in
-the HMI is shown read-only and kept, and a coil is the block's output rung. Its **Tags tab owns
-the assignment**: the block's own **AREA** (stored areas as suggestions, the list following the name
-as it is typed, so the area and the list it reads cannot disagree) beside the area's list with its
-live chips, `+ New tag`, `From bridge…`, `Save list` (the separate `/api/logic/tagsources` save) —
-every name the open block references is listed there even before the list stores it, so a name
-typed on a row always has a place for its source and tag — and the block's own save bar — **New
-block** asks for a name, a kind, a group and an **AREA**, and a list's
-unsaved edits are kept per area, so switching areas or blocks drops nothing. The editor's chrome
-rides its own scroll: the properties head stays at the top of the editor and the save bar —
-**Save** / **Revert** / **Delete block** — at its bottom, both flush with the editor's edges, so a
-network longer than the window takes neither the fields an edit starts from nor the button that
-commits it away (a block short enough not to scroll is laid out exactly as before). The tabs are
-deliberately **not** pinned: they leave with the rows and are back once the editor is scrolled to the
-top again. The rows themselves nest (`renderNode` writes `.el-node`/`.el-kids`), and under the head
-rides **the parent of what is on screen** — a read-only copy of that row's own live line, written
-over the rows so its arrival never shifts them — from the moment its row meets the head until the
-last of its children is gone: the row the head is cutting through when it has children under it,
-else the row that owns the first the head has not taken (read from the nesting, at the head's
-measured height, in `syncNetPinning`). The **Result tab reads the same way**: its verdict
-(`.res-head`) rides the top with the editor's own ground and a rule under it (re-measured as the
-feed writes the reason and the progress into it), the evaluation — one flat list with a depth per
-element — is folded back into `resultTree`/`resultNode` (`.rl-node`/`.rl-kids`) so the same strip
-can keep the parent card's head on screen (`pinCopy` clones the card head and carries its
-definition, so the feed repaints the copy as it repaints the row), and a sequence's step cards hold
-their step's own nested rows. **Live data:** the page subscribes to the `/hmi` hub's `logic` event
-with the vendored SignalR client and applies every snapshot in place — the same path a poll's
-snapshot takes — with a 1 Hz `GET /api/logic/state` poll as the fallback while the hub is away and a
-5 s refresh under the push, because the bridge re-pushes only when a derived state changes. A
-reconnect reads the state at once. It carries the
-dashboard's own **theme picker** (Light | Dark | System in the top bar) under the dashboard's
-`opcbridge.theme` key, so the two surfaces open in the same
-theme and the choice stays a per-browser preference rather than a bridge setting; `index.html`
-resolves it before first paint, and the page's dark token set mirrors the dashboard's palette (a test
-holds the two token sets to the same colour names). See **Next actions** at the top of this file:
-conditions/steps/actions authoring is still missing, and the Avalonia Logic views are the last thing
-to retire.
+- **Embed:** the page is embedded with the MIT `WebView.Avalonia.Windows` backend over the Edge WebView2 runtime; **Reload** refreshes the control and **Open in browser** opens the same address in the system browser. On Linux, or a Windows host without the WebView2 runtime, the page shows the address and **Open in browser** instead of a blank surface. The GTK/WebKit backend is deliberately not referenced (it segfaults against Avalonia's HarfBuzz in-process). The WebView is created when the page is first shown, not at app start.
+- **Bridge selector:** `ViewModels/Logic/LogicPageViewModel` follows `BridgeConnectionManager.LinkStatuses`; the selected bridge's base URL supplies the page address, and the selector defaults to the first connected bridge. `LogicBridgeOption` is the one model left in `ViewModels/Logic/`.
+- **No native logic client:** the HMI's own `LogicPanelViewModel`, row views, guide and editor tests retired with the editor, along with the `BridgeApiClient` logic methods and its `/hmi` `logic` subscription. The HMI's hub client subscribes to `values` and `mappingsChanged`; the embedded page has its own vendored SignalR client for `logic`.
+- **Tests:** `HmiLogicPageTests` pins the bridge option/page address against a real bridge; `LogicPageTests` pins the bridge-hosted page's assets, wording and editor chrome.
 
 `DashboardLogStore` is also wired as an `ILoggerProvider` (`DashboardLogProvider`), so `ILogger` calls under the `OpcBridge.*` categories at Information+ appear in the dashboard's Logs panel and docker logs. `OpcUaSourceClient` logs reconcile summaries (`subscription reconcile: desired=… active=… added=… removed=…`) — useful for verifying monitored-item behavior.
 
@@ -508,8 +380,8 @@ docker run --rm -v "$PWD/<worktree>":/src -w /src -v "$HOME/.nuget-cache":/home/
   -e HOME=/home/build -e DOTNET_CLI_HOME=/home/build --user "$(id -u):$(id -g)" \
   mcr.microsoft.com/dotnet/sdk:8.0 dotnet test tests/OpcBridge.LoadTest/OpcBridge.LoadTest.csproj
 ```
-`--user` keeps build artifacts iwan-owned (rootful daemon). Full suite: **1643 tests** (xUnit, `tests/OpcBridge.LoadTest`), ~4 min in Docker on this host with `$HOME/.nuget-cache` mounted — trust the run's own total over the wall time. The count dropped from 1113 when the MX Component source (and its PLC Groups and Pause/Resume coverage) was removed (#31), then rose by the Maps import coverage (#30) and its source-scan rework (reconciliation + selection), the HMI link-state coverage, and the mobile logic viewer (its `Mobile.Core` half: bridge list, hub link, group headings, element rows, the offline cache) with the IEC network model (expansion, gates, function blocks, store validation, internal relays — coils/relay contacts and their composability across blocks and gate types), the HMI logic page (editor model, row insert/move, wording, panel end-to-end, guide, the network's layout by kind), the per-machine tags sources (store, evaluator resolution, API, HMI Tags tab, phone labels and cache), the area-first sharing flow (the New-block dialog, pick/area/save conversion, the re-anchor on a scope change) and the viewer's offline detail (per-block notes cache, old-cache back-compat, the list's empty-state wording), and the Logic web page (`LogicPageTests`: the served assets, the script's vocabulary shared with the bridge's own model, the wording it shares with the HMI's `LogicText`, and the Editor/Tags split it shares with the HMI's own page — the row picks a name, the Tags tab owns the assignment — plus the editor chrome pinned to its scroll: the head at the top, the save bar at the bottom, the tabs left free to scroll away — and the parent of what is on screen under the head while its children are: — and the parent of what is on screen under the head while its children are: the nesting it is read from on both tabs (the editor's network and the result's flat evaluation folded back into a tree), the readonly copies (a row's live line, a card's head) and the measured line they ride), and the hub push the page takes its evaluation from (the vendored SignalR client served with its version and MIT notice, the subscription to `/hmi`'s `logic` event, and the 1 Hz fallback under it), with the picker's shared
-`opcbridge.theme` key and the parity of the two token sets. Known flaky: `InfluxApiTests.InfluxConfig_Post_Persists_EnabledFlag` (historically failed in full-suite order, passes isolated — green in the latest full run). The two snapshot tests in `HmiLogicPanelTests` (`EvaluatedStateLandsOnTheResultRows`, `SwitchingBlocks_NeverShowsThePreviousBlocksState`) used to be flaky in full-suite order: the bridge's own `logic` push (unknown — this host has no source values) is applied on the dispatcher thread and raced the synthetic snapshot the test applies and asserts in the same breath; they now wait out the broadcast flush window (`SettleBroadcastAsync`) after saving and before connecting, so the push has gone out to nobody and cannot land in the assertion window (kept: the settled runs fail none, the racing runs failed ~1 in 3). Known environmental failure under the `--user $(id -u)` container: `DaWorkerIdentityTests.CurrentAccountName_IsNotEmpty` — the mapped uid has no passwd entry, so `Environment.UserName` is empty; it fails the same way on `main`. The latest full run (the hub push: the vendored SignalR client, the subscription to `/hmi` and the fallback poll) held 1643 total / 1642 passed / 1 failed: that environmental one — the Web page tab, the sweep's tests and the Logic page tests are green, and the push was also exercised in a browser with the page's own poll timer stopped (READY → BLOCKED in under 300 ms).
+`--user` keeps build artifacts iwan-owned (rootful daemon). Full suite: **1561 tests** (xUnit, `tests/OpcBridge.LoadTest`), ~4 min in Docker on this host with `$HOME/.nuget-cache` mounted — trust the run's own total over the wall time. The count dropped from 1113 when the MX Component source (and its PLC Groups and Pause/Resume coverage) was removed (#31), then rose by the Maps import coverage (#30) and its source-scan rework (reconciliation + selection), the HMI link-state coverage, and the mobile logic viewer (its `Mobile.Core` half: bridge list, hub link, group headings, element rows, the offline cache) with the IEC network model (expansion, gates, function blocks, store validation, internal relays — coils/relay contacts and their composability across blocks and gate types), the per-machine tags sources (store, evaluator resolution, API, phone labels and cache), the area-first sharing flow on the bridge page and the phone (pick/area/save conversion, the re-anchor on a scope change), the viewer's offline detail (per-block notes cache, old-cache back-compat, the list's empty-state wording), and the Logic web page (`LogicPageTests`: the served assets, the script's vocabulary shared with the bridge's own model, the Editor/Tags split — the row picks a name, the Tags tab owns the assignment — the editor chrome pinned to its scroll: the head at the top, the save bar at the bottom, the tabs left free to scroll away; the parent of what is on screen under the head while its children are; the nesting it is read from on both tabs (the editor's network and the result's flat evaluation folded back into a tree), the readonly copies (a row's live line, a card's head) and the measured line they ride), and the hub push the page takes its evaluation from (the vendored SignalR client served with its version and MIT notice, the subscription to `/hmi`'s `logic` event, and the 1 Hz fallback under it), with the picker's shared `opcbridge.theme` key and the parity of the two token sets. **The Avalonia Logic editor retired** — its coverage (`HmiLogicEditorTests`, `HmiLogicTextTests`, `HmiLogicPanelTests`, `HmiLogicGuideTests`, `HmiLogicTagsTests`, `LogicNetworkLayoutTests`) went with it, and `HmiLogicPageTests` covers the runtime's page host (the bridge option/page address against a real bridge). Known flaky: `InfluxApiTests.InfluxConfig_Post_Persists_EnabledFlag` (historically failed in full-suite order, passes isolated — green in the latest full run).
+Known environmental failure under the `--user $(id -u)` container: `DaWorkerIdentityTests.CurrentAccountName_IsNotEmpty` — the mapped uid has no passwd entry, so `Environment.UserName` is empty; it fails the same way on `main`. The latest full run (after the retirement) held 1561 total / 1560 passed / 1 failed: that environmental one — `HmiLogicPageTests`, `LogicPageTests` and the rest of the suite are green.
 
 **Worktree workflow (session convention):** fixes live in `git worktree add .worktrees/<branch-slug> -b <branch> main`; one worktree per branch; full suite per branch before merge; merge to main with `--no-ff`; push to origin. **Tool path quirk:** `edit`/`write` with relative `.worktrees/...` paths sometimes land in the main checkout — always use absolute paths and verify with grep after. `.dockerignore` excludes `.worktrees/` (7+ GB) so images can be built from the main checkout.
 
@@ -594,7 +466,7 @@ Package `publish.tmp` → tar.gz, SCP to host as `publish-new.tar.gz`, then run 
 - **Backend-first.** Verify the backend seam (`ISourceClient`, `BridgeWorker`, `BridgeState`) before wiring dashboard controls.
 - **Conventional commits** (`feat:`, `fix:`, etc.). Committed code on `main` is authoritative; uncommitted changes are a known risk.
 - **One version and one changelog per app.** `Directory.Build.props` holds `ServerVersion`, `HmiVersion`, `DesignerVersion` and `MobileVersion`; each app's changelog is its own release authority and each releases on its own tag (`v*`, `hmi-v*`, `designer-v*`, `mobile-v*`). `ChangelogTests` enforces the file format, that an app's newest section matches the version its own assembly reports (the Android viewer's against `MobileVersion`, since its assembly cannot load on the Linux test host), and the embedded copies.
-- **Tests exist** under `tests/OpcBridge.LoadTest` (xUnit, 1643 tests). Prefer `InternalsVisibleTo` over making types public for tests. Run in Docker (command above). Primary verification is the full suite + rig/browser proof after deploy. Note: running the container as `-u "$(id -u):$(id -g)"` leaves `DaWorkerIdentityTests.CurrentAccountName_IsNotEmpty` red when the host uid has no passwd entry in the image (environment, not code).
+- **Tests exist** under `tests/OpcBridge.LoadTest` (xUnit, 1561 tests). Prefer `InternalsVisibleTo` over making types public for tests. Run in Docker (command above). Primary verification is the full suite + rig/browser proof after deploy. Note: running the container as `-u "$(id -u):$(id -g)"` leaves `DaWorkerIdentityTests.CurrentAccountName_IsNotEmpty` red when the host uid has no passwd entry in the image (environment, not code).
 
 ## Gotchas
 

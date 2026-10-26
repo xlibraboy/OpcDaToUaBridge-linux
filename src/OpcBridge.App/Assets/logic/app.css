@@ -418,9 +418,8 @@ select { cursor: pointer; }
 .el-node, .el-kids { display: flex; flex-direction: column; gap: 6px; }
 .rl-node, .rl-kids { display: flex; flex-direction: column; gap: 6px; }
 
-/* The nesting rail: one guide per level a row sits behind, beside it — the HMI's own treatment,
-   whose element rows carry a guide per enclosing level (LogicElementRowView /
-   LogicResultElementRowView). The children's container draws them here, because a box spans its
+/* The nesting rail: one guide per level a row sits behind, beside it — the treatment the HMI's
+   editor used, one guide per enclosing level. The children's container draws them here, because a box spans its
    whole group: the lines run unbroken from the row above to the last row under it, where a guide
    per row would break at every gap between the cards. Its --depth is the depth its own rows are
    drawn at — app.js writes them the children's — so the innermost line lands exactly on the card

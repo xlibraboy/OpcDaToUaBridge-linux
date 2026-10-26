@@ -269,7 +269,7 @@ public sealed class LogicPageTests
     {
         string script = OnDisk(ScriptFile);
 
-        // LogicText's words, so the plant reads the same thing on the HMI and on this page:
+        // The words the HMI's retired Avalonia editor used, so the plant reads the same thing:
         // block kinds, the state words that always sit next to a colour, marks, and the row labels.
         Assert.Contains("BLOCK_KIND_LABEL = { interlock: 'Interlock', permissive: 'Permissive', sequence: 'Sequence' }", script);
         Assert.Contains("if (word === 'ready') return 'READY';", script);
@@ -286,13 +286,13 @@ public sealed class LogicPageTests
         Assert.Contains("text: 'Network (IEC 61131-3) · '", script);
         Assert.Contains("text: 'Network (IEC 61131-3) — read-only'", script);
 
-        // LogicText.Actual: the bit a contact reads, flipped for a normally closed one, "?" unknown,
-        // and a comparison keeps its own value.
+        // The actual bit a contact reads, flipped for a normally closed one, "?" unknown, and a
+        // comparison keeps its own value.
         Assert.Contains("function actualBit(", script);
         Assert.Contains("return String(op === 'on' ? bit : 1 - bit);", script);
         Assert.Contains("return value && value !== '—' ? value : '?';", script);
 
-        // LogicText.Progress / ShouldLine / SequenceProgress.
+        // The timer/counter progress, should-vs-actual line and sequence progress.
         Assert.Contains("return 'should ' + state.should + ' · actual ' + actualBit(state, def);", script);
         Assert.Contains("return verb + ' done · ' + secondsText(pt);", script);
         Assert.Contains("return verb + ' ' + secondsText(state.elapsedMs) + ' of ' + secondsText(pt);", script);
@@ -300,25 +300,24 @@ public sealed class LogicPageTests
         Assert.Contains("return done + '/' + steps.length + ' steps' + (current ? ' · ' + current : '');", script);
         Assert.Contains("if (done === steps.length) return 'complete';", script);
 
-        // LogicText.TagContactLabel / LogicTagCatalog.TagLabel: the plant's names, and the three
-        // ways a named entry can fail to resolve.
+        // The plant's names, and the three ways a named entry can fail to resolve.
         Assert.Contains("function catalogLabel(", script);
         Assert.Contains("? label + ' · ' + tag.sourceName.trim() : label;", script);
         Assert.Contains("return name + ' (not assigned)';", script);
         Assert.Contains("return name + (areaName ? ' (not in ' + areaName + ')' : ' (no area)');", script);
         Assert.Contains("return 'internal relay ' + def.relay.trim();", script);
 
-        // LogicText.TagLiveChip: the Tags tab's raw chip, quality included.
+        // The Tags tab's raw chip, quality included.
         Assert.Contains("if (tag.isGood === false) return 'bad';", script);
         Assert.Contains("value.toFixed(3).replace(/\\.?0+$/, '')", script);
 
-        // LogicText.Freshness: the feed's own state wins over the snapshot's age.
+        // The feed's own state wins over the snapshot's age.
         Assert.Contains("return 'stale — bridge unreachable';", script);
         Assert.Contains("return 'stale — reconnecting';", script);
         Assert.Contains("return 'no state yet';", script);
         Assert.Contains("return 'updated just now';", script);
 
-        // LogicText.LiveChip and the four empty states.
+        // The live chip and the four empty states.
         Assert.Contains("function liveChip(state)", script);
         Assert.Contains("return state.state === 'true' ? '1' : state.state === 'false' ? '0' : 'no data';", script);
         Assert.Contains("'NO BLOCKS YET'", script);

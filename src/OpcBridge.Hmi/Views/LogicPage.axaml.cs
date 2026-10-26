@@ -9,13 +9,13 @@ using OpcBridge.Hmi.ViewModels.Logic;
 namespace OpcBridge.Hmi.Views;
 
 /// <summary>
-/// The runtime's plant-logic page: the block editor and the evaluated result, per bridge.
-/// Opened from View ▸ Logic (Ctrl+4). The Web page tab embeds the bridge's own /logic page
-/// with WebView2 on Windows; other hosts open it in the system browser instead.
+/// The runtime's plant-logic page: the bridge selector and the selected bridge's own /logic
+/// page. Opened from View ▸ Logic (Ctrl+4). The page is embedded with WebView2 on Windows;
+/// other hosts open it in the system browser instead.
 /// </summary>
 public partial class LogicPage : UserControl
 {
-    private LogicPanelViewModel? panel_;
+    private LogicPageViewModel? panel_;
     private AvaloniaWebView.WebView? webView_;
     private bool webViewFailed_;
 
@@ -29,7 +29,7 @@ public partial class LogicPage : UserControl
         };
     }
 
-    private LogicPanelViewModel? Panel => DataContext as LogicPanelViewModel;
+    private LogicPageViewModel? Panel => DataContext as LogicPageViewModel;
 
     private void WirePanel()
     {
@@ -41,20 +41,12 @@ public partial class LogicPage : UserControl
         panel_ = panel;
         panel.PropertyChanged += OnPanelPropertyChanged;
 
-        // The page owns the dialogs; the view model only asks.
-        panel.ConfirmAsync ??= (title, message, confirm) =>
-            ConfirmWindow.ShowFor(TopLevel.GetTopLevel(this) as Window, title, message, confirm);
-
-        // New block asks for the name, the group and the AREA first — the area is the
-        // tag-sharing scope, so it is set before any tag is authored.
-        panel.NewBlockPrompt ??= (owner, request) =>
-            LogicNewBlockWindow.ShowFor(owner ?? TopLevel.GetTopLevel(this) as Window, request);
-
         ReloadWebButton.IsVisible = OperatingSystem.IsWindows();
         UpdateWebFallbackText();
-        if (panel.IsWebTab)
+        if (panel.IsPageVisible)
         {
             EnsureWebView();
+            NavigateWebView();
         }
     }
 
@@ -70,9 +62,9 @@ public partial class LogicPage : UserControl
 
     private void OnPanelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(LogicPanelViewModel.IsWebTab))
+        if (e.PropertyName == nameof(LogicPageViewModel.IsPageVisible))
         {
-            if (Panel is { IsWebTab: true })
+            if (Panel is { IsPageVisible: true })
             {
                 EnsureWebView();
                 NavigateWebView();
@@ -81,7 +73,7 @@ public partial class LogicPage : UserControl
             return;
         }
 
-        if (e.PropertyName == nameof(LogicPanelViewModel.WebPageUrl))
+        if (e.PropertyName == nameof(LogicPageViewModel.WebPageUrl))
         {
             NavigateWebView();
             UpdateWebFallbackText();
@@ -90,7 +82,7 @@ public partial class LogicPage : UserControl
 
     private void EnsureWebView()
     {
-        if (!OperatingSystem.IsWindows() || webView_ is not null || Panel is not { } panel)
+        if (!OperatingSystem.IsWindows() || webView_ is not null || Panel is not { IsPageVisible: true })
         {
             return;
         }
@@ -267,33 +259,4 @@ public partial class LogicPage : UserControl
             SetWebStatus("Could not open the browser: " + ex.Message);
         }
     }
-
-    private void OnBlocksClick(object? sender, RoutedEventArgs e)
-    {
-        if (Panel is { } panel)
-        {
-            LogicBlocksWindow.ShowFor(TopLevel.GetTopLevel(this) as Window, panel);
-        }
-    }
-
-    /// <summary>
-    /// The Tags tab's "From bridge…": the page shows the picker, the panel turns the confirmed
-    /// tags into the area's named entries.
-    /// </summary>
-    private void OnPickTagsClick(object? sender, RoutedEventArgs e)
-    {
-        if (Panel is not { } panel)
-        {
-            return;
-        }
-
-        var viewModel = new LogicTagPickViewModel(panel.BuildTagPickRows(), panel.AreaTags.Name.Trim());
-        LogicTagPickWindow.ShowFor(
-            TopLevel.GetTopLevel(this) as Window,
-            viewModel,
-            tags => panel.AddTagsFromBridge(tags));
-    }
-
-    private void OnGuideClick(object? sender, RoutedEventArgs e) =>
-        LogicGuideWindow.ShowFor(TopLevel.GetTopLevel(this) as Window);
 }
