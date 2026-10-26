@@ -112,9 +112,6 @@ public sealed class LogicElementStateDto
     /// <summary>Contact form (<c>on</c>/<c>off</c>/<c>gt</c>/<c>lt</c>/<c>eq</c>), copied from the definition.</summary>
     public string Op { get; set; } = LogicConditionOps.On;
 
-    /// <summary>Internal relay the element reads or drives, copied from the definition; empty otherwise.</summary>
-    public string Relay { get; set; } = string.Empty;
-
     /// <summary>Counter preset (PV), copied from the definition; 0 for every other kind.</summary>
     public int Pv { get; set; }
 

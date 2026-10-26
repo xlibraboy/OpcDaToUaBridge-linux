@@ -1406,8 +1406,8 @@ function catalogLabel(sourceId, itemId) {
 function resultRow(state, def, depth) {
   // The bridge expands a block's flat conditions into wrappers (a TON around a held contact,
   // an OR group, the AND over the roots). Those wrappers have no authored definition of their
-  // own — the state now carries the definition fields they need (text, op, relay, preset,
-  // severity, next step) — so a wrapper row reads exactly like the elements it wraps.
+  // own — the state now carries the definition fields they need (text, op, preset, severity,
+  // next step) — so a wrapper row reads exactly like the elements it wraps.
   def = def || state;
   const row = h('div', { class: 'rl', 'data-id': state.id, 'data-live': '1', style: '--depth:' + depth });
   const card = h('div', { class: 'rl-card ' + statePill(state.state) },

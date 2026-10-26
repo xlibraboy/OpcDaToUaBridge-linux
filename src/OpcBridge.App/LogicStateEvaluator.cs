@@ -476,7 +476,6 @@ public static class LogicStateEvaluator
             Kind = element.Kind.ToLowerInvariant(),
             Text = element.Text,
             Op = element.Op,
-            Relay = element.Relay,
             Pv = element.Pv,
             Severity = element.Severity,
             NextStepText = element.NextStepText,

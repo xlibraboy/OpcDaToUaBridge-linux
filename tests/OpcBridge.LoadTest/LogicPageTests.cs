@@ -225,7 +225,7 @@ public sealed class LogicPageTests
         // A list's unsaved edits are kept per area, so stepping to another one drops nothing.
         Assert.Contains("function rememberTagDraft(", tags);
 
-        // The Editor row keeps its TAG field — the area's entries by name plus the relay route —
+        // The Editor row keeps its TAG field — the area's entries by name —
         // and offers no way to type a pair: the assignment lives on the Tags tab.
         string controls = Between(script, "function renderControls(", "function tagPickSelect(");
         Assert.Contains("tagPickSelect(element, rerender)", controls);

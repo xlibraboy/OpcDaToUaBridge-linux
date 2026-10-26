@@ -38,7 +38,7 @@ tag moved its block from READY to BLOCKED in under 300 ms through the hub alone.
 conditions.** A block authored as flat conditions is expanded by the bridge into an AND, an OR per
 group and a TON around a held contact; the page could name those wrapper rows only by their kind
 (`TON IN`, `OR`), because the evaluated state carried no definition text. The state now carries
-each element's text, contact form, relay, counter preset, severity and next-step text, and the page
+each element's text, contact form, counter preset, severity and next-step text, and the page
 falls back to it for a wrapper — so a held condition reads `TON IN · Pump running · holding 1.2 s
 of 2 s` and an OR group reads `OR · either`, matching the HMI. The fields are additive; older
 clients ignore them.
