@@ -235,8 +235,9 @@ public sealed class LogicPageTests
         Assert.DoesNotContain("'aria-label': 'Item id'", script);
         Assert.DoesNotContain("'__direct__'", script);
 
-        // One output tag per block, named in the Editor header; the page authors no relays.
-        Assert.Contains("id: 'fOutput'", script);
+        // One output tag per block, named in the Editor header (and on the coil row that drives
+        // it); the page authors no relays.
+        Assert.Contains("outputTagInput('fOutput', 'w-output')", script);
         Assert.Contains("draft.outputTag", script);
         Assert.Contains("function refreshOutputLive(", script);
         Assert.Contains("function displayWord(", script);
@@ -801,6 +802,17 @@ public sealed class LogicPageTests
         Assert.Contains("outputTag: ''", script);
         Assert.Contains("title: 'This block\\'s output/coil tag — read as feedback only. Its source and tag are assigned on the Tags tab.'", script);
         Assert.Contains("if (name) rememberTagName(name);", script);
+
+        // The coil row authors the block's OUTPUT tag where the coil is written, so a bare coil
+        // is not a dead "OUTPUT —" and the field sits beside the row that needs it. The header
+        // and the coil write the one draft value, and a save that still lacks it focuses the
+        // coil's own field instead of only complaining.
+        string controls = Between(script, "function renderControls(", "function tagPickSelect(");
+        Assert.Contains("outputTagInput(undefined, 'w-output-coil mono', 'Block OUTPUT tag', 'OUTPUT tag')", controls);
+        Assert.Contains("function outputTagInput(", script);
+        Assert.Contains("input[data-output-tag]", script);
+        Assert.Contains("document.querySelector('.el-edit .w-output-coil')", script);
+        Assert.Contains(".el-edit .w-output-coil {", css);
 
         // The rail names the tag beside the block and carries a second dot for the output, so
         // the interlock check and the feedback check read apart.

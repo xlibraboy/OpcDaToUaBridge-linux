@@ -516,18 +516,7 @@ function renderHead() {
   const outputEntries = areaEntries(blockArea(draft));
   head.appendChild(h('div', { class: 'field' },
     h('label', { for: 'fOutput', text: 'Output' }),
-    h('input', {
-      type: 'text', id: 'fOutput', class: 'w-output', list: 'outputTags', value: draft.outputTag || '', maxlength: 32,
-      placeholder: 'e.g. PUMP1_RUN',
-      title: 'This block\'s output/coil tag — read as feedback only. Its source and tag are assigned on the Tags tab.',
-      oninput: (e) => { draft.outputTag = e.target.value; markDirty(); refreshOutputLive(); },
-      onchange: (e) => {
-        const name = e.target.value.trim();
-        draft.outputTag = name;
-        if (name) rememberTagName(name);
-        refreshOutputLive();
-      }
-    }),
+    outputTagInput('fOutput', 'w-output'),
     h('datalist', { id: 'outputTags' }, outputEntries.map((t) => h('option', { value: t.name }))),
     h('span', { class: 'out-live', id: 'outputLive' })
   ));
@@ -542,6 +531,35 @@ function renderHead() {
   head.appendChild(stateBox);
   setTimeout(() => { renderAreaState(); refreshOutputLive(); syncNetPinning(); }, 0);
   return head;
+}
+
+// The block's OUTPUT tag, authored in the header or on the coil row that is its output rung.
+// Both fields write the one draft value; syncOutputTag keeps the other in step while the author
+// types, so whichever field is in reach shows the tag that will be saved.
+function outputTagInput(id, className, ariaLabel, placeholder) {
+  return h('input', {
+    type: 'text', id: id, class: className, list: 'outputTags', 'aria-label': ariaLabel,
+    value: draft.outputTag || '', maxlength: 32,
+    placeholder: placeholder || 'e.g. PUMP1_RUN',
+    title: 'This block\'s output/coil tag — read as feedback only. Its source and tag are assigned on the Tags tab.',
+    'data-output-tag': '1',
+    oninput: (e) => { draft.outputTag = e.target.value; markDirty(); refreshOutputLive(); syncOutputTag(e.target); },
+    onchange: (e) => {
+      const name = e.target.value.trim();
+      draft.outputTag = name;
+      e.target.value = name;
+      if (name) rememberTagName(name);
+      refreshOutputLive();
+      syncOutputTag(e.target);
+    }
+  });
+}
+
+function syncOutputTag(source) {
+  const value = draft ? (draft.outputTag || '') : '';
+  for (const input of document.querySelectorAll('input[data-output-tag]')) {
+    if (input !== source) input.value = value;
+  }
 }
 
 // The output feedback's word and number, shared by the editor header, the rail and the Result
@@ -930,16 +948,17 @@ function renderControls(element, path) {
   }
 
   if (isCoil(element)) {
-    // The coil is the block's output rung: its name is the block's OUTPUT tag, set in the
-    // header. A relay authored in the HMI is shown read-only.
-    const output = (draft.outputTag || '').trim();
-    parts.push(h('span', {
-      class: 'legacy-relay mono small',
-      title: hasLegacyRelay(element)
-        ? 'Internal relay authored in the HMI (kept as-is).'
-        : 'The block\'s OUTPUT tag is set in the header — this coil is its output rung.',
-      text: hasLegacyRelay(element) ? 'internal relay ' + element.relay.trim() : 'OUTPUT ' + (output || '—')
-    }));
+    // The coil is the block's output rung: its name is the block's OUTPUT tag, written in the
+    // row the way the old relay field was. A relay authored in the HMI is shown read-only.
+    if (hasLegacyRelay(element)) {
+      parts.push(h('span', {
+        class: 'legacy-relay mono small',
+        title: 'Internal relay authored in the HMI (kept as-is).',
+        text: 'internal relay ' + element.relay.trim()
+      }));
+    } else {
+      parts.push(outputTagInput(undefined, 'w-output-coil mono', 'Block OUTPUT tag', 'OUTPUT tag'));
+    }
   }
 
   if (isTimer(element)) {
@@ -2468,6 +2487,11 @@ function saveBlock() {
   if (!draft) return;
   if (!(draft.outputTag || '').trim() && hasBareCoil(draft)) {
     setSaveMessage('Set the block\'s OUTPUT tag before saving a coil.', 'err');
+    // Put the author on the field the message names: the coil's own OUTPUT box when there is
+    // one on screen, otherwise the header's.
+    const coilOutput = document.querySelector('.el-edit .w-output-coil');
+    const target = coilOutput || el('fOutput');
+    if (target) { target.focus(); target.select(); }
     return;
   }
 
