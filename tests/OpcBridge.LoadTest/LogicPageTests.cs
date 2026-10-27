@@ -792,6 +792,29 @@ public sealed class LogicPageTests
     }
 
     [Fact]
+    public void Script_GivesARootTheLevelItHasNowhereToMoveTo()
+    {
+        string script = OnDisk(ScriptFile);
+
+        // A nested row's ‹ moves it out one level. A root has no level to move to, so the same
+        // control gives it one: a new AND group (one input evaluates unchanged) takes the root's
+        // place at the left and the root becomes its input — the only way a root can gain another
+        // parent. The guard keeps the store's own bounds: one more element, one more level.
+        string controls = Between(script, "function renderControls(", "function tagPickSelect(");
+        Assert.Contains("function newParentGate(", script);
+        Assert.Contains("function subtreeDepth(", script);
+        Assert.Contains("const isRoot = path.length < 2;", controls);
+        Assert.Contains("const canWrap = countElements(draft.elements) < LIMITS.elements && subtreeDepth(element) < LIMITS.depth;", controls);
+        Assert.Contains("disabled: isRoot && !canWrap,", controls);
+        Assert.Contains("const parent = newParentGate();", controls);
+        Assert.Contains("parent.inputs.push(element);", controls);
+        Assert.Contains("siblings.splice(index, 1, parent);", controls);
+        Assert.Contains("'aria-label': isRoot ? 'Wrap in a new parent gate' : 'Move out one level',", controls);
+        Assert.Contains("'Move out to a new level — wraps this root in a new gate'", script);
+        Assert.Contains("'Wrap in a new parent gate'", script);
+    }
+
+    [Fact]
     public void Script_ShowsTheOutputTagAndItsSecondCheck()
     {
         string script = OnDisk(ScriptFile);
