@@ -525,6 +525,9 @@ select { cursor: pointer; }
 .el-edit .w-num { flex: 0 0 84px; }
 .el-edit .w-sev { flex: 0 0 84px; }
 .el-edit .w-tag-new { flex: 0 0 150px; }
+/* The coil row's OUTPUT tag: the block's one output name, set where the coil is written — the
+   same compact field the row carried for a relay before the output tag replaced it. */
+.el-edit .w-output-coil { flex: 0 0 140px; }
 /* A relay authored in the HMI is shown read-only on the page: the page authors no relays. */
 .el-edit .legacy-relay {
   flex: 0 0 auto;

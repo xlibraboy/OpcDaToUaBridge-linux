@@ -19,6 +19,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+**A coil names its block's OUTPUT tag on its own row.** A coil added to the Logic page's network
+showed only a read-only `OUTPUT —`, while the tag it drives could be named only in the block
+header; saving then refused with *Set the block's OUTPUT tag before saving a coil* and left the
+author searching above the network for the field. The row now carries the OUTPUT field beside the
+coil, the header and the row write the same value and stay in step while it is typed, and a save
+that still lacks one puts the cursor in the coil's field. The tag remains feedback only — its
+source and item are assigned on the Tags tab — and a coil carrying an HMI-authored relay is still
+shown read-only.
+
 **The Logic page takes the bridge's evaluation as a push, so a one-pass edge is no longer stepped
 over.** The page followed the plant by polling `GET /api/logic/state` once a second — the same
 snapshot the bridge already broadcasts on the `/hmi` hub's `logic` event — so a momentary pulse (an
