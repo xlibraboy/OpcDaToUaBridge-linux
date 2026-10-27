@@ -150,6 +150,14 @@ function countElements(list) {
   return n;
 }
 
+// How many levels the deepest row under this element sits below it. Wrapping the element in a new
+// parent adds one to every depth in its group, so this is what says whether another level fits.
+function subtreeDepth(element) {
+  let deepest = 0;
+  for (const input of element.inputs || []) deepest = Math.max(deepest, 1 + subtreeDepth(input));
+  return deepest;
+}
+
 // Which authoring form a block uses. Only the network form is edited here: the flat conditions
 // and the sequence steps are authored in the HMI's Logic page, and this page shows the bridge's
 // own evaluation of them read-only (the Result tab shows the same for every form).
@@ -173,6 +181,16 @@ function newElement() {
   // sentence."), so a new row starts with a placeholder the author overwrites. The tag is the
   // author's to choose, and the store says so plainly if it is missing.
   return { id: uuid(), kind: 'contact', text: 'New condition', sourceId: '', itemId: '', tag: '', op: 'on', value: null, relay: '', ptMs: 0, pv: 0, inputs: [], severity: 'block', nextStepText: null };
+}
+
+// The parent a root gains when it is moved out: the level to the left a root has nowhere to move
+// to. An AND with one input evaluates the same as the root it wraps, so the block's result does
+// not change until the author adds inputs or picks another kind.
+function newParentGate() {
+  const gate = newElement();
+  gate.kind = 'and';
+  gate.text = 'New group';
+  return gate;
 }
 
 // A row is added where the author asked, and the rebuild keeps the offset (renderEditor) — so a row
@@ -869,13 +887,30 @@ function renderControls(element, path) {
     disabled: !nestable,
     onclick: () => { const prev = siblings[index - 1]; prev.inputs.push(siblings.splice(index, 1)[0]); rerender(); }
   }, '›'));
+  // A nested row moves out to the level above it. A root has no level above it, so the same
+  // control gives it one: a new gate takes the root's place at the left and the root becomes its
+  // input. That is the only way a root can gain another parent; the network keeps its result
+  // because the new gate is an AND with one input.
+  const isRoot = path.length < 2;
+  const canWrap = countElements(draft.elements) < LIMITS.elements && subtreeDepth(element) < LIMITS.depth;
+  const outTitle = isRoot
+    ? (canWrap ? 'Move out to a new level — wraps this root in a new gate'
+      : 'Move out one level — the network is at its size or depth limit')
+    : 'Move out one level';
   tools.appendChild(h('button', {
-    class: 'btn small icon', type: 'button', title: 'Move out one level', 'aria-label': 'Move out one level',
-    disabled: path.length < 2,
+    class: 'btn small icon', type: 'button', title: outTitle,
+    'aria-label': isRoot ? 'Wrap in a new parent gate' : 'Move out one level',
+    disabled: isRoot && !canWrap,
     onclick: () => {
-      const grand = parentArray(path.slice(0, -1));
-      const parentIndex = path[path.length - 2];
-      grand.splice(parentIndex + 1, 0, siblings.splice(index, 1)[0]);
+      if (isRoot) {
+        const parent = newParentGate();
+        parent.inputs.push(element);
+        siblings.splice(index, 1, parent);
+      } else {
+        const grand = parentArray(path.slice(0, -1));
+        const parentIndex = path[path.length - 2];
+        grand.splice(parentIndex + 1, 0, siblings.splice(index, 1)[0]);
+      }
       rerender();
     }
   }, '‹'));

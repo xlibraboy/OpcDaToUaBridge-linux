@@ -19,6 +19,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+**A network's first root can gain a parent gate to its left.** The Logic page's *move out one
+level* control was disabled on a root, because a root has no level above it to move to — so the
+first element of an interlock could not be wrapped in another level, and a condition that needed
+another parent had nowhere to get one. The control now gives a root that level: it puts a new AND
+group in the root's place and nests the root under it, so the block's result is unchanged (a
+one-input AND is its input) and the new group can take more inputs, be changed to OR / XOR, or be
+wrapped again. A nested row still moves out one level exactly as before; the control stays disabled
+only when the network is already at its 256-element or 16-level bound.
+
 **A coil names its block's OUTPUT tag on its own row.** A coil added to the Logic page's network
 showed only a read-only `OUTPUT —`, while the tag it drives could be named only in the block
 header; saving then refused with *Set the block's OUTPUT tag before saving a coil* and left the
