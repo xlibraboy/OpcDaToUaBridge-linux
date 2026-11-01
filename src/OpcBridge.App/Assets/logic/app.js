@@ -73,6 +73,8 @@ let hubLive = false;       // true while the hub is pushing the evaluation
 let pollTimer = null;      // the one poll loop, at the cadence the feed needs
 let pollPeriod = 0;
 let tab = 'editor';   // editor | tags | result
+let foldedBlocks = new Set(); // rail: block ids whose row is folded to its name
+let resultCollapsed = false;  // rail: the verdict footer folded away
 let catalog = null;   // the bridge's mapped tags (GET /api/hmi/tags), for the Tags tab
 let catalogSources = []; // those tags, grouped by source
 let tagArea = '';     // the area whose tag list the Tags tab is editing — the block's own area
@@ -312,23 +314,96 @@ function renderRail() {
       const state = blockStates.get(block.id);
       const output = state ? state.output : null;
       const outputTag = (block.outputTag || '').trim();
+      const folded = foldedBlocks.has(block.id);
+      const name = block.name || '(unnamed)';
       const row = h('button', {
         class: 'block-row' + (draft && draft.id === block.id ? ' on' : ''),
         type: 'button',
         'data-block': block.id,
-        onclick: () => selectBlock(block.id)
+        onclick: () => selectBlock(block.id, 'result')
       },
         h('span', { class: 'state-dot ' + (state ? displayKey(state) : ''), 'aria-hidden': 'true' }),
-        h('span', { class: 'n', text: block.name || '(unnamed)' }),
-        outputTag ? h('span', { class: 'block-output mono', text: outputTag, title: 'Output tag — read-only feedback' }) : null,
-        outputTag ? h('span', { class: 'out-dot ' + (output ? output.state : 'none'), title: outputTitle(output), 'aria-hidden': 'true' }) : null,
-        h('span', { class: 'kind', text: blockKindLabel(block.kind) + ((block.group || '').trim() ? ' · ' + block.group.trim() : '') }),
-        h('span', { class: 'block-why', text: blockWhy(block, state) }),
-        outputTag ? h('span', { class: 'block-out ' + (output ? (output.state || 'none') : 'none'), text: outputLine(block, state) }) : null
+        h('span', { class: 'n', text: name }),
+        // Folded, the row is its state dot and its name — the details are not rendered at all.
+        folded ? null : [
+          outputTag ? h('span', { class: 'block-output mono', text: outputTag, title: 'Output tag — read-only feedback' }) : null,
+          outputTag ? h('span', { class: 'out-dot ' + (output ? output.state : 'none'), title: outputTitle(output), 'aria-hidden': 'true' }) : null,
+          h('span', { class: 'kind', text: blockKindLabel(block.kind) + ((block.group || '').trim() ? ' · ' + block.group.trim() : '') }),
+          h('span', { class: 'block-why', text: blockWhy(block, state) }),
+          outputTag ? h('span', { class: 'block-out ' + (output ? (output.state || 'none') : 'none'), text: outputLine(block, state) }) : null
+        ]
       );
-      list.appendChild(row);
+      const fold = h('button', {
+        class: 'block-fold',
+        type: 'button',
+        'data-fold': block.id,
+        'aria-expanded': folded ? 'false' : 'true',
+        'aria-label': (folded ? 'Expand ' : 'Collapse ') + name,
+        title: (folded ? 'Expand ' : 'Collapse ') + name,
+        onclick: () => toggleBlockFolded(block.id)
+      });
+      list.appendChild(h('div', { class: 'block' }, row, fold));
     }
   }
+}
+
+// ---------------------------------------------------------------- rail folding
+
+// Each block row folds to its name from its own chevron, so a long list can be read as a
+// compact index while the rows being worked on stay open. The verdict footer folds from its
+// header too. Both choices are remembered like the theme and the Result width, so a plant PC
+// keeps the layout its operator settled on.
+const FOLDED_BLOCKS_KEY = 'opcbridge.foldedBlocks';
+const RESULT_COLLAPSED_KEY = 'opcbridge.resultCollapsed';
+
+function storedCollapsed(key) {
+  try { return localStorage.getItem(key) === '1'; } catch (e) { return false; }
+}
+
+function storeCollapsed(key, collapsed) {
+  try { localStorage.setItem(key, collapsed ? '1' : '0'); } catch (e) { /* private mode */ }
+}
+
+function storedFoldedBlocks() {
+  try {
+    const ids = JSON.parse(localStorage.getItem(FOLDED_BLOCKS_KEY) || '[]');
+    return new Set(Array.isArray(ids) ? ids : []);
+  } catch (e) {
+    return new Set();
+  }
+}
+
+function storeFoldedBlocks() {
+  try { localStorage.setItem(FOLDED_BLOCKS_KEY, JSON.stringify([...foldedBlocks])); } catch (e) { /* private mode */ }
+}
+
+function toggleBlockFolded(id) {
+  if (foldedBlocks.has(id)) foldedBlocks.delete(id);
+  else foldedBlocks.add(id);
+  storeFoldedBlocks();
+  renderRail();
+}
+
+function applyResultCollapsed() {
+  const toggle = el('btnToggleResult');
+  const body = el('result');
+  body.hidden = resultCollapsed;
+  toggle.setAttribute('aria-expanded', resultCollapsed ? 'false' : 'true');
+  toggle.title = (resultCollapsed ? 'Expand ' : 'Collapse ') + 'result';
+  toggle.setAttribute('aria-label', toggle.title);
+}
+
+function setResultCollapsed(collapsed) {
+  resultCollapsed = collapsed;
+  storeCollapsed(RESULT_COLLAPSED_KEY, collapsed);
+  applyResultCollapsed();
+}
+
+function initRailFolding() {
+  foldedBlocks = storedFoldedBlocks();
+  resultCollapsed = storedCollapsed(RESULT_COLLAPSED_KEY);
+  el('btnToggleResult').addEventListener('click', () => setResultCollapsed(!resultCollapsed));
+  applyResultCollapsed();
 }
 
 // The interlock verdict lifted by the output feedback: a block is READY only when both agree.
@@ -2468,7 +2543,8 @@ function openTagPicker() {
 
 // ---------------------------------------------------------------- commands
 
-// A rail click opens the block's Editor; a tag panel's card opens its Result tab and keeps the
+// A rail click opens the block's Result tab — the reading surface comes first, and the Editor
+// and Tags tabs are one click away. A tag panel's card also opens Result and keeps the
 // inspector open, so the tag's source/readers and the block's network are read together.
 function selectBlock(id, target) {
   const block = defs.blocks.find((b) => b.id === id);
@@ -2924,6 +3000,7 @@ function initTheme() {
 
 function start() {
   el('btnNew').addEventListener('click', newBlockForm);
+  initRailFolding();
   initTheme();
   // The network's rows hold the top of the editor while their own children are on screen, and which
   // of them is holding it is read from the scroll — see syncNetPinning.

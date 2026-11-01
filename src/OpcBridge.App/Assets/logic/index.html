@@ -44,16 +44,30 @@
 
 <main class="shell">
   <aside class="rail">
-    <div class="rail-head">
-      <span class="rail-title">Blocks</span>
-      <button class="btn small" id="btnNew" type="button">+ New</button>
+    <!-- The block list takes the rail's spare height and scrolls on its own; the selected
+         block's verdict is anchored to the bottom and never scrolls out of reach. Each block
+         row folds to its name from its own chevron, and the verdict footer folds too. -->
+    <div class="rail-main">
+      <div class="rail-head">
+        <span class="rail-title">Blocks</span>
+        <button class="btn small" id="btnNew" type="button">+ New</button>
+      </div>
+      <div class="rail-list" id="blockList"></div>
     </div>
-    <div class="rail-list" id="blockList"></div>
 
-    <div class="rail-head">
-      <span class="rail-title">Result</span>
+    <div class="rail-foot">
+      <div class="rail-head">
+        <span class="rail-heading">
+          <button class="rail-toggle" id="btnToggleResult" type="button"
+                  aria-expanded="true" aria-controls="result"
+                  aria-label="Collapse result" title="Collapse result">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg>
+          </button>
+          <span class="rail-title">Result</span>
+        </span>
+      </div>
+      <div class="result" id="result"><p class="muted">No block selected.</p></div>
     </div>
-    <div class="result" id="result"><p class="muted">No block selected.</p></div>
   </aside>
 
   <section class="editor" id="editor">

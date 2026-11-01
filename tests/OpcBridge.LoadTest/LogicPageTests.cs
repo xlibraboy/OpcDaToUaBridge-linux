@@ -201,6 +201,45 @@ public sealed class LogicPageTests
     }
 
     [Fact]
+    public void Rail_OpensTheResultAndFoldsEachBlockRow()
+    {
+        string html = OnDisk(HtmlFile);
+        string script = OnDisk(ScriptFile);
+        string css = OnDisk(CssFile);
+
+        // A rail click lands on Result, the reading surface; Editor stays a tab click away.
+        Assert.Contains("onclick: () => selectBlock(block.id, 'result')", script);
+
+        // Each row folds to its name from its own chevron — there is no whole-list fold.
+        Assert.DoesNotContain("btnToggleBlocks", html);
+        Assert.Contains("class: 'block-fold'", script);
+        Assert.Contains("h('div', { class: 'block' }, row, fold)", script);
+        Assert.Contains("foldedBlocks.has(block.id)", script);
+        Assert.Contains("function toggleBlockFolded(", script);
+        Assert.Contains("opcbridge.foldedBlocks", script);
+        Assert.Contains("h('span', { class: 'n', text: name })", script);
+        // Folded, the detail spans are not rendered at all: the row is its dot and its name.
+        Assert.Contains("folded ? null : [", script);
+
+        // The verdict footer folds from its header and stays anchored at the rail's bottom.
+        Assert.Contains("id=\"btnToggleResult\"", html);
+        Assert.Contains("class=\"rail-foot\"", html);
+        Assert.Contains("aria-controls=\"result\"", html);
+        Assert.Contains("opcbridge.resultCollapsed", script);
+        Assert.Contains("body.hidden = resultCollapsed;", script);
+
+        Assert.Contains("overflow: hidden;", Rule(css, ".rail {"));
+        Assert.Contains("flex: 1 1 auto;", Rule(css, ".rail-main {"));
+        Assert.Contains("overflow-y: auto;", Rule(css, ".rail-main > .rail-list {"));
+        Assert.Contains("flex: 0 0 auto;", Rule(css, ".rail-foot {"));
+        Assert.Contains("display: none;", Rule(css, ".result[hidden] {"));
+        Assert.Contains("max-height: 46vh;", Rule(css, ".rail-foot .result {"));
+        // The row's chevron is a sibling of the row button, layered over its right edge.
+        Assert.Contains("position: absolute;", Rule(css, ".block-fold {"));
+        Assert.Contains("padding: 6px 26px 6px 8px;", Rule(css, ".block-row {"));
+    }
+
+    [Fact]
     public void Script_SplitsEditorAndTagsTheWayTheHmiDoes()
     {
         string script = OnDisk(ScriptFile);

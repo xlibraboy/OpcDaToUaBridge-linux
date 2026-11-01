@@ -161,8 +161,14 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  overflow-y: auto;
+  overflow: hidden;
 }
+
+/* The list owns the rail's spare height and scrolls on its own; the verdict is a footer
+   anchored under it, so a long list can never push the selected block's result out of reach. */
+.rail-main { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.rail-main > .rail-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.rail-foot { flex: 0 0 auto; display: flex; flex-direction: column; min-height: 0; border-top: 1px solid var(--border); }
 
 .rail-head {
   display: flex;
@@ -177,9 +183,34 @@ body {
   z-index: 1;
 }
 
+.rail-heading { display: flex; align-items: center; gap: 5px; min-width: 0; }
+
 .rail-title { font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
 
+/* The chevron folds its section: down when open, right when closed. */
+.rail-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.rail-toggle:hover { color: var(--text); background: var(--panel2); border-color: var(--border); }
+.rail-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.rail-toggle svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; transition: transform .15s; }
+.rail-toggle[aria-expanded="false"] svg { transform: rotate(-90deg); }
+
 .rail-list { padding: 6px 6px 10px; }
+.result[hidden] { display: none; }
+
+/* A long verdict scrolls inside the footer instead of shortening the list to nothing. */
+.rail-foot .result { min-height: 0; max-height: 46vh; overflow-y: auto; }
 
 .group-head {
   padding: 8px 6px 2px;
@@ -194,7 +225,8 @@ body {
   align-items: center;
   gap: 8px;
   width: 100%;
-  padding: 6px 8px;
+  /* Room on the right for the row's own fold chevron. */
+  padding: 6px 26px 6px 8px;
   border: 1px solid transparent;
   border-left: 3px solid transparent;
   border-radius: 2px;
@@ -207,6 +239,38 @@ body {
 .block-row:hover { background: var(--panel2); }
 .block-row.on { background: var(--panel2); border-color: var(--border2); border-left-color: var(--ink2); }
 .block-row .n { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Each row folds to its name from its own chevron — the wrapper keeps that chevron a sibling
+   of the row button (buttons cannot nest), layered over the row's right edge. */
+.block { position: relative; }
+.block-fold {
+  position: absolute;
+  top: 5px;
+  right: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.block-fold:hover { color: var(--text); background: var(--panel2); border-color: var(--border); }
+.block-fold:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.block-fold::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+  transition: transform .15s;
+}
+.block-fold[aria-expanded="false"]::before { transform: rotate(-45deg); }
 .block-row .kind {
   flex: 1 0 100%;
   min-width: 0;
@@ -614,6 +678,8 @@ select { cursor: pointer; }
 @media (max-width: 860px) {
   .shell { flex-direction: column; }
   .rail { flex: 0 0 auto; max-height: 40vh; border-right: none; border-bottom: 1px solid var(--border); }
+  /* In the stacked layout the rail is already short, so the footer keeps a smaller cap. */
+  .rail-foot .result { max-height: 20vh; }
   /* The bar carries five controls now (two pills, the theme picker, Dashboard) and one
      of them is a labelled three-way picker, so below the stacking breakpoint the two
      rails wrap and the picker keeps its labels rather than being cut off. */
