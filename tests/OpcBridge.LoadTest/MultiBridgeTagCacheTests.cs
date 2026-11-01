@@ -105,6 +105,46 @@ public sealed class MultiBridgeTagCacheTests
     }
 
     [Fact]
+    public void ClearValues_DropsReadingsAndKeepsMetadataForThatBridgeOnly()
+    {
+        var cache = new MultiBridgeTagCache();
+        cache.ReplaceBridge("line1",
+        [
+            new HmiTagDto
+            {
+                SourceId = "default",
+                SourceName = "Simulation",
+                ItemId = "A",
+                DisplayName = "Level A",
+                Value = 42,
+                IsGood = true,
+                DaQuality = 192,
+                TimestampUtc = new DateTime(2026, 10, 9, 5, 30, 0, DateTimeKind.Utc)
+            }
+        ]);
+        cache.ReplaceBridge("line2",
+        [
+            new HmiTagDto { SourceId = "default", ItemId = "A", DisplayName = "Level B", Value = 9, IsGood = true }
+        ]);
+
+        cache.ClearValues("line1");
+
+        Assert.True(cache.TryGet(TagBindingKey.Create("line1", "default", "A"), out MultiBridgeTagEntry? cleared));
+        Assert.Equal("Level A", cleared!.DisplayName);
+        Assert.Equal("Simulation", cleared.SourceName);
+        Assert.Null(cleared.Value);
+        Assert.Null(cleared.IsGood);
+        Assert.Null(cleared.DaQuality);
+        Assert.Null(cleared.TimestampUtc);
+        Assert.Equal("—", OpcBridge.Mobile.Core.LogicTagText.Format(cleared));
+
+        // The other bridge still has its live reading.
+        Assert.True(cache.TryGet(TagBindingKey.Create("line2", "default", "A"), out MultiBridgeTagEntry? kept));
+        Assert.Equal(9, Convert.ToInt32(kept!.Value));
+        Assert.True(kept.IsGood);
+    }
+
+    [Fact]
     public void ReplaceBridge_CarriesDigitalSettings()
     {
         var cache = new MultiBridgeTagCache();

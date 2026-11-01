@@ -136,6 +136,33 @@ public sealed class LogicOverviewViewModelTests
     }
 
     [Fact]
+    public void ClearLiveState_DropsTheEvaluationButKeepsTheListStructure()
+    {
+        LogicOverviewViewModel vm = new();
+        LogicBlockDto blocked = Block("Line 01 Start", conditions: Condition());
+        blocked.Tags = new List<string> { "Safety" };
+        vm.ApplyDefinitions(new[] { blocked });
+        vm.ApplyState(new LogicStateSnapshot
+        {
+            Blocks = { State(blocked.Id, LogicBlockStates.Blocked, "Line 01 start permit must be given") }
+        });
+
+        vm.ClearLiveState();
+
+        LogicBlockCardViewModel card = Assert.Single(vm.Blocks);
+        Assert.Equal("no data", card.StateLabel);
+        Assert.Null(card.Reason);
+        Assert.Equal(string.Empty, card.ProgressText);
+        Assert.Equal("0 ready · 0 blocked · 1 no data", vm.Summary);
+        Assert.Null(vm.State);
+
+        // The block itself stays: its name, tag and card are still the operator's list.
+        Assert.Equal("Line 01 Start", card.Name);
+        Assert.Equal("Safety", Assert.Single(card.Tags));
+        Assert.Contains("no data", Assert.Single(vm.VisibleGroups).Summary);
+    }
+
+    [Fact]
     public void CardsCarryTheirTagsAndTheOverviewBuildsTagChips()
     {
         LogicOverviewViewModel vm = new();
@@ -501,6 +528,67 @@ public sealed class LogicBlockDetailViewModelTests
         Assert.True(row.ShowShould);
         Assert.Equal("should 1 · actual 0", row.ShouldLine);
         Assert.Equal("Blocked by: Line 01 start permit must be given", vm.BlockedByText);
+    }
+
+    [Fact]
+    public void LinkLost_ClearsTheRowsLastStateAndReading()
+    {
+        LogicConditionDto permit = Condition("Permit must be given");
+        MultiBridgeTagCache cache = TagCache(new HmiTagDto
+        {
+            SourceId = "sim",
+            ItemId = "Permit",
+            DisplayName = "Permit",
+            Digital = true,
+            OnText = "Permit",
+            OffText = "Blocked",
+            Value = true,
+            IsGood = true
+        });
+        LogicBlockDetailViewModel vm = new(
+            Interlock(permit),
+            BridgeKey,
+            new LogicBlockStateDto
+            {
+                State = LogicBlockStates.Ready,
+                Elements = { new LogicElementStateDto { Id = permit.Id, Kind = LogicElementKinds.Contact, State = LogicConditionStates.True, ValueText = "Permit", Should = "1", Matches = true } }
+            },
+            cache);
+
+        LogicElementRowViewModel row = Contacts(vm)[0];
+        Assert.Equal("✓", row.Mark);
+        Assert.Equal("1", row.ActualText);
+        Assert.Equal("Permit", row.ValueText);
+        Assert.Equal("should 1 · actual 1", row.ShouldLine);
+
+        // What a lost link does: the tag readings are cleared and no snapshot replaces them.
+        cache.ClearValues(BridgeKey);
+        vm.ApplyState(null);
+        vm.ApplyValues();
+
+        Assert.Equal("—", row.Mark);
+        Assert.Equal("?", row.ActualText);
+        Assert.Equal(string.Empty, row.ValueText);
+        Assert.False(row.ShowShould);
+        Assert.Equal("NO DATA", vm.StateLabel);
+    }
+
+    [Fact]
+    public void StepRows_WithoutAnEvaluation_ReadNoDataInsteadOfPending()
+    {
+        LogicBlockDto sequence = new()
+        {
+            Id = Guid.NewGuid(),
+            Name = "Start-up",
+            Kind = LogicBlockKinds.Sequence,
+            Steps = { new LogicStepDto { Id = Guid.NewGuid(), Name = "Start permit" } }
+        };
+
+        LogicBlockDetailViewModel vm = new(sequence, BridgeKey);
+
+        // "Pending" is a real step state; with no evaluation the step must not claim it.
+        Assert.Equal("No data", vm.Steps[0].StateLabel);
+        Assert.Equal(LogicStepStates.Unknown, vm.Steps[0].StateKey);
     }
 
     [Fact]
@@ -1125,8 +1213,10 @@ public sealed class LogicBlockDetailViewModelTests
         };
 
         LogicBlockDetailViewModel vm = new(sequence, BridgeKey);
-        Assert.Equal("0/2 steps", vm.ProgressText);
-        Assert.True(vm.ShowProgress);
+
+        // No evaluation yet: the header claims no progress rather than "0/2 steps".
+        Assert.Equal(string.Empty, vm.ProgressText);
+        Assert.False(vm.ShowProgress);
 
         vm.ApplyState(new LogicBlockStateDto
         {

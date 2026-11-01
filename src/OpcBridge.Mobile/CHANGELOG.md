@@ -56,6 +56,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   guide per enclosing level, on the same 14 px step the rows indent by, so a deep interlock reads
   as a tree and a row's parents are visible beside it.
 
+### Changed
+
+- **A lost link clears the live screen instead of freezing it.** When the bridge link drops
+  (including while it is reconnecting) or a refresh fails, every block state and tag reading is
+  dropped to **no data** / **—** and the banner reads *offline · live values hidden · last synced
+  …*; the block definitions, groups, tags and notes stay readable, and the next snapshot or
+  successful refresh fills the readings back in. The offline cache restores the list's structure
+  only — a cached reading is never shown as if the bridge had just served it.
+
 ### Fixed
 
 - **Adding a bridge no longer stops the app when the address's socket closes.** Android's HTTP

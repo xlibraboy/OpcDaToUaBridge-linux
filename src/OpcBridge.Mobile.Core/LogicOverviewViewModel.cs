@@ -92,6 +92,18 @@ public sealed partial class LogicBlockCardViewModel : ObservableObject
         OnPropertyChanged(nameof(FoldLabel));
     }
 
+    /// <summary>
+    /// Drops the evaluated state without pretending a snapshot is on its way: while the link is
+    /// down the card must not keep showing the last reading as if the plant were still behind it.
+    /// </summary>
+    public void ClearState()
+    {
+        StateLabel = "no data";
+        StateKey = LogicBlockStates.Unknown;
+        Reason = null;
+        ProgressText = string.Empty;
+    }
+
     public void ApplyState(LogicBlockStateDto? state)
     {
         if (state is null)
@@ -481,6 +493,23 @@ public sealed partial class LogicOverviewViewModel : ObservableObject
         foreach (LogicBlockCardViewModel card in Blocks)
         {
             card.ApplyState(byId.TryGetValue(card.Id, out LogicBlockStateDto? state) ? state : null);
+        }
+
+        ApplyFilter();
+        ApplySummary();
+    }
+
+    /// <summary>
+    /// Forgets the evaluated state and summary counts while the bridge link is down. The block
+    /// definitions stay — names, groups, tags and filters keep working — but no card reads as
+    /// if the last evaluation were current.
+    /// </summary>
+    public void ClearLiveState()
+    {
+        State = null;
+        foreach (LogicBlockCardViewModel card in Blocks)
+        {
+            card.ClearState();
         }
 
         ApplyFilter();

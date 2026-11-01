@@ -49,6 +49,8 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
         hub_.Reconnecting += _ => post_(() =>
         {
             StatusText = "reconnecting…";
+            // The link is down now: the values on screen are no longer live, so they go.
+            MarkOffline();
             RaiseChanged();
         });
         hub_.Reconnected += connectionId => post_(() =>
@@ -105,12 +107,12 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
     [ObservableProperty] private bool _signInRequired;
 
     /// <summary>
-    /// True when the list on screen is the last data the bridge served — the link is down,
-    /// nothing live is arriving, and <see cref="OfflineText"/> says how old it is.
+    /// True while the link is down. The block definitions and notes stay on screen, but every
+    /// live reading and evaluated state has been cleared — nothing is presented as current.
     /// </summary>
     [ObservableProperty] private bool _isOffline;
 
-    /// <summary>"offline · showing Plant 1 as of 2026-10-09 12:31:05" — what the banner reads.</summary>
+    /// <summary>"offline · live values hidden · last synced 2026-10-09 12:31:05" — the banner.</summary>
     [ObservableProperty] private string _offlineText = string.Empty;
 
     public bool IsLive => hub_.IsConnected;
@@ -213,9 +215,11 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Shows the last data this bridge served, so the list is never blank while the link is
-    /// being acquired (or after it is gone). Leaves <see cref="IsOffline"/> to a failed call —
-    /// a cached list that is about to be refreshed is not "offline" yet.
+    /// Shows the structure this bridge served last time — the definitions, tag metadata and
+    /// notes — so the list is never blank while the link is being acquired (or after it is
+    /// gone). The cached readings and evaluated state are deliberately not applied: live
+    /// values come only from the bridge. Leaves <see cref="IsOffline"/> to a failed call — a
+    /// cached list that is about to be refreshed is not "offline" yet.
     /// </summary>
     public void LoadCached()
     {
@@ -229,10 +233,16 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
         lastTags_ = snapshot.Tags;
         if (snapshot.Tags.Count > 0)
         {
+            // The entries keep their names, units and on/off texts — the labels on the screen —
+            // but their readings are live state and only arrive over the link. A cached value
+            // must never sit on screen as if the bridge had just served it.
             tags_.ReplaceBridge(CacheKey, snapshot.Tags);
+            tags_.ClearValues(CacheKey);
         }
 
-        Overview.ApplyState(snapshot.State);
+        // Definitions and notes are the cache's offline value; the last evaluation is not
+        // shown, because the phone is not connected yet.
+        Overview.ClearLiveState();
         notesByBlock_ = snapshot.NotesByBlock is { } notes
             ? notes
             : new Dictionary<Guid, List<LogicNoteDto>>();
@@ -271,16 +281,20 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
         lastCachedUtc_ = snapshot.SavedUtc;
     }
 
-    /// <summary>Marks the list as the last data served, aged by when the bridge last answered.</summary>
+    /// <summary>
+    /// Marks the link as gone and drops everything the bridge had been reporting: every tag
+    /// reading and the evaluated state become no data, so the screen cannot freeze on the last
+    /// values the plant happened to show. The definitions and notes stay readable, and the
+    /// banner says how old that structure is.
+    /// </summary>
     private void MarkOffline()
     {
-        if (lastCachedUtc_ is not { } savedUtc)
-        {
-            return;
-        }
-
+        tags_.ClearValues(CacheKey);
+        Overview.ClearLiveState();
         IsOffline = true;
-        OfflineText = "offline · showing " + Bridge.DisplayName + " as of " + savedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss");
+        OfflineText = lastCachedUtc_ is { } savedUtc
+            ? "offline · live values hidden · last synced " + savedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+            : "offline · live values hidden";
     }
 
     public async Task<MobileResult<MobileSession>> SignInAsync(string username, string password, CancellationToken cancellationToken)
@@ -312,6 +326,10 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
     /// <summary>Closes the live link (the coordinator keeps one link open across bridges).</summary>
     public async Task DisconnectAsync()
     {
+        // Closing on purpose leaves the same rule in place as losing the link: nothing this
+        // bridge reported stays on screen as a current reading.
+        tags_.ClearValues(CacheKey);
+        Overview.ClearLiveState();
         await hub_.DisposeAsync();
         RaiseChanged();
     }

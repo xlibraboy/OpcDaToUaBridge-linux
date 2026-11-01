@@ -158,6 +158,31 @@ public sealed class MultiBridgeTagCache
         }
     }
 
+    /// <summary>
+    /// Drops the live readings (value, quality, timestamp) for one bridge and keeps the tag
+    /// metadata, so a screen whose link is down can still name its tags without presenting
+    /// the last reading as if it were current.
+    /// </summary>
+    public void ClearValues(string bridgeId)
+    {
+        string id = (bridgeId ?? string.Empty).Trim();
+        lock (sync_)
+        {
+            foreach (MultiBridgeTagEntry entry in tags_.Values)
+            {
+                if (!string.Equals(entry.Key.BridgeId, id, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                entry.Value = null;
+                entry.TimestampUtc = null;
+                entry.DaQuality = null;
+                entry.IsGood = null;
+            }
+        }
+    }
+
     private static MultiBridgeTagEntry FromDto(TagBindingKey key, HmiTagDto dto) => new()
     {
         Key = key,

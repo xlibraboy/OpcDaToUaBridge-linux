@@ -8,9 +8,10 @@ using Xunit;
 namespace OpcBridge.LoadTest;
 
 /// <summary>
-/// The phone keeps the last list a bridge served, so the floor screen still reads when the
-/// link is down: the cache is shown on start, a failed refresh leaves it on screen and names
-/// how old it is, and a later success clears the offline mark.
+/// The phone keeps the structure a bridge served — definitions, tag metadata and notes — so
+/// the floor screen still reads when the link is down, while the last readings and evaluated
+/// states are never presented as current: a failed refresh clears them and the banner says
+/// why, and a later success fills them back in.
 /// </summary>
 public sealed class MobileOfflineCacheTests
 {
@@ -91,41 +92,59 @@ public sealed class MobileOfflineCacheTests
     }
 
     [Fact]
-    public void LoadCached_ShowsTheLastSnapshotBeforeAnyCall()
+    public void LoadCached_ShowsTheStructureButNeverTheLastReadings()
     {
         LogicBlockDto block = Block();
         MultiBridgeTagCache tags = new();
         BridgeConnection connection = Connection(new MemoryBridgeCacheStore(), tags, block);
 
-        // Definitions, state and the live values come straight from disk.
+        // The definitions come straight from disk, so the floor list can still be read.
         Assert.Single(connection.Overview.Definitions);
         LogicBlockCardViewModel card = Assert.Single(connection.Overview.Visible);
         Assert.Equal("Primary Arm Up", card.Name);
         Assert.Equal("Primary Arm", card.Group);
-        Assert.Equal("Pressure switch PS1 must read 1", card.Reason);
+
+        // The cached evaluation is not shown: nothing reads as current before the bridge answers.
+        Assert.Equal("no data", card.StateLabel);
+        Assert.Null(card.Reason);
+        Assert.Null(connection.Overview.State);
+
+        // The tag keeps its name and settings, but its cached reading is gone.
         Assert.True(tags.TryGet(TagBindingKey.Create(connection.CacheKey, "sim", "PS1"), out MultiBridgeTagEntry? entry));
-        Assert.Equal("Off", LogicTagText.Format(entry));
+        Assert.Equal("Pressure switch PS1", entry!.DisplayName);
+        Assert.Null(entry.Value);
+        Assert.Equal("—", LogicTagText.Format(entry));
 
         // Cached is not offline yet — the first call decides that.
         Assert.False(connection.IsOffline);
     }
 
     [Fact]
-    public async Task FailedRefresh_KeepsTheListAndMarksItOffline()
+    public async Task FailedRefresh_KeepsTheStructureAndClearsTheReadings()
     {
         LogicBlockDto block = Block();
-        BridgeConnection connection = Connection(new MemoryBridgeCacheStore(), new MultiBridgeTagCache(), block);
+        MultiBridgeTagCache tags = new();
+        BridgeConnection connection = Connection(new MemoryBridgeCacheStore(), tags, block);
 
         await connection.ConnectAsync(CancellationToken.None);
 
         Assert.False(connection.IsConnected);
         Assert.True(connection.IsOffline);
-        Assert.StartsWith("offline · showing Plant 1 as of ", connection.OfflineText);
+        Assert.StartsWith("offline · live values hidden · last synced ", connection.OfflineText);
         Assert.Contains("no bridge answered", connection.StatusText);
 
-        // The list is still the last data the bridge served.
-        Assert.Equal("Primary Arm Up", Assert.Single(connection.Overview.Visible).Name);
+        // The block list is still readable by name and group…
+        LogicBlockCardViewModel card = Assert.Single(connection.Overview.Visible);
+        Assert.Equal("Primary Arm Up", card.Name);
         Assert.Equal("Primary Arm", Assert.Single(connection.Overview.VisibleGroups).Name);
+
+        // …but no state or value survives the lost link.
+        Assert.Equal("no data", card.StateLabel);
+        Assert.Null(card.Reason);
+        Assert.Null(connection.Overview.State);
+        Assert.True(tags.TryGet(TagBindingKey.Create(connection.CacheKey, "sim", "PS1"), out MultiBridgeTagEntry? entry));
+        Assert.Null(entry!.Value);
+        Assert.Null(entry.IsGood);
     }
 
     [Fact]

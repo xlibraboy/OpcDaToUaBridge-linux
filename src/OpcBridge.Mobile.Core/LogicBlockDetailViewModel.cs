@@ -147,9 +147,19 @@ public sealed partial class LogicElementRowViewModel : ObservableObject
         };
 
         ShowNextStep = !string.IsNullOrWhiteSpace(NextStepText) && value != LogicConditionStates.True;
-        if (!string.IsNullOrWhiteSpace(state?.ValueText))
+        if (state is null)
         {
-            ValueText = state!.ValueText;
+            // A row that reads a tag gets its value text from the tag cache in ApplyValues; any
+            // other row (a coil, a relay contact) has only the evaluation to read from, so a
+            // missing state must clear the text instead of leaving the last one on screen.
+            if (!IsContact || TagReference is null)
+            {
+                ValueText = string.Empty;
+            }
+        }
+        else if (!string.IsNullOrWhiteSpace(state.ValueText))
+        {
+            ValueText = state.ValueText;
         }
 
         ShouldLine = state?.Should is { Length: > 0 } should ? should : string.Empty;
@@ -173,8 +183,18 @@ public sealed partial class LogicElementRowViewModel : ObservableObject
     /// </summary>
     public void ApplyTag(MultiBridgeTagEntry? entry)
     {
-        if (entry is null || !IsContact)
+        if (!IsContact)
         {
+            return;
+        }
+
+        if (entry is null || entry.Value is null)
+        {
+            // No entry, or an entry whose reading was cleared with the link: the row reads
+            // nothing instead of the value that was on screen when the bridge went away.
+            ValueText = string.Empty;
+            UpdateActualText();
+            UpdateShouldLine();
             return;
         }
 
@@ -335,16 +355,25 @@ public sealed partial class LogicStepRowViewModel : ObservableObject
 
     public void ApplyState(LogicStepStateDto? state)
     {
-        string value = state?.State ?? LogicStepStates.Pending;
-        StateKey = value;
-        StateLabel = value switch
+        if (state is null)
+        {
+            // No evaluation at all (the link is down): "Pending" would read like a real step
+            // state, so the row says it has no data.
+            StateKey = LogicStepStates.Unknown;
+            StateLabel = "No data";
+            Reason = null;
+            return;
+        }
+
+        StateKey = state.State;
+        StateLabel = state.State switch
         {
             LogicStepStates.Done => "Done",
             LogicStepStates.Current => "Current",
             LogicStepStates.Unknown => "No data",
             _ => "Pending"
         };
-        Reason = state?.Reason;
+        Reason = state.Reason;
     }
 }
 
@@ -577,7 +606,9 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
 
         UpdateCheckpointSummary();
         ApplyOutput(state);
-        ProgressText = SequenceProgress(state);
+        // A lost evaluation clears the progress line: "0/N steps" would read as a real count
+        // rather than as "the step flow is unknown".
+        ProgressText = state is null ? string.Empty : SequenceProgress(state);
 
         Dictionary<Guid, LogicStepStateDto> stepStates = new();
         foreach (LogicStepStateDto step in state?.Steps ?? Enumerable.Empty<LogicStepStateDto>())
@@ -617,14 +648,16 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
                 out string itemId);
             if (elementRows_.TryGetValue(element.Id, out LogicElementRowViewModel? row))
             {
-                if (!resolved)
-                {
-                    // A named tag that is not assigned yet reads nothing, not the last reading.
-                    row.ApplyTag(null);
-                }
-                else if (tags_.TryGet(TagBindingKey.Create(bridgeKey_, sourceId, itemId), out MultiBridgeTagEntry? entry))
+                if (resolved &&
+                    tags_.TryGet(TagBindingKey.Create(bridgeKey_, sourceId, itemId), out MultiBridgeTagEntry? entry))
                 {
                     row.ApplyTag(entry);
+                }
+                else
+                {
+                    // A named tag that is not assigned, or an entry the link has cleared:
+                    // the row reads nothing, never the last value.
+                    row.ApplyTag(null);
                 }
             }
         }
