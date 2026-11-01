@@ -628,6 +628,73 @@ public sealed class LogicPageTests
     }
 
     [Fact]
+    public void Script_ListsTheCheckpointsAndJumpsToTheirElement()
+    {
+        string script = OnDisk(ScriptFile);
+        string css = OnDisk(CssFile);
+
+        // A checkpoint is a parent of the interlock: a gate or function block that owns checks
+        // below it. Contacts are leaves and a coil publishes the result, so neither is a
+        // checkpoint; clicking the dot goes to the parent row that failed.
+        string checkpoints = Between(script, "function checkpointElements(", "function checkpointName(");
+        Assert.Contains("node.children.length", checkpoints);
+        Assert.Contains("kind !== 'coil'", checkpoints);
+        Assert.Contains("resultTree(elements || [])", checkpoints);
+        Assert.DoesNotContain("element.should", checkpoints);
+
+        // One line above the board: a met/total count and a dot per parent, in the network's order.
+        // Only the dot is drawn; the parent's name lives in the tooltip and the accessible label.
+        Assert.Contains("function renderCheckpointRail(", script);
+        Assert.Contains("id: 'resCheckpoints'", script);
+        Assert.Contains("'aria-label': 'Interlock checkpoints'", script);
+        Assert.Contains("'data-cp-id': state.id", script);
+        Assert.Contains("class: 'cp-dot ' + statePill(state.state)", script);
+        Assert.Contains("checks.map(checkpointDot)", script);
+        Assert.Contains("onclick: () => revealCheckpoint(state.id)", script);
+        Assert.Contains("label: met + '/' + checks.length", script);
+        Assert.Contains("function checkpointName(", script);
+        Assert.DoesNotContain("cp-chip", script);
+        Assert.DoesNotContain("cp-text", script);
+
+        // The rail keeps the editor's full width above both Result boards — the network and a
+        // sequence's step cards — rather than shrinking into the narrow board's column.
+        Assert.Contains("renderCheckpointRail(elements)", script);
+        Assert.Contains("if (checkpoints) editor.appendChild(checkpoints);", script);
+
+        // The feed repaints the chips in place with the cards, never rebuilding the line.
+        Assert.Contains("paintCheckpointRail();", Between(script, "function applyState(", "function paintResultCard("));
+        Assert.Contains("count.className = 'cp-count' + summary.className;", script);
+
+        // A chip is a jump: its row is scrolled to the middle of the editor and ringed for a moment.
+        Assert.Contains("function revealCheckpoint(", script);
+        Assert.Contains("editor.querySelector('.rl[data-id=\"' + id + '\"]')", script);
+        Assert.Contains("row.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center' });", script);
+        Assert.Contains("row.classList.add('rl-flash');", script);
+        Assert.Contains("row.focus({ preventScroll: true });", script);
+
+        // The strip never scrolls: dots are small and wrap inside it. A failed checkpoint is a red
+        // dot in the board's own palette, and the row it lands on carries the flash.
+        string track = Rule(css, ".cp-track {");
+        Assert.Contains("flex-wrap: wrap;", track);
+        Assert.DoesNotContain("overflow-x: auto;", track);
+        Assert.Contains("border-radius: 50%;", Rule(css, ".cp-dot {"));
+        Assert.Contains("background: var(--bad);", Rule(css, ".cp-dot.bad {"));
+        Assert.DoesNotContain(".cp-chip", css);
+        Assert.Contains("animation: checkpoint-flash 1.6s ease-out;", Rule(css, ".rl.rl-flash .rl-card {"));
+        Assert.Contains("@keyframes checkpoint-flash", css);
+
+        // The rail stays with the verdict header: it sticks on the head's line, and the rows' pin
+        // line is measured below the rail so a pinned parent never covers the dots.
+        string rail = Rule(css, ".cp-rail {");
+        Assert.Contains("position: sticky;", rail);
+        Assert.Contains("top: var(--head-stick-top, 0px);", rail);
+        Assert.Contains("background: var(--bg);", rail);
+        Assert.Contains("const rail = editor.querySelector('.cp-rail');", script);
+        Assert.Contains("editor.style.setProperty('--head-stick-top', headTop + 'px');", script);
+        Assert.Contains("editor.style.setProperty('--net-stick-top', Math.round(headTop + (rail ? rail.offsetHeight : 0)) + 'px');", script);
+    }
+
+    [Fact]
     public void Script_OpensTheResultInANarrowColumnWithAWideControl()
     {
         string script = OnDisk(ScriptFile);

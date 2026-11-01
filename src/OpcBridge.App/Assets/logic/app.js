@@ -776,9 +776,11 @@ function renderNode(element, path) {
 // What the rows ride under: the head of whichever tab is open — the editor's properties, the
 // result's own verdict — because it rides the same scroll, so what they have to clear is its
 // height. That depends on the window (the note under the fields wraps) and on the text the poll
-// writes into the result head, so it is measured after every render rather than assumed. The
-// editor's top pad is read back from the stylesheet: a sticky offset measures from the editor's
-// content box, and the head's box top sits exactly that far above it.
+// writes into the result head, so it is measured after every render rather than assumed. On the
+// Result tab the checkpoint rail sticks directly under that head, so the rows clear both: the rail
+// rides the head's line and the rows ride the line below the rail. The editor's top pad is read
+// back from the stylesheet: a sticky offset measures from the editor's content box, and the head's
+// box top sits exactly that far above it.
 //
 // The strip on that line is the parent of the rows below it: both tabs write their rows nested
 // (.el-node / .rl-node), so the row that owns what is on screen rides above it, and it leaves when
@@ -796,8 +798,12 @@ function syncNetPinning() {
   const head = editor ? editor.querySelector('.ed-head, .res-head') : null;
   if (!editor || !head) return;
   const padTop = parseFloat(getComputedStyle(editor).getPropertyValue('--pad-top')) || 0;
-  // On the editor itself: the strip rides that line while the rows only inherit it.
-  editor.style.setProperty('--net-stick-top', Math.round(head.offsetHeight - padTop) + 'px');
+  // On the editor itself: the rail rides the head's line, and the strip and rows inherit the line
+  // under the rail (on the Editor tab there is no rail, so the two lines are the same).
+  const headTop = Math.round(head.offsetHeight - padTop);
+  const rail = editor.querySelector('.cp-rail');
+  editor.style.setProperty('--head-stick-top', headTop + 'px');
+  editor.style.setProperty('--net-stick-top', Math.round(headTop + (rail ? rail.offsetHeight : 0)) + 'px');
 
   const strip = el('pinWrap');
   if (!strip) return;
@@ -1639,6 +1645,127 @@ function resultSteps(state, elements, index) {
   return box;
 }
 
+// ---------------------------------------------------------------- checkpoint rail
+
+// The rail's checkpoints are the network's parents — the gates and function blocks that own the
+// checks below them (AND, OR, XOR, NOT, TON, SR …), not the leaf contacts. A parent is the row to
+// go to when an interlock is blocked: opening it shows the group that failed, while the contact
+// itself is already named in the block's reason. A coil is not a check — it publishes the result.
+function checkpointElements(elements) {
+  const parents = [];
+  const walk = (node) => {
+    const kind = node.element.kind || 'contact';
+    if (node.children.length && kind !== 'coil') parents.push(node.element);
+    for (const child of node.children) walk(child);
+  };
+  for (const node of resultTree(elements || [])) walk(node);
+  return parents;
+}
+
+function checkpointName(state) {
+  const text = (state.text || '').trim();
+  if (text) return text;
+  const kind = kindLabelFor(state, state);
+  return state.depth === 0 ? 'root ' + kind : kind;
+}
+
+function checkpointWord(state) {
+  return state === 'true' ? 'fulfilled' : state === 'false' ? 'not fulfilled' : 'no data';
+}
+
+function checkpointTitle(state) {
+  return [checkpointName(state), checkpointWord(state.state), shouldLine(state, state),
+    state.severity === 'warn' ? 'warn only' : '']
+    .filter((part) => part)
+    .join(' · ') + ' — click to go to this parent';
+}
+
+// A checkpoint is only its dot: the parent's name lives in the tooltip and the accessible label.
+// Dots are small enough that a long network stays in one strip without a horizontal scrollbar.
+function checkpointDot(state) {
+  return h('button', {
+    class: 'cp-dot ' + statePill(state.state),
+    type: 'button',
+    'data-cp-id': state.id,
+    title: checkpointTitle(state),
+    'aria-label': checkpointName(state) + ' — ' + checkpointWord(state.state) + '. Go to this parent.',
+    onclick: () => revealCheckpoint(state.id)
+  });
+}
+
+function checkpointSummary(checks) {
+  const met = checks.filter((state) => state.state === 'true').length;
+  const open = checks.filter((state) => state.state === 'false').length;
+  const unknown = checks.length - met - open;
+  return {
+    label: met + '/' + checks.length,
+    title: met + ' of ' + checks.length + ' checkpoints fulfilled'
+      + (open ? ' · ' + open + ' not fulfilled' : '')
+      + (unknown ? ' · ' + unknown + ' without data' : ''),
+    className: open ? ' bad' : (unknown ? ' warn' : ' ok')
+  };
+}
+
+// The rail above the board: a met/total count, then one dot per parent. The feed repaints the dots
+// in place (paintCheckpointRail), so a push never rewrites the strip being read.
+function renderCheckpointRail(elements) {
+  const checks = checkpointElements(elements);
+  if (!checks.length) return null;
+  const summary = checkpointSummary(checks);
+  return h('div', {
+    class: 'cp-rail', id: 'resCheckpoints', role: 'group', 'aria-label': 'Interlock checkpoints'
+  },
+    h('span', { class: 'cp-label' },
+      h('span', { text: 'Checkpoints' }),
+      h('span', { class: 'cp-count' + summary.className, id: 'resCpCount', text: summary.label, title: summary.title })),
+    h('div', { class: 'cp-track', id: 'resCpTrack' }, checks.map(checkpointDot)));
+}
+
+function paintCheckpointDot(dot, state) {
+  dot.className = 'cp-dot ' + statePill(state.state);
+  dot.title = checkpointTitle(state);
+  dot.setAttribute('aria-label', checkpointName(state) + ' — ' + checkpointWord(state.state) + '. Go to this parent.');
+}
+
+function paintCheckpointRail() {
+  const track = el('resCpTrack');
+  const count = el('resCpCount');
+  if (!track || !count) return;
+  const state = draft ? blockStates.get(draft.id) : null;
+  const checks = checkpointElements((state && state.elements) || []);
+  const dots = Array.from(track.querySelectorAll('.cp-dot'));
+  if (dots.length !== checks.length || dots.some((dot, i) => dot.dataset.cpId !== checks[i].id)) {
+    track.textContent = '';
+    for (const item of checks) track.appendChild(checkpointDot(item));
+  } else {
+    checks.forEach((item, i) => paintCheckpointDot(dots[i], item));
+  }
+
+  const summary = checkpointSummary(checks);
+  count.className = 'cp-count' + summary.className;
+  count.textContent = summary.label;
+  count.title = summary.title;
+}
+
+// A checkpoint chip is a jump: the row it names is scrolled to the middle of the editor (clear of
+// the sticky head) and marked for a moment, so "which one is open" and "where is it" are one click.
+let checkpointFlashTimer = 0;
+
+function revealCheckpoint(id) {
+  const editor = el('editor');
+  const row = editor ? editor.querySelector('.rl[data-id="' + id + '"]') : null;
+  if (!row) return;
+  const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  row.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center' });
+  row.classList.remove('rl-flash');
+  void row.offsetWidth;
+  row.classList.add('rl-flash');
+  clearTimeout(checkpointFlashTimer);
+  checkpointFlashTimer = setTimeout(() => row.classList.remove('rl-flash'), 1800);
+  row.setAttribute('tabindex', '-1');
+  row.focus({ preventScroll: true });
+}
+
 // ---------------------------------------------------------------- tag details
 //
 // A row's tag line is a door: it opens the Result tab's side panel, which answers the two
@@ -1816,6 +1943,12 @@ function renderResultTab(editor) {
     draft.description ? h('p', { class: 'muted small', text: draft.description }) : null,
     progress ? h('p', { class: 'rl-line warn', id: 'resProgress', text: progress }) : null,
     h('p', { class: 'res-reason', id: 'resReason', text: '' })));
+
+  // The checkpoint rail keeps the editor's full width, not the board's narrowed column: it is the
+  // one-line answer to "what is still open", and every chip has to be reachable without scrolling
+  // a board that is deliberately kept readable.
+  const checkpoints = renderCheckpointRail(elements);
+  if (checkpoints) editor.appendChild(checkpoints);
 
   // The board and the tag inspector share the Result tab's body: the board keeps its column and
   // the inspector takes the space beside it (wrapping under it on a window too narrow for both).
@@ -2759,13 +2892,15 @@ function applyState(snapshot) {
   lastEvaluated = snapshot.evaluatedUtc ? new Date(snapshot.evaluatedUtc) : lastEvaluated;
   if (lastEvaluated) el('evaluated').textContent = 'evaluated ' + formatTime(lastEvaluated);
 
-  // The Result tab's cards and the Tags tab's live column are painted in place, like the
-  // editor's readings: a poll must never rewrite the tree the operator is reading.
+  // The Result tab's cards, its checkpoint rail and the Tags tab's live column are painted in
+  // place, like the editor's readings: a poll must never rewrite the tree the operator is reading.
   for (const card of document.querySelectorAll('.rl-card')) {
     const row = card.parentElement;
     const state = elementStates.get(row.dataset.id);
     if (state) paintResultCard(card, state);
   }
+
+  paintCheckpointRail();
 
   const blockState = draft ? blockStates.get(draft.id) : null;
   for (const pill of document.querySelectorAll('[data-step]')) {

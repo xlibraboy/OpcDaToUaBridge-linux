@@ -823,6 +823,73 @@ select { cursor: pointer; }
 .res-heading { justify-content: space-between; flex-wrap: wrap; }
 .res-heading-text { min-width: 0; }
 
+/* The checkpoint rail above the board: the interlock's parent groups as one strip of state dots,
+   in the network's own order. Only the dot is drawn — the parent's name is its tooltip and its
+   accessible label — so a long network fits without a horizontal scrollbar; the dots wrap inside
+   the strip when the window is too narrow for one line. It rides under the result header while
+   the rows scroll (--head-stick-top, measured with the head), so the checks stay reachable. A dot
+   click lands on the parent (see revealCheckpoint). */
+.cp-rail {
+  position: sticky;
+  top: var(--head-stick-top, 0px);
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  min-width: 0;
+}
+.cp-label {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--muted);
+  font-weight: 600;
+}
+.cp-count {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  padding: 0 5px;
+  border: 1px solid var(--border2);
+  border-radius: 2px;
+  background: var(--panel2);
+  color: var(--muted-strong);
+}
+.cp-count.ok { color: var(--good-text); border-color: var(--good-border); background: var(--good-bg); }
+.cp-count.bad { color: var(--bad-text); border-color: var(--bad-border); background: var(--bad-bg); }
+.cp-count.warn { color: var(--warn-text); border-color: var(--warn-border); background: var(--warn-bg); }
+.cp-track {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+}
+.cp-dot {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border: 1px solid var(--border2);
+  border-radius: 50%;
+  background: var(--panel2);
+  cursor: pointer;
+}
+.cp-dot.ok { border-color: var(--good); background: var(--good); }
+.cp-dot.bad { border-color: var(--bad); background: var(--bad); }
+.cp-dot.warn { border-color: var(--warn); background: var(--warn); }
+.cp-dot:hover { box-shadow: 0 0 0 2px var(--focus); }
+
 .res-head { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
 
 /* The verdict rides the editor's scroll with the rows — the properties head's own treatment, on the
@@ -885,6 +952,17 @@ select { cursor: pointer; }
 .rl-line.warn { color: var(--warn); }
 .rl-line.muted { color: var(--muted); }
 .rl-line.unknown { color: var(--muted); }
+
+/* A checkpoint chip lands on its evaluated row: the row keeps its reading and the card is ringed
+   for a moment, so the eye finds it after the scroll. */
+.rl.rl-flash .rl-card { animation: checkpoint-flash 1.6s ease-out; }
+@keyframes checkpoint-flash {
+  0%, 60% { box-shadow: 0 0 0 2px var(--focus); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rl.rl-flash .rl-card { animation: none; outline: 2px solid var(--focus); outline-offset: 2px; }
+}
 
 .step-card {
   border: 1px solid var(--border);

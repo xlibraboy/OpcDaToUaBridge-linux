@@ -19,6 +19,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+**The Logic page's Result tab marks the interlock's parent groups as dots.** A blocked block named
+only its first open reading, and the rows that said the rest were further down the board — so
+checking a long network meant reading every card again. The Result tab now carries a
+**Checkpoints** rail above the board: the network's parents — the AND / OR / XOR / NOT groups and
+the function blocks that own the checks below them; a coil publishes the result and is not a check
+— appear once, in the network's own order, as state-coloured dots (green fulfilled, red open,
+amber no data) with a met/total count in the verdict's colour. Only the dot is drawn; the parent's
+name is its tooltip and accessible label, so a long interlock keeps every checkpoint in one strip
+without a horizontal scrollbar (the dots wrap when the window is too narrow for one line). The rail
+rides directly under the verdict header while the rows scroll — the pinned row clears both, never
+covering the dots — so the checks stay in reach on a long network. The dots repaint in place with
+the bridge's push, and each one is a jump: clicking it scrolls its evaluated parent row into view
+and rings the card for a moment, so "which group is open" and "where is it" are the same click.
+Sequence blocks get the same rail over their step cards.
+
 **Each install can own its port block.** The HTTP and OPC UA auto-assign ranges were fixed at
 8080-8180 and 4840-4940 for every install, so two installs on one machine — or an install next
 to another product — competed for the same numbers, and the Logic page, which the bridge
