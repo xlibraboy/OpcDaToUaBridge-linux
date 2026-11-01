@@ -1,4 +1,5 @@
 using System.Net.Http;
+using OpcBridge.Core;
 
 namespace OpcBridge.Hmi.Services;
 
@@ -74,7 +75,8 @@ public static class LocalBridgeDetector
             }
         }
 
-        for (int port = BridgePortDiscovery.ScanStart; port <= BridgePortDiscovery.ScanEnd; port++)
+        PortRange scanRange = BridgePortDiscovery.ScanRange;
+        for (int port = scanRange.Start; port <= scanRange.End; port++)
         {
             string url = $"http://127.0.0.1:{port}";
             if (seen.Add(url))

@@ -1588,6 +1588,10 @@ public sealed class DashboardPageTests
         Assert.Contains("Port Configuration", DashboardPage.Html);
         Assert.Contains("id=\"httpPortInput\"", DashboardPage.Html);
         Assert.Contains("id=\"uaPortInput\"", DashboardPage.Html);
+        Assert.Contains("id=\"httpRangeStartInput\"", DashboardPage.Html);
+        Assert.Contains("id=\"httpRangeEndInput\"", DashboardPage.Html);
+        Assert.Contains("id=\"uaRangeStartInput\"", DashboardPage.Html);
+        Assert.Contains("id=\"uaRangeEndInput\"", DashboardPage.Html);
         Assert.Contains("onclick=\"checkPort('http')\"", DashboardPage.Html);
         Assert.Contains("onclick=\"checkPort('ua')\"", DashboardPage.Html);
         Assert.Contains("onclick=\"useSuggestedPort('http')\"", DashboardPage.Html);
@@ -1617,6 +1621,11 @@ public sealed class DashboardPageTests
         // Restart-to-apply is the contract, exactly like the UA Server Access card.
         Assert.Contains("restart the bridge to apply them", DashboardPage.Script);
         Assert.Contains("HTTP and OPC UA must use different ports.", DashboardPage.Script);
+        // The per-install blocks are edited here too and travel with the save.
+        Assert.Contains("p.savedRanges", DashboardPage.Script);
+        Assert.Contains("httpRange: { start: httpRangeStart, end: httpRangeEnd }", DashboardPage.Script);
+        Assert.Contains("uaRange: { start: uaRangeStart, end: uaRangeEnd }", DashboardPage.Script);
+        Assert.Contains("The HTTP and OPC UA ranges must not overlap.", DashboardPage.Script);
         // The IPv6-holder policy is explained, not silently allowed.
         Assert.Contains("localhost on this machine may reach that process", DashboardPage.Script);
         Assert.Contains("loadPortConfig().catch(() => {});", DashboardPage.Script);

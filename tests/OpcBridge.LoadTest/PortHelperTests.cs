@@ -93,6 +93,58 @@ public sealed class PortHelperTests
         Assert.True(found > taken);
     }
 
+    [Fact]
+    public void FindAvailablePort_UsesTheConfiguredBlock()
+    {
+        using TcpListener listener = ListenOn(IPAddress.Loopback);
+        int taken = PortOf(listener);
+
+        int found = PortHelper.FindAvailablePort(new PortRange(taken, taken + 20));
+
+        Assert.InRange(found, taken + 1, taken + 20);
+    }
+
+    [Fact]
+    public void FindAvailablePort_SkipsTheExcludedPort()
+    {
+        // The UA scan excludes the HTTP port: overlapping blocks must not put both listeners
+        // on one number.
+        int free = ReserveFreePort();
+        Assert.True(PortHelper.IsPortAvailable(free));
+
+        int found = PortHelper.FindAvailablePort(new PortRange(free, free + 5), exclude: free);
+
+        Assert.True(found == -1 || found > free, $"expected a port after {free}, got {found}");
+    }
+
+    [Fact]
+    public void FindAvailablePort_ReturnsMinusOneForAnInvalidBlock()
+    {
+        Assert.Equal(-1, PortHelper.FindAvailablePort(new PortRange(9000, 8000)));
+    }
+
+    [Fact]
+    public void ScanRangeFromEnvironment_UsesTheOverrideOnlyWhenValid()
+    {
+        const string variable = "OPCBRIDGE_TEST_SCAN_RANGE";
+        string? original = Environment.GetEnvironmentVariable(variable);
+        try
+        {
+            Environment.SetEnvironmentVariable(variable, "9000-9010");
+            Assert.Equal(new PortRange(9000, 9010), PortHelper.ScanRangeFromEnvironment(variable, PortRange.DefaultHttp));
+
+            Environment.SetEnvironmentVariable(variable, "not-a-range");
+            Assert.Equal(PortRange.DefaultHttp, PortHelper.ScanRangeFromEnvironment(variable, PortRange.DefaultHttp));
+
+            Environment.SetEnvironmentVariable(variable, null);
+            Assert.Equal(PortRange.DefaultHttp, PortHelper.ScanRangeFromEnvironment(variable, PortRange.DefaultHttp));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(variable, original);
+        }
+    }
+
     private static void AssertIpv6Free(PortProbe probe, bool expected)
     {
         Assert.True(probe.Ipv6Free.HasValue, "expected IPv6 to be probeable on this host");

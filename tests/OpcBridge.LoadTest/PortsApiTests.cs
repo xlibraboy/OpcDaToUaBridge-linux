@@ -65,6 +65,11 @@ public sealed class PortsApiTests : IAsyncLifetime
         Assert.Equal(JsonValueKind.Number, uaPort.ValueKind);
         Assert.True(root.TryGetProperty("httpDefault", out _));
         Assert.True(root.TryGetProperty("uaDefault", out _));
+        Assert.True(root.TryGetProperty("httpRange", out JsonElement httpRange));
+        Assert.Equal(JsonValueKind.Object, httpRange.ValueKind);
+        Assert.Equal(JsonValueKind.Number, httpRange.GetProperty("start").ValueKind);
+        Assert.True(root.TryGetProperty("uaRange", out JsonElement uaRange));
+        Assert.Equal(JsonValueKind.Object, uaRange.ValueKind);
         Assert.True(root.TryGetProperty("httpAutoAssigned", out JsonElement httpAuto));
         Assert.Equal(JsonValueKind.False, httpAuto.ValueKind);
         Assert.True(root.TryGetProperty("uaAutoAssigned", out _));
@@ -104,11 +109,21 @@ public sealed class PortsApiTests : IAsyncLifetime
         Assert.Equal(JsonValueKind.String, saved.GetProperty("uaEndpointUrl").ValueKind);
         Assert.False(root.GetProperty("restartRequired").GetBoolean());
 
+        // The harness pins each instance to its own blocks (preferred port plus nine), so the
+        // ranges are the configured ones — not the 8080/8180 defaults.
+        int runningUa = running.GetProperty("uaPort").GetInt32();
         JsonElement ranges = root.GetProperty("scanRanges");
-        Assert.Equal(8080, ranges.GetProperty("httpStart").GetInt32());
-        Assert.Equal(8180, ranges.GetProperty("httpEnd").GetInt32());
-        Assert.Equal(4840, ranges.GetProperty("uaStart").GetInt32());
-        Assert.Equal(4940, ranges.GetProperty("uaEnd").GetInt32());
+        Assert.Equal(runningHttp, ranges.GetProperty("httpStart").GetInt32());
+        Assert.Equal(runningHttp + 9, ranges.GetProperty("httpEnd").GetInt32());
+        Assert.Equal(runningUa, ranges.GetProperty("uaStart").GetInt32());
+        Assert.Equal(runningUa + 9, ranges.GetProperty("uaEnd").GetInt32());
+
+        JsonElement savedRanges = root.GetProperty("savedRanges");
+        Assert.Equal(ranges.GetProperty("httpStart").GetInt32(), savedRanges.GetProperty("httpStart").GetInt32());
+        Assert.Equal(ranges.GetProperty("httpEnd").GetInt32(), savedRanges.GetProperty("httpEnd").GetInt32());
+        Assert.Equal(ranges.GetProperty("uaStart").GetInt32(), savedRanges.GetProperty("uaStart").GetInt32());
+        Assert.Equal(ranges.GetProperty("uaEnd").GetInt32(), savedRanges.GetProperty("uaEnd").GetInt32());
+        Assert.Equal(0, root.GetProperty("rangeProblems").GetArrayLength());
 
         // Linux test host: the dashboard uses this flag to hide the firewall block.
         Assert.False(root.GetProperty("firewallSupported").GetBoolean());
@@ -188,6 +203,90 @@ public sealed class PortsApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task PortsConfig_Post_SavingOnlyRangesStillNeedsARestart()
+    {
+        // Ports unchanged, blocks narrowed around the running ports: the ranges are read at
+        // startup, so the card must still report a restart.
+        int runningHttp = app_!.Client.BaseAddress!.Port;
+        int runningUa = app_!.UaPort;
+
+        (HttpStatusCode status, JsonDocument body) = await PostJsonAsync("/api/ports/config", new
+        {
+            httpPort = runningHttp,
+            uaPort = runningUa,
+            httpRange = new { start = runningHttp, end = runningHttp },
+            uaRange = new { start = runningUa, end = runningUa }
+        });
+        using (body)
+        {
+            Assert.Equal(HttpStatusCode.OK, status);
+            Assert.True(body.RootElement.GetProperty("restartRequired").GetBoolean());
+            Assert.Contains("auto-assign ranges", body.RootElement.GetProperty("message").GetString());
+            Assert.Equal(runningHttp, body.RootElement.GetProperty("httpRange").GetProperty("start").GetInt32());
+            Assert.Equal(runningUa, body.RootElement.GetProperty("uaRange").GetProperty("end").GetInt32());
+        }
+
+        using JsonDocument settings = JsonDocument.Parse(await File.ReadAllTextAsync(Path.Combine(app_!.AppDirectory, "appsettings.json")));
+        Assert.Equal(
+            $"{runningHttp}-{runningHttp}",
+            settings.RootElement.GetProperty("Bridge").GetProperty("HttpPortRange").GetString());
+        Assert.Equal(
+            $"{runningUa}-{runningUa}",
+            settings.RootElement.GetProperty("Bridge").GetProperty("OpcUaPortRange").GetString());
+
+        using JsonDocument config = await app_!.GetJsonAsync("/api/ports/config");
+        Assert.True(config.RootElement.GetProperty("restartRequired").GetBoolean());
+        JsonElement savedRanges = config.RootElement.GetProperty("savedRanges");
+        Assert.Equal(runningHttp, savedRanges.GetProperty("httpStart").GetInt32());
+        Assert.Equal(runningHttp, savedRanges.GetProperty("httpEnd").GetInt32());
+    }
+
+    [Fact]
+    public async Task PortsConfig_Post_RejectsInvalidOrOverlappingRanges()
+    {
+        int http = ReserveFreePort();
+        int ua = ReserveFreePort();
+
+        (HttpStatusCode reversedStatus, JsonDocument reversed) = await PostJsonAsync("/api/ports/config", new
+        {
+            httpPort = http,
+            uaPort = ua,
+            httpRange = new { start = 8100, end = 8090 },
+            uaRange = new { start = ua, end = ua }
+        });
+        using (reversed)
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, reversedStatus);
+            Assert.Contains("HTTP port range", reversed.RootElement.GetProperty("error").GetString());
+        }
+
+        (HttpStatusCode outOfRangeStatus, JsonDocument outOfRange) = await PostJsonAsync("/api/ports/config", new
+        {
+            httpPort = http,
+            uaPort = ua,
+            httpRange = new { start = 0, end = 80 },
+            uaRange = new { start = ua, end = ua }
+        });
+        using (outOfRange)
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, outOfRangeStatus);
+        }
+
+        (HttpStatusCode overlapStatus, JsonDocument overlap) = await PostJsonAsync("/api/ports/config", new
+        {
+            httpPort = http,
+            uaPort = ua,
+            httpRange = new { start = 9000, end = 9100 },
+            uaRange = new { start = 9050, end = 9150 }
+        });
+        using (overlap)
+        {
+            Assert.Equal(HttpStatusCode.BadRequest, overlapStatus);
+            Assert.Contains("must not overlap", overlap.RootElement.GetProperty("error").GetString());
+        }
+    }
+
+    [Fact]
     public async Task PortsProbe_ReportsFamilyAvailabilitySuggestionsAndTheBridgesOwnPorts()
     {
         using TcpListener holder = new(IPAddress.Any, 0);
@@ -202,6 +301,10 @@ public sealed class PortsApiTests : IAsyncLifetime
             Assert.Equal("IPv4", busyBody.RootElement.GetProperty("heldFamilies").GetString());
             Assert.Equal(JsonValueKind.Number, busyBody.RootElement.GetProperty("suggestion").ValueKind);
             Assert.False(busyBody.RootElement.GetProperty("inUseByBridge").GetBoolean());
+            // The suggestion comes from this install's block, not the 8080 default.
+            Assert.Equal(
+                app_!.Client.BaseAddress!.Port,
+                busyBody.RootElement.GetProperty("range").GetProperty("start").GetInt32());
         }
 
         // The bridge's own listener is not a conflict — the card must not tell the operator to

@@ -153,7 +153,7 @@ When `TagMapping.Mode == "Manual"`, `BridgeWorker.ApplyManualMappings` synthesiz
 
 ## HTTP API & dashboard
 
-ASP.NET Core minimal API, listens on `http://0.0.0.0:8080` (runtime port from `Bridge:HttpPort`, auto-assigned and persisted to `appsettings.json`). Dashboard is a single HTML page (`DashboardPage.FullHtml`) served as explicit UTF-8 bytes at `/`.
+ASP.NET Core minimal API, listens on `http://0.0.0.0:8080` (preferred port from `Bridge:HttpPort`, auto-assigned inside this install's `Bridge:HttpPortRange` block and persisted to `appsettings.json`). Dashboard is a single HTML page (`DashboardPage.FullHtml`) served as explicit UTF-8 bytes at `/`.
 
 Endpoints (all in `Program.cs`):
 - `GET /` — dashboard HTML
@@ -367,7 +367,7 @@ Topology views under **Diagram** (SVG canvas, live status colors):
 
 - `Da:ProgId`, `Da:Host`, `Da:UpdateRateMs` — single-source seed (becomes the `default` source on first run). Multi-source config is via the API at runtime, persisted in `mappings.json` + the in-memory `DaRuntimeSettings`.
 - `Ua:ApplicationName`, `Ua:EndpointUrl`, `Ua:AutoAcceptUntrustedCertificates`.
-- `Bridge:HttpPort` (auto-assigned + persisted; editable from Monitor → Port Configuration, applies on restart), `Bridge:OpcUaPort`, `Bridge:RateLimits` (rate→max-tags map), `Bridge:ExpectedTagCount`, `Bridge:Mappings` (seed mappings, used only if `mappings.json` is absent).
+- `Bridge:HttpPort` (auto-assigned + persisted; editable from Monitor → Port Configuration, applies on restart), `Bridge:OpcUaPort`, `Bridge:HttpPortRange` / `Bridge:OpcUaPortRange` (`"start-end"` blocks this install may auto-assign from, default 8080-8180 / 4840-4940; a missing key keeps the default, a malformed one falls back with a warning; editable from the same card), `Bridge:RateLimits` (rate→max-tags map), `Bridge:ExpectedTagCount`, `Bridge:Mappings` (seed mappings, used only if `mappings.json` is absent).
 - `Hmi:BroadcastFlushMs` — SignalR live-value coalesce interval (50–1000 ms, default 100). Caps HMI live update rate (~10 Hz default).
 
 Runtime state lives in `DataDirectory.Value` (`src/OpcBridge.App/DataDirectory.cs`) — the `OPCBRIDGE_DATA` environment variable when set, else `AppContext.BaseDirectory`. The files are `mappings.json`, `sources.json`, `links.json`, `mqtt.json`, `influx.json`, `users.json`, `logic.json`, `logic-tags.json`, `logic-notes.json`, `displays/*.json` and `pki/`. The MSI sets the machine-wide `OPCBRIDGE_DATA` to `C:\ProgramData\OpcBridge` so an upgrade replaces binaries only; portable/publish deployments leave it unset and keep state beside the app. Preserve this directory during deploy cutover or live bridge / HMI page state is lost. HMI per-user config is separate: `%APPDATA%\OpcBridge.Hmi` (`hmi-config.json`, `hmi-trendgroups.json`), because the installed app cannot write into `Program Files`.

@@ -55,7 +55,8 @@ namespace OpcBridge.App;
 //   Diagram: tab text "Source→UA", function diagSourceKind(= sourceTypeLabel( + sourceSubtitle()
 //   Port Configuration (#26): id="httpPortInput"/"uaPortInput"/"httpPortCheckMsg"/"uaPortCheckMsg"/
 //   "btnHttpPortCheck"/"btnUaPortCheck"/"btnHttpPortSuggest"/"btnUaPortSuggest"/"portCfgState"/
-//   "portsMsg"/"fwSection"/"fwState"/"fwRules"/"btnApplyFirewall"/"fwMsg"/"portCmdHint",
+//   "httpRangeStartInput"/"httpRangeEndInput"/"uaRangeStartInput"/"uaRangeEndInput" (per-install
+//   auto-assign blocks), "portsMsg"/"fwSection"/"fwState"/"fwRules"/"btnApplyFirewall"/"fwMsg"/"portCmdHint",
 //   function loadPortConfig(/checkPort(/useSuggestedPort(/savePorts(/loadFirewall(/applyFirewall(,
 //   /api/ports/config, /api/ports/probe, /api/firewall/status, /api/firewall/apply
 //   Issues (#34, Admin only): data-tab="issues", id="view-issues", id="navIssues",
@@ -1231,7 +1232,7 @@ internal static class DashboardPage
         </div>
     </div>
     <div class="box" style="margin-top:14px">
-        <div class="box-h">Port Configuration <span class="info" data-tip="The ports this bridge listens on. A saved change applies after the bridge restarts — the HTTP port moves the dashboard itself, the OPC UA port moves the UA endpoint. Saving also moves the Windows Firewall rule with the port (the installer's rules are pinned to the ports the MSI was built with).">i</span><span class="msg" id="portCfgState" style="margin-left:auto"></span></div>
+        <div class="box-h">Port Configuration <span class="info" data-tip="The ports this bridge listens on. A saved change applies after the bridge restarts — the HTTP port moves the dashboard itself, the OPC UA port moves the UA endpoint. Saving also moves the Windows Firewall rule with the port (the installer's rules are pinned to the ports the MSI was built with). The ranges are the blocks this install auto-assigns from when a preferred port is taken; give each install its own block.">i</span><span class="msg" id="portCfgState" style="margin-left:auto"></span></div>
         <div class="box-b">
             <div class="field" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:8px">
                 <div style="display:flex;flex-direction:column;gap:6px;width:150px"><label class="fl" for="httpPortInput" style="width:auto">HTTP port</label><input type="number" id="httpPortInput" min="1" max="65535" style="width:100%"></div>
@@ -1245,7 +1246,15 @@ internal static class DashboardPage
                 <button class="btn ghost" id="btnUaPortSuggest" type="button" onclick="useSuggestedPort('ua')">Use next free</button>
                 <span class="msg" id="uaPortCheckMsg" role="status"></span>
             </div>
-            <div class="msg" style="margin:0 0 8px;color:var(--muted)">A port outside the auto-assign range is allowed. The bridge binds IPv4, so a port another process holds on IPv6 alone still works — but localhost on this machine may reach that process instead.</div>
+            <div class="field" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:8px">
+                <div style="display:flex;flex-direction:column;gap:6px;width:150px"><label class="fl" for="httpRangeStartInput" style="width:auto">HTTP range start</label><input type="number" id="httpRangeStartInput" min="1" max="65535" style="width:100%"></div>
+                <div style="display:flex;flex-direction:column;gap:6px;width:150px"><label class="fl" for="httpRangeEndInput" style="width:auto">HTTP range end</label><input type="number" id="httpRangeEndInput" min="1" max="65535" style="width:100%"></div>
+            </div>
+            <div class="field" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:8px">
+                <div style="display:flex;flex-direction:column;gap:6px;width:150px"><label class="fl" for="uaRangeStartInput" style="width:auto">OPC UA range start</label><input type="number" id="uaRangeStartInput" min="1" max="65535" style="width:100%"></div>
+                <div style="display:flex;flex-direction:column;gap:6px;width:150px"><label class="fl" for="uaRangeEndInput" style="width:auto">OPC UA range end</label><input type="number" id="uaRangeEndInput" min="1" max="65535" style="width:100%"></div>
+            </div>
+            <div class="msg" style="margin:0 0 8px;color:var(--muted)">Ranges are the blocks this install scans when a preferred port is taken — give each install its own so two apps never fight over the same ports. A port outside its range is still allowed, and the ranges may not overlap. The bridge binds IPv4, so a port another process holds on IPv6 alone still works — but localhost on this machine may reach that process instead.</div>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
                 <button class="btn" id="btnSavePorts" type="button" onclick="savePorts()">Save Ports</button>
                 <span class="msg" id="portsMsg" role="status"></span>
@@ -7443,6 +7452,13 @@ async function loadPortConfig() {
         const saved = p.saved || {};
         el('httpPortInput').value = saved.httpPort != null ? saved.httpPort : '';
         el('uaPortInput').value = saved.uaPort != null ? saved.uaPort : '';
+        // The card edits the saved blocks (what the next start will use); fall back to the
+        // running ones only for an older bridge that does not report savedRanges.
+        const ranges = p.savedRanges || p.scanRanges || {};
+        el('httpRangeStartInput').value = ranges.httpStart != null ? ranges.httpStart : '';
+        el('httpRangeEndInput').value = ranges.httpEnd != null ? ranges.httpEnd : '';
+        el('uaRangeStartInput').value = ranges.uaStart != null ? ranges.uaStart : '';
+        el('uaRangeEndInput').value = ranges.uaEnd != null ? ranges.uaEnd : '';
         const state = el('portCfgState');
         const restart = !!p.restartRequired;
         state.innerHTML = restart
@@ -7450,9 +7466,13 @@ async function loadPortConfig() {
             : '<span class="badge good">Running</span>';
         state.title = 'Running: HTTP ' + running.httpPort + ', OPC UA ' + running.uaPort +
             (running.httpAutoAssigned || running.uaAutoAssigned ? ' (auto-assigned — the default port was in use)' : '');
+        const problems = p.rangeProblems || [];
         el('portsMsg').textContent = restart
-            ? 'Saved ports differ from the running ones — restart the bridge to apply them.'
+            ? 'Saved ports or ranges differ from the running ones — restart the bridge to apply them.'
             : '';
+        if (problems.length) {
+            el('portsMsg').textContent = '⚠ ' + problems.join(' ');
+        }
         if (el('fwSection')) el('fwSection').style.display = p.firewallSupported ? '' : 'none';
         updatePortCmdHint();
         if (p.firewallSupported) await loadFirewall();
@@ -7482,7 +7502,8 @@ async function useSuggestedPort(kind) {
     const input = el(kind === 'http' ? 'httpPortInput' : 'uaPortInput');
     const msg = el(kind === 'http' ? 'httpPortCheckMsg' : 'uaPortCheckMsg');
     const current = parseInt(input.value, 10);
-    const fallback = kind === 'http' ? 8080 : 4840;
+    const startInput = el(kind === 'http' ? 'httpRangeStartInput' : 'uaRangeStartInput');
+    const fallback = parseInt(startInput.value, 10) || (kind === 'http' ? 8080 : 4840);
     try {
         const r = await fetch('/api/ports/probe', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ port: current > 0 && current < 65536 ? current : fallback, kind: kind }) });
         const p = await r.json();
@@ -7501,8 +7522,27 @@ async function savePorts() {
         return;
     }
     if (httpPort === uaPort) { el('portsMsg').textContent = '✗ HTTP and OPC UA must use different ports.'; return; }
+    const httpRangeStart = parseInt(el('httpRangeStartInput').value, 10);
+    const httpRangeEnd = parseInt(el('httpRangeEndInput').value, 10);
+    const uaRangeStart = parseInt(el('uaRangeStartInput').value, 10);
+    const uaRangeEnd = parseInt(el('uaRangeEndInput').value, 10);
+    const validRange = function (start, end) {
+        return start >= 1 && end >= 1 && start <= 65535 && end <= 65535 && start <= end;
+    };
+    if (!validRange(httpRangeStart, httpRangeEnd)) {
+        el('portsMsg').textContent = '✗ The HTTP range must be start-end between 1 and 65535, with start at or below end.';
+        return;
+    }
+    if (!validRange(uaRangeStart, uaRangeEnd)) {
+        el('portsMsg').textContent = '✗ The OPC UA range must be start-end between 1 and 65535, with start at or below end.';
+        return;
+    }
+    if (httpRangeStart <= uaRangeEnd && uaRangeStart <= httpRangeEnd) {
+        el('portsMsg').textContent = '✗ The HTTP and OPC UA ranges must not overlap.';
+        return;
+    }
     try {
-        const r = await fetch('/api/ports/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ httpPort: httpPort, uaPort: uaPort }) });
+        const r = await fetch('/api/ports/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ httpPort: httpPort, uaPort: uaPort, httpRange: { start: httpRangeStart, end: httpRangeEnd }, uaRange: { start: uaRangeStart, end: uaRangeEnd } }) });
         const p = await r.json();
         if (!r.ok) {
             const busy = (p.busy || []).map(function (b) { return 'port ' + b.port + ' (' + (b.heldFamilies || 'held') + ')'; }).join(', ');

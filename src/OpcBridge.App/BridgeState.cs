@@ -32,6 +32,29 @@ public sealed class BridgeState
     /// <summary>Runtime ports. Set once at startup before any background work begins. </summary>
     public static int HttpPort { get; private set; } = 8080;
     public static int UaPort { get; private set; } = 4840;
+
+    /// <summary>
+    /// The ports this install prefers (the saved <c>Bridge:HttpPort</c> / <c>Bridge:OpcUaPort</c>).
+    /// Reported as the "default" the dashboard compares the running port against, so the
+    /// auto-assigned wording stays truthful with a custom range.
+    /// </summary>
+    public static int HttpPreferredPort { get; private set; } = 8080;
+    public static int UaPreferredPort { get; private set; } = 4840;
+
+    /// <summary>
+    /// The blocks this install may auto-assign from. Configured per install
+    /// (<c>Bridge:HttpPortRange</c> / <c>Bridge:OpcUaPortRange</c>), defaulting to
+    /// 8080-8180 / 4840-4940 so an install that never sets them behaves as before.
+    /// </summary>
+    public static PortRange HttpRange { get; private set; } = PortRange.DefaultHttp;
+    public static PortRange UaRange { get; private set; } = PortRange.DefaultUa;
+
+    /// <summary>
+    /// Config problems found while reading the ranges (bad syntax, overlapping blocks).
+    /// Empty on a clean start; surfaced by the Port Configuration card.
+    /// </summary>
+    public static IReadOnlyList<string> PortRangeProblems { get; private set; } = Array.Empty<string>();
+
     public static bool HttpAutoAssigned { get; private set; }
     public static bool UaAutoAssigned { get; private set; }
 
@@ -50,6 +73,20 @@ public sealed class BridgeState
         UaPort = uaPort;
         HttpAutoAssigned = httpAuto;
         UaAutoAssigned = uaAuto;
+    }
+
+    public static void ConfigurePortRanges(
+        PortRange httpRange,
+        PortRange uaRange,
+        int httpPreferredPort,
+        int uaPreferredPort,
+        IReadOnlyList<string> problems)
+    {
+        HttpRange = httpRange;
+        UaRange = uaRange;
+        HttpPreferredPort = httpPreferredPort;
+        UaPreferredPort = uaPreferredPort;
+        PortRangeProblems = problems;
     }
 
     public static void ConfigurePortReport(PortProbe httpProbe, PortProbe uaProbe)

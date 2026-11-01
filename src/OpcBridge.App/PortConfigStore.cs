@@ -1,4 +1,5 @@
 using Newtonsoft.Json.Linq;
+using OpcBridge.Core;
 
 namespace OpcBridge.App;
 
@@ -24,6 +25,56 @@ public static class PortConfigStore
         int httpPort = settings?["Bridge"]?["HttpPort"]?.Value<int>() ?? httpDefault;
         int uaPort = settings?["Bridge"]?["OpcUaPort"]?.Value<int>() ?? uaDefault;
         return (httpPort, uaPort);
+    }
+
+    /// <summary>
+    /// The port blocks this install auto-assigns from
+    /// (<c>Bridge:HttpPortRange</c> / <c>Bridge:OpcUaPortRange</c>, strings like
+    /// <c>"9000-9010"</c>), or the given defaults when the keys are absent. A missing key is
+    /// not a problem. A malformed value falls back to its default and is reported, as is a
+    /// pair of blocks that overlap — startup logs them and the Port Configuration card shows
+    /// them, so a typo in a plant config is visible instead of silently ignored.
+    /// </summary>
+    public static (PortRange Http, PortRange Ua, IReadOnlyList<string> Problems) ReadBridgePortRanges(
+        PortRange httpDefault,
+        PortRange uaDefault)
+    {
+        List<string> problems = new();
+        JObject? settings = TryLoad(SettingsPath);
+        PortRange httpRange = ReadRange(settings, "HttpPortRange", httpDefault, problems);
+        PortRange uaRange = ReadRange(settings, "OpcUaPortRange", uaDefault, problems);
+
+        if (httpRange.Overlaps(uaRange))
+        {
+            problems.Add(
+                $"Bridge:HttpPortRange ({httpRange}) overlaps Bridge:OpcUaPortRange ({uaRange}); "
+                + "the OPC UA scan skips the HTTP port, but each protocol should own its own block.");
+        }
+
+        return (httpRange, uaRange, problems);
+    }
+
+    private static PortRange ReadRange(
+        JObject? settings,
+        string key,
+        PortRange fallback,
+        List<string> problems)
+    {
+        JToken? token = settings?["Bridge"]?[key];
+        if (token is null)
+        {
+            return fallback;
+        }
+
+        if (token.Type != JTokenType.String || !PortRange.TryParse(token.ToString(), out PortRange range))
+        {
+            problems.Add(
+                $"Bridge:{key} is {token.ToString(Newtonsoft.Json.Formatting.None)}, which is not a port "
+                + $"range (expected \"start-end\", e.g. \"{fallback}\") — using {fallback}.");
+            return fallback;
+        }
+
+        return range;
     }
 
     /// <summary>
@@ -65,9 +116,10 @@ public static class PortConfigStore
     /// Persists the ports to the data directory's appsettings.json — the same file startup
     /// reads — creating the file (and the Bridge section) when absent. <c>Ua:EndpointUrl</c>'s
     /// port is patched when that key is present, because the endpoint URL, not
-    /// <c>Bridge:OpcUaPort</c>, is what the UA server binds.
+    /// <c>Bridge:OpcUaPort</c>, is what the UA server binds. The auto-assign blocks are written
+    /// too when given, so a save and a startup move leave ports and blocks in step.
     /// </summary>
-    public static void Save(int httpPort, int uaPort)
+    public static void Save(int httpPort, int uaPort, PortRange? httpRange = null, PortRange? uaRange = null)
     {
         JObject settings = TryLoad(SettingsPath) ?? new JObject();
         if (settings["Bridge"] is not JObject bridge)
@@ -78,6 +130,15 @@ public static class PortConfigStore
 
         bridge["HttpPort"] = httpPort;
         bridge["OpcUaPort"] = uaPort;
+        if (httpRange is PortRange http)
+        {
+            bridge["HttpPortRange"] = http.ToString();
+        }
+
+        if (uaRange is PortRange ua)
+        {
+            bridge["OpcUaPortRange"] = ua.ToString();
+        }
 
         if (settings["Ua"]?["EndpointUrl"] is not null)
         {

@@ -8,9 +8,6 @@ namespace OpcBridge.Core;
 /// </summary>
 public static class PortHelper
 {
-    private const int DefaultHttpPort = 8080;
-    private const int DefaultOpcUaPort = 4840;
-
     /// <summary>
     /// Checks whether a TCP port can be bound on IPv4 (0.0.0.0), which is the criterion for
     /// whether the bridge can listen on it. A port that another process holds on the IPv6
@@ -83,14 +80,24 @@ public static class PortHelper
     }
 
     /// <summary>
-    /// Scans upward from <paramref name="start"/> to <paramref name="end"/> inclusive,
-    /// returning the first port that is available.
-    /// Returns -1 if none are available.
+    /// Scans <paramref name="range"/> upward, returning the first available port, or -1 when
+    /// the block is full. <paramref name="exclude"/> skips a port already taken by the bridge
+    /// itself — the UA scan must never land on the HTTP port when the two blocks overlap.
     /// </summary>
-    public static int FindAvailablePort(int start, int end)
+    public static int FindAvailablePort(PortRange range, int? exclude = null)
     {
-        for (int port = start; port <= end; port++)
+        if (!range.IsValid)
         {
+            return -1;
+        }
+
+        for (int port = range.Start; port <= range.End; port++)
+        {
+            if (port == exclude)
+            {
+                continue;
+            }
+
             if (IsPortAvailable(port))
                 return port;
         }
@@ -98,16 +105,23 @@ public static class PortHelper
     }
 
     /// <summary>
-    /// Returns true if the current HTTP port differs from the default (8080),
-    /// meaning it was auto-assigned.
+    /// Scans <paramref name="start"/>..<paramref name="end"/> inclusive, returning the first
+    /// available port, or -1 when none is.
     /// </summary>
-    public static bool IsHttpAutoAssigned(int current) => current != DefaultHttpPort;
+    public static int FindAvailablePort(int start, int end) => FindAvailablePort(new PortRange(start, end));
 
     /// <summary>
-    /// Returns true if the current UA port differs from the default (4840),
-    /// meaning it was auto-assigned.
+    /// A client's discovery block, read from <paramref name="variable"/> when set and valid
+    /// (e.g. <c>OPCBRIDGE_HTTP_SCAN_RANGE=9000-9010</c>), falling back to
+    /// <paramref name="fallback"/>. Lets a client follow a bridge installed outside the
+    /// standard block without hardcoding a new one.
     /// </summary>
-    public static bool IsOpcUaAutoAssigned(int current) => current != DefaultOpcUaPort;
+    public static PortRange ScanRangeFromEnvironment(string variable, PortRange fallback)
+    {
+        return PortRange.TryParse(Environment.GetEnvironmentVariable(variable), out PortRange range)
+            ? range
+            : fallback;
+    }
 
     public const int HttpScanStart = 8080;
     public const int HttpScanEnd = 8180;

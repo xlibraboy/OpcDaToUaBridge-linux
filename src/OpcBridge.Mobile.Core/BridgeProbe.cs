@@ -1,15 +1,21 @@
 namespace OpcBridge.Mobile.Core;
 
 using System.Text.Json;
+using OpcBridge.Core;
 
 /// <summary>
 /// Finds a bridge on the plant LAN from the host or address the operator typed: probes the
-/// known container publish port, then the bridge's own HTTP range (8080–8180).
+/// known container publish port, then the bridge's HTTP block (8080–8180 by default).
 /// </summary>
 public static class BridgeProbe
 {
-    public const int ScanStart = 8080;
-    public const int ScanEnd = 8180;
+    /// <summary>
+    /// The block swept after the typed and known ports. Defaults to the bridge's standard
+    /// 8080–8180; <c>OPCBRIDGE_HTTP_SCAN_RANGE</c> lets a desktop-hosted runtime follow an
+    /// install pinned elsewhere (not settable on Android, where the typed port is used).
+    /// </summary>
+    public static PortRange ScanRange =>
+        PortHelper.ScanRangeFromEnvironment("OPCBRIDGE_HTTP_SCAN_RANGE", PortRange.DefaultHttp);
 
     /// <summary>
     /// Per-port timeout while sweeping the range: a bridge that is listening answers in
@@ -126,7 +132,8 @@ public static class BridgeProbe
             }
         }
 
-        for (int port = ScanStart; port <= ScanEnd; port++)
+        PortRange scanRange = ScanRange;
+        for (int port = scanRange.Start; port <= scanRange.End; port++)
         {
             if (seen.Add(port))
             {

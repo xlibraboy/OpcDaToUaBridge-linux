@@ -81,37 +81,48 @@ catch (IOException)
 
 using FileStream instanceLock = acquiredLock!;
 
-// Port auto-assignment: check defaults, auto-roll if in use, persist to appsettings.json
-(int savedHttp, int savedUa) = PortConfigStore.ReadBridgePorts(PortHelper.HttpScanStart, PortHelper.OpcUaScanStart);
+// Port auto-assignment: each install owns a block (Bridge:HttpPortRange / OpcUaPortRange),
+// so two installs on one machine cannot take each other's numbers. The preferred port is
+// used when free; otherwise the install's block is scanned. Chosen values are persisted to
+// appsettings.json so the next start keeps them.
+(PortRange httpRange, PortRange uaRange, IReadOnlyList<string> portRangeProblems) =
+    PortConfigStore.ReadBridgePortRanges(PortRange.DefaultHttp, PortRange.DefaultUa);
 using var loggerFactory = LoggerFactory.Create(b => b.AddConsole());
 ILogger logger = loggerFactory.CreateLogger("PortSetup");
 
-// HTTP port: use saved value when free, else next free port in scan range
+foreach (string problem in portRangeProblems)
+{
+    logger.LogWarning("Port configuration: {Problem}", problem);
+}
+
+(int savedHttp, int savedUa) = PortConfigStore.ReadBridgePorts(httpRange.Start, uaRange.Start);
+
+// HTTP port: use the preferred value when free, else the next free port in this install's block
 int httpPort = PortHelper.IsPortAvailable(savedHttp)
     ? savedHttp
-    : PortHelper.FindAvailablePort(PortHelper.HttpScanStart, PortHelper.HttpScanEnd);
+    : PortHelper.FindAvailablePort(httpRange);
 if (httpPort <= 0)
-    throw new InvalidOperationException($"No available HTTP port in range {PortHelper.HttpScanStart}-{PortHelper.HttpScanEnd}.");
+    throw new InvalidOperationException($"No available HTTP port in range {httpRange} (Bridge:HttpPortRange).");
 
-// OPC UA port: same strategy
-int uaPort = PortHelper.IsPortAvailable(savedUa)
+// OPC UA port: same strategy, never taking the HTTP port even when the blocks overlap
+int uaPort = savedUa != httpPort && PortHelper.IsPortAvailable(savedUa)
     ? savedUa
-    : PortHelper.FindAvailablePort(PortHelper.OpcUaScanStart, PortHelper.OpcUaScanEnd);
+    : PortHelper.FindAvailablePort(uaRange, httpPort);
 if (uaPort <= 0)
-    throw new InvalidOperationException($"No available OPC UA port in range {PortHelper.OpcUaScanStart}-{PortHelper.OpcUaScanEnd}.");
+    throw new InvalidOperationException($"No available OPC UA port in range {uaRange} (Bridge:OpcUaPortRange).");
 
-bool httpAuto = httpPort != savedHttp && savedHttp == PortHelper.HttpScanStart;
-bool uaAuto = uaPort != savedUa && savedUa == PortHelper.OpcUaScanStart;
+bool httpAuto = httpPort != savedHttp;
+bool uaAuto = uaPort != savedUa;
 
 // Persist only when ports changed from the saved values
 if (httpPort != savedHttp || uaPort != savedUa)
 {
-    PortConfigStore.Save(httpPort, uaPort);
+    PortConfigStore.Save(httpPort, uaPort, httpRange, uaRange);
 
     if (httpAuto)
-        logger.LogWarning("HTTP port {Default} already in use. Auto-assigned to {Port}. appsettings.json updated.", PortHelper.HttpScanStart, httpPort);
+        logger.LogWarning("HTTP port {Preferred} is in use. Auto-assigned {Port} from range {Range}. appsettings.json updated.", savedHttp, httpPort, httpRange);
     if (uaAuto)
-        logger.LogWarning("OPC UA port {Default} already in use. Auto-assigned to {Port}. appsettings.json updated.", PortHelper.OpcUaScanStart, uaPort);
+        logger.LogWarning("OPC UA port {Preferred} is in use. Auto-assigned {Port} from range {Range}. appsettings.json updated.", savedUa, uaPort, uaRange);
 
     // Force PKI cert regen when UA port changed
     if (uaAuto && PortConfigStore.DeleteUaCertificateIfPresent())
@@ -121,6 +132,8 @@ if (httpPort != savedHttp || uaPort != savedUa)
 }
 
 BridgeState.ConfigurePorts(httpPort, uaPort, httpAuto, uaAuto);
+BridgeState.ConfigurePortRanges(httpRange, uaRange, savedHttp, savedUa, portRangeProblems);
+logger.LogInformation("Port ranges: HTTP {HttpRange}, OPC UA {UaRange}", httpRange, uaRange);
 
 // The installer writes the Start Menu dashboard shortcut with the port it was built with
 // (8080); this is the only place that knows the port the bridge actually got, so keep the
@@ -446,8 +459,10 @@ app.MapGet("/api/status/ports", (DiscoveryServerProbe discoveryProbe) =>
     return Results.Json(new BridgePorts(
         BridgeState.HttpPort,
         BridgeState.UaPort,
-        PortHelper.HttpScanStart,
-        PortHelper.OpcUaScanStart,
+        BridgeState.HttpPreferredPort,
+        BridgeState.UaPreferredPort,
+        BridgeState.HttpRange,
+        BridgeState.UaRange,
         BridgeState.HttpAutoAssigned,
         BridgeState.UaAutoAssigned,
         uaBind,
@@ -464,11 +479,16 @@ app.MapGet("/api/status/ports", (DiscoveryServerProbe discoveryProbe) =>
 // auto-assignment does.
 app.MapGet("/api/ports/config", () =>
 {
-    (int savedHttp, int savedUa) = PortConfigStore.ReadBridgePorts(PortHelper.HttpScanStart, PortHelper.OpcUaScanStart);
+    (PortRange savedHttpRange, PortRange savedUaRange, IReadOnlyList<string> rangeProblems) =
+        PortConfigStore.ReadBridgePortRanges(PortRange.DefaultHttp, PortRange.DefaultUa);
+    (int savedHttp, int savedUa) = PortConfigStore.ReadBridgePorts(savedHttpRange.Start, savedUaRange.Start);
     // ua-settings.json (written by the UA Server Access card) overrides appsettings.json, so
     // the effective saved UA port is the one inside the endpoint URL that will bind.
     string? uaEndpointUrl = PortConfigStore.ReadUaEndpointUrl();
     int effectiveSavedUa = PortConfigStore.PortOf(uaEndpointUrl) ?? savedUa;
+
+    bool portsRestart = savedHttp != BridgeState.HttpPort || effectiveSavedUa != BridgeState.UaPort;
+    bool rangesRestart = savedHttpRange != BridgeState.HttpRange || savedUaRange != BridgeState.UaRange;
 
     return Results.Json(new
     {
@@ -485,14 +505,25 @@ app.MapGet("/api/ports/config", () =>
             uaPort = effectiveSavedUa,
             uaEndpointUrl
         },
-        restartRequired = savedHttp != BridgeState.HttpPort || effectiveSavedUa != BridgeState.UaPort,
+        restartRequired = portsRestart || rangesRestart,
+        // The block the running process allocates from (startup read it once).
         scanRanges = new
         {
-            httpStart = PortHelper.HttpScanStart,
-            httpEnd = PortHelper.HttpScanEnd,
-            uaStart = PortHelper.OpcUaScanStart,
-            uaEnd = PortHelper.OpcUaScanEnd
+            httpStart = BridgeState.HttpRange.Start,
+            httpEnd = BridgeState.HttpRange.End,
+            uaStart = BridgeState.UaRange.Start,
+            uaEnd = BridgeState.UaRange.End
         },
+        // The blocks the next start will use, and anything wrong with them. The card edits
+        // these, so it has to show what is saved rather than only what is running.
+        savedRanges = new
+        {
+            httpStart = savedHttpRange.Start,
+            httpEnd = savedHttpRange.End,
+            uaStart = savedUaRange.Start,
+            uaEnd = savedUaRange.End
+        },
+        rangeProblems,
         firewallSupported = WindowsFirewall.IsSupported
     });
 });
@@ -512,15 +543,15 @@ app.MapPost("/api/ports/probe", (PortProbeRequest request) =>
         return Results.BadRequest(new { error = "Kind must be 'http' or 'ua'." });
     }
 
+    PortRange range = kind == "http" ? BridgeState.HttpRange : BridgeState.UaRange;
     PortProbe probe = PortHelper.Probe(request.Port);
-    int suggestion = kind == "http"
-        ? PortHelper.FindAvailablePort(PortHelper.HttpScanStart, PortHelper.HttpScanEnd)
-        : PortHelper.FindAvailablePort(PortHelper.OpcUaScanStart, PortHelper.OpcUaScanEnd);
+    int suggestion = PortHelper.FindAvailablePort(range);
 
     return Results.Json(new
     {
         port = request.Port,
         kind,
+        range,
         ipv4Free = probe.Ipv4Free,
         ipv6Free = probe.Ipv6Free,
         heldFamilies = probe.HeldFamilies(),
@@ -539,6 +570,27 @@ app.MapPost("/api/ports/config", async (PortConfigRequest request, UaServerHost 
     if (request.HttpPort == request.UaPort)
     {
         return Results.BadRequest(new { error = "HTTP and OPC UA must use different ports." });
+    }
+
+    // Ranges are optional on the wire: a caller that only moves ports keeps the saved blocks.
+    (PortRange previousHttpRange, PortRange previousUaRange, IReadOnlyList<string> _) =
+        PortConfigStore.ReadBridgePortRanges(PortRange.DefaultHttp, PortRange.DefaultUa);
+    PortRange httpRange = request.HttpRange ?? previousHttpRange;
+    PortRange uaRange = request.UaRange ?? previousUaRange;
+
+    if (!httpRange.IsValid)
+    {
+        return Results.BadRequest(new { error = "The HTTP port range must be start-end between 1 and 65535, with start at or below end." });
+    }
+
+    if (!uaRange.IsValid)
+    {
+        return Results.BadRequest(new { error = "The OPC UA port range must be start-end between 1 and 65535, with start at or below end." });
+    }
+
+    if (httpRange.Overlaps(uaRange))
+    {
+        return Results.BadRequest(new { error = "The HTTP and OPC UA port ranges must not overlap." });
     }
 
     // A port this bridge is already listening on reads as taken to the probe — it is ours, and
@@ -562,8 +614,8 @@ app.MapPost("/api/ports/config", async (PortConfigRequest request, UaServerHost 
 
     if (busy.Count > 0)
     {
-        int httpSuggestion = PortHelper.FindAvailablePort(PortHelper.HttpScanStart, PortHelper.HttpScanEnd);
-        int uaSuggestion = PortHelper.FindAvailablePort(PortHelper.OpcUaScanStart, PortHelper.OpcUaScanEnd);
+        int httpSuggestion = PortHelper.FindAvailablePort(httpRange);
+        int uaSuggestion = PortHelper.FindAvailablePort(uaRange, httpRange.Contains(request.HttpPort) ? request.HttpPort : null);
         return Results.Json(
             new
             {
@@ -578,10 +630,10 @@ app.MapPost("/api/ports/config", async (PortConfigRequest request, UaServerHost 
             statusCode: StatusCodes.Status409Conflict);
     }
 
-    (int previousHttp, int previousUa) = PortConfigStore.ReadBridgePorts(PortHelper.HttpScanStart, PortHelper.OpcUaScanStart);
+    (int previousHttp, int previousUa) = PortConfigStore.ReadBridgePorts(previousHttpRange.Start, previousUaRange.Start);
     int effectivePreviousUa = PortConfigStore.PortOf(PortConfigStore.ReadUaEndpointUrl()) ?? previousUa;
 
-    PortConfigStore.Save(request.HttpPort, request.UaPort);
+    PortConfigStore.Save(request.HttpPort, request.UaPort, httpRange, uaRange);
 
     bool uaChanged = request.UaPort != effectivePreviousUa;
     bool certificateReset = false;
@@ -618,22 +670,33 @@ app.MapPost("/api/ports/config", async (PortConfigRequest request, UaServerHost 
         }
     }
 
-    bool restartRequired = request.HttpPort != BridgeState.HttpPort || request.UaPort != BridgeState.UaPort;
+    bool portsChanged = request.HttpPort != BridgeState.HttpPort || request.UaPort != BridgeState.UaPort;
+    bool rangesChanged = httpRange != BridgeState.HttpRange || uaRange != BridgeState.UaRange;
+    bool restartRequired = portsChanged || rangesChanged;
     string dashboardUrl = $"http://{System.Net.Dns.GetHostName()}:{request.HttpPort}/";
     string message = restartRequired
         ? $"Ports saved. Restart the bridge to apply them (MSI service: Restart-Service OpcBridge; scheduled task: restart the OpcBridge task), then open {dashboardUrl}."
         : "Ports saved. The bridge is already listening on these ports.";
+    if (rangesChanged)
+    {
+        message += $" The auto-assign ranges are now HTTP {httpRange} and OPC UA {uaRange}; they decide where a later start may move if a preferred port is taken.";
+    }
+
     if (certificateReset)
     {
         message += " OPC UA clients must re-point to the new endpoint and re-trust the re-issued certificate.";
     }
 
     logger.LogInformation(
-        "Port configuration saved from the dashboard: HTTP {PreviousHttp} → {HttpPort}, OPC UA {PreviousUa} → {UaPort}. Restart required: {RestartRequired}.",
+        "Port configuration saved from the dashboard: HTTP {PreviousHttp} → {HttpPort}, OPC UA {PreviousUa} → {UaPort}; ranges HTTP {PreviousHttpRange} → {HttpRange}, OPC UA {PreviousUaRange} → {UaRange}. Restart required: {RestartRequired}.",
         previousHttp,
         request.HttpPort,
         effectivePreviousUa,
         request.UaPort,
+        previousHttpRange,
+        httpRange,
+        previousUaRange,
+        uaRange,
         restartRequired);
 
     return Results.Json(new
@@ -641,6 +704,8 @@ app.MapPost("/api/ports/config", async (PortConfigRequest request, UaServerHost 
         status = "ok",
         httpPort = request.HttpPort,
         uaPort = request.UaPort,
+        httpRange,
+        uaRange,
         restartRequired,
         dashboardUrl,
         certificateReset,
@@ -664,7 +729,7 @@ app.MapGet("/api/firewall/status", async (CancellationToken cancellationToken) =
         });
     }
 
-    (int savedHttp, int savedUa) = PortConfigStore.ReadBridgePorts(PortHelper.HttpScanStart, PortHelper.OpcUaScanStart);
+    (int savedHttp, int savedUa) = PortConfigStore.ReadBridgePorts(BridgeState.HttpRange.Start, BridgeState.UaRange.Start);
     int effectiveSavedUa = PortConfigStore.PortOf(PortConfigStore.ReadUaEndpointUrl()) ?? savedUa;
 
     (string Name, int RunningPort, int SavedPort)[] wanted =
@@ -3840,7 +3905,7 @@ internal sealed class StringTupleComparerIgnoreCase : IEqualityComparer<(string 
 
 record PortProbeRequest(int Port, string? Kind);
 
-record PortConfigRequest(int HttpPort, int UaPort);
+record PortConfigRequest(int HttpPort, int UaPort, PortRange? HttpRange = null, PortRange? UaRange = null);
 
 record FirewallApplyRequest(int? HttpPort, int? UaPort);
 

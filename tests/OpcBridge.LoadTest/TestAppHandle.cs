@@ -60,7 +60,7 @@ public sealed class TestAppHandle : IAsyncDisposable
         // Give this instance its own ports. Left at the defaults, several instances starting at
         // once all probed 8080, all found it free, and one died binding it ("Address already in
         // use") — failing whichever test happened to own that instance.
-        WriteReservedPorts(appDirectory, ReservePort(), ReservePort());
+        WriteReservedPorts(appDirectory, ReservePortBlock(), ReservePortBlock());
 
         ProcessStartInfo startInfo = new()
         {
@@ -230,33 +230,47 @@ public sealed class TestAppHandle : IAsyncDisposable
         }
     }
 
-    private static int next_candidate_port_ = 18100;
+    /// <summary>Ports per instance and protocol: the preferred port plus room to move.</summary>
+    private const int PortBlockSize = 10;
+
+    private static int next_candidate_block_ = 18100;
 
     /// <summary>
-    /// A free port that no other instance is being handed. The counter keeps concurrent test
-    /// app instances apart; the availability check covers whatever else is on the machine.
+    /// The start of a free port block no other instance is being handed. Blocks are handed out
+    /// whole and in order, so one instance's HTTP and OPC UA blocks never overlap; the
+    /// availability check covers whatever else is on the machine.
     /// </summary>
-    private static int ReservePort()
+    private static int ReservePortBlock()
     {
         while (true)
         {
-            int candidate = Interlocked.Increment(ref next_candidate_port_);
-            if (candidate > 30000)
+            int start = Interlocked.Add(ref next_candidate_block_, PortBlockSize);
+            if (start + PortBlockSize - 1 > 32000)
             {
-                throw new InvalidOperationException("Ran out of ports to hand to test app instances.");
+                throw new InvalidOperationException("Ran out of port blocks to hand to test app instances.");
             }
 
-            if (PortHelper.IsPortAvailable(candidate))
+            bool free = true;
+            for (int port = start; port < start + PortBlockSize; port++)
             {
-                return candidate;
+                if (!PortHelper.IsPortAvailable(port))
+                {
+                    free = false;
+                    break;
+                }
+            }
+
+            if (free)
+            {
+                return start;
             }
         }
     }
 
     /// <summary>
-    /// Pins this instance's ports in its appsettings.json. <c>Ua:EndpointUrl</c> is what drives
-    /// the UA server's actual bind address, so it has to move with <c>Bridge:OpcUaPort</c> or the
-    /// two disagree and the server binds the old port.
+    /// Pins this instance's ports and auto-assign blocks in its appsettings.json.
+    /// <c>Ua:EndpointUrl</c> is what drives the UA server's actual bind address, so it has to
+    /// move with <c>Bridge:OpcUaPort</c> or the two disagree and the server binds the old port.
     /// </summary>
     private static void WriteReservedPorts(string appDirectory, int httpPort, int uaPort)
     {
@@ -279,6 +293,8 @@ public sealed class TestAppHandle : IAsyncDisposable
 
         bridge["HttpPort"] = httpPort;
         bridge["OpcUaPort"] = uaPort;
+        bridge["HttpPortRange"] = $"{httpPort}-{httpPort + PortBlockSize - 1}";
+        bridge["OpcUaPortRange"] = $"{uaPort}-{uaPort + PortBlockSize - 1}";
 
         if (settings["Ua"] is JsonObject ua &&
             ua["EndpointUrl"] is JsonValue endpoint &&

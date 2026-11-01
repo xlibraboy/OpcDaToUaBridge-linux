@@ -1,4 +1,5 @@
 using System.Text.Json;
+using OpcBridge.Core;
 
 namespace OpcBridge.Hmi.Services;
 
@@ -10,8 +11,14 @@ namespace OpcBridge.Hmi.Services;
 public static class BridgePortDiscovery
 {
     public const int DefaultPort = 8080;
-    public const int ScanStart = 8080;
-    public const int ScanEnd = 8180;
+
+    /// <summary>
+    /// The block the desktop client sweeps when the configured URL is dead. Defaults to the
+    /// bridge's standard 8080-8180; <c>OPCBRIDGE_HTTP_SCAN_RANGE</c> lets an operator follow
+    /// an install pinned to a different block (e.g. <c>9000-9010</c>).
+    /// </summary>
+    public static PortRange ScanRange =>
+        PortHelper.ScanRangeFromEnvironment("OPCBRIDGE_HTTP_SCAN_RANGE", PortRange.DefaultHttp);
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -53,7 +60,8 @@ public static class BridgePortDiscovery
         }
 
         // 2. Scan the range on the same host until a bridge answers.
-        for (int port = ScanStart; port <= ScanEnd; port++)
+        PortRange scanRange = ScanRange;
+        for (int port = scanRange.Start; port <= scanRange.End; port++)
         {
             if (port == first?.Port)
             {

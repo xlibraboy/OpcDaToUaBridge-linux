@@ -8,6 +8,8 @@ public sealed record BridgePorts(
     int UaPort,
     int HttpDefault,
     int UaDefault,
+    PortRange HttpRange,
+    PortRange UaRange,
     bool HttpAutoAssigned,
     bool UaAutoAssigned,
     string? UaEndpointBind,

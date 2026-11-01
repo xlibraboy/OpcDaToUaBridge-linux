@@ -19,6 +19,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+**Each install can own its port block.** The HTTP and OPC UA auto-assign ranges were fixed at
+8080-8180 and 4840-4940 for every install, so two installs on one machine — or an install next
+to another product — competed for the same numbers, and the Logic page, which the bridge
+serves, always sat on 8080. `Bridge:HttpPortRange` and `Bridge:OpcUaPortRange` now pin each
+install to its own blocks (e.g. `"9000-9010"`), read at startup and editable from Monitor →
+Port Configuration. The preferred `HttpPort` / `OpcUaPort` still wins when free; the block only
+decides where a later start may move. Missing keys keep the old defaults, a malformed value
+falls back to the default with a warning instead of moving the bridge somewhere unexpected,
+and the card rejects overlapping blocks. At startup the UA scan never takes the HTTP port even
+when the blocks overlap, and `/api/status/ports`, `/api/ports/config` and `/api/ports/probe`
+report the running and saved blocks. The desktop and phone discovery sweeps follow
+`OPCBRIDGE_HTTP_SCAN_RANGE` when an install is pinned outside 8080-8180. The Logic page keeps
+its same-origin hosting and follows the install's block rather than getting a listener of its
+own.
+
 **A network's first root can gain a parent gate to its left.** The Logic page's *move out one
 level* control was disabled on a root, because a root has no level above it to move to — so the
 first element of an interlock could not be wrapped in another level, and a condition that needed
