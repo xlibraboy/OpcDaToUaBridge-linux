@@ -41,6 +41,14 @@ public sealed class RoleGateMiddleware
     {
         if (!options_.Enabled)
         {
+            // Enforcement is off, but a request that carries a valid session is still
+            // identified: /api/auth/me has to report a sign-in made against a bridge that does
+            // not gate its endpoints (the Android viewer requires an account either way).
+            if (TryResolve(context, out AuthCaller sessionCaller))
+            {
+                SetCaller(context, sessionCaller);
+            }
+
             await next_(context);
             return;
         }

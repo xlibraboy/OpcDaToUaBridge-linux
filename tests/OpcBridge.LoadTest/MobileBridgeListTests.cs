@@ -180,6 +180,47 @@ public sealed class BridgeCoordinatorTests
         Assert.Equal("Invalid user or password.", result.Error);
         Assert.Equal(401, result.StatusCode);
         Assert.True(result.IsSignInRequired);
+        Assert.False(MobileAccess.IsGranted(connection));
+    }
+
+    [Fact]
+    public async Task TheGateStaysClosedUntilTheBridgeAcceptsASignIn()
+    {
+        using FakeBridge bridge = FakeBridge.Start("Line 1 interlock", "Permit", value: true);
+        using BridgeCoordinator coordinator = new(new FakeSettings());
+        BridgeConnection connection = (await coordinator.AddOrConnectAsync($"127.0.0.1:{bridge.Port}", "Line 1", CancellationToken.None)).Value!;
+
+        // The bridge answered, but anonymously: the viewer stays locked.
+        Assert.NotNull(connection.Session);
+        Assert.False(connection.Session!.Authenticated);
+        Assert.False(MobileAccess.IsGranted(connection));
+
+        MobileResult<MobileSession> signIn = await coordinator.SignInAsync(connection, "op", "secret", CancellationToken.None);
+        Assert.True(signIn.Ok, signIn.Error);
+        Assert.True(MobileAccess.IsGranted(connection));
+
+        await connection.SignOutAsync(CancellationToken.None);
+
+        Assert.Null(connection.Session);
+        Assert.False(MobileAccess.IsGranted(connection));
+    }
+
+    [Fact]
+    public async Task ARefusedSessionLocksTheViewerAgain()
+    {
+        using FakeBridge bridge = FakeBridge.Start("Line 1 interlock", "Permit", value: true);
+        using BridgeCoordinator coordinator = new(new FakeSettings());
+        BridgeConnection connection = (await coordinator.AddOrConnectAsync($"127.0.0.1:{bridge.Port}", "Line 1", CancellationToken.None)).Value!;
+        Assert.True((await coordinator.SignInAsync(connection, "op", "secret", CancellationToken.None)).Ok);
+        Assert.True(MobileAccess.IsGranted(connection));
+
+        // The bridge's session expired: the next read is refused.
+        bridge.LogicStatus = 401;
+        await connection.RefreshAsync(CancellationToken.None);
+
+        Assert.True(connection.SignInRequired);
+        Assert.Null(connection.Session);
+        Assert.False(MobileAccess.IsGranted(connection));
     }
 
     private sealed class FakeSettings : IBridgeSettings
@@ -213,6 +254,9 @@ public sealed class BridgeCoordinatorTests
         }
 
         public int Port { get; private set; }
+
+        /// <summary>Status <c>/api/logic</c> answers; a test flips it to 401 to expire a session.</summary>
+        public int LogicStatus { get; set; } = 200;
 
         public static FakeBridge Start(string blockName, string itemId, bool value, int loginStatus = 200, string loginBody = "{\"authenticated\":true,\"username\":\"op\",\"role\":\"Operator\"}")
         {
@@ -253,8 +297,11 @@ public sealed class BridgeCoordinatorTests
         {
             "/api/auth/me" => (200, "{\"authenticated\":false,\"authEnabled\":false}", "application/json"),
             "/api/auth/login" => (loginStatus_, loginBody_, "application/json"),
-            "/api/logic" => (200, $"{{\"blocks\":[{{\"id\":\"{blockId_}\",\"name\":\"{blockName_}\",\"kind\":\"interlock\",\"enabled\":true," +
-                $"\"conditions\":[{{\"id\":\"{conditionId_}\",\"text\":\"Permit must be given\",\"sourceId\":\"sim\",\"itemId\":\"{itemId_}\",\"op\":\"on\"}}]}}]}}", "application/json"),
+            "/api/auth/logout" => (200, "{\"authenticated\":false}", "application/json"),
+            "/api/logic" => LogicStatus == 200
+                ? (200, $"{{\"blocks\":[{{\"id\":\"{blockId_}\",\"name\":\"{blockName_}\",\"kind\":\"interlock\",\"enabled\":true," +
+                    $"\"conditions\":[{{\"id\":\"{conditionId_}\",\"text\":\"Permit must be given\",\"sourceId\":\"sim\",\"itemId\":\"{itemId_}\",\"op\":\"on\"}}]}}]}}", "application/json")
+                : (LogicStatus, "{\"error\":\"Sign in required.\"}", "application/json"),
             "/api/logic/state" => (200, $"{{\"blocks\":[{{\"id\":\"{blockId_}\",\"state\":\"{state_}\",\"conditions\":[{{\"id\":\"{conditionId_}\",\"state\":\"{state_}\"}}]}}]}}", "application/json"),
             "/api/hmi/tags" => (200, $"{{\"tags\":[{{\"sourceId\":\"sim\",\"sourceName\":\"{blockName_} source\",\"itemId\":\"{itemId_}\",\"displayName\":\"Permit\",\"digital\":true," +
                 $"\"onText\":\"Permit\",\"offText\":\"Blocked\",\"value\":{value_.ToString().ToLowerInvariant()},\"isGood\":true}}]}}", "application/json"),

@@ -21,6 +21,7 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
     private readonly MultiBridgeTagCache tags_;
     private readonly IBridgeCacheStore cache_;
     private readonly Action<Action> post_;
+    private readonly SemaphoreSlim connectGate_ = new(1, 1);
     private List<HmiTagDto> lastKnownTags_ = new();
     private LogicStateSnapshot? lastKnownState_;
     private Dictionary<Guid, List<LogicNoteDto>> notesByBlock_ = new();
@@ -208,6 +209,9 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
     /// </summary>
     public async Task ConnectAsync(CancellationToken cancellationToken)
     {
+        // A bridge switch connects the incoming bridge while the sign-in screen's own appearance
+        // may connect the same one; one client means one connect at a time.
+        await connectGate_.WaitAsync(cancellationToken);
         BeginSync();
         StatusText = "searching for the bridge…";
         RaiseChanged();
@@ -243,6 +247,7 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
         finally
         {
             EndSync();
+            connectGate_.Release();
         }
 
         RaiseChanged();
@@ -267,6 +272,13 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
             {
                 IsConnected = false;
                 SignInRequired = definitions.IsSignInRequired;
+                if (definitions.IsSignInRequired)
+                {
+                    // The bridge refused the session this connection carried: the gate closes and
+                    // the login screen owns the next attempt.
+                    Session = null;
+                }
+
                 StatusText = FailureText(definitions);
                 MarkOffline();
             }
@@ -972,6 +984,23 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
 
         RaiseChanged();
         return MobileResult<MobileSession>.Success(Session);
+    }
+
+    /// <summary>
+    /// Ends this bridge's session and locks the app again. The logout call is best-effort — an
+    /// unreachable bridge must not keep the phone signed in — but the local session and every
+    /// reading go either way, so the next screen is the login page.
+    /// </summary>
+    public async Task SignOutAsync(CancellationToken cancellationToken)
+    {
+        _ = await api_.LogoutAsync(cancellationToken);
+        Session = null;
+        SignInRequired = false;
+        await DisconnectAsync();
+        IsConnected = false;
+        StatusText = "not connected";
+        RecomputeSync();
+        RaiseChanged();
     }
 
     /// <summary>Closes the live link (the coordinator keeps one link open across bridges).</summary>

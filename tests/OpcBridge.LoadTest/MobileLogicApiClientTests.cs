@@ -104,6 +104,32 @@ public sealed class MobileLogicApiClientTests
     }
 
     [Fact]
+    public async Task Client_CarriesASignInOnABridgeWithoutEnforcedAuth()
+    {
+        // The viewer requires an account even on a bridge that runs with Auth:Enabled=false.
+        // The bridge must keep identifying the session it issued, or the next /api/auth/me
+        // would report the phone as anonymous and close the viewer's gate.
+        await using TestAppHandle app = await TestAppHandle.StartAsync(_ => { });
+        using LogicApiClient client = new();
+        client.SetBaseAddress(app.Client.BaseAddress!.ToString());
+
+        MobileResult<LogicApiClient.SessionResponse> anonymous = await client.GetSessionAsync(CancellationToken.None);
+        Assert.True(anonymous.Ok, anonymous.Error);
+        Assert.False(anonymous.Value!.Authenticated);
+        Assert.False(anonymous.Value.AuthEnabled);
+
+        MobileResult<LogicApiClient.SessionResponse> login = await client.LoginAsync("admin", "admin", CancellationToken.None);
+        Assert.True(login.Ok, login.Error);
+        Assert.True(login.Value!.Authenticated);
+        Assert.False(login.Value.AuthEnabled);
+
+        MobileResult<LogicApiClient.SessionResponse> signedIn = await client.GetSessionAsync(CancellationToken.None);
+        Assert.True(signedIn.Ok, signedIn.Error);
+        Assert.True(signedIn.Value!.Authenticated);
+        Assert.Equal("admin", signedIn.Value.Username);
+    }
+
+    [Fact]
     public async Task Client_ReportsUnreachableBridgeAsAFailedResult()
     {
         using LogicApiClient client = new();

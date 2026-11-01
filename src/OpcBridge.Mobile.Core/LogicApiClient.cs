@@ -205,6 +205,27 @@ public sealed class LogicApiClient : IDisposable
         }
     }
 
+    /// <summary>
+    /// Ends the bridge session. A successful response carries the expired session cookie; a
+    /// failed call is ignored, because the app clears its own session either way.
+    /// </summary>
+    public async Task<MobileResult<bool>> LogoutAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            using HttpResponseMessage response = await client_
+                .PostAsync("api/auth/logout", null, cancellationToken)
+                .ConfigureAwait(false);
+            return response.IsSuccessStatusCode
+                ? MobileResult<bool>.Success(true)
+                : MobileResult<bool>.Fail($"HTTP {(int)response.StatusCode}", (int)response.StatusCode);
+        }
+        catch (Exception ex) when (IsTransport(ex, cancellationToken))
+        {
+            return MobileResult<bool>.Fail(ex.Message);
+        }
+    }
+
     public void Dispose() => client_.Dispose();
 
     private async Task<MobileResult<T>> GetJsonAsync<T>(string path, CancellationToken cancellationToken)

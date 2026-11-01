@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="OpcBridge.Mobile.Views.LoginPage"
+             Title="Sign in"
+             BackgroundColor="{StaticResource PageBg}">
+    <ScrollView>
+        <VerticalStackLayout Padding="16" Spacing="12">
+            <Label Text="OpcBridge Logic" FontSize="24" FontAttributes="Bold" />
+            <Label Text="Sign in with a bridge account to open the plant logic viewer."
+                   FontSize="13" TextColor="{StaticResource MutedColor}" />
+
+            <Label Text="Bridge" FontSize="18" FontAttributes="Bold" Margin="0,10,0,0" />
+            <Picker x:Name="bridgePicker" Title="Saved bridges" SelectedIndexChanged="OnBridgePicked" />
+            <Entry x:Name="hostEntry" Placeholder="10.3.1.50 or http://10.3.1.50:8080" />
+            <Entry x:Name="nameEntry" Placeholder="Name (optional, e.g. Line 1)" />
+            <Button x:Name="connectButton" Text="Add &amp; connect" Clicked="OnConnectClicked" />
+            <Label x:Name="statusLabel" FontSize="12" TextColor="{StaticResource MutedColor}" />
+
+            <Label Text="Account" FontSize="18" FontAttributes="Bold" Margin="0,10,0,0" />
+            <Label Text="The viewer asks for a bridge account every time it starts, even when the bridge runs without sign-in."
+                   FontSize="12" TextColor="{StaticResource MutedColor}" />
+            <Entry x:Name="userEntry" Placeholder="Username" />
+            <Entry x:Name="passwordEntry" Placeholder="Password" IsPassword="True" />
+            <Button x:Name="signInButton" Text="Sign in" Clicked="OnSignInClicked" />
+            <Label x:Name="errorLabel" FontSize="13" TextColor="{StaticResource BadColor}" />
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

@@ -20,6 +20,7 @@ public static class MauiProgram
             services.GetRequiredService<MultiBridgeTagCache>(),
             action => MainThread.BeginInvokeOnMainThread(action),
             services.GetRequiredService<IBridgeCacheStore>()));
+        builder.Services.AddTransient<LoginPage>();
         builder.Services.AddTransient<LogicPage>();
         builder.Services.AddTransient<LogicBlockPage>();
         builder.Services.AddTransient<ElementsPage>();

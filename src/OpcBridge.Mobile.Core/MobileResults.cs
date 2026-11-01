@@ -35,6 +35,17 @@ public sealed record MobileSession(
     };
 }
 
+/// <summary>
+/// The viewer's access rule: the Logic, Elements and Settings screens open only for a signed-in
+/// bridge account. A bridge that runs with <c>Auth:Enabled=false</c> still has accounts in
+/// <c>users.json</c>, and the app asks for one there too — the phone never opens anonymously.
+/// </summary>
+public static class MobileAccess
+{
+    public static bool IsGranted(BridgeConnection? bridge) =>
+        bridge?.Session is { Authenticated: true };
+}
+
 /// <summary>Constants shared by the mobile client surfaces.</summary>
 public static class MobileBridge
 {

@@ -5,6 +5,10 @@
        x:Class="OpcBridge.Mobile.AppShell"
        Title="OpcBridge Logic"
        FlyoutBehavior="Disabled">
+    <!-- The app opens here; the tabs only appear once a bridge account opens the gate. -->
+    <ShellContent Title="Sign in"
+                  Route="login"
+                  ContentTemplate="{DataTemplate views:LoginPage}" />
     <TabBar>
         <ShellContent Title="Logic"
                       Route="logic"

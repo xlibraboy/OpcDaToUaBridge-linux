@@ -13,6 +13,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **The viewer requires a bridge account to open.** The app now starts on a sign-in screen:
+  pick a saved bridge or add one, then enter a username and password checked against that
+  bridge's own accounts (`/api/auth/login`). The Logic, Elements and Settings screens appear
+  only for an accepted session; signing out, switching to a bridge with no session, or a
+  session the bridge refuses returns the app to the sign-in screen. Every launch asks again —
+  nothing is stored on the phone — and the account is required even when the bridge runs with
+  `Auth:Enabled=false`.
+
+### Changed
+
+- Settings' optional **Sign in** section became **Account**: it names the signed-in user and
+  role and offers **Sign out**. The credentials now live on the sign-in screen.
+
 ## [1.11.0] - 2026-11-02
 
 ### Added

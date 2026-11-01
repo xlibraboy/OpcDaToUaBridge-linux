@@ -47,13 +47,11 @@
             </HorizontalStackLayout>
             <Label x:Name="connectionLabel" FontSize="13" TextColor="{StaticResource MutedColor}" />
 
-            <Label Text="Sign in" FontSize="18" FontAttributes="Bold" Margin="0,8,0,0" />
-            <Label Text="Only needed when the selected bridge requires a session (Auth enabled without TrustHmi). Actions need the Operator role."
+            <Label Text="Account" FontSize="18" FontAttributes="Bold" Margin="0,8,0,0" />
+            <Label Text="The viewer asks for a bridge account at every launch. Signing out locks it and returns to the sign-in screen."
                    FontSize="12" TextColor="{StaticResource MutedColor}" />
-            <Entry x:Name="userEntry" Placeholder="Username" />
-            <Entry x:Name="passwordEntry" Placeholder="Password" IsPassword="True" />
-            <Button x:Name="signInButton" Text="Sign in" Clicked="OnSignInClicked" />
             <Label x:Name="sessionLabel" FontSize="13" TextColor="{StaticResource MutedColor}" />
+            <Button x:Name="signOutButton" Text="Sign out" Clicked="OnSignOutClicked" />
 
             <Label Text="Sync" FontSize="18" FontAttributes="Bold" Margin="0,8,0,0" />
             <Label Text="Notes and actions taken while the bridge was unreachable wait here until they can be sent. A write that may already have reached the bridge is never replayed automatically."
