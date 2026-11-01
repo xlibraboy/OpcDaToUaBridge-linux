@@ -13,7 +13,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-11-02
+
 ### Added
+
+- An **Elements** tab lists every element of every logic block in one place — contacts, coils,
+  gates, timers and counters — grouped under their block's collapsible heading with the block's
+  state and an element count. Rows keep their nesting indent, state mark, tag label, actual
+  value, **should** line and timer/counter progress; a sequence row names its step. Search
+  matches the block, element, tag or step, and kind chips narrow the list to interlocks,
+  permissives or sequences. Tapping a row opens that block's Result.
+- **The element list is persistent.** The phone keeps the last known evaluation and readings
+  per bridge, so the Elements tab still shows the complete element list with its values after
+  the link drops or the app is restarted, marked *last known · <time>*. The live Logic list and
+  block screens still clear their readings on a lost link, so nothing is presented as current;
+  only this explicitly-labelled view shows the saved data. The snapshot is refreshed on every
+  successful sync and on live pushes (throttled), and notes reads no longer wipe its state.
+- A **sync badge** on the Logic and Elements headers (and beside each bridge in Settings) reads
+  **SYNCED**, **SYNCING…**, **OFFLINE**, **N PENDING** or **N failed**, with the last synced
+  time. Tapping it opens Settings ▸ Sync. A toast of pending work cannot be painted over by a
+  live value push: the state is derived in one place from the link, the read/flush in progress
+  and the outbox.
+- A durable **offline outbox**. Notes and actions taken while the bridge is unreachable are
+  written to disk, counted on the sync badge and listed in Settings ▸ Sync with **Retry** and
+  **Discard**. Notes flush automatically on reconnect and carry a client id, so a retry cannot
+  duplicate one on the bridge. An action queued while the app knows it is offline is sent on
+  reconnect; an action whose call failed after it may have reached the bridge is kept as
+  *not confirmed* and is **never** replayed automatically. Pending actions older than two
+  minutes are marked stale and wait for the operator's Retry; a manual Retry starts a fresh
+  window. A note still in the outbox shows in the block's Notes section as *pending sync*.
 
 - Blocks that read their area's **area tags** (the HMI Logic page's AREA TAGS tab) render fully:
   a named contact shows the entry and the tag it is bound to (`START_PB · Dry End Start Permit`),
@@ -61,9 +89,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A lost link clears the live screen instead of freezing it.** When the bridge link drops
   (including while it is reconnecting) or a refresh fails, every block state and tag reading is
   dropped to **no data** / **—** and the banner reads *offline · live values hidden · last synced
-  …*; the block definitions, groups, tags and notes stay readable, and the next snapshot or
-  successful refresh fills the readings back in. The offline cache restores the list's structure
-  only — a cached reading is never shown as if the bridge had just served it.
+  …*; the block definitions, groups, tags and notes stay readable, the **Elements** tab keeps the
+  last-known readings from the persistent snapshot, and the next snapshot or successful refresh
+  fills the live readings back in. The live list never shows a cached reading as if the bridge
+  had just served it.
 
 ### Fixed
 

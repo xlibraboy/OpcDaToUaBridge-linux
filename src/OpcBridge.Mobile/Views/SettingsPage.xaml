@@ -22,6 +22,8 @@
                                     <Label Text="{Binding DisplayName}" FontAttributes="Bold" />
                                     <Label Text="{Binding Bridge.Url}" FontSize="11" TextColor="{StaticResource MutedColor}" />
                                     <Label Text="{Binding StatusText}" FontSize="11" TextColor="{StaticResource MutedColor}" />
+                                    <Label Text="{Binding SyncText}" FontSize="11" FontAttributes="Bold"
+                                           TextColor="{Binding SyncKey, Converter={StaticResource StateColor}}" />
                                 </VerticalStackLayout>
                                 <Button Grid.Column="1" Text="Remove" FontSize="12" Padding="10,2"
                                         VerticalOptions="Start" Clicked="OnRemoveBridgeClicked" />
@@ -50,6 +52,46 @@
             <Entry x:Name="passwordEntry" Placeholder="Password" IsPassword="True" />
             <Button x:Name="signInButton" Text="Sign in" Clicked="OnSignInClicked" />
             <Label x:Name="sessionLabel" FontSize="13" TextColor="{StaticResource MutedColor}" />
+
+            <Label Text="Sync" FontSize="18" FontAttributes="Bold" Margin="0,8,0,0" />
+            <Label Text="Notes and actions taken while the bridge was unreachable wait here until they can be sent. A write that may already have reached the bridge is never replayed automatically."
+                   FontSize="12" TextColor="{StaticResource MutedColor}" />
+            <Label x:Name="syncLabel" FontSize="13" FontAttributes="Bold" />
+            <HorizontalStackLayout Spacing="8">
+                <Button x:Name="retrySyncButton" Text="Retry now" Clicked="OnRetrySyncClicked" />
+            </HorizontalStackLayout>
+            <VerticalStackLayout x:Name="outboxList" Spacing="6">
+                <BindableLayout.ItemTemplate>
+                    <DataTemplate>
+                        <Border Padding="10" StrokeThickness="1"
+                                Stroke="{StaticResource BorderColor}" BackgroundColor="{StaticResource SurfaceColor}">
+                            <VerticalStackLayout Spacing="2">
+                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                    <Label Text="{Binding KindLabel}" FontAttributes="Bold" FontSize="14" />
+                                    <Label Grid.Column="1" Text="{Binding StateLabel}" FontSize="11"
+                                           FontAttributes="Bold"
+                                           TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
+                                </Grid>
+                                <Label Text="{Binding TargetText}" FontSize="13" />
+                                <Label Text="{Binding Detail}" FontSize="11" TextColor="{StaticResource MutedColor}"
+                                       LineBreakMode="WordWrap" />
+                                <Label Text="{Binding QueuedText, StringFormat='queued {0}'}" FontSize="11"
+                                       TextColor="{StaticResource MutedColor}" />
+                                <Label Text="{Binding Error}" IsVisible="{Binding HasError}" FontSize="11"
+                                       TextColor="{StaticResource BadColor}" LineBreakMode="WordWrap" />
+                                <HorizontalStackLayout Spacing="8" IsVisible="{Binding IsActionable}">
+                                    <Button Text="Retry" FontSize="12" Padding="10,2"
+                                            Clicked="OnRetryOutboxClicked" />
+                                    <Button Text="Discard" FontSize="12" Padding="10,2"
+                                            Clicked="OnDiscardOutboxClicked" />
+                                </HorizontalStackLayout>
+                            </VerticalStackLayout>
+                        </Border>
+                    </DataTemplate>
+                </BindableLayout.ItemTemplate>
+            </VerticalStackLayout>
+            <Label x:Name="outboxEmptyLabel" Text="Nothing queued for the selected bridge."
+                   FontSize="12" TextColor="{StaticResource MutedColor}" />
 
             <Label Text="About" FontSize="18" FontAttributes="Bold" Margin="0,8,0,0" />
             <Label x:Name="aboutLabel" FontSize="13" TextColor="{StaticResource MutedColor}" />

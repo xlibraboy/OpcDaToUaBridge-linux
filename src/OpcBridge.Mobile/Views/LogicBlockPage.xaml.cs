@@ -220,9 +220,14 @@ public partial class LogicBlockPage : ContentPage
         MobileResult<IReadOnlyList<LogicNoteDto>> notes = await active.GetNotesAsync(blockId_, CancellationToken.None);
         if (notes.Ok && notes.Value is not null)
         {
-            viewModel_?.SetNotes(notes.Value);
+            viewModel_?.SetNotes(notes.Value, PendingNotes());
         }
     }
+
+    /// <summary>Notes this block has in the outbox but the bridge has not stored yet.</summary>
+    private IEnumerable<OutboxItem> PendingNotes() =>
+        Active?.OutboxItems.Where(item => item.Kind == OutboxKind.Note && item.BlockId == blockId_)
+            ?? Enumerable.Empty<OutboxItem>();
 
     private void OnLiveChanged()
     {
@@ -247,6 +252,8 @@ public partial class LogicBlockPage : ContentPage
         stateLabel.TextColor = (Color)new StateColorConverter()
             .Convert(viewModel_.StateKey, typeof(Color), null, CultureInfo.InvariantCulture);
         blockedLabel.Text = viewModel_.BlockedByText;
+        // A queued note appears as pending and disappears when the bridge's copy arrives.
+        viewModel_.SetNotes(Active.CachedNotes(blockId_), PendingNotes());
     }
 
     /// <summary>A row's tag line opens where the tag comes from and which blocks use it.</summary>
@@ -318,18 +325,24 @@ public partial class LogicBlockPage : ContentPage
             return;
         }
 
-        HmiWriteResponse result = await Active.Api.WriteAsync(
-            new HmiWriteRequest
-            {
-                SourceId = sourceId,
-                ItemId = itemId,
-                Value = ParseValue(action.Action.Value)
-            },
+        OutboxSubmitResult result = await Active.SubmitActionAsync(
+            viewModel_.Id,
+            viewModel_.Title,
+            action.Label,
+            action.TagLabel,
+            sourceId,
+            itemId,
+            action.Action.Value,
             CancellationToken.None);
 
-        messageLabel.Text = result.Ok
-            ? "✓ " + action.Label + " written"
-            : "✗ " + (result.Error ?? "write failed");
+        messageLabel.Text = result.Kind switch
+        {
+            OutboxSubmitKind.Sent => "✓ " + action.Label + " written",
+            OutboxSubmitKind.Queued => "⏳ " + action.Label + " queued — will send when the bridge is back",
+            OutboxSubmitKind.Uncertain => "✗ " + (result.Error ?? "write not confirmed — review it in Settings ▸ Sync"),
+            OutboxSubmitKind.SignInRequired => "✗ sign in to send " + action.Label,
+            _ => "✗ " + (result.Error ?? "write failed")
+        };
     }
 
     private async void OnAddNoteClicked(object? sender, EventArgs e)
@@ -340,33 +353,28 @@ public partial class LogicBlockPage : ContentPage
             return;
         }
 
-        MobileResult<LogicNoteDto> result = await Active.Api.AddNoteAsync(
-            new LogicNoteAddRequest { BlockId = blockId_, Text = text },
+        OutboxSubmitResult result = await Active.SubmitNoteAsync(
+            blockId_,
+            text,
             CancellationToken.None);
-        if (!result.Ok)
+        if (result.Kind is OutboxSubmitKind.Rejected)
         {
             messageLabel.Text = "✗ " + (result.Error ?? "note failed");
             return;
         }
 
         noteEntry.Text = string.Empty;
-        await RefreshNotesAsync();
-        messageLabel.Text = "✓ note added";
-    }
-
-    private static object ParseValue(string? value)
-    {
-        string text = (value ?? string.Empty).Trim();
-        if (bool.TryParse(text, out bool flag))
+        viewModel_.SetNotes(Active.CachedNotes(blockId_), PendingNotes());
+        if (result.Kind == OutboxSubmitKind.Sent)
         {
-            return flag;
+            await RefreshNotesAsync();
         }
 
-        if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double number))
+        messageLabel.Text = result.Kind switch
         {
-            return number;
-        }
-
-        return text;
+            OutboxSubmitKind.Sent => "✓ note added",
+            OutboxSubmitKind.SignInRequired => "⏳ note queued — sign in to sync it",
+            _ => "⏳ note queued — will send when the bridge is back"
+        };
     }
 }

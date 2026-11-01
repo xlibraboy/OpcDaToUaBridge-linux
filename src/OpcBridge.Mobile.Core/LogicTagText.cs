@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.Json;
 using OpcBridge.Core;
 using OpcBridge.Hmi.Core;
 
@@ -43,9 +44,26 @@ public static class LogicTagText
             decimal m => m.ToString("0.###", CultureInfo.InvariantCulture),
             bool b => b ? "1" : "0",
             string s => s,
+            JsonElement json => FormatJson(json),
             _ => Convert.ToString(entry.Value, CultureInfo.InvariantCulture) ?? "—"
         };
 
         return string.IsNullOrWhiteSpace(entry.Unit) ? number : number + " " + entry.Unit;
     }
+
+    /// <summary>
+    /// A cached reading deserializes to a <see cref="JsonElement"/>; format its number with the
+    /// same decimals as a live one instead of falling back to the raw JSON text.
+    /// </summary>
+    private static string FormatJson(JsonElement element) => element.ValueKind switch
+    {
+        JsonValueKind.Number => element.TryGetDouble(out double number)
+            ? number.ToString("0.###", CultureInfo.InvariantCulture)
+            : element.GetRawText(),
+        JsonValueKind.True => "1",
+        JsonValueKind.False => "0",
+        JsonValueKind.String => element.GetString() ?? "—",
+        JsonValueKind.Null or JsonValueKind.Undefined => "—",
+        _ => element.GetRawText()
+    };
 }

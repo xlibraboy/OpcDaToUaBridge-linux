@@ -22,6 +22,7 @@ public static class MauiProgram
             services.GetRequiredService<IBridgeCacheStore>()));
         builder.Services.AddTransient<LogicPage>();
         builder.Services.AddTransient<LogicBlockPage>();
+        builder.Services.AddTransient<ElementsPage>();
         builder.Services.AddTransient<SettingsPage>();
 
         return builder.Build();

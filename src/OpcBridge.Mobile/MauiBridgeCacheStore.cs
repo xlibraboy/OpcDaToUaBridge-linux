@@ -32,6 +32,21 @@ public sealed class MauiBridgeCacheStore : IBridgeCacheStore
         }
     }
 
+    public void Delete(string key)
+    {
+        try
+        {
+            string path = PathFor(key);
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch
+        {
+        }
+    }
+
     private static string PathFor(string key)
     {
         string name = new(key.Select(c => char.IsLetterOrDigit(c) ? c : '-').ToArray());

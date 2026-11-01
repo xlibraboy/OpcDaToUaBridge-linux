@@ -137,6 +137,8 @@ public sealed class BridgeCoordinator : IDisposable
 
         Bridges.Remove(connection);
         tags_.ClearBridge(connection.CacheKey);
+        cache_.Delete(BridgeCacheCodec.Key(connection.Bridge.Id));
+        cache_.Delete(MobileBridge.OutboxKey(connection.Bridge.Id));
         connection.Dispose();
         Active ??= Bridges.FirstOrDefault();
         Persist();

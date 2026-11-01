@@ -9,6 +9,9 @@
         <ShellContent Title="Logic"
                       Route="logic"
                       ContentTemplate="{DataTemplate views:LogicPage}" />
+        <ShellContent Title="Elements"
+                      Route="elements"
+                      ContentTemplate="{DataTemplate views:ElementsPage}" />
         <ShellContent Title="Settings"
                       Route="settings"
                       ContentTemplate="{DataTemplate views:SettingsPage}" />

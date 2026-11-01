@@ -13,6 +13,9 @@ public interface IBridgeCacheStore
     string? Read(string key);
 
     void Write(string key, string value);
+
+    /// <summary>Forgets one key. A store that cannot delete behaves as if it already had none.</summary>
+    void Delete(string key);
 }
 
 /// <summary>The last successful refresh of one bridge: definitions, evaluated state and values.</summary>
@@ -36,6 +39,19 @@ public sealed class BridgeCacheSnapshot
     /// <summary>Notes last served, per block — the detail screen reads them offline too.</summary>
     public Dictionary<Guid, List<LogicNoteDto>> NotesByBlock { get; set; } = new();
 }
+
+/// <summary>
+/// The last readings a bridge served, kept apart from the live view. The Logic screens clear
+/// themselves when the link drops; the Elements screen shows this snapshot instead, labelled
+/// with <see cref="SavedUtc"/>, so the plant's element list stays readable without pretending
+/// the values are current.
+/// </summary>
+public sealed record BridgeLastKnown(
+    DateTime SavedUtc,
+    IReadOnlyList<LogicBlockDto> Blocks,
+    IReadOnlyList<LogicAreaTagsDto> TagSources,
+    LogicStateSnapshot? State,
+    IReadOnlyList<HmiTagDto> Tags);
 
 /// <summary>The cache envelope as it is stored, and the key one bridge's cache lives under.</summary>
 public static class BridgeCacheCodec
@@ -90,6 +106,14 @@ public sealed class MemoryBridgeCacheStore : IBridgeCacheStore
         lock (sync_)
         {
             values_[key] = value;
+        }
+    }
+
+    public void Delete(string key)
+    {
+        lock (sync_)
+        {
+            values_.Remove(key);
         }
     }
 }

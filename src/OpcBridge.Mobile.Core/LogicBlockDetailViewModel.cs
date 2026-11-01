@@ -80,6 +80,34 @@ public sealed partial class LogicElementRowViewModel : ObservableObject
 
     [ObservableProperty] private bool _showProgress;
 
+    /// <summary>True while the row is showing the persistent last-known reading instead of live data.</summary>
+    [ObservableProperty] private bool _isLastKnown;
+
+    /// <summary>"12:31:05" — when the last reading was taken; empty when unknown.</summary>
+    [ObservableProperty] private string _lastReadText = string.Empty;
+
+    public bool ShowLastRead => IsLastKnown && LastReadText.Length > 0;
+
+    partial void OnIsLastKnownChanged(bool value) => OnPropertyChanged(nameof(ShowLastRead));
+
+    partial void OnLastReadTextChanged(string value) => OnPropertyChanged(nameof(ShowLastRead));
+
+    /// <summary>The block this row belongs to (set by the shared row builder).</summary>
+    public Guid BlockId { get; set; }
+
+    public string BlockName { get; set; } = string.Empty;
+
+    public string BlockKind { get; set; } = string.Empty;
+
+    /// <summary>The sequence step this row belongs to; null for a block-level element.</summary>
+    public Guid? StepId { get; set; }
+
+    /// <summary>"Step 2 · Open valve"; empty for a block-level element.</summary>
+    public string StepLabel { get; set; } = string.Empty;
+
+    public void SetLastRead(DateTime? utc) =>
+        LastReadText = utc is { } value ? value.ToLocalTime().ToString("HH:mm:ss") : string.Empty;
+
     public LogicElementRowViewModel(
         LogicElementDto element,
         int depth,
@@ -395,7 +423,7 @@ public sealed class LogicActionButtonViewModel
     public bool Confirm => Action.Confirm;
 }
 
-/// <summary>One operator note on the block.</summary>
+/// <summary>One operator note on the block, or one still waiting in the sync outbox.</summary>
 public sealed class LogicNoteRowViewModel
 {
     public LogicNoteRowViewModel(LogicNoteDto note)
@@ -405,14 +433,25 @@ public sealed class LogicNoteRowViewModel
         WhenText = note.CreatedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss");
     }
 
+    /// <summary>A note the outbox has not delivered yet: it reads as pending, never as saved.</summary>
+    public LogicNoteRowViewModel(OutboxItem pending)
+    {
+        Text = pending.NoteText ?? string.Empty;
+        Author = "queued";
+        WhenText = pending.QueuedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss");
+        IsPending = true;
+    }
+
     public string Text { get; }
 
     public string Author { get; }
 
     public string WhenText { get; }
 
-    /// <summary>"operator1 · 2026-10-08 12:30:05" for the note list.</summary>
-    public string Meta => Author + " · " + WhenText;
+    public bool IsPending { get; }
+
+    /// <summary>"operator1 · 2026-10-08 12:30:05" (or "pending sync · …") for the note list.</summary>
+    public string Meta => IsPending ? "pending sync · " + WhenText : Author + " · " + WhenText;
 }
 
 /// <summary>
@@ -486,9 +525,11 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
             ? "Sequence"
             : string.Equals(block.Kind, LogicBlockKinds.Permissive, StringComparison.OrdinalIgnoreCase) ? "Permissive" : "Interlock";
 
-        foreach ((LogicElementDto element, int depth) in LogicNetwork.Walk(LogicNetwork.For(block)))
+        foreach (LogicElementRowViewModel element in LogicElementRows.Walk(
+            block, null, 0, LogicNetwork.For(block), areaTags, tags, bridgeKey))
         {
-            Elements.Add(CreateRow(element, depth));
+            Elements.Add(element);
+            elementRows_[element.Id] = element;
         }
 
         int number = 0;
@@ -497,9 +538,11 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
             number++;
             LogicStepRowViewModel row = new(step, number);
             stepRows_[step.Id] = row;
-            foreach ((LogicElementDto element, int depth) in LogicNetwork.Walk(LogicNetwork.For(step)))
+            foreach (LogicElementRowViewModel element in LogicElementRows.Walk(
+                block, step, number, LogicNetwork.For(step), areaTags, tags, bridgeKey))
             {
-                row.Elements.Add(CreateRow(element, depth));
+                row.Elements.Add(element);
+                elementRows_[element.Id] = element;
             }
 
             Steps.Add(row);
@@ -668,9 +711,22 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
         }
     }
 
-    public void SetNotes(IReadOnlyList<LogicNoteDto> notes)
+    /// <summary>
+    /// Rebuilds the note list from the bridge's notes and the outbox's undelivered ones. A
+    /// queued note whose client id already came back from the bridge is not shown twice.
+    /// </summary>
+    public void SetNotes(IReadOnlyList<LogicNoteDto> notes, IEnumerable<OutboxItem>? pending = null)
     {
         Notes.Clear();
+        HashSet<Guid> saved = notes.Select(note => note.Id).ToHashSet();
+        foreach (OutboxItem item in pending ?? Enumerable.Empty<OutboxItem>())
+        {
+            if (item.Kind == OutboxKind.Note && !saved.Contains(item.Id))
+            {
+                Notes.Add(new LogicNoteRowViewModel(item));
+            }
+        }
+
         foreach (LogicNoteDto note in notes)
         {
             Notes.Add(new LogicNoteRowViewModel(note));
@@ -878,34 +934,6 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
             + (current.Length > 0 ? " · " + current : string.Empty);
     }
 
-    private LogicElementRowViewModel CreateRow(LogicElementDto element, int depth)
-    {
-        LogicTagReference? reference = LogicTagReferences.ForElement(block_, element, areaTags_);
-        string label;
-        if (!string.IsNullOrWhiteSpace(element.Relay))
-        {
-            // A relay contact and a coil both name their relay where a tag contact names its tag.
-            label = "relay " + element.Relay;
-        }
-        else if (reference is { Named: true })
-        {
-            // A named entry, or a coil naming the block's OUTPUT tag through its area's list.
-            label = ResolvedLabel(reference.Name, null, null);
-        }
-        else if (reference is not null)
-        {
-            label = ResolvedLabel(null, reference.SourceId, reference.ItemId);
-        }
-        else
-        {
-            label = string.Empty;
-        }
-
-        LogicElementRowViewModel row = new(element, depth, label, reference);
-        elementRows_[element.Id] = row;
-        return row;
-    }
-
     /// <summary>A tag contact reads a tag; anything else (a relay, a gate) has nothing to look up.</summary>
     private static bool IsTagContact(LogicElementDto element) =>
         string.Equals(element.Kind, LogicElementKinds.Contact, StringComparison.OrdinalIgnoreCase)
@@ -938,30 +966,11 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
         LogicAreaTags.UnresolvedText(tag, areaTags_, LogicAreaTags.AreaNameFor(block_));
 
     /// <summary>A tag's label: the direct tag, or the named one with what it is bound to.</summary>
-    private string ResolvedLabel(string? tag, string? sourceId, string? itemId)
-    {
-        if (!string.IsNullOrWhiteSpace(tag))
-        {
-            string name = tag.Trim();
-            return TryResolveTag(tag, null, null, out string resolvedSourceId, out string resolvedItemId)
-                ? name + " · " + TagLabel(resolvedSourceId, resolvedItemId)
-                : UnresolvedTagText(tag);
-        }
+    private string ResolvedLabel(string? tag, string? sourceId, string? itemId) =>
+        LogicElementRows.ResolvedLabel(block_, areaTags_, tags_, bridgeKey_, tag, sourceId, itemId);
 
-        return TagLabel(sourceId ?? string.Empty, itemId ?? string.Empty);
-    }
-
-    private string TagLabel(string sourceId, string itemId)
-    {
-        if (tags_ is not null &&
-            tags_.TryGet(TagBindingKey.Create(bridgeKey_, sourceId, itemId), out MultiBridgeTagEntry? entry) &&
-            entry is not null)
-        {
-            return $"{entry.DisplayName} · {entry.SourceName}";
-        }
-
-        return string.IsNullOrWhiteSpace(sourceId) ? itemId : $"{itemId} · {sourceId}";
-    }
+    private string TagLabel(string sourceId, string itemId) =>
+        LogicElementRows.TagLabel(tags_, bridgeKey_, sourceId, itemId);
 
     private IEnumerable<LogicElementDto> AllElements()
     {

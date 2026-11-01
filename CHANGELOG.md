@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+**Operator notes accept a client id for safe retries.** `POST /api/logic/notes` now takes an
+optional `id`; posting the same id again returns the note already stored instead of adding a
+duplicate, and omitting it still mints one. The Android viewer's offline sync outbox uses it, so
+a note queued after a lost link can be retried without creating a second entry.
+
 **The Logic page's Result tab marks the interlock's parent groups as dots.** A blocked block named
 only its first open reading, and the rows that said the rest were further down the board — so
 checking a long network meant reading every card again. The Result tab now carries a

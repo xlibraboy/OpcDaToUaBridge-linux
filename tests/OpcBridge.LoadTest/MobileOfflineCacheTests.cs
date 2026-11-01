@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
 using OpcBridge.Client;
+using OpcBridge.Core;
 using OpcBridge.Hmi.Core;
 using OpcBridge.Mobile.Core;
 using Xunit;
@@ -115,6 +116,12 @@ public sealed class MobileOfflineCacheTests
         Assert.Null(entry.Value);
         Assert.Equal("—", LogicTagText.Format(entry));
 
+        // The persistent Elements screen still has the last data, explicitly separated from
+        // the live view that was just cleared.
+        Assert.NotNull(connection.LastKnown);
+        Assert.Equal(LogicBlockStates.Blocked, connection.LastKnown!.State!.Blocks[0].State);
+        Assert.False(TagDigital.CoerceBool(connection.LastKnown.Tags[0].Value));
+
         // Cached is not offline yet — the first call decides that.
         Assert.False(connection.IsOffline);
     }
@@ -145,6 +152,12 @@ public sealed class MobileOfflineCacheTests
         Assert.True(tags.TryGet(TagBindingKey.Create(connection.CacheKey, "sim", "PS1"), out MultiBridgeTagEntry? entry));
         Assert.Null(entry!.Value);
         Assert.Null(entry.IsGood);
+
+        // The failed call captured the last-known snapshot before clearing the live view.
+        Assert.NotNull(connection.LastKnown);
+        Assert.Equal(LogicBlockStates.Blocked, connection.LastKnown!.State!.Blocks[0].State);
+        Assert.False(TagDigital.CoerceBool(connection.LastKnown.Tags[0].Value));
+        Assert.StartsWith("offline", connection.SyncText);
     }
 
     [Fact]

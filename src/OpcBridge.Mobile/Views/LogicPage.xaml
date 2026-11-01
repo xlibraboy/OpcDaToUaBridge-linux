@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:views="clr-namespace:OpcBridge.Mobile.Views"
              x:Class="OpcBridge.Mobile.Views.LogicPage"
              Title="Logic"
              BackgroundColor="{StaticResource PageBg}">
@@ -21,6 +22,11 @@
             <Label x:Name="connectionLabel" FontSize="12" TextColor="{StaticResource MutedColor}" />
             <!-- Shown while the list is the last data the bridge served. -->
             <Label x:Name="offlineLabel" FontSize="12" TextColor="{StaticResource WarnColor}" IsVisible="false" />
+            <views:SyncBadgeView x:Name="syncBadge">
+                <views:SyncBadgeView.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnSyncTapped" />
+                </views:SyncBadgeView.GestureRecognizers>
+            </views:SyncBadgeView>
         </VerticalStackLayout>
 
         <Picker x:Name="bridgePicker" Grid.Row="1" Title="Bridge" SelectedIndexChanged="OnBridgePicked" />

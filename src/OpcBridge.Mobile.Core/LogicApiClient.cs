@@ -115,7 +115,7 @@ public sealed class LogicApiClient : IDisposable
         }
     }
 
-    public async Task<HmiWriteResponse> WriteAsync(HmiWriteRequest request, CancellationToken cancellationToken)
+    public async Task<MobileResult<HmiWriteResponse>> WriteAsync(HmiWriteRequest request, CancellationToken cancellationToken)
     {
         try
         {
@@ -125,15 +125,23 @@ public sealed class LogicApiClient : IDisposable
             string body = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                return new HmiWriteResponse { Ok = false, Error = ReadError(body) ?? $"HTTP {(int)response.StatusCode}" };
+                return MobileResult<HmiWriteResponse>.Fail(
+                    ReadError(body) ?? $"HTTP {(int)response.StatusCode}",
+                    (int)response.StatusCode);
             }
 
-            return JsonSerializer.Deserialize<HmiWriteResponse>(body, JsonOptions)
-                ?? new HmiWriteResponse { Ok = false, Error = "empty response" };
+            HmiWriteResponse? parsed = JsonSerializer.Deserialize<HmiWriteResponse>(body, JsonOptions);
+            if (parsed is null)
+            {
+                return MobileResult<HmiWriteResponse>.Fail("empty response");
+            }
+
+            // The bridge reports a refused write as HTTP 200 with { ok: false }.
+            return new MobileResult<HmiWriteResponse>(parsed.Ok, parsed, parsed.Error, 200);
         }
         catch (Exception ex) when (IsTransport(ex, cancellationToken))
         {
-            return new HmiWriteResponse { Ok = false, Error = ex.Message };
+            return MobileResult<HmiWriteResponse>.Fail(ex.Message);
         }
     }
 

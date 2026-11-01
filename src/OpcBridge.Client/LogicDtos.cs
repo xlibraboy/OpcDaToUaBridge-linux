@@ -318,6 +318,14 @@ public sealed class LogicNoteDto
 public sealed class LogicNoteAddRequest
 {
     public Guid BlockId { get; set; }
+
+    /// <summary>
+    /// Optional client id: a queued note retried after a lost link carries the same id, and
+    /// the bridge returns the note it already stored instead of adding a duplicate. Null or
+    /// empty lets the bridge mint one.
+    /// </summary>
+    public Guid? Id { get; set; }
+
     public Guid? ConditionId { get; set; }
     public string Text { get; set; } = string.Empty;
 }

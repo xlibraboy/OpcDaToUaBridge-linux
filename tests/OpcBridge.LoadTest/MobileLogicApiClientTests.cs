@@ -113,7 +113,7 @@ public sealed class MobileLogicApiClientTests
         MobileResult<LogicNoteDto> note = await client.AddNoteAsync(
             new LogicNoteAddRequest { BlockId = Guid.NewGuid(), Text = "x" },
             CancellationToken.None);
-        HmiWriteResponse write = await client.WriteAsync(
+        MobileResult<HmiWriteResponse> write = await client.WriteAsync(
             new HmiWriteRequest { SourceId = "sim", ItemId = "Permit", Value = true },
             CancellationToken.None);
 
@@ -153,7 +153,7 @@ public sealed class MobileLogicApiClientTests
             client.SetBaseAddress($"http://127.0.0.1:{port}");
 
             MobileResult<LogicStateSnapshot> state = await client.GetLogicStateAsync(CancellationToken.None);
-            HmiWriteResponse write = await client.WriteAsync(
+            MobileResult<HmiWriteResponse> write = await client.WriteAsync(
                 new HmiWriteRequest { SourceId = "sim", ItemId = "Permit", Value = true },
                 CancellationToken.None);
 

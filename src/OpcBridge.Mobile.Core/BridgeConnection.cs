@@ -21,9 +21,13 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
     private readonly MultiBridgeTagCache tags_;
     private readonly IBridgeCacheStore cache_;
     private readonly Action<Action> post_;
-    private List<HmiTagDto> lastTags_ = new();
+    private List<HmiTagDto> lastKnownTags_ = new();
+    private LogicStateSnapshot? lastKnownState_;
     private Dictionary<Guid, List<LogicNoteDto>> notesByBlock_ = new();
     private DateTime? lastCachedUtc_;
+    private DateTime lastKnownPersistUtc_;
+    private int syncingDepth_;
+    private bool flushing_;
 
     public BridgeConnection(SavedBridge bridge, MultiBridgeTagCache tags, Action<Action>? post = null, IBridgeCacheStore? cache = null)
     {
@@ -31,19 +35,32 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
         tags_ = tags;
         cache_ = cache ?? new MemoryBridgeCacheStore();
         post_ = post ?? (action => action());
+        Outbox = new MobileOutbox(cache_, MobileBridge.OutboxKey(Bridge.Id));
 
         hub_.LogicStateChanged += snapshot => post_(() =>
         {
             Overview.ApplyState(snapshot);
+            // The pushed snapshot is also the persistent screen's latest data; keep it even
+            // though the live list would clear if the link dropped a moment later.
+            lastKnownState_ = snapshot;
             // A pushed snapshot is the link working: whatever was cached is live again.
             IsOffline = false;
             StatusText = LiveText;
+            LastSyncedUtc = DateTime.UtcNow;
+            PersistLastKnown(force: false);
+            RecomputeSync();
+            TryFlushOutbox();
             RaiseChanged();
         });
         hub_.ValuesChanged += deltas => post_(() =>
         {
             tags_.ApplyDeltas(CacheKey, deltas);
+            ApplyDeltasToLastKnown(deltas);
             IsOffline = false;
+            LastSyncedUtc = DateTime.UtcNow;
+            PersistLastKnown(force: false);
+            RecomputeSync();
+            TryFlushOutbox();
             RaiseChanged();
         });
         hub_.Reconnecting += _ => post_(() =>
@@ -58,6 +75,7 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
             IsOffline = false;
             StatusText = LiveText;
             _ = RefreshAsync(CancellationToken.None);
+            RecomputeSync();
             RaiseChanged();
         });
         hub_.Closed += error => post_(() =>
@@ -76,6 +94,7 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
         // The list the bridge served last time is on disk: show it immediately, before the
         // first call decides whether the link is there.
         LoadCached();
+        SetOutboxCounts(Outbox.PendingCount, Outbox.FailedCount);
     }
 
     /// <summary>Raised on the posting thread after any change this bridge caused.</summary>
@@ -84,6 +103,12 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
     public SavedBridge Bridge { get; }
 
     public LogicApiClient Api => api_;
+
+    /// <summary>The durable notes/actions queue for this bridge.</summary>
+    public MobileOutbox Outbox { get; }
+
+    /// <summary>The outbox as the Settings list shows it.</summary>
+    public IReadOnlyList<OutboxItem> OutboxItems => Outbox.All;
 
     public LogicOverviewViewModel Overview { get; } = new();
 
@@ -115,7 +140,39 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
     /// <summary>"offline · live values hidden · last synced 2026-10-09 12:31:05" — the banner.</summary>
     [ObservableProperty] private string _offlineText = string.Empty;
 
+    /// <summary>The badge's state: synced, syncing, offline, pending or error.</summary>
+    [ObservableProperty] private BridgeSyncState _syncState = BridgeSyncState.Offline;
+
+    /// <summary>"synced · 12:31:05" / "offline · 2 pending" — the badge's word.</summary>
+    [ObservableProperty] private string _syncText = "not connected";
+
+    /// <summary>State key for the badge's colour ("synced", "syncing", "offline", "pending", "error").</summary>
+    [ObservableProperty] private string _syncKey = "offline";
+
+    /// <summary>What the outbox still has to send; updated by the outbox.</summary>
+    [ObservableProperty] private int _pendingCount;
+
+    /// <summary>Outbox items the bridge refused; they wait for Retry or Discard in Settings.</summary>
+    [ObservableProperty] private int _failedCount;
+
+    /// <summary>When the bridge last answered with data (refresh or live push).</summary>
+    [ObservableProperty] private DateTime? _lastSyncedUtc;
+
     public bool IsLive => hub_.IsConnected;
+
+    /// <summary>
+    /// The last readings this bridge served, kept after the link drops. The live screens do
+    /// not show them; the Elements screen does, with <see cref="BridgeLastKnown.SavedUtc"/>.
+    /// </summary>
+    public BridgeLastKnown? LastKnown =>
+        lastKnownState_ is null && lastKnownTags_.Count == 0
+            ? null
+            : new BridgeLastKnown(
+                lastCachedUtc_ ?? DateTime.MinValue,
+                Overview.Definitions,
+                Overview.AreaTags,
+                lastKnownState_,
+                lastKnownTags_);
 
     /// <summary>
     /// Takes the session, the logic snapshot and the live link, in that order. Failure is
@@ -125,69 +182,89 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
     /// </summary>
     public async Task ConnectAsync(CancellationToken cancellationToken)
     {
+        BeginSync();
         StatusText = "searching for the bridge…";
         RaiseChanged();
 
-        api_.SetBaseAddress(Bridge.Url);
-
-        MobileResult<LogicApiClient.SessionResponse> session = await api_.GetSessionAsync(cancellationToken);
-        if (session.Ok && session.Value is not null)
+        try
         {
-            Session = new MobileSession(
-                session.Value.Authenticated,
-                session.Value.Username,
-                session.Value.DisplayName,
-                session.Value.Role,
-                session.Value.AuthEnabled);
+            api_.SetBaseAddress(Bridge.Url);
+
+            MobileResult<LogicApiClient.SessionResponse> session = await api_.GetSessionAsync(cancellationToken);
+            if (session.Ok && session.Value is not null)
+            {
+                Session = new MobileSession(
+                    session.Value.Authenticated,
+                    session.Value.Username,
+                    session.Value.DisplayName,
+                    session.Value.Role,
+                    session.Value.AuthEnabled);
+            }
+
+            await RefreshAsync(cancellationToken);
+            if (!IsConnected)
+            {
+                RaiseChanged();
+                return;
+            }
+
+            await ConnectHubAsync(cancellationToken);
+        }
+        finally
+        {
+            EndSync();
         }
 
-        await RefreshAsync(cancellationToken);
-        if (!IsConnected)
-        {
-            RaiseChanged();
-            return;
-        }
-
-        await ConnectHubAsync(cancellationToken);
         RaiseChanged();
     }
 
     /// <summary>Snapshot refresh: definitions, tags and evaluated state.</summary>
     public async Task RefreshAsync(CancellationToken cancellationToken)
     {
-        MobileResult<MobileLogicDefinitions> definitions = await api_.GetLogicDefinitionsAsync(cancellationToken);
-        if (definitions.Ok)
+        BeginSync();
+        try
         {
-            Overview.ApplyDefinitions(definitions.Value!.Blocks, definitions.Value.TagSources);
-            IsConnected = true;
-            IsOffline = false;
-            SignInRequired = false;
-            StatusText = IsLive ? LiveText : "connected";
-        }
-        else
-        {
-            IsConnected = false;
-            SignInRequired = definitions.IsSignInRequired;
-            StatusText = FailureText(definitions);
-            MarkOffline();
-        }
-
-        if (definitions.Ok)
-        {
-            MobileResult<IReadOnlyList<HmiTagDto>> tags = await api_.GetTagsAsync(cancellationToken);
-            if (tags.Ok)
+            MobileResult<MobileLogicDefinitions> definitions = await api_.GetLogicDefinitionsAsync(cancellationToken);
+            if (definitions.Ok)
             {
-                lastTags_ = tags.Value!.ToList();
-                tags_.ReplaceBridge(CacheKey, lastTags_);
+                Overview.ApplyDefinitions(definitions.Value!.Blocks, definitions.Value.TagSources);
+                IsConnected = true;
+                IsOffline = false;
+                SignInRequired = false;
+                StatusText = IsLive ? LiveText : "connected";
+            }
+            else
+            {
+                IsConnected = false;
+                SignInRequired = definitions.IsSignInRequired;
+                StatusText = FailureText(definitions);
+                MarkOffline();
             }
 
-            MobileResult<LogicStateSnapshot> state = await api_.GetLogicStateAsync(cancellationToken);
-            if (state.Ok)
+            if (definitions.Ok)
             {
-                Overview.ApplyState(state.Value);
-            }
+                MobileResult<IReadOnlyList<HmiTagDto>> tags = await api_.GetTagsAsync(cancellationToken);
+                if (tags.Ok)
+                {
+                    lastKnownTags_ = tags.Value!.ToList();
+                    tags_.ReplaceBridge(CacheKey, lastKnownTags_);
+                }
 
-            Persist();
+                MobileResult<LogicStateSnapshot> state = await api_.GetLogicStateAsync(cancellationToken);
+                if (state.Ok)
+                {
+                    Overview.ApplyState(state.Value);
+                    lastKnownState_ = state.Value;
+                }
+
+                LastSyncedUtc = DateTime.UtcNow;
+                PersistLastKnown(force: true);
+                TryFlushOutbox();
+            }
+        }
+        finally
+        {
+            EndSync();
         }
 
         RaiseChanged();
@@ -215,6 +292,373 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
     }
 
     /// <summary>
+    /// Adds a note now when the bridge is reachable, otherwise queues it with a client id so a
+    /// retry cannot duplicate it. A transport failure is queued with the same id the direct call
+    /// used, so a note that did land is returned by the bridge instead of stored twice.
+    /// </summary>
+    public async Task<OutboxSubmitResult> SubmitNoteAsync(
+        Guid blockId,
+        string text,
+        CancellationToken cancellationToken,
+        Guid? conditionId = null)
+    {
+        string trimmed = (text ?? string.Empty).Trim();
+        if (trimmed.Length == 0 || trimmed.Length > 500)
+        {
+            return new OutboxSubmitResult(OutboxSubmitKind.Rejected, "Note text is required (max 500 characters).");
+        }
+
+        Guid clientId = Guid.NewGuid();
+        if (IsOffline || !IsConnected)
+        {
+            return EnqueueNote(blockId, trimmed, conditionId, clientId, null);
+        }
+
+        MobileResult<LogicNoteDto> result = await api_.AddNoteAsync(
+            new LogicNoteAddRequest
+            {
+                Id = clientId,
+                BlockId = blockId,
+                ConditionId = conditionId,
+                Text = trimmed
+            },
+            cancellationToken);
+
+        if (result.Ok && result.Value is not null)
+        {
+            CacheNote(result.Value);
+            return new OutboxSubmitResult(OutboxSubmitKind.Sent);
+        }
+
+        if (result.StatusCode == 0)
+        {
+            return EnqueueNote(blockId, trimmed, conditionId, clientId, result.Error);
+        }
+
+        if (result.IsSignInRequired)
+        {
+            SignInRequired = true;
+            OutboxSubmitResult queued = EnqueueNote(blockId, trimmed, conditionId, clientId, result.Error);
+            return queued.Kind == OutboxSubmitKind.Queued
+                ? new OutboxSubmitResult(OutboxSubmitKind.SignInRequired, result.Error)
+                : queued;
+        }
+
+        return new OutboxSubmitResult(
+            OutboxSubmitKind.Rejected,
+            result.Error ?? "the bridge rejected the note");
+    }
+
+    /// <summary>
+    /// Writes an action now when the bridge is reachable. While offline it is queued safely;
+    /// if the call fails after it may have been sent, it is queued as <see cref="OutboxItemState.Uncertain"/>
+    /// and never replayed without the operator's Retry.
+    /// </summary>
+    public async Task<OutboxSubmitResult> SubmitActionAsync(
+        Guid blockId,
+        string? blockName,
+        string? actionLabel,
+        string? tagLabel,
+        string sourceId,
+        string itemId,
+        string? valueText,
+        CancellationToken cancellationToken)
+    {
+        if (IsOffline || !IsConnected)
+        {
+            return EnqueueWrite(
+                blockId, blockName, actionLabel, tagLabel, sourceId, itemId, valueText,
+                OutboxItemState.Pending, null);
+        }
+
+        MobileResult<HmiWriteResponse> result = await api_.WriteAsync(
+            new HmiWriteRequest
+            {
+                SourceId = sourceId,
+                ItemId = itemId,
+                Value = OutboxValue.Parse(valueText)
+            },
+            cancellationToken);
+
+        if (result.Ok)
+        {
+            return new OutboxSubmitResult(OutboxSubmitKind.Sent);
+        }
+
+        if (result.StatusCode == 0)
+        {
+            // The request may have reached the bridge before the link died. Keep it visible but
+            // never auto-send it again.
+            return EnqueueWrite(
+                blockId, blockName, actionLabel, tagLabel, sourceId, itemId, valueText,
+                OutboxItemState.Uncertain,
+                "the write was not confirmed — retry or discard it in Settings ▸ Sync");
+        }
+
+        if (result.IsSignInRequired)
+        {
+            SignInRequired = true;
+            return new OutboxSubmitResult(OutboxSubmitKind.SignInRequired, result.Error);
+        }
+
+        return new OutboxSubmitResult(
+            OutboxSubmitKind.Rejected,
+            result.Error ?? "the bridge rejected the write");
+    }
+
+    /// <summary>
+    /// Sends the queued notes and safe writes, oldest first. A transport failure or a sign-in
+    /// gate stops the pass and leaves the remaining items pending; a bridge rejection marks
+    /// that item failed and continues. Only one pass runs at a time.
+    /// </summary>
+    public async Task FlushOutboxAsync(CancellationToken cancellationToken)
+    {
+        if (flushing_)
+        {
+            return;
+        }
+
+        OutboxItem[] pending = Outbox.All
+            .Where(item => item.State == OutboxItemState.Pending)
+            .OrderBy(item => item.QueuedUtc)
+            .ToArray();
+        if (pending.Length == 0)
+        {
+            SyncOutboxCounts();
+            return;
+        }
+
+        flushing_ = true;
+        BeginSync();
+        try
+        {
+            foreach (OutboxItem item in pending)
+            {
+                item.State = OutboxItemState.Sending;
+                Outbox.Update(item);
+                SyncOutboxCounts();
+
+                bool stop = item.Kind == OutboxKind.Note
+                    ? !await TrySendQueuedNoteAsync(item, cancellationToken)
+                    : !await TrySendQueuedWriteAsync(item, cancellationToken);
+                SyncOutboxCounts();
+                if (stop)
+                {
+                    break;
+                }
+            }
+        }
+        finally
+        {
+            flushing_ = false;
+            EndSync();
+            SyncOutboxCounts();
+            RaiseChanged();
+        }
+    }
+
+    /// <summary>Puts a failed/uncertain item back in the queue and tries the pass again.</summary>
+    public async Task RetryOutboxItemAsync(Guid id, CancellationToken cancellationToken)
+    {
+        Outbox.Retry(id);
+        SyncOutboxCounts();
+        await FlushOutboxAsync(cancellationToken);
+    }
+
+    public void DiscardOutboxItem(Guid id)
+    {
+        Outbox.Remove(id);
+        SyncOutboxCounts();
+        RaiseChanged();
+    }
+
+    private OutboxSubmitResult EnqueueNote(
+        Guid blockId,
+        string text,
+        Guid? conditionId,
+        Guid clientId,
+        string? error)
+    {
+        OutboxItem item = new()
+        {
+            Id = clientId,
+            Kind = OutboxKind.Note,
+            BlockId = blockId,
+            BlockName = FindBlockName(blockId),
+            ConditionId = conditionId,
+            NoteText = text,
+            QueuedUtc = DateTime.UtcNow,
+            Error = error
+        };
+
+        if (!Outbox.TryAdd(item, out string? queueError))
+        {
+            return new OutboxSubmitResult(OutboxSubmitKind.Rejected, queueError);
+        }
+
+        SyncOutboxCounts();
+        RaiseChanged();
+        return new OutboxSubmitResult(OutboxSubmitKind.Queued, error);
+    }
+
+    private OutboxSubmitResult EnqueueWrite(
+        Guid blockId,
+        string? blockName,
+        string? actionLabel,
+        string? tagLabel,
+        string sourceId,
+        string itemId,
+        string? valueText,
+        OutboxItemState state,
+        string? error)
+    {
+        OutboxItem item = new()
+        {
+            Kind = OutboxKind.Write,
+            BlockId = blockId,
+            BlockName = blockName ?? string.Empty,
+            ActionLabel = actionLabel,
+            TagLabel = tagLabel,
+            SourceId = sourceId,
+            ItemId = itemId,
+            ValueText = valueText,
+            QueuedUtc = DateTime.UtcNow,
+            Error = error
+        };
+
+        if (!Outbox.TryAdd(item, out string? queueError, state))
+        {
+            return new OutboxSubmitResult(OutboxSubmitKind.Rejected, queueError);
+        }
+
+        SyncOutboxCounts();
+        RaiseChanged();
+        return state == OutboxItemState.Uncertain
+            ? new OutboxSubmitResult(OutboxSubmitKind.Uncertain, error)
+            : new OutboxSubmitResult(OutboxSubmitKind.Queued);
+    }
+
+    private async Task<bool> TrySendQueuedNoteAsync(OutboxItem item, CancellationToken cancellationToken)
+    {
+        MobileResult<LogicNoteDto> result = await api_.AddNoteAsync(
+            new LogicNoteAddRequest
+            {
+                Id = item.Id,
+                BlockId = item.BlockId,
+                ConditionId = item.ConditionId,
+                Text = item.NoteText ?? string.Empty
+            },
+            cancellationToken);
+
+        if (result.Ok && result.Value is not null)
+        {
+            CacheNote(result.Value);
+            Outbox.Remove(item.Id);
+            return true;
+        }
+
+        if (result.StatusCode == 0)
+        {
+            item.State = OutboxItemState.Pending;
+            item.Error = result.Error;
+            Outbox.Update(item);
+            return false;
+        }
+
+        if (result.IsSignInRequired)
+        {
+            item.State = OutboxItemState.Pending;
+            item.Error = result.Error;
+            Outbox.Update(item);
+            SignInRequired = true;
+            return false;
+        }
+
+        item.State = OutboxItemState.Failed;
+        item.Error = result.Error ?? "the bridge rejected the note";
+        Outbox.Update(item);
+        return true;
+    }
+
+    private async Task<bool> TrySendQueuedWriteAsync(OutboxItem item, CancellationToken cancellationToken)
+    {
+        if (DateTime.UtcNow - item.QueuedUtc > TimeSpan.FromMinutes(2))
+        {
+            item.State = OutboxItemState.Failed;
+            item.Error = "stale — older than 2 minutes, not sent";
+            Outbox.Update(item);
+            return true;
+        }
+
+        MobileResult<HmiWriteResponse> result = await api_.WriteAsync(
+            new HmiWriteRequest
+            {
+                SourceId = item.SourceId ?? string.Empty,
+                ItemId = item.ItemId ?? string.Empty,
+                Value = OutboxValue.Parse(item.ValueText)
+            },
+            cancellationToken);
+
+        if (result.Ok)
+        {
+            Outbox.Remove(item.Id);
+            return true;
+        }
+
+        if (result.StatusCode == 0)
+        {
+            item.State = OutboxItemState.Pending;
+            item.Error = result.Error;
+            Outbox.Update(item);
+            return false;
+        }
+
+        if (result.IsSignInRequired)
+        {
+            item.State = OutboxItemState.Pending;
+            item.Error = result.Error;
+            Outbox.Update(item);
+            SignInRequired = true;
+            return false;
+        }
+
+        item.State = OutboxItemState.Failed;
+        item.Error = result.Error ?? "the bridge rejected the write";
+        Outbox.Update(item);
+        return true;
+    }
+
+    private void CacheNote(LogicNoteDto note)
+    {
+        if (!notesByBlock_.TryGetValue(note.BlockId, out List<LogicNoteDto>? notes))
+        {
+            notes = new List<LogicNoteDto>();
+            notesByBlock_[note.BlockId] = notes;
+        }
+
+        if (!notes.Any(candidate => candidate.Id == note.Id))
+        {
+            notes.Insert(0, note);
+        }
+
+        PersistNotes();
+    }
+
+    private string FindBlockName(Guid blockId) =>
+        Overview.Definitions.FirstOrDefault(block => block.Id == blockId)?.Name ?? string.Empty;
+
+    private void SyncOutboxCounts() =>
+        SetOutboxCounts(Outbox.PendingCount, Outbox.FailedCount);
+
+    private void TryFlushOutbox()
+    {
+        if (!flushing_ && Outbox.PendingCount > 0)
+        {
+            _ = FlushOutboxAsync(CancellationToken.None);
+        }
+    }
+
+    /// <summary>
     /// Shows the structure this bridge served last time — the definitions, tag metadata and
     /// notes — so the list is never blank while the link is being acquired (or after it is
     /// gone). The cached readings and evaluated state are deliberately not applied: live
@@ -230,13 +674,15 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
         }
 
         Overview.ApplyDefinitions(snapshot.Blocks, snapshot.TagSources);
-        lastTags_ = snapshot.Tags;
-        if (snapshot.Tags.Count > 0)
+        // The last readings stay available to the Elements screen, but they are not applied to
+        // the live view or the shared tag cache: a cached value must never read as current.
+        lastKnownState_ = snapshot.State;
+        lastKnownTags_ = snapshot.Tags is { Count: > 0 } tags ? tags.ToList() : new List<HmiTagDto>();
+        if (lastKnownTags_.Count > 0)
         {
             // The entries keep their names, units and on/off texts — the labels on the screen —
-            // but their readings are live state and only arrive over the link. A cached value
-            // must never sit on screen as if the bridge had just served it.
-            tags_.ReplaceBridge(CacheKey, snapshot.Tags);
+            // while their readings are cleared from the live cache.
+            tags_.ReplaceBridge(CacheKey, lastKnownTags_);
             tags_.ClearValues(CacheKey);
         }
 
@@ -247,9 +693,32 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
             ? notes
             : new Dictionary<Guid, List<LogicNoteDto>>();
         lastCachedUtc_ = snapshot.SavedUtc;
+        LastSyncedUtc = snapshot.SavedUtc;
+        RecomputeSync();
     }
 
-    private void Persist() => WriteSnapshot(DateTime.UtcNow);
+    /// <summary>
+    /// Writes the last-known snapshot, at most once every five seconds unless forced. A live
+    /// push can change state or values many times a second; the file must not be rewritten for
+    /// each one.
+    /// </summary>
+    private void PersistLastKnown(bool force)
+    {
+        if (Overview.Definitions.Count == 0)
+        {
+            // Nothing to anchor the snapshot to — and an empty block list reads as no cache.
+            return;
+        }
+
+        DateTime now = DateTime.UtcNow;
+        if (!force && now - lastKnownPersistUtc_ < TimeSpan.FromSeconds(5))
+        {
+            return;
+        }
+
+        lastKnownPersistUtc_ = now;
+        WriteSnapshot(now);
+    }
 
     /// <summary>
     /// Writes the snapshot after a notes read. The banner's data age (the last refresh's time)
@@ -273,8 +742,8 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
             SavedUtc = savedUtc,
             Blocks = Overview.Definitions.ToList(),
             TagSources = Overview.AreaTags.ToList(),
-            State = Overview.State,
-            Tags = lastTags_.ToList(),
+            State = lastKnownState_,
+            Tags = lastKnownTags_.ToList(),
             NotesByBlock = new Dictionary<Guid, List<LogicNoteDto>>(notesByBlock_)
         };
         cache_.Write(BridgeCacheCodec.Key(Bridge.Id), BridgeCacheCodec.Serialize(snapshot));
@@ -284,17 +753,49 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
     /// <summary>
     /// Marks the link as gone and drops everything the bridge had been reporting: every tag
     /// reading and the evaluated state become no data, so the screen cannot freeze on the last
-    /// values the plant happened to show. The definitions and notes stay readable, and the
-    /// banner says how old that structure is.
+    /// values the plant happened to show. The last readings are captured for the Elements
+    /// screen before they are cleared, and the banner says how old that data is.
     /// </summary>
     private void MarkOffline()
     {
+        CaptureLastKnown();
+        PersistLastKnown(force: true);
         tags_.ClearValues(CacheKey);
         Overview.ClearLiveState();
         IsOffline = true;
         OfflineText = lastCachedUtc_ is { } savedUtc
             ? "offline · live values hidden · last synced " + savedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
             : "offline · live values hidden";
+        RecomputeSync();
+    }
+
+    /// <summary>Keeps the latest live evaluation for the persistent Elements screen.</summary>
+    private void CaptureLastKnown()
+    {
+        if (Overview.State is { } state)
+        {
+            lastKnownState_ = state;
+        }
+    }
+
+    /// <summary>Updates the last-known DTOs from a values push, so the persistent read is current.</summary>
+    private void ApplyDeltasToLastKnown(IReadOnlyList<HmiValueDelta> deltas)
+    {
+        foreach (HmiValueDelta delta in deltas)
+        {
+            HmiTagDto? tag = lastKnownTags_.FirstOrDefault(candidate =>
+                string.Equals(candidate.SourceId, delta.SourceId, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(candidate.ItemId, delta.ItemId, StringComparison.OrdinalIgnoreCase));
+            if (tag is null)
+            {
+                continue;
+            }
+
+            tag.Value = delta.Value;
+            tag.TimestampUtc = delta.TimestampUtc;
+            tag.DaQuality = delta.DaQuality;
+            tag.IsGood = delta.IsGood;
+        }
     }
 
     public async Task<MobileResult<MobileSession>> SignInAsync(string username, string password, CancellationToken cancellationToken)
@@ -317,6 +818,7 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
         {
             // Re-link so the hub carries the session cookie on a bridge that gates it.
             await ConnectHubAsync(cancellationToken);
+            await FlushOutboxAsync(cancellationToken);
         }
 
         RaiseChanged();
@@ -327,10 +829,14 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
     public async Task DisconnectAsync()
     {
         // Closing on purpose leaves the same rule in place as losing the link: nothing this
-        // bridge reported stays on screen as a current reading.
+        // bridge reported stays on screen as a current reading, but the last readings stay
+        // available to the Elements screen.
+        CaptureLastKnown();
+        PersistLastKnown(force: true);
         tags_.ClearValues(CacheKey);
         Overview.ClearLiveState();
         await hub_.DisposeAsync();
+        RecomputeSync();
         RaiseChanged();
     }
 
@@ -351,6 +857,99 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
         {
             StatusText = "connected (live link failed: " + exception.Message + ")";
         }
+
+        RecomputeSync();
+    }
+
+    /// <summary>Marks a read/flush as in progress; nested calls share one depth count.</summary>
+    private void BeginSync()
+    {
+        syncingDepth_++;
+        RecomputeSync();
+    }
+
+    private void EndSync()
+    {
+        if (syncingDepth_ > 0)
+        {
+            syncingDepth_--;
+        }
+
+        RecomputeSync();
+    }
+
+    /// <summary>Called by the outbox after every enqueue, flush or failed item.</summary>
+    public void SetOutboxCounts(int pending, int failed)
+    {
+        PendingCount = pending;
+        FailedCount = failed;
+        RecomputeSync();
+    }
+
+    /// <summary>
+    /// The one place the badge's state is derived. A live push must not paint "synced" while
+    /// the outbox still has work, and an offline link with pending items says both.
+    /// </summary>
+    private void RecomputeSync()
+    {
+        if (IsOffline)
+        {
+            SyncState = BridgeSyncState.Offline;
+            SyncKey = "offline";
+            SyncText = lastCachedUtc_ is { } saved
+                ? "offline · last synced " + saved.ToLocalTime().ToString("HH:mm:ss")
+                : "offline";
+            if (PendingCount > 0)
+            {
+                SyncText += " · " + PendingCount + " pending";
+            }
+
+            if (FailedCount > 0)
+            {
+                SyncText += " · " + FailedCount + " failed";
+            }
+
+            return;
+        }
+
+        if (syncingDepth_ > 0)
+        {
+            SyncState = BridgeSyncState.Syncing;
+            SyncKey = "syncing";
+            SyncText = PendingCount > 0 ? "syncing… · " + PendingCount + " pending" : "syncing…";
+            return;
+        }
+
+        if (FailedCount > 0)
+        {
+            SyncState = BridgeSyncState.Error;
+            SyncKey = "error";
+            SyncText = FailedCount + " failed"
+                + (PendingCount > 0 ? " · " + PendingCount + " pending" : string.Empty);
+            return;
+        }
+
+        if (PendingCount > 0)
+        {
+            SyncState = BridgeSyncState.Pending;
+            SyncKey = "pending";
+            SyncText = PendingCount + " pending";
+            return;
+        }
+
+        if (IsConnected)
+        {
+            SyncState = BridgeSyncState.Synced;
+            SyncKey = "synced";
+            SyncText = LastSyncedUtc is { } at
+                ? "synced · " + at.ToLocalTime().ToString("HH:mm:ss")
+                : "synced";
+            return;
+        }
+
+        SyncState = BridgeSyncState.Offline;
+        SyncKey = "offline";
+        SyncText = "not connected";
     }
 
     private string FailureText(MobileResult<MobileLogicDefinitions> definitions)

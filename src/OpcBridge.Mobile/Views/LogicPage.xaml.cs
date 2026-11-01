@@ -65,6 +65,13 @@ public partial class LogicPage : ContentPage
         offlineLabel.IsVisible = active?.IsOffline == true;
         offlineLabel.Text = active?.OfflineText ?? string.Empty;
 
+        syncBadge.Text = active?.SyncText ?? "not connected";
+        syncBadge.StateKey = active?.SyncKey ?? "offline";
+        syncBadge.Description = active is null
+            ? "No bridge selected."
+            : "Sync state: " + active.SyncText + " · " + active.PendingCount + " pending, "
+                + active.FailedCount + " failed. Open Settings for queued items.";
+
         string search = overview?.SearchText ?? string.Empty;
         if (!string.Equals(searchBar.Text, search, StringComparison.Ordinal))
         {
@@ -154,7 +161,7 @@ public partial class LogicPage : ContentPage
             {
                 connectionLabel.Text = "add a bridge under Settings ▸ Bridges";
             }
-            else if (active.IsConnected)
+            else if (active.IsConnected && !active.IsOffline)
             {
                 await active.RefreshAsync(CancellationToken.None);
             }
@@ -199,6 +206,11 @@ public partial class LogicPage : ContentPage
     }
 
     private async void OnSettingsClicked(object? sender, EventArgs e)
+    {
+        await Shell.Current.GoToAsync("//settings");
+    }
+
+    private async void OnSyncTapped(object? sender, TappedEventArgs e)
     {
         await Shell.Current.GoToAsync("//settings");
     }

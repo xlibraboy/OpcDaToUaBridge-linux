@@ -73,18 +73,31 @@ public sealed class LogicNoteStore
             resolvedAuthor = "app";
         }
 
-        note = new LogicNoteDto
-        {
-            Id = Guid.NewGuid(),
-            BlockId = request.BlockId,
-            ConditionId = request.ConditionId == Guid.Empty ? null : request.ConditionId,
-            Text = text,
-            Author = resolvedAuthor,
-            CreatedUtc = DateTime.UtcNow
-        };
-
         lock (sync_)
         {
+            // A phone retrying a queued note carries the id it first generated: returning the
+            // stored note makes the retry idempotent instead of adding a duplicate.
+            if (request.Id is { } requestedId && requestedId != Guid.Empty)
+            {
+                LogicNoteDto? existing = notes_.FirstOrDefault(note => note.Id == requestedId);
+                if (existing is not null)
+                {
+                    note = existing;
+                    error = null;
+                    return true;
+                }
+            }
+
+            note = new LogicNoteDto
+            {
+                Id = request.Id is { } clientId && clientId != Guid.Empty ? clientId : Guid.NewGuid(),
+                BlockId = request.BlockId,
+                ConditionId = request.ConditionId == Guid.Empty ? null : request.ConditionId,
+                Text = text,
+                Author = resolvedAuthor,
+                CreatedUtc = DateTime.UtcNow
+            };
+
             notes_.Add(note);
             if (notes_.Count > MaxNotes)
             {

@@ -228,6 +228,30 @@ public sealed class LogicApiTests
     }
 
     [Fact]
+    public async Task Notes_SameClientIdTwice_StoresOneNote()
+    {
+        (TestAppHandle app, Guid blockId) = await StartWithBlockAsync();
+        await using (app)
+        {
+            Guid clientId = Guid.NewGuid();
+            using HttpResponseMessage first = await app.Client.PostAsJsonAsync(
+                "/api/logic/notes",
+                new { id = clientId, blockId, text = "queued once" });
+            Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+
+            // The phone's outbox retry carries the same id: it must not add a second note.
+            using HttpResponseMessage second = await app.Client.PostAsJsonAsync(
+                "/api/logic/notes",
+                new { id = clientId, blockId, text = "queued once" });
+            Assert.Equal(HttpStatusCode.OK, second.StatusCode);
+
+            JsonDocument notes = await app.GetJsonAsync($"/api/logic/notes?blockId={blockId}");
+            JsonElement note = Assert.Single(notes.RootElement.GetProperty("notes").EnumerateArray());
+            Assert.Equal(clientId, note.GetProperty("id").GetGuid());
+        }
+    }
+
+    [Fact]
     public async Task TagsSources_TravelWithTheDefinitionsAndResolveForBlocks()
     {
         (TestAppHandle app, _) = await StartWithBlockAsync();

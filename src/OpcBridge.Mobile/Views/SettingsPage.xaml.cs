@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Maui.ApplicationModel;
 using OpcBridge.Mobile.Core;
 
@@ -38,6 +39,15 @@ public partial class SettingsPage : ContentPage
             : (session.Authenticated
                 ? $"signed in as {session.DisplayName} ({session.Role})"
                 : (session.AuthEnabled ? "the bridge requires sign-in" : "the bridge runs without sign-in"));
+
+        syncLabel.Text = active?.SyncText ?? "not connected";
+        syncLabel.TextColor = (Color)new StateColorConverter()
+            .Convert(active?.SyncKey ?? "offline", typeof(Color), null, CultureInfo.InvariantCulture);
+        retrySyncButton.IsEnabled = active is not null;
+
+        IReadOnlyList<OutboxItem> items = active?.OutboxItems ?? Array.Empty<OutboxItem>();
+        BindableLayout.SetItemsSource(outboxList, items);
+        outboxEmptyLabel.IsVisible = items.Count == 0;
     }
 
     private async void OnConnectClicked(object? sender, EventArgs e)
@@ -142,11 +152,73 @@ public partial class SettingsPage : ContentPage
             else
             {
                 passwordEntry.Text = string.Empty;
+                await active.FlushOutboxAsync(CancellationToken.None);
             }
         }
         finally
         {
             signInButton.IsEnabled = true;
+            Repaint();
+        }
+    }
+
+    private async void OnRetrySyncClicked(object? sender, EventArgs e)
+    {
+        BridgeConnection? active = coordinator_.Active;
+        if (active is null)
+        {
+            return;
+        }
+
+        retrySyncButton.IsEnabled = false;
+        try
+        {
+            if (active.IsConnected && !active.IsOffline)
+            {
+                await active.RefreshAsync(CancellationToken.None);
+            }
+            else
+            {
+                await active.ConnectAsync(CancellationToken.None);
+            }
+
+            await active.FlushOutboxAsync(CancellationToken.None);
+        }
+        finally
+        {
+            retrySyncButton.IsEnabled = true;
+            Repaint();
+        }
+    }
+
+    private async void OnRetryOutboxClicked(object? sender, EventArgs e)
+    {
+        if (sender is not Button { BindingContext: OutboxItem item } ||
+            coordinator_.Active is not { } active)
+        {
+            return;
+        }
+
+        await active.RetryOutboxItemAsync(item.Id, CancellationToken.None);
+        Repaint();
+    }
+
+    private async void OnDiscardOutboxClicked(object? sender, EventArgs e)
+    {
+        if (sender is not Button { BindingContext: OutboxItem item } ||
+            coordinator_.Active is not { } active)
+        {
+            return;
+        }
+
+        bool confirmed = await DisplayAlert(
+            "Discard queued item",
+            $"Discard this {item.KindLabel.ToLowerInvariant()} for {item.TargetText}?",
+            "Discard",
+            "Cancel");
+        if (confirmed)
+        {
+            active.DiscardOutboxItem(item.Id);
             Repaint();
         }
     }

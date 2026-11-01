@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using OpcBridge.Client;
+using OpcBridge.Core;
 using OpcBridge.Hmi.Core;
 using OpcBridge.Mobile.Core;
 using Xunit;
@@ -49,6 +50,14 @@ public sealed class MobileOfflineNotesTests
     {
         SavedUtc = SavedUtc,
         Blocks = new List<LogicBlockDto> { block },
+        State = new LogicStateSnapshot
+        {
+            EvaluatedUtc = SavedUtc,
+            Blocks =
+            {
+                new LogicBlockStateDto { Id = block.Id, State = LogicBlockStates.Blocked }
+            }
+        },
         Tags = new List<HmiTagDto>
         {
             new() { SourceId = "sim", ItemId = "PS1", DisplayName = "Pressure switch PS1", Value = false, IsGood = true, DataType = "Boolean", Digital = true }
@@ -166,12 +175,16 @@ public sealed class MobileOfflineNotesTests
         Assert.Equal(2, result.Value!.Count);
         Assert.Equal(2, connection.CachedNotes(block.Id).Count);
 
-        // The write landed in the store and kept the list's data age (the banner's timestamp).
+        // The write landed in the store and kept the list's data age (the banner's timestamp)
+        // and the last-known evaluation/readings the Elements screen uses.
         BridgeCacheSnapshot? written = BridgeCacheCodec.Deserialize(store.Read(BridgeCacheCodec.Key("b1")));
         Assert.NotNull(written);
         Assert.Equal(SavedUtc, written!.SavedUtc);
         Assert.Single(written.Blocks);
         Assert.Equal(2, written.NotesByBlock[block.Id].Count);
+        Assert.NotNull(written.State);
+        Assert.Equal(LogicBlockStates.Blocked, written.State!.Blocks[0].State);
+        Assert.False(TagDigital.CoerceBool(written.Tags[0].Value));
     }
 
     /// <summary>A listener that answers every request with one canned notes body.</summary>

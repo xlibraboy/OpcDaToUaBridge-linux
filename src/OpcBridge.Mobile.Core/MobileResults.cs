@@ -40,4 +40,7 @@ public static class MobileBridge
 {
     /// <summary>The shared tag cache key of one saved bridge (the phone keeps several).</summary>
     public static string CacheKey(string bridgeId) => "mobile:" + bridgeId;
+
+    /// <summary>Where one bridge's pending notes/actions are persisted.</summary>
+    public static string OutboxKey(string bridgeId) => "outbox:" + bridgeId;
 }
