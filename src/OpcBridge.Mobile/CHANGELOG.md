@@ -46,6 +46,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Each block card on the Logic tab **folds on its own chevron** to its name and state row, so a
   long list reads as a compact index while the blocks being worked on stay open; the fold follows
   the card through live state pushes and is remembered while the app is open.
+- The block screen's network rows draw the web Result board's **nesting rails**: one thin vertical
+  guide per enclosing level, on the same 14 px step the rows indent by, so a deep interlock reads
+  as a tree and a row's parents are visible beside it.
 
 ### Fixed
 

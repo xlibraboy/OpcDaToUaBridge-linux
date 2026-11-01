@@ -1,20 +1,24 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:views="clr-namespace:OpcBridge.Mobile.Views"
              x:Class="OpcBridge.Mobile.Views.LogicBlockPage"
              Title="Logic block"
              BackgroundColor="{StaticResource PageBg}">
     <ContentPage.Resources>
         <!-- One element of the IEC network: a contact, a gate or a function block. The row indents
-             by its depth, so the tree reads without extra glyphs. The page keeps the row's view so
-             a checkpoint dot can scroll to it and ring it. -->
+             by its depth, with one rail per enclosing level (the web Result board's .rl-kids), so
+             the tree reads without extra glyphs. The page keeps the row's view so a checkpoint dot
+             can scroll to it and ring it. -->
         <DataTemplate x:Key="ElementRow">
-            <Border Margin="0,0,0,6" Padding="10" StrokeThickness="1"
-                    Stroke="{StaticResource BorderColor}" BackgroundColor="{StaticResource SurfaceColor}"
-                    Loaded="OnElementRowLoaded" Unloaded="OnElementRowUnloaded">
-                <Grid ColumnDefinitions="Auto,*">
-                    <BoxView Grid.Column="0" WidthRequest="{Binding IndentWidth}" HeightRequest="1" Color="Transparent" />
-                    <Grid Grid.Column="1" ColumnDefinitions="26,*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto" ColumnSpacing="6">
+            <Grid ColumnDefinitions="Auto,*">
+                <views:DepthGuideView Grid.Column="0" WidthRequest="{Binding IndentWidth}"
+                                      Depth="{Binding Depth}" GuideColor="{StaticResource BorderColor}"
+                                      VerticalOptions="Fill" />
+                <Border Grid.Column="1" Margin="0,0,0,6" Padding="10" StrokeThickness="1"
+                        Stroke="{StaticResource BorderColor}" BackgroundColor="{StaticResource SurfaceColor}"
+                        Loaded="OnElementRowLoaded" Unloaded="OnElementRowUnloaded">
+                    <Grid ColumnDefinitions="26,*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto" ColumnSpacing="6">
                         <Label Grid.Row="0" Grid.Column="0" Text="{Binding Mark}" FontSize="18" FontAttributes="Bold"
                                TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
                         <VerticalStackLayout Grid.Row="0" Grid.Column="1" Spacing="0" VerticalOptions="Center">
@@ -38,8 +42,8 @@
                         <Label Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding NextStepText}"
                                IsVisible="{Binding ShowNextStep}" FontSize="12" TextColor="{StaticResource WarnColor}" />
                     </Grid>
-                </Grid>
-            </Border>
+                </Border>
+            </Grid>
         </DataTemplate>
     </ContentPage.Resources>
 
