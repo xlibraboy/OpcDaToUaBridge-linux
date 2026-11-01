@@ -192,8 +192,11 @@ public partial class LogicBlockPage : ContentPage
             Active.Overview.State?.Blocks.FirstOrDefault(candidate => candidate.Id == blockId_),
             coordinator_.Tags,
             Active.CachedNotes(blockId_),
-            Active.Overview.AreaTagsFor(block));
+            Active.Overview.AreaTagsFor(block),
+            Active.Overview.Definitions,
+            Active.Overview.AreaTags);
         viewModel_.ActionRequested += OnActionRequested;
+        viewModel_.ApplyUsageStates(Active.Overview.State);
 
         BindingContext = viewModel_;
         Title = block.Name;
@@ -237,12 +240,38 @@ public partial class LogicBlockPage : ContentPage
             .FirstOrDefault(candidate => candidate.Id == blockId_);
         viewModel_.ApplyState(blockState);
         viewModel_.ApplyValues();
+        viewModel_.ApplyUsageStates(Active.Overview.State);
         offlineLabel.IsVisible = Active.IsOffline;
         offlineLabel.Text = Active.OfflineText;
         stateLabel.Text = viewModel_.StateLabel;
         stateLabel.TextColor = (Color)new StateColorConverter()
             .Convert(viewModel_.StateKey, typeof(Color), null, CultureInfo.InvariantCulture);
         blockedLabel.Text = viewModel_.BlockedByText;
+    }
+
+    /// <summary>A row's tag line opens where the tag comes from and which blocks use it.</summary>
+    private void OnTagTapped(object? sender, TappedEventArgs e)
+    {
+        if (e.Parameter is LogicElementRowViewModel row)
+        {
+            viewModel_?.OpenTagPanel(row);
+        }
+    }
+
+    private void OnTagPanelCloseClicked(object? sender, EventArgs e) => viewModel_?.CloseTagPanel();
+
+    private void OnTagPanelScrimTapped(object? sender, TappedEventArgs e) => viewModel_?.CloseTagPanel();
+
+    /// <summary>A block card in the inspector opens that block's Result, as the web panel does.</summary>
+    private async void OnTagUseTapped(object? sender, TappedEventArgs e)
+    {
+        if (e.Parameter is not LogicTagUseViewModel use)
+        {
+            return;
+        }
+
+        viewModel_?.CloseTagPanel();
+        await Shell.Current.GoToAsync($"block?id={use.BlockId}");
     }
 
     private async void OnActionClicked(object? sender, EventArgs e)

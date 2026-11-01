@@ -80,11 +80,16 @@ public sealed partial class LogicElementRowViewModel : ObservableObject
 
     [ObservableProperty] private bool _showProgress;
 
-    public LogicElementRowViewModel(LogicElementDto element, int depth, string tagLabel)
+    public LogicElementRowViewModel(
+        LogicElementDto element,
+        int depth,
+        string tagLabel,
+        LogicTagReference? tagReference = null)
     {
         element_ = element;
         Depth = depth;
         TagLabel = tagLabel;
+        TagReference = tagReference;
         NextStepText = element.NextStepText;
 
         string kind = element.Kind.ToLowerInvariant();
@@ -114,6 +119,12 @@ public sealed partial class LogicElementRowViewModel : ObservableObject
 
     /// <summary>"Pressure switch PS1 · sim" — what a contact reads; empty for a gate or block.</summary>
     public string TagLabel { get; }
+
+    /// <summary>The tag behind the row's label, or null for a relay/gate with no tag source.</summary>
+    public LogicTagReference? TagReference { get; }
+
+    /// <summary>True when the label opens the source/usage inspector.</summary>
+    public bool HasTagReference => TagReference is not null;
 
     /// <summary>The "what to do when not true" hint, highlighted while the element is not true.</summary>
     public string? NextStepText { get; }
@@ -385,6 +396,8 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
     private readonly string bridgeKey_;
     private readonly MultiBridgeTagCache? tags_;
     private readonly LogicAreaTagsDto? areaTags_;
+    private readonly LogicTagUsageIndex usage_;
+    private IReadOnlyDictionary<Guid, LogicBlockStateDto> usageStates_ = new Dictionary<Guid, LogicBlockStateDto>();
     private readonly Dictionary<Guid, LogicElementRowViewModel> elementRows_ = new();
     private readonly Dictionary<Guid, LogicStepRowViewModel> stepRows_ = new();
 
@@ -412,18 +425,30 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
     [ObservableProperty] private string _checkpointSummaryKey = LogicConditionStates.Unknown;
     [ObservableProperty] private string _checkpointSummaryDescription = string.Empty;
 
+    /// <summary>True while the row's tag inspector sheet is open over the screen.</summary>
+    [ObservableProperty] private bool _isTagPanelOpen;
+
+    /// <summary>The tag the inspector is showing; null while the sheet is closed.</summary>
+    [ObservableProperty] private LogicTagInspectorViewModel? _selectedTag;
+
     public LogicBlockDetailViewModel(
         LogicBlockDto block,
         string bridgeKey,
         LogicBlockStateDto? state = null,
         MultiBridgeTagCache? tags = null,
         IReadOnlyList<LogicNoteDto>? notes = null,
-        LogicAreaTagsDto? areaTags = null)
+        LogicAreaTagsDto? areaTags = null,
+        IReadOnlyList<LogicBlockDto>? definitions = null,
+        IReadOnlyList<LogicAreaTagsDto>? allAreaTags = null)
     {
         block_ = block;
         bridgeKey_ = bridgeKey;
         tags_ = tags;
         areaTags_ = areaTags;
+
+        IReadOnlyList<LogicAreaTagsDto> areaLists = allAreaTags
+            ?? (areaTags is null ? Array.Empty<LogicAreaTagsDto>() : new[] { areaTags });
+        usage_ = LogicTagUsageIndex.Build(definitions ?? new[] { block }, areaLists);
 
         Title = block.Name;
         Description = block.Description;
@@ -603,6 +628,11 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
                 }
             }
         }
+
+        if (SelectedTag is not null)
+        {
+            SelectedTag.ApplyEntry(FindEntry(SelectedTag.Reference));
+        }
     }
 
     public void SetNotes(IReadOnlyList<LogicNoteDto> notes)
@@ -612,6 +642,57 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
         {
             Notes.Add(new LogicNoteRowViewModel(note));
         }
+    }
+
+    /// <summary>Opens the tag inspector for a row that names a tag.</summary>
+    public void OpenTagPanel(LogicElementRowViewModel? row)
+    {
+        if (row?.TagReference is not { } reference)
+        {
+            return;
+        }
+
+        SelectedTag = new LogicTagInspectorViewModel(
+            reference,
+            areaTags_,
+            usage_,
+            tags_,
+            bridgeKey_,
+            usageStates_);
+        IsTagPanelOpen = true;
+    }
+
+    public void CloseTagPanel()
+    {
+        IsTagPanelOpen = false;
+        SelectedTag = null;
+    }
+
+    /// <summary>Keeps the inspector's block cards in step with the pushed evaluation.</summary>
+    public void ApplyUsageStates(LogicStateSnapshot? snapshot)
+    {
+        Dictionary<Guid, LogicBlockStateDto> states = new();
+        foreach (LogicBlockStateDto block in snapshot?.Blocks ?? Enumerable.Empty<LogicBlockStateDto>())
+        {
+            states[block.Id] = block;
+        }
+
+        usageStates_ = states;
+        SelectedTag?.ApplyStates(usageStates_);
+    }
+
+    private MultiBridgeTagEntry? FindEntry(LogicTagReference reference)
+    {
+        if (tags_ is null || !reference.IsBound)
+        {
+            return null;
+        }
+
+        return tags_.TryGet(
+            TagBindingKey.Create(bridgeKey_, reference.SourceId, reference.ItemId),
+            out MultiBridgeTagEntry? entry)
+            ? entry
+            : null;
     }
 
     /// <summary>
@@ -766,22 +847,28 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
 
     private LogicElementRowViewModel CreateRow(LogicElementDto element, int depth)
     {
+        LogicTagReference? reference = LogicTagReferences.ForElement(block_, element, areaTags_);
         string label;
         if (!string.IsNullOrWhiteSpace(element.Relay))
         {
             // A relay contact and a coil both name their relay where a tag contact names its tag.
             label = "relay " + element.Relay;
         }
-        else if (string.Equals(element.Kind, LogicElementKinds.Contact, StringComparison.OrdinalIgnoreCase))
+        else if (reference is { Named: true })
         {
-            label = ResolvedLabel(element.Tag, element.SourceId, element.ItemId);
+            // A named entry, or a coil naming the block's OUTPUT tag through its area's list.
+            label = ResolvedLabel(reference.Name, null, null);
+        }
+        else if (reference is not null)
+        {
+            label = ResolvedLabel(null, reference.SourceId, reference.ItemId);
         }
         else
         {
             label = string.Empty;
         }
 
-        LogicElementRowViewModel row = new(element, depth, label);
+        LogicElementRowViewModel row = new(element, depth, label, reference);
         elementRows_[element.Id] = row;
         return row;
     }

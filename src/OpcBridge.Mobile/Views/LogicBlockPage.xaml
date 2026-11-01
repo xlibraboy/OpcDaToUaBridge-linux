@@ -31,8 +31,20 @@
                             <Label Text="{Binding ValueText}" FontSize="11" HorizontalTextAlignment="End"
                                    TextColor="{StaticResource MutedColor}" />
                         </VerticalStackLayout>
+                        <!-- A tag line is a door: where it comes from, and which blocks use it. -->
                         <Label Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding TagLabel}"
-                               FontSize="11" TextColor="{StaticResource MutedColor}" />
+                               FontSize="11" TextColor="{StaticResource MutedColor}" LineBreakMode="WordWrap"
+                               SemanticProperties.Hint="Where this tag comes from, and which blocks use it">
+                            <Label.Triggers>
+                                <DataTrigger TargetType="Label" Binding="{Binding HasTagReference}" Value="True">
+                                    <Setter Property="TextDecorations" Value="Underline" />
+                                    <Setter Property="TextColor" Value="{StaticResource TextColor}" />
+                                </DataTrigger>
+                            </Label.Triggers>
+                            <Label.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnTagTapped" CommandParameter="{Binding .}" />
+                            </Label.GestureRecognizers>
+                        </Label>
                         <!-- Should vs actual: the reading the element needs against the live one. -->
                         <Label Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding ShouldLine}"
                                IsVisible="{Binding ShowShould}" FontSize="12"
@@ -45,9 +57,35 @@
                 </Border>
             </Grid>
         </DataTemplate>
+
+        <!-- One block behind a tag: its name and state, what it is, and the lines that use it. -->
+        <DataTemplate x:Key="TagUseCard">
+            <Border Padding="9" StrokeThickness="1"
+                    Stroke="{StaticResource BorderColor}" BackgroundColor="{StaticResource PageBg}">
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnTagUseTapped" CommandParameter="{Binding .}" />
+                </Border.GestureRecognizers>
+                <VerticalStackLayout Spacing="3">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <Label Text="{Binding Name}" FontAttributes="Bold" FontSize="14" />
+                        <Label Grid.Column="1" Text="{Binding StateLabel}" FontSize="11" FontAttributes="Bold"
+                               TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
+                    </Grid>
+                    <Label Text="{Binding Meta}" FontSize="11" TextColor="{StaticResource MutedColor}" />
+                    <VerticalStackLayout Spacing="1" BindableLayout.ItemsSource="{Binding Lines}">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate>
+                                <Label Text="{Binding}" FontSize="12" LineBreakMode="WordWrap" />
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
+                </VerticalStackLayout>
+            </Border>
+        </DataTemplate>
     </ContentPage.Resources>
 
-    <ScrollView x:Name="pageScroll">
+    <Grid>
+        <ScrollView x:Name="pageScroll">
         <VerticalStackLayout Padding="12" Spacing="10">
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                 <Label x:Name="titleLabel" FontSize="22" FontAttributes="Bold" />
@@ -158,5 +196,68 @@
                 </BindableLayout.ItemTemplate>
             </VerticalStackLayout>
         </VerticalStackLayout>
-    </ScrollView>
+        </ScrollView>
+
+        <!-- The tag inspector: the web Result tab's Source / Used by answers on one sheet. -->
+        <Grid IsVisible="{Binding IsTagPanelOpen}">
+            <BoxView Color="#CC0F1513">
+                <BoxView.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnTagPanelScrimTapped" />
+                </BoxView.GestureRecognizers>
+            </BoxView>
+            <Border Margin="10,60,10,10" Padding="14" StrokeThickness="1"
+                    Stroke="{StaticResource BorderColor}" BackgroundColor="{StaticResource SurfaceColor}"
+                    StrokeShape="RoundRectangle 12" BindingContext="{Binding SelectedTag}">
+                <Grid RowDefinitions="Auto,Auto,*" RowSpacing="8">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <Label Text="{Binding Title}" FontSize="18" FontAttributes="Bold" LineBreakMode="WordWrap" />
+                        <Button Grid.Column="1" Text="✕" Clicked="OnTagPanelCloseClicked"
+                                FontSize="14" Padding="10,2" BackgroundColor="Transparent"
+                                TextColor="{StaticResource MutedColor}"
+                                SemanticProperties.Description="Close tag details" />
+                    </Grid>
+                    <Label Grid.Row="1" Text="{Binding Subtitle}" FontSize="12"
+                           TextColor="{StaticResource MutedColor}" />
+                    <ScrollView Grid.Row="2">
+                        <VerticalStackLayout Spacing="10">
+                            <VerticalStackLayout Spacing="4" BindableLayout.ItemsSource="{Binding SourceRows}">
+                                <BindableLayout.ItemTemplate>
+                                    <DataTemplate>
+                                        <VerticalStackLayout Spacing="2">
+                                            <Label Text="{Binding Label}" IsVisible="{Binding IsSection}"
+                                                   FontSize="10" FontAttributes="Bold"
+                                                   TextColor="{StaticResource MutedColor}" />
+                                            <Grid ColumnDefinitions="92,*" ColumnSpacing="8" IsVisible="{Binding IsPair}">
+                                                <Label Text="{Binding Label}" FontSize="12"
+                                                       TextColor="{StaticResource MutedColor}" />
+                                                <Label Grid.Column="1" Text="{Binding Value}" FontSize="12"
+                                                       LineBreakMode="WordWrap" />
+                                            </Grid>
+                                            <Label Text="{Binding Value}" IsVisible="{Binding IsWarning}"
+                                                   FontSize="12" TextColor="{StaticResource WarnColor}"
+                                                   LineBreakMode="WordWrap" />
+                                        </VerticalStackLayout>
+                                    </DataTemplate>
+                                </BindableLayout.ItemTemplate>
+                            </VerticalStackLayout>
+
+                            <Label Text="DRIVEN BY" FontSize="10" FontAttributes="Bold"
+                                   TextColor="{StaticResource MutedColor}" />
+                            <Label Text="{Binding DriverSummary}" FontSize="12"
+                                   TextColor="{StaticResource MutedColor}" />
+                            <VerticalStackLayout Spacing="6" BindableLayout.ItemsSource="{Binding Drivers}"
+                                                 BindableLayout.ItemTemplate="{StaticResource TagUseCard}" />
+
+                            <Label Text="{Binding UsageHeading}" FontSize="10" FontAttributes="Bold"
+                                   TextColor="{StaticResource MutedColor}" />
+                            <Label Text="{Binding UsageSummary}" FontSize="12"
+                                   TextColor="{StaticResource MutedColor}" />
+                            <VerticalStackLayout Spacing="6" BindableLayout.ItemsSource="{Binding Readers}"
+                                                 BindableLayout.ItemTemplate="{StaticResource TagUseCard}" />
+                        </VerticalStackLayout>
+                    </ScrollView>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
 </ContentPage>

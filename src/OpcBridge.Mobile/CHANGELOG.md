@@ -46,6 +46,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Each block card on the Logic tab **folds on its own chevron** to its name and state row, so a
   long list reads as a compact index while the blocks being worked on stay open; the fold follows
   the card through live state pushes and is remembered while the app is open.
+- A result row's **tag line is a door**, as it is on the web Result tab: it opens a sheet with
+  **where the tag comes from** — its area entry, recorded device contact and field state, mapped
+  source, live reading, quality and writability — and **which blocks use it**, listing every block
+  that reads, writes or drives the tag, each opening that block's Result. The tag label is
+  underlined while it is a link; an unassigned entry or a name missing from the block's area says
+  so in the sheet instead of showing a silent blank.
 - The block screen's network rows draw the web Result board's **nesting rails**: one thin vertical
   guide per enclosing level, on the same 14 px step the rows indent by, so a deep interlock reads
   as a tree and a row's parents are visible beside it.
