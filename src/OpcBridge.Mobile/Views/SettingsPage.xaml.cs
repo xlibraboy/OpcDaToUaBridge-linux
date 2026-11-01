@@ -43,6 +43,9 @@ public partial class SettingsPage : ContentPage
         syncLabel.Text = active?.SyncText ?? "not connected";
         syncLabel.TextColor = (Color)new StateColorConverter()
             .Convert(active?.SyncKey ?? "offline", typeof(Color), null, CultureInfo.InvariantCulture);
+        latencyLabel.Text = "network latency: " + (active?.LatencyText ?? "latency —");
+        latencyLabel.TextColor = (Color)new StateColorConverter()
+            .Convert(active?.LatencyKey ?? "unknown", typeof(Color), null, CultureInfo.InvariantCulture);
         retrySyncButton.IsEnabled = active is not null;
 
         IReadOnlyList<OutboxItem> items = active?.OutboxItems ?? Array.Empty<OutboxItem>();

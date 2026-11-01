@@ -28,6 +28,20 @@ public partial class SyncBadgeView : ContentView
         string.Empty,
         propertyChanged: OnChanged);
 
+    public static readonly BindableProperty UppercaseProperty = BindableProperty.Create(
+        nameof(Uppercase),
+        typeof(bool),
+        typeof(SyncBadgeView),
+        true,
+        propertyChanged: OnChanged);
+
+    public static readonly BindableProperty HintProperty = BindableProperty.Create(
+        nameof(Hint),
+        typeof(string),
+        typeof(SyncBadgeView),
+        "Open Settings to see pending sync items",
+        propertyChanged: OnChanged);
+
     public SyncBadgeView()
     {
         InitializeComponent();
@@ -52,28 +66,41 @@ public partial class SyncBadgeView : ContentView
         set => SetValue(DescriptionProperty, value);
     }
 
+    /// <summary>Sync words are shouted; the latency measurement keeps its lowercase unit ("12 ms").</summary>
+    public bool Uppercase
+    {
+        get => (bool)GetValue(UppercaseProperty);
+        set => SetValue(UppercaseProperty, value);
+    }
+
+    /// <summary>The accessible hint; empty for a badge that is not a Settings shortcut.</summary>
+    public string Hint
+    {
+        get => (string)GetValue(HintProperty);
+        set => SetValue(HintProperty, value);
+    }
+
     private static void OnChanged(BindableObject bindable, object oldValue, object newValue) =>
         ((SyncBadgeView)bindable).Update();
 
     private void Update()
     {
-        string text = (Text ?? string.Empty).ToUpperInvariant();
-        textLabel.Text = text;
+        string text = Text ?? string.Empty;
+        textLabel.Text = Uppercase ? text.ToUpperInvariant() : text;
         Color color = ColorFor(StateKey);
         dotLabel.TextColor = color;
         textLabel.TextColor = color;
         SemanticProperties.SetDescription(this, Description);
-        SemanticProperties.SetHint(this, "Open Settings to see pending sync items");
+        SemanticProperties.SetHint(this, Hint);
     }
 
     private static Color ColorFor(string key)
     {
         string resource = key switch
         {
-            "synced" => "GoodColor",
-            "syncing" => "WarnColor",
-            "pending" => "WarnColor",
-            "error" => "BadColor",
+            "synced" or "good" => "GoodColor",
+            "syncing" or "pending" or "fair" => "WarnColor",
+            "error" or "poor" => "BadColor",
             _ => "MutedColor"
         };
 
@@ -86,9 +113,9 @@ public partial class SyncBadgeView : ContentView
 
         return key switch
         {
-            "synced" => Color.FromArgb("#4CC38A"),
-            "syncing" or "pending" => Color.FromArgb("#E2A336"),
-            "error" => Color.FromArgb("#E5484D"),
+            "synced" or "good" => Color.FromArgb("#4CC38A"),
+            "syncing" or "pending" or "fair" => Color.FromArgb("#E2A336"),
+            "error" or "poor" => Color.FromArgb("#E5484D"),
             _ => Color.FromArgb("#9AA6A0")
         };
     }

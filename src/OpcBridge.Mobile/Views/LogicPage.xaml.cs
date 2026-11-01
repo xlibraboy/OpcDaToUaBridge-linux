@@ -71,6 +71,11 @@ public partial class LogicPage : ContentPage
             ? "No bridge selected."
             : "Sync state: " + active.SyncText + " · " + active.PendingCount + " pending, "
                 + active.FailedCount + " failed. Open Settings for queued items.";
+        latencyBadge.Text = active?.LatencyText ?? "latency —";
+        latencyBadge.StateKey = active?.LatencyKey ?? "unknown";
+        latencyBadge.Description = active is null
+            ? "No bridge selected."
+            : "Network latency to the bridge: " + active.LatencyText + ".";
 
         string search = overview?.SearchText ?? string.Empty;
         if (!string.Equals(searchBar.Text, search, StringComparison.Ordinal))

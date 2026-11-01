@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Json;
 using System.Net.Sockets;
@@ -142,6 +143,38 @@ public sealed class LogicApiClient : IDisposable
         catch (Exception ex) when (IsTransport(ex, cancellationToken))
         {
             return MobileResult<HmiWriteResponse>.Fail(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Round-trip to the bridge's public <c>/health</c>. The stopwatch spans the request and the
+    /// tiny response, so it measures the phone-to-bridge path rather than an endpoint's work.
+    /// </summary>
+    public async Task<MobileResult<int>> MeasureLatencyAsync(CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(base_url_))
+        {
+            return MobileResult<int>.Fail("no bridge address");
+        }
+
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        try
+        {
+            using HttpResponseMessage response = await client_
+                .GetAsync("health", cancellationToken)
+                .ConfigureAwait(false);
+            stopwatch.Stop();
+            return response.IsSuccessStatusCode
+                ? MobileResult<int>.Success((int)stopwatch.ElapsedMilliseconds)
+                : MobileResult<int>.Fail(
+                    $"HTTP {(int)response.StatusCode}",
+                    (int)response.StatusCode);
+        }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            // A ping must never surface an exception; a disposed client during a reconnect is
+            // just "no measurement this round".
+            return MobileResult<int>.Fail(ex.Message);
         }
     }
 

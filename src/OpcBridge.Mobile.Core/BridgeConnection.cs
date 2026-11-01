@@ -28,6 +28,7 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
     private DateTime lastKnownPersistUtc_;
     private int syncingDepth_;
     private bool flushing_;
+    private CancellationTokenSource? latencyCts_;
 
     public BridgeConnection(SavedBridge bridge, MultiBridgeTagCache tags, Action<Action>? post = null, IBridgeCacheStore? cache = null)
     {
@@ -158,7 +159,32 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
     /// <summary>When the bridge last answered with data (refresh or live push).</summary>
     [ObservableProperty] private DateTime? _lastSyncedUtc;
 
+    /// <summary>Good/fair/poor/offline classification of the last <c>/health</c> round-trip.</summary>
+    [ObservableProperty] private LatencyState _latencyState = LatencyState.Unknown;
+
+    /// <summary>"good · 12 ms" / "fair · 87 ms" / "poor · 210 ms" / "offline" — value included.</summary>
+    [ObservableProperty] private string _latencyText = "latency —";
+
+    [ObservableProperty] private string _latencyKey = "unknown";
+
+    /// <summary>The measured round-trip in milliseconds; null when no good measurement exists.</summary>
+    [ObservableProperty] private int? _latencyMs;
+
+    [ObservableProperty] private DateTime? _latencyMeasuredUtc;
+
     public bool IsLive => hub_.IsConnected;
+
+    partial void OnIsActiveChanged(bool value)
+    {
+        if (value)
+        {
+            StartLatencyMonitor();
+        }
+        else
+        {
+            StopLatencyMonitor();
+        }
+    }
 
     /// <summary>
     /// The last readings this bridge served, kept after the link drops. The live screens do
@@ -209,6 +235,10 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
             }
 
             await ConnectHubAsync(cancellationToken);
+            if (IsActive)
+            {
+                StartLatencyMonitor();
+            }
         }
         finally
         {
@@ -260,6 +290,10 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
                 LastSyncedUtc = DateTime.UtcNow;
                 PersistLastKnown(force: true);
                 TryFlushOutbox();
+                if (IsActive)
+                {
+                    _ = MeasureLatencyOnceAsync(CancellationToken.None);
+                }
             }
         }
         finally
@@ -650,6 +684,120 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
     private void SyncOutboxCounts() =>
         SetOutboxCounts(Outbox.PendingCount, Outbox.FailedCount);
 
+    /// <summary>
+    /// Pings the bridge's public /health every ten seconds while this connection is the one
+    /// on screen. The loop runs off the UI thread and posts the measured value back.
+    /// </summary>
+    private void StartLatencyMonitor()
+    {
+        StopLatencyMonitor();
+        if (!IsActive)
+        {
+            return;
+        }
+
+        latencyCts_ = new CancellationTokenSource();
+        CancellationToken token = latencyCts_.Token;
+        _ = Task.Run(() => LatencyLoopAsync(token), token);
+    }
+
+    private void StopLatencyMonitor()
+    {
+        CancellationTokenSource? cts = latencyCts_;
+        latencyCts_ = null;
+        if (cts is not null)
+        {
+            try
+            {
+                cts.Cancel();
+            }
+            catch
+            {
+            }
+
+            cts.Dispose();
+        }
+    }
+
+    private async Task LatencyLoopAsync(CancellationToken token)
+    {
+        while (!token.IsCancellationRequested)
+        {
+            try
+            {
+                if (IsConnected && !IsOffline)
+                {
+                    await MeasureLatencyOnceAsync(token).ConfigureAwait(false);
+                }
+                else
+                {
+                    post_(() => ApplyLatencyUnavailable(LatencyState.Offline, "offline"));
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch
+            {
+                // A ping failure is reported as an unknown measurement, never as a crash.
+            }
+
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(10), token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+        }
+    }
+
+    private async Task MeasureLatencyOnceAsync(CancellationToken token)
+    {
+        MobileResult<int> result = await api_.MeasureLatencyAsync(token).ConfigureAwait(false);
+        if (token.IsCancellationRequested)
+        {
+            return;
+        }
+
+        if (result.Ok)
+        {
+            int milliseconds = result.Value;
+            LatencyState state = LatencyGrade.Classify(milliseconds);
+            post_(() => ApplyLatency(state, milliseconds));
+        }
+        else
+        {
+            post_(() => ApplyLatencyUnavailable(LatencyState.Unknown, "latency —"));
+        }
+    }
+
+    private void ApplyLatency(LatencyState state, int milliseconds)
+    {
+        LatencyState = state;
+        LatencyKey = LatencyGrade.Key(state);
+        LatencyMs = milliseconds;
+        LatencyMeasuredUtc = DateTime.UtcNow;
+        LatencyText = LatencyGrade.Text(state, milliseconds);
+        RaiseChanged();
+    }
+
+    private void ApplyLatencyUnavailable(LatencyState state, string text)
+    {
+        bool changed = LatencyState != state || !string.Equals(LatencyText, text, StringComparison.Ordinal);
+        LatencyState = state;
+        LatencyKey = LatencyGrade.Key(state);
+        LatencyMs = null;
+        LatencyMeasuredUtc = null;
+        LatencyText = text;
+        if (changed)
+        {
+            RaiseChanged();
+        }
+    }
+
     private void TryFlushOutbox()
     {
         if (!flushing_ && Outbox.PendingCount > 0)
@@ -766,6 +914,7 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
         OfflineText = lastCachedUtc_ is { } savedUtc
             ? "offline · live values hidden · last synced " + savedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
             : "offline · live values hidden";
+        ApplyLatencyUnavailable(LatencyState.Offline, "offline");
         RecomputeSync();
     }
 
@@ -835,6 +984,8 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
         PersistLastKnown(force: true);
         tags_.ClearValues(CacheKey);
         Overview.ClearLiveState();
+        StopLatencyMonitor();
+        ApplyLatencyUnavailable(LatencyState.Offline, "offline");
         await hub_.DisposeAsync();
         RecomputeSync();
         RaiseChanged();
@@ -842,6 +993,7 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        StopLatencyMonitor();
         hub_.DisposeAsync().AsTask().GetAwaiter().GetResult();
         api_.Dispose();
     }

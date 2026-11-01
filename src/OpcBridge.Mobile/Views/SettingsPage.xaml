@@ -24,6 +24,8 @@
                                     <Label Text="{Binding StatusText}" FontSize="11" TextColor="{StaticResource MutedColor}" />
                                     <Label Text="{Binding SyncText}" FontSize="11" FontAttributes="Bold"
                                            TextColor="{Binding SyncKey, Converter={StaticResource StateColor}}" />
+                                    <Label Text="{Binding LatencyText}" FontSize="11"
+                                           TextColor="{Binding LatencyKey, Converter={StaticResource StateColor}}" />
                                 </VerticalStackLayout>
                                 <Button Grid.Column="1" Text="Remove" FontSize="12" Padding="10,2"
                                         VerticalOptions="Start" Clicked="OnRemoveBridgeClicked" />
@@ -57,6 +59,7 @@
             <Label Text="Notes and actions taken while the bridge was unreachable wait here until they can be sent. A write that may already have reached the bridge is never replayed automatically."
                    FontSize="12" TextColor="{StaticResource MutedColor}" />
             <Label x:Name="syncLabel" FontSize="13" FontAttributes="Bold" />
+            <Label x:Name="latencyLabel" FontSize="13" />
             <HorizontalStackLayout Spacing="8">
                 <Button x:Name="retrySyncButton" Text="Retry now" Clicked="OnRetrySyncClicked" />
             </HorizontalStackLayout>

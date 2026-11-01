@@ -13,6 +13,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-11-02
+
+### Added
+
+- A **network latency state** for the selected bridge. While it is active the phone asks the
+  public `GET /health` every ten seconds and shows the measured round-trip with its band:
+  **GOOD · 12 ms** (≤ 50 ms), **FAIR · 87 ms** (≤ 150 ms) or **POOR · 210 ms** (above that);
+  a lost link reads **OFFLINE**, and a ping that cannot be measured reads **latency —** rather
+  than inventing a number. The state sits beside the sync badge on the Logic and Elements
+  screens and on the bridge row and Sync section in Settings. It is measured separately from
+  the snapshot refresh, so it reports the phone-to-bridge path, not how long three API calls
+  took.
+
 ## [1.10.0] - 2026-11-02
 
 ### Added

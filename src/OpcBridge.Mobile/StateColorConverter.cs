@@ -20,9 +20,9 @@ public sealed class StateColorConverter : IValueConverter
 
         return key switch
         {
-            "ready" or "true" or "done" or "match" or "synced" => Color.FromArgb("#4CC38A"),
-            "blocked" or "false" or "error" => Color.FromArgb("#E5484D"),
-            "current" or "mismatch" or "syncing" or "pending" => Color.FromArgb("#E2A336"),
+            "ready" or "true" or "done" or "match" or "synced" or "good" => Color.FromArgb("#4CC38A"),
+            "blocked" or "false" or "error" or "poor" => Color.FromArgb("#E5484D"),
+            "current" or "mismatch" or "syncing" or "pending" or "fair" => Color.FromArgb("#E2A336"),
             _ => Color.FromArgb("#9AA6A0")
         };
     }

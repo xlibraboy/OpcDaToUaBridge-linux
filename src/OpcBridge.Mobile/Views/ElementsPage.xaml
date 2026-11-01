@@ -25,6 +25,7 @@
                     <TapGestureRecognizer Tapped="OnSyncTapped" />
                 </views:SyncBadgeView.GestureRecognizers>
             </views:SyncBadgeView>
+            <views:SyncBadgeView x:Name="latencyBadge" Uppercase="False" Hint="" />
         </VerticalStackLayout>
 
         <Picker x:Name="bridgePicker" Grid.Row="1" Title="Bridge" SelectedIndexChanged="OnBridgePicked" />
