@@ -8,6 +8,44 @@ using OpcBridge.Hmi.Core;
 namespace OpcBridge.Mobile.Core;
 
 /// <summary>
+/// One checkpoint of the block screen: a parent of the network — the gate or function block that
+/// owns the checks below it — with its live state. The dot is all that is drawn; the parent's name
+/// lives in <see cref="Description"/>, and tapping the dot jumps to its row.
+/// </summary>
+public sealed partial class LogicCheckpointViewModel : ObservableObject
+{
+    [ObservableProperty] private string _stateKey = LogicConditionStates.Unknown;
+    [ObservableProperty] private string _stateWord = "no data";
+
+    public LogicCheckpointViewModel(Guid id, string name)
+    {
+        Id = id;
+        Name = name;
+    }
+
+    public Guid Id { get; }
+
+    /// <summary>The parent's sentence, or its kind when it has none ("root AND").</summary>
+    public string Name { get; }
+
+    /// <summary>"Name — not fulfilled. Go to this parent." — the dot's accessible label.</summary>
+    public string Description => Name + " — " + StateWord + ". Go to this parent.";
+
+    partial void OnStateWordChanged(string value) => OnPropertyChanged(nameof(Description));
+
+    public void ApplyState(LogicElementStateDto? state)
+    {
+        StateKey = state?.State ?? LogicConditionStates.Unknown;
+        StateWord = state?.State switch
+        {
+            LogicConditionStates.True => "fulfilled",
+            LogicConditionStates.False => "not fulfilled",
+            _ => "no data"
+        };
+    }
+}
+
+/// <summary>
 /// One element of a block's IEC 61131-3 network on the detail screen: a contact, a gate or a
 /// function block, with its live state. A contact carries the reading it needs against the live
 /// one ("should 1 · actual 0"); a timer or counter carries its progress.
@@ -229,7 +267,7 @@ public sealed partial class LogicElementRowViewModel : ObservableObject
         (milliseconds / 1000.0).ToString("0.##", CultureInfo.InvariantCulture) + " s";
 
     /// <summary>The element's short name: the contact form, or the block with its first input.</summary>
-    private static string DescribeKind(LogicElementDto element, string kind) => kind switch
+    internal static string DescribeKind(LogicElementDto element, string kind) => kind switch
     {
         LogicElementKinds.Contact => element.Op.ToLowerInvariant() switch
         {
@@ -355,6 +393,25 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
     [ObservableProperty] private string? _reason;
     [ObservableProperty] private string _blockedByText = string.Empty;
 
+    /// <summary>"1/2 steps · Open valve" — a sequence's progress in the screen's header.</summary>
+    [ObservableProperty] private string _progressText = string.Empty;
+
+    /// <summary>True while the block is a sequence with a progress line to show.</summary>
+    public bool ShowProgress => ProgressText.Length > 0;
+
+    partial void OnProgressTextChanged(string value) => OnPropertyChanged(nameof(ShowProgress));
+
+    /// <summary>The output-tag feedback pill: shown while the block names an OUTPUT tag.</summary>
+    [ObservableProperty] private bool _hasOutput;
+    [ObservableProperty] private string _outputText = string.Empty;
+    [ObservableProperty] private string _outputKey = LogicOutputStates.None;
+    [ObservableProperty] private string _outputDescription = string.Empty;
+
+    /// <summary>"2/3" — the met count of the checkpoint rail, coloured by <see cref="CheckpointSummaryKey"/>.</summary>
+    [ObservableProperty] private string _checkpointSummary = string.Empty;
+    [ObservableProperty] private string _checkpointSummaryKey = LogicConditionStates.Unknown;
+    [ObservableProperty] private string _checkpointSummaryDescription = string.Empty;
+
     public LogicBlockDetailViewModel(
         LogicBlockDto block,
         string bridgeKey,
@@ -394,6 +451,8 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
             Steps.Add(row);
         }
 
+        BuildCheckpoints();
+
         foreach (LogicActionDto action in block.Actions)
         {
             Actions.Add(new LogicActionButtonViewModel(action, ResolvedLabel(action.Tag, action.SourceId, action.ItemId)));
@@ -432,6 +491,12 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
 
     /// <summary>The block's network, in drawing order — a parent row above its inputs.</summary>
     public ObservableCollection<LogicElementRowViewModel> Elements { get; } = new();
+
+    /// <summary>The network's parents in network order — the screen's checkpoint dots.</summary>
+    public ObservableCollection<LogicCheckpointViewModel> Checkpoints { get; } = new();
+
+    /// <summary>True while the network has a parent group to report.</summary>
+    public bool HasCheckpoints => Checkpoints.Count > 0;
 
     public ObservableCollection<LogicStepRowViewModel> Steps { get; } = new();
     public ObservableCollection<LogicActionButtonViewModel> Actions { get; } = new();
@@ -477,6 +542,17 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
         {
             row.ApplyState(elementStates.TryGetValue(id, out LogicElementStateDto? elementState) ? elementState : null);
         }
+
+        foreach (LogicCheckpointViewModel checkpoint in Checkpoints)
+        {
+            checkpoint.ApplyState(elementStates.TryGetValue(checkpoint.Id, out LogicElementStateDto? checkpointState)
+                ? checkpointState
+                : null);
+        }
+
+        UpdateCheckpointSummary();
+        ApplyOutput(state);
+        ProgressText = SequenceProgress(state);
 
         Dictionary<Guid, LogicStepStateDto> stepStates = new();
         foreach (LogicStepStateDto step in state?.Steps ?? Enumerable.Empty<LogicStepStateDto>())
@@ -536,6 +612,156 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
         {
             Notes.Add(new LogicNoteRowViewModel(note));
         }
+    }
+
+    /// <summary>
+    /// The screen's checkpoints are the network's parents — the gates and function blocks that
+    /// own the checks below them — in the network's own order. A leaf contact is already named in
+    /// the block's reason, and a coil publishes the result rather than checking it.
+    /// </summary>
+    private void BuildCheckpoints()
+    {
+        HashSet<Guid> seen = new();
+        AddCheckpoints(LogicNetwork.For(block_), seen);
+        foreach (LogicStepDto step in block_.Steps)
+        {
+            AddCheckpoints(LogicNetwork.For(step), seen);
+        }
+    }
+
+    private void AddCheckpoints(IEnumerable<LogicElementDto> roots, HashSet<Guid> seen)
+    {
+        foreach ((LogicElementDto element, int depth) in LogicNetwork.Walk(roots))
+        {
+            if (element.Inputs.Count == 0 ||
+                string.Equals(element.Kind, LogicElementKinds.Coil, StringComparison.OrdinalIgnoreCase) ||
+                !seen.Add(element.Id))
+            {
+                continue;
+            }
+
+            Checkpoints.Add(new LogicCheckpointViewModel(element.Id, CheckpointName(element, depth)));
+        }
+    }
+
+    private static string CheckpointName(LogicElementDto element, int depth)
+    {
+        string text = (element.Text ?? string.Empty).Trim();
+        if (text.Length > 0)
+        {
+            return text;
+        }
+
+        string kind = LogicElementRowViewModel.DescribeKind(element, element.Kind.ToLowerInvariant());
+        return depth == 0 ? "root " + kind : kind;
+    }
+
+    private void UpdateCheckpointSummary()
+    {
+        if (Checkpoints.Count == 0)
+        {
+            CheckpointSummary = string.Empty;
+            CheckpointSummaryKey = LogicConditionStates.Unknown;
+            CheckpointSummaryDescription = string.Empty;
+            return;
+        }
+
+        int met = Checkpoints.Count(checkpoint =>
+            string.Equals(checkpoint.StateKey, LogicConditionStates.True, StringComparison.OrdinalIgnoreCase));
+        int open = Checkpoints.Count(checkpoint =>
+            string.Equals(checkpoint.StateKey, LogicConditionStates.False, StringComparison.OrdinalIgnoreCase));
+        int unknown = Checkpoints.Count - met - open;
+        CheckpointSummary = met + "/" + Checkpoints.Count;
+        CheckpointSummaryKey = open > 0
+            ? LogicConditionStates.False
+            : unknown > 0 ? LogicConditionStates.Unknown : LogicConditionStates.True;
+        CheckpointSummaryDescription = met + " of " + Checkpoints.Count + " checkpoints fulfilled"
+            + (open > 0 ? " · " + open + " not fulfilled" : string.Empty)
+            + (unknown > 0 ? " · " + unknown + " without data" : string.Empty);
+    }
+
+    /// <summary>
+    /// The result header's feedback pill: the block's output tag and whether the live output
+    /// agrees with the interlock result. Hidden while the block names no output tag.
+    /// </summary>
+    private void ApplyOutput(LogicBlockStateDto? state)
+    {
+        LogicBlockOutputStateDto? output = state?.Output;
+        string tag = !string.IsNullOrWhiteSpace(output?.Tag)
+            ? output!.Tag.Trim()
+            : (block_.OutputTag ?? string.Empty).Trim();
+        HasOutput = tag.Length > 0;
+        OutputKey = output is null
+            ? LogicOutputStates.Unknown
+            : string.IsNullOrWhiteSpace(output.State) ? LogicOutputStates.None : output.State;
+        OutputText = HasOutput ? "OUTPUT " + tag + " · " + OutputWord(output) : string.Empty;
+        OutputDescription = HasOutput ? OutputDescriptionText(tag, output) : string.Empty;
+    }
+
+    private static string OutputWord(LogicBlockOutputStateDto? output) => output?.State switch
+    {
+        LogicOutputStates.Match => "VERIFIED",
+        LogicOutputStates.Mismatch => "MISMATCH",
+        LogicOutputStates.Unknown => "UNVERIFIED",
+        _ => "—"
+    };
+
+    private static string OutputDescriptionText(string tag, LogicBlockOutputStateDto? output)
+    {
+        List<string> parts = new() { tag, OutputWord(output) };
+        if (!string.IsNullOrWhiteSpace(output?.Reason))
+        {
+            parts.Add(output!.Reason!.Trim());
+        }
+
+        string text = string.Join(" · ", parts);
+        if (!string.IsNullOrWhiteSpace(output?.ValueText) && output!.ValueText != "—")
+        {
+            text += " · " + output.ValueText;
+        }
+
+        return text;
+    }
+
+    /// <summary>"1/2 steps · Open valve", or "complete" — a sequence's progress in the header.</summary>
+    private string SequenceProgress(LogicBlockStateDto? state)
+    {
+        if (!IsSequence || block_.Steps.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        Dictionary<Guid, string> words = new();
+        foreach (LogicStepStateDto step in state?.Steps ?? Enumerable.Empty<LogicStepStateDto>())
+        {
+            words[step.Id] = step.State;
+        }
+
+        int done = 0;
+        string current = string.Empty;
+        for (int i = 0; i < block_.Steps.Count; i++)
+        {
+            LogicStepDto step = block_.Steps[i];
+            string word = words.TryGetValue(step.Id, out string? value) ? value : string.Empty;
+            if (string.Equals(word, LogicStepStates.Done, StringComparison.OrdinalIgnoreCase))
+            {
+                done++;
+            }
+            else if (current.Length == 0 &&
+                (string.Equals(word, LogicStepStates.Current, StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(word, LogicStepStates.Unknown, StringComparison.OrdinalIgnoreCase)))
+            {
+                current = string.IsNullOrWhiteSpace(step.Name) ? "Step " + (i + 1) : step.Name;
+            }
+        }
+
+        if (done == block_.Steps.Count)
+        {
+            return "complete";
+        }
+
+        return done + "/" + block_.Steps.Count + " steps"
+            + (current.Length > 0 ? " · " + current : string.Empty);
     }
 
     private LogicElementRowViewModel CreateRow(LogicElementDto element, int depth)

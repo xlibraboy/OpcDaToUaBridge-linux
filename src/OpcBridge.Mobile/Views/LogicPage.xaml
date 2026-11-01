@@ -2,7 +2,8 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="OpcBridge.Mobile.Views.LogicPage"
-             Title="Logic">
+             Title="Logic"
+             BackgroundColor="{StaticResource PageBg}">
     <ContentPage.Resources>
         <!-- One search/filter chip: filled and dark-texted while selected, dark with muted
              text otherwise, so the choice reads without relying on colour alone. -->
@@ -73,29 +74,40 @@
                         <Border Margin="0,0,0,8" Padding="12" StrokeThickness="1"
                                 Stroke="{StaticResource BorderColor}" BackgroundColor="{StaticResource SurfaceColor}">
                             <VerticalStackLayout Spacing="4">
-                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
                                     <Label Text="{Binding Name}" FontSize="17" FontAttributes="Bold" />
                                     <Label Grid.Column="1" Text="{Binding StateLabel}" FontAttributes="Bold"
+                                           VerticalOptions="Center"
                                            TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
+                                    <!-- Each row folds on its own, to its name and state; the fold is
+                                         remembered while the app is open. -->
+                                    <Button Grid.Column="2" Text="{Binding FoldChevron}"
+                                            Command="{Binding ToggleFoldCommand}"
+                                            FontSize="14" Padding="8,0" MinimumWidthRequest="36"
+                                            MinimumHeightRequest="36" BackgroundColor="Transparent"
+                                            TextColor="{StaticResource MutedColor}"
+                                            SemanticProperties.Description="{Binding FoldLabel}" />
                                 </Grid>
-                                <HorizontalStackLayout Spacing="8">
-                                    <Label Text="{Binding KindLabel}" FontSize="11" TextColor="{StaticResource MutedColor}" />
-                                    <Label Text="{Binding Area}" FontSize="11" TextColor="{StaticResource MutedColor}"
-                                           IsVisible="{Binding HasArea}" />
-                                </HorizontalStackLayout>
-                                <FlexLayout Wrap="Wrap" Direction="Row" AlignItems="Center"
-                                            BindableLayout.ItemsSource="{Binding Tags}">
-                                    <BindableLayout.ItemTemplate>
-                                        <DataTemplate>
-                                            <Border Margin="0,0,6,2" Padding="6,1" StrokeThickness="1"
-                                                    Stroke="{StaticResource BorderColor}" BackgroundColor="{StaticResource PageBg}">
-                                                <Label Text="{Binding}" FontSize="11" TextColor="{StaticResource MutedColor}" />
-                                            </Border>
-                                        </DataTemplate>
-                                    </BindableLayout.ItemTemplate>
-                                </FlexLayout>
-                                <Label Text="{Binding Reason}" FontSize="13" />
-                                <Label Text="{Binding ProgressText}" FontSize="12" TextColor="{StaticResource MutedColor}" />
+                                <VerticalStackLayout Spacing="4" IsVisible="{Binding ShowDetails}">
+                                    <HorizontalStackLayout Spacing="8">
+                                        <Label Text="{Binding KindLabel}" FontSize="11" TextColor="{StaticResource MutedColor}" />
+                                        <Label Text="{Binding Area}" FontSize="11" TextColor="{StaticResource MutedColor}"
+                                               IsVisible="{Binding HasArea}" />
+                                    </HorizontalStackLayout>
+                                    <FlexLayout Wrap="Wrap" Direction="Row" AlignItems="Center"
+                                                BindableLayout.ItemsSource="{Binding Tags}">
+                                        <BindableLayout.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Margin="0,0,6,2" Padding="6,1" StrokeThickness="1"
+                                                        Stroke="{StaticResource BorderColor}" BackgroundColor="{StaticResource PageBg}">
+                                                    <Label Text="{Binding}" FontSize="11" TextColor="{StaticResource MutedColor}" />
+                                                </Border>
+                                            </DataTemplate>
+                                        </BindableLayout.ItemTemplate>
+                                    </FlexLayout>
+                                    <Label Text="{Binding Reason}" FontSize="13" />
+                                    <Label Text="{Binding ProgressText}" FontSize="12" TextColor="{StaticResource MutedColor}" />
+                                </VerticalStackLayout>
                             </VerticalStackLayout>
                         </Border>
                     </DataTemplate>

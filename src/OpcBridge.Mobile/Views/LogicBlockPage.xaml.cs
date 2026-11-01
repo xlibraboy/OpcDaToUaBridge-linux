@@ -8,8 +8,11 @@ namespace OpcBridge.Mobile.Views;
 public partial class LogicBlockPage : ContentPage
 {
     private readonly BridgeCoordinator coordinator_;
+    private readonly Dictionary<Guid, Border> elementViews_ = new();
     private LogicBlockDetailViewModel? viewModel_;
     private Guid blockId_;
+    private Border? flashedRow_;
+    private CancellationTokenSource? flashToken_;
 
     public LogicBlockPage(BridgeCoordinator coordinator)
     {
@@ -32,7 +35,110 @@ public partial class LogicBlockPage : ContentPage
         // The page is transient (a new instance per navigation): without this the singleton
         // coordinator would keep every visited block page alive and repainting.
         coordinator_.Changed -= OnLiveChanged;
+        flashToken_?.Cancel();
+        flashToken_ = null;
+        if (flashedRow_ is not null)
+        {
+            RestoreRow(flashedRow_);
+            flashedRow_ = null;
+        }
+
         base.OnDisappearing();
+    }
+
+    /// <summary>
+    /// Keeps the row's view, so a checkpoint dot can scroll to the parent it names. The network
+    /// is a non-virtualized BindableLayout, so every row is realized on load.
+    /// </summary>
+    private void OnElementRowLoaded(object? sender, EventArgs e)
+    {
+        if (sender is Border border && border.BindingContext is LogicElementRowViewModel row)
+        {
+            elementViews_[row.Id] = border;
+        }
+    }
+
+    private void OnElementRowUnloaded(object? sender, EventArgs e)
+    {
+        if (sender is Border border &&
+            border.BindingContext is LogicElementRowViewModel row &&
+            elementViews_.TryGetValue(row.Id, out Border? known) &&
+            ReferenceEquals(known, border))
+        {
+            elementViews_.Remove(row.Id);
+        }
+    }
+
+    /// <summary>
+    /// A checkpoint dot is a jump: its evaluated row is scrolled to the middle of the screen and
+    /// ringed for a moment, so "which group is open" and "where is it" are one tap.
+    /// </summary>
+    private async void OnCheckpointTapped(object? sender, TappedEventArgs e)
+    {
+        if (e.Parameter is not LogicCheckpointViewModel checkpoint ||
+            !elementViews_.TryGetValue(checkpoint.Id, out Border? row))
+        {
+            return;
+        }
+
+        _ = FlashRowAsync(row);
+        await pageScroll.ScrollToAsync(row, ScrollToPosition.Center, true);
+    }
+
+    private async Task FlashRowAsync(Border row)
+    {
+        if (flashedRow_ is not null && !ReferenceEquals(flashedRow_, row))
+        {
+            RestoreRow(flashedRow_);
+        }
+
+        flashToken_?.Cancel();
+        CancellationTokenSource token = new();
+        flashToken_ = token;
+        flashedRow_ = row;
+        row.Stroke = new SolidColorBrush(ResourceColor("WarnColor", "#E2A336"));
+        row.StrokeThickness = 2;
+
+        try
+        {
+            await Task.Delay(1400, token.Token);
+            if (ReferenceEquals(flashedRow_, row))
+            {
+                RestoreRow(row);
+                flashedRow_ = null;
+            }
+        }
+        catch (TaskCanceledException)
+        {
+            // A newer tap (or leaving the page) owns the ring now.
+        }
+        finally
+        {
+            if (ReferenceEquals(flashToken_, token))
+            {
+                flashToken_ = null;
+            }
+
+            token.Dispose();
+        }
+    }
+
+    private static void RestoreRow(Border row)
+    {
+        row.Stroke = new SolidColorBrush(ResourceColor("BorderColor", "#2C3633"));
+        row.StrokeThickness = 1;
+    }
+
+    private static Color ResourceColor(string key, string fallback)
+    {
+        if (Application.Current is { } app &&
+            app.Resources.TryGetValue(key, out object? value) &&
+            value is Color color)
+        {
+            return color;
+        }
+
+        return Color.FromArgb(fallback);
     }
 
     /// <summary>The bridge whose block this page shows (the active one).</summary>

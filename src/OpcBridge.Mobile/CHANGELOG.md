@@ -30,6 +30,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   **should 1 · actual 0** line as a tag contact, instead of an unnamed row — and relay rows no
   longer look themselves up in the tag cache, because they read the bridge's relay state, not a
   tag.
+- The block screen carries the Result tab's **Checkpoints** rail: the network's parents — the
+  AND / OR / XOR / NOT groups and the function blocks that own the checks below them; a coil
+  publishes the result and a leaf contact is already named in the block's reason — appear once,
+  in the network's own order, as state-coloured dots (green fulfilled, red open, muted no data)
+  with a met/total count in the summary's colour. Only the dot is drawn; the parent's name and
+  state are its accessible label, so a long interlock keeps every checkpoint in one wrapping
+  strip. Tapping a dot scrolls its evaluated row to the middle of the screen and rings it for a
+  moment, so "which group is open" and "where is it" are the same tap. Sequence blocks get the
+  rail over their step cards too.
+- The block screen's header shows the block's **kind** and its **output-tag feedback** (`OUTPUT
+  PUMP1_RUN · VERIFIED` / `MISMATCH` / `UNVERIFIED`), so an interlock that agrees with itself but
+  not with the plant reads apart; a sequence also shows its step progress (`1/2 steps · Open
+  valve`).
+- Each block card on the Logic tab **folds on its own chevron** to its name and state row, so a
+  long list reads as a compact index while the blocks being worked on stay open; the fold follows
+  the card through live state pushes and is remembered while the app is open.
+
+### Fixed
+
+- **Adding a bridge no longer stops the app when the address's socket closes.** Android's HTTP
+  handler reports a connection closed before any response as `WebException: Socket closed`; the
+  probe's failure filter did not include it, so the exception escaped the async **Add & Connect**
+  handler and took the process down. The probe now treats a web, I/O or socket failure as "not a
+  bridge" and keeps sweeping, and the Settings actions report a failure on the page instead of
+  letting it reach the process.
+- **The pages sit on the plant-floor dark ground again.** The Shell page fell back to the
+  platform's light window background, so the Logic list, Settings and block screens drew their
+  light headings on a white page — nearly invisible — while the cards kept the dark palette.
+  Each page now sets `PageBg` itself, so the whole surface reads in the palette it was designed
+  for.
 
 ## [1.9.0] - 2026-10-11
 

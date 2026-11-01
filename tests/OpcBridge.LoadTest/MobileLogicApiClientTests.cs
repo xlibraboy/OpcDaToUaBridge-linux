@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Net.Sockets;
 using OpcBridge.Client;
 using OpcBridge.Mobile.Core;
 using Xunit;
@@ -120,6 +121,50 @@ public sealed class MobileLogicApiClientTests
         Assert.False(note.Ok);
         Assert.False(write.Ok);
         Assert.NotNull(write.Error);
+    }
+
+    [Fact]
+    public async Task Client_ReportsAClosedSocketAsAFailedResult()
+    {
+        // Android's handler reports "Socket closed" as WebException where the desktop wraps it
+        // as HttpRequestException; either way the page must get a failed result, not a crash.
+        TcpListener listener = new(IPAddress.Loopback, 0);
+        listener.Start();
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        try
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    using TcpClient client = await listener.AcceptTcpClientAsync();
+                    byte[] request = new byte[1024];
+                    await client.GetStream().ReadAsync(request);
+                    client.Client.LingerState = new LingerOption(true, 0);
+                    client.Close();
+                }
+                catch (Exception)
+                {
+                    // Listener stopped with the test.
+                }
+            });
+
+            using LogicApiClient client = new();
+            client.SetBaseAddress($"http://127.0.0.1:{port}");
+
+            MobileResult<LogicStateSnapshot> state = await client.GetLogicStateAsync(CancellationToken.None);
+            HmiWriteResponse write = await client.WriteAsync(
+                new HmiWriteRequest { SourceId = "sim", ItemId = "Permit", Value = true },
+                CancellationToken.None);
+
+            Assert.False(state.Ok);
+            Assert.False(write.Ok);
+            Assert.NotNull(write.Error);
+        }
+        finally
+        {
+            listener.Stop();
+        }
     }
 
     [Fact]

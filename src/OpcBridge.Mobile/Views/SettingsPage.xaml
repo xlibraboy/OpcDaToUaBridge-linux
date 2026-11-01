@@ -2,7 +2,8 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="OpcBridge.Mobile.Views.SettingsPage"
-             Title="Settings">
+             Title="Settings"
+             BackgroundColor="{StaticResource PageBg}">
     <ScrollView>
         <VerticalStackLayout Padding="12" Spacing="12">
             <Label Text="Bridges" FontSize="18" FontAttributes="Bold" />

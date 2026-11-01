@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Sockets;
 using System.Text;
 using OpcBridge.Mobile.Core;
 using Xunit;
@@ -99,6 +100,40 @@ public sealed class BridgeProbeTests
             string? found = await BridgeProbe.FindAsync($"127.0.0.1:{port}", timeoutMs: 500);
 
             Assert.Equal($"http://127.0.0.1:{port}", found);
+        }
+        finally
+        {
+            listener.Stop();
+        }
+    }
+
+    [Fact]
+    public async Task IsBridgeAsync_TreatsAClosedSocketAsNotABridge()
+    {
+        TcpListener listener = new(IPAddress.Loopback, 0);
+        listener.Start();
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        try
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    using TcpClient client = await listener.AcceptTcpClientAsync();
+                    // Read the request, then abort before any response: Android's HTTP handler
+                    // reports this as WebException("Socket closed"), not HttpRequestException.
+                    byte[] request = new byte[1024];
+                    await client.GetStream().ReadAsync(request);
+                    client.Client.LingerState = new LingerOption(true, 0);
+                    client.Close();
+                }
+                catch (Exception)
+                {
+                    // Listener stopped with the test.
+                }
+            });
+
+            Assert.False(await BridgeProbe.IsBridgeAsync($"http://127.0.0.1:{port}", timeoutMs: 500));
         }
         finally
         {

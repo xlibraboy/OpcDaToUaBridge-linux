@@ -22,6 +22,12 @@ public sealed partial class LogicBlockCardViewModel : ObservableObject
     [ObservableProperty] private string? _reason;
     [ObservableProperty] private string _progressText = string.Empty;
 
+    /// <summary>
+    /// True while the card is folded to its name and state row. Every card folds on its own, so a
+    /// long list reads as a compact index while the rows being worked on stay open.
+    /// </summary>
+    [ObservableProperty] private bool _isFolded;
+
     public LogicBlockCardViewModel(LogicBlockDto block)
     {
         block_ = block;
@@ -29,6 +35,25 @@ public sealed partial class LogicBlockCardViewModel : ObservableObject
     }
 
     public Guid Id => block_.Id;
+
+    /// <summary>"▾" / "▸" — the fold control reports its own state without colour.</summary>
+    public string FoldChevron => IsFolded ? "▸" : "▾";
+
+    /// <summary>True while the card's details (kind, area, tags, reason, progress) are shown.</summary>
+    public bool ShowDetails => !IsFolded;
+
+    /// <summary>"Collapse Line 01 Start" — the fold control's accessible label.</summary>
+    public string FoldLabel => (IsFolded ? "Expand " : "Collapse ") + Name;
+
+    [RelayCommand]
+    private void ToggleFold() => IsFolded = !IsFolded;
+
+    partial void OnIsFoldedChanged(bool value)
+    {
+        OnPropertyChanged(nameof(FoldChevron));
+        OnPropertyChanged(nameof(ShowDetails));
+        OnPropertyChanged(nameof(FoldLabel));
+    }
 
     /// <summary>The interlock group the block was authored under ("" = ungrouped).</summary>
     public string Group { get; private set; } = string.Empty;
@@ -64,6 +89,7 @@ public sealed partial class LogicBlockCardViewModel : ObservableObject
         OnPropertyChanged(nameof(Enabled));
         OnPropertyChanged(nameof(GroupLabel));
         OnPropertyChanged(nameof(HasArea));
+        OnPropertyChanged(nameof(FoldLabel));
     }
 
     public void ApplyState(LogicBlockStateDto? state)

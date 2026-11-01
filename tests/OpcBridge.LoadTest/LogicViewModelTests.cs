@@ -366,6 +366,48 @@ public sealed class LogicOverviewViewModelTests
     }
 
     [Fact]
+    public void BlockCards_FoldToTheirNameAndStateOnTheirOwn()
+    {
+        LogicOverviewViewModel vm = new();
+        LogicBlockDto first = Block("Line 01 Start", conditions: Condition());
+        LogicBlockDto second = Block("Line 02 Start", conditions: Condition());
+        vm.ApplyDefinitions(new[] { first, second });
+        vm.ApplyState(new LogicStateSnapshot
+        {
+            Blocks = { State(first.Id, LogicBlockStates.Blocked, "permit missing"), State(second.Id, LogicBlockStates.Ready) }
+        });
+
+        LogicBlockCardViewModel card = vm.Blocks.Single(candidate => candidate.Id == first.Id);
+        Assert.False(card.IsFolded);
+        Assert.True(card.ShowDetails);
+        Assert.Equal("▾", card.FoldChevron);
+
+        // Folded, the card is its name and its state; the details are hidden, not rebuilt.
+        card.ToggleFoldCommand.Execute(null);
+        Assert.True(card.IsFolded);
+        Assert.False(card.ShowDetails);
+        Assert.Equal("▸", card.FoldChevron);
+        Assert.Equal("Expand Line 01 Start", card.FoldLabel);
+        Assert.Equal("BLOCKED", card.StateLabel);
+
+        // A state push leaves the fold (and the card) where the operator put it.
+        vm.ApplyState(new LogicStateSnapshot
+        {
+            Blocks = { State(first.Id, LogicBlockStates.Ready), State(second.Id, LogicBlockStates.Ready) }
+        });
+
+        Assert.Same(card, vm.Blocks.Single(candidate => candidate.Id == first.Id));
+        Assert.True(card.IsFolded);
+        Assert.False(vm.Blocks.Single(candidate => candidate.Id == second.Id).IsFolded);
+        Assert.Equal("READY", card.StateLabel);
+
+        card.ToggleFoldCommand.Execute(null);
+        Assert.False(card.IsFolded);
+        Assert.True(card.ShowDetails);
+        Assert.Equal("Collapse Line 01 Start", card.FoldLabel);
+    }
+
+    [Fact]
     public void EmptyMessage_TellsApartNoBlocksFromAFilterThatMatchedNothing()
     {
         LogicOverviewViewModel vm = new();
@@ -916,5 +958,205 @@ public sealed class LogicBlockDetailViewModelTests
         Assert.Equal("START_PB (not assigned)", unassignedRow.TagLabel);
         Assert.False(unassigned.TryResolveTag("START_PB", null, null, out _, out _));
         Assert.Equal(string.Empty, unassignedRow.ValueText);
+    }
+
+    [Fact]
+    public void Checkpoints_ListTheNetworksParentsAsDotsWithAMetCount()
+    {
+        LogicConditionDto local = Condition("Local start PB must be pressed", itemId: "PB1");
+        LogicConditionDto remote = Condition("Remote start PB must be pressed", itemId: "PB2");
+        local.Group = "Start permissive";
+        remote.Group = "Start permissive";
+        LogicConditionDto plain = Condition("Pressure switch PS1 must read 1", itemId: "PS1");
+        LogicBlockDto block = Interlock(local, remote, plain);
+        LogicBlockDetailViewModel vm = new(block, BridgeKey);
+
+        // The AND over the roots and the OR group are the parents; the contacts are leaves.
+        Assert.True(vm.HasCheckpoints);
+        Assert.Equal(2, vm.Checkpoints.Count);
+        Assert.Equal("root AND", vm.Checkpoints[0].Name);
+        Assert.Equal("Start permissive", vm.Checkpoints[1].Name);
+        Assert.Equal("0/2", vm.CheckpointSummary);
+        Assert.Equal(LogicConditionStates.Unknown, vm.CheckpointSummaryKey);
+        Assert.All(vm.Checkpoints, checkpoint => Assert.Equal("no data", checkpoint.StateWord));
+
+        // One member true satisfies the OR; the AND above it still fails.
+        LogicCheckpointViewModel and = vm.Checkpoints[0];
+        LogicCheckpointViewModel or = vm.Checkpoints[1];
+        vm.ApplyState(new LogicBlockStateDto
+        {
+            Id = block.Id,
+            State = LogicBlockStates.Blocked,
+            Elements =
+            {
+                new LogicElementStateDto { Id = and.Id, Kind = LogicElementKinds.And, Depth = 0, State = LogicConditionStates.False },
+                new LogicElementStateDto { Id = or.Id, Kind = LogicElementKinds.Or, Text = "Start permissive", Depth = 1, State = LogicConditionStates.True },
+                new LogicElementStateDto { Id = local.Id, Kind = LogicElementKinds.Contact, Depth = 2, State = LogicConditionStates.True, Should = "1", Matches = true },
+                new LogicElementStateDto { Id = remote.Id, Kind = LogicElementKinds.Contact, Depth = 2, State = LogicConditionStates.False, Should = "1", Matches = false },
+                new LogicElementStateDto { Id = plain.Id, Kind = LogicElementKinds.Contact, Depth = 1, State = LogicConditionStates.False, Should = "1", Matches = false }
+            }
+        });
+
+        Assert.Equal(LogicConditionStates.False, and.StateKey);
+        Assert.Equal("not fulfilled", and.StateWord);
+        Assert.Equal(LogicConditionStates.True, or.StateKey);
+        Assert.Equal("fulfilled", or.StateWord);
+        Assert.Equal("1/2", vm.CheckpointSummary);
+        Assert.Equal(LogicConditionStates.False, vm.CheckpointSummaryKey);
+        Assert.Equal("1 of 2 checkpoints fulfilled · 1 not fulfilled", vm.CheckpointSummaryDescription);
+        Assert.Contains("root AND — not fulfilled.", and.Description);
+    }
+
+    [Fact]
+    public void Checkpoints_SkipCoilsAndLeaves()
+    {
+        var coil = new LogicElementDto
+        {
+            Id = Guid.NewGuid(),
+            Kind = LogicElementKinds.Coil,
+            Relay = "M01",
+            Inputs =
+            {
+                new LogicElementDto
+                {
+                    Id = Guid.NewGuid(),
+                    Kind = LogicElementKinds.Contact,
+                    Text = "Permit must be given",
+                    Op = LogicConditionOps.On
+                }
+            }
+        };
+        var block = new LogicBlockDto
+        {
+            Id = Guid.NewGuid(),
+            Name = "Relay network",
+            Kind = LogicBlockKinds.Interlock,
+            Elements = { coil }
+        };
+
+        LogicBlockDetailViewModel vm = new(block, BridgeKey);
+
+        // A coil publishes the result rather than checking it, and a contact is already named
+        // in the block's reason.
+        Assert.False(vm.HasCheckpoints);
+        Assert.Empty(vm.Checkpoints);
+        Assert.Empty(vm.CheckpointSummary);
+    }
+
+    [Fact]
+    public void Checkpoints_CoverASequencesStepParentsToo()
+    {
+        LogicConditionDto first = Condition("Permit must be given");
+        LogicConditionDto second = Condition("Valve 01 must be open", itemId: "Valve01");
+        LogicBlockDto sequence = new()
+        {
+            Id = Guid.NewGuid(),
+            Name = "Start-up",
+            Kind = LogicBlockKinds.Sequence,
+            Steps =
+            {
+                new LogicStepDto { Id = Guid.NewGuid(), Name = "Start permit", Conditions = { first, second } },
+                new LogicStepDto { Id = Guid.NewGuid(), Name = "Open valve", Conditions = { Condition("Pump must be running", itemId: "Pump") } }
+            }
+        };
+
+        LogicBlockDetailViewModel vm = new(sequence, BridgeKey);
+
+        // The step with two conditions was expanded into an AND; a single-condition step is
+        // one contact and therefore no checkpoint.
+        LogicCheckpointViewModel checkpoint = Assert.Single(vm.Checkpoints);
+        Assert.Equal("root AND", checkpoint.Name);
+        Assert.Equal("0/1", vm.CheckpointSummary);
+    }
+
+    [Fact]
+    public void OutputPill_ShowsTheOutputTagsFeedbackAgainstTheInterlock()
+    {
+        LogicBlockDto block = Interlock(Condition("Permit must be given"));
+        block.OutputTag = "PUMP1_RUN";
+        LogicBlockDetailViewModel vm = new(block, BridgeKey);
+
+        // No evaluation yet: the pill is there, reading as unknown rather than verified.
+        Assert.True(vm.HasOutput);
+        Assert.Equal("OUTPUT PUMP1_RUN · —", vm.OutputText);
+        Assert.Equal(LogicOutputStates.Unknown, vm.OutputKey);
+
+        vm.ApplyState(new LogicBlockStateDto
+        {
+            Id = block.Id,
+            State = LogicBlockStates.Ready,
+            Output = new LogicBlockOutputStateDto
+            {
+                Tag = "PUMP1_RUN",
+                State = LogicOutputStates.Mismatch,
+                Expected = true,
+                Actual = false,
+                ValueText = "off",
+                Reason = "the pump did not start"
+            }
+        });
+
+        Assert.Equal("OUTPUT PUMP1_RUN · MISMATCH", vm.OutputText);
+        Assert.Equal(LogicOutputStates.Mismatch, vm.OutputKey);
+        Assert.Contains("the pump did not start", vm.OutputDescription);
+        Assert.Contains("off", vm.OutputDescription);
+
+        // A block that names no output tag has no pill.
+        LogicBlockDetailViewModel none = new(Interlock(Condition("Permit must be given")), BridgeKey);
+        Assert.False(none.HasOutput);
+        Assert.Equal(string.Empty, none.OutputText);
+    }
+
+    [Fact]
+    public void Header_ReadsASequencesProgress()
+    {
+        Guid stepOne = Guid.NewGuid();
+        Guid stepTwo = Guid.NewGuid();
+        LogicBlockDto sequence = new()
+        {
+            Id = Guid.NewGuid(),
+            Name = "Start-up",
+            Kind = LogicBlockKinds.Sequence,
+            Steps =
+            {
+                new LogicStepDto { Id = stepOne, Name = "Start permit" },
+                new LogicStepDto { Id = stepTwo, Name = "Open valve" }
+            }
+        };
+
+        LogicBlockDetailViewModel vm = new(sequence, BridgeKey);
+        Assert.Equal("0/2 steps", vm.ProgressText);
+        Assert.True(vm.ShowProgress);
+
+        vm.ApplyState(new LogicBlockStateDto
+        {
+            Id = sequence.Id,
+            State = LogicBlockStates.Blocked,
+            Steps =
+            {
+                new LogicStepStateDto { Id = stepOne, State = LogicStepStates.Done },
+                new LogicStepStateDto { Id = stepTwo, State = LogicStepStates.Current, Reason = "Valve 01 must be open" }
+            }
+        });
+
+        Assert.Equal("1/2 steps · Open valve", vm.ProgressText);
+
+        vm.ApplyState(new LogicBlockStateDto
+        {
+            Id = sequence.Id,
+            State = LogicBlockStates.Ready,
+            Steps =
+            {
+                new LogicStepStateDto { Id = stepOne, State = LogicStepStates.Done },
+                new LogicStepStateDto { Id = stepTwo, State = LogicStepStates.Done }
+            }
+        });
+
+        Assert.Equal("complete", vm.ProgressText);
+
+        // An interlock carries no step progress.
+        LogicBlockDetailViewModel interlock = new(Interlock(Condition("Permit must be given")), BridgeKey);
+        Assert.Equal(string.Empty, interlock.ProgressText);
+        Assert.False(interlock.ShowProgress);
     }
 }

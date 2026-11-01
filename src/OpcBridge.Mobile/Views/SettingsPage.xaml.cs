@@ -69,6 +69,12 @@ public partial class SettingsPage : ContentPage
             nameEntry.Text = string.Empty;
             Repaint();
         }
+        catch (Exception ex)
+        {
+            // An async event handler must never let a network failure reach the process: the
+            // operator gets the address's answer here instead of the app disappearing.
+            connectionLabel.Text = "✗ could not reach " + host + " · " + ex.Message;
+        }
         finally
         {
             connectButton.IsEnabled = true;
@@ -82,8 +88,15 @@ public partial class SettingsPage : ContentPage
             return;
         }
 
-        await coordinator_.ActivateAsync(connection, CancellationToken.None);
-        Repaint();
+        try
+        {
+            await coordinator_.ActivateAsync(connection, CancellationToken.None);
+            Repaint();
+        }
+        catch (Exception ex)
+        {
+            connectionLabel.Text = "✗ could not use " + connection.DisplayName + " · " + ex.Message;
+        }
     }
 
     private async void OnRemoveBridgeClicked(object? sender, EventArgs e)

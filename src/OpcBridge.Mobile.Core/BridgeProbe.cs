@@ -1,5 +1,7 @@
 namespace OpcBridge.Mobile.Core;
 
+using System.Net;
+using System.Net.Sockets;
 using System.Text.Json;
 using OpcBridge.Core;
 
@@ -85,7 +87,13 @@ public static class BridgeProbe
             return document.RootElement.ValueKind == JsonValueKind.Object
                 && document.RootElement.TryGetProperty("authEnabled", out _);
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or OperationCanceledException or JsonException)
+        // A failed probe is an answer (not a bridge), never an exception: Android's HTTP handler
+        // reports a socket closed before the response arrives as WebException, while the desktop
+        // transport wraps it as HttpRequestException. Both — and an I/O or socket failure — mean
+        // the address is not a reachable bridge, so the sweep moves on instead of failing the add.
+        catch (Exception ex) when (
+            ex is HttpRequestException or WebException or IOException or SocketException
+                or TaskCanceledException or OperationCanceledException or JsonException)
         {
             return false;
         }

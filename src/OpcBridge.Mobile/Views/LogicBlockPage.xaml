@@ -2,13 +2,16 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="OpcBridge.Mobile.Views.LogicBlockPage"
-             Title="Logic block">
+             Title="Logic block"
+             BackgroundColor="{StaticResource PageBg}">
     <ContentPage.Resources>
         <!-- One element of the IEC network: a contact, a gate or a function block. The row indents
-             by its depth, so the tree reads without extra glyphs. -->
+             by its depth, so the tree reads without extra glyphs. The page keeps the row's view so
+             a checkpoint dot can scroll to it and ring it. -->
         <DataTemplate x:Key="ElementRow">
             <Border Margin="0,0,0,6" Padding="10" StrokeThickness="1"
-                    Stroke="{StaticResource BorderColor}" BackgroundColor="{StaticResource SurfaceColor}">
+                    Stroke="{StaticResource BorderColor}" BackgroundColor="{StaticResource SurfaceColor}"
+                    Loaded="OnElementRowLoaded" Unloaded="OnElementRowUnloaded">
                 <Grid ColumnDefinitions="Auto,*">
                     <BoxView Grid.Column="0" WidthRequest="{Binding IndentWidth}" HeightRequest="1" Color="Transparent" />
                     <Grid Grid.Column="1" ColumnDefinitions="26,*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto" ColumnSpacing="6">
@@ -40,14 +43,61 @@
         </DataTemplate>
     </ContentPage.Resources>
 
-    <ScrollView>
+    <ScrollView x:Name="pageScroll">
         <VerticalStackLayout Padding="12" Spacing="10">
-            <Label x:Name="titleLabel" FontSize="22" FontAttributes="Bold" />
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                <Label x:Name="titleLabel" FontSize="22" FontAttributes="Bold" />
+                <Label Grid.Column="1" Text="{Binding KindLabel}" FontSize="12"
+                       TextColor="{StaticResource MutedColor}" VerticalOptions="Center" />
+            </Grid>
             <Label x:Name="offlineLabel" FontSize="12" TextColor="{StaticResource WarnColor}" IsVisible="false" />
-            <Label x:Name="stateLabel" FontSize="16" FontAttributes="Bold" />
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                <Label x:Name="stateLabel" FontSize="16" FontAttributes="Bold" />
+                <!-- The output tag's feedback: whether the live output agrees with the interlock. -->
+                <Label Grid.Column="1" Text="{Binding OutputText}" IsVisible="{Binding HasOutput}"
+                       FontSize="12" FontAttributes="Bold" VerticalOptions="Center" LineBreakMode="TailTruncation"
+                       TextColor="{Binding OutputKey, Converter={StaticResource StateColor}}"
+                       SemanticProperties.Description="{Binding OutputDescription}" />
+            </Grid>
             <Label x:Name="blockedLabel" FontSize="13" TextColor="{StaticResource BadColor}" />
             <Label x:Name="descriptionLabel" FontSize="13" TextColor="{StaticResource MutedColor}" />
+            <Label Text="{Binding ProgressText}" IsVisible="{Binding ShowProgress}" FontSize="12"
+                   TextColor="{StaticResource WarnColor}" />
             <Label x:Name="messageLabel" FontSize="13" TextColor="{StaticResource WarnColor}" />
+
+            <!-- The network's parents as one strip of state dots, in the network's own order.
+                 Only the dot is drawn; the parent's name is its accessible label, and tapping a
+                 dot scrolls its row into view and rings it. -->
+            <Border IsVisible="{Binding HasCheckpoints}" Padding="10,8" StrokeThickness="1"
+                    Stroke="{StaticResource BorderColor}" BackgroundColor="{StaticResource SurfaceColor}">
+                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                    <VerticalStackLayout Spacing="3" VerticalOptions="Center">
+                        <Label Text="CHECKPOINTS" FontSize="10" TextColor="{StaticResource MutedColor}" />
+                        <Border Padding="4,0" StrokeThickness="1" HorizontalOptions="Start"
+                                Stroke="{Binding CheckpointSummaryKey, Converter={StaticResource StateColor}, ConverterParameter=checkpoint}">
+                            <Label Text="{Binding CheckpointSummary}" FontSize="11" FontAttributes="Bold"
+                                   TextColor="{Binding CheckpointSummaryKey, Converter={StaticResource StateColor}, ConverterParameter=checkpoint}"
+                                   SemanticProperties.Description="{Binding CheckpointSummaryDescription}" />
+                        </Border>
+                    </VerticalStackLayout>
+                    <FlexLayout Grid.Column="1" Wrap="Wrap" Direction="Row" AlignItems="Center"
+                                BindableLayout.ItemsSource="{Binding Checkpoints}">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate>
+                                <Border Margin="0,2,8,2" WidthRequest="24" HeightRequest="24" StrokeThickness="1"
+                                        Stroke="{StaticResource BorderColor}" StrokeShape="RoundRectangle 12"
+                                        BackgroundColor="{Binding StateKey, Converter={StaticResource StateColor}, ConverterParameter=checkpoint}"
+                                        SemanticProperties.Description="{Binding Description}"
+                                        SemanticProperties.Hint="Go to this parent">
+                                    <Border.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnCheckpointTapped" CommandParameter="{Binding .}" />
+                                    </Border.GestureRecognizers>
+                                </Border>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </FlexLayout>
+                </Grid>
+            </Border>
 
             <Label Text="Network" FontAttributes="Bold" IsVisible="{Binding ShowNetwork}" />
             <VerticalStackLayout IsVisible="{Binding ShowNetwork}" Spacing="0"

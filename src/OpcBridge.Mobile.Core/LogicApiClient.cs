@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Net.Sockets;
 using System.Text.Json;
 using OpcBridge.Client;
 
@@ -188,10 +189,14 @@ public sealed class LogicApiClient : IDisposable
     private static bool IsTransport(Exception exception, CancellationToken cancellationToken)
     {
         // A cancellation the caller asked for must propagate; everything else is a failed call.
+        // Android's HTTP handler reports a socket closed before any response as WebException,
+        // where the desktop transport wraps it as HttpRequestException — both are transport
+        // failures the page renders, never an exception that reaches the process.
         return exception switch
         {
             OperationCanceledException when cancellationToken.IsCancellationRequested => false,
-            HttpRequestException or TaskCanceledException or OperationCanceledException or JsonException => true,
+            HttpRequestException or WebException or IOException or SocketException
+                or TaskCanceledException or OperationCanceledException or JsonException => true,
             _ => false
         };
     }
