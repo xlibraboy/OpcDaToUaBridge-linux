@@ -6,7 +6,7 @@
              Shell.NavBarIsVisible="False"
              BackgroundColor="{StaticResource PageBg}">
     <ScrollView>
-        <VerticalStackLayout Padding="20,12,20,20" Spacing="14">
+        <VerticalStackLayout Padding="20,16,20,20" Spacing="14">
             <HorizontalStackLayout Spacing="12" VerticalOptions="Center">
                 <Border Style="{StaticResource LogoBorder}">
                     <Label Text="OB"
@@ -24,31 +24,72 @@
 
             <Border Style="{StaticResource CardBorder}">
                 <VerticalStackLayout Spacing="10">
-                    <Label Text="BRIDGE" Style="{StaticResource UppercaseLabel}" />
-                    <Border Style="{StaticResource InputBorder}">
-                        <Grid>
-                            <Picker x:Name="bridgePicker"
-                                    Title="Saved bridges"
-                                    BackgroundColor="Transparent"
-                                    SelectedIndexChanged="OnBridgePicked" />
-                            <Label Text="▾"
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <Label Text="BRIDGE" Style="{StaticResource UppercaseLabel}" VerticalOptions="Center" />
+                        <HorizontalStackLayout Grid.Column="1" Spacing="5" VerticalOptions="Center">
+                            <Label x:Name="bridgeStateDot"
+                                   Text="●"
+                                   FontSize="7"
+                                   TextColor="{StaticResource MutedColor}"
+                                   VerticalOptions="Center" />
+                            <Label x:Name="bridgeStateLabel"
+                                   Text="no bridge"
+                                   FontSize="9.5"
+                                   FontAttributes="Bold"
+                                   TextColor="{StaticResource MutedColor}" />
+                        </HorizontalStackLayout>
+                    </Grid>
+                    <Border Style="{StaticResource FieldBorder}">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnBridgeRowTapped" />
+                        </Border.GestureRecognizers>
+                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9" Padding="12,0">
+                            <Label Text="◈"
+                                   FontSize="15"
+                                   TextColor="{StaticResource MutedColor}"
+                                   VerticalOptions="Center" />
+                            <Label x:Name="bridgePickerLabel"
+                                   Grid.Column="1"
+                                   Text="Saved bridges"
+                                   FontSize="13"
+                                   TextColor="{StaticResource MutedColor}"
+                                   MaxLines="1"
+                                   LineBreakMode="TailTruncation"
+                                   VerticalOptions="Center" />
+                            <Label Grid.Column="2"
+                                   Text="▾"
                                    FontSize="12"
                                    TextColor="{StaticResource MutedColor}"
-                                   HorizontalOptions="End"
-                                   VerticalOptions="Center"
-                                   Margin="0,0,12,0"
-                                   InputTransparent="True" />
+                                   VerticalOptions="Center" />
                         </Grid>
                     </Border>
-                    <Border Style="{StaticResource InputBorder}">
-                        <Entry x:Name="hostEntry"
-                               BackgroundColor="Transparent"
-                               Placeholder="10.3.1.50 or http://10.3.1.50:8080" />
+                    <Border Style="{StaticResource FieldBorder}">
+                        <Grid ColumnDefinitions="Auto,*">
+                            <Label Text="⌂"
+                                   FontSize="15"
+                                   TextColor="{StaticResource MutedColor}"
+                                   Margin="12,0,9,0"
+                                   VerticalOptions="Center" />
+                            <Entry x:Name="hostEntry"
+                                   Grid.Column="1"
+                                   Margin="0,0,12,0"
+                                   BackgroundColor="Transparent"
+                                   Placeholder="10.3.1.50 or http://10.3.1.50:8080" />
+                        </Grid>
                     </Border>
-                    <Border Style="{StaticResource InputBorder}">
-                        <Entry x:Name="nameEntry"
-                               BackgroundColor="Transparent"
-                               Placeholder="Name (optional, e.g. Line 1)" />
+                    <Border Style="{StaticResource FieldBorder}">
+                        <Grid ColumnDefinitions="Auto,*">
+                            <Label Text="✎"
+                                   FontSize="14"
+                                   TextColor="{StaticResource MutedColor}"
+                                   Margin="12,0,9,0"
+                                   VerticalOptions="Center" />
+                            <Entry x:Name="nameEntry"
+                                   Grid.Column="1"
+                                   Margin="0,0,12,0"
+                                   BackgroundColor="Transparent"
+                                   Placeholder="Name (optional, e.g. Line 1)" />
+                        </Grid>
                     </Border>
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                         <Button x:Name="connectButton"
@@ -73,7 +114,8 @@
                                            VerticalOptions="Center" />
                         <Label Grid.Column="1"
                                x:Name="statusLabel"
-                               FontSize="11"
+                               FontFamily="monospace"
+                               FontSize="9.5"
                                TextColor="{StaticResource MutedColor}"
                                LineBreakMode="WordWrap" />
                     </Grid>
@@ -86,16 +128,34 @@
                     <Label Text="Asked for a bridge account every time the viewer starts."
                            Style="{StaticResource MetaLabel}"
                            LineBreakMode="WordWrap" />
-                    <Border Style="{StaticResource InputBorder}">
-                        <Entry x:Name="userEntry"
-                               BackgroundColor="Transparent"
-                               Placeholder="Username" />
+                    <Border Style="{StaticResource FieldBorder}">
+                        <Grid ColumnDefinitions="Auto,*">
+                            <Label Text="◉"
+                                   FontSize="15"
+                                   TextColor="{StaticResource MutedColor}"
+                                   Margin="12,0,9,0"
+                                   VerticalOptions="Center" />
+                            <Entry x:Name="userEntry"
+                                   Grid.Column="1"
+                                   Margin="0,0,12,0"
+                                   BackgroundColor="Transparent"
+                                   Placeholder="Username" />
+                        </Grid>
                     </Border>
-                    <Border Style="{StaticResource InputBorder}">
-                        <Entry x:Name="passwordEntry"
-                               BackgroundColor="Transparent"
-                               Placeholder="Password"
-                               IsPassword="True" />
+                    <Border Style="{StaticResource FieldBorder}">
+                        <Grid ColumnDefinitions="Auto,*">
+                            <Label Text="•••"
+                                   FontSize="9"
+                                   TextColor="{StaticResource MutedColor}"
+                                   Margin="12,0,9,0"
+                                   VerticalOptions="Center" />
+                            <Entry x:Name="passwordEntry"
+                                   Grid.Column="1"
+                                   Margin="0,0,12,0"
+                                   BackgroundColor="Transparent"
+                                   Placeholder="Password"
+                                   IsPassword="True" />
+                        </Grid>
                     </Border>
                     <Button x:Name="signInButton"
                             Text="Sign in"
@@ -108,11 +168,18 @@
                 </VerticalStackLayout>
             </Border>
 
-            <Label Text="One live bridge at a time · last known data stays readable offline."
-                   FontSize="10"
-                   TextColor="{StaticResource MutedColor}"
-                   HorizontalTextAlignment="Center"
-                   Margin="0,8,0,0" />
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6" Margin="0,4,0,0">
+                <Label Text="◉"
+                       FontSize="10"
+                       TextColor="{StaticResource MutedColor}"
+                       VerticalOptions="Start"
+                       Margin="0,1,0,0" />
+                <Label Grid.Column="1"
+                       Text="One live bridge at a time · last known data stays readable offline"
+                       FontSize="9.5"
+                       TextColor="{StaticResource MutedColor}"
+                       LineBreakMode="WordWrap" />
+            </Grid>
         </VerticalStackLayout>
     </ScrollView>
 </ContentPage>

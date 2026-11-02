@@ -7,87 +7,131 @@
              Shell.NavBarIsVisible="False"
              BackgroundColor="{StaticResource PageBg}">
     <ContentPage.Resources>
-        <DataTemplate x:Key="FilterChip">
-            <Button Text="{Binding Label}" Clicked="OnFilterChipClicked" FontSize="10" Padding="10,4" CornerRadius="9"
-                    HeightRequest="26" MinimumHeightRequest="26"
-                    BackgroundColor="{Binding IsSelected, Converter={StaticResource ChipColor}}"
-                    TextColor="{Binding IsSelected, Converter={StaticResource ChipColor}, ConverterParameter=text}" />
-        </DataTemplate>
+        <!-- V2 segmented kind filter: one rail, the chosen segment raised on its own surface. -->
+        <Style x:Key="SegmentButton" TargetType="Button">
+            <Setter Property="BackgroundColor" Value="Transparent" />
+            <Setter Property="TextColor" Value="{StaticResource MutedColor}" />
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HeightRequest" Value="30" />
+            <Setter Property="MinimumHeightRequest" Value="30" />
+            <Style.Triggers>
+                <DataTrigger TargetType="Button" Binding="{Binding IsSelected}" Value="True">
+                    <Setter Property="BackgroundColor" Value="{StaticResource SurfaceAltColor}" />
+                    <Setter Property="TextColor" Value="{StaticResource TextColor}" />
+                    <Setter Property="FontAttributes" Value="Bold" />
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
     </ContentPage.Resources>
 
     <Grid RowDefinitions="Auto,*" Padding="16,8,16,0" RowSpacing="12">
-        <VerticalStackLayout Grid.Row="0" Spacing="10">
-            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
-                <VerticalStackLayout Spacing="2">
+        <VerticalStackLayout Grid.Row="0" Spacing="12">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10" Padding="2,0,4,0">
+                <VerticalStackLayout Spacing="3">
                     <Label Text="Plant elements" FontSize="22" FontAttributes="Bold" />
-                    <Label x:Name="connectionLabel"
-                           FontSize="10.5"
-                           TextColor="{StaticResource MutedColor}"
-                           LineBreakMode="TailTruncation" />
+                    <HorizontalStackLayout Spacing="5">
+                        <Label x:Name="connectionDot"
+                               Text="●"
+                               FontSize="7"
+                               TextColor="{StaticResource MutedColor}"
+                               VerticalOptions="Center" />
+                        <Label x:Name="connectionLabel"
+                               FontSize="10.5"
+                               TextColor="{StaticResource MutedColor}"
+                               MaxLines="1"
+                               LineBreakMode="TailTruncation"
+                               VerticalOptions="Center" />
+                    </HorizontalStackLayout>
                 </VerticalStackLayout>
-                <Button x:Name="refreshButton"
-                        Grid.Column="1"
-                        Text="Refresh"
-                        Style="{StaticResource CompactButton}"
-                        Clicked="OnRefreshClicked"
-                        VerticalOptions="Center" />
-                <Button x:Name="syncButton"
-                        Grid.Column="2"
-                        Text="Sync now"
-                        Style="{StaticResource CompactButton}"
-                        Clicked="OnSyncNowClicked"
-                        VerticalOptions="Center" />
+                <HorizontalStackLayout Grid.Column="1" Spacing="8" VerticalOptions="Center">
+                    <Button x:Name="refreshButton"
+                            Text="↻"
+                            Style="{StaticResource IconButton}"
+                            Clicked="OnRefreshClicked"
+                            SemanticProperties.Description="Refresh elements" />
+                    <Button x:Name="syncButton"
+                            Text="⇅"
+                            Style="{StaticResource IconButton}"
+                            Clicked="OnSyncNowClicked"
+                            SemanticProperties.Description="Sync now" />
+                </HorizontalStackLayout>
             </Grid>
 
-            <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8" VerticalOptions="Center">
-                <Border Grid.Column="0" Style="{StaticResource InputBorder}"
-                        WidthRequest="152" VerticalOptions="Center">
-                    <Grid>
-                        <Picker x:Name="bridgePicker"
-                                Title="Bridge"
-                                BackgroundColor="Transparent"
-                                SelectedIndexChanged="OnBridgePicked" />
-                        <Label Text="▾"
-                               FontSize="12"
-                               TextColor="{StaticResource MutedColor}"
-                               HorizontalOptions="End"
-                               VerticalOptions="Center"
-                               Margin="0,0,10,0"
-                               InputTransparent="True" />
-                    </Grid>
-                </Border>
-                <views:SyncBadgeView x:Name="syncBadge" Grid.Column="2" VerticalOptions="Center">
-                    <views:SyncBadgeView.GestureRecognizers>
-                        <TapGestureRecognizer Tapped="OnSyncTapped" />
-                    </views:SyncBadgeView.GestureRecognizers>
-                </views:SyncBadgeView>
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="6" VerticalOptions="Center">
+                <HorizontalStackLayout Spacing="5" VerticalOptions="Center">
+                    <Label x:Name="sourceDot"
+                           Text="●"
+                           FontSize="7"
+                           TextColor="{StaticResource MutedColor}"
+                           VerticalOptions="Center" />
+                    <Label x:Name="sourceLabel"
+                           FontFamily="monospace"
+                           FontSize="9"
+                           FontAttributes="Bold"
+                           TextColor="{StaticResource MutedColor}"
+                           TextTransform="Uppercase"
+                           MaxLines="1"
+                           LineBreakMode="TailTruncation"
+                           VerticalOptions="Center" />
+                </HorizontalStackLayout>
+                <Label Grid.Column="2"
+                       x:Name="summaryLabel"
+                       FontSize="9.5"
+                       TextColor="{StaticResource MutedColor}"
+                       VerticalOptions="Center" />
+                <Label Grid.Column="3"
+                       Text="·"
+                       FontSize="9"
+                       TextColor="{StaticResource MutedColor}"
+                       VerticalOptions="Center" />
                 <views:SyncBadgeView x:Name="latencyBadge"
-                                     Grid.Column="3"
+                                     Grid.Column="4"
                                      Uppercase="False"
                                      Hint=""
                                      VerticalOptions="Center" />
             </Grid>
 
-            <Border Style="{StaticResource SubtleBorder}">
-                <VerticalStackLayout Spacing="2">
-                    <Label x:Name="summaryLabel" FontSize="12" FontAttributes="Bold" />
-                    <Label x:Name="sourceLabel" FontFamily="monospace" FontSize="10"
-                           TextColor="{StaticResource MutedColor}" />
-                    <Label x:Name="filterLabel"
-                           FontSize="10.5"
+            <Border Style="{StaticResource SearchBorder}">
+                <Grid ColumnDefinitions="Auto,*">
+                    <Label Text="⌕"
+                           FontSize="16"
                            TextColor="{StaticResource MutedColor}"
-                           IsVisible="false" />
-                </VerticalStackLayout>
+                           Margin="12,0,9,0"
+                           VerticalOptions="Center" />
+                    <Entry x:Name="searchEntry"
+                           Grid.Column="1"
+                           Margin="0,0,12,0"
+                           BackgroundColor="Transparent"
+                           Placeholder="Search element, tag or block"
+                           ClearButtonVisibility="WhileEditing"
+                           TextChanged="OnSearchChanged" />
+                </Grid>
             </Border>
 
-            <SearchBar x:Name="searchBar"
-                       Placeholder="Search element, tag or block"
-                       TextChanged="OnSearchChanged" />
+            <Border BackgroundColor="{StaticResource SurfaceColor}"
+                    Stroke="{StaticResource BorderColor}"
+                    StrokeThickness="1"
+                    StrokeShape="RoundRectangle 11"
+                    Padding="3"
+                    HeightRequest="36">
+                <Grid ColumnDefinitions="*,*,*,*" ColumnSpacing="2">
+                    <Button x:Name="kindAllButton" Grid.Column="0" Text="{Binding Label}"
+                            Style="{StaticResource SegmentButton}" Clicked="OnFilterChipClicked" />
+                    <Button x:Name="kindInterlockButton" Grid.Column="1" Text="{Binding Label}"
+                            Style="{StaticResource SegmentButton}" Clicked="OnFilterChipClicked" />
+                    <Button x:Name="kindPermissiveButton" Grid.Column="2" Text="{Binding Label}"
+                            Style="{StaticResource SegmentButton}" Clicked="OnFilterChipClicked" />
+                    <Button x:Name="kindSequenceButton" Grid.Column="3" Text="{Binding Label}"
+                            Style="{StaticResource SegmentButton}" Clicked="OnFilterChipClicked" />
+                </Grid>
+            </Border>
 
-            <ScrollView Orientation="Horizontal" HorizontalScrollBarVisibility="Never">
-                <HorizontalStackLayout x:Name="kindChips" Spacing="6"
-                                       BindableLayout.ItemTemplate="{StaticResource FilterChip}" />
-            </ScrollView>
+            <Label x:Name="filterLabel"
+                   FontSize="10.5"
+                   TextColor="{StaticResource MutedColor}"
+                   IsVisible="false" />
         </VerticalStackLayout>
 
         <RefreshView x:Name="refreshView" Grid.Row="1" Refreshing="OnRefreshing">
@@ -98,32 +142,34 @@
                 </CollectionView.EmptyView>
                 <CollectionView.GroupHeaderTemplate>
                     <DataTemplate>
-                        <Border Margin="0,8,0,6" Style="{StaticResource SubtleBorder}">
+                        <Border Margin="0,8,0,4" Style="{StaticResource GroupCardBorder}">
                             <Border.GestureRecognizers>
                                 <TapGestureRecognizer Command="{Binding ToggleCommand}" />
                             </Border.GestureRecognizers>
-                            <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8">
-                                <Label Text="{Binding Chevron}" FontSize="12"
-                                       VerticalOptions="Center" TextColor="{StaticResource MutedColor}" />
-                                <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Center">
-                                    <Label Text="{Binding Name}" FontAttributes="Bold" FontSize="13" />
-                                    <HorizontalStackLayout Spacing="6">
-                                        <Label Text="{Binding KindLabel}" FontSize="9"
+                            <VerticalStackLayout Spacing="2">
+                                <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto" ColumnSpacing="7">
+                                    <Label Text="{Binding Chevron}" FontSize="11"
+                                           VerticalOptions="Center" TextColor="{StaticResource MutedColor}" />
+                                    <Label Grid.Column="1" Text="{Binding Name}" FontAttributes="Bold" FontSize="13"
+                                           MaxLines="1" LineBreakMode="TailTruncation" VerticalOptions="Center" />
+                                    <Border Grid.Column="2" Style="{StaticResource BadgeBorder}" VerticalOptions="Center">
+                                        <Label Text="{Binding KindLabel}" FontSize="8.5" FontAttributes="Bold"
+                                               FontFamily="monospace"
                                                TextColor="{StaticResource MutedColor}" />
-                                        <Label Text="{Binding Area}" FontSize="9"
-                                               TextColor="{StaticResource MutedColor}"
-                                               IsVisible="{Binding HasArea}" />
-                                        <Label Text="{Binding GroupLabel}" FontSize="9"
-                                               TextColor="{StaticResource MutedColor}"
-                                               IsVisible="{Binding HasGroup}" />
-                                    </HorizontalStackLayout>
-                                </VerticalStackLayout>
-                                <Label Grid.Column="2" Text="{Binding Summary}" FontSize="10.5"
-                                       VerticalOptions="Center" TextColor="{StaticResource MutedColor}" />
-                                <Label Grid.Column="3" Text="{Binding StateLabel}" FontSize="10"
-                                       FontAttributes="Bold" VerticalOptions="Center"
-                                       TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
-                            </Grid>
+                                    </Border>
+                                    <Label Grid.Column="4" Text="{Binding StateLabel}" FontSize="9.5"
+                                           FontAttributes="Bold" VerticalOptions="Center"
+                                           TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
+                                </Grid>
+                                <Grid ColumnDefinitions="17,*,Auto" ColumnSpacing="8">
+                                    <BoxView WidthRequest="17" HeightRequest="1" />
+                                    <Label Grid.Column="1" Text="{Binding Meta}" FontSize="9.5"
+                                           IsVisible="{Binding HasMeta}"
+                                           TextColor="{StaticResource MutedColor}" VerticalOptions="Center" />
+                                    <Label Grid.Column="2" Text="{Binding Summary}" FontSize="9.5"
+                                           TextColor="{StaticResource MutedColor}" VerticalOptions="Center" />
+                                </Grid>
+                            </VerticalStackLayout>
                         </Border>
                     </DataTemplate>
                 </CollectionView.GroupHeaderTemplate>
@@ -133,10 +179,10 @@
                             <views:DepthGuideView Grid.Column="0" WidthRequest="{Binding IndentWidth}"
                                                   Depth="{Binding Depth}" GuideColor="{StaticResource BorderColor}"
                                                   VerticalOptions="Fill" />
-                            <Border Grid.Column="1" Margin="0,0,0,6" Style="{StaticResource ListCardBorder}">
-                                <Grid ColumnDefinitions="26,*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto"
-                                      ColumnSpacing="6">
-                                    <Label Grid.Row="0" Grid.Column="0" Text="{Binding Mark}" FontSize="16"
+                            <Border Grid.Column="1" Margin="0,0,0,6" Style="{StaticResource ElementCardBorder}">
+                                <Grid ColumnDefinitions="16,*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto"
+                                      ColumnSpacing="6" RowSpacing="3">
+                                    <Label Grid.Row="0" Grid.Column="0" Text="{Binding Mark}" FontSize="13"
                                            FontAttributes="Bold" VerticalOptions="Center"
                                            TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
                                     <HorizontalStackLayout Grid.Row="0" Grid.Column="1" Spacing="6"
@@ -144,8 +190,8 @@
                                         <Label Text="{Binding Text}" FontSize="13" FontAttributes="Bold"
                                                MaxLines="1" LineBreakMode="TailTruncation"
                                                VerticalOptions="Center" />
-                                        <Border Style="{StaticResource PillBorder}" VerticalOptions="Center">
-                                            <Label Text="{Binding KindLabel}" FontSize="9" FontAttributes="Bold"
+                                        <Border Style="{StaticResource BadgeBorder}" VerticalOptions="Center">
+                                            <Label Text="{Binding KindLabel}" FontSize="8.5" FontAttributes="Bold"
                                                    FontFamily="monospace"
                                                    TextColor="{StaticResource MutedColor}" />
                                         </Border>
@@ -160,8 +206,10 @@
                                                TextColor="{StaticResource MutedColor}" />
                                     </VerticalStackLayout>
                                     <Label Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding StepLabel}"
-                                           FontSize="10" TextColor="{StaticResource MutedColor}" />
+                                           IsVisible="{Binding HasStep}" FontSize="9.5"
+                                           TextColor="{StaticResource MutedColor}" />
                                     <Label Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding TagLabel}"
+                                           IsVisible="{Binding HasTag}"
                                            FontFamily="monospace" FontSize="9.5"
                                            TextColor="{StaticResource MutedColor}"
                                            LineBreakMode="WordWrap" />

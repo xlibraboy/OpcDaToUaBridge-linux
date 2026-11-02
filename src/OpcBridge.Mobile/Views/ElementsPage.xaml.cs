@@ -8,16 +8,16 @@ public partial class ElementsPage : ContentPage
 {
     private readonly BridgeCoordinator coordinator_;
     private readonly ElementsViewModel elements_ = new();
-    private bool picking_;
 
     public ElementsPage(BridgeCoordinator coordinator)
     {
         InitializeComponent();
         coordinator_ = coordinator;
         elementsView.ItemsSource = elements_.VisibleGroups;
-        BindableLayout.SetItemsSource(kindChips, elements_.KindFilters);
-        bridgePicker.ItemsSource = coordinator_.Bridges;
-        bridgePicker.ItemDisplayBinding = new Binding(nameof(BridgeConnection.DisplayName));
+        kindAllButton.BindingContext = elements_.KindFilters[0];
+        kindInterlockButton.BindingContext = elements_.KindFilters[1];
+        kindPermissiveButton.BindingContext = elements_.KindFilters[2];
+        kindSequenceButton.BindingContext = elements_.KindFilters[3];
         coordinator_.Changed += OnChanged;
         RefreshFilterUi();
     }
@@ -79,15 +79,19 @@ public partial class ElementsPage : ContentPage
 
         summaryLabel.Text = elements_.Summary;
         sourceLabel.Text = elements_.SourceText;
+        Color sourceColor = elements_.ShowingLastKnown
+            ? Color.FromArgb("#E2A336")
+            : Color.FromArgb("#4CC38A");
+        sourceDot.TextColor = sourceColor;
+        sourceLabel.TextColor = sourceColor;
+        connectionDot.TextColor = active is null
+            ? Color.FromArgb("#93A19B")
+            : active.IsOffline ? Color.FromArgb("#E5484D")
+            : active.IsConnected ? Color.FromArgb("#4CC38A")
+            : Color.FromArgb("#E2A336");
         connectionLabel.Text = active is null
             ? "no bridges yet — add one under Settings ▸ Bridges"
-            : active.StatusText + " · " + active.Bridge.Url;
-        syncBadge.Text = active?.SyncText ?? "not connected";
-        syncBadge.StateKey = active?.SyncKey ?? "offline";
-        syncBadge.Description = active is null
-            ? "No bridge selected."
-            : "Sync state: " + active.SyncText + " · " + active.PendingCount + " pending, "
-                + active.FailedCount + " failed. Open Settings for queued items.";
+            : active.StatusText;
         latencyBadge.Text = active?.LatencyText ?? "latency —";
         latencyBadge.StateKey = active?.LatencyKey ?? "unknown";
         latencyBadge.Description = active is null
@@ -95,14 +99,10 @@ public partial class ElementsPage : ContentPage
             : "Network latency to the bridge: " + active.LatencyText + ".";
 
         string search = elements_.SearchText;
-        if (!string.Equals(searchBar.Text, search, StringComparison.Ordinal))
+        if (!string.Equals(searchEntry.Text, search, StringComparison.Ordinal))
         {
-            searchBar.Text = search;
+            searchEntry.Text = search;
         }
-
-        picking_ = true;
-        bridgePicker.SelectedItem = active;
-        picking_ = false;
 
         RefreshFilterUi();
     }
@@ -139,19 +139,6 @@ public partial class ElementsPage : ContentPage
             elements_.SelectKindFilter(chip);
             RefreshFilterUi();
         }
-    }
-
-    private async void OnBridgePicked(object? sender, EventArgs e)
-    {
-        if (picking_ ||
-            bridgePicker.SelectedItem is not BridgeConnection connection ||
-            ReferenceEquals(connection, coordinator_.Active))
-        {
-            return;
-        }
-
-        await coordinator_.ActivateAsync(connection, CancellationToken.None);
-        Repaint();
     }
 
     private async void OnRefreshClicked(object? sender, EventArgs e)

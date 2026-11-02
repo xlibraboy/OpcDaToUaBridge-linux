@@ -42,6 +42,16 @@ public sealed partial class LogicBlockCardViewModel : ObservableObject
     /// <summary>True while the card's details (kind, area, tags, reason, progress) are shown.</summary>
     public bool ShowDetails => !IsFolded;
 
+    /// <summary>True when the card has a reason line to draw.</summary>
+    public bool HasReason => !string.IsNullOrWhiteSpace(Reason);
+
+    /// <summary>True when the card has a sequence progress line to draw.</summary>
+    public bool HasProgress => ProgressText.Length > 0;
+
+    partial void OnReasonChanged(string? value) => OnPropertyChanged(nameof(HasReason));
+
+    partial void OnProgressTextChanged(string value) => OnPropertyChanged(nameof(HasProgress));
+
     /// <summary>"Collapse Line 01 Start" — the fold control's accessible label.</summary>
     public string FoldLabel => (IsFolded ? "Expand " : "Collapse ") + Name;
 
@@ -197,6 +207,9 @@ public sealed class LogicBlockGroupViewModel : ObservableCollection<LogicBlockCa
     private RelayCommand? toggle_command_;
     private bool expanded_ = true;
     private string summary_ = string.Empty;
+    private string count_text_ = string.Empty;
+    private string note_text_ = string.Empty;
+    private string note_key_ = "ok";
     private bool show_header_ = true;
 
     public LogicBlockGroupViewModel(string group, string name)
@@ -261,6 +274,51 @@ public sealed class LogicBlockGroupViewModel : ObservableCollection<LogicBlockCa
             {
                 summary_ = value;
                 OnPropertyChanged(new PropertyChangedEventArgs(nameof(Summary)));
+            }
+        }
+    }
+
+    /// <summary>"3" — the count badge beside the group name.</summary>
+    public string CountText
+    {
+        get => count_text_;
+        internal set
+        {
+            if (!string.Equals(count_text_, value, StringComparison.Ordinal))
+            {
+                count_text_ = value;
+                OnPropertyChanged(new PropertyChangedEventArgs(nameof(CountText)));
+            }
+        }
+    }
+
+    /// <summary>"1 blocked" / "1 no data" — the group's warning note, empty when all is well.</summary>
+    public string NoteText
+    {
+        get => note_text_;
+        internal set
+        {
+            if (!string.Equals(note_text_, value, StringComparison.Ordinal))
+            {
+                note_text_ = value;
+                OnPropertyChanged(new PropertyChangedEventArgs(nameof(NoteText)));
+                OnPropertyChanged(new PropertyChangedEventArgs(nameof(HasNote)));
+            }
+        }
+    }
+
+    public bool HasNote => note_text_.Length > 0;
+
+    /// <summary>State key the note colours by: "blocked", "unknown" or "ok".</summary>
+    public string NoteKey
+    {
+        get => note_key_;
+        internal set
+        {
+            if (!string.Equals(note_key_, value, StringComparison.Ordinal))
+            {
+                note_key_ = value;
+                OnPropertyChanged(new PropertyChangedEventArgs(nameof(NoteKey)));
             }
         }
     }
@@ -387,6 +445,13 @@ public sealed partial class LogicOverviewViewModel : ObservableObject
     public ObservableCollection<LogicFilterChipViewModel> StateFilters { get; } = new();
 
     [ObservableProperty] private string _summary = string.Empty;
+
+    /// <summary>The three headline counts the Logic metric strip shows.</summary>
+    [ObservableProperty] private int _readyCount;
+
+    [ObservableProperty] private int _blockedCount;
+
+    [ObservableProperty] private int _noDataCount;
 
     /// <summary>Free text; every whitespace-separated term must match the name, description or a tag.</summary>
     [ObservableProperty] private string _searchText = string.Empty;
@@ -520,6 +585,9 @@ public sealed partial class LogicOverviewViewModel : ObservableObject
     {
         if (Blocks.Count == 0)
         {
+            ReadyCount = 0;
+            BlockedCount = 0;
+            NoDataCount = 0;
             Summary = "no logic blocks configured";
             return;
         }
@@ -527,6 +595,9 @@ public sealed partial class LogicOverviewViewModel : ObservableObject
         int ready = Blocks.Count(card => string.Equals(card.StateKey, LogicBlockStates.Ready, StringComparison.OrdinalIgnoreCase));
         int blocked = Blocks.Count(card => string.Equals(card.StateKey, LogicBlockStates.Blocked, StringComparison.OrdinalIgnoreCase));
         int unknown = Blocks.Count(card => string.Equals(card.StateKey, LogicBlockStates.Unknown, StringComparison.OrdinalIgnoreCase));
+        ReadyCount = ready;
+        BlockedCount = blocked;
+        NoDataCount = unknown;
         Summary = $"{ready} ready · {blocked} blocked" + (unknown > 0 ? $" · {unknown} no data" : string.Empty);
     }
 
@@ -642,12 +713,15 @@ public sealed partial class LogicOverviewViewModel : ObservableObject
 
             group.ShowHeader = label.Length > 0 || anyGrouped_;
             group.SetMembers(byGroup[label]);
-            group.Summary = BuildGroupSummary(byGroup[label]);
+            ApplyGroupSummary(group, byGroup[label]);
         }
     }
 
-    /// <summary>"3 blocks · 1 blocked · 1 no data" — the heading's own state while collapsed.</summary>
-    private static string BuildGroupSummary(IReadOnlyList<LogicBlockCardViewModel> members)
+    /// <summary>
+    /// "3 blocks · 1 blocked · 1 no data" — the heading's own state while collapsed — plus the
+    /// count badge and the coloured note the V2 heading shows beside the name.
+    /// </summary>
+    private static void ApplyGroupSummary(LogicBlockGroupViewModel group, IReadOnlyList<LogicBlockCardViewModel> members)
     {
         string text = members.Count + (members.Count == 1 ? " block" : " blocks");
         int blocked = members.Count(card => string.Equals(card.StateKey, LogicBlockStates.Blocked, StringComparison.OrdinalIgnoreCase));
@@ -662,7 +736,14 @@ public sealed partial class LogicOverviewViewModel : ObservableObject
             text += " · " + unknown + " no data";
         }
 
-        return text;
+        group.Summary = text;
+        group.CountText = members.Count.ToString();
+        group.NoteText = blocked > 0
+            ? blocked + " blocked"
+            : unknown > 0 ? unknown + " no data" : string.Empty;
+        group.NoteKey = blocked > 0
+            ? LogicBlockStates.Blocked
+            : unknown > 0 ? LogicBlockStates.Unknown : "ok";
     }
 
     private static bool Matches(LogicBlockCardViewModel card, IReadOnlyList<string> terms, IReadOnlyList<string> tags, string stateKey)

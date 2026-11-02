@@ -27,11 +27,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Settings' optional **Sign in** section became **Account**: it names the signed-in user and
   role and offers **Sign out**. The credentials now live on the sign-in screen.
-- **The viewer was re-skinned and re-laid out.** Screens now use card surfaces, compact
-  in-page headers, state accents and inline element-kind badges, while readings and tag
-  names use a mono face and secondary text is quieter. Sign in and Settings are grouped
-  into cards, Logic and Elements lead with status, and the block screen carries its own
-  back bar. The tab bar, splash and app theme follow the same dark plant-floor palette.
+- **The viewer was re-skinned and re-laid out to the V2 console design.** Each screen now
+  follows the same carded hierarchy: a title with its live status line, square icon actions,
+  a bridge link strip with mono sync/latency readings, and inline kind badges. Logic leads
+  with READY/BLOCKED/NO DATA metric cards, Elements uses a segmented kind filter and grouped
+  element cards, Settings groups bridges, account, sync/outbox and about, and the block screen
+  carries its own back bar, checkpoint rail and send-note composer. The saved-bridge row now
+  opens a sheet instead of a platform picker, so choosing a bridge cannot stall the page.
+  The tab bar, splash and app theme follow the same dark plant-floor palette.
 
 ### Fixed
 

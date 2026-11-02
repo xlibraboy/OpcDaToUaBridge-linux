@@ -148,6 +148,12 @@ public sealed partial class LogicElementRowViewModel : ObservableObject
     /// <summary>"Pressure switch PS1 · sim" — what a contact reads; empty for a gate or block.</summary>
     public string TagLabel { get; }
 
+    /// <summary>True when there is a tag line to draw.</summary>
+    public bool HasTag => TagLabel.Length > 0;
+
+    /// <summary>True when this row belongs to a sequence step.</summary>
+    public bool HasStep => StepLabel.Length > 0;
+
     /// <summary>The tag behind the row's label, or null for a relay/gate with no tag source.</summary>
     public LogicTagReference? TagReference { get; }
 
@@ -524,6 +530,10 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
         KindLabel = IsSequence
             ? "Sequence"
             : string.Equals(block.Kind, LogicBlockKinds.Permissive, StringComparison.OrdinalIgnoreCase) ? "Permissive" : "Interlock";
+        string context = !string.IsNullOrWhiteSpace(block.Area)
+            ? block.Area!.Trim()
+            : (block.Group ?? string.Empty).Trim();
+        Subtitle = context.Length > 0 ? KindLabel + " · " + context : KindLabel;
 
         foreach (LogicElementRowViewModel element in LogicElementRows.Walk(
             block, null, 0, LogicNetwork.For(block), areaTags, tags, bridgeKey))
@@ -581,6 +591,10 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
     public string Title { get; }
     public string Description { get; }
     public string KindLabel { get; }
+
+    /// <summary>"Interlock · Line 1" — the app bar's second line.</summary>
+    public string Subtitle { get; }
+
     public bool IsSequence { get; }
 
     /// <summary>Interlocks and permissives show the network instead of steps.</summary>
@@ -597,6 +611,9 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
 
     public ObservableCollection<LogicStepRowViewModel> Steps { get; } = new();
     public ObservableCollection<LogicActionButtonViewModel> Actions { get; } = new();
+
+    /// <summary>True when the block carries authored actions; the section is hidden otherwise.</summary>
+    public bool HasActions => Actions.Count > 0;
     public ObservableCollection<LogicNoteRowViewModel> Notes { get; } = new();
 
     [RelayCommand]

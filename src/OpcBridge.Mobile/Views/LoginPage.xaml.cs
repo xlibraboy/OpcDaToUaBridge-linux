@@ -11,16 +11,14 @@ namespace OpcBridge.Mobile.Views;
 public partial class LoginPage : ContentPage
 {
     private readonly BridgeCoordinator coordinator_;
-    private bool picking_;
     private bool busy_;
     private CancellationTokenSource? connectCts_;
+    private string? statusNote_;
 
     public LoginPage(BridgeCoordinator coordinator)
     {
         InitializeComponent();
         coordinator_ = coordinator;
-        bridgePicker.ItemsSource = coordinator_.Bridges;
-        bridgePicker.ItemDisplayBinding = new Binding(nameof(BridgeConnection.DisplayName));
         Repaint();
     }
 
@@ -74,20 +72,24 @@ public partial class LoginPage : ContentPage
     private void Repaint()
     {
         BridgeConnection? active = coordinator_.Active;
-        picking_ = true;
-        bridgePicker.SelectedItem = active;
-        picking_ = false;
+        bridgePickerLabel.Text = active?.DisplayName ?? "Saved bridges";
+        bridgePickerLabel.TextColor = active is null
+            ? Color.FromArgb("#93A19B")
+            : Color.FromArgb("#F1F5F3");
 
-        statusLabel.Text = active is null
-            ? "No bridge yet — add one above."
-            : active.StatusText + " · " + active.Bridge.Url
-                + (active.Session is { AuthEnabled: false }
-                    ? "\nThis bridge runs without enforced sign-in; the viewer still asks for an account."
-                    : string.Empty);
+        string stateKey = active is null
+            ? "unknown"
+            : active.IsOffline ? "offline" : active.IsConnected ? "synced" : "unknown";
+        Color stateColor = DotColor(stateKey);
+        bridgeStateDot.TextColor = stateColor;
+        bridgeStateLabel.TextColor = stateColor;
+        bridgeStateLabel.Text = active is null
+            ? "no bridge"
+            : active.IsOffline ? "offline" : active.IsConnected ? "connected · live" : active.StatusText;
+        statusLabel.Text = statusNote_ ?? (active is null ? "No bridge yet — add one above." : active.Bridge.Url);
 
         // One action at a time: a connect in flight owns the bridge.
         connectButton.IsEnabled = !busy_;
-        bridgePicker.IsEnabled = !busy_;
         signInButton.IsEnabled = !busy_ && active is not null;
     }
 
@@ -110,7 +112,8 @@ public partial class LoginPage : ContentPage
         bool cancelled = false;
         BeginBusy();
         errorLabel.Text = string.Empty;
-        statusLabel.Text = "searching for a bridge on " + host + " (up to 8 s)…";
+        statusNote_ = "searching for a bridge on " + host + " (up to 8 s)…";
+        Repaint();
         try
         {
             MobileResult<BridgeConnection> result = await coordinator_.AddOrConnectAsync(
@@ -143,32 +146,42 @@ public partial class LoginPage : ContentPage
                 connectCts_ = null;
             }
 
+            statusNote_ = cancelled ? "search cancelled" : null;
             EndBusy();
-            if (cancelled)
-            {
-                statusLabel.Text = "search cancelled";
-            }
         }
     }
 
     private void OnCancelConnectClicked(object? sender, EventArgs e)
     {
         connectCts_?.Cancel();
-        statusLabel.Text = "cancelling…";
+        statusNote_ = "cancelling…";
+        Repaint();
     }
 
-    private async void OnBridgePicked(object? sender, EventArgs e)
+    /// <summary>
+    /// The bridge row is the saved-bridge picker. It opens the same list a spinner would, without
+    /// the platform Picker being disabled or re-selected underneath its own open dialog.
+    /// </summary>
+    private async void OnBridgeRowTapped(object? sender, TappedEventArgs e)
     {
-        if (picking_ ||
-            busy_ ||
-            bridgePicker.SelectedItem is not BridgeConnection connection ||
-            ReferenceEquals(connection, coordinator_.Active))
+        if (busy_ || coordinator_.Bridges.Count == 0)
         {
             return;
         }
 
+        string[] names = coordinator_.Bridges.Select(connection => connection.DisplayName).ToArray();
+        string? picked = await DisplayActionSheet("Bridge", "Cancel", null, names);
+        int index = picked is null ? -1 : Array.IndexOf(names, picked);
+        if (index < 0 || ReferenceEquals(coordinator_.Bridges[index], coordinator_.Active))
+        {
+            return;
+        }
+
+        BridgeConnection connection = coordinator_.Bridges[index];
         BeginBusy();
         errorLabel.Text = string.Empty;
+        statusNote_ = "connecting to " + connection.DisplayName + "…";
+        Repaint();
         try
         {
             await coordinator_.ActivateAsync(connection, CancellationToken.None);
@@ -179,9 +192,17 @@ public partial class LoginPage : ContentPage
         }
         finally
         {
+            statusNote_ = null;
             EndBusy();
         }
     }
+
+    private static Color DotColor(string key) => key switch
+    {
+        "synced" => Color.FromArgb("#4CC38A"),
+        "error" or "offline" => Color.FromArgb("#E5484D"),
+        _ => Color.FromArgb("#93A19B")
+    };
 
     private async void OnSignInClicked(object? sender, EventArgs e)
     {

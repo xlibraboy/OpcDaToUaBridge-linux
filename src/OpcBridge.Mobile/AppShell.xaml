@@ -19,12 +19,24 @@
     <TabBar>
         <ShellContent Title="Logic"
                       Route="logic"
-                      ContentTemplate="{DataTemplate views:LogicPage}" />
+                      ContentTemplate="{DataTemplate views:LogicPage}">
+            <ShellContent.Icon>
+                <FontImageSource Glyph="≡" Color="#93A19B" Size="20" />
+            </ShellContent.Icon>
+        </ShellContent>
         <ShellContent Title="Elements"
                       Route="elements"
-                      ContentTemplate="{DataTemplate views:ElementsPage}" />
+                      ContentTemplate="{DataTemplate views:ElementsPage}">
+            <ShellContent.Icon>
+                <FontImageSource Glyph="▤" Color="#93A19B" Size="20" />
+            </ShellContent.Icon>
+        </ShellContent>
         <ShellContent Title="Settings"
                       Route="settings"
-                      ContentTemplate="{DataTemplate views:SettingsPage}" />
+                      ContentTemplate="{DataTemplate views:SettingsPage}">
+            <ShellContent.Icon>
+                <FontImageSource Glyph="⚙" Color="#93A19B" Size="20" />
+            </ShellContent.Icon>
+        </ShellContent>
     </TabBar>
 </Shell>

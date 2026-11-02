@@ -202,6 +202,7 @@ public partial class LogicBlockPage : ContentPage
         Title = block.Name;
         titleLabel.Text = block.Name;
         descriptionLabel.Text = block.Description;
+        descriptionLabel.IsVisible = !string.IsNullOrWhiteSpace(block.Description);
         Repaint();
 
         // Notes are the one part the cache can be behind on: read them in the background and
@@ -252,6 +253,7 @@ public partial class LogicBlockPage : ContentPage
         stateLabel.TextColor = (Color)new StateColorConverter()
             .Convert(viewModel_.StateKey, typeof(Color), null, CultureInfo.InvariantCulture);
         blockedLabel.Text = viewModel_.BlockedByText;
+        blockedLabel.IsVisible = !string.IsNullOrWhiteSpace(viewModel_.BlockedByText);
         // A queued note appears as pending and disappears when the bridge's copy arrives.
         viewModel_.SetNotes(Active.CachedNotes(blockId_), PendingNotes());
     }

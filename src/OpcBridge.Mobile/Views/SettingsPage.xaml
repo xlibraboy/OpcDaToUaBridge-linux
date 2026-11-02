@@ -7,40 +7,93 @@
              BackgroundColor="{StaticResource PageBg}">
     <ScrollView>
         <VerticalStackLayout Padding="16,8,16,20" Spacing="12">
-            <Label Text="Settings" FontSize="22" FontAttributes="Bold" Margin="0,0,0,2" />
+            <VerticalStackLayout Spacing="3" Padding="2,0,2,2">
+                <Label Text="Settings" FontSize="22" FontAttributes="Bold" />
+                <HorizontalStackLayout Spacing="5">
+                    <Label x:Name="connectionDot"
+                           Text="●"
+                           FontSize="7"
+                           TextColor="{StaticResource MutedColor}"
+                           VerticalOptions="Center" />
+                    <Label x:Name="connectionLabel"
+                           FontSize="10.5"
+                           TextColor="{StaticResource MutedColor}"
+                           MaxLines="1"
+                           LineBreakMode="TailTruncation"
+                           VerticalOptions="Center" />
+                </HorizontalStackLayout>
+            </VerticalStackLayout>
 
             <Border Style="{StaticResource CardBorder}">
                 <VerticalStackLayout Spacing="10">
-                    <Label Text="Bridges" Style="{StaticResource SectionTitleLabel}" />
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <Label Text="Bridges" Style="{StaticResource SectionTitleLabel}" />
+                        <Label x:Name="bridgesCountLabel"
+                               Grid.Column="1"
+                               Text="0 saved"
+                               FontSize="9.5"
+                               TextColor="{StaticResource MutedColor}"
+                               VerticalOptions="Center" />
+                    </Grid>
                     <Label Text="Tap a bridge to make it live; one live link at a time."
                            Style="{StaticResource MetaLabel}" />
                     <VerticalStackLayout x:Name="bridgesList" Spacing="8">
                         <BindableLayout.ItemTemplate>
                             <DataTemplate>
-                                <Border Style="{StaticResource SubtleBorder}">
+                                <Border BackgroundColor="{StaticResource SurfaceAltColor}"
+                                        StrokeThickness="0"
+                                        StrokeShape="RoundRectangle 10"
+                                        Padding="10">
                                     <Border.GestureRecognizers>
                                         <TapGestureRecognizer Tapped="OnBridgeTapped" />
                                     </Border.GestureRecognizers>
-                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                                        <VerticalStackLayout Spacing="2">
-                                            <Label Text="{Binding DisplayName}" FontAttributes="Bold" />
-                                            <Label Text="{Binding Bridge.Url}" FontFamily="monospace" FontSize="9"
-                                                   TextColor="{StaticResource MutedColor}" />
-                                            <HorizontalStackLayout Spacing="5">
-                                                <BoxView WidthRequest="5" HeightRequest="5" CornerRadius="2.5"
-                                                         VerticalOptions="Center"
-                                                         Color="{Binding SyncKey, Converter={StaticResource StateColor}}" />
-                                                <Label Text="{Binding StatusText}" FontSize="9.5"
-                                                       TextColor="{StaticResource MutedColor}" />
-                                            </HorizontalStackLayout>
-                                            <Label Text="{Binding SyncText}" FontSize="9.5" FontAttributes="Bold"
+                                    <VerticalStackLayout Spacing="4">
+                                        <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="6">
+                                            <Label Text="{Binding DisplayName}" FontAttributes="Bold" FontSize="13"
+                                                   MaxLines="1" LineBreakMode="TailTruncation"
+                                                   VerticalOptions="Center" />
+                                            <Label Grid.Column="1" Text="●" FontSize="7"
+                                                   TextColor="{StaticResource MutedColor}"
+                                                   VerticalOptions="Center">
+                                                <Label.Triggers>
+                                                    <DataTrigger TargetType="Label" Binding="{Binding IsActive}" Value="True">
+                                                        <Setter Property="TextColor" Value="{StaticResource GoodColor}" />
+                                                    </DataTrigger>
+                                                </Label.Triggers>
+                                            </Label>
+                                            <Label Grid.Column="2" Text="ACTIVE" IsVisible="{Binding IsActive}"
+                                                   FontSize="8.5" FontAttributes="Bold"
+                                                   TextColor="{StaticResource GoodColor}"
+                                                   HorizontalOptions="Start" VerticalOptions="Center" />
+                                            <Button Grid.Column="3" Text="✕" Style="{StaticResource SmallIconButton}"
+                                                    Clicked="OnRemoveBridgeClicked"
+                                                    SemanticProperties.Description="Remove this bridge" />
+                                        </Grid>
+                                        <Label Text="{Binding Bridge.Url}" FontFamily="monospace" FontSize="8.5"
+                                               TextColor="{StaticResource MutedColor}" />
+                                        <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="6">
+                                            <Label Text="●" FontSize="7" VerticalOptions="Center"
                                                    TextColor="{Binding SyncKey, Converter={StaticResource StateColor}}" />
-                                            <Label Text="{Binding LatencyText}" FontSize="9.5"
-                                                   TextColor="{Binding LatencyKey, Converter={StaticResource StateColor}}" />
-                                        </VerticalStackLayout>
-                                        <Button Grid.Column="1" Text="Remove" Style="{StaticResource CompactButton}"
-                                                VerticalOptions="Start" Clicked="OnRemoveBridgeClicked" />
-                                    </Grid>
+                                            <Label Grid.Column="1" Text="{Binding StatusText}"
+                                                   FontSize="9.5" FontAttributes="Bold"
+                                                   TextColor="{Binding SyncKey, Converter={StaticResource StateColor}}"
+                                                   MaxLines="1" LineBreakMode="TailTruncation"
+                                                   VerticalOptions="Center" />
+                                            <Label Grid.Column="2" Text="{Binding SyncText}"
+                                                   FontFamily="monospace" FontSize="8.5" FontAttributes="Bold"
+                                                   TextTransform="Uppercase"
+                                                   TextColor="{Binding SyncKey, Converter={StaticResource StateColor}}"
+                                                   MaxLines="1" LineBreakMode="TailTruncation"
+                                                   MaximumWidthRequest="130"
+                                                   VerticalOptions="Center" />
+                                            <Label Grid.Column="3" Text="·" FontSize="8.5"
+                                                   TextColor="{StaticResource MutedColor}" VerticalOptions="Center" />
+                                            <Label Grid.Column="4" Text="{Binding LatencyText}"
+                                                   FontFamily="monospace" FontSize="8.5" FontAttributes="Bold"
+                                                   TextColor="{Binding LatencyKey, Converter={StaticResource StateColor}}"
+                                                   VerticalOptions="Center" />
+                                        </Grid>
+                                    </VerticalStackLayout>
                                 </Border>
                             </DataTemplate>
                         </BindableLayout.ItemTemplate>
@@ -52,16 +105,42 @@
 
             <Border Style="{StaticResource CardBorder}">
                 <VerticalStackLayout Spacing="10">
-                    <Label Text="Add a bridge" Style="{StaticResource SectionTitleLabel}" />
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <Label Text="Add a bridge" Style="{StaticResource SectionTitleLabel}" />
+                        <Border Grid.Column="1" Style="{StaticResource BadgeBorder}" VerticalOptions="Center">
+                            <Label Text="HOST / IP" FontFamily="monospace" FontSize="8" FontAttributes="Bold"
+                                   TextColor="{StaticResource MutedColor}" />
+                        </Border>
+                    </Grid>
                     <Label Text="The phone must be on the plant network."
                            Style="{StaticResource MetaLabel}" />
-                    <Border Style="{StaticResource InputBorder}">
-                        <Entry x:Name="hostEntry" BackgroundColor="Transparent"
-                               Placeholder="10.3.1.50 or http://10.3.1.50:8080" />
+                    <Border Style="{StaticResource FieldBorder}">
+                        <Grid ColumnDefinitions="Auto,*">
+                            <Label Text="⌂"
+                                   FontSize="15"
+                                   TextColor="{StaticResource MutedColor}"
+                                   Margin="12,0,9,0"
+                                   VerticalOptions="Center" />
+                            <Entry x:Name="hostEntry"
+                                   Grid.Column="1"
+                                   Margin="0,0,12,0"
+                                   BackgroundColor="Transparent"
+                                   Placeholder="10.3.1.50 or http://10.3.1.50:8080" />
+                        </Grid>
                     </Border>
-                    <Border Style="{StaticResource InputBorder}">
-                        <Entry x:Name="nameEntry" BackgroundColor="Transparent"
-                               Placeholder="Name (optional, e.g. Line 1)" />
+                    <Border Style="{StaticResource FieldBorder}">
+                        <Grid ColumnDefinitions="Auto,*">
+                            <Label Text="✎"
+                                   FontSize="14"
+                                   TextColor="{StaticResource MutedColor}"
+                                   Margin="12,0,9,0"
+                                   VerticalOptions="Center" />
+                            <Entry x:Name="nameEntry"
+                                   Grid.Column="1"
+                                   Margin="0,0,12,0"
+                                   BackgroundColor="Transparent"
+                                   Placeholder="Name (optional, e.g. Line 1)" />
+                        </Grid>
                     </Border>
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                         <Button x:Name="connectButton" Text="Add &amp; Connect"
@@ -74,8 +153,14 @@
                         <ActivityIndicator x:Name="busyIndicator" WidthRequest="16" HeightRequest="16"
                                            Color="{StaticResource GoodColor}" IsRunning="False"
                                            IsVisible="False" VerticalOptions="Center" />
-                        <Label Grid.Column="1" x:Name="connectionLabel" FontSize="11"
-                               TextColor="{StaticResource MutedColor}" LineBreakMode="WordWrap" />
+                        <Label Grid.Column="1" x:Name="connectionMessageLabel" Text="" FontSize="10"
+                               TextColor="{StaticResource MutedColor}" LineBreakMode="WordWrap">
+                            <Label.Triggers>
+                                <Trigger TargetType="Label" Property="Text" Value="">
+                                    <Setter Property="IsVisible" Value="False" />
+                                </Trigger>
+                            </Label.Triggers>
+                        </Label>
                     </Grid>
                 </VerticalStackLayout>
             </Border>
@@ -83,36 +168,86 @@
             <Border Style="{StaticResource CardBorder}">
                 <VerticalStackLayout Spacing="10">
                     <Label Text="Account" Style="{StaticResource SectionTitleLabel}" />
-                    <Label Text="The viewer asks for a bridge account at every launch. Signing out locks it and returns to the sign-in screen."
-                           Style="{StaticResource MetaLabel}" LineBreakMode="WordWrap" />
-                    <Label x:Name="sessionLabel" FontSize="12" />
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
+                        <Border BackgroundColor="{StaticResource SurfaceAltColor}"
+                                StrokeThickness="0"
+                                StrokeShape="RoundRectangle 9"
+                                WidthRequest="32"
+                                HeightRequest="32">
+                            <Label x:Name="sessionAvatar"
+                                   Text="—"
+                                   FontSize="10"
+                                   FontAttributes="Bold"
+                                   TextColor="{StaticResource GoodColor}"
+                                   HorizontalOptions="Center"
+                                   VerticalOptions="Center" />
+                        </Border>
+                        <VerticalStackLayout Grid.Column="1" Spacing="0" VerticalOptions="Center">
+                            <Label x:Name="sessionName" FontSize="12" FontAttributes="Bold" />
+                            <Label x:Name="sessionLabel" FontSize="9.5"
+                                   TextColor="{StaticResource MutedColor}" />
+                        </VerticalStackLayout>
+                    </Grid>
                     <Button x:Name="signOutButton" Text="Sign out"
-                            Style="{StaticResource SecondaryButton}" Clicked="OnSignOutClicked" />
+                            Style="{StaticResource SecondaryButton}" HeightRequest="40"
+                            Clicked="OnSignOutClicked" />
                 </VerticalStackLayout>
             </Border>
 
             <Border Style="{StaticResource CardBorder}">
                 <VerticalStackLayout Spacing="10">
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                        <Label Text="Sync" Style="{StaticResource SectionTitleLabel}" />
-                        <Label x:Name="syncLabel" Grid.Column="1" FontSize="10" FontAttributes="Bold"
-                               VerticalOptions="Center" />
+                        <Label Text="Sync" Style="{StaticResource SectionTitleLabel}" VerticalOptions="Center" />
+                        <Border x:Name="syncBadgeBorder"
+                                Grid.Column="1"
+                                Style="{StaticResource OutputPillBorder}"
+                                HeightRequest="20"
+                                Padding="7,0"
+                                StrokeThickness="1"
+                                VerticalOptions="Center">
+                            <Label x:Name="syncBadgeLabel"
+                                   FontFamily="monospace"
+                                   FontSize="8.5"
+                                   FontAttributes="Bold" />
+                        </Border>
                     </Grid>
                     <Label Text="Notes and actions taken while the bridge was unreachable wait here until they can be sent. A write that may already have reached the bridge is never replayed automatically."
                            Style="{StaticResource MetaLabel}" LineBreakMode="WordWrap" />
-                    <Label x:Name="latencyLabel" FontSize="10.5" TextColor="{StaticResource MutedColor}" />
+                    <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="6">
+                        <Label Text="Sync state" FontSize="10"
+                               TextColor="{StaticResource MutedColor}" VerticalOptions="Center" />
+                        <Label Grid.Column="2" x:Name="syncStateDot" Text="●" FontSize="7"
+                               VerticalOptions="Center" />
+                        <Label Grid.Column="3" x:Name="syncStateValue" FontSize="10"
+                               FontAttributes="Bold" VerticalOptions="Center" />
+                    </Grid>
+                    <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="6">
+                        <Label Text="Network latency" FontSize="10"
+                               TextColor="{StaticResource MutedColor}" VerticalOptions="Center" />
+                        <Label Grid.Column="2" x:Name="latencyDot" Text="●" FontSize="7"
+                               VerticalOptions="Center" />
+                        <Label Grid.Column="3" x:Name="latencyValue" FontFamily="monospace" FontSize="10"
+                               FontAttributes="Bold" VerticalOptions="Center" />
+                    </Grid>
                     <Button x:Name="retrySyncButton" Text="Retry now"
-                            Style="{StaticResource SecondaryButton}" Clicked="OnRetrySyncClicked" />
+                            Style="{StaticResource SecondaryButton}" HeightRequest="40"
+                            Clicked="OnRetrySyncClicked" />
                     <VerticalStackLayout x:Name="outboxList" Spacing="8">
                         <BindableLayout.ItemTemplate>
                             <DataTemplate>
-                                <Border Style="{StaticResource SubtleBorder}">
+                                <Border BackgroundColor="{StaticResource SurfaceAltColor}"
+                                        StrokeThickness="0"
+                                        StrokeShape="RoundRectangle 10"
+                                        Padding="10">
                                     <VerticalStackLayout Spacing="3">
                                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                                             <Label Text="{Binding KindLabel}" FontAttributes="Bold" FontSize="12" />
-                                            <Label Grid.Column="1" Text="{Binding StateLabel}" FontSize="9"
-                                                   FontAttributes="Bold"
-                                                   TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
+                                            <Border Grid.Column="1" Style="{StaticResource InsetBadgeBorder}"
+                                                    VerticalOptions="Center">
+                                                <Label Text="{Binding StateLabel}" FontFamily="monospace"
+                                                       FontSize="8.5" FontAttributes="Bold"
+                                                       TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
+                                            </Border>
                                         </Grid>
                                         <Label Text="{Binding TargetText}" FontSize="10.5" />
                                         <Label Text="{Binding Detail}" FontSize="9.5"
@@ -123,9 +258,9 @@
                                         <Label Text="{Binding Error}" IsVisible="{Binding HasError}" FontSize="9"
                                                TextColor="{StaticResource BadColor}" LineBreakMode="WordWrap" />
                                         <HorizontalStackLayout Spacing="6" IsVisible="{Binding IsActionable}">
-                                            <Button Text="Retry" Style="{StaticResource CompactButton}"
+                                            <Button Text="Retry" Style="{StaticResource TinyButton}"
                                                     Clicked="OnRetryOutboxClicked" />
-                                            <Button Text="Discard" Style="{StaticResource CompactButton}"
+                                            <Button Text="Discard" Style="{StaticResource TinyButton}"
                                                     Clicked="OnDiscardOutboxClicked" />
                                         </HorizontalStackLayout>
                                     </VerticalStackLayout>
@@ -139,9 +274,18 @@
             </Border>
 
             <Border Style="{StaticResource CardBorder}">
-                <VerticalStackLayout Spacing="6">
-                    <Label Text="About" Style="{StaticResource SectionTitleLabel}" />
-                    <Label x:Name="aboutLabel" Style="{StaticResource MetaLabel}" />
+                <VerticalStackLayout Spacing="10">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <Label Text="About" Style="{StaticResource SectionTitleLabel}" />
+                        <Border Grid.Column="1" Style="{StaticResource BadgeBorder}" VerticalOptions="Center">
+                            <Label x:Name="aboutVersionLabel" FontFamily="monospace" FontSize="8"
+                                   FontAttributes="Bold" TextColor="{StaticResource MutedColor}" />
+                        </Border>
+                    </Grid>
+                    <Label x:Name="aboutTextLabel" FontSize="10.5"
+                           TextColor="{StaticResource MutedColor}" LineBreakMode="WordWrap" />
+                    <Label x:Name="aboutFooterLabel" FontSize="9.5"
+                           TextColor="{StaticResource MutedColor}" LineBreakMode="WordWrap" />
                 </VerticalStackLayout>
             </Border>
         </VerticalStackLayout>

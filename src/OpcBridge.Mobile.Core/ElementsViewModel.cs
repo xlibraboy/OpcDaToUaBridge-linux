@@ -28,6 +28,9 @@ public sealed class ElementBlockGroupViewModel : ObservableCollection<LogicEleme
         KindLabel = KindOf(block);
         GroupLabel = (block.Group ?? string.Empty).Trim();
         Area = (block.Area ?? string.Empty).Trim();
+        Meta = string.IsNullOrEmpty(Area)
+            ? GroupLabel
+            : string.IsNullOrEmpty(GroupLabel) ? Area : Area + " · " + GroupLabel;
     }
 
     public Guid BlockId { get; }
@@ -44,6 +47,11 @@ public sealed class ElementBlockGroupViewModel : ObservableCollection<LogicEleme
     public bool HasArea => Area.Length > 0;
 
     public bool HasGroup => GroupLabel.Length > 0;
+
+    /// <summary>"Line 1 · Press line" — the area and group the heading's rows belong to.</summary>
+    public string Meta { get; }
+
+    public bool HasMeta => Meta.Length > 0;
 
     /// <summary>"▾" / "▸" — the heading reports its own state without colour.</summary>
     public string Chevron => expanded_ ? "▾" : "▸";
@@ -319,7 +327,7 @@ public sealed partial class ElementsViewModel : ObservableObject
                 ? " · " + known.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
                 : string.Empty)
             : "live" + (syncedUtc is { } synced
-                ? " · synced " + synced.ToLocalTime().ToString("HH:mm:ss")
+                ? " · " + synced.ToLocalTime().ToString("HH:mm:ss")
                 : string.Empty);
 
         Dictionary<Guid, LogicBlockStateDto> blockStates = new();

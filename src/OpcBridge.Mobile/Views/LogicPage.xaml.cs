@@ -7,14 +7,11 @@ public partial class LogicPage : ContentPage
 {
     private readonly BridgeCoordinator coordinator_;
     private LogicOverviewViewModel? subscribed_;
-    private bool picking_;
 
     public LogicPage(BridgeCoordinator coordinator)
     {
         InitializeComponent();
         coordinator_ = coordinator;
-        bridgePicker.ItemsSource = coordinator_.Bridges;
-        bridgePicker.ItemDisplayBinding = new Binding(nameof(BridgeConnection.DisplayName));
         coordinator_.Changed += OnChanged;
         RefreshFilterUi();
     }
@@ -58,10 +55,18 @@ public partial class LogicPage : ContentPage
         BindableLayout.SetItemsSource(stateChips, overview?.StateFilters);
         BindableLayout.SetItemsSource(tagChips, overview?.TagFilters);
 
-        summaryLabel.Text = overview?.Summary ?? string.Empty;
+        readyCountLabel.Text = (overview?.ReadyCount ?? 0).ToString();
+        blockedCountLabel.Text = (overview?.BlockedCount ?? 0).ToString();
+        noDataCountLabel.Text = (overview?.NoDataCount ?? 0).ToString();
+        connectionDot.TextColor = active is null
+            ? Color.FromArgb("#93A19B")
+            : active.IsOffline ? Color.FromArgb("#E5484D")
+            : active.IsConnected ? Color.FromArgb("#4CC38A")
+            : Color.FromArgb("#E2A336");
         connectionLabel.Text = active is null
             ? "no bridges yet — add one under Settings ▸ Bridges"
-            : active.StatusText + " · " + active.Bridge.Url;
+            : active.StatusText;
+        bridgeChipLabel.Text = active?.DisplayName ?? "Bridge";
         offlineLabel.IsVisible = active?.IsOffline == true;
         offlineLabel.Text = active?.OfflineText ?? string.Empty;
 
@@ -78,14 +83,10 @@ public partial class LogicPage : ContentPage
             : "Network latency to the bridge: " + active.LatencyText + ".";
 
         string search = overview?.SearchText ?? string.Empty;
-        if (!string.Equals(searchBar.Text, search, StringComparison.Ordinal))
+        if (!string.Equals(searchEntry.Text, search, StringComparison.Ordinal))
         {
-            searchBar.Text = search;
+            searchEntry.Text = search;
         }
-
-        picking_ = true;
-        bridgePicker.SelectedItem = active;
-        picking_ = false;
 
         RefreshFilterUi();
     }
@@ -145,14 +146,24 @@ public partial class LogicPage : ContentPage
         RefreshFilterUi();
     }
 
-    private async void OnBridgePicked(object? sender, EventArgs e)
+    /// <summary>The bridge chip is the picker: one live link at a time, chosen by name.</summary>
+    private async void OnBridgeChipTapped(object? sender, TappedEventArgs e)
     {
-        if (picking_ || bridgePicker.SelectedItem is not BridgeConnection connection || ReferenceEquals(connection, coordinator_.Active))
+        if (coordinator_.Bridges.Count == 0)
+        {
+            await Shell.Current.GoToAsync("//settings");
+            return;
+        }
+
+        string[] names = coordinator_.Bridges.Select(connection => connection.DisplayName).ToArray();
+        string? picked = await DisplayActionSheet("Bridge", "Cancel", null, names);
+        int index = picked is null ? -1 : Array.IndexOf(names, picked);
+        if (index < 0 || ReferenceEquals(coordinator_.Bridges[index], coordinator_.Active))
         {
             return;
         }
 
-        await coordinator_.ActivateAsync(connection, CancellationToken.None);
+        await coordinator_.ActivateAsync(coordinator_.Bridges[index], CancellationToken.None);
         Repaint();
     }
 

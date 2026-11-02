@@ -1,4 +1,3 @@
-using System.Globalization;
 using Microsoft.Maui.ApplicationModel;
 using OpcBridge.Mobile.Core;
 
@@ -15,7 +14,9 @@ public partial class SettingsPage : ContentPage
         coordinator_ = coordinator;
         BindableLayout.SetItemsSource(bridgesList, coordinator_.Bridges);
         coordinator_.Changed += OnChanged;
-        aboutLabel.Text = "OpcBridge Logic " + AppInfo.Current.VersionString;
+        aboutVersionLabel.Text = AppInfo.Current.VersionString;
+        aboutTextLabel.Text = "OpcBridge Logic · plant logic viewer for the bridge HMI.";
+        aboutFooterLabel.Text = "Writes that may already have reached the bridge are never replayed automatically.";
     }
 
     protected override void OnAppearing()
@@ -30,24 +31,59 @@ public partial class SettingsPage : ContentPage
     {
         BridgeConnection? active = coordinator_.Active;
         bridgesEmptyLabel.IsVisible = coordinator_.Bridges.Count == 0;
+        bridgesCountLabel.Text = coordinator_.Bridges.Count + " saved";
+        connectionDot.TextColor = active is null
+            ? Color.FromArgb("#93A19B")
+            : active.IsOffline ? Color.FromArgb("#E5484D")
+            : active.IsConnected ? Color.FromArgb("#4CC38A")
+            : Color.FromArgb("#E2A336");
         connectionLabel.Text = active is null
             ? "no bridge selected"
-            : active.StatusText + " · " + active.Bridge.Url;
+            : active.DisplayName + " · "
+                + (active.IsOffline ? "offline" : active.IsConnected ? "connected" : active.StatusText);
 
         MobileSession? session = active?.Session;
-        sessionLabel.Text = session is null
-            ? "not signed in"
-            : (session.Authenticated
-                ? $"signed in as {session.DisplayName} ({session.Role})"
-                : (session.AuthEnabled ? "the bridge requires sign-in" : "the bridge runs without sign-in"));
+        if (session is { Authenticated: true })
+        {
+            string name = string.IsNullOrWhiteSpace(session.DisplayName) ? session.Username : session.DisplayName;
+            sessionAvatar.Text = Initials(name);
+            sessionName.Text = name;
+            sessionLabel.Text = string.IsNullOrWhiteSpace(session.Role)
+                ? "signed in"
+                : session.Role + " · signed in";
+        }
+        else
+        {
+            sessionAvatar.Text = "—";
+            sessionName.Text = "Not signed in";
+            sessionLabel.Text = active is null
+                ? "select a bridge"
+                : session is { AuthEnabled: false }
+                    ? "the bridge runs without enforced sign-in"
+                    : "the bridge requires sign-in";
+        }
+
         signOutButton.IsEnabled = session?.Authenticated == true;
 
-        syncLabel.Text = active?.SyncText ?? "not connected";
-        syncLabel.TextColor = (Color)new StateColorConverter()
-            .Convert(active?.SyncKey ?? "offline", typeof(Color), null, CultureInfo.InvariantCulture);
-        latencyLabel.Text = "network latency: " + (active?.LatencyText ?? "latency —");
-        latencyLabel.TextColor = (Color)new StateColorConverter()
-            .Convert(active?.LatencyKey ?? "unknown", typeof(Color), null, CultureInfo.InvariantCulture);
+        Color syncColor = KeyColor(active?.SyncKey ?? "offline");
+        syncBadgeLabel.Text = active is null
+            ? "NO BRIDGE"
+            : active.FailedCount > 0
+                ? active.FailedCount + " FAILED"
+                    + (active.PendingCount > 0 ? " · " + active.PendingCount + " PENDING" : string.Empty)
+                : active.PendingCount > 0
+                    ? active.PendingCount + " PENDING"
+                    : active.IsOffline ? "OFFLINE" : "SYNCED";
+        syncBadgeLabel.TextColor = syncColor;
+        syncBadgeBorder.Stroke = new SolidColorBrush(syncColor);
+        syncStateValue.Text = active?.SyncText ?? "not connected";
+        syncStateValue.TextColor = syncColor;
+        syncStateDot.TextColor = syncColor;
+
+        Color latencyColor = KeyColor(active?.LatencyKey ?? "unknown");
+        latencyValue.Text = active?.LatencyText ?? "latency —";
+        latencyValue.TextColor = latencyColor;
+        latencyDot.TextColor = latencyColor;
         retrySyncButton.IsEnabled = active is not null;
 
         IReadOnlyList<OutboxItem> items = active?.OutboxItems ?? Array.Empty<OutboxItem>();
@@ -55,12 +91,31 @@ public partial class SettingsPage : ContentPage
         outboxEmptyLabel.IsVisible = items.Count == 0;
     }
 
+    private static Color KeyColor(string key) => key switch
+    {
+        "synced" or "good" or "true" or "done" => Color.FromArgb("#4CC38A"),
+        "error" or "poor" or "blocked" or "false" => Color.FromArgb("#E5484D"),
+        "syncing" or "pending" or "fair" or "current" => Color.FromArgb("#E2A336"),
+        _ => Color.FromArgb("#93A19B")
+    };
+
+    private static string Initials(string name)
+    {
+        string[] parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length switch
+        {
+            0 => "—",
+            1 => parts[0].Length > 1 ? parts[0][..2].ToUpperInvariant() : parts[0].ToUpperInvariant(),
+            _ => (char.ToUpperInvariant(parts[0][0]).ToString() + char.ToUpperInvariant(parts[1][0]))
+        };
+    }
+
     private async void OnConnectClicked(object? sender, EventArgs e)
     {
         string host = hostEntry.Text?.Trim() ?? string.Empty;
         if (host.Length == 0)
         {
-            connectionLabel.Text = "enter the bridge host or IP first";
+            connectionMessageLabel.Text = "enter the bridge host or IP first";
             return;
         }
 
@@ -72,7 +127,7 @@ public partial class SettingsPage : ContentPage
         busyIndicator.IsVisible = true;
         busyIndicator.IsRunning = true;
         // The probe can walk the whole 8080–8180 range; say what is happening right away.
-        connectionLabel.Text = "searching for a bridge on " + host + " (up to 8 s)…";
+        connectionMessageLabel.Text = "searching for a bridge on " + host + " (up to 8 s)…";
         try
         {
             MobileResult<BridgeConnection> result = await coordinator_.AddOrConnectAsync(
@@ -82,7 +137,7 @@ public partial class SettingsPage : ContentPage
             if (!result.Ok)
             {
                 // Do not Repaint over this: the operator must see why the address was refused.
-                connectionLabel.Text = "✗ " + (result.Error ?? "could not reach that bridge");
+                connectionMessageLabel.Text = "✗ " + (result.Error ?? "could not reach that bridge");
                 return;
             }
 
@@ -98,7 +153,7 @@ public partial class SettingsPage : ContentPage
         {
             // An async event handler must never let a network failure reach the process: the
             // operator gets the address's answer here instead of the app disappearing.
-            connectionLabel.Text = "✗ could not reach " + host + " · " + ex.Message;
+            connectionMessageLabel.Text = "✗ could not reach " + host + " · " + ex.Message;
         }
         finally
         {
@@ -113,7 +168,7 @@ public partial class SettingsPage : ContentPage
             busyIndicator.IsVisible = false;
             if (cancelled)
             {
-                connectionLabel.Text = "search cancelled";
+                connectionMessageLabel.Text = "search cancelled";
             }
         }
     }
@@ -121,7 +176,7 @@ public partial class SettingsPage : ContentPage
     private void OnCancelConnectClicked(object? sender, EventArgs e)
     {
         connectCts_?.Cancel();
-        connectionLabel.Text = "cancelling…";
+        connectionMessageLabel.Text = "cancelling…";
     }
 
     private async void OnBridgeTapped(object? sender, TappedEventArgs e)
@@ -138,7 +193,7 @@ public partial class SettingsPage : ContentPage
         }
         catch (Exception ex)
         {
-            connectionLabel.Text = "✗ could not use " + connection.DisplayName + " · " + ex.Message;
+            connectionMessageLabel.Text = "✗ could not use " + connection.DisplayName + " · " + ex.Message;
         }
     }
 
@@ -178,7 +233,7 @@ public partial class SettingsPage : ContentPage
         {
             // The session is cleared locally by SignOutAsync; a failure here must still leave
             // the operator on a screen that says what happened.
-            connectionLabel.Text = "✗ could not sign out cleanly · " + ex.Message;
+            connectionMessageLabel.Text = "✗ could not sign out cleanly · " + ex.Message;
         }
         finally
         {
