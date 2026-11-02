@@ -82,9 +82,9 @@ public partial class ElementsPage : ContentPage
         Color sourceColor = elements_.ShowingLastKnown
             ? Color.FromArgb("#E2A336")
             : Color.FromArgb("#4CC38A");
-        sourceDot.TextColor = sourceColor;
+        sourceDot.Color = sourceColor;
         sourceLabel.TextColor = sourceColor;
-        connectionDot.TextColor = active is null
+        connectionDot.Color = active is null
             ? Color.FromArgb("#93A19B")
             : active.IsOffline ? Color.FromArgb("#E5484D")
             : active.IsConnected ? Color.FromArgb("#4CC38A")
@@ -92,7 +92,7 @@ public partial class ElementsPage : ContentPage
         connectionLabel.Text = active is null
             ? "no bridges yet — add one under Settings ▸ Bridges"
             : active.StatusText;
-        latencyBadge.Text = active?.LatencyText ?? "latency —";
+        latencyBadge.Text = active?.LatencyValue ?? "—";
         latencyBadge.StateKey = active?.LatencyKey ?? "unknown";
         latencyBadge.Description = active is null
             ? "No bridge selected."
@@ -141,12 +141,12 @@ public partial class ElementsPage : ContentPage
         }
     }
 
-    private async void OnRefreshClicked(object? sender, EventArgs e)
+    private async void OnRefreshClicked(object? sender, TappedEventArgs e)
     {
         await SyncAsync();
     }
 
-    private async void OnSyncNowClicked(object? sender, EventArgs e)
+    private async void OnSyncNowClicked(object? sender, TappedEventArgs e)
     {
         await SyncAsync();
     }

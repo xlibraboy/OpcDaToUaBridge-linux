@@ -58,7 +58,7 @@ public partial class LogicPage : ContentPage
         readyCountLabel.Text = (overview?.ReadyCount ?? 0).ToString();
         blockedCountLabel.Text = (overview?.BlockedCount ?? 0).ToString();
         noDataCountLabel.Text = (overview?.NoDataCount ?? 0).ToString();
-        connectionDot.TextColor = active is null
+        connectionDot.Color = active is null
             ? Color.FromArgb("#93A19B")
             : active.IsOffline ? Color.FromArgb("#E5484D")
             : active.IsConnected ? Color.FromArgb("#4CC38A")
@@ -70,13 +70,13 @@ public partial class LogicPage : ContentPage
         offlineLabel.IsVisible = active?.IsOffline == true;
         offlineLabel.Text = active?.OfflineText ?? string.Empty;
 
-        syncBadge.Text = active?.SyncText ?? "not connected";
+        syncBadge.Text = active?.SyncStamp ?? "not connected";
         syncBadge.StateKey = active?.SyncKey ?? "offline";
         syncBadge.Description = active is null
             ? "No bridge selected."
             : "Sync state: " + active.SyncText + " · " + active.PendingCount + " pending, "
                 + active.FailedCount + " failed. Open Settings for queued items.";
-        latencyBadge.Text = active?.LatencyText ?? "latency —";
+        latencyBadge.Text = active?.LatencyValue ?? "—";
         latencyBadge.StateKey = active?.LatencyKey ?? "unknown";
         latencyBadge.Description = active is null
             ? "No bridge selected."
@@ -167,7 +167,7 @@ public partial class LogicPage : ContentPage
         Repaint();
     }
 
-    private async void OnRefreshClicked(object? sender, EventArgs e)
+    private async void OnRefreshClicked(object? sender, TappedEventArgs e)
     {
         refreshButton.IsEnabled = false;
         try
@@ -221,7 +221,7 @@ public partial class LogicPage : ContentPage
         await Shell.Current.GoToAsync($"block?id={card.Id}");
     }
 
-    private async void OnSettingsClicked(object? sender, EventArgs e)
+    private async void OnSettingsClicked(object? sender, TappedEventArgs e)
     {
         await Shell.Current.GoToAsync("//settings");
     }

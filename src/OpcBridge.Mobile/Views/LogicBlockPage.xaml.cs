@@ -267,10 +267,13 @@ public partial class LogicBlockPage : ContentPage
         }
     }
 
-    private async void OnBackClicked(object? sender, EventArgs e) =>
+    private async void OnBackClicked(object? sender, TappedEventArgs e) =>
         await Shell.Current.GoToAsync("..");
 
-    private void OnTagPanelCloseClicked(object? sender, EventArgs e) => viewModel_?.CloseTagPanel();
+    private async void OnMoreClicked(object? sender, TappedEventArgs e) =>
+        await Shell.Current.GoToAsync("//settings");
+
+    private void OnTagPanelCloseClicked(object? sender, TappedEventArgs e) => viewModel_?.CloseTagPanel();
 
     private void OnTagPanelScrimTapped(object? sender, TappedEventArgs e) => viewModel_?.CloseTagPanel();
 
@@ -350,7 +353,7 @@ public partial class LogicBlockPage : ContentPage
         };
     }
 
-    private async void OnAddNoteClicked(object? sender, EventArgs e)
+    private async void OnAddNoteClicked(object? sender, TappedEventArgs e)
     {
         string text = noteEntry.Text?.Trim() ?? string.Empty;
         if (text.Length == 0 || viewModel_ is null || Active is null)

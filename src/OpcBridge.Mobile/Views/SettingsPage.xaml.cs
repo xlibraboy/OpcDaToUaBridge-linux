@@ -32,7 +32,7 @@ public partial class SettingsPage : ContentPage
         BridgeConnection? active = coordinator_.Active;
         bridgesEmptyLabel.IsVisible = coordinator_.Bridges.Count == 0;
         bridgesCountLabel.Text = coordinator_.Bridges.Count + " saved";
-        connectionDot.TextColor = active is null
+        connectionDot.Color = active is null
             ? Color.FromArgb("#93A19B")
             : active.IsOffline ? Color.FromArgb("#E5484D")
             : active.IsConnected ? Color.FromArgb("#4CC38A")
@@ -78,12 +78,12 @@ public partial class SettingsPage : ContentPage
         syncBadgeBorder.Stroke = new SolidColorBrush(syncColor);
         syncStateValue.Text = active?.SyncText ?? "not connected";
         syncStateValue.TextColor = syncColor;
-        syncStateDot.TextColor = syncColor;
+        syncStateDot.Color = syncColor;
 
         Color latencyColor = KeyColor(active?.LatencyKey ?? "unknown");
         latencyValue.Text = active?.LatencyText ?? "latency —";
         latencyValue.TextColor = latencyColor;
-        latencyDot.TextColor = latencyColor;
+        latencyDot.Color = latencyColor;
         retrySyncButton.IsEnabled = active is not null;
 
         IReadOnlyList<OutboxItem> items = active?.OutboxItems ?? Array.Empty<OutboxItem>();
@@ -197,9 +197,9 @@ public partial class SettingsPage : ContentPage
         }
     }
 
-    private async void OnRemoveBridgeClicked(object? sender, EventArgs e)
+    private async void OnRemoveBridgeClicked(object? sender, TappedEventArgs e)
     {
-        if (sender is not Button button || button.BindingContext is not BridgeConnection connection)
+        if (sender is not Border border || border.BindingContext is not BridgeConnection connection)
         {
             return;
         }

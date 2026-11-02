@@ -26,46 +26,57 @@
         </Style>
     </ContentPage.Resources>
 
-    <Grid RowDefinitions="Auto,*" Padding="16,8,16,0" RowSpacing="12">
+    <Grid RowDefinitions="Auto,*" Padding="16,4,16,0" RowSpacing="12">
         <VerticalStackLayout Grid.Row="0" Spacing="12">
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10" Padding="2,0,4,0">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10" Padding="0,2,0,4">
                 <VerticalStackLayout Spacing="3">
                     <Label Text="Plant elements" FontSize="22" FontAttributes="Bold" />
-                    <HorizontalStackLayout Spacing="5">
-                        <Label x:Name="connectionDot"
-                               Text="●"
-                               FontSize="7"
-                               TextColor="{StaticResource MutedColor}"
-                               VerticalOptions="Center" />
-                        <Label x:Name="connectionLabel"
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="5">
+                        <BoxView x:Name="connectionDot"
+                                 WidthRequest="6"
+                                 HeightRequest="6"
+                                 CornerRadius="3"
+                                 Color="{StaticResource MutedColor}"
+                                 VerticalOptions="Center" />
+                        <Label Grid.Column="1"
+                               x:Name="connectionLabel"
                                FontSize="10.5"
                                TextColor="{StaticResource MutedColor}"
                                MaxLines="1"
                                LineBreakMode="TailTruncation"
                                VerticalOptions="Center" />
-                    </HorizontalStackLayout>
+                    </Grid>
                 </VerticalStackLayout>
                 <HorizontalStackLayout Grid.Column="1" Spacing="8" VerticalOptions="Center">
-                    <Button x:Name="refreshButton"
-                            Text="↻"
-                            Style="{StaticResource IconButton}"
-                            Clicked="OnRefreshClicked"
-                            SemanticProperties.Description="Refresh elements" />
-                    <Button x:Name="syncButton"
-                            Text="⇅"
-                            Style="{StaticResource IconButton}"
-                            Clicked="OnSyncNowClicked"
-                            SemanticProperties.Description="Sync now" />
+                    <Border x:Name="refreshButton"
+                            Style="{StaticResource IconActionBorder}"
+                            SemanticProperties.Description="Refresh elements">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnRefreshClicked" />
+                        </Border.GestureRecognizers>
+                        <Image Source="icon_refresh.png" WidthRequest="16" HeightRequest="16"
+                               HorizontalOptions="Center" VerticalOptions="Center" />
+                    </Border>
+                    <Border x:Name="syncButton"
+                            Style="{StaticResource IconActionBorder}"
+                            SemanticProperties.Description="Sync now">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnSyncNowClicked" />
+                        </Border.GestureRecognizers>
+                        <Image Source="icon_cloud_upload.png" WidthRequest="16" HeightRequest="16"
+                               HorizontalOptions="Center" VerticalOptions="Center" />
+                    </Border>
                 </HorizontalStackLayout>
             </Grid>
 
             <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="6" VerticalOptions="Center">
                 <HorizontalStackLayout Spacing="5" VerticalOptions="Center">
-                    <Label x:Name="sourceDot"
-                           Text="●"
-                           FontSize="7"
-                           TextColor="{StaticResource MutedColor}"
-                           VerticalOptions="Center" />
+                    <BoxView x:Name="sourceDot"
+                             WidthRequest="6"
+                             HeightRequest="6"
+                             CornerRadius="3"
+                             Color="{StaticResource MutedColor}"
+                             VerticalOptions="Center" />
                     <Label x:Name="sourceLabel"
                            FontFamily="monospace"
                            FontSize="9"
@@ -89,15 +100,16 @@
                 <views:SyncBadgeView x:Name="latencyBadge"
                                      Grid.Column="4"
                                      Uppercase="False"
+                                     TextSize="9.5"
                                      Hint=""
                                      VerticalOptions="Center" />
             </Grid>
 
             <Border Style="{StaticResource SearchBorder}">
                 <Grid ColumnDefinitions="Auto,*">
-                    <Label Text="⌕"
-                           FontSize="16"
-                           TextColor="{StaticResource MutedColor}"
+                    <Image Source="icon_search.png"
+                           WidthRequest="16"
+                           HeightRequest="16"
                            Margin="12,0,9,0"
                            VerticalOptions="Center" />
                     <Entry x:Name="searchEntry"
@@ -142,7 +154,7 @@
                 </CollectionView.EmptyView>
                 <CollectionView.GroupHeaderTemplate>
                     <DataTemplate>
-                        <Border Margin="0,8,0,4" Style="{StaticResource GroupCardBorder}">
+                        <Border Margin="0,0,0,4" Style="{StaticResource ElementsGroupCardBorder}">
                             <Border.GestureRecognizers>
                                 <TapGestureRecognizer Command="{Binding ToggleCommand}" />
                             </Border.GestureRecognizers>
@@ -152,7 +164,7 @@
                                            VerticalOptions="Center" TextColor="{StaticResource MutedColor}" />
                                     <Label Grid.Column="1" Text="{Binding Name}" FontAttributes="Bold" FontSize="13"
                                            MaxLines="1" LineBreakMode="TailTruncation" VerticalOptions="Center" />
-                                    <Border Grid.Column="2" Style="{StaticResource BadgeBorder}" VerticalOptions="Center">
+                                    <Border Grid.Column="2" Style="{StaticResource ElementBadgeBorder}" VerticalOptions="Center">
                                         <Label Text="{Binding KindLabel}" FontSize="8.5" FontAttributes="Bold"
                                                FontFamily="monospace"
                                                TextColor="{StaticResource MutedColor}" />
@@ -190,7 +202,7 @@
                                         <Label Text="{Binding Text}" FontSize="13" FontAttributes="Bold"
                                                MaxLines="1" LineBreakMode="TailTruncation"
                                                VerticalOptions="Center" />
-                                        <Border Style="{StaticResource BadgeBorder}" VerticalOptions="Center">
+                                        <Border Style="{StaticResource ElementBadgeBorder}" VerticalOptions="Center">
                                             <Label Text="{Binding KindLabel}" FontSize="8.5" FontAttributes="Bold"
                                                    FontFamily="monospace"
                                                    TextColor="{StaticResource MutedColor}" />

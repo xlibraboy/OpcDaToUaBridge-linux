@@ -42,6 +42,13 @@ public partial class SyncBadgeView : ContentView
         "Open Settings to see pending sync items",
         propertyChanged: OnChanged);
 
+    public static readonly BindableProperty TextSizeProperty = BindableProperty.Create(
+        nameof(TextSize),
+        typeof(double),
+        typeof(SyncBadgeView),
+        9.0,
+        propertyChanged: OnChanged);
+
     public SyncBadgeView()
     {
         InitializeComponent();
@@ -80,6 +87,13 @@ public partial class SyncBadgeView : ContentView
         set => SetValue(HintProperty, value);
     }
 
+    /// <summary>The design's mono reading size: 9 for sync, 9.5 for latency.</summary>
+    public double TextSize
+    {
+        get => (double)GetValue(TextSizeProperty);
+        set => SetValue(TextSizeProperty, value);
+    }
+
     private static void OnChanged(BindableObject bindable, object oldValue, object newValue) =>
         ((SyncBadgeView)bindable).Update();
 
@@ -87,8 +101,9 @@ public partial class SyncBadgeView : ContentView
     {
         string text = Text ?? string.Empty;
         textLabel.Text = Uppercase ? text.ToUpperInvariant() : text;
+        textLabel.FontSize = TextSize;
         Color color = ColorFor(StateKey);
-        dotLabel.TextColor = color;
+        dotView.Color = color;
         textLabel.TextColor = color;
         SemanticProperties.SetDescription(this, Description);
         SemanticProperties.SetHint(this, Hint);

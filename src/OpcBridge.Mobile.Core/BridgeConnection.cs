@@ -166,6 +166,16 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
     /// <summary>"good · 12 ms" / "fair · 87 ms" / "poor · 210 ms" / "offline" — value included.</summary>
     [ObservableProperty] private string _latencyText = "latency —";
 
+    /// <summary>"12 ms" / "offline" / "—" — the compact value the strips and bridge rows show.</summary>
+    public string LatencyValue => BridgeReadingText.LatencyValue(LatencyText);
+
+    /// <summary>"synced 12:31:05" — the strip form without the dot between state and time.</summary>
+    public string SyncStamp => BridgeReadingText.SyncStamp(SyncText);
+
+    partial void OnLatencyTextChanged(string value) => OnPropertyChanged(nameof(LatencyValue));
+
+    partial void OnSyncTextChanged(string value) => OnPropertyChanged(nameof(SyncStamp));
+
     [ObservableProperty] private string _latencyKey = "unknown";
 
     /// <summary>The measured round-trip in milliseconds; null when no good measurement exists.</summary>

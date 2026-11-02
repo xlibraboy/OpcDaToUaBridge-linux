@@ -81,7 +81,7 @@ public partial class LoginPage : ContentPage
             ? "unknown"
             : active.IsOffline ? "offline" : active.IsConnected ? "synced" : "unknown";
         Color stateColor = DotColor(stateKey);
-        bridgeStateDot.TextColor = stateColor;
+        bridgeStateDot.Color = stateColor;
         bridgeStateLabel.TextColor = stateColor;
         bridgeStateLabel.Text = active is null
             ? "no bridge"

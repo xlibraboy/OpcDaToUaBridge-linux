@@ -134,7 +134,12 @@ public sealed partial class LogicBlockCardViewModel : ObservableObject
             _ => "NO DATA"
         };
         Reason = string.IsNullOrWhiteSpace(state.Reason)
-            ? (state.State == LogicBlockStates.Ready ? "all conditions met" : null)
+            ? state.State switch
+            {
+                LogicBlockStates.Ready => "all conditions met",
+                LogicBlockStates.Unknown => "reading…",
+                _ => null
+            }
             : state.Reason;
 
         ProgressText = block_.Kind == LogicBlockKinds.Sequence && block_.Steps.Count > 0

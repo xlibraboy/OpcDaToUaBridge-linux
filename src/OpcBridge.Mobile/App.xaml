@@ -118,11 +118,18 @@
                 <Setter Property="Padding" Value="9" />
                 <Setter Property="StrokeShape" Value="RoundRectangle 10" />
             </Style>
-            <Style x:Key="GroupCardBorder" TargetType="Border">
+            <Style x:Key="LogicGroupCardBorder" TargetType="Border">
                 <Setter Property="BackgroundColor" Value="{StaticResource SurfaceAltColor}" />
                 <Setter Property="StrokeThickness" Value="0" />
                 <Setter Property="StrokeShape" Value="RoundRectangle 10" />
-                <Setter Property="Padding" Value="8,10" />
+                <Setter Property="Padding" Value="10,0" />
+                <Setter Property="HeightRequest" Value="38" />
+            </Style>
+            <Style x:Key="ElementsGroupCardBorder" TargetType="Border">
+                <Setter Property="BackgroundColor" Value="{StaticResource SurfaceAltColor}" />
+                <Setter Property="StrokeThickness" Value="0" />
+                <Setter Property="StrokeShape" Value="RoundRectangle 10" />
+                <Setter Property="Padding" Value="10,8" />
             </Style>
             <Style x:Key="BadgeBorder" TargetType="Border">
                 <Setter Property="BackgroundColor" Value="{StaticResource SurfaceAltColor}" />
@@ -133,6 +140,17 @@
             </Style>
             <Style x:Key="InsetBadgeBorder" TargetType="Border" BasedOn="{StaticResource BadgeBorder}">
                 <Setter Property="BackgroundColor" Value="{StaticResource SurfaceColor}" />
+            </Style>
+            <Style x:Key="ElementBadgeBorder" TargetType="Border" BasedOn="{StaticResource BadgeBorder}">
+                <Setter Property="HeightRequest" Value="17" />
+                <Setter Property="Padding" Value="5,0" />
+                <Setter Property="StrokeShape" Value="RoundRectangle 5" />
+            </Style>
+            <Style x:Key="MetaBadgeBorder" TargetType="Border" BasedOn="{StaticResource BadgeBorder}">
+                <Setter Property="StrokeShape" Value="RoundRectangle 5" />
+            </Style>
+            <Style x:Key="MetaInsetBadgeBorder" TargetType="Border" BasedOn="{StaticResource InsetBadgeBorder}">
+                <Setter Property="StrokeShape" Value="RoundRectangle 5" />
             </Style>
             <Style x:Key="OutputPillBorder" TargetType="Border">
                 <Setter Property="BackgroundColor" Value="{StaticResource SurfaceAltColor}" />
@@ -146,7 +164,8 @@
                 <Setter Property="Stroke" Value="{StaticResource BorderColor}" />
                 <Setter Property="StrokeThickness" Value="1" />
                 <Setter Property="StrokeShape" Value="RoundRectangle 10" />
-                <Setter Property="Padding" Value="10,8" />
+                <Setter Property="Padding" Value="10,0" />
+                <Setter Property="HeightRequest" Value="46" />
                 <Setter Property="MinimumHeightRequest" Value="46" />
             </Style>
 
@@ -220,6 +239,22 @@
                 <Setter Property="CornerRadius" Value="11" />
                 <Setter Property="WidthRequest" Value="44" />
                 <Setter Property="HeightRequest" Value="44" />
+            </Style>
+            <!-- Exact V2 square icon actions: a bordered surface with the Lucide mark centred.
+                 The mark is an Image at its design size; ImageButton scales it to half. -->
+            <Style x:Key="IconActionBorder" TargetType="Border">
+                <Setter Property="BackgroundColor" Value="{StaticResource SurfaceColor}" />
+                <Setter Property="Stroke" Value="{StaticResource BorderColor}" />
+                <Setter Property="StrokeThickness" Value="1" />
+                <Setter Property="StrokeShape" Value="RoundRectangle 10" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="WidthRequest" Value="34" />
+                <Setter Property="HeightRequest" Value="34" />
+            </Style>
+            <Style x:Key="SmallActionBorder" TargetType="Border" BasedOn="{StaticResource IconActionBorder}">
+                <Setter Property="StrokeShape" Value="RoundRectangle 8" />
+                <Setter Property="WidthRequest" Value="26" />
+                <Setter Property="HeightRequest" Value="26" />
             </Style>
 
             <Style x:Key="UppercaseLabel" TargetType="Label">

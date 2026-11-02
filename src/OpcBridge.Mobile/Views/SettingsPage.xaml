@@ -6,22 +6,24 @@
              Shell.NavBarIsVisible="False"
              BackgroundColor="{StaticResource PageBg}">
     <ScrollView>
-        <VerticalStackLayout Padding="16,8,16,20" Spacing="12">
-            <VerticalStackLayout Spacing="3" Padding="2,0,2,2">
+        <VerticalStackLayout Padding="16,4,16,12" Spacing="12">
+            <VerticalStackLayout Spacing="3" Padding="0,2,0,4">
                 <Label Text="Settings" FontSize="22" FontAttributes="Bold" />
-                <HorizontalStackLayout Spacing="5">
-                    <Label x:Name="connectionDot"
-                           Text="●"
-                           FontSize="7"
-                           TextColor="{StaticResource MutedColor}"
-                           VerticalOptions="Center" />
-                    <Label x:Name="connectionLabel"
+                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="5">
+                    <BoxView x:Name="connectionDot"
+                             WidthRequest="6"
+                             HeightRequest="6"
+                             CornerRadius="3"
+                             Color="{StaticResource MutedColor}"
+                             VerticalOptions="Center" />
+                    <Label Grid.Column="1"
+                           x:Name="connectionLabel"
                            FontSize="10.5"
                            TextColor="{StaticResource MutedColor}"
                            MaxLines="1"
                            LineBreakMode="TailTruncation"
                            VerticalOptions="Center" />
-                </HorizontalStackLayout>
+                </Grid>
             </VerticalStackLayout>
 
             <Border Style="{StaticResource CardBorder}">
@@ -52,34 +54,41 @@
                                             <Label Text="{Binding DisplayName}" FontAttributes="Bold" FontSize="13"
                                                    MaxLines="1" LineBreakMode="TailTruncation"
                                                    VerticalOptions="Center" />
-                                            <Label Grid.Column="1" Text="●" FontSize="7"
-                                                   TextColor="{StaticResource MutedColor}"
-                                                   VerticalOptions="Center">
-                                                <Label.Triggers>
-                                                    <DataTrigger TargetType="Label" Binding="{Binding IsActive}" Value="True">
-                                                        <Setter Property="TextColor" Value="{StaticResource GoodColor}" />
+                                            <BoxView Grid.Column="1" WidthRequest="6" HeightRequest="6"
+                                                     CornerRadius="3" Color="{StaticResource MutedColor}"
+                                                     VerticalOptions="Center">
+                                                <BoxView.Triggers>
+                                                    <DataTrigger TargetType="BoxView" Binding="{Binding IsActive}" Value="True">
+                                                        <Setter Property="Color" Value="{StaticResource GoodColor}" />
                                                     </DataTrigger>
-                                                </Label.Triggers>
-                                            </Label>
+                                                </BoxView.Triggers>
+                                            </BoxView>
                                             <Label Grid.Column="2" Text="ACTIVE" IsVisible="{Binding IsActive}"
                                                    FontSize="8.5" FontAttributes="Bold"
                                                    TextColor="{StaticResource GoodColor}"
                                                    HorizontalOptions="Start" VerticalOptions="Center" />
-                                            <Button Grid.Column="3" Text="✕" Style="{StaticResource SmallIconButton}"
-                                                    Clicked="OnRemoveBridgeClicked"
-                                                    SemanticProperties.Description="Remove this bridge" />
+                                            <Border Grid.Column="3"
+                                                    Style="{StaticResource SmallActionBorder}"
+                                                    SemanticProperties.Description="Remove this bridge">
+                                                <Border.GestureRecognizers>
+                                                    <TapGestureRecognizer Tapped="OnRemoveBridgeClicked" />
+                                                </Border.GestureRecognizers>
+                                                <Image Source="icon_trash.png" WidthRequest="12" HeightRequest="12"
+                                                       HorizontalOptions="Center" VerticalOptions="Center" />
+                                            </Border>
                                         </Grid>
                                         <Label Text="{Binding Bridge.Url}" FontFamily="monospace" FontSize="8.5"
                                                TextColor="{StaticResource MutedColor}" />
                                         <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="6">
-                                            <Label Text="●" FontSize="7" VerticalOptions="Center"
-                                                   TextColor="{Binding SyncKey, Converter={StaticResource StateColor}}" />
+                                            <BoxView WidthRequest="5" HeightRequest="5" CornerRadius="2.5"
+                                                     Color="{Binding SyncKey, Converter={StaticResource StateColor}}"
+                                                     VerticalOptions="Center" />
                                             <Label Grid.Column="1" Text="{Binding StatusText}"
                                                    FontSize="9.5" FontAttributes="Bold"
                                                    TextColor="{Binding SyncKey, Converter={StaticResource StateColor}}"
                                                    MaxLines="1" LineBreakMode="TailTruncation"
                                                    VerticalOptions="Center" />
-                                            <Label Grid.Column="2" Text="{Binding SyncText}"
+                                            <Label Grid.Column="2" Text="{Binding SyncStamp}"
                                                    FontFamily="monospace" FontSize="8.5" FontAttributes="Bold"
                                                    TextTransform="Uppercase"
                                                    TextColor="{Binding SyncKey, Converter={StaticResource StateColor}}"
@@ -88,7 +97,7 @@
                                                    VerticalOptions="Center" />
                                             <Label Grid.Column="3" Text="·" FontSize="8.5"
                                                    TextColor="{StaticResource MutedColor}" VerticalOptions="Center" />
-                                            <Label Grid.Column="4" Text="{Binding LatencyText}"
+                                            <Label Grid.Column="4" Text="{Binding LatencyValue}"
                                                    FontFamily="monospace" FontSize="8.5" FontAttributes="Bold"
                                                    TextColor="{Binding LatencyKey, Converter={StaticResource StateColor}}"
                                                    VerticalOptions="Center" />
@@ -107,7 +116,7 @@
                 <VerticalStackLayout Spacing="10">
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                         <Label Text="Add a bridge" Style="{StaticResource SectionTitleLabel}" />
-                        <Border Grid.Column="1" Style="{StaticResource BadgeBorder}" VerticalOptions="Center">
+                        <Border Grid.Column="1" Style="{StaticResource MetaBadgeBorder}" VerticalOptions="Center">
                             <Label Text="HOST / IP" FontFamily="monospace" FontSize="8" FontAttributes="Bold"
                                    TextColor="{StaticResource MutedColor}" />
                         </Border>
@@ -116,9 +125,9 @@
                            Style="{StaticResource MetaLabel}" />
                     <Border Style="{StaticResource FieldBorder}">
                         <Grid ColumnDefinitions="Auto,*">
-                            <Label Text="⌂"
-                                   FontSize="15"
-                                   TextColor="{StaticResource MutedColor}"
+                            <Image Source="icon_server.png"
+                                   WidthRequest="15"
+                                   HeightRequest="15"
                                    Margin="12,0,9,0"
                                    VerticalOptions="Center" />
                             <Entry x:Name="hostEntry"
@@ -130,9 +139,9 @@
                     </Border>
                     <Border Style="{StaticResource FieldBorder}">
                         <Grid ColumnDefinitions="Auto,*">
-                            <Label Text="✎"
-                                   FontSize="14"
-                                   TextColor="{StaticResource MutedColor}"
+                            <Image Source="icon_tag.png"
+                                   WidthRequest="15"
+                                   HeightRequest="15"
                                    Margin="12,0,9,0"
                                    VerticalOptions="Center" />
                             <Entry x:Name="nameEntry"
@@ -167,7 +176,11 @@
 
             <Border Style="{StaticResource CardBorder}">
                 <VerticalStackLayout Spacing="10">
-                    <Label Text="Account" Style="{StaticResource SectionTitleLabel}" />
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <Label Text="Account" Style="{StaticResource SectionTitleLabel}" VerticalOptions="Center" />
+                        <Image Grid.Column="1" Source="icon_lock.png"
+                               WidthRequest="13" HeightRequest="13" VerticalOptions="Center" />
+                    </Grid>
                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
                         <Border BackgroundColor="{StaticResource SurfaceAltColor}"
                                 StrokeThickness="0"
@@ -204,6 +217,7 @@
                                 HeightRequest="20"
                                 Padding="7,0"
                                 StrokeThickness="1"
+                                StrokeShape="RoundRectangle 6"
                                 VerticalOptions="Center">
                             <Label x:Name="syncBadgeLabel"
                                    FontFamily="monospace"
@@ -216,16 +230,18 @@
                     <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="6">
                         <Label Text="Sync state" FontSize="10"
                                TextColor="{StaticResource MutedColor}" VerticalOptions="Center" />
-                        <Label Grid.Column="2" x:Name="syncStateDot" Text="●" FontSize="7"
-                               VerticalOptions="Center" />
+                        <BoxView Grid.Column="2" x:Name="syncStateDot"
+                                 WidthRequest="6" HeightRequest="6" CornerRadius="3"
+                                 VerticalOptions="Center" />
                         <Label Grid.Column="3" x:Name="syncStateValue" FontSize="10"
                                FontAttributes="Bold" VerticalOptions="Center" />
                     </Grid>
                     <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="6">
                         <Label Text="Network latency" FontSize="10"
                                TextColor="{StaticResource MutedColor}" VerticalOptions="Center" />
-                        <Label Grid.Column="2" x:Name="latencyDot" Text="●" FontSize="7"
-                               VerticalOptions="Center" />
+                        <BoxView Grid.Column="2" x:Name="latencyDot"
+                                 WidthRequest="6" HeightRequest="6" CornerRadius="3"
+                                 VerticalOptions="Center" />
                         <Label Grid.Column="3" x:Name="latencyValue" FontFamily="monospace" FontSize="10"
                                FontAttributes="Bold" VerticalOptions="Center" />
                     </Grid>
@@ -242,7 +258,7 @@
                                     <VerticalStackLayout Spacing="3">
                                         <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                                             <Label Text="{Binding KindLabel}" FontAttributes="Bold" FontSize="12" />
-                                            <Border Grid.Column="1" Style="{StaticResource InsetBadgeBorder}"
+                                            <Border Grid.Column="1" Style="{StaticResource MetaInsetBadgeBorder}"
                                                     VerticalOptions="Center">
                                                 <Label Text="{Binding StateLabel}" FontFamily="monospace"
                                                        FontSize="8.5" FontAttributes="Bold"
@@ -277,7 +293,7 @@
                 <VerticalStackLayout Spacing="10">
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                         <Label Text="About" Style="{StaticResource SectionTitleLabel}" />
-                        <Border Grid.Column="1" Style="{StaticResource BadgeBorder}" VerticalOptions="Center">
+                        <Border Grid.Column="1" Style="{StaticResource MetaBadgeBorder}" VerticalOptions="Center">
                             <Label x:Name="aboutVersionLabel" FontFamily="monospace" FontSize="8"
                                    FontAttributes="Bold" TextColor="{StaticResource MutedColor}" />
                         </Border>

@@ -6,13 +6,12 @@
              Shell.NavBarIsVisible="False"
              BackgroundColor="{StaticResource PageBg}">
     <ScrollView>
-        <VerticalStackLayout Padding="20,16,20,20" Spacing="14">
+        <VerticalStackLayout Padding="20,8,20,16" Spacing="14">
             <HorizontalStackLayout Spacing="12" VerticalOptions="Center">
                 <Border Style="{StaticResource LogoBorder}">
-                    <Label Text="OB"
-                           FontSize="13"
-                           FontAttributes="Bold"
-                           TextColor="{StaticResource GoodColor}"
+                    <Image Source="icon_workflow.png"
+                           WidthRequest="20"
+                           HeightRequest="20"
                            HorizontalOptions="Center"
                            VerticalOptions="Center" />
                 </Border>
@@ -27,16 +26,20 @@
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                         <Label Text="BRIDGE" Style="{StaticResource UppercaseLabel}" VerticalOptions="Center" />
                         <HorizontalStackLayout Grid.Column="1" Spacing="5" VerticalOptions="Center">
-                            <Label x:Name="bridgeStateDot"
-                                   Text="●"
-                                   FontSize="7"
-                                   TextColor="{StaticResource MutedColor}"
-                                   VerticalOptions="Center" />
+                            <BoxView x:Name="bridgeStateDot"
+                                     WidthRequest="6"
+                                     HeightRequest="6"
+                                     CornerRadius="3"
+                                     Color="{StaticResource MutedColor}"
+                                     VerticalOptions="Center" />
                             <Label x:Name="bridgeStateLabel"
                                    Text="no bridge"
                                    FontSize="9.5"
                                    FontAttributes="Bold"
-                                   TextColor="{StaticResource MutedColor}" />
+                                   TextColor="{StaticResource MutedColor}"
+                                   MaxLines="1"
+                                   LineBreakMode="TailTruncation"
+                                   MaximumWidthRequest="220" />
                         </HorizontalStackLayout>
                     </Grid>
                     <Border Style="{StaticResource FieldBorder}">
@@ -44,9 +47,9 @@
                             <TapGestureRecognizer Tapped="OnBridgeRowTapped" />
                         </Border.GestureRecognizers>
                         <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9" Padding="12,0">
-                            <Label Text="◈"
-                                   FontSize="15"
-                                   TextColor="{StaticResource MutedColor}"
+                            <Image Source="icon_radio_tower.png"
+                                   WidthRequest="15"
+                                   HeightRequest="15"
                                    VerticalOptions="Center" />
                             <Label x:Name="bridgePickerLabel"
                                    Grid.Column="1"
@@ -56,18 +59,18 @@
                                    MaxLines="1"
                                    LineBreakMode="TailTruncation"
                                    VerticalOptions="Center" />
-                            <Label Grid.Column="2"
-                                   Text="▾"
-                                   FontSize="12"
-                                   TextColor="{StaticResource MutedColor}"
+                            <Image Grid.Column="2"
+                                   Source="icon_chevron_down.png"
+                                   WidthRequest="15"
+                                   HeightRequest="15"
                                    VerticalOptions="Center" />
                         </Grid>
                     </Border>
                     <Border Style="{StaticResource FieldBorder}">
                         <Grid ColumnDefinitions="Auto,*">
-                            <Label Text="⌂"
-                                   FontSize="15"
-                                   TextColor="{StaticResource MutedColor}"
+                            <Image Source="icon_server.png"
+                                   WidthRequest="15"
+                                   HeightRequest="15"
                                    Margin="12,0,9,0"
                                    VerticalOptions="Center" />
                             <Entry x:Name="hostEntry"
@@ -79,9 +82,9 @@
                     </Border>
                     <Border Style="{StaticResource FieldBorder}">
                         <Grid ColumnDefinitions="Auto,*">
-                            <Label Text="✎"
-                                   FontSize="14"
-                                   TextColor="{StaticResource MutedColor}"
+                            <Image Source="icon_tag.png"
+                                   WidthRequest="15"
+                                   HeightRequest="15"
                                    Margin="12,0,9,0"
                                    VerticalOptions="Center" />
                             <Entry x:Name="nameEntry"
@@ -124,15 +127,23 @@
 
             <Border Style="{StaticResource CardBorder}">
                 <VerticalStackLayout Spacing="10">
-                    <Label Text="ACCOUNT" Style="{StaticResource UppercaseLabel}" />
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <Label Text="ACCOUNT" Style="{StaticResource UppercaseLabel}" VerticalOptions="Center" />
+                        <Image Grid.Column="1"
+                               Source="icon_lock.png"
+                               WidthRequest="13"
+                               HeightRequest="13"
+                               VerticalOptions="Center" />
+                    </Grid>
                     <Label Text="Asked for a bridge account every time the viewer starts."
-                           Style="{StaticResource MetaLabel}"
+                           FontSize="11"
+                           TextColor="{StaticResource MutedColor}"
                            LineBreakMode="WordWrap" />
                     <Border Style="{StaticResource FieldBorder}">
                         <Grid ColumnDefinitions="Auto,*">
-                            <Label Text="◉"
-                                   FontSize="15"
-                                   TextColor="{StaticResource MutedColor}"
+                            <Image Source="icon_user.png"
+                                   WidthRequest="15"
+                                   HeightRequest="15"
                                    Margin="12,0,9,0"
                                    VerticalOptions="Center" />
                             <Entry x:Name="userEntry"
@@ -144,9 +155,9 @@
                     </Border>
                     <Border Style="{StaticResource FieldBorder}">
                         <Grid ColumnDefinitions="Auto,*">
-                            <Label Text="•••"
-                                   FontSize="9"
-                                   TextColor="{StaticResource MutedColor}"
+                            <Image Source="icon_lock.png"
+                                   WidthRequest="15"
+                                   HeightRequest="15"
                                    Margin="12,0,9,0"
                                    VerticalOptions="Center" />
                             <Entry x:Name="passwordEntry"
@@ -169,11 +180,11 @@
             </Border>
 
             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6" Margin="0,4,0,0">
-                <Label Text="◉"
-                       FontSize="10"
-                       TextColor="{StaticResource MutedColor}"
+                <Image Source="icon_shield_check.png"
+                       WidthRequest="13"
+                       HeightRequest="13"
                        VerticalOptions="Start"
-                       Margin="0,1,0,0" />
+                       Margin="0,2,0,0" />
                 <Label Grid.Column="1"
                        Text="One live bridge at a time · last known data stays readable offline"
                        FontSize="9.5"

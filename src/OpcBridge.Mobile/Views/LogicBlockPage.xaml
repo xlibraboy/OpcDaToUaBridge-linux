@@ -26,7 +26,7 @@
                         <HorizontalStackLayout Grid.Row="0" Grid.Column="1" Spacing="6" VerticalOptions="Center">
                             <Label Text="{Binding Text}" FontSize="13" FontAttributes="Bold"
                                    MaxLines="1" LineBreakMode="TailTruncation" VerticalOptions="Center" />
-                            <Border Style="{StaticResource BadgeBorder}" VerticalOptions="Center">
+                            <Border Style="{StaticResource ElementBadgeBorder}" VerticalOptions="Center">
                                 <Label Text="{Binding KindLabel}" FontSize="8.5" FontAttributes="Bold"
                                        FontFamily="monospace" TextColor="{StaticResource MutedColor}" />
                             </Border>
@@ -96,13 +96,16 @@
 
     <Grid>
         <Grid RowDefinitions="Auto,*">
-            <Grid Grid.Row="0" Padding="12,8,12,4" ColumnDefinitions="Auto,*" ColumnSpacing="10">
-                <Button Text="‹"
-                        Style="{StaticResource IconButton}"
-                        FontSize="20"
+            <Grid Grid.Row="0" Padding="16,2,16,4" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                <Border Style="{StaticResource IconActionBorder}"
                         VerticalOptions="Center"
-                        Clicked="OnBackClicked"
-                        SemanticProperties.Description="Back to the block list" />
+                        SemanticProperties.Description="Back to the block list">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnBackClicked" />
+                    </Border.GestureRecognizers>
+                    <Image Source="icon_chevron_left.png" WidthRequest="18" HeightRequest="18"
+                           HorizontalOptions="Center" VerticalOptions="Center" />
+                </Border>
                 <VerticalStackLayout Grid.Column="1" Spacing="3" VerticalOptions="Center">
                     <Label x:Name="titleLabel" FontSize="22" FontAttributes="Bold"
                            MaxLines="1" LineBreakMode="TailTruncation" />
@@ -110,10 +113,20 @@
                            TextColor="{StaticResource MutedColor}"
                            MaxLines="1" LineBreakMode="TailTruncation" />
                 </VerticalStackLayout>
+                <Border Grid.Column="2"
+                        Style="{StaticResource IconActionBorder}"
+                        VerticalOptions="Center"
+                        SemanticProperties.Description="More options">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnMoreClicked" />
+                    </Border.GestureRecognizers>
+                    <Image Source="icon_ellipsis.png" WidthRequest="16" HeightRequest="16"
+                           HorizontalOptions="Center" VerticalOptions="Center" />
+                </Border>
             </Grid>
 
             <ScrollView x:Name="pageScroll" Grid.Row="1">
-                <VerticalStackLayout Padding="16,4,16,28" Spacing="14">
+                <VerticalStackLayout Padding="16,0,16,28" Spacing="12">
                     <Label x:Name="offlineLabel" FontSize="10.5"
                            TextColor="{StaticResource WarnColor}" IsVisible="false" />
 
@@ -234,9 +247,22 @@
                                    BackgroundColor="Transparent"
                                    Placeholder="Add a note for the next shift…" />
                         </Border>
-                        <Button Grid.Column="1" Text="➤" Style="{StaticResource ComposerButton}"
-                                Clicked="OnAddNoteClicked"
-                                SemanticProperties.Description="Add note" />
+                        <Border Grid.Column="1"
+                                WidthRequest="44"
+                                HeightRequest="44"
+                                BackgroundColor="{StaticResource GoodColor}"
+                                StrokeThickness="0"
+                                StrokeShape="RoundRectangle 11"
+                                SemanticProperties.Description="Add note">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnAddNoteClicked" />
+                            </Border.GestureRecognizers>
+                            <Image Source="icon_send.png"
+                                   WidthRequest="17"
+                                   HeightRequest="17"
+                                   HorizontalOptions="Center"
+                                   VerticalOptions="Center" />
+                        </Border>
                     </Grid>
                     <VerticalStackLayout Spacing="8" BindableLayout.ItemsSource="{Binding Notes}">
                         <BindableLayout.ItemTemplate>
@@ -268,9 +294,17 @@
                 <Grid RowDefinitions="Auto,Auto,*" RowSpacing="8">
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                         <Label Text="{Binding Title}" FontSize="18" FontAttributes="Bold" LineBreakMode="WordWrap" />
-                        <Button Grid.Column="1" Text="✕" Clicked="OnTagPanelCloseClicked"
-                                Style="{StaticResource GhostButton}" FontSize="14"
-                                SemanticProperties.Description="Close tag details" />
+                        <Border Grid.Column="1"
+                                WidthRequest="28" HeightRequest="28"
+                                BackgroundColor="Transparent"
+                                StrokeThickness="0"
+                                SemanticProperties.Description="Close tag details">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnTagPanelCloseClicked" />
+                            </Border.GestureRecognizers>
+                            <Image Source="icon_x.png" WidthRequest="14" HeightRequest="14"
+                                   HorizontalOptions="Center" VerticalOptions="Center" />
+                        </Border>
                     </Grid>
                     <Label Grid.Row="1" Text="{Binding Subtitle}" FontSize="11"
                            TextColor="{StaticResource MutedColor}" />

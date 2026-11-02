@@ -22,39 +22,49 @@
             </Button>
         </DataTemplate>
     </ContentPage.Resources>
-    <Grid RowDefinitions="Auto,*" Padding="16,8,16,0" RowSpacing="12">
+    <Grid RowDefinitions="Auto,*" Padding="16,4,16,0" RowSpacing="12">
         <VerticalStackLayout Grid.Row="0" Spacing="12">
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10" Padding="2,0,4,0">
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10" Padding="0,2,0,4">
                 <VerticalStackLayout Spacing="3">
                     <Label Text="Plant logic" FontSize="22" FontAttributes="Bold" />
-                    <HorizontalStackLayout Spacing="5">
-                        <Label x:Name="connectionDot"
-                               Text="●"
-                               FontSize="7"
-                               TextColor="{StaticResource MutedColor}"
-                               VerticalOptions="Center" />
-                        <Label x:Name="connectionLabel"
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="5">
+                        <BoxView x:Name="connectionDot"
+                                 WidthRequest="6"
+                                 HeightRequest="6"
+                                 CornerRadius="3"
+                                 Color="{StaticResource MutedColor}"
+                                 VerticalOptions="Center" />
+                        <Label Grid.Column="1"
+                               x:Name="connectionLabel"
                                FontSize="10.5"
                                TextColor="{StaticResource MutedColor}"
                                MaxLines="1"
                                LineBreakMode="TailTruncation"
                                VerticalOptions="Center" />
-                    </HorizontalStackLayout>
+                    </Grid>
                 </VerticalStackLayout>
                 <HorizontalStackLayout Grid.Column="1" Spacing="8" VerticalOptions="Center">
-                    <Button x:Name="refreshButton"
-                            Text="↻"
-                            Style="{StaticResource IconButton}"
-                            Clicked="OnRefreshClicked"
-                            SemanticProperties.Description="Refresh logic" />
-                    <Button Text="⚙"
-                            Style="{StaticResource IconButton}"
-                            Clicked="OnSettingsClicked"
-                            SemanticProperties.Description="Open Settings" />
+                    <Border x:Name="refreshButton"
+                            Style="{StaticResource IconActionBorder}"
+                            SemanticProperties.Description="Refresh logic">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnRefreshClicked" />
+                        </Border.GestureRecognizers>
+                        <Image Source="icon_refresh.png" WidthRequest="16" HeightRequest="16"
+                               HorizontalOptions="Center" VerticalOptions="Center" />
+                    </Border>
+                    <Border Style="{StaticResource IconActionBorder}"
+                            SemanticProperties.Description="Open Settings">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnSettingsClicked" />
+                        </Border.GestureRecognizers>
+                        <Image Source="icon_settings.png" WidthRequest="16" HeightRequest="16"
+                               HorizontalOptions="Center" VerticalOptions="Center" />
+                    </Border>
                 </HorizontalStackLayout>
             </Grid>
 
-            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="6" VerticalOptions="Center">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="8" VerticalOptions="Center">
                 <Border Grid.Column="0"
                         BackgroundColor="{StaticResource SurfaceAltColor}"
                         StrokeThickness="0"
@@ -65,9 +75,9 @@
                         <TapGestureRecognizer Tapped="OnBridgeChipTapped" />
                     </Border.GestureRecognizers>
                     <HorizontalStackLayout Spacing="5" VerticalOptions="Center">
-                        <Label Text="◈"
-                               FontSize="11"
-                               TextColor="{StaticResource MutedColor}"
+                        <Image Source="icon_radio_tower.png"
+                               WidthRequest="12"
+                               HeightRequest="12"
                                VerticalOptions="Center" />
                         <Label x:Name="bridgeChipLabel"
                                Text="Bridge"
@@ -76,9 +86,9 @@
                                MaxLines="1"
                                LineBreakMode="TailTruncation"
                                VerticalOptions="Center" />
-                        <Label Text="▾"
-                               FontSize="10"
-                               TextColor="{StaticResource MutedColor}"
+                        <Image Source="icon_chevron_down.png"
+                               WidthRequest="12"
+                               HeightRequest="12"
                                VerticalOptions="Center" />
                     </HorizontalStackLayout>
                 </Border>
@@ -95,6 +105,7 @@
                 <views:SyncBadgeView x:Name="latencyBadge"
                                      Grid.Column="4"
                                      Uppercase="False"
+                                     TextSize="9.5"
                                      Hint=""
                                      VerticalOptions="Center" />
             </Grid>
@@ -103,15 +114,14 @@
                 <Border Grid.Column="0" Style="{StaticResource MetricCardBorder}">
                     <VerticalStackLayout Spacing="0" VerticalOptions="Center">
                         <HorizontalStackLayout Spacing="6">
-                            <Label Text="●"
-                                   FontSize="7"
-                                   TextColor="{StaticResource GoodColor}"
-                                   VerticalOptions="Center" />
+                            <BoxView WidthRequest="6" HeightRequest="6" CornerRadius="3"
+                                     Color="{StaticResource GoodColor}" VerticalOptions="Center" />
                             <Label x:Name="readyCountLabel"
                                    Text="0"
                                    FontFamily="monospace"
                                    FontSize="15"
-                                   FontAttributes="Bold" />
+                                   FontAttributes="Bold"
+                                   VerticalOptions="Center" />
                         </HorizontalStackLayout>
                         <Label Text="READY"
                                FontSize="9"
@@ -122,15 +132,14 @@
                 <Border Grid.Column="1" Style="{StaticResource MetricCardBorder}">
                     <VerticalStackLayout Spacing="0" VerticalOptions="Center">
                         <HorizontalStackLayout Spacing="6">
-                            <Label Text="●"
-                                   FontSize="7"
-                                   TextColor="{StaticResource BadColor}"
-                                   VerticalOptions="Center" />
+                            <BoxView WidthRequest="6" HeightRequest="6" CornerRadius="3"
+                                     Color="{StaticResource BadColor}" VerticalOptions="Center" />
                             <Label x:Name="blockedCountLabel"
                                    Text="0"
                                    FontFamily="monospace"
                                    FontSize="15"
-                                   FontAttributes="Bold" />
+                                   FontAttributes="Bold"
+                                   VerticalOptions="Center" />
                         </HorizontalStackLayout>
                         <Label Text="BLOCKED"
                                FontSize="9"
@@ -141,15 +150,14 @@
                 <Border Grid.Column="2" Style="{StaticResource MetricCardBorder}">
                     <VerticalStackLayout Spacing="0" VerticalOptions="Center">
                         <HorizontalStackLayout Spacing="6">
-                            <Label Text="●"
-                                   FontSize="7"
-                                   TextColor="{StaticResource MutedColor}"
-                                   VerticalOptions="Center" />
+                            <BoxView WidthRequest="6" HeightRequest="6" CornerRadius="3"
+                                     Color="{StaticResource MutedColor}" VerticalOptions="Center" />
                             <Label x:Name="noDataCountLabel"
                                    Text="0"
                                    FontFamily="monospace"
                                    FontSize="15"
-                                   FontAttributes="Bold" />
+                                   FontAttributes="Bold"
+                                   VerticalOptions="Center" />
                         </HorizontalStackLayout>
                         <Label Text="NO DATA"
                                FontSize="9"
@@ -165,19 +173,25 @@
                    IsVisible="false" />
 
             <Border Style="{StaticResource SearchBorder}">
-                <Grid ColumnDefinitions="Auto,*">
-                    <Label Text="⌕"
-                           FontSize="16"
-                           TextColor="{StaticResource MutedColor}"
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                    <Image Source="icon_search.png"
+                           WidthRequest="16"
+                           HeightRequest="16"
                            Margin="12,0,9,0"
                            VerticalOptions="Center" />
                     <Entry x:Name="searchEntry"
                            Grid.Column="1"
-                           Margin="0,0,12,0"
+                           Margin="0,0,9,0"
                            BackgroundColor="Transparent"
                            Placeholder="Search name, description or tags"
                            ClearButtonVisibility="WhileEditing"
                            TextChanged="OnSearchChanged" />
+                    <Image Grid.Column="2"
+                           Source="icon_sliders.png"
+                           WidthRequest="15"
+                           HeightRequest="15"
+                           Margin="0,0,12,0"
+                           VerticalOptions="Center" />
                 </Grid>
             </Border>
 
@@ -206,13 +220,13 @@
                 </CollectionView.EmptyView>
                 <CollectionView.GroupHeaderTemplate>
                     <DataTemplate>
-                        <Border Margin="0,8,0,4" Style="{StaticResource GroupCardBorder}"
+                        <Border Margin="0,0,0,4" Style="{StaticResource LogicGroupCardBorder}"
                                 IsVisible="{Binding ShowHeader}">
                             <Border.GestureRecognizers>
                                 <TapGestureRecognizer Command="{Binding ToggleCommand}" />
                             </Border.GestureRecognizers>
                             <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto" ColumnSpacing="7">
-                                <Label Text="{Binding Chevron}" FontSize="11" VerticalOptions="Center"
+                                <Label Text="{Binding Chevron}" FontSize="12" VerticalOptions="Center"
                                        TextColor="{StaticResource MutedColor}" />
                                 <Label Grid.Column="1" Text="{Binding Name}" FontAttributes="Bold" FontSize="13"
                                        VerticalOptions="Center" />
@@ -248,18 +262,31 @@
                                     </HorizontalStackLayout>
                                     <Label Grid.Column="2" Text="{Binding StateLabel}" FontAttributes="Bold"
                                            FontSize="10" CharacterSpacing="0.6" VerticalOptions="Center"
+                                           TextTransform="Uppercase"
                                            TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
                                     <!-- Each row folds on its own, to its name and state; the fold is
                                          remembered while the app is open. -->
-                                    <Button Grid.Column="3" Text="{Binding FoldChevron}"
-                                            Command="{Binding ToggleFoldCommand}"
-                                            Style="{StaticResource GhostButton}"
-                                            FontSize="15"
-                                            WidthRequest="28"
-                                            HeightRequest="28"
-                                            MinimumWidthRequest="28"
-                                            MinimumHeightRequest="28"
-                                            SemanticProperties.Description="{Binding FoldLabel}" />
+                                    <Border Grid.Column="3"
+                                            WidthRequest="24"
+                                            HeightRequest="24"
+                                            BackgroundColor="Transparent"
+                                            StrokeThickness="0"
+                                            SemanticProperties.Description="{Binding FoldLabel}">
+                                        <Border.GestureRecognizers>
+                                            <TapGestureRecognizer Command="{Binding ToggleFoldCommand}" />
+                                        </Border.GestureRecognizers>
+                                        <Image Source="icon_chevron_down.png"
+                                               WidthRequest="15"
+                                               HeightRequest="15"
+                                               HorizontalOptions="Center"
+                                               VerticalOptions="Center">
+                                            <Image.Triggers>
+                                                <DataTrigger TargetType="Image" Binding="{Binding IsFolded}" Value="True">
+                                                    <Setter Property="Rotation" Value="-90" />
+                                                </DataTrigger>
+                                            </Image.Triggers>
+                                        </Image>
+                                    </Border>
                                 </Grid>
                                 <VerticalStackLayout Spacing="6" IsVisible="{Binding ShowDetails}">
                                     <FlexLayout Wrap="Wrap" Direction="Row" AlignItems="Center">
@@ -280,7 +307,7 @@
                                             </DataTemplate>
                                         </BindableLayout.ItemTemplate>
                                     </FlexLayout>
-                                    <Label Text="{Binding Reason}" IsVisible="{Binding HasReason}" FontSize="12" />
+                                    <Label Text="{Binding Reason, TargetNullValue='reading…'}" FontSize="12" />
                                     <Label Text="{Binding ProgressText}" IsVisible="{Binding HasProgress}"
                                            FontSize="10.5" TextColor="{StaticResource MutedColor}" />
                                 </VerticalStackLayout>
