@@ -26,6 +26,35 @@ public static class MauiProgram
         builder.Services.AddTransient<ElementsPage>();
         builder.Services.AddTransient<SettingsPage>();
 
+#if ANDROID
+        Microsoft.Maui.Handlers.EntryHandler.Mapper.AppendToMapping("PlantField", (handler, _) =>
+        {
+            if (handler.PlatformView is Android.Widget.EditText editText)
+            {
+                StyleField(editText);
+            }
+        });
+        Microsoft.Maui.Handlers.PickerHandler.Mapper.AppendToMapping("PlantField", (handler, _) =>
+        {
+            if (handler.PlatformView is Android.Widget.EditText editText)
+            {
+                StyleField(editText);
+            }
+        });
+#endif
+
         return builder.Build();
     }
+
+#if ANDROID
+    private static void StyleField(Android.Widget.EditText editText)
+    {
+        editText.BackgroundTintList =
+            Android.Content.Res.ColorStateList.ValueOf(Android.Graphics.Color.Transparent);
+        editText.SetPadding(Dp(12), Dp(10), Dp(12), Dp(10));
+    }
+
+    private static int Dp(float value) =>
+        (int)(Android.App.Application.Context.Resources!.DisplayMetrics!.Density * value + 0.5f);
+#endif
 }

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -58,6 +59,64 @@ public sealed class BridgeProbeTests
         string? found = await BridgeProbe.FindAsync($"127.0.0.1:{port}", timeoutMs: 200);
 
         Assert.Null(found);
+    }
+
+    [Fact]
+    public async Task FindAsync_RespectsTheSearchBudget()
+    {
+        Stopwatch clock = Stopwatch.StartNew();
+        string? found = await BridgeProbe.FindAsync("127.0.0.1", timeoutMs: 2000, searchBudgetMs: 1);
+        clock.Stop();
+
+        Assert.Null(found);
+        Assert.True(clock.ElapsedMilliseconds < 1000);
+    }
+
+    [Fact]
+    public async Task FindAsync_ReturnsAtTheSearchBudgetWhenAProbeHangs()
+    {
+        TcpListener listener = new(IPAddress.Loopback, 0);
+        listener.Start();
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        try
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    using TcpClient client = await listener.AcceptTcpClientAsync();
+                    await Task.Delay(5000);
+                }
+                catch (Exception)
+                {
+                    // Listener stopped with the test.
+                }
+            });
+
+            Stopwatch clock = Stopwatch.StartNew();
+            string? found = await BridgeProbe.FindAsync(
+                $"127.0.0.1:{port}",
+                timeoutMs: 5000,
+                searchBudgetMs: 600);
+            clock.Stop();
+
+            Assert.Null(found);
+            Assert.True(clock.ElapsedMilliseconds < 3000);
+        }
+        finally
+        {
+            listener.Stop();
+        }
+    }
+
+    [Fact]
+    public async Task FindAsync_StopsWhenTheSearchIsCancelled()
+    {
+        using CancellationTokenSource cts = new();
+        cts.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(
+            () => BridgeProbe.FindAsync("127.0.0.1:19000", timeoutMs: 100, cts.Token));
     }
 
     [Fact]

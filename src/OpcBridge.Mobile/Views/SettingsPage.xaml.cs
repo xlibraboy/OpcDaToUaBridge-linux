@@ -7,6 +7,7 @@ namespace OpcBridge.Mobile.Views;
 public partial class SettingsPage : ContentPage
 {
     private readonly BridgeCoordinator coordinator_;
+    private CancellationTokenSource? connectCts_;
 
     public SettingsPage(BridgeCoordinator coordinator)
     {
@@ -63,15 +64,21 @@ public partial class SettingsPage : ContentPage
             return;
         }
 
+        using CancellationTokenSource cts = new();
+        connectCts_ = cts;
+        bool cancelled = false;
         connectButton.IsEnabled = false;
+        cancelConnectButton.IsVisible = true;
+        busyIndicator.IsVisible = true;
+        busyIndicator.IsRunning = true;
         // The probe can walk the whole 8080–8180 range; say what is happening right away.
-        connectionLabel.Text = "searching for a bridge on " + host + "…";
+        connectionLabel.Text = "searching for a bridge on " + host + " (up to 8 s)…";
         try
         {
             MobileResult<BridgeConnection> result = await coordinator_.AddOrConnectAsync(
                 host,
                 nameEntry.Text,
-                CancellationToken.None);
+                cts.Token);
             if (!result.Ok)
             {
                 // Do not Repaint over this: the operator must see why the address was refused.
@@ -83,6 +90,10 @@ public partial class SettingsPage : ContentPage
             nameEntry.Text = string.Empty;
             Repaint();
         }
+        catch (OperationCanceledException)
+        {
+            cancelled = true;
+        }
         catch (Exception ex)
         {
             // An async event handler must never let a network failure reach the process: the
@@ -91,8 +102,26 @@ public partial class SettingsPage : ContentPage
         }
         finally
         {
+            if (ReferenceEquals(connectCts_, cts))
+            {
+                connectCts_ = null;
+            }
+
             connectButton.IsEnabled = true;
+            cancelConnectButton.IsVisible = false;
+            busyIndicator.IsRunning = false;
+            busyIndicator.IsVisible = false;
+            if (cancelled)
+            {
+                connectionLabel.Text = "search cancelled";
+            }
         }
+    }
+
+    private void OnCancelConnectClicked(object? sender, EventArgs e)
+    {
+        connectCts_?.Cancel();
+        connectionLabel.Text = "cancelling…";
     }
 
     private async void OnBridgeTapped(object? sender, TappedEventArgs e)

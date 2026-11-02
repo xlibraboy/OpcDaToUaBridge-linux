@@ -69,7 +69,11 @@ public sealed class BridgeCoordinator : IDisposable
     /// </summary>
     public async Task<MobileResult<BridgeConnection>> AddOrConnectAsync(string host, string? name, CancellationToken cancellationToken)
     {
-        string? url = await BridgeProbe.FindAsync(host, 3000, cancellationToken);
+        // The sweep is network-bound and must not share the UI thread with the page that is
+        // waiting for it; the coordinator returns to the caller's context after the probe.
+        string? url = await Task.Run(
+            () => BridgeProbe.FindAsync(host, 3000, cancellationToken),
+            cancellationToken);
         if (url is null)
         {
             return MobileResult<BridgeConnection>.Fail("no bridge answered on " + host);

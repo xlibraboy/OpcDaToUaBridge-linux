@@ -4,7 +4,14 @@
        xmlns:views="clr-namespace:OpcBridge.Mobile.Views"
        x:Class="OpcBridge.Mobile.AppShell"
        Title="OpcBridge Logic"
-       FlyoutBehavior="Disabled">
+       FlyoutBehavior="Disabled"
+       Shell.BackgroundColor="#0C1210"
+       Shell.ForegroundColor="#F1F5F3"
+       Shell.TitleColor="#F1F5F3"
+       Shell.TabBarBackgroundColor="#101714"
+       Shell.TabBarForegroundColor="#4CC38A"
+       Shell.TabBarTitleColor="#4CC38A"
+       Shell.TabBarUnselectedColor="#93A19B">
     <!-- The app opens here; the tabs only appear once a bridge account opens the gate. -->
     <ShellContent Title="Sign in"
                   Route="login"

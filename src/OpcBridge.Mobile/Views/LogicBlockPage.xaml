@@ -4,6 +4,7 @@
              xmlns:views="clr-namespace:OpcBridge.Mobile.Views"
              x:Class="OpcBridge.Mobile.Views.LogicBlockPage"
              Title="Logic block"
+             Shell.NavBarIsVisible="False"
              BackgroundColor="{StaticResource PageBg}">
     <ContentPage.Resources>
         <!-- One element of the IEC network: a contact, a gate or a function block. The row indents
@@ -15,25 +16,31 @@
                 <views:DepthGuideView Grid.Column="0" WidthRequest="{Binding IndentWidth}"
                                       Depth="{Binding Depth}" GuideColor="{StaticResource BorderColor}"
                                       VerticalOptions="Fill" />
-                <Border Grid.Column="1" Margin="0,0,0,6" Padding="10" StrokeThickness="1"
-                        Stroke="{StaticResource BorderColor}" BackgroundColor="{StaticResource SurfaceColor}"
+                <Border Grid.Column="1" Margin="0,0,0,6" Style="{StaticResource ListCardBorder}"
                         Loaded="OnElementRowLoaded" Unloaded="OnElementRowUnloaded">
                     <Grid ColumnDefinitions="26,*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto" ColumnSpacing="6">
-                        <Label Grid.Row="0" Grid.Column="0" Text="{Binding Mark}" FontSize="18" FontAttributes="Bold"
+                        <Label Grid.Row="0" Grid.Column="0" Text="{Binding Mark}" FontSize="16" FontAttributes="Bold"
+                               VerticalOptions="Center"
                                TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
-                        <VerticalStackLayout Grid.Row="0" Grid.Column="1" Spacing="0" VerticalOptions="Center">
-                            <Label Text="{Binding KindLabel}" FontSize="10" TextColor="{StaticResource MutedColor}" />
-                            <Label Text="{Binding Text}" />
-                        </VerticalStackLayout>
+                        <HorizontalStackLayout Grid.Row="0" Grid.Column="1" Spacing="6" VerticalOptions="Center">
+                            <Label Text="{Binding Text}" FontSize="13" FontAttributes="Bold"
+                                   MaxLines="1" LineBreakMode="TailTruncation" VerticalOptions="Center" />
+                            <Border Style="{StaticResource PillBorder}" VerticalOptions="Center">
+                                <Label Text="{Binding KindLabel}" FontSize="9" FontAttributes="Bold"
+                                       FontFamily="monospace" TextColor="{StaticResource MutedColor}" />
+                            </Border>
+                        </HorizontalStackLayout>
                         <VerticalStackLayout Grid.Row="0" Grid.Column="2" Spacing="0" HorizontalOptions="End">
-                            <Label Text="{Binding ActualText}" FontSize="18" FontAttributes="Bold" HorizontalTextAlignment="End"
+                            <Label Text="{Binding ActualText}" FontSize="16" FontFamily="monospace"
+                                   FontAttributes="Bold" HorizontalTextAlignment="End"
                                    TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
-                            <Label Text="{Binding ValueText}" FontSize="11" HorizontalTextAlignment="End"
-                                   TextColor="{StaticResource MutedColor}" />
+                            <Label Text="{Binding ValueText}" FontSize="8.5" FontFamily="monospace"
+                                   HorizontalTextAlignment="End" TextColor="{StaticResource MutedColor}" />
                         </VerticalStackLayout>
                         <!-- A tag line is a door: where it comes from, and which blocks use it. -->
                         <Label Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding TagLabel}"
-                               FontSize="11" TextColor="{StaticResource MutedColor}" LineBreakMode="WordWrap"
+                               FontFamily="monospace" FontSize="9.5" TextColor="{StaticResource MutedColor}"
+                               LineBreakMode="WordWrap"
                                SemanticProperties.Hint="Where this tag comes from, and which blocks use it">
                             <Label.Triggers>
                                 <DataTrigger TargetType="Label" Binding="{Binding HasTagReference}" Value="True">
@@ -47,12 +54,14 @@
                         </Label>
                         <!-- Should vs actual: the reading the element needs against the live one. -->
                         <Label Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding ShouldLine}"
-                               IsVisible="{Binding ShowShould}" FontSize="12"
+                               IsVisible="{Binding ShowShould}" FontFamily="monospace" FontSize="10.5"
                                TextColor="{Binding ShouldKey, Converter={StaticResource StateColor}}" />
                         <Label Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding ProgressText}"
-                               IsVisible="{Binding ShowProgress}" FontSize="12" TextColor="{StaticResource WarnColor}" />
+                               IsVisible="{Binding ShowProgress}" FontSize="10.5"
+                               TextColor="{StaticResource WarnColor}" />
                         <Label Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding NextStepText}"
-                               IsVisible="{Binding ShowNextStep}" FontSize="12" TextColor="{StaticResource WarnColor}" />
+                               IsVisible="{Binding ShowNextStep}" FontSize="10.5"
+                               TextColor="{StaticResource WarnColor}" />
                     </Grid>
                 </Border>
             </Grid>
@@ -60,22 +69,21 @@
 
         <!-- One block behind a tag: its name and state, what it is, and the lines that use it. -->
         <DataTemplate x:Key="TagUseCard">
-            <Border Padding="9" StrokeThickness="1"
-                    Stroke="{StaticResource BorderColor}" BackgroundColor="{StaticResource PageBg}">
+            <Border Style="{StaticResource SubtleBorder}">
                 <Border.GestureRecognizers>
                     <TapGestureRecognizer Tapped="OnTagUseTapped" CommandParameter="{Binding .}" />
                 </Border.GestureRecognizers>
                 <VerticalStackLayout Spacing="3">
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                        <Label Text="{Binding Name}" FontAttributes="Bold" FontSize="14" />
-                        <Label Grid.Column="1" Text="{Binding StateLabel}" FontSize="11" FontAttributes="Bold"
+                        <Label Text="{Binding Name}" FontAttributes="Bold" FontSize="13" />
+                        <Label Grid.Column="1" Text="{Binding StateLabel}" FontSize="10" FontAttributes="Bold"
                                TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
                     </Grid>
-                    <Label Text="{Binding Meta}" FontSize="11" TextColor="{StaticResource MutedColor}" />
+                    <Label Text="{Binding Meta}" FontSize="10" TextColor="{StaticResource MutedColor}" />
                     <VerticalStackLayout Spacing="1" BindableLayout.ItemsSource="{Binding Lines}">
                         <BindableLayout.ItemTemplate>
                             <DataTemplate>
-                                <Label Text="{Binding}" FontSize="12" LineBreakMode="WordWrap" />
+                                <Label Text="{Binding}" FontSize="11" LineBreakMode="WordWrap" />
                             </DataTemplate>
                         </BindableLayout.ItemTemplate>
                     </VerticalStackLayout>
@@ -85,138 +93,173 @@
     </ContentPage.Resources>
 
     <Grid>
-        <ScrollView x:Name="pageScroll">
-        <VerticalStackLayout Padding="12" Spacing="10">
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                <Label x:Name="titleLabel" FontSize="22" FontAttributes="Bold" />
-                <Label Grid.Column="1" Text="{Binding KindLabel}" FontSize="12"
-                       TextColor="{StaticResource MutedColor}" VerticalOptions="Center" />
+        <Grid RowDefinitions="Auto,*">
+            <Grid Grid.Row="0" Padding="12,8,12,4" ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                <Button Text="‹"
+                        Style="{StaticResource GhostButton}"
+                        FontSize="24"
+                        WidthRequest="36"
+                        HeightRequest="36"
+                        VerticalOptions="Center"
+                        Clicked="OnBackClicked"
+                        SemanticProperties.Description="Back to the block list" />
+                <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Center">
+                    <Label x:Name="titleLabel" FontSize="20" FontAttributes="Bold"
+                           MaxLines="1" LineBreakMode="TailTruncation" />
+                    <Label Text="{Binding KindLabel}" FontSize="10.5"
+                           TextColor="{StaticResource MutedColor}" />
+                </VerticalStackLayout>
             </Grid>
-            <Label x:Name="offlineLabel" FontSize="12" TextColor="{StaticResource WarnColor}" IsVisible="false" />
-            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
-                <Label x:Name="stateLabel" FontSize="16" FontAttributes="Bold" />
-                <!-- The output tag's feedback: whether the live output agrees with the interlock. -->
-                <Label Grid.Column="1" Text="{Binding OutputText}" IsVisible="{Binding HasOutput}"
-                       FontSize="12" FontAttributes="Bold" VerticalOptions="Center" LineBreakMode="TailTruncation"
-                       TextColor="{Binding OutputKey, Converter={StaticResource StateColor}}"
-                       SemanticProperties.Description="{Binding OutputDescription}" />
-            </Grid>
-            <Label x:Name="blockedLabel" FontSize="13" TextColor="{StaticResource BadColor}" />
-            <Label x:Name="descriptionLabel" FontSize="13" TextColor="{StaticResource MutedColor}" />
-            <Label Text="{Binding ProgressText}" IsVisible="{Binding ShowProgress}" FontSize="12"
-                   TextColor="{StaticResource WarnColor}" />
-            <Label x:Name="messageLabel" FontSize="13" TextColor="{StaticResource WarnColor}" />
 
-            <!-- The network's parents as one strip of state dots, in the network's own order.
-                 Only the dot is drawn; the parent's name is its accessible label, and tapping a
-                 dot scrolls its row into view and rings it. -->
-            <Border IsVisible="{Binding HasCheckpoints}" Padding="10,8" StrokeThickness="1"
-                    Stroke="{StaticResource BorderColor}" BackgroundColor="{StaticResource SurfaceColor}">
-                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
-                    <VerticalStackLayout Spacing="3" VerticalOptions="Center">
-                        <Label Text="CHECKPOINTS" FontSize="10" TextColor="{StaticResource MutedColor}" />
-                        <Border Padding="4,0" StrokeThickness="1" HorizontalOptions="Start"
-                                Stroke="{Binding CheckpointSummaryKey, Converter={StaticResource StateColor}, ConverterParameter=checkpoint}">
-                            <Label Text="{Binding CheckpointSummary}" FontSize="11" FontAttributes="Bold"
-                                   TextColor="{Binding CheckpointSummaryKey, Converter={StaticResource StateColor}, ConverterParameter=checkpoint}"
-                                   SemanticProperties.Description="{Binding CheckpointSummaryDescription}" />
-                        </Border>
-                    </VerticalStackLayout>
-                    <FlexLayout Grid.Column="1" Wrap="Wrap" Direction="Row" AlignItems="Center"
-                                BindableLayout.ItemsSource="{Binding Checkpoints}">
+            <ScrollView x:Name="pageScroll" Grid.Row="1">
+                <VerticalStackLayout Padding="16,4,16,16" Spacing="14">
+                    <Label x:Name="offlineLabel" FontSize="10.5"
+                           TextColor="{StaticResource WarnColor}" IsVisible="false" />
+
+                    <Border Style="{StaticResource CardBorder}">
+                        <VerticalStackLayout Spacing="10">
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                                <Label x:Name="stateLabel" FontSize="20" FontAttributes="Bold"
+                                       VerticalOptions="Center" />
+                                <!-- The output tag's feedback: whether the live output agrees with the interlock. -->
+                                <Label Grid.Column="1" Text="{Binding OutputText}" IsVisible="{Binding HasOutput}"
+                                       FontSize="10" FontAttributes="Bold" VerticalOptions="Center"
+                                       HorizontalTextAlignment="End" LineBreakMode="TailTruncation"
+                                       TextColor="{Binding OutputKey, Converter={StaticResource StateColor}}"
+                                       SemanticProperties.Description="{Binding OutputDescription}" />
+                            </Grid>
+                            <Label x:Name="blockedLabel" FontSize="11.5"
+                                   TextColor="{StaticResource BadColor}" LineBreakMode="WordWrap" />
+                            <Label x:Name="descriptionLabel" FontSize="11.5"
+                                   TextColor="{StaticResource MutedColor}" LineBreakMode="WordWrap" />
+                            <Label Text="{Binding ProgressText}" IsVisible="{Binding ShowProgress}" FontSize="10.5"
+                                   TextColor="{StaticResource WarnColor}" />
+                            <BoxView HeightRequest="1" Color="{StaticResource BorderColor}"
+                                     IsVisible="{Binding HasCheckpoints}" />
+
+                            <!-- The network's parents as one strip of state dots, in the network's own order.
+                                 Only the dot is drawn; the parent's name is its accessible label, and tapping a
+                                 dot scrolls its row into view and rings it. -->
+                            <Border Style="{StaticResource SubtleBorder}" IsVisible="{Binding HasCheckpoints}">
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                                    <VerticalStackLayout Spacing="3" VerticalOptions="Center">
+                                        <Label Text="CHECKPOINTS" Style="{StaticResource UppercaseLabel}" />
+                                        <Border Style="{StaticResource PillBorder}" HorizontalOptions="Start"
+                                                StrokeThickness="1"
+                                                Stroke="{Binding CheckpointSummaryKey, Converter={StaticResource StateColor}, ConverterParameter=checkpoint}">
+                                            <Label Text="{Binding CheckpointSummary}" FontSize="9.5"
+                                                   FontAttributes="Bold"
+                                                   TextColor="{Binding CheckpointSummaryKey, Converter={StaticResource StateColor}, ConverterParameter=checkpoint}"
+                                                   SemanticProperties.Description="{Binding CheckpointSummaryDescription}" />
+                                        </Border>
+                                    </VerticalStackLayout>
+                                    <FlexLayout Grid.Column="1" Wrap="Wrap" Direction="Row" AlignItems="Center"
+                                                BindableLayout.ItemsSource="{Binding Checkpoints}">
+                                        <BindableLayout.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Margin="0,2,8,2" WidthRequest="20" HeightRequest="20"
+                                                        StrokeThickness="1" Stroke="{StaticResource BorderColor}"
+                                                        StrokeShape="RoundRectangle 10"
+                                                        BackgroundColor="{Binding StateKey, Converter={StaticResource StateColor}, ConverterParameter=checkpoint}"
+                                                        SemanticProperties.Description="{Binding Description}"
+                                                        SemanticProperties.Hint="Go to this parent">
+                                                    <Border.GestureRecognizers>
+                                                        <TapGestureRecognizer Tapped="OnCheckpointTapped" CommandParameter="{Binding .}" />
+                                                    </Border.GestureRecognizers>
+                                                </Border>
+                                            </DataTemplate>
+                                        </BindableLayout.ItemTemplate>
+                                    </FlexLayout>
+                                </Grid>
+                            </Border>
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <Label x:Name="messageLabel" FontSize="12"
+                           TextColor="{StaticResource WarnColor}" LineBreakMode="WordWrap" />
+
+                    <Label Text="NETWORK" Style="{StaticResource UppercaseLabel}" IsVisible="{Binding ShowNetwork}" />
+                    <VerticalStackLayout IsVisible="{Binding ShowNetwork}" Spacing="0"
+                                         BindableLayout.ItemsSource="{Binding Elements}"
+                                         BindableLayout.ItemTemplate="{StaticResource ElementRow}" />
+
+                    <Label Text="STEPS" Style="{StaticResource UppercaseLabel}" IsVisible="{Binding IsSequence}" />
+                    <VerticalStackLayout IsVisible="{Binding IsSequence}" Spacing="8"
+                                         BindableLayout.ItemsSource="{Binding Steps}">
                         <BindableLayout.ItemTemplate>
                             <DataTemplate>
-                                <Border Margin="0,2,8,2" WidthRequest="24" HeightRequest="24" StrokeThickness="1"
-                                        Stroke="{StaticResource BorderColor}" StrokeShape="RoundRectangle 12"
-                                        BackgroundColor="{Binding StateKey, Converter={StaticResource StateColor}, ConverterParameter=checkpoint}"
-                                        SemanticProperties.Description="{Binding Description}"
-                                        SemanticProperties.Hint="Go to this parent">
-                                    <Border.GestureRecognizers>
-                                        <TapGestureRecognizer Tapped="OnCheckpointTapped" CommandParameter="{Binding .}" />
-                                    </Border.GestureRecognizers>
+                                <Border Style="{StaticResource SubtleBorder}">
+                                    <VerticalStackLayout Spacing="6">
+                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                                            <Label Text="{Binding Name}" FontAttributes="Bold" />
+                                            <Label Grid.Column="1" Text="{Binding StateLabel}"
+                                                   TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
+                                        </Grid>
+                                        <Label Text="{Binding Reason}" FontSize="11"
+                                               TextColor="{StaticResource WarnColor}" />
+                                        <VerticalStackLayout Spacing="0" BindableLayout.ItemsSource="{Binding Elements}"
+                                                             BindableLayout.ItemTemplate="{StaticResource ElementRow}" />
+                                    </VerticalStackLayout>
                                 </Border>
                             </DataTemplate>
                         </BindableLayout.ItemTemplate>
-                    </FlexLayout>
-                </Grid>
-            </Border>
+                    </VerticalStackLayout>
 
-            <Label Text="Network" FontAttributes="Bold" IsVisible="{Binding ShowNetwork}" />
-            <VerticalStackLayout IsVisible="{Binding ShowNetwork}" Spacing="0"
-                                 BindableLayout.ItemsSource="{Binding Elements}"
-                                 BindableLayout.ItemTemplate="{StaticResource ElementRow}" />
+                    <Label Text="ACTIONS" Style="{StaticResource UppercaseLabel}" />
+                    <VerticalStackLayout Spacing="8" BindableLayout.ItemsSource="{Binding Actions}">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate>
+                                <Button Text="{Binding Label}"
+                                        Style="{StaticResource SecondaryButton}"
+                                        Clicked="OnActionClicked" />
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
 
-            <Label Text="Steps" FontAttributes="Bold" IsVisible="{Binding IsSequence}" />
-            <VerticalStackLayout IsVisible="{Binding IsSequence}" Spacing="8"
-                                 BindableLayout.ItemsSource="{Binding Steps}">
-                <BindableLayout.ItemTemplate>
-                    <DataTemplate>
-                        <Border Padding="10" StrokeThickness="1"
-                                Stroke="{StaticResource BorderColor}" BackgroundColor="{StaticResource SurfaceColor}">
-                            <VerticalStackLayout Spacing="4">
-                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
-                                    <Label Text="{Binding Name}" FontAttributes="Bold" />
-                                    <Label Grid.Column="1" Text="{Binding StateLabel}"
-                                           TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
-                                </Grid>
-                                <Label Text="{Binding Reason}" FontSize="12" TextColor="{StaticResource WarnColor}" />
-                                <VerticalStackLayout Spacing="0" BindableLayout.ItemsSource="{Binding Elements}"
-                                                     BindableLayout.ItemTemplate="{StaticResource ElementRow}" />
-                            </VerticalStackLayout>
+                    <Label Text="NOTES" Style="{StaticResource UppercaseLabel}" />
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <Border Style="{StaticResource InputBorder}">
+                            <Entry x:Name="noteEntry" BackgroundColor="Transparent"
+                                   Placeholder="Add a note for the next shift…" />
                         </Border>
-                    </DataTemplate>
-                </BindableLayout.ItemTemplate>
-            </VerticalStackLayout>
-
-            <Label Text="Actions" FontAttributes="Bold" />
-            <VerticalStackLayout Spacing="6" BindableLayout.ItemsSource="{Binding Actions}">
-                <BindableLayout.ItemTemplate>
-                    <DataTemplate>
-                        <Button Text="{Binding Label}" Clicked="OnActionClicked" />
-                    </DataTemplate>
-                </BindableLayout.ItemTemplate>
-            </VerticalStackLayout>
-
-            <Label Text="Notes" FontAttributes="Bold" />
-            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
-                <Entry x:Name="noteEntry" Placeholder="Add a note for the next shift…" />
-                <Button Grid.Column="1" Text="Add" Clicked="OnAddNoteClicked" />
-            </Grid>
-            <VerticalStackLayout Spacing="4" BindableLayout.ItemsSource="{Binding Notes}">
-                <BindableLayout.ItemTemplate>
-                    <DataTemplate>
-                        <Border Padding="8" StrokeThickness="1"
-                                Stroke="{StaticResource BorderColor}" BackgroundColor="{StaticResource SurfaceColor}">
-                            <VerticalStackLayout Spacing="2">
-                                <Label Text="{Binding Text}" FontSize="13" />
-                                <Label Text="{Binding Meta}" FontSize="11" TextColor="{StaticResource MutedColor}" />
-                            </VerticalStackLayout>
-                        </Border>
-                    </DataTemplate>
-                </BindableLayout.ItemTemplate>
-            </VerticalStackLayout>
-        </VerticalStackLayout>
-        </ScrollView>
+                        <Button Grid.Column="1" Text="Add" Style="{StaticResource CompactButton}"
+                                Clicked="OnAddNoteClicked" VerticalOptions="Center" />
+                    </Grid>
+                    <VerticalStackLayout Spacing="8" BindableLayout.ItemsSource="{Binding Notes}">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate>
+                                <Border Style="{StaticResource SubtleBorder}">
+                                    <VerticalStackLayout Spacing="2">
+                                        <Label Text="{Binding Text}" FontSize="12" />
+                                        <Label Text="{Binding Meta}" FontSize="9.5"
+                                               TextColor="{StaticResource MutedColor}" />
+                                    </VerticalStackLayout>
+                                </Border>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
+                </VerticalStackLayout>
+            </ScrollView>
+        </Grid>
 
         <!-- The tag inspector: the web Result tab's Source / Used by answers on one sheet. -->
         <Grid IsVisible="{Binding IsTagPanelOpen}">
-            <BoxView Color="#CC0F1513">
+            <BoxView Color="#CC0C1210">
                 <BoxView.GestureRecognizers>
                     <TapGestureRecognizer Tapped="OnTagPanelScrimTapped" />
                 </BoxView.GestureRecognizers>
             </BoxView>
-            <Border Margin="10,60,10,10" Padding="14" StrokeThickness="1"
-                    Stroke="{StaticResource BorderColor}" BackgroundColor="{StaticResource SurfaceColor}"
-                    StrokeShape="RoundRectangle 12" BindingContext="{Binding SelectedTag}">
+            <Border Margin="10,60,10,10" Padding="14"
+                    Style="{StaticResource CardBorder}"
+                    BindingContext="{Binding SelectedTag}">
                 <Grid RowDefinitions="Auto,Auto,*" RowSpacing="8">
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                         <Label Text="{Binding Title}" FontSize="18" FontAttributes="Bold" LineBreakMode="WordWrap" />
                         <Button Grid.Column="1" Text="✕" Clicked="OnTagPanelCloseClicked"
-                                FontSize="14" Padding="10,2" BackgroundColor="Transparent"
-                                TextColor="{StaticResource MutedColor}"
+                                Style="{StaticResource GhostButton}" FontSize="14"
                                 SemanticProperties.Description="Close tag details" />
                     </Grid>
-                    <Label Grid.Row="1" Text="{Binding Subtitle}" FontSize="12"
+                    <Label Grid.Row="1" Text="{Binding Subtitle}" FontSize="11"
                            TextColor="{StaticResource MutedColor}" />
                     <ScrollView Grid.Row="2">
                         <VerticalStackLayout Spacing="10">
@@ -225,32 +268,29 @@
                                     <DataTemplate>
                                         <VerticalStackLayout Spacing="2">
                                             <Label Text="{Binding Label}" IsVisible="{Binding IsSection}"
-                                                   FontSize="10" FontAttributes="Bold"
-                                                   TextColor="{StaticResource MutedColor}" />
+                                                   Style="{StaticResource UppercaseLabel}" />
                                             <Grid ColumnDefinitions="92,*" ColumnSpacing="8" IsVisible="{Binding IsPair}">
-                                                <Label Text="{Binding Label}" FontSize="12"
+                                                <Label Text="{Binding Label}" FontSize="11"
                                                        TextColor="{StaticResource MutedColor}" />
-                                                <Label Grid.Column="1" Text="{Binding Value}" FontSize="12"
+                                                <Label Grid.Column="1" Text="{Binding Value}" FontSize="11"
                                                        LineBreakMode="WordWrap" />
                                             </Grid>
                                             <Label Text="{Binding Value}" IsVisible="{Binding IsWarning}"
-                                                   FontSize="12" TextColor="{StaticResource WarnColor}"
+                                                   FontSize="11" TextColor="{StaticResource WarnColor}"
                                                    LineBreakMode="WordWrap" />
                                         </VerticalStackLayout>
                                     </DataTemplate>
                                 </BindableLayout.ItemTemplate>
                             </VerticalStackLayout>
 
-                            <Label Text="DRIVEN BY" FontSize="10" FontAttributes="Bold"
-                                   TextColor="{StaticResource MutedColor}" />
-                            <Label Text="{Binding DriverSummary}" FontSize="12"
+                            <Label Text="DRIVEN BY" Style="{StaticResource UppercaseLabel}" />
+                            <Label Text="{Binding DriverSummary}" FontSize="11"
                                    TextColor="{StaticResource MutedColor}" />
                             <VerticalStackLayout Spacing="6" BindableLayout.ItemsSource="{Binding Drivers}"
                                                  BindableLayout.ItemTemplate="{StaticResource TagUseCard}" />
 
-                            <Label Text="{Binding UsageHeading}" FontSize="10" FontAttributes="Bold"
-                                   TextColor="{StaticResource MutedColor}" />
-                            <Label Text="{Binding UsageSummary}" FontSize="12"
+                            <Label Text="{Binding UsageHeading}" Style="{StaticResource UppercaseLabel}" />
+                            <Label Text="{Binding UsageSummary}" FontSize="11"
                                    TextColor="{StaticResource MutedColor}" />
                             <VerticalStackLayout Spacing="6" BindableLayout.ItemsSource="{Binding Readers}"
                                                  BindableLayout.ItemTemplate="{StaticResource TagUseCard}" />

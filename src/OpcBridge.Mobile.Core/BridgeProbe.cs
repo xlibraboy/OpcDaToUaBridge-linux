@@ -1,5 +1,6 @@
 namespace OpcBridge.Mobile.Core;
 
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Text.Json;
@@ -26,11 +27,21 @@ public static class BridgeProbe
     /// </summary>
     public const int ScanTimeoutMs = 400;
 
+    /// <summary>
+    /// How long the whole sweep may take. A host that silently drops packets must not hold
+    /// the Add button through a hundred per-port timeouts; the operator can retry.
+    /// </summary>
+    public const int SearchBudgetMs = 8000;
+
     /// <summary>Host ports the bridge is commonly published on when it runs in a container.</summary>
     public static readonly int[] KnownHostPorts = { 18080 };
 
     /// <summary>The first address on <paramref name="host"/> that answers as a bridge, or null.</summary>
-    public static async Task<string?> FindAsync(string? host, int timeoutMs = 3000, CancellationToken cancellationToken = default)
+    public static async Task<string?> FindAsync(
+        string? host,
+        int timeoutMs = 3000,
+        CancellationToken cancellationToken = default,
+        int searchBudgetMs = SearchBudgetMs)
     {
         (string name, int? explicitPort) = ParseHost(host);
         if (name.Length == 0)
@@ -38,18 +49,43 @@ public static class BridgeProbe
             return null;
         }
 
-        foreach (int port in CandidatePorts(explicitPort))
+        if (searchBudgetMs <= 0)
         {
-            string baseUrl = $"http://{name}:{port}";
-            // The port the operator typed, and the known container publish ports, get the
-            // caller's full timeout; the wide sweep gets the short one.
-            int perPortTimeout = port == explicitPort || KnownHostPorts.Contains(port)
-                ? timeoutMs
-                : Math.Min(timeoutMs, ScanTimeoutMs);
-            if (await IsBridgeAsync(baseUrl, perPortTimeout, cancellationToken).ConfigureAwait(false))
+            return null;
+        }
+
+        using CancellationTokenSource budgetCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        budgetCts.CancelAfter(searchBudgetMs);
+        try
+        {
+            Stopwatch budget = Stopwatch.StartNew();
+            foreach (int port in CandidatePorts(explicitPort))
             {
-                return baseUrl;
+                budgetCts.Token.ThrowIfCancellationRequested();
+                int remaining = searchBudgetMs - (int)budget.ElapsedMilliseconds;
+                if (remaining <= 0)
+                {
+                    break;
+                }
+
+                string baseUrl = $"http://{name}:{port}";
+                // The port the operator typed, and the known container publish ports, get the
+                // caller's full timeout; the wide sweep gets the short one. Neither may outlast
+                // the whole search budget, and the budget token cancels a probe already inside
+                // a connection attempt.
+                int perPortTimeout = port == explicitPort || KnownHostPorts.Contains(port)
+                    ? timeoutMs
+                    : Math.Min(timeoutMs, ScanTimeoutMs);
+                perPortTimeout = Math.Min(perPortTimeout, remaining);
+                if (await IsBridgeAsync(baseUrl, perPortTimeout, budgetCts.Token).ConfigureAwait(false))
+                {
+                    return baseUrl;
+                }
             }
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // The search budget, not the operator, ended this sweep.
         }
 
         return null;
@@ -86,6 +122,12 @@ public static class BridgeProbe
             using JsonDocument document = JsonDocument.Parse(body);
             return document.RootElement.ValueKind == JsonValueKind.Object
                 && document.RootElement.TryGetProperty("authEnabled", out _);
+        }
+        // The operator cancelling the search is not a failed probe: let it through so the
+        // page can stop the sweep instead of walking every remaining port.
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
         }
         // A failed probe is an answer (not a bridge), never an exception: Android's HTTP handler
         // reports a socket closed before the response arrives as WebException, while the desktop

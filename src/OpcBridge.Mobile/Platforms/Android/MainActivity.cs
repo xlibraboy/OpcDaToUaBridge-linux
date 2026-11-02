@@ -12,4 +12,15 @@ namespace OpcBridge.Mobile;
         | ConfigChanges.ScreenLayout | ConfigChanges.SmallestScreenSize | ConfigChanges.Density)]
 public class MainActivity : MauiAppCompatActivity
 {
+    protected override void OnCreate(Bundle? savedInstanceState)
+    {
+        base.OnCreate(savedInstanceState);
+        if (Window is null)
+        {
+            return;
+        }
+
+        Window.SetStatusBarColor(Android.Graphics.Color.ParseColor("#0C1210"));
+        Window.SetNavigationBarColor(Android.Graphics.Color.ParseColor("#0C1210"));
+    }
 }

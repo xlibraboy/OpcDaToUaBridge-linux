@@ -15,8 +15,8 @@ public sealed class ChipColorConverter : IValueConverter
         bool selected = value is true;
         return (parameter as string) switch
         {
-            "text" => selected ? Color.FromArgb("#0F1513") : Color.FromArgb("#9AA6A0"),
-            _ => selected ? Color.FromArgb("#E9EFEC") : Color.FromArgb("#19211E")
+            "text" => selected ? Color.FromArgb("#0C1210") : Color.FromArgb("#93A19B"),
+            _ => selected ? Color.FromArgb("#F1F5F3") : Color.FromArgb("#1D2723")
         };
     }
 

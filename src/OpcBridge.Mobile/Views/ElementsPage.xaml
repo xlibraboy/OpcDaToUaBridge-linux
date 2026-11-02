@@ -4,46 +4,93 @@
              xmlns:views="clr-namespace:OpcBridge.Mobile.Views"
              x:Class="OpcBridge.Mobile.Views.ElementsPage"
              Title="Elements"
+             Shell.NavBarIsVisible="False"
              BackgroundColor="{StaticResource PageBg}">
     <ContentPage.Resources>
         <DataTemplate x:Key="FilterChip">
-            <Button Text="{Binding Label}" Clicked="OnFilterChipClicked" FontSize="12" Padding="10,4" CornerRadius="14"
+            <Button Text="{Binding Label}" Clicked="OnFilterChipClicked" FontSize="10" Padding="10,4" CornerRadius="9"
+                    HeightRequest="26" MinimumHeightRequest="26"
                     BackgroundColor="{Binding IsSelected, Converter={StaticResource ChipColor}}"
                     TextColor="{Binding IsSelected, Converter={StaticResource ChipColor}, ConverterParameter=text}" />
         </DataTemplate>
     </ContentPage.Resources>
 
-    <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*" Padding="12" RowSpacing="10">
-        <VerticalStackLayout Grid.Row="0" Spacing="2">
-            <Label Text="Plant elements" FontSize="22" FontAttributes="Bold" />
-            <Label x:Name="summaryLabel" FontSize="13" TextColor="{StaticResource MutedColor}" />
-            <Label x:Name="filterLabel" FontSize="12" TextColor="{StaticResource MutedColor}" IsVisible="false" />
-            <Label x:Name="sourceLabel" FontSize="12" TextColor="{StaticResource MutedColor}" />
-            <Label x:Name="connectionLabel" FontSize="12" TextColor="{StaticResource MutedColor}" />
-            <views:SyncBadgeView x:Name="syncBadge">
-                <views:SyncBadgeView.GestureRecognizers>
-                    <TapGestureRecognizer Tapped="OnSyncTapped" />
-                </views:SyncBadgeView.GestureRecognizers>
-            </views:SyncBadgeView>
-            <views:SyncBadgeView x:Name="latencyBadge" Uppercase="False" Hint="" />
+    <Grid RowDefinitions="Auto,*" Padding="16,8,16,0" RowSpacing="12">
+        <VerticalStackLayout Grid.Row="0" Spacing="10">
+            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                <VerticalStackLayout Spacing="2">
+                    <Label Text="Plant elements" FontSize="22" FontAttributes="Bold" />
+                    <Label x:Name="connectionLabel"
+                           FontSize="10.5"
+                           TextColor="{StaticResource MutedColor}"
+                           LineBreakMode="TailTruncation" />
+                </VerticalStackLayout>
+                <Button x:Name="refreshButton"
+                        Grid.Column="1"
+                        Text="Refresh"
+                        Style="{StaticResource CompactButton}"
+                        Clicked="OnRefreshClicked"
+                        VerticalOptions="Center" />
+                <Button x:Name="syncButton"
+                        Grid.Column="2"
+                        Text="Sync now"
+                        Style="{StaticResource CompactButton}"
+                        Clicked="OnSyncNowClicked"
+                        VerticalOptions="Center" />
+            </Grid>
+
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8" VerticalOptions="Center">
+                <Border Grid.Column="0" Style="{StaticResource InputBorder}"
+                        WidthRequest="152" VerticalOptions="Center">
+                    <Grid>
+                        <Picker x:Name="bridgePicker"
+                                Title="Bridge"
+                                BackgroundColor="Transparent"
+                                SelectedIndexChanged="OnBridgePicked" />
+                        <Label Text="▾"
+                               FontSize="12"
+                               TextColor="{StaticResource MutedColor}"
+                               HorizontalOptions="End"
+                               VerticalOptions="Center"
+                               Margin="0,0,10,0"
+                               InputTransparent="True" />
+                    </Grid>
+                </Border>
+                <views:SyncBadgeView x:Name="syncBadge" Grid.Column="2" VerticalOptions="Center">
+                    <views:SyncBadgeView.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnSyncTapped" />
+                    </views:SyncBadgeView.GestureRecognizers>
+                </views:SyncBadgeView>
+                <views:SyncBadgeView x:Name="latencyBadge"
+                                     Grid.Column="3"
+                                     Uppercase="False"
+                                     Hint=""
+                                     VerticalOptions="Center" />
+            </Grid>
+
+            <Border Style="{StaticResource SubtleBorder}">
+                <VerticalStackLayout Spacing="2">
+                    <Label x:Name="summaryLabel" FontSize="12" FontAttributes="Bold" />
+                    <Label x:Name="sourceLabel" FontFamily="monospace" FontSize="10"
+                           TextColor="{StaticResource MutedColor}" />
+                    <Label x:Name="filterLabel"
+                           FontSize="10.5"
+                           TextColor="{StaticResource MutedColor}"
+                           IsVisible="false" />
+                </VerticalStackLayout>
+            </Border>
+
+            <SearchBar x:Name="searchBar"
+                       Placeholder="Search element, tag or block"
+                       TextChanged="OnSearchChanged" />
+
+            <ScrollView Orientation="Horizontal" HorizontalScrollBarVisibility="Never">
+                <HorizontalStackLayout x:Name="kindChips" Spacing="6"
+                                       BindableLayout.ItemTemplate="{StaticResource FilterChip}" />
+            </ScrollView>
         </VerticalStackLayout>
 
-        <Picker x:Name="bridgePicker" Grid.Row="1" Title="Bridge" SelectedIndexChanged="OnBridgePicked" />
-
-        <HorizontalStackLayout Grid.Row="2" Spacing="8">
-            <Button x:Name="refreshButton" Text="Refresh" Clicked="OnRefreshClicked" />
-            <Button x:Name="syncButton" Text="Sync now" Clicked="OnSyncNowClicked" />
-        </HorizontalStackLayout>
-
-        <SearchBar x:Name="searchBar" Grid.Row="3" Placeholder="Search element, tag or block"
-                   TextChanged="OnSearchChanged" />
-
-        <ScrollView Grid.Row="4" Orientation="Horizontal" HorizontalScrollBarVisibility="Never">
-            <HorizontalStackLayout x:Name="kindChips" Spacing="6"
-                                   BindableLayout.ItemTemplate="{StaticResource FilterChip}" />
-        </ScrollView>
-
-        <RefreshView x:Name="refreshView" Grid.Row="5" Refreshing="OnRefreshing">
+        <RefreshView x:Name="refreshView" Grid.Row="1" Refreshing="OnRefreshing">
             <CollectionView x:Name="elementsView" IsGrouped="True" SelectionMode="Single"
                             SelectionChanged="OnElementSelected">
                 <CollectionView.EmptyView>
@@ -51,30 +98,29 @@
                 </CollectionView.EmptyView>
                 <CollectionView.GroupHeaderTemplate>
                     <DataTemplate>
-                        <Border Margin="0,8,0,6" Padding="10,6" StrokeThickness="1"
-                                Stroke="{StaticResource BorderColor}" BackgroundColor="{StaticResource PageBg}">
+                        <Border Margin="0,8,0,6" Style="{StaticResource SubtleBorder}">
                             <Border.GestureRecognizers>
                                 <TapGestureRecognizer Command="{Binding ToggleCommand}" />
                             </Border.GestureRecognizers>
                             <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8">
-                                <Label Grid.Column="0" Text="{Binding Chevron}" FontSize="14"
+                                <Label Text="{Binding Chevron}" FontSize="12"
                                        VerticalOptions="Center" TextColor="{StaticResource MutedColor}" />
-                                <VerticalStackLayout Grid.Column="1" Spacing="0" VerticalOptions="Center">
-                                    <Label Text="{Binding Name}" FontAttributes="Bold" FontSize="15" />
+                                <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Center">
+                                    <Label Text="{Binding Name}" FontAttributes="Bold" FontSize="13" />
                                     <HorizontalStackLayout Spacing="6">
-                                        <Label Text="{Binding KindLabel}" FontSize="10"
+                                        <Label Text="{Binding KindLabel}" FontSize="9"
                                                TextColor="{StaticResource MutedColor}" />
-                                        <Label Text="{Binding Area}" FontSize="10"
+                                        <Label Text="{Binding Area}" FontSize="9"
                                                TextColor="{StaticResource MutedColor}"
                                                IsVisible="{Binding HasArea}" />
-                                        <Label Text="{Binding GroupLabel}" FontSize="10"
+                                        <Label Text="{Binding GroupLabel}" FontSize="9"
                                                TextColor="{StaticResource MutedColor}"
                                                IsVisible="{Binding HasGroup}" />
                                     </HorizontalStackLayout>
                                 </VerticalStackLayout>
-                                <Label Grid.Column="2" Text="{Binding Summary}" FontSize="11"
+                                <Label Grid.Column="2" Text="{Binding Summary}" FontSize="10.5"
                                        VerticalOptions="Center" TextColor="{StaticResource MutedColor}" />
-                                <Label Grid.Column="3" Text="{Binding StateLabel}" FontSize="11"
+                                <Label Grid.Column="3" Text="{Binding StateLabel}" FontSize="10"
                                        FontAttributes="Bold" VerticalOptions="Center"
                                        TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
                             </Grid>
@@ -87,43 +133,46 @@
                             <views:DepthGuideView Grid.Column="0" WidthRequest="{Binding IndentWidth}"
                                                   Depth="{Binding Depth}" GuideColor="{StaticResource BorderColor}"
                                                   VerticalOptions="Fill" />
-                            <Border Grid.Column="1" Margin="0,0,0,6" Padding="10" StrokeThickness="1"
-                                    Stroke="{StaticResource BorderColor}" BackgroundColor="{StaticResource SurfaceColor}">
+                            <Border Grid.Column="1" Margin="0,0,0,6" Style="{StaticResource ListCardBorder}">
                                 <Grid ColumnDefinitions="26,*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto"
                                       ColumnSpacing="6">
-                                    <Label Grid.Row="0" Grid.Column="0" Text="{Binding Mark}" FontSize="18"
-                                           FontAttributes="Bold"
+                                    <Label Grid.Row="0" Grid.Column="0" Text="{Binding Mark}" FontSize="16"
+                                           FontAttributes="Bold" VerticalOptions="Center"
                                            TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
-                                    <VerticalStackLayout Grid.Row="0" Grid.Column="1" Spacing="0" VerticalOptions="Center">
-                                        <Label Text="{Binding KindLabel}" FontSize="10"
-                                               TextColor="{StaticResource MutedColor}" />
-                                        <Label Text="{Binding Text}" />
-                                    </VerticalStackLayout>
-                                    <VerticalStackLayout Grid.Row="0" Grid.Column="2" Spacing="0" HorizontalOptions="End">
-                                        <Label Text="{Binding ActualText}" FontSize="18" FontAttributes="Bold"
-                                               HorizontalTextAlignment="End"
-                                               TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
-                                        <Label Text="{Binding ValueText}" FontSize="11" HorizontalTextAlignment="End"
-                                               TextColor="{StaticResource MutedColor}" />
-                                    </VerticalStackLayout>
-                                    <HorizontalStackLayout Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Spacing="8">
-                                        <Label Text="{Binding StepLabel}" FontSize="11"
-                                               TextColor="{StaticResource MutedColor}" />
-                                        <Label Text="{Binding LastReadText, StringFormat='last known {0}'}"
-                                               IsVisible="{Binding ShowLastRead}" FontSize="11"
-                                               TextColor="{StaticResource MutedColor}" />
+                                    <HorizontalStackLayout Grid.Row="0" Grid.Column="1" Spacing="6"
+                                                           VerticalOptions="Center">
+                                        <Label Text="{Binding Text}" FontSize="13" FontAttributes="Bold"
+                                               MaxLines="1" LineBreakMode="TailTruncation"
+                                               VerticalOptions="Center" />
+                                        <Border Style="{StaticResource PillBorder}" VerticalOptions="Center">
+                                            <Label Text="{Binding KindLabel}" FontSize="9" FontAttributes="Bold"
+                                                   FontFamily="monospace"
+                                                   TextColor="{StaticResource MutedColor}" />
+                                        </Border>
                                     </HorizontalStackLayout>
+                                    <VerticalStackLayout Grid.Row="0" Grid.Column="2" Spacing="0"
+                                                         HorizontalOptions="End">
+                                        <Label Text="{Binding ActualText}" FontSize="16" FontFamily="monospace"
+                                               FontAttributes="Bold" HorizontalTextAlignment="End"
+                                               TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
+                                        <Label Text="{Binding ValueText}" FontSize="8.5" FontFamily="monospace"
+                                               HorizontalTextAlignment="End"
+                                               TextColor="{StaticResource MutedColor}" />
+                                    </VerticalStackLayout>
+                                    <Label Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding StepLabel}"
+                                           FontSize="10" TextColor="{StaticResource MutedColor}" />
                                     <Label Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding TagLabel}"
-                                           FontSize="11" TextColor="{StaticResource MutedColor}"
+                                           FontFamily="monospace" FontSize="9.5"
+                                           TextColor="{StaticResource MutedColor}"
                                            LineBreakMode="WordWrap" />
                                     <Label Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding ShouldLine}"
-                                           IsVisible="{Binding ShowShould}" FontSize="12"
+                                           IsVisible="{Binding ShowShould}" FontFamily="monospace" FontSize="10.5"
                                            TextColor="{Binding ShouldKey, Converter={StaticResource StateColor}}" />
                                     <Label Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding ProgressText}"
-                                           IsVisible="{Binding ShowProgress}" FontSize="12"
+                                           IsVisible="{Binding ShowProgress}" FontSize="10.5"
                                            TextColor="{StaticResource WarnColor}" />
                                     <Label Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding NextStepText}"
-                                           IsVisible="{Binding ShowNextStep}" FontSize="12"
+                                           IsVisible="{Binding ShowNextStep}" FontSize="10.5"
                                            TextColor="{StaticResource WarnColor}" />
                                 </Grid>
                             </Border>

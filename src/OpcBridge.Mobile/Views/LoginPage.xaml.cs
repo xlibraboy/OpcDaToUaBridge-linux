@@ -13,6 +13,7 @@ public partial class LoginPage : ContentPage
     private readonly BridgeCoordinator coordinator_;
     private bool picking_;
     private bool busy_;
+    private CancellationTokenSource? connectCts_;
 
     public LoginPage(BridgeCoordinator coordinator)
     {
@@ -45,6 +46,7 @@ public partial class LoginPage : ContentPage
 
     protected override void OnDisappearing()
     {
+        connectCts_?.Cancel();
         coordinator_.Changed -= OnChanged;
         base.OnDisappearing();
     }
@@ -54,12 +56,18 @@ public partial class LoginPage : ContentPage
     private void BeginBusy()
     {
         busy_ = true;
+        busyIndicator.IsVisible = true;
+        busyIndicator.IsRunning = true;
+        cancelConnectButton.IsVisible = connectCts_ is not null;
         Repaint();
     }
 
     private void EndBusy()
     {
         busy_ = false;
+        busyIndicator.IsRunning = false;
+        busyIndicator.IsVisible = false;
+        cancelConnectButton.IsVisible = false;
         Repaint();
     }
 
@@ -85,6 +93,11 @@ public partial class LoginPage : ContentPage
 
     private async void OnConnectClicked(object? sender, EventArgs e)
     {
+        if (busy_)
+        {
+            return;
+        }
+
         string host = hostEntry.Text?.Trim() ?? string.Empty;
         if (host.Length == 0)
         {
@@ -92,15 +105,18 @@ public partial class LoginPage : ContentPage
             return;
         }
 
+        using CancellationTokenSource cts = new();
+        connectCts_ = cts;
+        bool cancelled = false;
         BeginBusy();
         errorLabel.Text = string.Empty;
-        statusLabel.Text = "searching for a bridge on " + host + "…";
+        statusLabel.Text = "searching for a bridge on " + host + " (up to 8 s)…";
         try
         {
             MobileResult<BridgeConnection> result = await coordinator_.AddOrConnectAsync(
                 host,
                 nameEntry.Text,
-                CancellationToken.None);
+                cts.Token);
             if (!result.Ok)
             {
                 // Leave the typed address in place: it is the thing to correct.
@@ -111,6 +127,10 @@ public partial class LoginPage : ContentPage
             hostEntry.Text = string.Empty;
             nameEntry.Text = string.Empty;
         }
+        catch (OperationCanceledException)
+        {
+            cancelled = true;
+        }
         catch (Exception ex)
         {
             // An async event handler must never let a network failure reach the process.
@@ -118,8 +138,23 @@ public partial class LoginPage : ContentPage
         }
         finally
         {
+            if (ReferenceEquals(connectCts_, cts))
+            {
+                connectCts_ = null;
+            }
+
             EndBusy();
+            if (cancelled)
+            {
+                statusLabel.Text = "search cancelled";
+            }
         }
+    }
+
+    private void OnCancelConnectClicked(object? sender, EventArgs e)
+    {
+        connectCts_?.Cancel();
+        statusLabel.Text = "cancelling…";
     }
 
     private async void OnBridgePicked(object? sender, EventArgs e)

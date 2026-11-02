@@ -125,7 +125,7 @@ public partial class LogicBlockPage : ContentPage
 
     private static void RestoreRow(Border row)
     {
-        row.Stroke = new SolidColorBrush(ResourceColor("BorderColor", "#2C3633"));
+        row.Stroke = new SolidColorBrush(ResourceColor("BorderColor", "#2A3631"));
         row.StrokeThickness = 1;
     }
 
@@ -264,6 +264,9 @@ public partial class LogicBlockPage : ContentPage
             viewModel_?.OpenTagPanel(row);
         }
     }
+
+    private async void OnBackClicked(object? sender, EventArgs e) =>
+        await Shell.Current.GoToAsync("..");
 
     private void OnTagPanelCloseClicked(object? sender, EventArgs e) => viewModel_?.CloseTagPanel();
 

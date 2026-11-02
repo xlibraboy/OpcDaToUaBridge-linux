@@ -3,99 +3,147 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              x:Class="OpcBridge.Mobile.Views.SettingsPage"
              Title="Settings"
+             Shell.NavBarIsVisible="False"
              BackgroundColor="{StaticResource PageBg}">
     <ScrollView>
-        <VerticalStackLayout Padding="12" Spacing="12">
-            <Label Text="Bridges" FontSize="18" FontAttributes="Bold" />
-            <Label Text="Bridges saved on this phone. Tap one to show it live on the Logic tab; the phone keeps one live link at a time."
-                   FontSize="12" TextColor="{StaticResource MutedColor}" />
-            <VerticalStackLayout x:Name="bridgesList" Spacing="6">
-                <BindableLayout.ItemTemplate>
-                    <DataTemplate>
-                        <Border Padding="10" StrokeThickness="1"
-                                Stroke="{StaticResource BorderColor}" BackgroundColor="{StaticResource SurfaceColor}">
-                            <Border.GestureRecognizers>
-                                <TapGestureRecognizer Tapped="OnBridgeTapped" />
-                            </Border.GestureRecognizers>
-                            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                                <VerticalStackLayout Spacing="2">
-                                    <Label Text="{Binding DisplayName}" FontAttributes="Bold" />
-                                    <Label Text="{Binding Bridge.Url}" FontSize="11" TextColor="{StaticResource MutedColor}" />
-                                    <Label Text="{Binding StatusText}" FontSize="11" TextColor="{StaticResource MutedColor}" />
-                                    <Label Text="{Binding SyncText}" FontSize="11" FontAttributes="Bold"
-                                           TextColor="{Binding SyncKey, Converter={StaticResource StateColor}}" />
-                                    <Label Text="{Binding LatencyText}" FontSize="11"
-                                           TextColor="{Binding LatencyKey, Converter={StaticResource StateColor}}" />
-                                </VerticalStackLayout>
-                                <Button Grid.Column="1" Text="Remove" FontSize="12" Padding="10,2"
-                                        VerticalOptions="Start" Clicked="OnRemoveBridgeClicked" />
-                            </Grid>
-                        </Border>
-                    </DataTemplate>
-                </BindableLayout.ItemTemplate>
-            </VerticalStackLayout>
-            <Label x:Name="bridgesEmptyLabel" Text="No bridges saved yet — add one below."
-                   FontSize="12" TextColor="{StaticResource MutedColor}" />
+        <VerticalStackLayout Padding="16,8,16,20" Spacing="12">
+            <Label Text="Settings" FontSize="22" FontAttributes="Bold" Margin="0,0,0,2" />
 
-            <Label Text="Add a bridge" FontSize="18" FontAttributes="Bold" Margin="0,8,0,0" />
-            <Label Text="Enter the bridge host or IP (the phone must be on the plant network)."
-                   FontSize="12" TextColor="{StaticResource MutedColor}" />
-            <Entry x:Name="hostEntry" Placeholder="10.3.1.50 or http://10.3.1.50:8080" />
-            <Entry x:Name="nameEntry" Placeholder="Name (optional, e.g. Line 1)" />
-            <HorizontalStackLayout Spacing="8">
-                <Button x:Name="connectButton" Text="Add &amp; Connect" Clicked="OnConnectClicked" />
-            </HorizontalStackLayout>
-            <Label x:Name="connectionLabel" FontSize="13" TextColor="{StaticResource MutedColor}" />
+            <Border Style="{StaticResource CardBorder}">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="Bridges" Style="{StaticResource SectionTitleLabel}" />
+                    <Label Text="Tap a bridge to make it live; one live link at a time."
+                           Style="{StaticResource MetaLabel}" />
+                    <VerticalStackLayout x:Name="bridgesList" Spacing="8">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate>
+                                <Border Style="{StaticResource SubtleBorder}">
+                                    <Border.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnBridgeTapped" />
+                                    </Border.GestureRecognizers>
+                                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                        <VerticalStackLayout Spacing="2">
+                                            <Label Text="{Binding DisplayName}" FontAttributes="Bold" />
+                                            <Label Text="{Binding Bridge.Url}" FontFamily="monospace" FontSize="9"
+                                                   TextColor="{StaticResource MutedColor}" />
+                                            <HorizontalStackLayout Spacing="5">
+                                                <BoxView WidthRequest="5" HeightRequest="5" CornerRadius="2.5"
+                                                         VerticalOptions="Center"
+                                                         Color="{Binding SyncKey, Converter={StaticResource StateColor}}" />
+                                                <Label Text="{Binding StatusText}" FontSize="9.5"
+                                                       TextColor="{StaticResource MutedColor}" />
+                                            </HorizontalStackLayout>
+                                            <Label Text="{Binding SyncText}" FontSize="9.5" FontAttributes="Bold"
+                                                   TextColor="{Binding SyncKey, Converter={StaticResource StateColor}}" />
+                                            <Label Text="{Binding LatencyText}" FontSize="9.5"
+                                                   TextColor="{Binding LatencyKey, Converter={StaticResource StateColor}}" />
+                                        </VerticalStackLayout>
+                                        <Button Grid.Column="1" Text="Remove" Style="{StaticResource CompactButton}"
+                                                VerticalOptions="Start" Clicked="OnRemoveBridgeClicked" />
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
+                    <Label x:Name="bridgesEmptyLabel" Text="No bridges saved yet — add one below."
+                           FontSize="10.5" TextColor="{StaticResource MutedColor}" />
+                </VerticalStackLayout>
+            </Border>
 
-            <Label Text="Account" FontSize="18" FontAttributes="Bold" Margin="0,8,0,0" />
-            <Label Text="The viewer asks for a bridge account at every launch. Signing out locks it and returns to the sign-in screen."
-                   FontSize="12" TextColor="{StaticResource MutedColor}" />
-            <Label x:Name="sessionLabel" FontSize="13" TextColor="{StaticResource MutedColor}" />
-            <Button x:Name="signOutButton" Text="Sign out" Clicked="OnSignOutClicked" />
+            <Border Style="{StaticResource CardBorder}">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="Add a bridge" Style="{StaticResource SectionTitleLabel}" />
+                    <Label Text="The phone must be on the plant network."
+                           Style="{StaticResource MetaLabel}" />
+                    <Border Style="{StaticResource InputBorder}">
+                        <Entry x:Name="hostEntry" BackgroundColor="Transparent"
+                               Placeholder="10.3.1.50 or http://10.3.1.50:8080" />
+                    </Border>
+                    <Border Style="{StaticResource InputBorder}">
+                        <Entry x:Name="nameEntry" BackgroundColor="Transparent"
+                               Placeholder="Name (optional, e.g. Line 1)" />
+                    </Border>
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <Button x:Name="connectButton" Text="Add &amp; Connect"
+                                Style="{StaticResource PrimaryButton}" Clicked="OnConnectClicked" />
+                        <Button x:Name="cancelConnectButton" Grid.Column="1" Text="Cancel"
+                                Style="{StaticResource SecondaryButton}" IsVisible="False"
+                                VerticalOptions="Center" Clicked="OnCancelConnectClicked" />
+                    </Grid>
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                        <ActivityIndicator x:Name="busyIndicator" WidthRequest="16" HeightRequest="16"
+                                           Color="{StaticResource GoodColor}" IsRunning="False"
+                                           IsVisible="False" VerticalOptions="Center" />
+                        <Label Grid.Column="1" x:Name="connectionLabel" FontSize="11"
+                               TextColor="{StaticResource MutedColor}" LineBreakMode="WordWrap" />
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
 
-            <Label Text="Sync" FontSize="18" FontAttributes="Bold" Margin="0,8,0,0" />
-            <Label Text="Notes and actions taken while the bridge was unreachable wait here until they can be sent. A write that may already have reached the bridge is never replayed automatically."
-                   FontSize="12" TextColor="{StaticResource MutedColor}" />
-            <Label x:Name="syncLabel" FontSize="13" FontAttributes="Bold" />
-            <Label x:Name="latencyLabel" FontSize="13" />
-            <HorizontalStackLayout Spacing="8">
-                <Button x:Name="retrySyncButton" Text="Retry now" Clicked="OnRetrySyncClicked" />
-            </HorizontalStackLayout>
-            <VerticalStackLayout x:Name="outboxList" Spacing="6">
-                <BindableLayout.ItemTemplate>
-                    <DataTemplate>
-                        <Border Padding="10" StrokeThickness="1"
-                                Stroke="{StaticResource BorderColor}" BackgroundColor="{StaticResource SurfaceColor}">
-                            <VerticalStackLayout Spacing="2">
-                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
-                                    <Label Text="{Binding KindLabel}" FontAttributes="Bold" FontSize="14" />
-                                    <Label Grid.Column="1" Text="{Binding StateLabel}" FontSize="11"
-                                           FontAttributes="Bold"
-                                           TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
-                                </Grid>
-                                <Label Text="{Binding TargetText}" FontSize="13" />
-                                <Label Text="{Binding Detail}" FontSize="11" TextColor="{StaticResource MutedColor}"
-                                       LineBreakMode="WordWrap" />
-                                <Label Text="{Binding QueuedText, StringFormat='queued {0}'}" FontSize="11"
-                                       TextColor="{StaticResource MutedColor}" />
-                                <Label Text="{Binding Error}" IsVisible="{Binding HasError}" FontSize="11"
-                                       TextColor="{StaticResource BadColor}" LineBreakMode="WordWrap" />
-                                <HorizontalStackLayout Spacing="8" IsVisible="{Binding IsActionable}">
-                                    <Button Text="Retry" FontSize="12" Padding="10,2"
-                                            Clicked="OnRetryOutboxClicked" />
-                                    <Button Text="Discard" FontSize="12" Padding="10,2"
-                                            Clicked="OnDiscardOutboxClicked" />
-                                </HorizontalStackLayout>
-                            </VerticalStackLayout>
-                        </Border>
-                    </DataTemplate>
-                </BindableLayout.ItemTemplate>
-            </VerticalStackLayout>
-            <Label x:Name="outboxEmptyLabel" Text="Nothing queued for the selected bridge."
-                   FontSize="12" TextColor="{StaticResource MutedColor}" />
+            <Border Style="{StaticResource CardBorder}">
+                <VerticalStackLayout Spacing="10">
+                    <Label Text="Account" Style="{StaticResource SectionTitleLabel}" />
+                    <Label Text="The viewer asks for a bridge account at every launch. Signing out locks it and returns to the sign-in screen."
+                           Style="{StaticResource MetaLabel}" LineBreakMode="WordWrap" />
+                    <Label x:Name="sessionLabel" FontSize="12" />
+                    <Button x:Name="signOutButton" Text="Sign out"
+                            Style="{StaticResource SecondaryButton}" Clicked="OnSignOutClicked" />
+                </VerticalStackLayout>
+            </Border>
 
-            <Label Text="About" FontSize="18" FontAttributes="Bold" Margin="0,8,0,0" />
-            <Label x:Name="aboutLabel" FontSize="13" TextColor="{StaticResource MutedColor}" />
+            <Border Style="{StaticResource CardBorder}">
+                <VerticalStackLayout Spacing="10">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <Label Text="Sync" Style="{StaticResource SectionTitleLabel}" />
+                        <Label x:Name="syncLabel" Grid.Column="1" FontSize="10" FontAttributes="Bold"
+                               VerticalOptions="Center" />
+                    </Grid>
+                    <Label Text="Notes and actions taken while the bridge was unreachable wait here until they can be sent. A write that may already have reached the bridge is never replayed automatically."
+                           Style="{StaticResource MetaLabel}" LineBreakMode="WordWrap" />
+                    <Label x:Name="latencyLabel" FontSize="10.5" TextColor="{StaticResource MutedColor}" />
+                    <Button x:Name="retrySyncButton" Text="Retry now"
+                            Style="{StaticResource SecondaryButton}" Clicked="OnRetrySyncClicked" />
+                    <VerticalStackLayout x:Name="outboxList" Spacing="8">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate>
+                                <Border Style="{StaticResource SubtleBorder}">
+                                    <VerticalStackLayout Spacing="3">
+                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                                            <Label Text="{Binding KindLabel}" FontAttributes="Bold" FontSize="12" />
+                                            <Label Grid.Column="1" Text="{Binding StateLabel}" FontSize="9"
+                                                   FontAttributes="Bold"
+                                                   TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
+                                        </Grid>
+                                        <Label Text="{Binding TargetText}" FontSize="10.5" />
+                                        <Label Text="{Binding Detail}" FontSize="9.5"
+                                               TextColor="{StaticResource MutedColor}" LineBreakMode="WordWrap" />
+                                        <Label Text="{Binding QueuedText, StringFormat='queued {0}'}"
+                                               FontFamily="monospace" FontSize="8.5"
+                                               TextColor="{StaticResource MutedColor}" />
+                                        <Label Text="{Binding Error}" IsVisible="{Binding HasError}" FontSize="9"
+                                               TextColor="{StaticResource BadColor}" LineBreakMode="WordWrap" />
+                                        <HorizontalStackLayout Spacing="6" IsVisible="{Binding IsActionable}">
+                                            <Button Text="Retry" Style="{StaticResource CompactButton}"
+                                                    Clicked="OnRetryOutboxClicked" />
+                                            <Button Text="Discard" Style="{StaticResource CompactButton}"
+                                                    Clicked="OnDiscardOutboxClicked" />
+                                        </HorizontalStackLayout>
+                                    </VerticalStackLayout>
+                                </Border>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
+                    <Label x:Name="outboxEmptyLabel" Text="Nothing queued for the selected bridge."
+                           FontSize="10.5" TextColor="{StaticResource MutedColor}" />
+                </VerticalStackLayout>
+            </Border>
+
+            <Border Style="{StaticResource CardBorder}">
+                <VerticalStackLayout Spacing="6">
+                    <Label Text="About" Style="{StaticResource SectionTitleLabel}" />
+                    <Label x:Name="aboutLabel" Style="{StaticResource MetaLabel}" />
+                </VerticalStackLayout>
+            </Border>
         </VerticalStackLayout>
     </ScrollView>
 </ContentPage>

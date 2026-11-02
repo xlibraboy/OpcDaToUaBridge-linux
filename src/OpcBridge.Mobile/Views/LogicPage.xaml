@@ -4,116 +4,168 @@
              xmlns:views="clr-namespace:OpcBridge.Mobile.Views"
              x:Class="OpcBridge.Mobile.Views.LogicPage"
              Title="Logic"
+             Shell.NavBarIsVisible="False"
              BackgroundColor="{StaticResource PageBg}">
     <ContentPage.Resources>
         <!-- One search/filter chip: filled and dark-texted while selected, dark with muted
              text otherwise, so the choice reads without relying on colour alone. -->
         <DataTemplate x:Key="FilterChip">
-            <Button Text="{Binding Label}" Clicked="OnFilterChipClicked" FontSize="12" Padding="10,4" CornerRadius="14"
+            <Button Text="{Binding Label}" Clicked="OnFilterChipClicked" FontSize="10" Padding="10,4" CornerRadius="9"
+                    HeightRequest="26" MinimumHeightRequest="26"
                     BackgroundColor="{Binding IsSelected, Converter={StaticResource ChipColor}}"
                     TextColor="{Binding IsSelected, Converter={StaticResource ChipColor}, ConverterParameter=text}" />
         </DataTemplate>
     </ContentPage.Resources>
-    <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*" Padding="12" RowSpacing="10">
-        <VerticalStackLayout Grid.Row="0" Spacing="2">
-            <Label Text="Plant logic" FontSize="22" FontAttributes="Bold" />
-            <Label x:Name="summaryLabel" FontSize="13" TextColor="{StaticResource MutedColor}" />
-            <Label x:Name="filterLabel" FontSize="12" TextColor="{StaticResource MutedColor}" IsVisible="false" />
-            <Label x:Name="connectionLabel" FontSize="12" TextColor="{StaticResource MutedColor}" />
-            <!-- Shown while the list is the last data the bridge served. -->
-            <Label x:Name="offlineLabel" FontSize="12" TextColor="{StaticResource WarnColor}" IsVisible="false" />
-            <views:SyncBadgeView x:Name="syncBadge">
-                <views:SyncBadgeView.GestureRecognizers>
-                    <TapGestureRecognizer Tapped="OnSyncTapped" />
-                </views:SyncBadgeView.GestureRecognizers>
-            </views:SyncBadgeView>
-            <views:SyncBadgeView x:Name="latencyBadge" Uppercase="False" Hint="" />
+    <Grid RowDefinitions="Auto,*" Padding="16,8,16,0" RowSpacing="12">
+        <VerticalStackLayout Grid.Row="0" Spacing="10">
+            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                <VerticalStackLayout Spacing="2">
+                    <Label Text="Plant logic" FontSize="22" FontAttributes="Bold" />
+                    <Label x:Name="connectionLabel"
+                           FontSize="10.5"
+                           TextColor="{StaticResource MutedColor}"
+                           LineBreakMode="TailTruncation" />
+                </VerticalStackLayout>
+                <Button x:Name="refreshButton"
+                        Grid.Column="1"
+                        Text="Refresh"
+                        Style="{StaticResource CompactButton}"
+                        Clicked="OnRefreshClicked"
+                        VerticalOptions="Center" />
+                <Button Grid.Column="2"
+                        Text="Settings"
+                        Style="{StaticResource CompactButton}"
+                        Clicked="OnSettingsClicked"
+                        VerticalOptions="Center" />
+            </Grid>
+
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8" VerticalOptions="Center">
+                <Border Grid.Column="0" Style="{StaticResource InputBorder}"
+                        WidthRequest="152" VerticalOptions="Center">
+                    <Grid>
+                        <Picker x:Name="bridgePicker"
+                                Title="Bridge"
+                                BackgroundColor="Transparent"
+                                SelectedIndexChanged="OnBridgePicked" />
+                        <Label Text="▾"
+                               FontSize="12"
+                               TextColor="{StaticResource MutedColor}"
+                               HorizontalOptions="End"
+                               VerticalOptions="Center"
+                               Margin="0,0,10,0"
+                               InputTransparent="True" />
+                    </Grid>
+                </Border>
+                <views:SyncBadgeView x:Name="syncBadge" Grid.Column="2" VerticalOptions="Center">
+                    <views:SyncBadgeView.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnSyncTapped" />
+                    </views:SyncBadgeView.GestureRecognizers>
+                </views:SyncBadgeView>
+                <views:SyncBadgeView x:Name="latencyBadge"
+                                     Grid.Column="3"
+                                     Uppercase="False"
+                                     Hint=""
+                                     VerticalOptions="Center" />
+            </Grid>
+
+            <Border Style="{StaticResource SubtleBorder}">
+                <VerticalStackLayout Spacing="2">
+                    <Label x:Name="summaryLabel" FontSize="12" FontAttributes="Bold" />
+                    <Label x:Name="filterLabel"
+                           FontSize="10.5"
+                           TextColor="{StaticResource MutedColor}"
+                           IsVisible="false" />
+                    <Label x:Name="offlineLabel"
+                           FontSize="10.5"
+                           TextColor="{StaticResource WarnColor}"
+                           IsVisible="false" />
+                </VerticalStackLayout>
+            </Border>
+
+            <SearchBar x:Name="searchBar"
+                       Placeholder="Search name, description or tags"
+                       TextChanged="OnSearchChanged" />
+
+            <ScrollView Orientation="Horizontal" HorizontalScrollBarVisibility="Never">
+                <HorizontalStackLayout Spacing="6">
+                    <HorizontalStackLayout x:Name="stateChips" Spacing="6"
+                                           BindableLayout.ItemTemplate="{StaticResource FilterChip}" />
+                    <BoxView x:Name="chipDivider" WidthRequest="1" Color="{StaticResource BorderColor}"
+                             Margin="2,3" IsVisible="false" />
+                    <HorizontalStackLayout x:Name="tagChips" Spacing="6"
+                                           BindableLayout.ItemTemplate="{StaticResource FilterChip}" />
+                </HorizontalStackLayout>
+            </ScrollView>
         </VerticalStackLayout>
 
-        <Picker x:Name="bridgePicker" Grid.Row="1" Title="Bridge" SelectedIndexChanged="OnBridgePicked" />
-
-        <HorizontalStackLayout Grid.Row="2" Spacing="8">
-            <Button x:Name="refreshButton" Text="Refresh" Clicked="OnRefreshClicked" />
-            <Button Text="Settings" Clicked="OnSettingsClicked" />
-        </HorizontalStackLayout>
-
-        <SearchBar x:Name="searchBar" Grid.Row="3" Placeholder="Search name, description or tags"
-                   TextChanged="OnSearchChanged" />
-
-        <ScrollView Grid.Row="4" Orientation="Horizontal" HorizontalScrollBarVisibility="Never">
-            <HorizontalStackLayout Spacing="6">
-                <HorizontalStackLayout x:Name="stateChips" Spacing="6"
-                                       BindableLayout.ItemTemplate="{StaticResource FilterChip}" />
-                <BoxView x:Name="chipDivider" WidthRequest="1" Color="{StaticResource BorderColor}"
-                         Margin="2,3" IsVisible="false" />
-                <HorizontalStackLayout x:Name="tagChips" Spacing="6"
-                                       BindableLayout.ItemTemplate="{StaticResource FilterChip}" />
-            </HorizontalStackLayout>
-        </ScrollView>
-
-        <RefreshView x:Name="refreshView" Grid.Row="5" Refreshing="OnRefreshing">
+        <RefreshView x:Name="refreshView" Grid.Row="1" Refreshing="OnRefreshing">
             <CollectionView x:Name="blocksView" IsGrouped="True" SelectionMode="Single" SelectionChanged="OnBlockSelected">
                 <CollectionView.EmptyView>
                     <Label x:Name="emptyLabel" TextColor="{StaticResource MutedColor}" Margin="8" />
                 </CollectionView.EmptyView>
-                <!-- One heading per interlock group: tap to collapse, the summary keeps the state
-                     visible while the members are hidden. -->
                 <CollectionView.GroupHeaderTemplate>
                     <DataTemplate>
-                        <Border Margin="0,8,0,6" Padding="10,6" StrokeThickness="1"
-                                Stroke="{StaticResource BorderColor}" BackgroundColor="{StaticResource PageBg}"
+                        <Border Margin="0,8,0,6" Style="{StaticResource SubtleBorder}"
                                 IsVisible="{Binding ShowHeader}">
                             <Border.GestureRecognizers>
                                 <TapGestureRecognizer Command="{Binding ToggleCommand}" />
                             </Border.GestureRecognizers>
                             <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
-                                <Label Grid.Column="0" Text="{Binding Chevron}" FontSize="14" VerticalOptions="Center"
+                                <Label Text="{Binding Chevron}" FontSize="12" VerticalOptions="Center"
                                        TextColor="{StaticResource MutedColor}" />
-                                <Label Grid.Column="1" Text="{Binding Name}" FontAttributes="Bold" FontSize="15" VerticalOptions="Center" />
-                                <Label Grid.Column="2" Text="{Binding Summary}" FontSize="11" VerticalOptions="Center"
-                                       TextColor="{StaticResource MutedColor}" />
+                                <Label Grid.Column="1" Text="{Binding Name}" FontAttributes="Bold" FontSize="13"
+                                       VerticalOptions="Center" />
+                                <Label Grid.Column="2" Text="{Binding Summary}" FontSize="10.5"
+                                       VerticalOptions="Center" TextColor="{StaticResource MutedColor}" />
                             </Grid>
                         </Border>
                     </DataTemplate>
                 </CollectionView.GroupHeaderTemplate>
                 <CollectionView.ItemTemplate>
                     <DataTemplate>
-                        <Border Margin="0,0,0,8" Padding="12" StrokeThickness="1"
-                                Stroke="{StaticResource BorderColor}" BackgroundColor="{StaticResource SurfaceColor}">
-                            <VerticalStackLayout Spacing="4">
-                                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
-                                    <Label Text="{Binding Name}" FontSize="17" FontAttributes="Bold" />
-                                    <Label Grid.Column="1" Text="{Binding StateLabel}" FontAttributes="Bold"
-                                           VerticalOptions="Center"
+                        <Border Margin="0,0,0,8" Style="{StaticResource ListCardBorder}">
+                            <VerticalStackLayout Spacing="8">
+                                <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8">
+                                    <BoxView WidthRequest="3" HeightRequest="30" CornerRadius="2"
+                                             VerticalOptions="Center"
+                                             Color="{Binding StateKey, Converter={StaticResource StateColor}}" />
+                                    <HorizontalStackLayout Grid.Column="1" Spacing="6" VerticalOptions="Center">
+                                        <Label Text="{Binding Name}" FontSize="16" FontAttributes="Bold"
+                                               MaxLines="1" LineBreakMode="TailTruncation"
+                                               VerticalOptions="Center" />
+                                        <Border Style="{StaticResource PillBorder}" VerticalOptions="Center">
+                                            <Label Text="{Binding KindLabel}" FontSize="9" FontAttributes="Bold"
+                                                   TextColor="{StaticResource MutedColor}" />
+                                        </Border>
+                                    </HorizontalStackLayout>
+                                    <Label Grid.Column="2" Text="{Binding StateLabel}" FontAttributes="Bold"
+                                           FontSize="10" CharacterSpacing="0.6" VerticalOptions="Center"
                                            TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
                                     <!-- Each row folds on its own, to its name and state; the fold is
                                          remembered while the app is open. -->
-                                    <Button Grid.Column="2" Text="{Binding FoldChevron}"
+                                    <Button Grid.Column="3" Text="{Binding FoldChevron}"
                                             Command="{Binding ToggleFoldCommand}"
-                                            FontSize="14" Padding="8,0" MinimumWidthRequest="36"
-                                            MinimumHeightRequest="36" BackgroundColor="Transparent"
-                                            TextColor="{StaticResource MutedColor}"
+                                            Style="{StaticResource GhostButton}"
                                             SemanticProperties.Description="{Binding FoldLabel}" />
                                 </Grid>
-                                <VerticalStackLayout Spacing="4" IsVisible="{Binding ShowDetails}">
-                                    <HorizontalStackLayout Spacing="8">
-                                        <Label Text="{Binding KindLabel}" FontSize="11" TextColor="{StaticResource MutedColor}" />
-                                        <Label Text="{Binding Area}" FontSize="11" TextColor="{StaticResource MutedColor}"
-                                               IsVisible="{Binding HasArea}" />
-                                    </HorizontalStackLayout>
+                                <VerticalStackLayout Spacing="6" IsVisible="{Binding ShowDetails}">
+                                    <Label Text="{Binding Area}" FontSize="9.5"
+                                           TextColor="{StaticResource MutedColor}"
+                                           IsVisible="{Binding HasArea}" />
                                     <FlexLayout Wrap="Wrap" Direction="Row" AlignItems="Center"
                                                 BindableLayout.ItemsSource="{Binding Tags}">
                                         <BindableLayout.ItemTemplate>
                                             <DataTemplate>
-                                                <Border Margin="0,0,6,2" Padding="6,1" StrokeThickness="1"
-                                                        Stroke="{StaticResource BorderColor}" BackgroundColor="{StaticResource PageBg}">
-                                                    <Label Text="{Binding}" FontSize="11" TextColor="{StaticResource MutedColor}" />
+                                                <Border Margin="0,0,6,2" Style="{StaticResource PillBorder}">
+                                                    <Label Text="{Binding}" FontSize="9"
+                                                           TextColor="{StaticResource MutedColor}" />
                                                 </Border>
                                             </DataTemplate>
                                         </BindableLayout.ItemTemplate>
                                     </FlexLayout>
-                                    <Label Text="{Binding Reason}" FontSize="13" />
-                                    <Label Text="{Binding ProgressText}" FontSize="12" TextColor="{StaticResource MutedColor}" />
+                                    <Label Text="{Binding Reason}" FontSize="12" />
+                                    <Label Text="{Binding ProgressText}" FontSize="10.5"
+                                           TextColor="{StaticResource MutedColor}" />
                                 </VerticalStackLayout>
                             </VerticalStackLayout>
                         </Border>

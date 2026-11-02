@@ -12,6 +12,7 @@ public partial class App : Application
     public App(BridgeCoordinator coordinator)
     {
         InitializeComponent();
+        UserAppTheme = AppTheme.Dark;
         coordinator_ = coordinator;
         coordinator.Load();
         shell_ = new AppShell();

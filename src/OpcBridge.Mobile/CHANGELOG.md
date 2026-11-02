@@ -27,6 +27,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Settings' optional **Sign in** section became **Account**: it names the signed-in user and
   role and offers **Sign out**. The credentials now live on the sign-in screen.
+- **The viewer was re-skinned and re-laid out.** Screens now use card surfaces, compact
+  in-page headers, state accents and inline element-kind badges, while readings and tag
+  names use a mono face and secondary text is quieter. Sign in and Settings are grouped
+  into cards, Logic and Elements lead with status, and the block screen carries its own
+  back bar. The tab bar, splash and app theme follow the same dark plant-floor palette.
+
+### Fixed
+
+- **Adding a bridge no longer looks frozen.** The 8080–8180 port sweep is capped at eight
+  seconds, runs off the UI thread, and shows a spinner with a **Cancel** button on both Sign in
+  and Settings. Cancelling now stops the sweep immediately instead of walking every remaining
+  port.
 
 ## [1.11.0] - 2026-11-02
 

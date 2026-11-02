@@ -116,7 +116,7 @@ public partial class SyncBadgeView : ContentView
             "synced" or "good" => Color.FromArgb("#4CC38A"),
             "syncing" or "pending" or "fair" => Color.FromArgb("#E2A336"),
             "error" or "poor" => Color.FromArgb("#E5484D"),
-            _ => Color.FromArgb("#9AA6A0")
+            _ => Color.FromArgb("#93A19B")
         };
     }
 }
