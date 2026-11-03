@@ -40,7 +40,10 @@ public partial class SettingsPage : ContentPage
         connectionLabel.Text = active is null
             ? "no bridge selected"
             : active.DisplayName + " · "
-                + (active.IsOffline ? "offline" : active.IsConnected ? "connected" : active.StatusText);
+                + (active.IsOfflineViewer ? "offline view · structure only"
+                    : active.IsOffline ? "offline"
+                    : active.IsConnected ? "connected"
+                    : active.StatusText);
 
         MobileSession? session = active?.Session;
         if (session is { Authenticated: true })

@@ -1,4 +1,5 @@
 using Microsoft.Maui.ApplicationModel;
+using Microsoft.Maui.Storage;
 using OpcBridge.Hmi.Core;
 using OpcBridge.Mobile.Core;
 using OpcBridge.Mobile.Views;
@@ -13,13 +14,16 @@ public static class MauiProgram
         builder.UseMauiApp<App>();
 
         builder.Services.AddSingleton<IBridgeSettings, MauiBridgeSettings>();
-        builder.Services.AddSingleton<IBridgeCacheStore, MauiBridgeCacheStore>();
+        // The phone's own copy of every bridge's synced dataset, in a SQLite database beside
+        // the app's data. One file survives app restarts and releases.
+        builder.Services.AddSingleton<IMobileStore>(_ => new SqliteMobileStore(
+            Path.Combine(FileSystem.AppDataDirectory, "opcbridge-logic.db")));
         builder.Services.AddSingleton<MultiBridgeTagCache>();
         builder.Services.AddSingleton(services => new BridgeCoordinator(
             services.GetRequiredService<IBridgeSettings>(),
             services.GetRequiredService<MultiBridgeTagCache>(),
             action => MainThread.BeginInvokeOnMainThread(action),
-            services.GetRequiredService<IBridgeCacheStore>()));
+            services.GetRequiredService<IMobileStore>()));
         builder.Services.AddTransient<LoginPage>();
         builder.Services.AddTransient<LogicPage>();
         builder.Services.AddTransient<LogicBlockPage>();

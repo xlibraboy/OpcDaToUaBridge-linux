@@ -225,9 +225,9 @@
                     </VerticalStackLayout>
 
                     <Label Text="ACTIONS" Style="{StaticResource UppercaseLabel}"
-                           IsVisible="{Binding HasActions}" />
+                           IsVisible="{Binding ShowActions}" />
                     <VerticalStackLayout Spacing="8" BindableLayout.ItemsSource="{Binding Actions}"
-                                         IsVisible="{Binding HasActions}">
+                                         IsVisible="{Binding ShowActions}">
                         <BindableLayout.ItemTemplate>
                             <DataTemplate>
                                 <Button Text="{Binding Label}"
@@ -240,7 +240,13 @@
                     </VerticalStackLayout>
 
                     <Label Text="NOTES" Style="{StaticResource UppercaseLabel}" />
-                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                    <Label FontSize="10.5"
+                           TextColor="{StaticResource MutedColor}"
+                           IsVisible="{Binding IsReadOnly}"
+                           Text="Offline view — notes stay readable; sign in when the bridge is back to add one."
+                           LineBreakMode="WordWrap" />
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8"
+                          IsVisible="{Binding ShowNoteComposer}">
                         <Border Style="{StaticResource SearchBorder}">
                             <Entry x:Name="noteEntry"
                                    Margin="12,0"

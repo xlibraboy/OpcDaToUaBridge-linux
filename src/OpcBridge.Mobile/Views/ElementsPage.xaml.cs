@@ -41,26 +41,14 @@ public partial class ElementsPage : ContentPage
         }
         else if (active.IsOffline || !active.IsConnected)
         {
-            BridgeLastKnown? known = active.LastKnown;
-            if (known is not null)
-            {
-                elements_.ApplyDefinitions(known.Blocks, known.TagSources, coordinator_.Tags, active.CacheKey);
-                elements_.ApplyState(
-                    known.State,
-                    BuildTagCache(active.CacheKey, known.Tags),
-                    active.CacheKey,
-                    lastKnown: true,
-                    known.SavedUtc);
-            }
-            else
-            {
-                elements_.ApplyDefinitions(
-                    active.Overview.Definitions,
-                    active.Overview.AreaTags,
-                    coordinator_.Tags,
-                    active.CacheKey);
-                elements_.ApplyState(null, null, active.CacheKey, lastKnown: false, active.LastSyncedUtc);
-            }
+            // The stored structure only — rows, tags and step order. No reading or evaluated
+            // state is rendered from the local dataset.
+            elements_.ApplyDefinitions(
+                active.Overview.Definitions,
+                active.Overview.AreaTags,
+                coordinator_.Tags,
+                active.CacheKey);
+            elements_.ApplyState(null, null, active.CacheKey, offline: true, active.LastSyncedUtc);
         }
         else
         {
@@ -73,13 +61,13 @@ public partial class ElementsPage : ContentPage
                 active.Overview.State,
                 coordinator_.Tags,
                 active.CacheKey,
-                lastKnown: false,
+                offline: false,
                 active.LastSyncedUtc);
         }
 
         summaryLabel.Text = elements_.Summary;
         sourceLabel.Text = elements_.SourceText;
-        Color sourceColor = elements_.ShowingLastKnown
+        Color sourceColor = elements_.IsOffline
             ? Color.FromArgb("#E2A336")
             : Color.FromArgb("#4CC38A");
         sourceDot.Color = sourceColor;
@@ -112,18 +100,6 @@ public partial class ElementsPage : ContentPage
         filterLabel.Text = elements_.FilterText;
         filterLabel.IsVisible = elements_.HasFilter;
         emptyLabel.Text = elements_.EmptyMessage;
-    }
-
-    private static MultiBridgeTagCache? BuildTagCache(string bridgeKey, IReadOnlyList<HmiTagDto> tags)
-    {
-        if (tags.Count == 0)
-        {
-            return null;
-        }
-
-        MultiBridgeTagCache cache = new();
-        cache.ReplaceBridge(bridgeKey, tags);
-        return cache;
     }
 
     private void OnSearchChanged(object? sender, TextChangedEventArgs e)

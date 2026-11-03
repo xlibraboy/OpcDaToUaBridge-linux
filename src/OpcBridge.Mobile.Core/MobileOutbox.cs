@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace OpcBridge.Mobile.Core;
@@ -98,8 +97,7 @@ public sealed class OutboxItem
 }
 
 /// <summary>
-/// One bridge's pending notes and actions, persisted as JSON behind
-/// <see cref="IBridgeCacheStore"/> under <see cref="MobileBridge.OutboxKey"/>. A queued write
+/// One bridge's pending notes and actions, kept in the phone's dataset store. A queued write
 /// is only sent when it was never attempted (the app knew it was offline); an item left in
 /// <see cref="OutboxItemState.Sending"/> by a crash becomes <see cref="OutboxItemState.Uncertain"/>
 /// and waits for the operator.
@@ -108,22 +106,19 @@ public sealed class MobileOutbox
 {
     public const int MaxItems = 200;
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-        Converters = { new JsonStringEnumConverter() }
-    };
-
-    private readonly IBridgeCacheStore store_;
-    private readonly string key_;
+    private readonly IMobileStore store_;
+    private readonly string bridgeId_;
     private readonly object sync_ = new();
     private List<OutboxItem> items_;
 
-    public MobileOutbox(IBridgeCacheStore store, string key)
+    public MobileOutbox(IMobileStore store, string bridgeId)
     {
         store_ = store;
-        key_ = key;
-        items_ = Load();
+        bridgeId_ = bridgeId;
+        items_ = store.LoadOutbox(bridgeId)
+            .Where(item => item.Id != Guid.Empty)
+            .OrderBy(item => item.QueuedUtc)
+            .ToList();
 
         bool changed = false;
         foreach (OutboxItem item in items_)
@@ -233,34 +228,7 @@ public sealed class MobileOutbox
         lock (sync_)
         {
             items_.Clear();
-            store_.Delete(key_);
-        }
-    }
-
-    private List<OutboxItem> Load()
-    {
-        string? json = store_.Read(key_);
-        if (string.IsNullOrWhiteSpace(json))
-        {
-            return new List<OutboxItem>();
-        }
-
-        try
-        {
-            Envelope? envelope = JsonSerializer.Deserialize<Envelope>(json, JsonOptions);
-            if (envelope?.Items is null)
-            {
-                return new List<OutboxItem>();
-            }
-
-            return envelope.Items
-                .Where(item => item.Id != Guid.Empty)
-                .OrderBy(item => item.QueuedUtc)
-                .ToList();
-        }
-        catch (JsonException)
-        {
-            return new List<OutboxItem>();
+            store_.SaveOutbox(bridgeId_, items_);
         }
     }
 
@@ -276,19 +244,12 @@ public sealed class MobileOutbox
     {
         try
         {
-            store_.Write(key_, JsonSerializer.Serialize(new Envelope { Items = items_ }, JsonOptions));
+            store_.SaveOutbox(bridgeId_, items_);
         }
         catch
         {
             // The next mutation retries; a store that cannot write behaves as a lost queue.
         }
-    }
-
-    private sealed class Envelope
-    {
-        public int Version { get; set; } = 1;
-
-        public List<OutboxItem> Items { get; set; } = new();
     }
 }
 

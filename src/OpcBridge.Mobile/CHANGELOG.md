@@ -15,16 +15,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Offline viewing without an account.** The phone now keeps a durable copy of each bridge's
+  synced dataset — the logic blocks, the areas' named tags, tag metadata and the operator
+  notes — in a local SQLite database (`opcbridge-logic.db`) instead of transient cache files.
+  The first sync seeds it and every later sync replaces it in one step, so a failed refresh
+  leaves the previous copy intact. When the bridge is unreachable, Sign in offers **View
+  offline data**: the Logic, Elements and block screens open without a username or password,
+  structure only (no readings, no evaluated states, no writes) and labelled with the last sync
+  time. The view ends the moment the bridge answers again, returning the app to Sign in.
 - **The viewer requires a bridge account to open.** The app now starts on a sign-in screen:
   pick a saved bridge or add one, then enter a username and password checked against that
   bridge's own accounts (`/api/auth/login`). The Logic, Elements and Settings screens appear
   only for an accepted session; signing out, switching to a bridge with no session, or a
   session the bridge refuses returns the app to the sign-in screen. Every launch asks again —
-  nothing is stored on the phone — and the account is required even when the bridge runs with
-  `Auth:Enabled=false`.
+  the account is not stored on the phone — and the account is required even when the bridge
+  runs with `Auth:Enabled=false`. Only the read-only offline view opens without one.
 
 ### Changed
 
+- **Offline screens show structure only.** Elements no longer renders last-known readings when
+  the link is down: offline rows keep their names, tags and step order, but every contact,
+  timer, counter and block state reads as no data. A lost link also no longer keeps stale
+  readings in the phone's database.
 - Settings' optional **Sign in** section became **Account**: it names the signed-in user and
   role and offers **Sign out**. The credentials now live on the sign-in screen.
 - **The viewer was re-skinned and re-laid out to the V2 console design.** Each screen now

@@ -80,18 +80,6 @@ public sealed partial class LogicElementRowViewModel : ObservableObject
 
     [ObservableProperty] private bool _showProgress;
 
-    /// <summary>True while the row is showing the persistent last-known reading instead of live data.</summary>
-    [ObservableProperty] private bool _isLastKnown;
-
-    /// <summary>"12:31:05" — when the last reading was taken; empty when unknown.</summary>
-    [ObservableProperty] private string _lastReadText = string.Empty;
-
-    public bool ShowLastRead => IsLastKnown && LastReadText.Length > 0;
-
-    partial void OnIsLastKnownChanged(bool value) => OnPropertyChanged(nameof(ShowLastRead));
-
-    partial void OnLastReadTextChanged(string value) => OnPropertyChanged(nameof(ShowLastRead));
-
     /// <summary>The block this row belongs to (set by the shared row builder).</summary>
     public Guid BlockId { get; set; }
 
@@ -104,9 +92,6 @@ public sealed partial class LogicElementRowViewModel : ObservableObject
 
     /// <summary>"Step 2 · Open valve"; empty for a block-level element.</summary>
     public string StepLabel { get; set; } = string.Empty;
-
-    public void SetLastRead(DateTime? utc) =>
-        LastReadText = utc is { } value ? value.ToLocalTime().ToString("HH:mm:ss") : string.Empty;
 
     public LogicElementRowViewModel(
         LogicElementDto element,
@@ -614,6 +599,25 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
 
     /// <summary>True when the block carries authored actions; the section is hidden otherwise.</summary>
     public bool HasActions => Actions.Count > 0;
+
+    /// <summary>
+    /// True while the screen is the no-login offline view: notes stay readable, but nothing
+    /// can be written until the bridge is back and the operator has signed in.
+    /// </summary>
+    [ObservableProperty] private bool _isReadOnly;
+
+    /// <summary>The action section shows only when there is something to run and writing is allowed.</summary>
+    public bool ShowActions => HasActions && !IsReadOnly;
+
+    /// <summary>The note composer hides in the read-only offline view; the notes list stays.</summary>
+    public bool ShowNoteComposer => !IsReadOnly;
+
+    partial void OnIsReadOnlyChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShowActions));
+        OnPropertyChanged(nameof(ShowNoteComposer));
+    }
+
     public ObservableCollection<LogicNoteRowViewModel> Notes { get; } = new();
 
     [RelayCommand]

@@ -2,7 +2,6 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using OpcBridge.Client;
-using OpcBridge.Core;
 using OpcBridge.Hmi.Core;
 using OpcBridge.Mobile.Core;
 using Xunit;
@@ -10,9 +9,9 @@ using Xunit;
 namespace OpcBridge.LoadTest;
 
 /// <summary>
-/// The detail screen's notes read offline: the last notes the bridge served are kept with the
-/// block cache (old cache files without them still load), a failed read leaves them untouched,
-/// and a successful read replaces them without making the list itself look fresher.
+/// The detail screen's notes read offline: the notes the bridge served are kept in the phone's
+/// dataset per block, a failed read leaves them untouched, and a successful read replaces them
+/// without making the dataset itself look fresher than it is.
 /// </summary>
 public sealed class MobileOfflineNotesTests
 {
@@ -46,27 +45,14 @@ public sealed class MobileOfflineNotesTests
         CreatedUtc = new DateTime(2026, 10, 9, 4, 0, 0, DateTimeKind.Utc)
     };
 
-    private static BridgeCacheSnapshot Snapshot(LogicBlockDto block) => new()
-    {
-        SavedUtc = SavedUtc,
-        Blocks = new List<LogicBlockDto> { block },
-        State = new LogicStateSnapshot
-        {
-            EvaluatedUtc = SavedUtc,
-            Blocks =
-            {
-                new LogicBlockStateDto { Id = block.Id, State = LogicBlockStates.Blocked }
-            }
-        },
-        Tags = new List<HmiTagDto>
+    private static BridgeDataset Dataset(LogicBlockDto block) => new(
+        SavedUtc,
+        new List<LogicBlockDto> { block },
+        Array.Empty<LogicAreaTagsDto>(),
+        new List<HmiTagDto>
         {
             new() { SourceId = "sim", ItemId = "PS1", DisplayName = "Pressure switch PS1", Value = false, IsGood = true, DataType = "Boolean", Digital = true }
-        },
-        NotesByBlock = new Dictionary<Guid, List<LogicNoteDto>>
-        {
-            [block.Id] = new List<LogicNoteDto> { Note(block, "Choked the line, cleared") }
-        }
-    };
+        });
 
     /// <summary>A port nothing listens on: the connection is refused at once, no timeout.</summary>
     private static int ClosedPort()
@@ -78,58 +64,43 @@ public sealed class MobileOfflineNotesTests
         return port;
     }
 
-    private static BridgeConnection Connection(MemoryBridgeCacheStore store, string url)
+    private static BridgeConnection Connection(MemoryMobileStore store, string url)
     {
         BridgeConnection connection = new(
             new SavedBridge("b1", "Plant 1", url),
             new MultiBridgeTagCache(),
             post: null,
-            cache: store);
+            store: store);
         connection.Api.SetBaseAddress(url);
         return connection;
     }
 
     [Fact]
-    public void CacheCodec_RoundTripsNotes()
+    public void Store_KeepsNotesPerBlock()
     {
         LogicBlockDto block = Block();
+        MemoryMobileStore store = new();
+        store.SaveNotes("b1", new Dictionary<Guid, List<LogicNoteDto>>
+        {
+            [block.Id] = new List<LogicNoteDto> { Note(block, "Choked the line, cleared") }
+        });
 
-        BridgeCacheSnapshot? copy = BridgeCacheCodec.Deserialize(BridgeCacheCodec.Serialize(Snapshot(block)));
+        IReadOnlyDictionary<Guid, List<LogicNoteDto>> loaded = store.LoadNotes("b1");
 
-        Assert.NotNull(copy);
-        Assert.True(copy!.NotesByBlock.TryGetValue(block.Id, out List<LogicNoteDto>? notes));
-        Assert.Equal("Choked the line, cleared", Assert.Single(notes!).Text);
-        Assert.Equal(SavedUtc, copy.SavedUtc);
+        Assert.Equal("Choked the line, cleared", Assert.Single(loaded[block.Id]).Text);
+        Assert.Empty(store.LoadNotes("another-bridge"));
     }
 
     [Fact]
-    public void CacheFromBeforeNotesStillLoads()
+    public void LoadStored_KeepsTheNotesForTheDetailScreen()
     {
         LogicBlockDto block = Block();
-        string legacy =
-            "{\"savedUtc\":\"2026-10-09T05:30:00Z\",\"blocks\":[{\"id\":\"" + block.Id +
-            "\",\"name\":\"Primary Arm Up\"}],\"tags\":[]}";
-
-        BridgeCacheSnapshot? snapshot = BridgeCacheCodec.Deserialize(legacy);
-        Assert.NotNull(snapshot);
-        Assert.NotNull(snapshot!.NotesByBlock);
-        Assert.Empty(snapshot.NotesByBlock);
-
-        // An explicit null notes map must not take the cached list down with it either.
-        MemoryBridgeCacheStore store = new();
-        store.Write(BridgeCacheCodec.Key("b1"), legacy.Replace("\"tags\":[]", "\"notesByBlock\":null,\"tags\":[]"));
-        BridgeConnection connection = Connection(store, "http://127.0.0.1:1");
-
-        Assert.Single(connection.Overview.Definitions);
-        Assert.Empty(connection.CachedNotes(block.Id));
-    }
-
-    [Fact]
-    public void LoadCached_KeepsTheNotesForTheDetailScreen()
-    {
-        LogicBlockDto block = Block();
-        MemoryBridgeCacheStore store = new();
-        store.Write(BridgeCacheCodec.Key("b1"), BridgeCacheCodec.Serialize(Snapshot(block)));
+        MemoryMobileStore store = new();
+        store.SaveDataset("b1", Dataset(block));
+        store.SaveNotes("b1", new Dictionary<Guid, List<LogicNoteDto>>
+        {
+            [block.Id] = new List<LogicNoteDto> { Note(block, "Choked the line, cleared") }
+        });
 
         BridgeConnection connection = Connection(store, "http://127.0.0.1:1");
 
@@ -138,12 +109,15 @@ public sealed class MobileOfflineNotesTests
     }
 
     [Fact]
-    public async Task FailedNotesRead_LeavesTheCachedNotesUntouched()
+    public async Task FailedNotesRead_LeavesTheStoredNotesUntouched()
     {
         LogicBlockDto block = Block();
-        MemoryBridgeCacheStore store = new();
-        store.Write(BridgeCacheCodec.Key("b1"), BridgeCacheCodec.Serialize(Snapshot(block)));
-        string before = store.Read(BridgeCacheCodec.Key("b1"))!;
+        MemoryMobileStore store = new();
+        store.SaveDataset("b1", Dataset(block));
+        store.SaveNotes("b1", new Dictionary<Guid, List<LogicNoteDto>>
+        {
+            [block.Id] = new List<LogicNoteDto> { Note(block, "Choked the line, cleared") }
+        });
         BridgeConnection connection = Connection(store, "http://127.0.0.1:" + ClosedPort());
 
         MobileResult<IReadOnlyList<LogicNoteDto>> result = await connection.GetNotesAsync(block.Id, CancellationToken.None);
@@ -151,11 +125,11 @@ public sealed class MobileOfflineNotesTests
         Assert.False(result.Ok);
         Assert.Equal(0, result.StatusCode);
         Assert.Equal("Choked the line, cleared", Assert.Single(connection.CachedNotes(block.Id)).Text);
-        Assert.Equal(before, store.Read(BridgeCacheCodec.Key("b1")));
+        Assert.Equal("Choked the line, cleared", Assert.Single(store.LoadNotes("b1")[block.Id]).Text);
     }
 
     [Fact]
-    public async Task SuccessfulNotesRead_CachesWithoutAgingTheList()
+    public async Task SuccessfulNotesRead_SavesWithoutAgingTheDataset()
     {
         LogicBlockDto block = Block();
         Guid fresh1 = Guid.NewGuid();
@@ -165,8 +139,12 @@ public sealed class MobileOfflineNotesTests
             "{\"id\":\"" + fresh1 + "\",\"blockId\":\"" + block.Id + "\",\"text\":\"Grease the arm weekly\",\"author\":\"eng\",\"createdUtc\":\"2026-10-11T01:00:00Z\"}," +
             "{\"id\":\"" + fresh2 + "\",\"blockId\":\"" + block.Id + "\",\"text\":\"Choked the line, cleared\",\"author\":\"op\",\"createdUtc\":\"2026-10-09T04:00:00Z\"}]}";
         using NotesServer server = NotesServer.Start(body);
-        MemoryBridgeCacheStore store = new();
-        store.Write(BridgeCacheCodec.Key("b1"), BridgeCacheCodec.Serialize(Snapshot(block)));
+        MemoryMobileStore store = new();
+        store.SaveDataset("b1", Dataset(block));
+        store.SaveNotes("b1", new Dictionary<Guid, List<LogicNoteDto>>
+        {
+            [block.Id] = new List<LogicNoteDto> { Note(block, "Choked the line, cleared") }
+        });
         BridgeConnection connection = Connection(store, server.Url);
 
         MobileResult<IReadOnlyList<LogicNoteDto>> result = await connection.GetNotesAsync(block.Id, CancellationToken.None);
@@ -175,16 +153,13 @@ public sealed class MobileOfflineNotesTests
         Assert.Equal(2, result.Value!.Count);
         Assert.Equal(2, connection.CachedNotes(block.Id).Count);
 
-        // The write landed in the store and kept the list's data age (the banner's timestamp)
-        // and the last-known evaluation/readings the Elements screen uses.
-        BridgeCacheSnapshot? written = BridgeCacheCodec.Deserialize(store.Read(BridgeCacheCodec.Key("b1")));
-        Assert.NotNull(written);
-        Assert.Equal(SavedUtc, written!.SavedUtc);
-        Assert.Single(written.Blocks);
-        Assert.Equal(2, written.NotesByBlock[block.Id].Count);
-        Assert.NotNull(written.State);
-        Assert.Equal(LogicBlockStates.Blocked, written.State!.Blocks[0].State);
-        Assert.False(TagDigital.CoerceBool(written.Tags[0].Value));
+        // The notes landed in the store, and the dataset's sync time did not move: reading
+        // notes is not a sync and must not make the structure look fresher than it is.
+        BridgeDataset? stored = store.LoadDataset("b1");
+        Assert.NotNull(stored);
+        Assert.Equal(SavedUtc, stored!.SyncedUtc);
+        Assert.Single(stored.Blocks);
+        Assert.Equal(2, store.LoadNotes("b1")[block.Id].Count);
     }
 
     /// <summary>A listener that answers every request with one canned notes body.</summary>

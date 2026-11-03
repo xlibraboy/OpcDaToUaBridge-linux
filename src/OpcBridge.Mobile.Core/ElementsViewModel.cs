@@ -202,9 +202,10 @@ public sealed class ElementBlockGroupViewModel : ObservableCollection<LogicEleme
 }
 
 /// <summary>
-/// Every element of every block in one list, grouped by block. It is fed either the live
-/// snapshot or the persisted last-known one, so the same rows read on the floor with the link
-/// down. Rows are stable across state pushes; only a changed definitions set rebuilds them.
+/// Every element of every block in one list, grouped by block. While the bridge is reachable
+/// it is fed the live snapshot; offline it shows the stored structure alone — the rows, their
+/// tags and the step order, never a reading or an evaluated state. Rows are stable across
+/// state pushes; only a changed definitions set rebuilds them.
 /// </summary>
 public sealed partial class ElementsViewModel : ObservableObject
 {
@@ -237,11 +238,11 @@ public sealed partial class ElementsViewModel : ObservableObject
 
     [ObservableProperty] private string _summary = string.Empty;
 
-    /// <summary>"live · synced 12:31:05" or "last known · 2026-11-02 01:55:22".</summary>
+    /// <summary>"live · synced 12:31:05" or "offline · structure only · last synced …".</summary>
     [ObservableProperty] private string _sourceText = string.Empty;
 
-    /// <summary>True while the rows are the persisted last-known snapshot, not live data.</summary>
-    [ObservableProperty] private bool _showingLastKnown;
+    /// <summary>True while the rows are the stored structure with no readings behind them.</summary>
+    [ObservableProperty] private bool _isOffline;
 
     [ObservableProperty] private string _searchText = string.Empty;
 
@@ -311,23 +312,24 @@ public sealed partial class ElementsViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Pushes one evaluated snapshot into the rows. <paramref name="lastKnown"/> selects the
-    /// persisted data path and marks every row so the screen never implies it is live.
+    /// Pushes one evaluated snapshot into the rows. <paramref name="offline"/> shows the stored
+    /// structure with no state and no readings, and labels the screen so it never implies it is
+    /// live.
     /// </summary>
     public void ApplyState(
         LogicStateSnapshot? state,
         MultiBridgeTagCache? tags,
         string bridgeKey,
-        bool lastKnown,
+        bool offline,
         DateTime? syncedUtc)
     {
-        ShowingLastKnown = lastKnown;
-        SourceText = lastKnown
-            ? "last known" + (syncedUtc is { } known
-                ? " · " + known.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
-                : string.Empty)
+        IsOffline = offline;
+        // The sync badge beside this label already carries the full last-sync time; keep the
+        // source line short so it cannot run into those readings on a narrow phone.
+        SourceText = offline
+            ? "offline · structure only"
             : "live" + (syncedUtc is { } synced
-                ? " · " + synced.ToLocalTime().ToString("HH:mm:ss")
+                ? " · synced " + synced.ToLocalTime().ToString("HH:mm:ss")
                 : string.Empty);
 
         Dictionary<Guid, LogicBlockStateDto> blockStates = new();
@@ -359,15 +361,11 @@ public sealed partial class ElementsViewModel : ObservableObject
                         out entry);
 
                 // Contacts read the cache; non-contacts ignore it. A cleared entry clears the
-                // row, while a legacy last-known snapshot without tag entries keeps the value
-                // text its evaluation carried.
+                // row, so the offline view never keeps a reading alive.
                 if (hasEntry || elementState is null)
                 {
                     row.ApplyTag(entry);
                 }
-
-                row.IsLastKnown = lastKnown;
-                row.SetLastRead(entry?.TimestampUtc ?? elementState?.TimestampUtc);
             }
 
             group.ApplyState(blockState);
@@ -384,7 +382,7 @@ public sealed partial class ElementsViewModel : ObservableObject
         VisibleGroups.Clear();
         Summary = string.Empty;
         SourceText = string.Empty;
-        ShowingLastKnown = false;
+        IsOffline = false;
         FilterText = string.Empty;
         HasFilter = false;
         EmptyMessage = "No elements.";

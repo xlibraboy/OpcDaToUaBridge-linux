@@ -86,11 +86,30 @@ public partial class LoginPage : ContentPage
         bridgeStateLabel.Text = active is null
             ? "no bridge"
             : active.IsOffline ? "offline" : active.IsConnected ? "connected · live" : active.StatusText;
-        statusLabel.Text = statusNote_ ?? (active is null ? "No bridge yet — add one above." : active.Bridge.Url);
+        statusLabel.Text = statusNote_ ?? (active is null
+            ? "No bridge yet — add one above."
+            : active.IsOffline ? active.OfflineText : active.Bridge.Url);
 
         // One action at a time: a connect in flight owns the bridge.
         connectButton.IsEnabled = !busy_;
         signInButton.IsEnabled = !busy_ && active is not null;
+        viewOfflineButton.IsVisible = !busy_ && active?.CanUseOffline == true;
+    }
+
+    /// <summary>
+    /// Opens the synced dataset without a bridge account. Only offered while the bridge is
+    /// unreachable; the access rule clears it as soon as the bridge answers again.
+    /// </summary>
+    private void OnViewOfflineClicked(object? sender, EventArgs e)
+    {
+        if (coordinator_.Active is not { CanUseOffline: true } active)
+        {
+            return;
+        }
+
+        statusNote_ = null;
+        errorLabel.Text = string.Empty;
+        active.EnterOfflineViewer();
     }
 
     private async void OnConnectClicked(object? sender, EventArgs e)

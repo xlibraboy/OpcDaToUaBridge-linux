@@ -7,8 +7,7 @@ namespace OpcBridge.LoadTest;
 
 /// <summary>
 /// The sync badge follows the link and the outbox together: an offline bridge with queued work
-/// reads offline and names the pending count, a failed flush leaves the item pending, and the
-/// captured last-known data stays available for the Elements screen.
+/// reads offline and names the pending count, and a failed flush leaves the item pending.
 /// </summary>
 public sealed class MobileSyncStateTests
 {
@@ -32,28 +31,15 @@ public sealed class MobileSyncStateTests
         }
     };
 
-    private static BridgeConnection Connection(LogicBlockDto block, MemoryBridgeCacheStore store)
+    private static BridgeConnection Connection(LogicBlockDto block, MemoryMobileStore store)
     {
-        store.Write(
-            BridgeCacheCodec.Key("b1"),
-            BridgeCacheCodec.Serialize(new BridgeCacheSnapshot
-            {
-                SavedUtc = SavedUtc,
-                Blocks = new List<LogicBlockDto> { block },
-                State = new LogicStateSnapshot
-                {
-                    EvaluatedUtc = SavedUtc,
-                    Blocks =
-                    {
-                        new LogicBlockStateDto
-                        {
-                            Id = block.Id,
-                            State = LogicBlockStates.Blocked,
-                            Reason = "Pressure switch PS1 must read 1"
-                        }
-                    }
-                },
-                Tags = new List<HmiTagDto>
+        store.SaveDataset(
+            "b1",
+            new BridgeDataset(
+                SavedUtc,
+                new List<LogicBlockDto> { block },
+                Array.Empty<LogicAreaTagsDto>(),
+                new List<HmiTagDto>
                 {
                     new()
                     {
@@ -65,28 +51,26 @@ public sealed class MobileSyncStateTests
                         IsGood = true,
                         TimestampUtc = SavedUtc
                     }
-                }
-            }));
+                }));
 
         return new BridgeConnection(
             new SavedBridge("b1", "Plant 1", "http://127.0.0.1:1"),
             new MultiBridgeTagCache(),
             post: null,
-            cache: store);
+            store: store);
     }
 
     [Fact]
     public async Task OfflineWithAQueuedNote_ReadsOfflineAndPending()
     {
         LogicBlockDto block = Block();
-        BridgeConnection connection = Connection(block, new MemoryBridgeCacheStore());
+        BridgeConnection connection = Connection(block, new MemoryMobileStore());
 
         await connection.ConnectAsync(CancellationToken.None);
 
         Assert.Equal(BridgeSyncState.Offline, connection.SyncState);
         Assert.Contains("offline", connection.SyncText);
-        Assert.NotNull(connection.LastKnown);
-        Assert.Equal(LogicBlockStates.Blocked, connection.LastKnown!.State!.Blocks[0].State);
+        Assert.Single(connection.Overview.Definitions);
 
         OutboxSubmitResult submitted = await connection.SubmitNoteAsync(
             block.Id,
@@ -106,7 +90,7 @@ public sealed class MobileSyncStateTests
     public async Task FailedFlush_KeepsTheItemPending_AndDiscardClearsIt()
     {
         LogicBlockDto block = Block();
-        BridgeConnection connection = Connection(block, new MemoryBridgeCacheStore());
+        BridgeConnection connection = Connection(block, new MemoryMobileStore());
         await connection.ConnectAsync(CancellationToken.None);
         await connection.SubmitNoteAsync(block.Id, "Waiting", CancellationToken.None);
         OutboxItem item = Assert.Single(connection.OutboxItems);

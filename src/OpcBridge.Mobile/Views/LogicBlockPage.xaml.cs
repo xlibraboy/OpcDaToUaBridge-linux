@@ -196,6 +196,7 @@ public partial class LogicBlockPage : ContentPage
             Active.Overview.Definitions,
             Active.Overview.AreaTags);
         viewModel_.ActionRequested += OnActionRequested;
+        viewModel_.IsReadOnly = Active.IsOfflineViewer;
         viewModel_.ApplyUsageStates(Active.Overview.State);
 
         BindingContext = viewModel_;
@@ -244,6 +245,7 @@ public partial class LogicBlockPage : ContentPage
 
         LogicBlockStateDto? blockState = Active.Overview.State?.Blocks
             .FirstOrDefault(candidate => candidate.Id == blockId_);
+        viewModel_.IsReadOnly = Active.IsOfflineViewer;
         viewModel_.ApplyState(blockState);
         viewModel_.ApplyValues();
         viewModel_.ApplyUsageStates(Active.Overview.State);
@@ -319,6 +321,12 @@ public partial class LogicBlockPage : ContentPage
             return;
         }
 
+        if (Active.IsOfflineViewer)
+        {
+            messageLabel.Text = "✗ the offline view is read-only — sign in when the bridge is back to run actions";
+            return;
+        }
+
         // A named area tag resolves through the block's area's tags; while it is unassigned
         // there is nothing to write, and the message says which entry is waiting.
         if (viewModel_ is null
@@ -358,6 +366,12 @@ public partial class LogicBlockPage : ContentPage
         string text = noteEntry.Text?.Trim() ?? string.Empty;
         if (text.Length == 0 || viewModel_ is null || Active is null)
         {
+            return;
+        }
+
+        if (Active.IsOfflineViewer)
+        {
+            messageLabel.Text = "✗ the offline view is read-only — sign in when the bridge is back to add a note";
             return;
         }
 

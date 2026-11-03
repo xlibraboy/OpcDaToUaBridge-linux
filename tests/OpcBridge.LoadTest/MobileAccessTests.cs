@@ -5,8 +5,9 @@ using Xunit;
 namespace OpcBridge.LoadTest;
 
 /// <summary>
-/// The viewer's access rule: only an accepted bridge session opens the app, and the "bridge
-/// runs without sign-in" state is still an anonymous session, not an exception.
+/// The viewer's access rule: an accepted bridge session opens the app, and the "bridge runs
+/// without sign-in" state is still an anonymous session, not an exception. The read-only
+/// offline view is the one separate grant (covered in MobileOfflineViewerTests).
 /// </summary>
 public sealed class MobileAccessTests
 {

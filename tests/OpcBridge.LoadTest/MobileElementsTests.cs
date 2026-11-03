@@ -94,7 +94,7 @@ public sealed class MobileElementsTests
 
         ElementsViewModel vm = new();
         vm.ApplyDefinitions(new[] { block }, null, tags, BridgeKey);
-        vm.ApplyState(state, tags, BridgeKey, lastKnown: false, LiveUtc);
+        vm.ApplyState(state, tags, BridgeKey, offline: false, LiveUtc);
 
         LogicElementRowViewModel row = Assert.Single(vm.AllRows);
         Assert.Equal("Pressure switch PS1 must read 1", row.Text);
@@ -102,22 +102,21 @@ public sealed class MobileElementsTests
         Assert.Equal("0", row.ActualText);
         Assert.Equal("Off", row.ValueText);
         Assert.Equal("should 1 · actual 0", row.ShouldLine);
-        Assert.False(row.IsLastKnown);
         Assert.Contains("Pressure switch PS1", row.TagLabel);
 
         ElementBlockGroupViewModel group = Assert.Single(vm.VisibleGroups);
         Assert.Equal("Line 01 Start", group.Name);
         Assert.Equal("BLOCKED", group.StateLabel);
         Assert.Contains("live", vm.SourceText);
-        Assert.False(vm.ShowingLastKnown);
+        Assert.False(vm.IsOffline);
     }
 
     [Fact]
-    public void LastKnownState_RendersThePersistedReadingAndItsTime()
+    public void OfflineState_ShowsTheStructureWithoutReadings()
     {
         LogicConditionDto permit = Condition("Pressure switch PS1 must read 1", "PS1");
         LogicBlockDto block = Block("Line 01 Start", LogicBlockKinds.Interlock, permit);
-        HmiTagDto tag = Tag();
+        MultiBridgeTagCache tags = Tags(Tag());
         LogicStateSnapshot state = State(
             block,
             LogicBlockStates.Blocked,
@@ -131,25 +130,23 @@ public sealed class MobileElementsTests
                 ValueText = "Off",
                 TimestampUtc = SavedUtc
             });
-        BridgeLastKnown known = new(
-            SavedUtc,
-            new[] { block },
-            Array.Empty<LogicAreaTagsDto>(),
-            state,
-            new[] { tag });
-        MultiBridgeTagCache knownTags = new();
-        knownTags.ReplaceBridge(BridgeKey, known.Tags);
 
         ElementsViewModel vm = new();
-        vm.ApplyDefinitions(known.Blocks, known.TagSources, knownTags, BridgeKey);
-        vm.ApplyState(known.State, knownTags, BridgeKey, lastKnown: true, known.SavedUtc);
+        vm.ApplyDefinitions(new[] { block }, null, tags, BridgeKey);
+        vm.ApplyState(state, tags, BridgeKey, offline: true, SavedUtc);
+        vm.ApplyState(null, null, BridgeKey, offline: true, SavedUtc);
 
+        // The row keeps its structure and label, but no reading or evaluated state survives.
         LogicElementRowViewModel row = Assert.Single(vm.AllRows);
-        Assert.True(row.IsLastKnown);
-        Assert.Equal("Off", row.ValueText);
-        Assert.Equal(SavedUtc.ToLocalTime().ToString("HH:mm:ss"), row.LastReadText);
-        Assert.True(vm.ShowingLastKnown);
-        Assert.StartsWith("last known · ", vm.SourceText);
+        Assert.Equal("Pressure switch PS1 must read 1", row.Text);
+        Assert.Equal("—", row.Mark);
+        Assert.Empty(row.ValueText);
+        Assert.Equal("?", row.ActualText);
+
+        ElementBlockGroupViewModel group = Assert.Single(vm.VisibleGroups);
+        Assert.Equal("NO DATA", group.StateLabel);
+        Assert.True(vm.IsOffline);
+        Assert.Equal("offline · structure only", vm.SourceText);
     }
 
     [Fact]
@@ -236,7 +233,7 @@ public sealed class MobileElementsTests
                 new LogicElementStateDto { Id = permit.Id, State = LogicConditionStates.True, Should = "1", Matches = true, ValueText = "On" }),
             tags,
             BridgeKey,
-            lastKnown: false,
+            offline: false,
             LiveUtc);
         vm.ApplyDefinitions(definitions, null, tags, BridgeKey);
 

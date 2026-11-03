@@ -107,6 +107,13 @@
                                 VerticalOptions="Center"
                                 Clicked="OnCancelConnectClicked" />
                     </Grid>
+                    <!-- Shown only while the bridge is unreachable: the synced structure can be
+                         read without an account, and the view is read-only. -->
+                    <Button x:Name="viewOfflineButton"
+                            Text="View offline data"
+                            Style="{StaticResource SecondaryButton}"
+                            IsVisible="False"
+                            Clicked="OnViewOfflineClicked" />
                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
                         <ActivityIndicator x:Name="busyIndicator"
                                            WidthRequest="16"
@@ -135,7 +142,7 @@
                                HeightRequest="13"
                                VerticalOptions="Center" />
                     </Grid>
-                    <Label Text="Asked for a bridge account every time the viewer starts."
+                    <Label Text="Needed for live data. The synced plant structure stays readable offline without an account."
                            FontSize="11"
                            TextColor="{StaticResource MutedColor}"
                            LineBreakMode="WordWrap" />
@@ -186,7 +193,7 @@
                        VerticalOptions="Start"
                        Margin="0,2,0,0" />
                 <Label Grid.Column="1"
-                       Text="One live bridge at a time · last known data stays readable offline"
+                       Text="One live bridge at a time · offline shows the last synced structure only"
                        FontSize="9.5"
                        TextColor="{StaticResource MutedColor}"
                        LineBreakMode="WordWrap" />

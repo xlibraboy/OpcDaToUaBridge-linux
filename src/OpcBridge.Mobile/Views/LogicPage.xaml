@@ -307,7 +307,7 @@
                                             </DataTemplate>
                                         </BindableLayout.ItemTemplate>
                                     </FlexLayout>
-                                    <Label Text="{Binding Reason, TargetNullValue='reading…'}" FontSize="12" />
+                                    <Label Text="{Binding Reason}" IsVisible="{Binding HasReason}" FontSize="12" />
                                     <Label Text="{Binding ProgressText}" IsVisible="{Binding HasProgress}"
                                            FontSize="10.5" TextColor="{StaticResource MutedColor}" />
                                 </VerticalStackLayout>

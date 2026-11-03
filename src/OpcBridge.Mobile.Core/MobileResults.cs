@@ -36,14 +36,18 @@ public sealed record MobileSession(
 }
 
 /// <summary>
-/// The viewer's access rule: the Logic, Elements and Settings screens open only for a signed-in
-/// bridge account. A bridge that runs with <c>Auth:Enabled=false</c> still has accounts in
-/// <c>users.json</c>, and the app asks for one there too — the phone never opens anonymously.
+/// The viewer's access rule: the Logic, Elements and Settings screens open for a signed-in
+/// bridge account, or for the read-only offline view the operator starts from Sign in when the
+/// bridge is unreachable. A bridge that runs with <c>Auth:Enabled=false</c> still has accounts
+/// in <c>users.json</c>, and the app asks for one there too — online access is never anonymous,
+/// and the offline view ends the moment the bridge answers again.
 /// </summary>
 public static class MobileAccess
 {
     public static bool IsGranted(BridgeConnection? bridge) =>
-        bridge?.Session is { Authenticated: true };
+        bridge is not null
+        && (bridge.Session is { Authenticated: true }
+            || (bridge.IsOfflineViewer && bridge.IsOffline));
 }
 
 /// <summary>Constants shared by the mobile client surfaces.</summary>
@@ -51,7 +55,4 @@ public static class MobileBridge
 {
     /// <summary>The shared tag cache key of one saved bridge (the phone keeps several).</summary>
     public static string CacheKey(string bridgeId) => "mobile:" + bridgeId;
-
-    /// <summary>Where one bridge's pending notes/actions are persisted.</summary>
-    public static string OutboxKey(string bridgeId) => "outbox:" + bridgeId;
 }

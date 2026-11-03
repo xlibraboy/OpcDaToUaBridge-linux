@@ -19,37 +19,35 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
     private readonly MobileHubClient hub_ = new();
     private readonly LogicApiClient api_ = new();
     private readonly MultiBridgeTagCache tags_;
-    private readonly IBridgeCacheStore cache_;
+    private readonly IMobileStore store_;
     private readonly Action<Action> post_;
     private readonly SemaphoreSlim connectGate_ = new(1, 1);
-    private List<HmiTagDto> lastKnownTags_ = new();
-    private LogicStateSnapshot? lastKnownState_;
+    private List<HmiTagDto> tagMetadata_ = new();
     private Dictionary<Guid, List<LogicNoteDto>> notesByBlock_ = new();
-    private DateTime? lastCachedUtc_;
-    private DateTime lastKnownPersistUtc_;
+    private DateTime? datasetSyncedUtc_;
     private int syncingDepth_;
     private bool flushing_;
+    private bool autoReconnecting_;
+    private DateTime nextAutoReconnectUtc_;
     private CancellationTokenSource? latencyCts_;
 
-    public BridgeConnection(SavedBridge bridge, MultiBridgeTagCache tags, Action<Action>? post = null, IBridgeCacheStore? cache = null)
+    public BridgeConnection(SavedBridge bridge, MultiBridgeTagCache tags, Action<Action>? post = null, IMobileStore? store = null)
     {
         Bridge = bridge;
         tags_ = tags;
-        cache_ = cache ?? new MemoryBridgeCacheStore();
+        store_ = store ?? new MemoryMobileStore();
         post_ = post ?? (action => action());
-        Outbox = new MobileOutbox(cache_, MobileBridge.OutboxKey(Bridge.Id));
+        Outbox = new MobileOutbox(store_, Bridge.Id);
 
         hub_.LogicStateChanged += snapshot => post_(() =>
         {
             Overview.ApplyState(snapshot);
-            // The pushed snapshot is also the persistent screen's latest data; keep it even
-            // though the live list would clear if the link dropped a moment later.
-            lastKnownState_ = snapshot;
-            // A pushed snapshot is the link working: whatever was cached is live again.
+            // A pushed snapshot is the link working: the bridge is reachable again, so an
+            // offline grant ends. Without a session the access rule sends the app to Sign in.
             IsOffline = false;
+            IsOfflineViewer = false;
             StatusText = LiveText;
             LastSyncedUtc = DateTime.UtcNow;
-            PersistLastKnown(force: false);
             RecomputeSync();
             TryFlushOutbox();
             RaiseChanged();
@@ -57,10 +55,9 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
         hub_.ValuesChanged += deltas => post_(() =>
         {
             tags_.ApplyDeltas(CacheKey, deltas);
-            ApplyDeltasToLastKnown(deltas);
             IsOffline = false;
+            IsOfflineViewer = false;
             LastSyncedUtc = DateTime.UtcNow;
-            PersistLastKnown(force: false);
             RecomputeSync();
             TryFlushOutbox();
             RaiseChanged();
@@ -93,9 +90,9 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
             RaiseChanged();
         });
 
-        // The list the bridge served last time is on disk: show it immediately, before the
-        // first call decides whether the link is there.
-        LoadCached();
+        // The dataset the bridge served last time is on the phone: show it immediately, before
+        // the first call decides whether the link is there.
+        LoadStored();
         SetOutboxCounts(Outbox.PendingCount, Outbox.FailedCount);
     }
 
@@ -134,12 +131,20 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
     [ObservableProperty] private bool _signInRequired;
 
     /// <summary>
-    /// True while the link is down. The block definitions and notes stay on screen, but every
-    /// live reading and evaluated state has been cleared — nothing is presented as current.
+    /// True while the link is down. The stored structure (blocks, areas' tags and notes) stays
+    /// on screen, but every live reading and evaluated state has been cleared — nothing is
+    /// presented as current.
     /// </summary>
     [ObservableProperty] private bool _isOffline;
 
-    /// <summary>"offline · live values hidden · last synced 2026-10-09 12:31:05" — the banner.</summary>
+    /// <summary>
+    /// True while the operator is reading the stored dataset without a bridge account. The
+    /// offline view is read-only and lasts only while the bridge is unreachable: a live answer
+    /// clears it, and the access rule asks for a sign-in again.
+    /// </summary>
+    [ObservableProperty] private bool _isOfflineViewer;
+
+    /// <summary>"offline · structure only · last synced 2026-10-09 12:31:05" — the banner.</summary>
     [ObservableProperty] private string _offlineText = string.Empty;
 
     /// <summary>The badge's state: synced, syncing, offline, pending or error.</summary>
@@ -198,18 +203,26 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// The last readings this bridge served, kept after the link drops. The live screens do
-    /// not show them; the Elements screen does, with <see cref="BridgeLastKnown.SavedUtc"/>.
+    /// True when the bridge is away and a synced dataset is stored, so the Sign in screen can
+    /// offer the offline view.
     /// </summary>
-    public BridgeLastKnown? LastKnown =>
-        lastKnownState_ is null && lastKnownTags_.Count == 0
-            ? null
-            : new BridgeLastKnown(
-                lastCachedUtc_ ?? DateTime.MinValue,
-                Overview.Definitions,
-                Overview.AreaTags,
-                lastKnownState_,
-                lastKnownTags_);
+    public bool CanUseOffline => IsOffline && Overview.Definitions.Count > 0;
+
+    /// <summary>
+    /// Opens the stored dataset without a bridge account. It is a read-only view of the
+    /// structure — no readings, no evaluated states — and <see cref="MobileAccess"/> ends it
+    /// as soon as the bridge answers again.
+    /// </summary>
+    public void EnterOfflineViewer()
+    {
+        if (!CanUseOffline)
+        {
+            return;
+        }
+
+        IsOfflineViewer = true;
+        RaiseChanged();
+    }
 
     /// <summary>
     /// Takes the session, the logic snapshot and the live link, in that order. Failure is
@@ -223,7 +236,13 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
         // may connect the same one; one client means one connect at a time.
         await connectGate_.WaitAsync(cancellationToken);
         BeginSync();
-        StatusText = "searching for the bridge…";
+        // An automatic retry must not overwrite the offline banner every half minute; the
+        // first attempt (nothing on screen yet) does say what it is doing.
+        if (!IsOffline)
+        {
+            StatusText = "searching for the bridge…";
+        }
+
         RaiseChanged();
 
         try
@@ -263,7 +282,11 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
         RaiseChanged();
     }
 
-    /// <summary>Snapshot refresh: definitions, tags and evaluated state.</summary>
+    /// <summary>
+    /// Syncs the bridge's dataset: definitions, the areas' tags, tag metadata and the operator
+    /// notes are stored in one step, so the phone keeps a complete copy for the offline view.
+    /// The evaluated state is fetched only for the live screens — it is never stored.
+    /// </summary>
     public async Task RefreshAsync(CancellationToken cancellationToken)
     {
         BeginSync();
@@ -275,6 +298,8 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
                 Overview.ApplyDefinitions(definitions.Value!.Blocks, definitions.Value.TagSources);
                 IsConnected = true;
                 IsOffline = false;
+                // A live answer ends the no-login offline view: online access needs a session.
+                IsOfflineViewer = false;
                 SignInRequired = false;
                 StatusText = IsLive ? LiveText : "connected";
             }
@@ -298,19 +323,29 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
                 MobileResult<IReadOnlyList<HmiTagDto>> tags = await api_.GetTagsAsync(cancellationToken);
                 if (tags.Ok)
                 {
-                    lastKnownTags_ = tags.Value!.ToList();
-                    tags_.ReplaceBridge(CacheKey, lastKnownTags_);
+                    tagMetadata_ = tags.Value!.ToList();
+                    tags_.ReplaceBridge(CacheKey, tagMetadata_);
+                }
+
+                MobileResult<IReadOnlyList<LogicNoteDto>> notes = await api_.GetNotesAsync(null, 500, cancellationToken);
+                if (notes.Ok)
+                {
+                    notesByBlock_ = notes.Value!
+                        .Where(note => note.BlockId != Guid.Empty)
+                        .GroupBy(note => note.BlockId)
+                        .ToDictionary(group => group.Key, group => group.ToList());
+                    store_.SaveNotes(Bridge.Id, notesByBlock_);
                 }
 
                 MobileResult<LogicStateSnapshot> state = await api_.GetLogicStateAsync(cancellationToken);
                 if (state.Ok)
                 {
                     Overview.ApplyState(state.Value);
-                    lastKnownState_ = state.Value;
                 }
 
-                LastSyncedUtc = DateTime.UtcNow;
-                PersistLastKnown(force: true);
+                DateTime syncedUtc = DateTime.UtcNow;
+                LastSyncedUtc = syncedUtc;
+                SaveDataset(syncedUtc);
                 TryFlushOutbox();
                 if (IsActive)
                 {
@@ -341,7 +376,7 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
         if (notes.Ok && notes.Value is not null)
         {
             notesByBlock_[blockId] = notes.Value.ToList();
-            PersistNotes();
+            store_.SaveNotes(Bridge.Id, notesByBlock_);
         }
 
         return notes;
@@ -358,6 +393,13 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
         CancellationToken cancellationToken,
         Guid? conditionId = null)
     {
+        if (IsOfflineViewer)
+        {
+            return new OutboxSubmitResult(
+                OutboxSubmitKind.Rejected,
+                "the offline view is read-only — sign in when the bridge is back to send notes");
+        }
+
         string trimmed = (text ?? string.Empty).Trim();
         if (trimmed.Length == 0 || trimmed.Length > 500)
         {
@@ -420,6 +462,13 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
         string? valueText,
         CancellationToken cancellationToken)
     {
+        if (IsOfflineViewer)
+        {
+            return new OutboxSubmitResult(
+                OutboxSubmitKind.Rejected,
+                "the offline view is read-only — sign in when the bridge is back to run actions");
+        }
+
         if (IsOffline || !IsConnected)
         {
             return EnqueueWrite(
@@ -697,7 +746,7 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
             notes.Insert(0, note);
         }
 
-        PersistNotes();
+        store_.SaveNotes(Bridge.Id, notesByBlock_);
     }
 
     private string FindBlockName(Guid blockId) =>
@@ -753,7 +802,13 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
                 }
                 else
                 {
-                    post_(() => ApplyLatencyUnavailable(LatencyState.Offline, "offline"));
+                    post_(() =>
+                    {
+                        ApplyLatencyUnavailable(LatencyState.Offline, "offline");
+                        // While the bridge is away, ask it again: the first answer that lands
+                        // ends the offline view, and the app requires a sign-in for live data.
+                        TryAutoReconnect();
+                    });
                 }
             }
             catch (OperationCanceledException)
@@ -829,144 +884,110 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Shows the structure this bridge served last time — the definitions, tag metadata and
-    /// notes — so the list is never blank while the link is being acquired (or after it is
-    /// gone). The cached readings and evaluated state are deliberately not applied: live
-    /// values come only from the bridge. Leaves <see cref="IsOffline"/> to a failed call — a
-    /// cached list that is about to be refreshed is not "offline" yet.
+    /// Retries a lost link at most every half minute while this connection is the one on
+    /// screen, so a phone that walks back into the plant Wi-Fi reconnects on its own. Runs on
+    /// the UI thread (posted by the monitor) because connecting mutates UI-bound state.
     /// </summary>
-    public void LoadCached()
+    private void TryAutoReconnect()
     {
-        BridgeCacheSnapshot? snapshot = BridgeCacheCodec.Deserialize(cache_.Read(BridgeCacheCodec.Key(Bridge.Id)));
-        if (snapshot is null)
+        if (!IsActive || autoReconnecting_ || !IsOffline || IsConnected)
         {
-            return;
-        }
-
-        Overview.ApplyDefinitions(snapshot.Blocks, snapshot.TagSources);
-        // The last readings stay available to the Elements screen, but they are not applied to
-        // the live view or the shared tag cache: a cached value must never read as current.
-        lastKnownState_ = snapshot.State;
-        lastKnownTags_ = snapshot.Tags is { Count: > 0 } tags ? tags.ToList() : new List<HmiTagDto>();
-        if (lastKnownTags_.Count > 0)
-        {
-            // The entries keep their names, units and on/off texts — the labels on the screen —
-            // while their readings are cleared from the live cache.
-            tags_.ReplaceBridge(CacheKey, lastKnownTags_);
-            tags_.ClearValues(CacheKey);
-        }
-
-        // Definitions and notes are the cache's offline value; the last evaluation is not
-        // shown, because the phone is not connected yet.
-        Overview.ClearLiveState();
-        notesByBlock_ = snapshot.NotesByBlock is { } notes
-            ? notes
-            : new Dictionary<Guid, List<LogicNoteDto>>();
-        lastCachedUtc_ = snapshot.SavedUtc;
-        LastSyncedUtc = snapshot.SavedUtc;
-        RecomputeSync();
-    }
-
-    /// <summary>
-    /// Writes the last-known snapshot, at most once every five seconds unless forced. A live
-    /// push can change state or values many times a second; the file must not be rewritten for
-    /// each one.
-    /// </summary>
-    private void PersistLastKnown(bool force)
-    {
-        if (Overview.Definitions.Count == 0)
-        {
-            // Nothing to anchor the snapshot to — and an empty block list reads as no cache.
             return;
         }
 
         DateTime now = DateTime.UtcNow;
-        if (!force && now - lastKnownPersistUtc_ < TimeSpan.FromSeconds(5))
+        if (now < nextAutoReconnectUtc_)
         {
             return;
         }
 
-        lastKnownPersistUtc_ = now;
-        WriteSnapshot(now);
+        nextAutoReconnectUtc_ = now.AddSeconds(30);
+        autoReconnecting_ = true;
+        _ = ReconnectAsync();
+    }
+
+    private async Task ReconnectAsync()
+    {
+        try
+        {
+            await ConnectAsync(CancellationToken.None);
+        }
+        catch
+        {
+            // A retry that fails leaves the offline banner in place; the next tick tries again.
+        }
+        finally
+        {
+            autoReconnecting_ = false;
+        }
     }
 
     /// <summary>
-    /// Writes the snapshot after a notes read. The banner's data age (the last refresh's time)
-    /// stays put, so a notes fetch cannot make the list look fresher than it is.
+    /// Shows the dataset this bridge served last time — the blocks, the areas' tags, the tag
+    /// metadata and the notes — so the list is never blank while the link is being acquired
+    /// (or after it is gone). Readings and evaluated states are never restored: the offline
+    /// view is structure only. Leaves <see cref="IsOffline"/> to a failed call — stored data
+    /// that is about to be refreshed is not "offline" yet.
     /// </summary>
-    private void PersistNotes()
+    public void LoadStored()
     {
-        if (Overview.Definitions.Count == 0)
+        BridgeDataset? dataset = store_.LoadDataset(Bridge.Id);
+        if (dataset is null)
         {
-            // Nothing to anchor the snapshot to — and an empty block list reads as no cache.
             return;
         }
 
-        WriteSnapshot(lastCachedUtc_ ?? DateTime.UtcNow);
+        Overview.ApplyDefinitions(dataset.Blocks, dataset.TagSources);
+        tagMetadata_ = dataset.Tags.ToList();
+        if (tagMetadata_.Count > 0)
+        {
+            // The entries keep their names, units and on/off texts — the labels on the screen —
+            // while their readings are cleared from the live cache.
+            tags_.ReplaceBridge(CacheKey, tagMetadata_);
+            tags_.ClearValues(CacheKey);
+        }
+
+        Overview.ClearLiveState();
+        notesByBlock_ = new Dictionary<Guid, List<LogicNoteDto>>(store_.LoadNotes(Bridge.Id));
+        datasetSyncedUtc_ = dataset.SyncedUtc;
+        LastSyncedUtc = dataset.SyncedUtc;
+        RecomputeSync();
     }
 
-    private void WriteSnapshot(DateTime savedUtc)
+    /// <summary>
+    /// Replaces this bridge's stored dataset after a sync. A dataset save is one transaction,
+    /// so the previous copy stays readable if this one cannot be written.
+    /// </summary>
+    private void SaveDataset(DateTime syncedUtc)
     {
-        BridgeCacheSnapshot snapshot = new()
-        {
-            SavedUtc = savedUtc,
-            Blocks = Overview.Definitions.ToList(),
-            TagSources = Overview.AreaTags.ToList(),
-            State = lastKnownState_,
-            Tags = lastKnownTags_.ToList(),
-            NotesByBlock = new Dictionary<Guid, List<LogicNoteDto>>(notesByBlock_)
-        };
-        cache_.Write(BridgeCacheCodec.Key(Bridge.Id), BridgeCacheCodec.Serialize(snapshot));
-        lastCachedUtc_ = snapshot.SavedUtc;
+        // A sync that leaves the plant with no blocks still replaces the stored copy; keeping
+        // the previous blocks would show structure the bridge no longer has.
+        store_.SaveDataset(
+            Bridge.Id,
+            new BridgeDataset(
+                syncedUtc,
+                Overview.Definitions.ToList(),
+                Overview.AreaTags.ToList(),
+                tagMetadata_.ToList()));
+        datasetSyncedUtc_ = syncedUtc;
     }
 
     /// <summary>
     /// Marks the link as gone and drops everything the bridge had been reporting: every tag
     /// reading and the evaluated state become no data, so the screen cannot freeze on the last
-    /// values the plant happened to show. The last readings are captured for the Elements
-    /// screen before they are cleared, and the banner says how old that data is.
+    /// values the plant happened to show. Only the stored structure survives, and the banner
+    /// says how old it is.
     /// </summary>
     private void MarkOffline()
     {
-        CaptureLastKnown();
-        PersistLastKnown(force: true);
         tags_.ClearValues(CacheKey);
         Overview.ClearLiveState();
         IsOffline = true;
-        OfflineText = lastCachedUtc_ is { } savedUtc
-            ? "offline · live values hidden · last synced " + savedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
-            : "offline · live values hidden";
+        OfflineText = datasetSyncedUtc_ is { } savedUtc
+            ? "offline · structure only · last synced " + savedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+            : "offline · structure only";
         ApplyLatencyUnavailable(LatencyState.Offline, "offline");
         RecomputeSync();
-    }
-
-    /// <summary>Keeps the latest live evaluation for the persistent Elements screen.</summary>
-    private void CaptureLastKnown()
-    {
-        if (Overview.State is { } state)
-        {
-            lastKnownState_ = state;
-        }
-    }
-
-    /// <summary>Updates the last-known DTOs from a values push, so the persistent read is current.</summary>
-    private void ApplyDeltasToLastKnown(IReadOnlyList<HmiValueDelta> deltas)
-    {
-        foreach (HmiValueDelta delta in deltas)
-        {
-            HmiTagDto? tag = lastKnownTags_.FirstOrDefault(candidate =>
-                string.Equals(candidate.SourceId, delta.SourceId, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(candidate.ItemId, delta.ItemId, StringComparison.OrdinalIgnoreCase));
-            if (tag is null)
-            {
-                continue;
-            }
-
-            tag.Value = delta.Value;
-            tag.TimestampUtc = delta.TimestampUtc;
-            tag.DaQuality = delta.DaQuality;
-            tag.IsGood = delta.IsGood;
-        }
     }
 
     public async Task<MobileResult<MobileSession>> SignInAsync(string username, string password, CancellationToken cancellationToken)
@@ -1017,10 +1038,8 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
     public async Task DisconnectAsync()
     {
         // Closing on purpose leaves the same rule in place as losing the link: nothing this
-        // bridge reported stays on screen as a current reading, but the last readings stay
-        // available to the Elements screen.
-        CaptureLastKnown();
-        PersistLastKnown(force: true);
+        // bridge reported stays on screen as a current reading. The stored dataset is what
+        // keeps the structure readable.
         tags_.ClearValues(CacheKey);
         Overview.ClearLiveState();
         StopLatencyMonitor();
@@ -1087,7 +1106,7 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
         {
             SyncState = BridgeSyncState.Offline;
             SyncKey = "offline";
-            SyncText = lastCachedUtc_ is { } saved
+            SyncText = datasetSyncedUtc_ is { } saved
                 ? "offline · last synced " + saved.ToLocalTime().ToString("HH:mm:ss")
                 : "offline";
             if (PendingCount > 0)

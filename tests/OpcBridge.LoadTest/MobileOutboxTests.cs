@@ -9,8 +9,6 @@ namespace OpcBridge.LoadTest;
 /// </summary>
 public sealed class MobileOutboxTests
 {
-    private const string Key = "outbox:b1";
-
     private static OutboxItem Note(string text) => new()
     {
         Kind = OutboxKind.Note,
@@ -34,8 +32,8 @@ public sealed class MobileOutboxTests
     [Fact]
     public void NotesAndWrites_RoundTripThroughTheStore()
     {
-        MemoryBridgeCacheStore store = new();
-        MobileOutbox outbox = new(store, Key);
+        MemoryMobileStore store = new();
+        MobileOutbox outbox = new(store, "b1");
         OutboxItem note = Note("Waiting on permit");
         OutboxItem write = Write();
 
@@ -43,7 +41,7 @@ public sealed class MobileOutboxTests
         Assert.True(outbox.TryAdd(write, out string? writeError), writeError);
         Assert.Equal(2, outbox.PendingCount);
 
-        MobileOutbox reloaded = new(store, Key);
+        MobileOutbox reloaded = new(store, "b1");
         Assert.Equal(2, reloaded.PendingCount);
         Assert.Equal(0, reloaded.FailedCount);
         OutboxItem loadedNote = reloaded.All.Single(item => item.Kind == OutboxKind.Note);
@@ -59,15 +57,15 @@ public sealed class MobileOutboxTests
     [Fact]
     public void AnItemCaughtSending_LoadsAsNotConfirmed()
     {
-        MemoryBridgeCacheStore store = new();
-        MobileOutbox outbox = new(store, Key);
+        MemoryMobileStore store = new();
+        MobileOutbox outbox = new(store, "b1");
         OutboxItem note = Note("Maybe delivered");
         Assert.True(outbox.TryAdd(note, out _));
 
         note.State = OutboxItemState.Sending;
         outbox.Update(note);
 
-        MobileOutbox reloaded = new(store, Key);
+        MobileOutbox reloaded = new(store, "b1");
         OutboxItem loaded = Assert.Single(reloaded.All);
         Assert.Equal(OutboxItemState.Uncertain, loaded.State);
         Assert.Equal(0, reloaded.PendingCount);
@@ -78,8 +76,8 @@ public sealed class MobileOutboxTests
     [Fact]
     public void RetryAndDiscard_ChangeTheQueue()
     {
-        MemoryBridgeCacheStore store = new();
-        MobileOutbox outbox = new(store, Key);
+        MemoryMobileStore store = new();
+        MobileOutbox outbox = new(store, "b1");
         OutboxItem note = Note("retry me");
         Assert.True(outbox.TryAdd(note, out _));
         note.State = OutboxItemState.Failed;
@@ -97,23 +95,10 @@ public sealed class MobileOutboxTests
     }
 
     [Fact]
-    public void StoreJunk_ReadsAsAnEmptyQueue()
-    {
-        MemoryBridgeCacheStore store = new();
-        store.Write(Key, "not json");
-
-        MobileOutbox outbox = new(store, Key);
-
-        Assert.Empty(outbox.All);
-        Assert.Equal(0, outbox.PendingCount);
-        Assert.Equal(0, outbox.FailedCount);
-    }
-
-    [Fact]
     public void QueueIsBounded()
     {
-        MemoryBridgeCacheStore store = new();
-        MobileOutbox outbox = new(store, Key);
+        MemoryMobileStore store = new();
+        MobileOutbox outbox = new(store, "b1");
         for (int i = 0; i < MobileOutbox.MaxItems; i++)
         {
             Assert.True(outbox.TryAdd(Note("n" + i), out _));
