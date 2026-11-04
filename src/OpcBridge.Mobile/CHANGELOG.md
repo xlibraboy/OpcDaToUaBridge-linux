@@ -74,6 +74,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The offline banner says when nothing is stored.** A bridge that has never synced now reads
+  *offline · no stored structure yet* instead of implying a stored structure exists; the
+  **View offline data** button stays hidden until a sync has stored one.
 - **Adding a bridge no longer looks frozen.** The 8080–8180 port sweep is capped at eight
   seconds, runs off the UI thread, and shows a spinner with a **Cancel** button on both Sign in
   and Settings. Cancelling now stops the sweep immediately instead of walking every remaining

@@ -144,7 +144,10 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
     /// </summary>
     [ObservableProperty] private bool _isOfflineViewer;
 
-    /// <summary>"offline · structure only · last synced 2026-10-09 12:31:05" — the banner.</summary>
+    /// <summary>
+    /// "offline · structure only · last synced 2026-10-09 12:31:05" — or "offline · no stored
+    /// structure yet" when nothing was ever synced from this bridge — the banner.
+    /// </summary>
     [ObservableProperty] private string _offlineText = string.Empty;
 
     /// <summary>The badge's state: synced, syncing, offline, pending or error.</summary>
@@ -985,7 +988,7 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
         IsOffline = true;
         OfflineText = datasetSyncedUtc_ is { } savedUtc
             ? "offline · structure only · last synced " + savedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
-            : "offline · structure only";
+            : "offline · no stored structure yet";
         ApplyLatencyUnavailable(LatencyState.Offline, "offline");
         RecomputeSync();
     }

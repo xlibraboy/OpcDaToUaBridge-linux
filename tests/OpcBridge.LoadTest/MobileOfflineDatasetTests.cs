@@ -135,6 +135,20 @@ public sealed class MobileOfflineDatasetTests
     }
 
     [Fact]
+    public async Task FailedConnect_WithoutStoredDataset_SaysNothingIsStored()
+    {
+        BridgeConnection connection = Connection(new MemoryMobileStore(), "http://127.0.0.1:" + ClosedPort());
+
+        await connection.ConnectAsync(CancellationToken.None);
+
+        Assert.True(connection.IsOffline);
+        Assert.Equal("offline · no stored structure yet", connection.OfflineText);
+
+        // Nothing is stored, so the no-login offline view has nothing to open.
+        Assert.False(connection.CanUseOffline);
+    }
+
+    [Fact]
     public async Task SuccessfulSync_ReplacesTheStoredDataset()
     {
         using FakeBridge bridge = FakeBridge.Start("Line 01 interlock", "Permit", value: true);
