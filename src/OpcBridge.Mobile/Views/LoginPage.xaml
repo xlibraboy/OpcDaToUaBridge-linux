@@ -7,9 +7,9 @@
              Title="Sign in"
              Shell.NavBarIsVisible="False"
              BackgroundColor="{theme:ThemeColor PageBg}">
-    <Grid>
-        <ScrollView>
-        <VerticalStackLayout Padding="20,8,20,16" Spacing="14">
+    <Grid RowDefinitions="*,Auto" Padding="20,0,20,16">
+        <ScrollView Grid.Row="0">
+        <VerticalStackLayout Padding="0,8,0,16" Spacing="14">
             <HorizontalStackLayout Spacing="12" VerticalOptions="Center">
                 <Border Style="{StaticResource LogoBorder}">
                     <Image Source="{theme:ThemeIcon icon_workflow}"
@@ -233,20 +233,20 @@
                 </VerticalStackLayout>
             </Border>
 
-            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6" Margin="0,4,0,0">
-                <Image Source="{theme:ThemeIcon icon_shield_check}"
-                       WidthRequest="13"
-                       HeightRequest="13"
-                       VerticalOptions="Start"
-                       Margin="0,2,0,0" />
-                <Label Grid.Column="1"
-                       Text="One live bridge at a time · offline shows the last synced structure only"
-                       FontSize="9.5"
-                       TextColor="{theme:ThemeColor MutedColor}"
-                       LineBreakMode="WordWrap" />
-            </Grid>
         </VerticalStackLayout>
         </ScrollView>
+        <Grid Grid.Row="1" ColumnDefinitions="Auto,*" ColumnSpacing="6" Margin="0,4,0,0">
+            <Image Source="{theme:ThemeIcon icon_shield_check}"
+                   WidthRequest="13"
+                   HeightRequest="13"
+                   VerticalOptions="Start"
+                   Margin="0,2,0,0" />
+            <Label Grid.Column="1"
+                   Text="One live bridge at a time · last known data stays readable offline"
+                   FontSize="9.5"
+                   TextColor="{theme:ThemeColor MutedColor}"
+                   LineBreakMode="WordWrap" />
+        </Grid>
         <views:BridgePickerSheet x:Name="bridgeSheet" />
     </Grid>
 </ContentPage>
