@@ -69,6 +69,72 @@
                                    VerticalOptions="Center" />
                         </Grid>
                     </Border>
+                    <!-- New bridge opens its own card below; picking a saved bridge never
+                         sits beside the Add & connect button. -->
+                    <Border BackgroundColor="{theme:ThemeColor PageBg}"
+                            Stroke="{theme:ThemeColor BorderColor}"
+                            StrokeThickness="1"
+                            StrokeShape="RoundRectangle 10"
+                            Padding="12,0"
+                            HeightRequest="44">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnNewBridgeTapped" />
+                        </Border.GestureRecognizers>
+                        <HorizontalStackLayout Spacing="10" VerticalOptions="Center">
+                            <Image Source="{theme:ThemeIcon icon_plus}"
+                                   WidthRequest="14"
+                                   HeightRequest="14"
+                                   VerticalOptions="Center" />
+                            <Label Text="New bridge…"
+                                   FontSize="13"
+                                   TextColor="{theme:ThemeColor MutedColor}"
+                                   VerticalOptions="Center" />
+                        </HorizontalStackLayout>
+                    </Border>
+                    <!-- Shown only while the bridge is unreachable: the synced structure can be
+                         read without an account, and the view is read-only. -->
+                    <Button x:Name="viewOfflineButton"
+                            Text="View offline data"
+                            Style="{StaticResource SecondaryButton}"
+                            IsVisible="False"
+                            Clicked="OnViewOfflineClicked" />
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
+                        <ActivityIndicator x:Name="busyIndicator"
+                                           WidthRequest="16"
+                                           HeightRequest="16"
+                                           Color="{theme:ThemeColor GoodColor}"
+                                           IsRunning="False"
+                                           IsVisible="False"
+                                           VerticalOptions="Center" />
+                        <Label Grid.Column="1"
+                               x:Name="statusLabel"
+                               FontFamily="monospace"
+                               FontSize="9.5"
+                               TextColor="{theme:ThemeColor MutedColor}"
+                               LineBreakMode="WordWrap" />
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
+
+            <Border x:Name="addBridgeCard"
+                    Style="{StaticResource CardBorder}"
+                    IsVisible="False">
+                <VerticalStackLayout Spacing="10">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <Label Text="ADD A BRIDGE" Style="{StaticResource UppercaseLabel}" VerticalOptions="Center" />
+                        <Border Grid.Column="1"
+                                Style="{StaticResource SmallActionBorder}"
+                                SemanticProperties.Description="Hide the add-bridge form">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnHideAddTapped" />
+                            </Border.GestureRecognizers>
+                            <Image Source="{theme:ThemeIcon icon_x}"
+                                   WidthRequest="14"
+                                   HeightRequest="14"
+                                   HorizontalOptions="Center"
+                                   VerticalOptions="Center" />
+                        </Border>
+                    </Grid>
                     <Border Style="{StaticResource FieldBorder}">
                         <Grid ColumnDefinitions="Auto,*">
                             <Image Source="{theme:ThemeIcon icon_server}"
@@ -109,28 +175,6 @@
                                 IsVisible="False"
                                 VerticalOptions="Center"
                                 Clicked="OnCancelConnectClicked" />
-                    </Grid>
-                    <!-- Shown only while the bridge is unreachable: the synced structure can be
-                         read without an account, and the view is read-only. -->
-                    <Button x:Name="viewOfflineButton"
-                            Text="View offline data"
-                            Style="{StaticResource SecondaryButton}"
-                            IsVisible="False"
-                            Clicked="OnViewOfflineClicked" />
-                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
-                        <ActivityIndicator x:Name="busyIndicator"
-                                           WidthRequest="16"
-                                           HeightRequest="16"
-                                           Color="{theme:ThemeColor GoodColor}"
-                                           IsRunning="False"
-                                           IsVisible="False"
-                                           VerticalOptions="Center" />
-                        <Label Grid.Column="1"
-                               x:Name="statusLabel"
-                               FontFamily="monospace"
-                               FontSize="9.5"
-                               TextColor="{theme:ThemeColor MutedColor}"
-                               LineBreakMode="WordWrap" />
                     </Grid>
                 </VerticalStackLayout>
             </Border>

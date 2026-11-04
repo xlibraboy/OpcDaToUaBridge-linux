@@ -62,6 +62,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   add-bridge form, or Settings ▸ Bridges from the tabs) and **Cancel**. Opening the sheet
   dismisses the soft keyboard, Android's back button closes it instead of leaving the screen,
   its rows repaint with an appearance switch, and an empty saved list says *No saved bridges yet.*
+- **Sign in keeps adding a bridge out of the picking flow.** The saved-bridge card now shows
+  only the picker and a **New bridge…** row; the host/name fields and **Add & connect** moved
+  into their own card that opens on request (from the row or the picker sheet's **New bridge…**)
+  and closes again once a bridge connects — so picking a saved bridge no longer sits next to an
+  **Add & connect** button that answers *Enter the bridge host or IP first.*
 
 ### Fixed
 

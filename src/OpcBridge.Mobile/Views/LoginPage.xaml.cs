@@ -19,8 +19,9 @@ public partial class LoginPage : ContentPage
     {
         InitializeComponent();
         coordinator_ = coordinator;
-        // The add-bridge form is this page's own card, so "New bridge…" just lands on it.
-        bridgeSheet.NewBridgeRequested += () => hostEntry.Focus();
+        // The add-bridge form lives in its own card, opened on request — picking a saved
+        // bridge never lands beside the Add & connect button.
+        bridgeSheet.NewBridgeRequested += OpenAddCard;
         Repaint();
     }
 
@@ -94,7 +95,7 @@ public partial class LoginPage : ContentPage
             ? "no bridge"
             : active.IsOffline ? "offline" : active.IsConnected ? "connected · live" : active.StatusText;
         statusLabel.Text = statusNote_ ?? (active is null
-            ? "No bridge yet — add one above."
+            ? "No bridge yet — add one below."
             : active.IsOffline ? active.OfflineText : active.Bridge.Url);
 
         // One action at a time: a connect in flight owns the bridge.
@@ -155,6 +156,8 @@ public partial class LoginPage : ContentPage
 
             hostEntry.Text = string.Empty;
             nameEntry.Text = string.Empty;
+            // The bridge is on the phone now; the add form has done its job.
+            addBridgeCard.IsVisible = false;
         }
         catch (OperationCanceledException)
         {
@@ -182,6 +185,17 @@ public partial class LoginPage : ContentPage
         connectCts_?.Cancel();
         statusNote_ = "cancelling…";
         Repaint();
+    }
+
+    private void OnNewBridgeTapped(object? sender, TappedEventArgs e) => OpenAddCard();
+
+    private void OnHideAddTapped(object? sender, EventArgs e) => addBridgeCard.IsVisible = false;
+
+    /// <summary>Opens the add-bridge card and puts the cursor in the host field.</summary>
+    private void OpenAddCard()
+    {
+        addBridgeCard.IsVisible = true;
+        hostEntry.Focus();
     }
 
     /// <summary>
