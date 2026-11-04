@@ -97,6 +97,9 @@ public partial class SyncBadgeView : ContentView
     private static void OnChanged(BindableObject bindable, object oldValue, object newValue) =>
         ((SyncBadgeView)bindable).Update();
 
+    /// <summary>Repaints after a theme switch, which code-set colours do not follow on their own.</summary>
+    public void RefreshTheme() => Update();
+
     private void Update()
     {
         string text = Text ?? string.Empty;
@@ -119,19 +122,6 @@ public partial class SyncBadgeView : ContentView
             _ => "MutedColor"
         };
 
-        if (Application.Current is { } application &&
-            application.Resources.TryGetValue(resource, out object? value) &&
-            value is Color color)
-        {
-            return color;
-        }
-
-        return key switch
-        {
-            "synced" or "good" => Color.FromArgb("#4CC38A"),
-            "syncing" or "pending" or "fair" => Color.FromArgb("#E2A336"),
-            "error" or "poor" => Color.FromArgb("#E5484D"),
-            _ => Color.FromArgb("#93A19B")
-        };
+        return ThemePalette.Get(resource);
     }
 }

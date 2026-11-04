@@ -28,6 +28,8 @@ public partial class LogicBlockPage : ContentPage
         // keeps a page that was navigated away from and back alive to live updates.
         coordinator_.Changed -= OnLiveChanged;
         coordinator_.Changed += OnLiveChanged;
+        ThemeManager.Changed -= OnThemeChanged;
+        ThemeManager.Changed += OnThemeChanged;
     }
 
     protected override void OnDisappearing()
@@ -35,6 +37,7 @@ public partial class LogicBlockPage : ContentPage
         // The page is transient (a new instance per navigation): without this the singleton
         // coordinator would keep every visited block page alive and repainting.
         coordinator_.Changed -= OnLiveChanged;
+        ThemeManager.Changed -= OnThemeChanged;
         flashToken_?.Cancel();
         flashToken_ = null;
         if (flashedRow_ is not null)
@@ -96,7 +99,7 @@ public partial class LogicBlockPage : ContentPage
         CancellationTokenSource token = new();
         flashToken_ = token;
         flashedRow_ = row;
-        row.Stroke = new SolidColorBrush(ResourceColor("WarnColor", "#E2A336"));
+        row.Stroke = new SolidColorBrush(ThemePalette.Get("WarnColor"));
         row.StrokeThickness = 2;
 
         try
@@ -125,20 +128,8 @@ public partial class LogicBlockPage : ContentPage
 
     private static void RestoreRow(Border row)
     {
-        row.Stroke = new SolidColorBrush(ResourceColor("BorderColor", "#2A3631"));
+        row.Stroke = new SolidColorBrush(ThemePalette.Get("BorderColor"));
         row.StrokeThickness = 1;
-    }
-
-    private static Color ResourceColor(string key, string fallback)
-    {
-        if (Application.Current is { } app &&
-            app.Resources.TryGetValue(key, out object? value) &&
-            value is Color color)
-        {
-            return color;
-        }
-
-        return Color.FromArgb(fallback);
     }
 
     /// <summary>The bridge whose block this page shows (the active one).</summary>
@@ -235,6 +226,21 @@ public partial class LogicBlockPage : ContentPage
     {
         MainThread.BeginInvokeOnMainThread(Repaint);
     }
+
+    /// <summary>
+    /// The network and tag cards resolve their state colours when built; re-seating the binding
+    /// context rebuilds them for the new surface, then the page's own colours are repainted.
+    /// </summary>
+    private void OnThemeChanged() => MainThread.BeginInvokeOnMainThread(() =>
+    {
+        if (viewModel_ is not null)
+        {
+            BindingContext = null;
+            BindingContext = viewModel_;
+        }
+
+        Repaint();
+    });
 
     private void Repaint()
     {

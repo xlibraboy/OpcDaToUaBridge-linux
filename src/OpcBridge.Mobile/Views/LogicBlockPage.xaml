@@ -1,11 +1,12 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:theme="clr-namespace:OpcBridge.Mobile"
              xmlns:views="clr-namespace:OpcBridge.Mobile.Views"
              x:Class="OpcBridge.Mobile.Views.LogicBlockPage"
              Title="Logic block"
              Shell.NavBarIsVisible="False"
-             BackgroundColor="{StaticResource PageBg}">
+             BackgroundColor="{theme:ThemeColor PageBg}">
     <ContentPage.Resources>
         <!-- One element of the IEC network: a contact, a gate or a function block. The row indents
              by its depth, with one rail per enclosing level (the web Result board's .rl-kids), so
@@ -14,7 +15,7 @@
         <DataTemplate x:Key="ElementRow">
             <Grid ColumnDefinitions="Auto,*">
                 <views:DepthGuideView Grid.Column="0" WidthRequest="{Binding IndentWidth}"
-                                      Depth="{Binding Depth}" GuideColor="{StaticResource BorderColor}"
+                                      Depth="{Binding Depth}" GuideColor="{theme:ThemeColor BorderColor}"
                                       VerticalOptions="Fill" />
                 <Border Grid.Column="1" Margin="0,0,0,6" Style="{StaticResource ElementCardBorder}"
                         Loaded="OnElementRowLoaded" Unloaded="OnElementRowUnloaded">
@@ -28,7 +29,7 @@
                                    MaxLines="1" LineBreakMode="TailTruncation" VerticalOptions="Center" />
                             <Border Style="{StaticResource ElementBadgeBorder}" VerticalOptions="Center">
                                 <Label Text="{Binding KindLabel}" FontSize="8.5" FontAttributes="Bold"
-                                       FontFamily="monospace" TextColor="{StaticResource MutedColor}" />
+                                       FontFamily="monospace" TextColor="{theme:ThemeColor MutedColor}" />
                             </Border>
                         </HorizontalStackLayout>
                         <VerticalStackLayout Grid.Row="0" Grid.Column="2" Spacing="0" HorizontalOptions="End">
@@ -36,18 +37,18 @@
                                    FontAttributes="Bold" HorizontalTextAlignment="End"
                                    TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
                             <Label Text="{Binding ValueText}" FontSize="8.5" FontFamily="monospace"
-                                   HorizontalTextAlignment="End" TextColor="{StaticResource MutedColor}" />
+                                   HorizontalTextAlignment="End" TextColor="{theme:ThemeColor MutedColor}" />
                         </VerticalStackLayout>
                         <!-- A tag line is a door: where it comes from, and which blocks use it. -->
                         <Label Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding TagLabel}"
                                IsVisible="{Binding HasTag}"
-                               FontFamily="monospace" FontSize="9.5" TextColor="{StaticResource MutedColor}"
+                               FontFamily="monospace" FontSize="9.5" TextColor="{theme:ThemeColor MutedColor}"
                                LineBreakMode="WordWrap"
                                SemanticProperties.Hint="Where this tag comes from, and which blocks use it">
                             <Label.Triggers>
                                 <DataTrigger TargetType="Label" Binding="{Binding HasTagReference}" Value="True">
                                     <Setter Property="TextDecorations" Value="Underline" />
-                                    <Setter Property="TextColor" Value="{StaticResource TextColor}" />
+                                    <Setter Property="TextColor" Value="{theme:ThemeColor TextColor}" />
                                 </DataTrigger>
                             </Label.Triggers>
                             <Label.GestureRecognizers>
@@ -60,10 +61,10 @@
                                TextColor="{Binding ShouldKey, Converter={StaticResource StateColor}}" />
                         <Label Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding ProgressText}"
                                IsVisible="{Binding ShowProgress}" FontSize="10.5"
-                               TextColor="{StaticResource WarnColor}" />
+                               TextColor="{theme:ThemeColor WarnColor}" />
                         <Label Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding NextStepText}"
                                IsVisible="{Binding ShowNextStep}" FontSize="10.5"
-                               TextColor="{StaticResource WarnColor}" />
+                               TextColor="{theme:ThemeColor WarnColor}" />
                     </Grid>
                 </Border>
             </Grid>
@@ -81,7 +82,7 @@
                         <Label Grid.Column="1" Text="{Binding StateLabel}" FontSize="10" FontAttributes="Bold"
                                TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
                     </Grid>
-                    <Label Text="{Binding Meta}" FontSize="10" TextColor="{StaticResource MutedColor}" />
+                    <Label Text="{Binding Meta}" FontSize="10" TextColor="{theme:ThemeColor MutedColor}" />
                     <VerticalStackLayout Spacing="1" BindableLayout.ItemsSource="{Binding Lines}">
                         <BindableLayout.ItemTemplate>
                             <DataTemplate>
@@ -103,14 +104,14 @@
                     <Border.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnBackClicked" />
                     </Border.GestureRecognizers>
-                    <Image Source="icon_chevron_left.png" WidthRequest="18" HeightRequest="18"
+                    <Image Source="{theme:ThemeIcon icon_chevron_left}" WidthRequest="18" HeightRequest="18"
                            HorizontalOptions="Center" VerticalOptions="Center" />
                 </Border>
                 <VerticalStackLayout Grid.Column="1" Spacing="3" VerticalOptions="Center">
                     <Label x:Name="titleLabel" FontSize="22" FontAttributes="Bold"
                            MaxLines="1" LineBreakMode="TailTruncation" />
                     <Label Text="{Binding Subtitle}" FontSize="10.5"
-                           TextColor="{StaticResource MutedColor}"
+                           TextColor="{theme:ThemeColor MutedColor}"
                            MaxLines="1" LineBreakMode="TailTruncation" />
                 </VerticalStackLayout>
                 <Border Grid.Column="2"
@@ -120,7 +121,7 @@
                     <Border.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnMoreClicked" />
                     </Border.GestureRecognizers>
-                    <Image Source="icon_ellipsis.png" WidthRequest="16" HeightRequest="16"
+                    <Image Source="{theme:ThemeIcon icon_ellipsis}" WidthRequest="16" HeightRequest="16"
                            HorizontalOptions="Center" VerticalOptions="Center" />
                 </Border>
             </Grid>
@@ -128,7 +129,7 @@
             <ScrollView x:Name="pageScroll" Grid.Row="1">
                 <VerticalStackLayout Padding="16,0,16,28" Spacing="12">
                     <Label x:Name="offlineLabel" FontSize="10.5"
-                           TextColor="{StaticResource WarnColor}" IsVisible="false" />
+                           TextColor="{theme:ThemeColor WarnColor}" IsVisible="false" />
 
                     <Border Style="{StaticResource CardBorder}">
                         <VerticalStackLayout Spacing="10">
@@ -148,12 +149,12 @@
                                 </Border>
                             </Grid>
                             <Label x:Name="blockedLabel" FontSize="11.5" IsVisible="False"
-                                   TextColor="{StaticResource BadColor}" LineBreakMode="WordWrap" />
+                                   TextColor="{theme:ThemeColor BadColor}" LineBreakMode="WordWrap" />
                             <Label x:Name="descriptionLabel" FontSize="11.5" IsVisible="False"
-                                   TextColor="{StaticResource MutedColor}" LineBreakMode="WordWrap" />
+                                   TextColor="{theme:ThemeColor MutedColor}" LineBreakMode="WordWrap" />
                             <Label Text="{Binding ProgressText}" IsVisible="{Binding ShowProgress}" FontSize="10.5"
-                                   TextColor="{StaticResource WarnColor}" />
-                            <BoxView HeightRequest="1" Color="{StaticResource BorderColor}"
+                                   TextColor="{theme:ThemeColor WarnColor}" />
+                            <BoxView HeightRequest="1" Color="{theme:ThemeColor BorderColor}"
                                      IsVisible="{Binding HasCheckpoints}" />
 
                             <!-- The network's parents as one strip of state dots, in the network's own order.
@@ -168,7 +169,7 @@
                                     <BindableLayout.ItemTemplate>
                                         <DataTemplate>
                                             <Border Margin="0,2,5,2" WidthRequest="11" HeightRequest="11"
-                                                    StrokeThickness="1" Stroke="{StaticResource BorderColor}"
+                                                    StrokeThickness="1" Stroke="{theme:ThemeColor BorderColor}"
                                                     StrokeShape="RoundRectangle 6"
                                                     BackgroundColor="{Binding StateKey, Converter={StaticResource StateColor}, ConverterParameter=checkpoint}"
                                                     SemanticProperties.Description="{Binding Description}"
@@ -189,7 +190,7 @@
                     </Border>
 
                     <Label x:Name="messageLabel" Text="" FontSize="12"
-                           TextColor="{StaticResource WarnColor}" LineBreakMode="WordWrap">
+                           TextColor="{theme:ThemeColor WarnColor}" LineBreakMode="WordWrap">
                         <Label.Triggers>
                             <Trigger TargetType="Label" Property="Text" Value="">
                                 <Setter Property="IsVisible" Value="False" />
@@ -215,7 +216,7 @@
                                                    TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
                                         </Grid>
                                         <Label Text="{Binding Reason}" FontSize="11"
-                                               TextColor="{StaticResource WarnColor}" />
+                                               TextColor="{theme:ThemeColor WarnColor}" />
                                         <VerticalStackLayout Spacing="0" BindableLayout.ItemsSource="{Binding Elements}"
                                                              BindableLayout.ItemTemplate="{StaticResource ElementRow}" />
                                     </VerticalStackLayout>
@@ -241,7 +242,7 @@
 
                     <Label Text="NOTES" Style="{StaticResource UppercaseLabel}" />
                     <Label FontSize="10.5"
-                           TextColor="{StaticResource MutedColor}"
+                           TextColor="{theme:ThemeColor MutedColor}"
                            IsVisible="{Binding IsReadOnly}"
                            Text="Offline view — notes stay readable; sign in when the bridge is back to add one."
                            LineBreakMode="WordWrap" />
@@ -256,14 +257,14 @@
                         <Border Grid.Column="1"
                                 WidthRequest="44"
                                 HeightRequest="44"
-                                BackgroundColor="{StaticResource GoodColor}"
+                                BackgroundColor="{theme:ThemeColor GoodColor}"
                                 StrokeThickness="0"
                                 StrokeShape="RoundRectangle 11"
                                 SemanticProperties.Description="Add note">
                             <Border.GestureRecognizers>
                                 <TapGestureRecognizer Tapped="OnAddNoteClicked" />
                             </Border.GestureRecognizers>
-                            <Image Source="icon_send.png"
+                            <Image Source="{theme:ThemeIcon icon_send}"
                                    WidthRequest="17"
                                    HeightRequest="17"
                                    HorizontalOptions="Center"
@@ -277,7 +278,7 @@
                                     <VerticalStackLayout Spacing="2">
                                         <Label Text="{Binding Text}" FontSize="12" />
                                         <Label Text="{Binding Meta}" FontSize="9.5"
-                                               TextColor="{StaticResource MutedColor}" />
+                                               TextColor="{theme:ThemeColor MutedColor}" />
                                     </VerticalStackLayout>
                                 </Border>
                             </DataTemplate>
@@ -289,7 +290,7 @@
 
         <!-- The tag inspector: the web Result tab's Source / Used by answers on one sheet. -->
         <Grid IsVisible="{Binding IsTagPanelOpen}">
-            <BoxView Color="#CC0C1210">
+            <BoxView Color="{theme:ThemeColor ScrimColor}">
                 <BoxView.GestureRecognizers>
                     <TapGestureRecognizer Tapped="OnTagPanelScrimTapped" />
                 </BoxView.GestureRecognizers>
@@ -308,12 +309,12 @@
                             <Border.GestureRecognizers>
                                 <TapGestureRecognizer Tapped="OnTagPanelCloseClicked" />
                             </Border.GestureRecognizers>
-                            <Image Source="icon_x.png" WidthRequest="14" HeightRequest="14"
+                            <Image Source="{theme:ThemeIcon icon_x}" WidthRequest="14" HeightRequest="14"
                                    HorizontalOptions="Center" VerticalOptions="Center" />
                         </Border>
                     </Grid>
                     <Label Grid.Row="1" Text="{Binding Subtitle}" FontSize="11"
-                           TextColor="{StaticResource MutedColor}" />
+                           TextColor="{theme:ThemeColor MutedColor}" />
                     <ScrollView Grid.Row="2">
                         <VerticalStackLayout Spacing="10">
                             <VerticalStackLayout Spacing="4" BindableLayout.ItemsSource="{Binding SourceRows}">
@@ -324,12 +325,12 @@
                                                    Style="{StaticResource UppercaseLabel}" />
                                             <Grid ColumnDefinitions="92,*" ColumnSpacing="8" IsVisible="{Binding IsPair}">
                                                 <Label Text="{Binding Label}" FontSize="11"
-                                                       TextColor="{StaticResource MutedColor}" />
+                                                       TextColor="{theme:ThemeColor MutedColor}" />
                                                 <Label Grid.Column="1" Text="{Binding Value}" FontSize="11"
                                                        LineBreakMode="WordWrap" />
                                             </Grid>
                                             <Label Text="{Binding Value}" IsVisible="{Binding IsWarning}"
-                                                   FontSize="11" TextColor="{StaticResource WarnColor}"
+                                                   FontSize="11" TextColor="{theme:ThemeColor WarnColor}"
                                                    LineBreakMode="WordWrap" />
                                         </VerticalStackLayout>
                                     </DataTemplate>
@@ -338,13 +339,13 @@
 
                             <Label Text="DRIVEN BY" Style="{StaticResource UppercaseLabel}" />
                             <Label Text="{Binding DriverSummary}" FontSize="11"
-                                   TextColor="{StaticResource MutedColor}" />
+                                   TextColor="{theme:ThemeColor MutedColor}" />
                             <VerticalStackLayout Spacing="6" BindableLayout.ItemsSource="{Binding Drivers}"
                                                  BindableLayout.ItemTemplate="{StaticResource TagUseCard}" />
 
                             <Label Text="{Binding UsageHeading}" Style="{StaticResource UppercaseLabel}" />
                             <Label Text="{Binding UsageSummary}" FontSize="11"
-                                   TextColor="{StaticResource MutedColor}" />
+                                   TextColor="{theme:ThemeColor MutedColor}" />
                             <VerticalStackLayout Spacing="6" BindableLayout.ItemsSource="{Binding Readers}"
                                                  BindableLayout.ItemTemplate="{StaticResource TagUseCard}" />
                         </VerticalStackLayout>

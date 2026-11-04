@@ -15,6 +15,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A light surface, with an Appearance selector.** The viewer now draws on either the dark
+  plant-floor palette or a light daylight palette, chosen in Settings ▸ Appearance as **System**
+  (follow the phone's day/night setting), **Light** or **Dark**. The choice is remembered across
+  launches and switches live with no restart: page grounds, cards, fields, chips, state colours,
+  the tab bar, the status/navigation bars and the Lucide icons all follow it. The light palette
+  keeps the same semantic roles — state colours are darkened so streaming, blocked and pending
+  words keep their contrast on white cards.
 - **Offline viewing without an account.** The phone now keeps a durable copy of each bridge's
   synced dataset — the logic blocks, the areas' named tags, tag metadata and the operator
   notes — in a local SQLite database (`opcbridge-logic.db`) instead of transient cache files.

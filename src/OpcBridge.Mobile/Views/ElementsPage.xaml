@@ -1,16 +1,17 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:theme="clr-namespace:OpcBridge.Mobile"
              xmlns:views="clr-namespace:OpcBridge.Mobile.Views"
              x:Class="OpcBridge.Mobile.Views.ElementsPage"
              Title="Elements"
              Shell.NavBarIsVisible="False"
-             BackgroundColor="{StaticResource PageBg}">
+             BackgroundColor="{theme:ThemeColor PageBg}">
     <ContentPage.Resources>
         <!-- V2 segmented kind filter: one rail, the chosen segment raised on its own surface. -->
         <Style x:Key="SegmentButton" TargetType="Button">
             <Setter Property="BackgroundColor" Value="Transparent" />
-            <Setter Property="TextColor" Value="{StaticResource MutedColor}" />
+            <Setter Property="TextColor" Value="{theme:ThemeColor MutedColor}" />
             <Setter Property="FontSize" Value="10" />
             <Setter Property="CornerRadius" Value="8" />
             <Setter Property="Padding" Value="0" />
@@ -18,8 +19,8 @@
             <Setter Property="MinimumHeightRequest" Value="30" />
             <Style.Triggers>
                 <DataTrigger TargetType="Button" Binding="{Binding IsSelected}" Value="True">
-                    <Setter Property="BackgroundColor" Value="{StaticResource SurfaceAltColor}" />
-                    <Setter Property="TextColor" Value="{StaticResource TextColor}" />
+                    <Setter Property="BackgroundColor" Value="{theme:ThemeColor SurfaceAltColor}" />
+                    <Setter Property="TextColor" Value="{theme:ThemeColor TextColor}" />
                     <Setter Property="FontAttributes" Value="Bold" />
                 </DataTrigger>
             </Style.Triggers>
@@ -36,12 +37,12 @@
                                  WidthRequest="6"
                                  HeightRequest="6"
                                  CornerRadius="3"
-                                 Color="{StaticResource MutedColor}"
+                                 Color="{theme:ThemeColor MutedColor}"
                                  VerticalOptions="Center" />
                         <Label Grid.Column="1"
                                x:Name="connectionLabel"
                                FontSize="10.5"
-                               TextColor="{StaticResource MutedColor}"
+                               TextColor="{theme:ThemeColor MutedColor}"
                                MaxLines="1"
                                LineBreakMode="TailTruncation"
                                VerticalOptions="Center" />
@@ -54,7 +55,7 @@
                         <Border.GestureRecognizers>
                             <TapGestureRecognizer Tapped="OnRefreshClicked" />
                         </Border.GestureRecognizers>
-                        <Image Source="icon_refresh.png" WidthRequest="16" HeightRequest="16"
+                        <Image Source="{theme:ThemeIcon icon_refresh}" WidthRequest="16" HeightRequest="16"
                                HorizontalOptions="Center" VerticalOptions="Center" />
                     </Border>
                     <Border x:Name="syncButton"
@@ -63,7 +64,7 @@
                         <Border.GestureRecognizers>
                             <TapGestureRecognizer Tapped="OnSyncNowClicked" />
                         </Border.GestureRecognizers>
-                        <Image Source="icon_cloud_upload.png" WidthRequest="16" HeightRequest="16"
+                        <Image Source="{theme:ThemeIcon icon_cloud_upload}" WidthRequest="16" HeightRequest="16"
                                HorizontalOptions="Center" VerticalOptions="Center" />
                     </Border>
                 </HorizontalStackLayout>
@@ -75,13 +76,13 @@
                              WidthRequest="6"
                              HeightRequest="6"
                              CornerRadius="3"
-                             Color="{StaticResource MutedColor}"
+                             Color="{theme:ThemeColor MutedColor}"
                              VerticalOptions="Center" />
                     <Label x:Name="sourceLabel"
                            FontFamily="monospace"
                            FontSize="9"
                            FontAttributes="Bold"
-                           TextColor="{StaticResource MutedColor}"
+                           TextColor="{theme:ThemeColor MutedColor}"
                            TextTransform="Uppercase"
                            MaxLines="1"
                            LineBreakMode="TailTruncation"
@@ -90,12 +91,12 @@
                 <Label Grid.Column="2"
                        x:Name="summaryLabel"
                        FontSize="9.5"
-                       TextColor="{StaticResource MutedColor}"
+                       TextColor="{theme:ThemeColor MutedColor}"
                        VerticalOptions="Center" />
                 <Label Grid.Column="3"
                        Text="·"
                        FontSize="9"
-                       TextColor="{StaticResource MutedColor}"
+                       TextColor="{theme:ThemeColor MutedColor}"
                        VerticalOptions="Center" />
                 <views:SyncBadgeView x:Name="latencyBadge"
                                      Grid.Column="4"
@@ -107,7 +108,7 @@
 
             <Border Style="{StaticResource SearchBorder}">
                 <Grid ColumnDefinitions="Auto,*">
-                    <Image Source="icon_search.png"
+                    <Image Source="{theme:ThemeIcon icon_search}"
                            WidthRequest="16"
                            HeightRequest="16"
                            Margin="12,0,9,0"
@@ -122,8 +123,8 @@
                 </Grid>
             </Border>
 
-            <Border BackgroundColor="{StaticResource SurfaceColor}"
-                    Stroke="{StaticResource BorderColor}"
+            <Border BackgroundColor="{theme:ThemeColor SurfaceColor}"
+                    Stroke="{theme:ThemeColor BorderColor}"
                     StrokeThickness="1"
                     StrokeShape="RoundRectangle 11"
                     Padding="3"
@@ -142,7 +143,7 @@
 
             <Label x:Name="filterLabel"
                    FontSize="10.5"
-                   TextColor="{StaticResource MutedColor}"
+                   TextColor="{theme:ThemeColor MutedColor}"
                    IsVisible="false" />
         </VerticalStackLayout>
 
@@ -150,7 +151,7 @@
             <CollectionView x:Name="elementsView" IsGrouped="True" SelectionMode="Single"
                             SelectionChanged="OnElementSelected">
                 <CollectionView.EmptyView>
-                    <Label x:Name="emptyLabel" TextColor="{StaticResource MutedColor}" Margin="8" />
+                    <Label x:Name="emptyLabel" TextColor="{theme:ThemeColor MutedColor}" Margin="8" />
                 </CollectionView.EmptyView>
                 <CollectionView.GroupHeaderTemplate>
                     <DataTemplate>
@@ -161,13 +162,13 @@
                             <VerticalStackLayout Spacing="2">
                                 <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto" ColumnSpacing="7">
                                     <Label Text="{Binding Chevron}" FontSize="11"
-                                           VerticalOptions="Center" TextColor="{StaticResource MutedColor}" />
+                                           VerticalOptions="Center" TextColor="{theme:ThemeColor MutedColor}" />
                                     <Label Grid.Column="1" Text="{Binding Name}" FontAttributes="Bold" FontSize="13"
                                            MaxLines="1" LineBreakMode="TailTruncation" VerticalOptions="Center" />
                                     <Border Grid.Column="2" Style="{StaticResource ElementBadgeBorder}" VerticalOptions="Center">
                                         <Label Text="{Binding KindLabel}" FontSize="8.5" FontAttributes="Bold"
                                                FontFamily="monospace"
-                                               TextColor="{StaticResource MutedColor}" />
+                                               TextColor="{theme:ThemeColor MutedColor}" />
                                     </Border>
                                     <Label Grid.Column="4" Text="{Binding StateLabel}" FontSize="9.5"
                                            FontAttributes="Bold" VerticalOptions="Center"
@@ -177,9 +178,9 @@
                                     <BoxView WidthRequest="17" HeightRequest="1" />
                                     <Label Grid.Column="1" Text="{Binding Meta}" FontSize="9.5"
                                            IsVisible="{Binding HasMeta}"
-                                           TextColor="{StaticResource MutedColor}" VerticalOptions="Center" />
+                                           TextColor="{theme:ThemeColor MutedColor}" VerticalOptions="Center" />
                                     <Label Grid.Column="2" Text="{Binding Summary}" FontSize="9.5"
-                                           TextColor="{StaticResource MutedColor}" VerticalOptions="Center" />
+                                           TextColor="{theme:ThemeColor MutedColor}" VerticalOptions="Center" />
                                 </Grid>
                             </VerticalStackLayout>
                         </Border>
@@ -189,7 +190,7 @@
                     <DataTemplate>
                         <Grid ColumnDefinitions="Auto,*">
                             <views:DepthGuideView Grid.Column="0" WidthRequest="{Binding IndentWidth}"
-                                                  Depth="{Binding Depth}" GuideColor="{StaticResource BorderColor}"
+                                                  Depth="{Binding Depth}" GuideColor="{theme:ThemeColor BorderColor}"
                                                   VerticalOptions="Fill" />
                             <Border Grid.Column="1" Margin="0,0,0,6" Style="{StaticResource ElementCardBorder}">
                                 <Grid ColumnDefinitions="16,*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto"
@@ -205,7 +206,7 @@
                                         <Border Style="{StaticResource ElementBadgeBorder}" VerticalOptions="Center">
                                             <Label Text="{Binding KindLabel}" FontSize="8.5" FontAttributes="Bold"
                                                    FontFamily="monospace"
-                                                   TextColor="{StaticResource MutedColor}" />
+                                                   TextColor="{theme:ThemeColor MutedColor}" />
                                         </Border>
                                     </HorizontalStackLayout>
                                     <VerticalStackLayout Grid.Row="0" Grid.Column="2" Spacing="0"
@@ -215,25 +216,25 @@
                                                TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
                                         <Label Text="{Binding ValueText}" FontSize="8.5" FontFamily="monospace"
                                                HorizontalTextAlignment="End"
-                                               TextColor="{StaticResource MutedColor}" />
+                                               TextColor="{theme:ThemeColor MutedColor}" />
                                     </VerticalStackLayout>
                                     <Label Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding StepLabel}"
                                            IsVisible="{Binding HasStep}" FontSize="9.5"
-                                           TextColor="{StaticResource MutedColor}" />
+                                           TextColor="{theme:ThemeColor MutedColor}" />
                                     <Label Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding TagLabel}"
                                            IsVisible="{Binding HasTag}"
                                            FontFamily="monospace" FontSize="9.5"
-                                           TextColor="{StaticResource MutedColor}"
+                                           TextColor="{theme:ThemeColor MutedColor}"
                                            LineBreakMode="WordWrap" />
                                     <Label Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding ShouldLine}"
                                            IsVisible="{Binding ShowShould}" FontFamily="monospace" FontSize="10.5"
                                            TextColor="{Binding ShouldKey, Converter={StaticResource StateColor}}" />
                                     <Label Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding ProgressText}"
                                            IsVisible="{Binding ShowProgress}" FontSize="10.5"
-                                           TextColor="{StaticResource WarnColor}" />
+                                           TextColor="{theme:ThemeColor WarnColor}" />
                                     <Label Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding NextStepText}"
                                            IsVisible="{Binding ShowNextStep}" FontSize="10.5"
-                                           TextColor="{StaticResource WarnColor}" />
+                                           TextColor="{theme:ThemeColor WarnColor}" />
                                 </Grid>
                             </Border>
                         </Grid>

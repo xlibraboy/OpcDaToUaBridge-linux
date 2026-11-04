@@ -14,18 +14,57 @@ public partial class SettingsPage : ContentPage
         coordinator_ = coordinator;
         BindableLayout.SetItemsSource(bridgesList, coordinator_.Bridges);
         coordinator_.Changed += OnChanged;
+        ThemeManager.Changed += OnThemeChanged;
         aboutVersionLabel.Text = AppInfo.Current.VersionString;
         aboutTextLabel.Text = "OpcBridge Logic · plant logic viewer for the bridge HMI.";
         aboutFooterLabel.Text = "Writes that may already have reached the bridge are never replayed automatically.";
+        PaintThemeSelection();
     }
 
     protected override void OnAppearing()
     {
         base.OnAppearing();
         Repaint();
+        PaintThemeSelection();
     }
 
     private void OnChanged() => MainThread.BeginInvokeOnMainThread(Repaint);
+
+    private void OnThemeChanged() => MainThread.BeginInvokeOnMainThread(() =>
+    {
+        // Converters resolve a colour when the view is built; rebuilding the two lists is what
+        // repaints their state colours for the new surface.
+        BindableLayout.SetItemsSource(bridgesList, null);
+        BindableLayout.SetItemsSource(bridgesList, coordinator_.Bridges);
+        BindableLayout.SetItemsSource(outboxList, null);
+        Repaint();
+        PaintThemeSelection();
+    });
+
+    private void PaintThemeSelection()
+    {
+        ThemeMode mode = ThemeManager.Mode;
+        PaintThemeButton(themeSystemButton, mode == ThemeMode.System);
+        PaintThemeButton(themeLightButton, mode == ThemeMode.Light);
+        PaintThemeButton(themeDarkButton, mode == ThemeMode.Dark);
+    }
+
+    private static void PaintThemeButton(Button button, bool selected)
+    {
+        button.BackgroundColor = selected ? ThemePalette.Get("SurfaceAltColor") : Colors.Transparent;
+        button.TextColor = ThemePalette.Get(selected ? "TextColor" : "MutedColor");
+        button.FontAttributes = selected ? FontAttributes.Bold : FontAttributes.None;
+    }
+
+    private void OnThemeClicked(object? sender, EventArgs e)
+    {
+        if (sender is Button { CommandParameter: string name } &&
+            Enum.TryParse(name, out ThemeMode mode))
+        {
+            ThemeManager.SetMode(mode);
+            PaintThemeSelection();
+        }
+    }
 
     private void Repaint()
     {
@@ -33,10 +72,10 @@ public partial class SettingsPage : ContentPage
         bridgesEmptyLabel.IsVisible = coordinator_.Bridges.Count == 0;
         bridgesCountLabel.Text = coordinator_.Bridges.Count + " saved";
         connectionDot.Color = active is null
-            ? Color.FromArgb("#93A19B")
-            : active.IsOffline ? Color.FromArgb("#E5484D")
-            : active.IsConnected ? Color.FromArgb("#4CC38A")
-            : Color.FromArgb("#E2A336");
+            ? ThemePalette.Get("MutedColor")
+            : active.IsOffline ? ThemePalette.Get("BadColor")
+            : active.IsConnected ? ThemePalette.Get("GoodColor")
+            : ThemePalette.Get("WarnColor");
         connectionLabel.Text = active is null
             ? "no bridge selected"
             : active.DisplayName + " · "
@@ -96,10 +135,10 @@ public partial class SettingsPage : ContentPage
 
     private static Color KeyColor(string key) => key switch
     {
-        "synced" or "good" or "true" or "done" => Color.FromArgb("#4CC38A"),
-        "error" or "poor" or "blocked" or "false" => Color.FromArgb("#E5484D"),
-        "syncing" or "pending" or "fair" or "current" => Color.FromArgb("#E2A336"),
-        _ => Color.FromArgb("#93A19B")
+        "synced" or "good" or "true" or "done" => ThemePalette.Get("GoodColor"),
+        "error" or "poor" or "blocked" or "false" => ThemePalette.Get("BadColor"),
+        "syncing" or "pending" or "fair" or "current" => ThemePalette.Get("WarnColor"),
+        _ => ThemePalette.Get("MutedColor")
     };
 
     private static string Initials(string name)

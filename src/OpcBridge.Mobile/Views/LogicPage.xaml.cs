@@ -13,6 +13,7 @@ public partial class LogicPage : ContentPage
         InitializeComponent();
         coordinator_ = coordinator;
         coordinator_.Changed += OnChanged;
+        ThemeManager.Changed += OnThemeChanged;
         RefreshFilterUi();
     }
 
@@ -25,6 +26,20 @@ public partial class LogicPage : ContentPage
     }
 
     private void OnChanged() => MainThread.BeginInvokeOnMainThread(Repaint);
+
+    /// <summary>
+    /// Converters resolve a state colour when a row is built, so a theme switch rebuilds the
+    /// filtered lists rather than leaving their old colours in place.
+    /// </summary>
+    private void OnThemeChanged() => MainThread.BeginInvokeOnMainThread(() =>
+    {
+        BindableLayout.SetItemsSource(stateChips, null);
+        BindableLayout.SetItemsSource(tagChips, null);
+        blocksView.ItemsSource = null;
+        Repaint();
+        syncBadge.RefreshTheme();
+        latencyBadge.RefreshTheme();
+    });
 
     private void Repaint()
     {
@@ -59,10 +74,10 @@ public partial class LogicPage : ContentPage
         blockedCountLabel.Text = (overview?.BlockedCount ?? 0).ToString();
         noDataCountLabel.Text = (overview?.NoDataCount ?? 0).ToString();
         connectionDot.Color = active is null
-            ? Color.FromArgb("#93A19B")
-            : active.IsOffline ? Color.FromArgb("#E5484D")
-            : active.IsConnected ? Color.FromArgb("#4CC38A")
-            : Color.FromArgb("#E2A336");
+            ? ThemePalette.Get("MutedColor")
+            : active.IsOffline ? ThemePalette.Get("BadColor")
+            : active.IsConnected ? ThemePalette.Get("GoodColor")
+            : ThemePalette.Get("WarnColor");
         connectionLabel.Text = active is null
             ? "no bridges yet — add one under Settings ▸ Bridges"
             : active.StatusText;

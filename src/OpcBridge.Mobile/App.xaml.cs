@@ -12,7 +12,8 @@ public partial class App : Application
     public App(BridgeCoordinator coordinator)
     {
         InitializeComponent();
-        UserAppTheme = AppTheme.Dark;
+        ThemeManager.Apply();
+        RequestedThemeChanged += OnRequestedThemeChanged;
         coordinator_ = coordinator;
         coordinator.Load();
         shell_ = new AppShell();
@@ -24,6 +25,14 @@ public partial class App : Application
     }
 
     private void OnCoordinatorChanged() => MainThread.BeginInvokeOnMainThread(ApplyAccessRule);
+
+    /// <summary>
+    /// One notification path for both the operator's choice and the phone's own day/night
+    /// change: pages that set colours from code repaint, while ThemeColor bindings follow by
+    /// themselves.
+    /// </summary>
+    private void OnRequestedThemeChanged(object? sender, AppThemeChangedEventArgs e) =>
+        MainThread.BeginInvokeOnMainThread(ThemeManager.NotifyChanged);
 
     /// <summary>
     /// The one place access is decided: a signed-in account opens the tabs, anything else —

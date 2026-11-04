@@ -4,9 +4,10 @@ namespace OpcBridge.Mobile;
 
 /// <summary>
 /// Maps a state key (block: ready/blocked/unknown/disabled; condition: true/false/unknown;
-/// step: done/current/pending/unknown) to the display colour. The state word is always shown
-/// next to it, so the screen still reads without colour. ConverterParameter "checkpoint" gives
-/// a checkpoint's "no data" the amber of its rail dot, where the block list's unknown is muted.
+/// step: done/current/pending/unknown) to the display colour of the current theme. The state
+/// word is always shown next to it, so the screen still reads without colour. ConverterParameter
+/// "checkpoint" gives a checkpoint's "no data" the amber of its rail dot, where the block list's
+/// unknown is muted.
 /// </summary>
 public sealed class StateColorConverter : IValueConverter
 {
@@ -15,15 +16,15 @@ public sealed class StateColorConverter : IValueConverter
         string key = value as string ?? string.Empty;
         if ((parameter as string) == "checkpoint" && (key.Length == 0 || key == "unknown"))
         {
-            return Color.FromArgb("#E2A336");
+            return ThemePalette.Get("WarnColor");
         }
 
         return key switch
         {
-            "ready" or "true" or "done" or "match" or "synced" or "good" => Color.FromArgb("#4CC38A"),
-            "blocked" or "false" or "error" or "poor" => Color.FromArgb("#E5484D"),
-            "current" or "mismatch" or "syncing" or "pending" or "fair" => Color.FromArgb("#E2A336"),
-            _ => Color.FromArgb("#93A19B")
+            "ready" or "true" or "done" or "match" or "synced" or "good" => ThemePalette.Get("GoodColor"),
+            "blocked" or "false" or "error" or "poor" => ThemePalette.Get("BadColor"),
+            "current" or "mismatch" or "syncing" or "pending" or "fair" => ThemePalette.Get("WarnColor"),
+            _ => ThemePalette.Get("MutedColor")
         };
     }
 

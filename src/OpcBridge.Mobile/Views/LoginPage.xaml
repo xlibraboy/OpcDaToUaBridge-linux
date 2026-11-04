@@ -1,15 +1,16 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:theme="clr-namespace:OpcBridge.Mobile"
              x:Class="OpcBridge.Mobile.Views.LoginPage"
              Title="Sign in"
              Shell.NavBarIsVisible="False"
-             BackgroundColor="{StaticResource PageBg}">
+             BackgroundColor="{theme:ThemeColor PageBg}">
     <ScrollView>
         <VerticalStackLayout Padding="20,8,20,16" Spacing="14">
             <HorizontalStackLayout Spacing="12" VerticalOptions="Center">
                 <Border Style="{StaticResource LogoBorder}">
-                    <Image Source="icon_workflow.png"
+                    <Image Source="{theme:ThemeIcon icon_workflow}"
                            WidthRequest="20"
                            HeightRequest="20"
                            HorizontalOptions="Center"
@@ -17,7 +18,7 @@
                 </Border>
                 <VerticalStackLayout Spacing="1" VerticalOptions="Center">
                     <Label Text="OpcBridge" FontSize="24" FontAttributes="Bold" />
-                    <Label Text="Plant logic viewer" FontSize="11" TextColor="{StaticResource MutedColor}" />
+                    <Label Text="Plant logic viewer" FontSize="11" TextColor="{theme:ThemeColor MutedColor}" />
                 </VerticalStackLayout>
             </HorizontalStackLayout>
 
@@ -30,13 +31,13 @@
                                      WidthRequest="6"
                                      HeightRequest="6"
                                      CornerRadius="3"
-                                     Color="{StaticResource MutedColor}"
+                                     Color="{theme:ThemeColor MutedColor}"
                                      VerticalOptions="Center" />
                             <Label x:Name="bridgeStateLabel"
                                    Text="no bridge"
                                    FontSize="9.5"
                                    FontAttributes="Bold"
-                                   TextColor="{StaticResource MutedColor}"
+                                   TextColor="{theme:ThemeColor MutedColor}"
                                    MaxLines="1"
                                    LineBreakMode="TailTruncation"
                                    MaximumWidthRequest="220" />
@@ -47,7 +48,7 @@
                             <TapGestureRecognizer Tapped="OnBridgeRowTapped" />
                         </Border.GestureRecognizers>
                         <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9" Padding="12,0">
-                            <Image Source="icon_radio_tower.png"
+                            <Image Source="{theme:ThemeIcon icon_radio_tower}"
                                    WidthRequest="15"
                                    HeightRequest="15"
                                    VerticalOptions="Center" />
@@ -55,12 +56,12 @@
                                    Grid.Column="1"
                                    Text="Saved bridges"
                                    FontSize="13"
-                                   TextColor="{StaticResource MutedColor}"
+                                   TextColor="{theme:ThemeColor MutedColor}"
                                    MaxLines="1"
                                    LineBreakMode="TailTruncation"
                                    VerticalOptions="Center" />
                             <Image Grid.Column="2"
-                                   Source="icon_chevron_down.png"
+                                   Source="{theme:ThemeIcon icon_chevron_down}"
                                    WidthRequest="15"
                                    HeightRequest="15"
                                    VerticalOptions="Center" />
@@ -68,7 +69,7 @@
                     </Border>
                     <Border Style="{StaticResource FieldBorder}">
                         <Grid ColumnDefinitions="Auto,*">
-                            <Image Source="icon_server.png"
+                            <Image Source="{theme:ThemeIcon icon_server}"
                                    WidthRequest="15"
                                    HeightRequest="15"
                                    Margin="12,0,9,0"
@@ -82,7 +83,7 @@
                     </Border>
                     <Border Style="{StaticResource FieldBorder}">
                         <Grid ColumnDefinitions="Auto,*">
-                            <Image Source="icon_tag.png"
+                            <Image Source="{theme:ThemeIcon icon_tag}"
                                    WidthRequest="15"
                                    HeightRequest="15"
                                    Margin="12,0,9,0"
@@ -118,7 +119,7 @@
                         <ActivityIndicator x:Name="busyIndicator"
                                            WidthRequest="16"
                                            HeightRequest="16"
-                                           Color="{StaticResource GoodColor}"
+                                           Color="{theme:ThemeColor GoodColor}"
                                            IsRunning="False"
                                            IsVisible="False"
                                            VerticalOptions="Center" />
@@ -126,7 +127,7 @@
                                x:Name="statusLabel"
                                FontFamily="monospace"
                                FontSize="9.5"
-                               TextColor="{StaticResource MutedColor}"
+                               TextColor="{theme:ThemeColor MutedColor}"
                                LineBreakMode="WordWrap" />
                     </Grid>
                 </VerticalStackLayout>
@@ -137,18 +138,18 @@
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                         <Label Text="ACCOUNT" Style="{StaticResource UppercaseLabel}" VerticalOptions="Center" />
                         <Image Grid.Column="1"
-                               Source="icon_lock.png"
+                               Source="{theme:ThemeIcon icon_lock}"
                                WidthRequest="13"
                                HeightRequest="13"
                                VerticalOptions="Center" />
                     </Grid>
                     <Label Text="Needed for live data. The synced plant structure stays readable offline without an account."
                            FontSize="11"
-                           TextColor="{StaticResource MutedColor}"
+                           TextColor="{theme:ThemeColor MutedColor}"
                            LineBreakMode="WordWrap" />
                     <Border Style="{StaticResource FieldBorder}">
                         <Grid ColumnDefinitions="Auto,*">
-                            <Image Source="icon_user.png"
+                            <Image Source="{theme:ThemeIcon icon_user}"
                                    WidthRequest="15"
                                    HeightRequest="15"
                                    Margin="12,0,9,0"
@@ -162,7 +163,7 @@
                     </Border>
                     <Border Style="{StaticResource FieldBorder}">
                         <Grid ColumnDefinitions="Auto,*">
-                            <Image Source="icon_lock.png"
+                            <Image Source="{theme:ThemeIcon icon_lock}"
                                    WidthRequest="15"
                                    HeightRequest="15"
                                    Margin="12,0,9,0"
@@ -181,13 +182,13 @@
                             Clicked="OnSignInClicked" />
                     <Label x:Name="errorLabel"
                            FontSize="12"
-                           TextColor="{StaticResource BadColor}"
+                           TextColor="{theme:ThemeColor BadColor}"
                            LineBreakMode="WordWrap" />
                 </VerticalStackLayout>
             </Border>
 
             <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6" Margin="0,4,0,0">
-                <Image Source="icon_shield_check.png"
+                <Image Source="{theme:ThemeIcon icon_shield_check}"
                        WidthRequest="13"
                        HeightRequest="13"
                        VerticalOptions="Start"
@@ -195,7 +196,7 @@
                 <Label Grid.Column="1"
                        Text="One live bridge at a time · offline shows the last synced structure only"
                        FontSize="9.5"
-                       TextColor="{StaticResource MutedColor}"
+                       TextColor="{theme:ThemeColor MutedColor}"
                        LineBreakMode="WordWrap" />
             </Grid>
         </VerticalStackLayout>

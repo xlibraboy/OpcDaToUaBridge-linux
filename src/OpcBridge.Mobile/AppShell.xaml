@@ -1,17 +1,18 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <Shell xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
        xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+       xmlns:theme="clr-namespace:OpcBridge.Mobile"
        xmlns:views="clr-namespace:OpcBridge.Mobile.Views"
        x:Class="OpcBridge.Mobile.AppShell"
        Title="OpcBridge Logic"
        FlyoutBehavior="Disabled"
-       Shell.BackgroundColor="#0C1210"
-       Shell.ForegroundColor="#F1F5F3"
-       Shell.TitleColor="#F1F5F3"
-       Shell.TabBarBackgroundColor="#101714"
-       Shell.TabBarForegroundColor="#4CC38A"
-       Shell.TabBarTitleColor="#4CC38A"
-       Shell.TabBarUnselectedColor="#93A19B">
+       Shell.BackgroundColor="{theme:ThemeColor PageBg}"
+       Shell.ForegroundColor="{theme:ThemeColor TextColor}"
+       Shell.TitleColor="{theme:ThemeColor TextColor}"
+       Shell.TabBarBackgroundColor="{theme:ThemeColor TabBarColor}"
+       Shell.TabBarForegroundColor="{theme:ThemeColor GoodColor}"
+       Shell.TabBarTitleColor="{theme:ThemeColor GoodColor}"
+       Shell.TabBarUnselectedColor="{theme:ThemeColor MutedColor}">
     <!-- The app opens here; the tabs only appear once a bridge account opens the gate. -->
     <ShellContent Title="Sign in"
                   Route="login"
@@ -19,15 +20,15 @@
     <TabBar>
         <ShellContent Title="Logic"
                       Route="logic"
-                      Icon="tab_logic.png"
+                      Icon="{theme:ThemeIcon tab_logic}"
                       ContentTemplate="{DataTemplate views:LogicPage}" />
         <ShellContent Title="Elements"
                       Route="elements"
-                      Icon="tab_elements.png"
+                      Icon="{theme:ThemeIcon tab_elements}"
                       ContentTemplate="{DataTemplate views:ElementsPage}" />
         <ShellContent Title="Settings"
                       Route="settings"
-                      Icon="tab_settings.png"
+                      Icon="{theme:ThemeIcon tab_settings}"
                       ContentTemplate="{DataTemplate views:SettingsPage}" />
     </TabBar>
 </Shell>

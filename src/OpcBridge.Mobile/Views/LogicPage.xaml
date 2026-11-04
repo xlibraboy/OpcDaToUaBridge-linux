@@ -1,11 +1,12 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:theme="clr-namespace:OpcBridge.Mobile"
              xmlns:views="clr-namespace:OpcBridge.Mobile.Views"
              x:Class="OpcBridge.Mobile.Views.LogicPage"
              Title="Logic"
              Shell.NavBarIsVisible="False"
-             BackgroundColor="{StaticResource PageBg}">
+             BackgroundColor="{theme:ThemeColor PageBg}">
     <ContentPage.Resources>
         <!-- One search/filter chip: filled and dark-texted while selected, dark with muted
              text otherwise, so the choice reads without relying on colour alone. -->
@@ -32,12 +33,12 @@
                                  WidthRequest="6"
                                  HeightRequest="6"
                                  CornerRadius="3"
-                                 Color="{StaticResource MutedColor}"
+                                 Color="{theme:ThemeColor MutedColor}"
                                  VerticalOptions="Center" />
                         <Label Grid.Column="1"
                                x:Name="connectionLabel"
                                FontSize="10.5"
-                               TextColor="{StaticResource MutedColor}"
+                               TextColor="{theme:ThemeColor MutedColor}"
                                MaxLines="1"
                                LineBreakMode="TailTruncation"
                                VerticalOptions="Center" />
@@ -50,7 +51,7 @@
                         <Border.GestureRecognizers>
                             <TapGestureRecognizer Tapped="OnRefreshClicked" />
                         </Border.GestureRecognizers>
-                        <Image Source="icon_refresh.png" WidthRequest="16" HeightRequest="16"
+                        <Image Source="{theme:ThemeIcon icon_refresh}" WidthRequest="16" HeightRequest="16"
                                HorizontalOptions="Center" VerticalOptions="Center" />
                     </Border>
                     <Border Style="{StaticResource IconActionBorder}"
@@ -58,7 +59,7 @@
                         <Border.GestureRecognizers>
                             <TapGestureRecognizer Tapped="OnSettingsClicked" />
                         </Border.GestureRecognizers>
-                        <Image Source="icon_settings.png" WidthRequest="16" HeightRequest="16"
+                        <Image Source="{theme:ThemeIcon icon_settings}" WidthRequest="16" HeightRequest="16"
                                HorizontalOptions="Center" VerticalOptions="Center" />
                     </Border>
                 </HorizontalStackLayout>
@@ -66,7 +67,7 @@
 
             <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="8" VerticalOptions="Center">
                 <Border Grid.Column="0"
-                        BackgroundColor="{StaticResource SurfaceAltColor}"
+                        BackgroundColor="{theme:ThemeColor SurfaceAltColor}"
                         StrokeThickness="0"
                         StrokeShape="RoundRectangle 8"
                         Padding="8,0"
@@ -75,7 +76,7 @@
                         <TapGestureRecognizer Tapped="OnBridgeChipTapped" />
                     </Border.GestureRecognizers>
                     <HorizontalStackLayout Spacing="5" VerticalOptions="Center">
-                        <Image Source="icon_radio_tower.png"
+                        <Image Source="{theme:ThemeIcon icon_radio_tower}"
                                WidthRequest="12"
                                HeightRequest="12"
                                VerticalOptions="Center" />
@@ -86,7 +87,7 @@
                                MaxLines="1"
                                LineBreakMode="TailTruncation"
                                VerticalOptions="Center" />
-                        <Image Source="icon_chevron_down.png"
+                        <Image Source="{theme:ThemeIcon icon_chevron_down}"
                                WidthRequest="12"
                                HeightRequest="12"
                                VerticalOptions="Center" />
@@ -100,7 +101,7 @@
                 <Label Grid.Column="3"
                        Text="·"
                        FontSize="9"
-                       TextColor="{StaticResource MutedColor}"
+                       TextColor="{theme:ThemeColor MutedColor}"
                        VerticalOptions="Center" />
                 <views:SyncBadgeView x:Name="latencyBadge"
                                      Grid.Column="4"
@@ -115,7 +116,7 @@
                     <VerticalStackLayout Spacing="0" VerticalOptions="Center">
                         <HorizontalStackLayout Spacing="6">
                             <BoxView WidthRequest="6" HeightRequest="6" CornerRadius="3"
-                                     Color="{StaticResource GoodColor}" VerticalOptions="Center" />
+                                     Color="{theme:ThemeColor GoodColor}" VerticalOptions="Center" />
                             <Label x:Name="readyCountLabel"
                                    Text="0"
                                    FontFamily="monospace"
@@ -126,14 +127,14 @@
                         <Label Text="READY"
                                FontSize="9"
                                FontAttributes="Bold"
-                               TextColor="{StaticResource MutedColor}" />
+                               TextColor="{theme:ThemeColor MutedColor}" />
                     </VerticalStackLayout>
                 </Border>
                 <Border Grid.Column="1" Style="{StaticResource MetricCardBorder}">
                     <VerticalStackLayout Spacing="0" VerticalOptions="Center">
                         <HorizontalStackLayout Spacing="6">
                             <BoxView WidthRequest="6" HeightRequest="6" CornerRadius="3"
-                                     Color="{StaticResource BadColor}" VerticalOptions="Center" />
+                                     Color="{theme:ThemeColor BadColor}" VerticalOptions="Center" />
                             <Label x:Name="blockedCountLabel"
                                    Text="0"
                                    FontFamily="monospace"
@@ -144,14 +145,14 @@
                         <Label Text="BLOCKED"
                                FontSize="9"
                                FontAttributes="Bold"
-                               TextColor="{StaticResource MutedColor}" />
+                               TextColor="{theme:ThemeColor MutedColor}" />
                     </VerticalStackLayout>
                 </Border>
                 <Border Grid.Column="2" Style="{StaticResource MetricCardBorder}">
                     <VerticalStackLayout Spacing="0" VerticalOptions="Center">
                         <HorizontalStackLayout Spacing="6">
                             <BoxView WidthRequest="6" HeightRequest="6" CornerRadius="3"
-                                     Color="{StaticResource MutedColor}" VerticalOptions="Center" />
+                                     Color="{theme:ThemeColor MutedColor}" VerticalOptions="Center" />
                             <Label x:Name="noDataCountLabel"
                                    Text="0"
                                    FontFamily="monospace"
@@ -162,19 +163,19 @@
                         <Label Text="NO DATA"
                                FontSize="9"
                                FontAttributes="Bold"
-                               TextColor="{StaticResource MutedColor}" />
+                               TextColor="{theme:ThemeColor MutedColor}" />
                     </VerticalStackLayout>
                 </Border>
             </Grid>
 
             <Label x:Name="offlineLabel"
                    FontSize="10.5"
-                   TextColor="{StaticResource WarnColor}"
+                   TextColor="{theme:ThemeColor WarnColor}"
                    IsVisible="false" />
 
             <Border Style="{StaticResource SearchBorder}">
                 <Grid ColumnDefinitions="Auto,*,Auto">
-                    <Image Source="icon_search.png"
+                    <Image Source="{theme:ThemeIcon icon_search}"
                            WidthRequest="16"
                            HeightRequest="16"
                            Margin="12,0,9,0"
@@ -187,7 +188,7 @@
                            ClearButtonVisibility="WhileEditing"
                            TextChanged="OnSearchChanged" />
                     <Image Grid.Column="2"
-                           Source="icon_sliders.png"
+                           Source="{theme:ThemeIcon icon_sliders}"
                            WidthRequest="15"
                            HeightRequest="15"
                            Margin="0,0,12,0"
@@ -200,7 +201,7 @@
                     <HorizontalStackLayout x:Name="stateChips" Spacing="6"
                                            BindableLayout.ItemTemplate="{StaticResource FilterChip}" />
                     <BoxView x:Name="chipDivider" WidthRequest="1" HeightRequest="16"
-                             Color="{StaticResource BorderColor}"
+                             Color="{theme:ThemeColor BorderColor}"
                              Margin="2,0" IsVisible="false" />
                     <HorizontalStackLayout x:Name="tagChips" Spacing="6"
                                            BindableLayout.ItemTemplate="{StaticResource FilterChip}" />
@@ -209,14 +210,14 @@
 
             <Label x:Name="filterLabel"
                    FontSize="10.5"
-                   TextColor="{StaticResource MutedColor}"
+                   TextColor="{theme:ThemeColor MutedColor}"
                    IsVisible="false" />
         </VerticalStackLayout>
 
         <RefreshView x:Name="refreshView" Grid.Row="1" Refreshing="OnRefreshing">
             <CollectionView x:Name="blocksView" IsGrouped="True" SelectionMode="Single" SelectionChanged="OnBlockSelected">
                 <CollectionView.EmptyView>
-                    <Label x:Name="emptyLabel" TextColor="{StaticResource MutedColor}" Margin="8" />
+                    <Label x:Name="emptyLabel" TextColor="{theme:ThemeColor MutedColor}" Margin="8" />
                 </CollectionView.EmptyView>
                 <CollectionView.GroupHeaderTemplate>
                     <DataTemplate>
@@ -227,13 +228,13 @@
                             </Border.GestureRecognizers>
                             <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto" ColumnSpacing="7">
                                 <Label Text="{Binding Chevron}" FontSize="12" VerticalOptions="Center"
-                                       TextColor="{StaticResource MutedColor}" />
+                                       TextColor="{theme:ThemeColor MutedColor}" />
                                 <Label Grid.Column="1" Text="{Binding Name}" FontAttributes="Bold" FontSize="13"
                                        VerticalOptions="Center" />
                                 <Border Grid.Column="2" Style="{StaticResource InsetBadgeBorder}"
                                         VerticalOptions="Center">
                                     <Label Text="{Binding CountText}" FontSize="9" FontAttributes="Bold"
-                                           TextColor="{StaticResource MutedColor}" />
+                                           TextColor="{theme:ThemeColor MutedColor}" />
                                 </Border>
                                 <Label Grid.Column="4" Text="{Binding NoteText}"
                                        IsVisible="{Binding HasNote}"
@@ -257,7 +258,7 @@
                                                VerticalOptions="Center" />
                                         <Border Style="{StaticResource BadgeBorder}" VerticalOptions="Center">
                                             <Label Text="{Binding KindLabel}" FontSize="9" FontAttributes="Bold"
-                                                   TextColor="{StaticResource MutedColor}" />
+                                                   TextColor="{theme:ThemeColor MutedColor}" />
                                         </Border>
                                     </HorizontalStackLayout>
                                     <Label Grid.Column="2" Text="{Binding StateLabel}" FontAttributes="Bold"
@@ -275,7 +276,7 @@
                                         <Border.GestureRecognizers>
                                             <TapGestureRecognizer Command="{Binding ToggleFoldCommand}" />
                                         </Border.GestureRecognizers>
-                                        <Image Source="icon_chevron_down.png"
+                                        <Image Source="{theme:ThemeIcon icon_chevron_down}"
                                                WidthRequest="15"
                                                HeightRequest="15"
                                                HorizontalOptions="Center"
@@ -291,7 +292,7 @@
                                 <VerticalStackLayout Spacing="6" IsVisible="{Binding ShowDetails}">
                                     <FlexLayout Wrap="Wrap" Direction="Row" AlignItems="Center">
                                         <Label Text="{Binding Area}" FontSize="9.5"
-                                               TextColor="{StaticResource MutedColor}"
+                                               TextColor="{theme:ThemeColor MutedColor}"
                                                Margin="0,0,8,2"
                                                IsVisible="{Binding HasArea}"
                                                VerticalOptions="Center" />
@@ -302,14 +303,14 @@
                                             <DataTemplate>
                                                 <Border Margin="0,0,6,2" Style="{StaticResource PillBorder}">
                                                     <Label Text="{Binding}" FontSize="9"
-                                                           TextColor="{StaticResource MutedColor}" />
+                                                           TextColor="{theme:ThemeColor MutedColor}" />
                                                 </Border>
                                             </DataTemplate>
                                         </BindableLayout.ItemTemplate>
                                     </FlexLayout>
                                     <Label Text="{Binding Reason}" IsVisible="{Binding HasReason}" FontSize="12" />
                                     <Label Text="{Binding ProgressText}" IsVisible="{Binding HasProgress}"
-                                           FontSize="10.5" TextColor="{StaticResource MutedColor}" />
+                                           FontSize="10.5" TextColor="{theme:ThemeColor MutedColor}" />
                                 </VerticalStackLayout>
                             </VerticalStackLayout>
                         </Border>

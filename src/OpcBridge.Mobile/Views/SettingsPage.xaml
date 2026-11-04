@@ -1,10 +1,24 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:theme="clr-namespace:OpcBridge.Mobile"
              x:Class="OpcBridge.Mobile.Views.SettingsPage"
              Title="Settings"
              Shell.NavBarIsVisible="False"
-             BackgroundColor="{StaticResource PageBg}">
+             BackgroundColor="{theme:ThemeColor PageBg}">
+    <ContentPage.Resources>
+        <!-- The Appearance rail: the chosen segment sits on the raised surface, the others stay
+             on the rail, matching the Elements kind filter. -->
+        <Style x:Key="ThemeSegmentButton" TargetType="Button">
+            <Setter Property="BackgroundColor" Value="Transparent" />
+            <Setter Property="TextColor" Value="{theme:ThemeColor MutedColor}" />
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HeightRequest" Value="30" />
+            <Setter Property="MinimumHeightRequest" Value="30" />
+        </Style>
+    </ContentPage.Resources>
     <ScrollView>
         <VerticalStackLayout Padding="16,4,16,12" Spacing="12">
             <VerticalStackLayout Spacing="3" Padding="0,2,0,4">
@@ -14,12 +28,12 @@
                              WidthRequest="6"
                              HeightRequest="6"
                              CornerRadius="3"
-                             Color="{StaticResource MutedColor}"
+                             Color="{theme:ThemeColor MutedColor}"
                              VerticalOptions="Center" />
                     <Label Grid.Column="1"
                            x:Name="connectionLabel"
                            FontSize="10.5"
-                           TextColor="{StaticResource MutedColor}"
+                           TextColor="{theme:ThemeColor MutedColor}"
                            MaxLines="1"
                            LineBreakMode="TailTruncation"
                            VerticalOptions="Center" />
@@ -34,7 +48,7 @@
                                Grid.Column="1"
                                Text="0 saved"
                                FontSize="9.5"
-                               TextColor="{StaticResource MutedColor}"
+                               TextColor="{theme:ThemeColor MutedColor}"
                                VerticalOptions="Center" />
                     </Grid>
                     <Label Text="Tap a bridge to make it live; one live link at a time."
@@ -42,7 +56,7 @@
                     <VerticalStackLayout x:Name="bridgesList" Spacing="8">
                         <BindableLayout.ItemTemplate>
                             <DataTemplate>
-                                <Border BackgroundColor="{StaticResource SurfaceAltColor}"
+                                <Border BackgroundColor="{theme:ThemeColor SurfaceAltColor}"
                                         StrokeThickness="0"
                                         StrokeShape="RoundRectangle 10"
                                         Padding="10">
@@ -55,17 +69,17 @@
                                                    MaxLines="1" LineBreakMode="TailTruncation"
                                                    VerticalOptions="Center" />
                                             <BoxView Grid.Column="1" WidthRequest="6" HeightRequest="6"
-                                                     CornerRadius="3" Color="{StaticResource MutedColor}"
+                                                     CornerRadius="3" Color="{theme:ThemeColor MutedColor}"
                                                      VerticalOptions="Center">
                                                 <BoxView.Triggers>
                                                     <DataTrigger TargetType="BoxView" Binding="{Binding IsActive}" Value="True">
-                                                        <Setter Property="Color" Value="{StaticResource GoodColor}" />
+                                                        <Setter Property="Color" Value="{theme:ThemeColor GoodColor}" />
                                                     </DataTrigger>
                                                 </BoxView.Triggers>
                                             </BoxView>
                                             <Label Grid.Column="2" Text="ACTIVE" IsVisible="{Binding IsActive}"
                                                    FontSize="8.5" FontAttributes="Bold"
-                                                   TextColor="{StaticResource GoodColor}"
+                                                   TextColor="{theme:ThemeColor GoodColor}"
                                                    HorizontalOptions="Start" VerticalOptions="Center" />
                                             <Border Grid.Column="3"
                                                     Style="{StaticResource SmallActionBorder}"
@@ -73,12 +87,12 @@
                                                 <Border.GestureRecognizers>
                                                     <TapGestureRecognizer Tapped="OnRemoveBridgeClicked" />
                                                 </Border.GestureRecognizers>
-                                                <Image Source="icon_trash.png" WidthRequest="12" HeightRequest="12"
+                                                <Image Source="{theme:ThemeIcon icon_trash}" WidthRequest="12" HeightRequest="12"
                                                        HorizontalOptions="Center" VerticalOptions="Center" />
                                             </Border>
                                         </Grid>
                                         <Label Text="{Binding Bridge.Url}" FontFamily="monospace" FontSize="8.5"
-                                               TextColor="{StaticResource MutedColor}" />
+                                               TextColor="{theme:ThemeColor MutedColor}" />
                                         <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" ColumnSpacing="6">
                                             <BoxView WidthRequest="5" HeightRequest="5" CornerRadius="2.5"
                                                      Color="{Binding SyncKey, Converter={StaticResource StateColor}}"
@@ -96,7 +110,7 @@
                                                    MaximumWidthRequest="130"
                                                    VerticalOptions="Center" />
                                             <Label Grid.Column="3" Text="·" FontSize="8.5"
-                                                   TextColor="{StaticResource MutedColor}" VerticalOptions="Center" />
+                                                   TextColor="{theme:ThemeColor MutedColor}" VerticalOptions="Center" />
                                             <Label Grid.Column="4" Text="{Binding LatencyValue}"
                                                    FontFamily="monospace" FontSize="8.5" FontAttributes="Bold"
                                                    TextColor="{Binding LatencyKey, Converter={StaticResource StateColor}}"
@@ -108,7 +122,7 @@
                         </BindableLayout.ItemTemplate>
                     </VerticalStackLayout>
                     <Label x:Name="bridgesEmptyLabel" Text="No bridges saved yet — add one below."
-                           FontSize="10.5" TextColor="{StaticResource MutedColor}" />
+                           FontSize="10.5" TextColor="{theme:ThemeColor MutedColor}" />
                 </VerticalStackLayout>
             </Border>
 
@@ -118,14 +132,14 @@
                         <Label Text="Add a bridge" Style="{StaticResource SectionTitleLabel}" />
                         <Border Grid.Column="1" Style="{StaticResource MetaBadgeBorder}" VerticalOptions="Center">
                             <Label Text="HOST / IP" FontFamily="monospace" FontSize="8" FontAttributes="Bold"
-                                   TextColor="{StaticResource MutedColor}" />
+                                   TextColor="{theme:ThemeColor MutedColor}" />
                         </Border>
                     </Grid>
                     <Label Text="The phone must be on the plant network."
                            Style="{StaticResource MetaLabel}" />
                     <Border Style="{StaticResource FieldBorder}">
                         <Grid ColumnDefinitions="Auto,*">
-                            <Image Source="icon_server.png"
+                            <Image Source="{theme:ThemeIcon icon_server}"
                                    WidthRequest="15"
                                    HeightRequest="15"
                                    Margin="12,0,9,0"
@@ -139,7 +153,7 @@
                     </Border>
                     <Border Style="{StaticResource FieldBorder}">
                         <Grid ColumnDefinitions="Auto,*">
-                            <Image Source="icon_tag.png"
+                            <Image Source="{theme:ThemeIcon icon_tag}"
                                    WidthRequest="15"
                                    HeightRequest="15"
                                    Margin="12,0,9,0"
@@ -160,10 +174,10 @@
                     </Grid>
                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="6">
                         <ActivityIndicator x:Name="busyIndicator" WidthRequest="16" HeightRequest="16"
-                                           Color="{StaticResource GoodColor}" IsRunning="False"
+                                           Color="{theme:ThemeColor GoodColor}" IsRunning="False"
                                            IsVisible="False" VerticalOptions="Center" />
                         <Label Grid.Column="1" x:Name="connectionMessageLabel" Text="" FontSize="10"
-                               TextColor="{StaticResource MutedColor}" LineBreakMode="WordWrap">
+                               TextColor="{theme:ThemeColor MutedColor}" LineBreakMode="WordWrap">
                             <Label.Triggers>
                                 <Trigger TargetType="Label" Property="Text" Value="">
                                     <Setter Property="IsVisible" Value="False" />
@@ -177,12 +191,44 @@
             <Border Style="{StaticResource CardBorder}">
                 <VerticalStackLayout Spacing="10">
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <Label Text="Appearance" Style="{StaticResource SectionTitleLabel}" VerticalOptions="Center" />
+                        <Border Grid.Column="1" Style="{StaticResource MetaBadgeBorder}" VerticalOptions="Center">
+                            <Label Text="DISPLAY" FontFamily="monospace" FontSize="8" FontAttributes="Bold"
+                                   TextColor="{theme:ThemeColor MutedColor}" />
+                        </Border>
+                    </Grid>
+                    <Label Text="Follow the phone, or pin the viewer's surface."
+                           Style="{StaticResource MetaLabel}" />
+                    <Border BackgroundColor="{theme:ThemeColor SurfaceColor}"
+                            Stroke="{theme:ThemeColor BorderColor}"
+                            StrokeThickness="1"
+                            StrokeShape="RoundRectangle 11"
+                            Padding="3"
+                            HeightRequest="36">
+                        <Grid ColumnDefinitions="*,*,*" ColumnSpacing="2">
+                            <Button x:Name="themeSystemButton" Grid.Column="0" Text="System"
+                                    Style="{StaticResource ThemeSegmentButton}"
+                                    CommandParameter="System" Clicked="OnThemeClicked" />
+                            <Button x:Name="themeLightButton" Grid.Column="1" Text="Light"
+                                    Style="{StaticResource ThemeSegmentButton}"
+                                    CommandParameter="Light" Clicked="OnThemeClicked" />
+                            <Button x:Name="themeDarkButton" Grid.Column="2" Text="Dark"
+                                    Style="{StaticResource ThemeSegmentButton}"
+                                    CommandParameter="Dark" Clicked="OnThemeClicked" />
+                        </Grid>
+                    </Border>
+                </VerticalStackLayout>
+            </Border>
+
+            <Border Style="{StaticResource CardBorder}">
+                <VerticalStackLayout Spacing="10">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                         <Label Text="Account" Style="{StaticResource SectionTitleLabel}" VerticalOptions="Center" />
-                        <Image Grid.Column="1" Source="icon_lock.png"
+                        <Image Grid.Column="1" Source="{theme:ThemeIcon icon_lock}"
                                WidthRequest="13" HeightRequest="13" VerticalOptions="Center" />
                     </Grid>
                     <Grid ColumnDefinitions="Auto,*" ColumnSpacing="9">
-                        <Border BackgroundColor="{StaticResource SurfaceAltColor}"
+                        <Border BackgroundColor="{theme:ThemeColor SurfaceAltColor}"
                                 StrokeThickness="0"
                                 StrokeShape="RoundRectangle 9"
                                 WidthRequest="32"
@@ -191,14 +237,14 @@
                                    Text="—"
                                    FontSize="10"
                                    FontAttributes="Bold"
-                                   TextColor="{StaticResource GoodColor}"
+                                   TextColor="{theme:ThemeColor GoodColor}"
                                    HorizontalOptions="Center"
                                    VerticalOptions="Center" />
                         </Border>
                         <VerticalStackLayout Grid.Column="1" Spacing="0" VerticalOptions="Center">
                             <Label x:Name="sessionName" FontSize="12" FontAttributes="Bold" />
                             <Label x:Name="sessionLabel" FontSize="9.5"
-                                   TextColor="{StaticResource MutedColor}" />
+                                   TextColor="{theme:ThemeColor MutedColor}" />
                         </VerticalStackLayout>
                     </Grid>
                     <Button x:Name="signOutButton" Text="Sign out"
@@ -229,7 +275,7 @@
                            Style="{StaticResource MetaLabel}" LineBreakMode="WordWrap" />
                     <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="6">
                         <Label Text="Sync state" FontSize="10"
-                               TextColor="{StaticResource MutedColor}" VerticalOptions="Center" />
+                               TextColor="{theme:ThemeColor MutedColor}" VerticalOptions="Center" />
                         <BoxView Grid.Column="2" x:Name="syncStateDot"
                                  WidthRequest="6" HeightRequest="6" CornerRadius="3"
                                  VerticalOptions="Center" />
@@ -238,7 +284,7 @@
                     </Grid>
                     <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="6">
                         <Label Text="Network latency" FontSize="10"
-                               TextColor="{StaticResource MutedColor}" VerticalOptions="Center" />
+                               TextColor="{theme:ThemeColor MutedColor}" VerticalOptions="Center" />
                         <BoxView Grid.Column="2" x:Name="latencyDot"
                                  WidthRequest="6" HeightRequest="6" CornerRadius="3"
                                  VerticalOptions="Center" />
@@ -251,7 +297,7 @@
                     <VerticalStackLayout x:Name="outboxList" Spacing="8">
                         <BindableLayout.ItemTemplate>
                             <DataTemplate>
-                                <Border BackgroundColor="{StaticResource SurfaceAltColor}"
+                                <Border BackgroundColor="{theme:ThemeColor SurfaceAltColor}"
                                         StrokeThickness="0"
                                         StrokeShape="RoundRectangle 10"
                                         Padding="10">
@@ -267,12 +313,12 @@
                                         </Grid>
                                         <Label Text="{Binding TargetText}" FontSize="10.5" />
                                         <Label Text="{Binding Detail}" FontSize="9.5"
-                                               TextColor="{StaticResource MutedColor}" LineBreakMode="WordWrap" />
+                                               TextColor="{theme:ThemeColor MutedColor}" LineBreakMode="WordWrap" />
                                         <Label Text="{Binding QueuedText, StringFormat='queued {0}'}"
                                                FontFamily="monospace" FontSize="8.5"
-                                               TextColor="{StaticResource MutedColor}" />
+                                               TextColor="{theme:ThemeColor MutedColor}" />
                                         <Label Text="{Binding Error}" IsVisible="{Binding HasError}" FontSize="9"
-                                               TextColor="{StaticResource BadColor}" LineBreakMode="WordWrap" />
+                                               TextColor="{theme:ThemeColor BadColor}" LineBreakMode="WordWrap" />
                                         <HorizontalStackLayout Spacing="6" IsVisible="{Binding IsActionable}">
                                             <Button Text="Retry" Style="{StaticResource TinyButton}"
                                                     Clicked="OnRetryOutboxClicked" />
@@ -285,7 +331,7 @@
                         </BindableLayout.ItemTemplate>
                     </VerticalStackLayout>
                     <Label x:Name="outboxEmptyLabel" Text="Nothing queued for the selected bridge."
-                           FontSize="10.5" TextColor="{StaticResource MutedColor}" />
+                           FontSize="10.5" TextColor="{theme:ThemeColor MutedColor}" />
                 </VerticalStackLayout>
             </Border>
 
@@ -295,13 +341,13 @@
                         <Label Text="About" Style="{StaticResource SectionTitleLabel}" />
                         <Border Grid.Column="1" Style="{StaticResource MetaBadgeBorder}" VerticalOptions="Center">
                             <Label x:Name="aboutVersionLabel" FontFamily="monospace" FontSize="8"
-                                   FontAttributes="Bold" TextColor="{StaticResource MutedColor}" />
+                                   FontAttributes="Bold" TextColor="{theme:ThemeColor MutedColor}" />
                         </Border>
                     </Grid>
                     <Label x:Name="aboutTextLabel" FontSize="10.5"
-                           TextColor="{StaticResource MutedColor}" LineBreakMode="WordWrap" />
+                           TextColor="{theme:ThemeColor MutedColor}" LineBreakMode="WordWrap" />
                     <Label x:Name="aboutFooterLabel" FontSize="9.5"
-                           TextColor="{StaticResource MutedColor}" LineBreakMode="WordWrap" />
+                           TextColor="{theme:ThemeColor MutedColor}" LineBreakMode="WordWrap" />
                 </VerticalStackLayout>
             </Border>
         </VerticalStackLayout>

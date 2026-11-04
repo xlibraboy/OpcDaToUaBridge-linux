@@ -19,6 +19,7 @@ public partial class ElementsPage : ContentPage
         kindPermissiveButton.BindingContext = elements_.KindFilters[2];
         kindSequenceButton.BindingContext = elements_.KindFilters[3];
         coordinator_.Changed += OnChanged;
+        ThemeManager.Changed += OnThemeChanged;
         RefreshFilterUi();
     }
 
@@ -31,6 +32,18 @@ public partial class ElementsPage : ContentPage
     }
 
     private void OnChanged() => MainThread.BeginInvokeOnMainThread(Repaint);
+
+    /// <summary>
+    /// Converters resolve a state colour when a row is built, so a theme switch rebuilds the
+    /// grouped list rather than leaving the old surface's colours in place.
+    /// </summary>
+    private void OnThemeChanged() => MainThread.BeginInvokeOnMainThread(() =>
+    {
+        elementsView.ItemsSource = null;
+        elementsView.ItemsSource = elements_.VisibleGroups;
+        Repaint();
+        latencyBadge.RefreshTheme();
+    });
 
     private void Repaint()
     {
@@ -68,15 +81,15 @@ public partial class ElementsPage : ContentPage
         summaryLabel.Text = elements_.Summary;
         sourceLabel.Text = elements_.SourceText;
         Color sourceColor = elements_.IsOffline
-            ? Color.FromArgb("#E2A336")
-            : Color.FromArgb("#4CC38A");
+            ? ThemePalette.Get("WarnColor")
+            : ThemePalette.Get("GoodColor");
         sourceDot.Color = sourceColor;
         sourceLabel.TextColor = sourceColor;
         connectionDot.Color = active is null
-            ? Color.FromArgb("#93A19B")
-            : active.IsOffline ? Color.FromArgb("#E5484D")
-            : active.IsConnected ? Color.FromArgb("#4CC38A")
-            : Color.FromArgb("#E2A336");
+            ? ThemePalette.Get("MutedColor")
+            : active.IsOffline ? ThemePalette.Get("BadColor")
+            : active.IsConnected ? ThemePalette.Get("GoodColor")
+            : ThemePalette.Get("WarnColor");
         connectionLabel.Text = active is null
             ? "no bridges yet — add one under Settings ▸ Bridges"
             : active.StatusText;

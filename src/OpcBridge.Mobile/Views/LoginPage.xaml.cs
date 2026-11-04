@@ -27,6 +27,8 @@ public partial class LoginPage : ContentPage
         base.OnAppearing();
         coordinator_.Changed -= OnChanged;
         coordinator_.Changed += OnChanged;
+        ThemeManager.Changed -= OnThemeChanged;
+        ThemeManager.Changed += OnThemeChanged;
         Repaint();
 
         // A saved bridge is remembered across launches; asking it for its session is what puts
@@ -46,10 +48,13 @@ public partial class LoginPage : ContentPage
     {
         connectCts_?.Cancel();
         coordinator_.Changed -= OnChanged;
+        ThemeManager.Changed -= OnThemeChanged;
         base.OnDisappearing();
     }
 
     private void OnChanged() => MainThread.BeginInvokeOnMainThread(Repaint);
+
+    private void OnThemeChanged() => MainThread.BeginInvokeOnMainThread(Repaint);
 
     private void BeginBusy()
     {
@@ -74,8 +79,8 @@ public partial class LoginPage : ContentPage
         BridgeConnection? active = coordinator_.Active;
         bridgePickerLabel.Text = active?.DisplayName ?? "Saved bridges";
         bridgePickerLabel.TextColor = active is null
-            ? Color.FromArgb("#93A19B")
-            : Color.FromArgb("#F1F5F3");
+            ? ThemePalette.Get("MutedColor")
+            : ThemePalette.Get("TextColor");
 
         string stateKey = active is null
             ? "unknown"
@@ -218,9 +223,9 @@ public partial class LoginPage : ContentPage
 
     private static Color DotColor(string key) => key switch
     {
-        "synced" => Color.FromArgb("#4CC38A"),
-        "error" or "offline" => Color.FromArgb("#E5484D"),
-        _ => Color.FromArgb("#93A19B")
+        "synced" => ThemePalette.Get("GoodColor"),
+        "error" or "offline" => ThemePalette.Get("BadColor"),
+        _ => ThemePalette.Get("MutedColor")
     };
 
     private async void OnSignInClicked(object? sender, EventArgs e)
