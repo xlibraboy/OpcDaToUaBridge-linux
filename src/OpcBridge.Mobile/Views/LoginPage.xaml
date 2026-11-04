@@ -7,9 +7,9 @@
              Title="Sign in"
              Shell.NavBarIsVisible="False"
              BackgroundColor="{theme:ThemeColor PageBg}">
-    <Grid RowDefinitions="*,Auto" Padding="20,0,20,16">
+    <Grid RowDefinitions="*,Auto">
         <ScrollView Grid.Row="0">
-        <VerticalStackLayout Padding="0,8,0,16" Spacing="14">
+        <VerticalStackLayout Padding="20,8,20,16" Spacing="14">
             <HorizontalStackLayout Spacing="12" VerticalOptions="Center">
                 <Border Style="{StaticResource LogoBorder}">
                     <Image Source="{theme:ThemeIcon icon_workflow}"
@@ -235,7 +235,7 @@
 
         </VerticalStackLayout>
         </ScrollView>
-        <Grid Grid.Row="1" ColumnDefinitions="Auto,*" ColumnSpacing="6" Margin="0,4,0,0">
+        <Grid Grid.Row="1" ColumnDefinitions="Auto,*" ColumnSpacing="6" Margin="20,4,20,16">
             <Image Source="{theme:ThemeIcon icon_shield_check}"
                    WidthRequest="13"
                    HeightRequest="13"
@@ -247,6 +247,6 @@
                    TextColor="{theme:ThemeColor MutedColor}"
                    LineBreakMode="WordWrap" />
         </Grid>
-        <views:BridgePickerSheet x:Name="bridgeSheet" />
+        <views:BridgePickerSheet x:Name="bridgeSheet" Grid.Row="0" Grid.RowSpan="2" />
     </Grid>
 </ContentPage>
