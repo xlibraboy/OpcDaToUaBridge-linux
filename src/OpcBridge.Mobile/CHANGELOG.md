@@ -67,6 +67,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   into their own card that opens on request (from the row or the picker sheet's **New bridge…**)
   and closes again once a bridge connects — so picking a saved bridge no longer sits next to an
   **Add & connect** button that answers *Enter the bridge host or IP first.*
+- **The start-up bridge search can be interrupted.** Sign in used to lock the saved-bridge
+  picker until the remembered bridge's search finished, so a phone away from that bridge's
+  network could not switch to another saved bridge until the probe timed out. The picker now
+  opens during the search, and picking a bridge cancels the search and connects the picked one.
 
 ### Fixed
 

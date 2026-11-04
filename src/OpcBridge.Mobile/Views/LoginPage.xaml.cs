@@ -11,9 +11,14 @@ namespace OpcBridge.Mobile.Views;
 public partial class LoginPage : ContentPage
 {
     private readonly BridgeCoordinator coordinator_;
-    private bool busy_;
+    private int busyOperations_;
     private CancellationTokenSource? connectCts_;
+    private CancellationTokenSource? startupCts_;
+    private bool startingUp_;
     private string? statusNote_;
+
+    /// <summary>True while any operation owns the bridge (start-up search, add, activation).</summary>
+    private bool Busy => busyOperations_ > 0;
 
     public LoginPage(BridgeCoordinator coordinator)
     {
@@ -35,14 +40,23 @@ public partial class LoginPage : ContentPage
         Repaint();
 
         // A saved bridge is remembered across launches; asking it for its session is what puts
-        // its status (and whether it enforces sign-in) on this screen.
+        // its status (and whether it enforces sign-in) on this screen. The search is cancellable:
+        // picking another bridge from the picker stops it instead of waiting for the probe.
+        startupCts_?.Dispose();
+        startupCts_ = new CancellationTokenSource();
+        startingUp_ = true;
         BeginBusy();
         try
         {
-            await coordinator_.ConnectActiveAsync(CancellationToken.None);
+            await coordinator_.ConnectActiveAsync(startupCts_.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // Another saved bridge was picked while the start-up search was still running.
         }
         finally
         {
+            startingUp_ = false;
             EndBusy();
         }
     }
@@ -50,6 +64,7 @@ public partial class LoginPage : ContentPage
     protected override void OnDisappearing()
     {
         connectCts_?.Cancel();
+        startupCts_?.Cancel();
         coordinator_.Changed -= OnChanged;
         ThemeManager.Changed -= OnThemeChanged;
         base.OnDisappearing();
@@ -61,19 +76,21 @@ public partial class LoginPage : ContentPage
 
     private void BeginBusy()
     {
-        busy_ = true;
-        busyIndicator.IsVisible = true;
-        busyIndicator.IsRunning = true;
-        cancelConnectButton.IsVisible = connectCts_ is not null;
-        Repaint();
+        busyOperations_++;
+        UpdateBusyVisuals();
     }
 
     private void EndBusy()
     {
-        busy_ = false;
-        busyIndicator.IsRunning = false;
-        busyIndicator.IsVisible = false;
-        cancelConnectButton.IsVisible = false;
+        busyOperations_ = Math.Max(0, busyOperations_ - 1);
+        UpdateBusyVisuals();
+    }
+
+    private void UpdateBusyVisuals()
+    {
+        busyIndicator.IsVisible = Busy;
+        busyIndicator.IsRunning = Busy;
+        cancelConnectButton.IsVisible = connectCts_ is not null;
         Repaint();
     }
 
@@ -99,9 +116,9 @@ public partial class LoginPage : ContentPage
             : active.IsOffline ? active.OfflineText : active.Bridge.Url);
 
         // One action at a time: a connect in flight owns the bridge.
-        connectButton.IsEnabled = !busy_;
-        signInButton.IsEnabled = !busy_ && active is not null;
-        viewOfflineButton.IsVisible = !busy_ && active?.CanUseOffline == true;
+        connectButton.IsEnabled = !Busy;
+        signInButton.IsEnabled = !Busy && active is not null;
+        viewOfflineButton.IsVisible = !Busy && active?.CanUseOffline == true;
     }
 
     /// <summary>
@@ -122,7 +139,7 @@ public partial class LoginPage : ContentPage
 
     private async void OnConnectClicked(object? sender, EventArgs e)
     {
-        if (busy_)
+        if (Busy)
         {
             return;
         }
@@ -204,7 +221,9 @@ public partial class LoginPage : ContentPage
     /// </summary>
     private async void OnBridgeRowTapped(object? sender, TappedEventArgs e)
     {
-        if (busy_ || coordinator_.Bridges.Count == 0)
+        // Switching stays available while the start-up search runs (the pick cancels it);
+        // only an operation that cannot be superseded — adding a bridge — keeps the picker shut.
+        if ((Busy && !startingUp_) || coordinator_.Bridges.Count == 0)
         {
             return;
         }
@@ -215,6 +234,9 @@ public partial class LoginPage : ContentPage
             return;
         }
 
+        // The picked bridge takes the link: stop the start-up search before it can answer for
+        // the bridge being left behind.
+        startupCts_?.Cancel();
         BeginBusy();
         errorLabel.Text = string.Empty;
         statusNote_ = "connecting to " + picked.DisplayName + "…";
