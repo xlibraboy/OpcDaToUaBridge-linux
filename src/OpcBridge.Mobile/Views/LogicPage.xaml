@@ -23,7 +23,8 @@
             </Button>
         </DataTemplate>
     </ContentPage.Resources>
-    <Grid RowDefinitions="Auto,*" Padding="16,4,16,0" RowSpacing="12">
+    <Grid>
+        <Grid RowDefinitions="Auto,*" Padding="16,4,16,0" RowSpacing="12">
         <VerticalStackLayout Grid.Row="0" Spacing="12">
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10" Padding="0,2,0,4">
                 <VerticalStackLayout Spacing="3">
@@ -318,5 +319,7 @@
                 </CollectionView.ItemTemplate>
             </CollectionView>
         </RefreshView>
+        </Grid>
+        <views:BridgePickerSheet x:Name="bridgeSheet" />
     </Grid>
 </ContentPage>

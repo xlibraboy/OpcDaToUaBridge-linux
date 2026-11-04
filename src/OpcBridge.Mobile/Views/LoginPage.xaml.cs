@@ -19,6 +19,8 @@ public partial class LoginPage : ContentPage
     {
         InitializeComponent();
         coordinator_ = coordinator;
+        // The add-bridge form is this page's own card, so "New bridge…" just lands on it.
+        bridgeSheet.NewBridgeRequested += () => hostEntry.Focus();
         Repaint();
     }
 
@@ -183,8 +185,8 @@ public partial class LoginPage : ContentPage
     }
 
     /// <summary>
-    /// The bridge row is the saved-bridge picker. It opens the same list a spinner would, without
-    /// the platform Picker being disabled or re-selected underneath its own open dialog.
+    /// The bridge row is the saved-bridge picker. It opens the themed sheet instead of the
+    /// platform action sheet, so the list keeps the app's palette; picking a row activates it.
     /// </summary>
     private async void OnBridgeRowTapped(object? sender, TappedEventArgs e)
     {
@@ -193,32 +195,40 @@ public partial class LoginPage : ContentPage
             return;
         }
 
-        string[] names = coordinator_.Bridges.Select(connection => connection.DisplayName).ToArray();
-        string? picked = await DisplayActionSheet("Bridge", "Cancel", null, names);
-        int index = picked is null ? -1 : Array.IndexOf(names, picked);
-        if (index < 0 || ReferenceEquals(coordinator_.Bridges[index], coordinator_.Active))
+        BridgeConnection? picked = await bridgeSheet.ShowAsync(coordinator_.Bridges);
+        if (picked is null || ReferenceEquals(picked, coordinator_.Active))
         {
             return;
         }
 
-        BridgeConnection connection = coordinator_.Bridges[index];
         BeginBusy();
         errorLabel.Text = string.Empty;
-        statusNote_ = "connecting to " + connection.DisplayName + "…";
+        statusNote_ = "connecting to " + picked.DisplayName + "…";
         Repaint();
         try
         {
-            await coordinator_.ActivateAsync(connection, CancellationToken.None);
+            await coordinator_.ActivateAsync(picked, CancellationToken.None);
         }
         catch (Exception ex)
         {
-            errorLabel.Text = "✗ could not use " + connection.DisplayName + " · " + ex.Message;
+            errorLabel.Text = "✗ could not use " + picked.DisplayName + " · " + ex.Message;
         }
         finally
         {
             statusNote_ = null;
             EndBusy();
         }
+    }
+
+    protected override bool OnBackButtonPressed()
+    {
+        if (bridgeSheet.IsOpen)
+        {
+            bridgeSheet.Dismiss();
+            return true;
+        }
+
+        return base.OnBackButtonPressed();
     }
 
     private static Color DotColor(string key) => key switch

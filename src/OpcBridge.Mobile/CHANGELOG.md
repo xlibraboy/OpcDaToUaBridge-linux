@@ -55,6 +55,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   carries its own back bar, checkpoint rail and send-note composer. The saved-bridge row now
   opens a sheet instead of a platform picker, so choosing a bridge cannot stall the page.
   The tab bar, splash and app theme follow the same dark plant-floor palette.
+- **Choosing a bridge is a themed sheet, not the platform action sheet.** The picker — opened
+  from the Sign in bridge row or the Logic tab's bridge chip — now draws the app's own scrim and
+  bottom sheet in the palette's colours, on both appearances: the saved bridges with their state
+  dot, address and an **ACTIVE** pill on the running one, a **New bridge…** row (Sign in's
+  add-bridge form, or Settings ▸ Bridges from the tabs) and **Cancel**. Opening the sheet
+  dismisses the soft keyboard, Android's back button closes it instead of leaving the screen,
+  its rows repaint with an appearance switch, and an empty saved list says *No saved bridges yet.*
 
 ### Fixed
 

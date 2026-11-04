@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:theme="clr-namespace:OpcBridge.Mobile"
+             x:Class="OpcBridge.Mobile.Views.BridgePickerSheet">
+    <!-- The themed replacement for the platform action sheet: a scrim over the page and the
+         saved-bridge sheet rising from the bottom edge, drawn only in the app's own palette. -->
+    <Grid x:Name="overlayRoot" IsVisible="False">
+        <BoxView x:Name="scrimView"
+                 Color="{theme:ThemeColor ScrimColor}">
+            <BoxView.GestureRecognizers>
+                <TapGestureRecognizer Tapped="OnDismissTapped" />
+            </BoxView.GestureRecognizers>
+        </BoxView>
+        <Border x:Name="sheetPanel"
+                VerticalOptions="End"
+                BackgroundColor="{theme:ThemeColor SurfaceColor}"
+                Stroke="{theme:ThemeColor BorderColor}"
+                StrokeThickness="1"
+                StrokeShape="RoundRectangle 24,24,0,0"
+                Padding="16,10,16,16">
+            <Border.GestureRecognizers>
+                <!-- Taps on the sheet's own padding must not fall through to the scrim. -->
+                <TapGestureRecognizer Tapped="OnSheetTapped" />
+            </Border.GestureRecognizers>
+            <VerticalStackLayout Spacing="12">
+                <BoxView WidthRequest="36"
+                         HeightRequest="4"
+                         CornerRadius="2"
+                         Color="{theme:ThemeColor BorderColor}"
+                         HorizontalOptions="Center" />
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+                    <VerticalStackLayout Spacing="2">
+                        <Label Text="Bridge" FontSize="17" FontAttributes="Bold" />
+                        <Label Text="Tap a saved bridge to activate it"
+                               FontSize="10.5"
+                               TextColor="{theme:ThemeColor MutedColor}" />
+                    </VerticalStackLayout>
+                    <Border Grid.Column="1"
+                            BackgroundColor="{theme:ThemeColor SurfaceAltColor}"
+                            StrokeThickness="0"
+                            StrokeShape="RoundRectangle 10"
+                            WidthRequest="34"
+                            HeightRequest="34"
+                            Padding="0"
+                            VerticalOptions="Center">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnDismissTapped" />
+                        </Border.GestureRecognizers>
+                        <Image Source="{theme:ThemeIcon icon_x}"
+                               WidthRequest="16"
+                               HeightRequest="16"
+                               HorizontalOptions="Center"
+                               VerticalOptions="Center" />
+                    </Border>
+                </Grid>
+                <Label Text="SAVED BRIDGES" Style="{StaticResource UppercaseLabel}" />
+                <VerticalStackLayout x:Name="rowsHost" Spacing="8" />
+                <Button Text="Cancel"
+                        Clicked="OnDismissTapped"
+                        BackgroundColor="{theme:ThemeColor SurfaceAltColor}"
+                        TextColor="{theme:ThemeColor TextColor}"
+                        FontAttributes="Bold"
+                        FontSize="14"
+                        CornerRadius="12"
+                        Padding="0"
+                        HeightRequest="44"
+                        MinimumHeightRequest="44" />
+            </VerticalStackLayout>
+        </Border>
+    </Grid>
+</ContentView>

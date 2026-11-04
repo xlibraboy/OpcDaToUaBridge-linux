@@ -14,6 +14,8 @@ public partial class LogicPage : ContentPage
         coordinator_ = coordinator;
         coordinator_.Changed += OnChanged;
         ThemeManager.Changed += OnThemeChanged;
+        // Adding a bridge lives under Settings; the sheet hands the operator over there.
+        bridgeSheet.NewBridgeRequested += async () => await Shell.Current.GoToAsync("//settings");
         RefreshFilterUi();
     }
 
@@ -161,7 +163,7 @@ public partial class LogicPage : ContentPage
         RefreshFilterUi();
     }
 
-    /// <summary>The bridge chip is the picker: one live link at a time, chosen by name.</summary>
+    /// <summary>The bridge chip is the picker: one live link at a time, chosen in the themed sheet.</summary>
     private async void OnBridgeChipTapped(object? sender, TappedEventArgs e)
     {
         if (coordinator_.Bridges.Count == 0)
@@ -170,16 +172,25 @@ public partial class LogicPage : ContentPage
             return;
         }
 
-        string[] names = coordinator_.Bridges.Select(connection => connection.DisplayName).ToArray();
-        string? picked = await DisplayActionSheet("Bridge", "Cancel", null, names);
-        int index = picked is null ? -1 : Array.IndexOf(names, picked);
-        if (index < 0 || ReferenceEquals(coordinator_.Bridges[index], coordinator_.Active))
+        BridgeConnection? picked = await bridgeSheet.ShowAsync(coordinator_.Bridges);
+        if (picked is null || ReferenceEquals(picked, coordinator_.Active))
         {
             return;
         }
 
-        await coordinator_.ActivateAsync(coordinator_.Bridges[index], CancellationToken.None);
+        await coordinator_.ActivateAsync(picked, CancellationToken.None);
         Repaint();
+    }
+
+    protected override bool OnBackButtonPressed()
+    {
+        if (bridgeSheet.IsOpen)
+        {
+            bridgeSheet.Dismiss();
+            return true;
+        }
+
+        return base.OnBackButtonPressed();
     }
 
     private async void OnRefreshClicked(object? sender, TappedEventArgs e)
