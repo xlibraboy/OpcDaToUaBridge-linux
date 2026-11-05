@@ -1504,26 +1504,47 @@ function tagLabel(def, block = draft) {
   return def.itemId ? catalogLabel(def.sourceId, def.itemId) : '';
 }
 
-// A result row's tag line: a button when the row reads a real tag, so its source and its readers
-// are one click away. An internal relay stays plain — it has no source tag.
-function renderTagLine(def) {
-  const label = tagLabel(def);
-  if (!label) return null;
-  const ref = tagReference(draft, def);
-  if (!ref) return h('span', { class: 'rl-line rl-tag muted', text: label });
+// A digital tag's mapped state text (OnText/OffText, or the bridge's On/Off fallback). Numeric
+// readings stay out of the row: the tag inspector carries the raw live value.
+function stateChipText(state) {
+  const text = (state && state.valueText ? state.valueText : '').trim();
+  if (!text || text === '—') return '';
+  return /^[+-]?\d/.test(text) ? '' : text;
+}
 
+const TAG_ICON_NS = 'http' + '://www.w3.org/2000/svg';
+
+// The row's tag icon: the lucide tag outline, drawn as a real SVG (the page's h() helper makes
+// HTML elements only, and an inline SVG is a different namespace).
+function tagGlyph() {
+  const svg = document.createElementNS(TAG_ICON_NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  const path = document.createElementNS(TAG_ICON_NS, 'path');
+  path.setAttribute('d', 'M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z');
+  const dot = document.createElementNS(TAG_ICON_NS, 'circle');
+  dot.setAttribute('cx', '7.5');
+  dot.setAttribute('cy', '7.5');
+  dot.setAttribute('r', '.5');
+  svg.appendChild(path);
+  svg.appendChild(dot);
+  return svg;
+}
+
+// A result row's tag detail: one icon opens the shared inspector for this tag. An internal
+// relay has no source tag and stays plain.
+function renderTagIcon(def) {
+  const ref = tagReference(draft, def);
+  if (!ref) return null;
   const count = tagReaders(ref).length;
-  const uses = count ? count + (count === 1 ? ' block' : ' blocks') : 'unused';
-  return h('span', { class: 'rl-line rl-tag muted' },
-    h('button', {
-      class: 'tag-link' + (tagFocus && tagFocus.ref.key === ref.key ? ' on' : ''),
-      type: 'button',
-      'data-tag-key': ref.key,
-      title: 'Where this tag comes from, and which blocks use it',
-      onclick: () => openTagPanel(ref)
-    },
-      h('span', { class: 'tag-link-label', text: label }),
-      h('span', { class: 'tag-link-count', text: uses })));
+  return h('button', {
+    class: 'tag-icon' + (tagFocus && tagFocus.ref.key === ref.key ? ' on' : ''),
+    type: 'button',
+    'data-tag-key': ref.key,
+    title: 'Tag detail — source, contact and readers' + (count ? ' · ' + count + (count === 1 ? ' block' : ' blocks') : ''),
+    'aria-label': 'Open tag detail',
+    onclick: () => openTagPanel(ref)
+  }, tagGlyph());
 }
 
 // A stored (sourceId, itemId) pair as the plant reads it: the tag's display name and its source's
@@ -1535,50 +1556,45 @@ function catalogLabel(sourceId, itemId) {
   return (tag.sourceName || '').trim() ? label + ' · ' + tag.sourceName.trim() : label;
 }
 
-// One evaluated element, the way the retired Logic app presented it: the mark, the form it takes,
-// the sentence that explains it, the bit it reads and the raw value behind it, then the small
-// print (the comparison, progress, the tag, what to do next).
+// One evaluated element as a single result line: the mark, the contact form / pin, the sentence,
+// the should/actual comparison, the tag's mapped state text in its own chip, and the tag-detail
+// icon. The raw value, device contact and field state live in the shared tag inspector.
 function resultRow(state, def, depth) {
   // The bridge expands a block's flat conditions into wrappers (a TON around a held contact,
   // an OR group, the AND over the roots). Those wrappers have no authored definition of their
-  // own — the state now carries the definition fields they need (text, op, preset, severity,
-  // next step) — so a wrapper row reads exactly like the elements it wraps.
+  // own — the state carries the definition fields they need — so a wrapper row reads exactly
+  // like the elements it wraps.
   def = def || state;
   const row = h('div', { class: 'rl', 'data-id': state.id, 'data-live': '1', style: '--depth:' + depth });
-  const card = h('div', { class: 'rl-card ' + statePill(state.state) },
-    h('div', { class: 'rl-head' },
-      h('span', { class: 'rl-mark', text: state.state === 'true' ? '✓' : state.state === 'false' ? '✗' : '—' }),
-      h('span', { class: 'rl-kind', text: kindLabelFor(state, def) }),
-      h('span', { class: 'rl-text', text: def ? def.text : '' },
-        def && def.severity === 'warn' ? h('span', { class: 'warnline', text: ' warn only' }) : null),
-      h('span', { class: 'rl-actual', text: actualBit(state, def) }),
-      h('span', { class: 'rl-value mono small', text: state.valueText || '—' })));
-  card.__state = state;
-  card.__def = def;
+  const head = h('div', { class: 'rl-head' },
+    h('span', { class: 'rl-mark', text: state.state === 'true' ? '✓' : state.state === 'false' ? '✗' : '—' }),
+    h('span', { class: 'rl-kind', text: kindLabelFor(state, def) }),
+    h('span', { class: 'rl-text', text: def ? def.text : '' },
+      def && def.severity === 'warn' ? h('span', { class: 'warnline', text: ' warn only' }) : null));
 
   const comparison = shouldLine(state, def);
   if (comparison) {
-    card.appendChild(h('span', {
-      class: 'rl-line rl-should ' + (state.matches === true ? 'ok' : state.matches === false ? 'bad' : 'unknown'),
+    head.appendChild(h('span', {
+      class: 'rl-compare ' + (state.matches === true ? 'ok' : state.matches === false ? 'bad' : 'unknown'),
       text: comparison
     }));
+  } else {
+    head.appendChild(h('span', { class: 'rl-actual', text: actualBit(state, def) }));
   }
 
-  // The external device's own contact form, and what the live bit says it is doing. A reading of
-  // the source beside the interlock's reading — the verdict itself stays the tag's.
-  const field = fieldLine(state, def);
-  if (field) card.appendChild(h('span', { class: 'rl-line rl-field muted', text: field }));
-
-  const progress = progressLine(state, def);
-  if (progress) card.appendChild(h('span', { class: 'rl-line rl-progress warn', text: progress }));
-
-  const tagLine = renderTagLine(def);
-  if (tagLine) card.appendChild(tagLine);
-
-  if (def && def.nextStepText && state.state !== 'true') {
-    card.appendChild(h('span', { class: 'rl-line warn', text: def.nextStepText }));
+  const chip = comparison ? stateChipText(state) : '';
+  if (chip) {
+    head.appendChild(h('span', { class: 'state-chip' },
+      h('span', { class: 'state-chip-label', text: 'STATE' }),
+      h('span', { class: 'state-chip-word', text: chip })));
   }
 
+  const tagIcon = renderTagIcon(def);
+  if (tagIcon) head.appendChild(tagIcon);
+
+  const card = h('div', { class: 'rl-card ' + statePill(state.state) }, head);
+  card.__state = state;
+  card.__def = def;
   row.appendChild(card);
   return row;
 }
@@ -2151,7 +2167,7 @@ function renderTagPanel() {
 function openTagPanel(ref) {
   if (tagFocus && tagFocus.ref.key === ref.key) { closeTagPanel(); return; }
   tagFocus = { ref: ref, view: tagFocus ? tagFocus.view : 'source' };
-  for (const button of document.querySelectorAll('.tag-link')) {
+  for (const button of document.querySelectorAll('.tag-icon')) {
     button.classList.toggle('on', button.dataset.tagKey === ref.key);
   }
   renderTagPanel();
@@ -2159,7 +2175,7 @@ function openTagPanel(ref) {
 
 function closeTagPanel() {
   tagFocus = null;
-  for (const button of document.querySelectorAll('.tag-link.on')) button.classList.remove('on');
+  for (const button of document.querySelectorAll('.tag-icon.on')) button.classList.remove('on');
   renderTagPanel();
 }
 
@@ -2942,24 +2958,14 @@ function paintResultCard(card, state) {
   const actual = card.querySelector('.rl-actual');
   if (actual) actual.textContent = actualBit(state, def);
 
-  const value = card.querySelector('.rl-value');
-  if (value) value.textContent = state.valueText || '—';
-
-  const should = card.querySelector('.rl-should');
-  if (should) {
-    should.className = 'rl-line rl-should ' + (state.matches === true ? 'ok' : state.matches === false ? 'bad' : 'unknown');
-    should.textContent = shouldLine(state, def);
+  const compare = card.querySelector('.rl-compare');
+  if (compare) {
+    compare.className = 'rl-compare ' + (state.matches === true ? 'ok' : state.matches === false ? 'bad' : 'unknown');
+    compare.textContent = shouldLine(state, def);
   }
 
-  const field = card.querySelector('.rl-field');
-  if (field) {
-    const text = fieldLine(state, def);
-    field.textContent = text;
-    field.hidden = !text;
-  }
-
-  const progress = card.querySelector('.rl-progress');
-  if (progress) progress.textContent = progressLine(state, def);
+  const stateWord = card.querySelector('.state-chip-word');
+  if (stateWord) stateWord.textContent = stateChipText(state) || '—';
 }
 
 function paintTagLive(cell) {
@@ -2986,16 +2992,8 @@ function paintTagPanelField() {
   field.textContent = fieldState((field.dataset.contact || '').toLowerCase(), tagBit(tag)) || '—';
 }
 
-// The tag lines of the rendered result rows, re-labelled once the bridge's names arrive.
+// The tag names of the inspector and its live value, refreshed once the bridge's names arrive.
 function repaintResultTags() {
-  for (const card of document.querySelectorAll('.rl-card')) {
-    const line = card.querySelector('.rl-tag');
-    if (!line || !card.__def) continue;
-    const text = tagLabel(card.__def);
-    const label = line.querySelector('.tag-link-label') || line;
-    if (text) label.textContent = text;
-  }
-
   for (const cell of document.querySelectorAll('[data-live-tag]')) paintTagLive(cell);
   renderTagPanel();
 }

@@ -122,6 +122,9 @@ body {
 .pill.live { background: var(--good-bg); border-color: var(--good-border); color: var(--good-text); }
 .pill.stale { background: var(--warn-bg); border-color: var(--warn-border); color: var(--warn-text); }
 .pill.down { background: var(--bad-bg); border-color: var(--bad-border); color: var(--bad-text); }
+/* `.pill` sets display, which beats the UA [hidden] rule: the empty output pill in the Result
+   header must actually disappear when the block has no output tag. */
+.pill[hidden] { display: none; }
 
 /* Theme picker: three settings with visible labels; ink marks the active one. The
    dashboard's own control under the same stored key, so a choice made here is the
@@ -769,7 +772,7 @@ select { cursor: pointer; }
 .res-side-tabs { display: flex; flex-wrap: wrap; gap: 2px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
 .res-side-body { display: flex; flex-direction: column; gap: 6px; }
 .res-side-row { display: flex; align-items: baseline; gap: 10px; }
-.res-side-label { flex: 0 0 84px; font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.res-side-label { flex: 0 0 104px; font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
 .res-side-value { flex: 1 1 auto; min-width: 0; color: var(--ink2); overflow-wrap: anywhere; }
 .res-side .warnline { display: block; }
 .res-side-section { margin-top: 6px; font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
@@ -793,25 +796,6 @@ select { cursor: pointer; }
 .res-use-name { flex: 1 1 auto; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .res-use-meta { overflow-wrap: anywhere; }
 .res-use .rl-line { color: var(--ink2); }
-
-/* A result tag opens the inspector: the label is dotted-underlined and the count says how many
-   blocks read it before the click. */
-.tag-link {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-.tag-link-label { text-decoration: underline dotted; text-underline-offset: 2px; }
-.tag-link:hover .tag-link-label { text-decoration-style: solid; }
-.tag-link.on { color: var(--info); }
-.tag-link-count { color: var(--muted); font-family: var(--font-ui); white-space: nowrap; }
 
 .res-width { display: inline-flex; gap: 2px; }
 /* The control rides a section heading, whose small caps and tracking are for the heading's own
@@ -923,18 +907,26 @@ select { cursor: pointer; }
   padding: 8px 10px;
   display: flex;
   flex-direction: column;
+  justify-content: center;
+  min-height: 44px;
   gap: 2px;
 }
 .rl-card.ok { border-left-color: var(--good); }
 .rl-card.bad { border-left-color: var(--bad); }
 .rl-card.warn { border-left-color: var(--warn); }
-.rl-head { display: flex; align-items: baseline; gap: 10px; }
+.rl-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .rl-mark { font-family: var(--font-mono); font-weight: 700; min-width: 18px; }
 .rl-card.ok .rl-mark { color: var(--good); }
 .rl-card.bad .rl-mark { color: var(--bad); }
 .rl-card.warn .rl-mark { color: var(--warn); }
-.rl-kind { font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--muted); min-width: 96px; }
-.rl-text { flex: 1 1 auto; min-width: 0; }
+.rl-kind { font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--muted); min-width: 56px; }
+.rl-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .rl-actual {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
@@ -942,10 +934,49 @@ select { cursor: pointer; }
   font-weight: 600;
   margin-left: auto;
 }
-.rl-value { color: var(--muted-strong); }
 .rl-card.ok .rl-actual { color: var(--good); }
 .rl-card.bad .rl-actual { color: var(--bad); }
 .rl-card.warn .rl-actual { color: var(--warn); }
+.rl-compare {
+  font-family: var(--font-mono);
+  font-size: var(--fs-micro);
+  white-space: nowrap;
+  color: var(--muted-strong);
+}
+.rl-compare.ok { color: var(--good); }
+.rl-compare.bad { color: var(--bad); }
+.rl-compare.unknown { color: var(--muted); }
+.state-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border: 1px solid var(--border2);
+  border-radius: 2px;
+  background: var(--panel2);
+  color: var(--muted-strong);
+  white-space: nowrap;
+}
+.state-chip-label { font-size: 9px; font-weight: 600; letter-spacing: .05em; color: var(--muted); }
+.state-chip-word { font-size: 10px; font-weight: 600; }
+.tag-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.tag-icon:hover { color: var(--text); background: var(--panel2); border-color: var(--border); }
+.tag-icon:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.tag-icon.on { color: var(--info); }
+.tag-icon svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.tag-icon svg circle { fill: currentColor; stroke: none; }
 .rl-line { font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--muted-strong); }
 .rl-line.ok { color: var(--good); }
 .rl-line.bad { color: var(--bad); }

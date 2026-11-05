@@ -173,10 +173,10 @@ public sealed class LogicPageTests
         Assert.Contains("From bridge…", script);
         Assert.Contains("tagNameFor(", script);
 
-        // Result: everything the retired Logic web app's result screen carried — the mark, the
-        // contact form / function-block pin, the sentence, the bit AND the raw value behind it,
-        // the comparison line, timer and counter progress, the tag in display names, what to do
-        // next, per-step cards, and the block rows' own state-and-reason line plus the summary.
+        // Result: one line per element — the mark, the contact form / function-block pin, the
+        // sentence, the should/actual comparison, the tag's mapped state text in its own chip,
+        // and the tag-detail icon. The raw value, device contact and next step moved out of the
+        // row; the tag inspector and the block header carry them.
         Assert.Contains("function renderResultTab(", script);
         Assert.Contains("function kindLabelFor(", script);
         Assert.Contains("function actualBit(", script);
@@ -193,9 +193,15 @@ public sealed class LogicPageTests
         Assert.Contains("function blockWhy(", script);
         Assert.Contains("function blockSummary(", script);
         Assert.Contains("STEP_WORD = { done: 'Done', current: 'Current', pending: 'Pending', unknown: 'No data' }", script);
-        // The raw reading sits beside the bit, and the next-step text waits for a false row.
-        Assert.Contains("'rl-value mono small'", script);
-        Assert.Contains("def.nextStepText && state.state !== 'true'", script);
+        // The row keeps the bits and puts the mapped state in a chip; the tag icon opens detail.
+        Assert.Contains("function stateChipText(", script);
+        Assert.Contains("function renderTagIcon(", script);
+        Assert.Contains("'rl-compare ' +", script);
+        Assert.Contains("'state-chip'", script);
+        Assert.Contains("'state-chip-label'", script);
+        Assert.Contains("'state-chip-word'", script);
+        Assert.DoesNotContain("'rl-value mono small'", script);
+        Assert.DoesNotContain("def.nextStepText && state.state !== 'true'", script);
         Assert.Contains("PIN_LABEL", script);
         Assert.Contains("ton: 'TON IN'", script);
     }
@@ -400,9 +406,17 @@ public sealed class LogicPageTests
         Assert.Contains("shouldLine(state, def)", live);
         Assert.DoesNotContain("state.matches = ", live);
 
+        // The one-line result row keeps the verdict and the bits; the device contact is in the
+        // shared tag inspector, beside the source and its live value.
         string result = Between(script, "function resultRow(", "const STEP_WORD");
-        Assert.Contains("fieldLine(state, def)", result);
-        Assert.Contains("class: 'rl-line rl-field muted'", result);
+        Assert.DoesNotContain("fieldLine(state, def)", result);
+        Assert.DoesNotContain("class: 'rl-line rl-field muted'", result);
+        Assert.Contains("stateChipText(state)", result);
+        Assert.Contains("renderTagIcon(def)", result);
+        string panel = Between(script, "function tagPanelSource(", "function tagPanelUsage(");
+        Assert.Contains("tagPanelRow('Device contact'", panel);
+        Assert.Contains("text: 'Field'", panel);
+        Assert.Contains("'data-panel-field'", panel);
     }
 
     [Fact]
@@ -417,7 +431,7 @@ public sealed class LogicPageTests
         Assert.Contains("def = def || state;", result);
         Assert.Contains("def.text", result);
         Assert.Contains("def.severity", result);
-        Assert.Contains("def.nextStepText", result);
+        Assert.DoesNotContain("def.nextStepText", result);
     }
 
     [Fact]
@@ -759,12 +773,12 @@ public sealed class LogicPageTests
         Assert.Contains("roles: []", script);
         // A block's output/coil drives the tag; that is the source the inspector names.
         Assert.Contains("'output ' + (block.outputTag || 'coil'), 'output'", script);
-        Assert.Contains("function renderTagLine(", script);
+        Assert.Contains("function renderTagIcon(", script);
         Assert.Contains("const count = tagReaders(ref).length;", script);
-        Assert.Contains("class: 'tag-link' + (tagFocus && tagFocus.ref.key === ref.key ? ' on' : '')", script);
+        Assert.Contains("class: 'tag-icon' + (tagFocus && tagFocus.ref.key === ref.key ? ' on' : '')", script);
         Assert.Contains("'data-tag-key': ref.key", script);
         Assert.Contains("onclick: () => openTagPanel(ref)", script);
-        Assert.Contains("text: uses", script);
+        Assert.Contains("'Tag detail — source, contact and readers'", script);
 
         // The inspector is the board's sibling, hidden until a tag is chosen. Source names the
         // block that drives it and the mapped source, Used by lists the blocks reading it.
@@ -796,7 +810,9 @@ public sealed class LogicPageTests
         Assert.Contains("flex: 1 1 320px;", side);
         Assert.Contains("position: sticky;", side);
         Assert.Contains("display: none;", Rule(css, ".res-side[hidden] {"));
-        Assert.Contains("text-decoration: underline dotted;", Rule(css, ".tag-link-label {"));
+        Assert.Contains("display: inline-flex;", Rule(css, ".tag-icon {"));
+        Assert.Contains("stroke: currentColor;", Rule(css, ".tag-icon svg {"));
+        Assert.Contains("display: inline-flex;", Rule(css, ".state-chip {"));
     }
 
     [Fact]
