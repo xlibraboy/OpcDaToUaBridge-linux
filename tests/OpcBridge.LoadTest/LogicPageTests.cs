@@ -650,60 +650,102 @@ public sealed class LogicPageTests
     }
 
     [Fact]
-    public void Script_ListsTheCheckpointsAndJumpsToTheirElement()
+    public void Script_ListsEveryCheckpointAndJumpsToItsRow()
     {
         string script = OnDisk(ScriptFile);
         string css = OnDisk(CssFile);
 
-        // A checkpoint is a parent of the interlock: a gate or function block that owns checks
-        // below it. Contacts are leaves and a coil publishes the result, so neither is a
-        // checkpoint; clicking the dot goes to the parent row that failed.
-        string checkpoints = Between(script, "function checkpointElements(", "function checkpointName(");
-        Assert.Contains("node.children.length", checkpoints);
-        Assert.Contains("kind !== 'coil'", checkpoints);
-        Assert.Contains("resultTree(elements || [])", checkpoints);
-        Assert.DoesNotContain("element.should", checkpoints);
+        // An interlock or permissive is checked element by element: every evaluated element — leaf
+        // contact, gate and coil alike — is on the rail, so no unmet reading is missing from the
+        // eye. A sequence is checked step by step: the step is the check.
+        Assert.Contains("function checkpointItems(block, state)", script);
+        string items = Between(script, "function checkpointItems(", "function checkpointName(");
+        Assert.Contains("isSequenceBlock(block) && (state.steps || []).length", items);
+        Assert.Contains("state.steps.map((step, index) => stepCheckpoint(block, step, index))", items);
+        Assert.Contains("(state.elements || []).map(elementCheckpoint)", items);
+        Assert.Contains("warnOnly: isWarnElement(state)", Between(script, "function elementCheckpoint(", "function stepCheckpoint("));
 
-        // One line above the board: a met/total count and a dot per parent, in the network's order.
-        // Only the dot is drawn; the parent's name lives in the tooltip and the accessible label.
-        Assert.Contains("function renderCheckpointRail(", script);
+        // A warn-only element shows as a warning, never as a blocking failure; a pending sequence
+        // step is neutral. The step where the sequence stands is the one that is not met.
+        string pill = Between(script, "function checkpointPill(", "function checkpointMet(");
+        Assert.Contains("if (item.warnOnly) return item.state === 'true' ? 'ok' : 'warn';", pill);
+        Assert.Contains("if (item.state === 'done') return 'ok';", pill);
+        Assert.Contains("if (item.state === 'current') return 'bad';", pill);
+        Assert.Contains("if (item.state === 'unknown') return 'warn';", pill);
+        Assert.Contains("return 'muted';", pill);
+        Assert.Contains("!item.warnOnly", Between(script, "function checkpointOpen(", "function checkpointUnknown("));
+
+        // The count names what is open as well as how many, and carries the block's own reason, so
+        // the sticky strip keeps saying why when the verdict header has scrolled away. Its colour
+        // follows the verdict too: an output feedback can block a block whose every check is met.
+        string summary = Between(script, "function checkpointSummary(", "function renderCheckpointRail(");
+        Assert.Contains("openItems = items.filter(checkpointOpen)", summary);
+        Assert.Contains("openNames.slice(0, 6).join(', ')", summary);
+        Assert.Contains("name.toLowerCase() === reason.toLowerCase()", summary);
+        Assert.Contains("reason && !repeated ? ' · ' + reason : ''", summary);
+        Assert.Contains("const verdict = state ? displayWord(state) : '';", summary);
+        Assert.Contains("(verdict ? verdict + ' · ' : '')", summary);
+        Assert.Contains("open || blocked ? ' bad'", summary);
+        Assert.Contains("unknown || warnOnly || noData ? ' warn'", summary);
+        Assert.Contains("disabled ? ' muted'", summary);
+        Assert.Contains("label: met + '/' + items.length", summary);
+
+        // One line above the board: a met/total count and a dot per check, in the board's order.
+        // Only the dot is drawn; the check's name and cause live in the tooltip and accessible label.
+        Assert.Contains("function renderCheckpointRail(block, state)", script);
         Assert.Contains("id: 'resCheckpoints'", script);
-        Assert.Contains("'aria-label': 'Interlock checkpoints'", script);
-        Assert.Contains("'data-cp-id': state.id", script);
-        Assert.Contains("class: 'cp-dot ' + statePill(state.state)", script);
-        Assert.Contains("checks.map(checkpointDot)", script);
-        Assert.Contains("onclick: () => revealCheckpoint(state.id)", script);
-        Assert.Contains("label: met + '/' + checks.length", script);
+        Assert.Contains("'aria-label': blockKindLabel(block && block.kind) + ' checkpoints'", script);
+        Assert.Contains("'data-cp-id': item.id", script);
+        Assert.Contains("'data-cp-kind': item.kind", script);
+        Assert.Contains("'aria-label': summary.title", script);
+        Assert.Contains("count.setAttribute('aria-label', summary.title);", script);
+        Assert.Contains("class: 'cp-dot ' + checkpointPill(item)", script);
+        Assert.Contains("items.map(checkpointDot)", script);
+        Assert.Contains("onclick: () => revealCheckpoint(item)", script);
         Assert.Contains("function checkpointName(", script);
         Assert.DoesNotContain("cp-chip", script);
         Assert.DoesNotContain("cp-text", script);
 
         // The rail keeps the editor's full width above both Result boards — the network and a
         // sequence's step cards — rather than shrinking into the narrow board's column.
-        Assert.Contains("renderCheckpointRail(elements)", script);
+        Assert.Contains("renderCheckpointRail(draft, state)", script);
         Assert.Contains("if (checkpoints) editor.appendChild(checkpoints);", script);
 
-        // The feed repaints the chips in place with the cards, never rebuilding the line.
+        // The feed repaints the dots in place with the cards, never rebuilding a strip that is
+        // still being read; a changed check list (ids or kinds) is rebuilt so a new block is never
+        // shown under the old dots.
         Assert.Contains("paintCheckpointRail();", Between(script, "function applyState(", "function paintResultCard("));
+        Assert.Contains("dot.dataset.cpId !== items[i].id || dot.dataset.cpKind !== items[i].kind", script);
         Assert.Contains("count.className = 'cp-count' + summary.className;", script);
 
-        // A chip is a jump: its row is scrolled to the middle of the editor and ringed for a moment.
-        Assert.Contains("function revealCheckpoint(", script);
-        Assert.Contains("editor.querySelector('.rl[data-id=\"' + id + '\"]')", script);
+        // A Result tab drawn while the first evaluation was in flight holds the READING… placeholder;
+        // it is filled in the moment the state arrives, so the rail cannot stay missing.
+        Assert.Contains("!resultEditor.querySelector('.rl, .step-card')", script);
+        Assert.Contains("checkpointItems(draft, shownState).length", script);
+
+        // A dot is a jump: an element's row, or a sequence's step card, is scrolled to the middle of
+        // the editor and ringed for a moment.
+        Assert.Contains("function revealCheckpoint(item)", script);
+        Assert.Contains("'.step-card[data-step-id=\"' + item.id + '\"]'", script);
+        Assert.Contains("editor.querySelector(selector)", script);
+        Assert.Contains("'data-step-id': step.id", script);
         Assert.Contains("row.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center' });", script);
         Assert.Contains("row.classList.add('rl-flash');", script);
         Assert.Contains("row.focus({ preventScroll: true });", script);
 
-        // The strip never scrolls: dots are small and wrap inside it. A failed checkpoint is a red
-        // dot in the board's own palette, and the row it lands on carries the flash.
+        // The strip never scrolls: dots are small and wrap inside it. A failed check is a red dot in
+        // the board's own palette, a pending step is neutral, and the row a dot lands on flashes.
         string track = Rule(css, ".cp-track {");
         Assert.Contains("flex-wrap: wrap;", track);
         Assert.DoesNotContain("overflow-x: auto;", track);
         Assert.Contains("border-radius: 50%;", Rule(css, ".cp-dot {"));
         Assert.Contains("background: var(--bad);", Rule(css, ".cp-dot.bad {"));
+        Assert.Contains("background: var(--panel2);", Rule(css, ".cp-dot.muted {"));
+        Assert.Contains("background: var(--panel2);", Rule(css, ".cp-count.muted {"));
         Assert.DoesNotContain(".cp-chip", css);
-        Assert.Contains("animation: checkpoint-flash 1.6s ease-out;", Rule(css, ".rl.rl-flash .rl-card {"));
+        Assert.Contains("animation: checkpoint-flash 1.6s ease-out;", Rule(css, ".rl.rl-flash .rl-card,"));
         Assert.Contains("@keyframes checkpoint-flash", css);
+        Assert.Contains("@media (prefers-reduced-motion: reduce)", css);
 
         // The rail stays with the verdict header: it sticks on the head's line, and the rows' pin
         // line is measured below the rail so a pinned parent never covers the dots.

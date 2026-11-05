@@ -883,12 +883,14 @@ input[type=checkbox] { accent-color: var(--ink2); }
 .res-heading { justify-content: space-between; flex-wrap: wrap; }
 .res-heading-text { min-width: 0; }
 
-/* The checkpoint rail above the board: the interlock's parent groups as one strip of state dots,
-   in the network's own order. Only the dot is drawn — the parent's name is its tooltip and its
-   accessible label — so a long network fits without a horizontal scrollbar; the dots wrap inside
-   the strip when the window is too narrow for one line. It rides under the result header while
-   the rows scroll (--head-stick-top, measured with the head), so the checks stay reachable. A dot
-   click lands on the parent (see revealCheckpoint). */
+/* The checkpoint rail above the board: every check the bridge reports as one strip of state dots,
+   in the board's own order. An interlock or permissive contributes one dot per evaluated element,
+   a sequence one dot per step — so no unmet reading is missing from the eye. Only the dot is drawn
+   — the check's name and cause are its tooltip and its accessible label — so a long network fits
+   without a horizontal scrollbar; the dots wrap inside the strip when the window is too narrow for
+   one line. It rides under the result header while the rows scroll (--head-stick-top, measured
+   with the head), so the checks stay reachable. A dot click lands on its row (see
+   revealCheckpoint). */
 .cp-rail {
   position: sticky;
   top: var(--head-stick-top, 0px);
@@ -926,6 +928,7 @@ input[type=checkbox] { accent-color: var(--ink2); }
 .cp-count.ok { color: var(--good-text); border-color: var(--good-border); background: var(--good-bg); }
 .cp-count.bad { color: var(--bad-text); border-color: var(--bad-border); background: var(--bad-bg); }
 .cp-count.warn { color: var(--warn-text); border-color: var(--warn-border); background: var(--warn-bg); }
+.cp-count.muted { color: var(--muted-strong); border-color: var(--border2); background: var(--panel2); }
 .cp-track {
   flex: 1 1 auto;
   min-width: 0;
@@ -948,6 +951,7 @@ input[type=checkbox] { accent-color: var(--ink2); }
 .cp-dot.ok { border-color: var(--good); background: var(--good); }
 .cp-dot.bad { border-color: var(--bad); background: var(--bad); }
 .cp-dot.warn { border-color: var(--warn); background: var(--warn); }
+.cp-dot.muted { border-color: var(--border2); background: var(--panel2); }
 .cp-dot:hover { box-shadow: 0 0 0 2px var(--focus); }
 
 .res-head { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
@@ -1074,15 +1078,17 @@ input[type=checkbox] { accent-color: var(--ink2); }
 .rl-line.muted { color: var(--muted); }
 .rl-line.unknown { color: var(--muted); }
 
-/* A checkpoint chip lands on its evaluated row: the row keeps its reading and the card is ringed
-   for a moment, so the eye finds it after the scroll. */
-.rl.rl-flash .rl-card { animation: checkpoint-flash 1.6s ease-out; }
+/* A checkpoint chip lands on its row: an element's card, or a sequence's step card, keeps its
+   reading and is ringed for a moment, so the eye finds it after the scroll. */
+.rl.rl-flash .rl-card,
+.step-card.rl-flash { animation: checkpoint-flash 1.6s ease-out; }
 @keyframes checkpoint-flash {
   0%, 60% { box-shadow: 0 0 0 2px var(--focus); }
   100% { box-shadow: 0 0 0 0 transparent; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .rl.rl-flash .rl-card { animation: none; outline: 2px solid var(--focus); outline-offset: 2px; }
+  .rl.rl-flash .rl-card,
+  .step-card.rl-flash { animation: none; outline: 2px solid var(--focus); outline-offset: 2px; }
 }
 
 .step-card {

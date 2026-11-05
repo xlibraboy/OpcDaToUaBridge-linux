@@ -1653,7 +1653,9 @@ function resultSteps(state, elements, index) {
   (draft.steps || []).forEach((step, stepIndex) => {
     const stepState = stepStates.get(step.id);
     const word = stepState ? stepState.state : 'unknown';
-    const card = h('div', { class: 'step-card' + (word === 'current' ? ' current' : '') },
+    const card = h('div', {
+      class: 'step-card' + (word === 'current' ? ' current' : ''), 'data-step-id': step.id
+    },
       h('div', { class: 'rl-head' },
         h('span', { class: 'rl-text', text: step.name || ('Step ' + (stepIndex + 1)) }),
         h('span', {
@@ -1673,19 +1675,59 @@ function resultSteps(state, elements, index) {
 
 // ---------------------------------------------------------------- checkpoint rail
 
-// The rail's checkpoints are the network's parents — the gates and function blocks that own the
-// checks below them (AND, OR, XOR, NOT, TON, SR …), not the leaf contacts. A parent is the row to
-// go to when an interlock is blocked: opening it shows the group that failed, while the contact
-// itself is already named in the block's reason. A coil is not a check — it publishes the result.
-function checkpointElements(elements) {
-  const parents = [];
-  const walk = (node) => {
-    const kind = node.element.kind || 'contact';
-    if (node.children.length && kind !== 'coil') parents.push(node.element);
-    for (const child of node.children) walk(child);
+// The rail is the operator's eye on the block: one dot per check the bridge reports, in the order
+// the board reads them. An interlock or permissive is checked element by element — every evaluated
+// element, leaf contact or gate or coil, is a check, so no unmet reading is missing from the strip.
+// A sequence is checked step by step: the step is the check, and its card carries the reason. A
+// dot's name, reading and cause live in its tooltip and its accessible label.
+
+const isSequenceBlock = (block) => ((block && block.kind) || '').toLowerCase() === 'sequence';
+const isWarnElement = (state) => ((state && state.severity) || '').toLowerCase() === 'warn';
+
+// The reason a check is not fulfilled, in the row's own words. An element carries the reading
+// (should/actual) and what it is doing (a timer's progress); a step carries the bridge's reason.
+function checkpointDetail(state) {
+  if (!state) return '';
+  const parts = [];
+  const comparison = shouldLine(state, state);
+  if (comparison) parts.push(comparison);
+  const progress = progressLine(state, state);
+  if (progress) parts.push(progress);
+  if (isWarnElement(state)) parts.push('warn only');
+  return parts.join(' · ');
+}
+
+function elementCheckpoint(state) {
+  return {
+    kind: 'element',
+    id: state.id,
+    name: checkpointName(state),
+    state: state.state,
+    warnOnly: isWarnElement(state),
+    detail: checkpointDetail(state)
   };
-  for (const node of resultTree(elements || [])) walk(node);
-  return parents;
+}
+
+function stepCheckpoint(block, step, index) {
+  const def = ((block && block.steps) || []).find((item) => item.id === step.id) || {};
+  return {
+    kind: 'step',
+    id: step.id,
+    name: (def.name || '').trim() || ('Step ' + (index + 1)),
+    state: step.state,
+    warnOnly: false,
+    detail: (step.reason || '').trim()
+  };
+}
+
+// A sequence's checks are its steps — every step, so no step is missed. A disabled sequence has no
+// step states, so it falls back to its evaluated elements rather than showing an empty rail.
+function checkpointItems(block, state) {
+  if (!state) return [];
+  if (isSequenceBlock(block) && (state.steps || []).length) {
+    return state.steps.map((step, index) => stepCheckpoint(block, step, index));
+  }
+  return (state.elements || []).map(elementCheckpoint);
 }
 
 function checkpointName(state) {
@@ -1695,62 +1737,139 @@ function checkpointName(state) {
   return state.depth === 0 ? 'root ' + kind : kind;
 }
 
-function checkpointWord(state) {
-  return state === 'true' ? 'fulfilled' : state === 'false' ? 'not fulfilled' : 'no data';
+const STEP_CHECKPOINT_WORD = { done: 'done', current: 'not met', unknown: 'no data', pending: 'pending' };
+
+function checkpointWord(item) {
+  const word = item.kind === 'step'
+    ? STEP_CHECKPOINT_WORD[item.state] || item.state
+    : item.state === 'true' ? 'fulfilled' : item.state === 'false' ? 'not fulfilled' : 'no data';
+  return item.warnOnly && item.state !== 'true' ? word + ' · warn only' : word;
 }
 
-function checkpointTitle(state) {
-  return [checkpointName(state), checkpointWord(state.state), shouldLine(state, state),
-    state.severity === 'warn' ? 'warn only' : '']
+// A checkpoint is only its dot: the check's name and cause live in the tooltip and the accessible
+// label. Dots are small enough that a long network stays in one strip without a horizontal bar.
+function checkpointTitle(item) {
+  return [item.name, checkpointWord(item), item.detail]
     .filter((part) => part)
-    .join(' · ') + ' — click to go to this parent';
+    .join(' · ') + (item.kind === 'step'
+      ? ' — click to go to this step'
+      : ' — click to go to this element');
 }
 
-// A checkpoint is only its dot: the parent's name lives in the tooltip and the accessible label.
-// Dots are small enough that a long network stays in one strip without a horizontal scrollbar.
-function checkpointDot(state) {
-  return h('button', {
-    class: 'cp-dot ' + statePill(state.state),
-    type: 'button',
-    'data-cp-id': state.id,
-    title: checkpointTitle(state),
-    'aria-label': checkpointName(state) + ' — ' + checkpointWord(state.state) + '. Go to this parent.',
-    onclick: () => revealCheckpoint(state.id)
-  });
+function checkpointLabel(item) {
+  return item.name + ' — ' + checkpointWord(item)
+    + (item.detail ? '. ' + item.detail : '')
+    + (item.kind === 'step' ? '. Go to this step.' : '. Go to this element.');
 }
 
-function checkpointSummary(checks) {
-  const met = checks.filter((state) => state.state === 'true').length;
-  const open = checks.filter((state) => state.state === 'false').length;
-  const unknown = checks.length - met - open;
+// The dot's colour: the check's own verdict. A warn-only element never reads as a block — met it
+// is green, unmet it is amber — so a ready interlock cannot show a red dot for a warning. A
+// pending step is neutral; the step where the sequence stands is the one that is not met.
+function checkpointPill(item) {
+  if (item.kind === 'step') {
+    if (item.state === 'done') return 'ok';
+    if (item.state === 'current') return 'bad';
+    if (item.state === 'unknown') return 'warn';
+    return 'muted';
+  }
+
+  if (item.warnOnly) return item.state === 'true' ? 'ok' : 'warn';
+  return statePill(item.state);
+}
+
+function checkpointMet(item) {
+  return item.kind === 'step' ? item.state === 'done' : item.state === 'true';
+}
+
+function checkpointOpen(item) {
+  return !item.warnOnly && (item.kind === 'step' ? item.state === 'current' : item.state === 'false');
+}
+
+function checkpointUnknown(item) {
+  if (item.warnOnly) return false;
+  return item.kind === 'step'
+    ? item.state === 'unknown'
+    : item.state !== 'true' && item.state !== 'false';
+}
+
+function checkpointPending(item) {
+  return item.kind === 'step' && item.state === 'pending';
+}
+
+// The count is the rail's one-line answer, and its tooltip names what is open as well as how many:
+// the block's own verdict leads and its reason rides last, so the sticky strip keeps saying why
+// when the verdict header has scrolled away. The count colour follows the verdict as well as the
+// checks: a block blocked or unverified by its output feedback stays red / amber even when every
+// check on the board is met, so the eye can never contradict the word.
+function checkpointSummary(items, state) {
+  const met = items.filter(checkpointMet).length;
+  const openItems = items.filter(checkpointOpen);
+  const open = openItems.length;
+  const unknown = items.filter(checkpointUnknown).length;
+  const warnOnly = items.filter((item) => item.warnOnly && item.state !== 'true').length;
+  const pending = items.filter(checkpointPending).length;
+  const unit = items.length && items[0].kind === 'step' ? 'steps done' : 'checkpoints fulfilled';
+  const openNames = openItems.map((item) => item.name);
+  const named = openNames.length
+    ? ': ' + openNames.slice(0, 6).join(', ') + (openNames.length > 6 ? ' +' + (openNames.length - 6) + ' more' : '')
+    : '';
+  // The block's reason is the first cause and a checkpoint can already name it; say it once.
+  const reason = state && state.reason ? state.reason.trim() : '';
+  const repeated = reason && openNames.some((name) => name.toLowerCase() === reason.toLowerCase());
+  const verdict = state ? displayWord(state) : '';
+  const disabled = state && state.state === 'disabled';
+  const blocked = state && state.state === 'blocked';
+  const noData = state && (state.state === 'unknown' || verdict === 'UNVERIFIED');
+  const title = (verdict ? verdict + ' · ' : '') + met + ' of ' + items.length + ' ' + unit
+    + (open ? ' · ' + open + ' not fulfilled' + named : '')
+    + (unknown ? ' · ' + unknown + ' without data' : '')
+    + (warnOnly ? ' · ' + warnOnly + ' warn only' : '')
+    + (pending ? ' · ' + pending + ' pending' : '')
+    + (reason && !repeated ? ' · ' + reason : '');
   return {
-    label: met + '/' + checks.length,
-    title: met + ' of ' + checks.length + ' checkpoints fulfilled'
-      + (open ? ' · ' + open + ' not fulfilled' : '')
-      + (unknown ? ' · ' + unknown + ' without data' : ''),
-    className: open ? ' bad' : (unknown ? ' warn' : ' ok')
+    label: met + '/' + items.length,
+    title: title,
+    className: disabled ? ' muted'
+      : (open || blocked ? ' bad' : (unknown || warnOnly || noData ? ' warn' : ' ok'))
   };
 }
 
-// The rail above the board: a met/total count, then one dot per parent. The feed repaints the dots
+// The rail above the board: a met/total count, then one dot per check. The feed repaints the dots
 // in place (paintCheckpointRail), so a push never rewrites the strip being read.
-function renderCheckpointRail(elements) {
-  const checks = checkpointElements(elements);
-  if (!checks.length) return null;
-  const summary = checkpointSummary(checks);
+function renderCheckpointRail(block, state) {
+  const items = checkpointItems(block, state);
+  if (!items.length) return null;
+  const summary = checkpointSummary(items, state);
   return h('div', {
-    class: 'cp-rail', id: 'resCheckpoints', role: 'group', 'aria-label': 'Interlock checkpoints'
+    class: 'cp-rail', id: 'resCheckpoints', role: 'group',
+    'aria-label': blockKindLabel(block && block.kind) + ' checkpoints'
   },
     h('span', { class: 'cp-label' },
       h('span', { text: 'Checkpoints' }),
-      h('span', { class: 'cp-count' + summary.className, id: 'resCpCount', text: summary.label, title: summary.title })),
-    h('div', { class: 'cp-track', id: 'resCpTrack' }, checks.map(checkpointDot)));
+      h('span', {
+        class: 'cp-count' + summary.className, id: 'resCpCount', text: summary.label,
+        title: summary.title, 'aria-label': summary.title
+      })),
+    h('div', { class: 'cp-track', id: 'resCpTrack' }, items.map(checkpointDot)));
 }
 
-function paintCheckpointDot(dot, state) {
-  dot.className = 'cp-dot ' + statePill(state.state);
-  dot.title = checkpointTitle(state);
-  dot.setAttribute('aria-label', checkpointName(state) + ' — ' + checkpointWord(state.state) + '. Go to this parent.');
+function checkpointDot(item) {
+  return h('button', {
+    class: 'cp-dot ' + checkpointPill(item),
+    type: 'button',
+    'data-cp-id': item.id,
+    'data-cp-kind': item.kind,
+    title: checkpointTitle(item),
+    'aria-label': checkpointLabel(item),
+    onclick: () => revealCheckpoint(item)
+  });
+}
+
+function paintCheckpointDot(dot, item) {
+  dot.className = 'cp-dot ' + checkpointPill(item);
+  dot.dataset.cpKind = item.kind;
+  dot.title = checkpointTitle(item);
+  dot.setAttribute('aria-label', checkpointLabel(item));
 }
 
 function paintCheckpointRail() {
@@ -1758,28 +1877,37 @@ function paintCheckpointRail() {
   const count = el('resCpCount');
   if (!track || !count) return;
   const state = draft ? blockStates.get(draft.id) : null;
-  const checks = checkpointElements((state && state.elements) || []);
+  const items = checkpointItems(draft, state);
   const dots = Array.from(track.querySelectorAll('.cp-dot'));
-  if (dots.length !== checks.length || dots.some((dot, i) => dot.dataset.cpId !== checks[i].id)) {
+  const changed = dots.length !== items.length
+    || dots.some((dot, i) => dot.dataset.cpId !== items[i].id || dot.dataset.cpKind !== items[i].kind);
+  if (changed) {
     track.textContent = '';
-    for (const item of checks) track.appendChild(checkpointDot(item));
+    for (const item of items) track.appendChild(checkpointDot(item));
   } else {
-    checks.forEach((item, i) => paintCheckpointDot(dots[i], item));
+    items.forEach((item, i) => paintCheckpointDot(dots[i], item));
   }
 
-  const summary = checkpointSummary(checks);
+  const summary = checkpointSummary(items, state);
   count.className = 'cp-count' + summary.className;
   count.textContent = summary.label;
   count.title = summary.title;
+  count.setAttribute('aria-label', summary.title);
+
+  const rail = el('resCheckpoints');
+  if (rail) rail.setAttribute('aria-label', blockKindLabel(draft && draft.kind) + ' checkpoints');
 }
 
 // A checkpoint chip is a jump: the row it names is scrolled to the middle of the editor (clear of
 // the sticky head) and marked for a moment, so "which one is open" and "where is it" are one click.
 let checkpointFlashTimer = 0;
 
-function revealCheckpoint(id) {
+function revealCheckpoint(item) {
   const editor = el('editor');
-  const row = editor ? editor.querySelector('.rl[data-id="' + id + '"]') : null;
+  const selector = item ? (item.kind === 'step'
+    ? '.step-card[data-step-id="' + item.id + '"]'
+    : '.rl[data-id="' + item.id + '"]') : '';
+  const row = editor && selector ? editor.querySelector(selector) : null;
   if (!row) return;
   const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   row.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'center' });
@@ -1973,7 +2101,7 @@ function renderResultTab(editor) {
   // The checkpoint rail keeps the editor's full width, not the board's narrowed column: it is the
   // one-line answer to "what is still open", and every chip has to be reachable without scrolling
   // a board that is deliberately kept readable.
-  const checkpoints = renderCheckpointRail(elements);
+  const checkpoints = renderCheckpointRail(draft, state);
   if (checkpoints) editor.appendChild(checkpoints);
 
   // The board and the tag inspector share the Result tab's body: the board keeps its column and
@@ -2877,6 +3005,17 @@ function applyState(snapshot) {
   for (const block of snapshot.blocks || []) {
     blockStates.set(block.id, block);
     for (const element of block.elements || []) elementStates.set(element.id, element);
+  }
+
+  // The Result tab may have been drawn while the first evaluation was still in flight: it holds
+  // the "READING…" placeholder and has no rows to paint. There is nothing to preserve yet, so fill
+  // it in now — the board and its checkpoint rail appear the moment the state does.
+  const shownState = draft ? blockStates.get(draft.id) : null;
+  const resultEditor = el('editor');
+  if (tab === 'result' && shownState && resultEditor
+    && !resultEditor.querySelector('.rl, .step-card')
+    && checkpointItems(draft, shownState).length) {
+    renderEditor();
   }
 
   for (const row of document.querySelectorAll('.el[data-live]')) {
