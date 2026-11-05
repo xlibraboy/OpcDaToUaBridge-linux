@@ -1697,14 +1697,16 @@ function checkpointDetail(state) {
   return parts.join(' · ');
 }
 
-function elementCheckpoint(state) {
+function elementCheckpoint(state, childCount) {
   return {
     kind: 'element',
     id: state.id,
     name: checkpointName(state),
     state: state.state,
     warnOnly: isWarnElement(state),
-    detail: checkpointDetail(state)
+    detail: checkpointDetail(state),
+    parent: childCount > 0,
+    family: childCount > 0 ? 'parent of ' + childCount : 'leaf'
   };
 }
 
@@ -1716,8 +1718,24 @@ function stepCheckpoint(block, step, index) {
     name: (def.name || '').trim() || ('Step ' + (index + 1)),
     state: step.state,
     warnOnly: false,
-    detail: (step.reason || '').trim()
+    detail: (step.reason || '').trim(),
+    parent: true,
+    family: 'step'
   };
+}
+
+// Direct children per element, read from the evaluated tree: depth-first rows mean the next
+// element one level down is this one's child. A contact, a coil or an unwired gate owns nothing
+// and is a leaf; a wired gate or function block is a parent. A sequence step owns its network
+// and is a parent too.
+function elementChildCounts(elements) {
+  const counts = new Map();
+  const walk = (node) => {
+    if (node.children.length) counts.set(node.element.id, node.children.length);
+    for (const child of node.children) walk(child);
+  };
+  for (const node of resultTree(elements || [])) walk(node);
+  return counts;
 }
 
 // A sequence's checks are its steps — every step, so no step is missed. A disabled sequence has no
@@ -1727,7 +1745,9 @@ function checkpointItems(block, state) {
   if (isSequenceBlock(block) && (state.steps || []).length) {
     return state.steps.map((step, index) => stepCheckpoint(block, step, index));
   }
-  return (state.elements || []).map(elementCheckpoint);
+  const elements = state.elements || [];
+  const childCounts = elementChildCounts(elements);
+  return elements.map((element) => elementCheckpoint(element, childCounts.get(element.id) || 0));
 }
 
 function checkpointName(state) {
@@ -1746,10 +1766,11 @@ function checkpointWord(item) {
   return item.warnOnly && item.state !== 'true' ? word + ' · warn only' : word;
 }
 
-// A checkpoint is only its dot: the check's name and cause live in the tooltip and the accessible
-// label. Dots are small enough that a long network stays in one strip without a horizontal bar.
+// A checkpoint is only its dot: the check's name, family and cause live in the tooltip and the
+// accessible label. Dots are small enough that a long network stays in one strip without a
+// horizontal bar.
 function checkpointTitle(item) {
-  return [item.name, checkpointWord(item), item.detail]
+  return [item.name, item.family, checkpointWord(item), item.detail]
     .filter((part) => part)
     .join(' · ') + (item.kind === 'step'
       ? ' — click to go to this step'
@@ -1757,7 +1778,7 @@ function checkpointTitle(item) {
 }
 
 function checkpointLabel(item) {
-  return item.name + ' — ' + checkpointWord(item)
+  return item.name + ' — ' + item.family + ', ' + checkpointWord(item)
     + (item.detail ? '. ' + item.detail : '')
     + (item.kind === 'step' ? '. Go to this step.' : '. Go to this element.');
 }
@@ -1855,7 +1876,7 @@ function renderCheckpointRail(block, state) {
 
 function checkpointDot(item) {
   return h('button', {
-    class: 'cp-dot ' + checkpointPill(item),
+    class: 'cp-dot ' + (item.parent ? 'parent' : 'leaf') + ' ' + checkpointPill(item),
     type: 'button',
     'data-cp-id': item.id,
     'data-cp-kind': item.kind,
@@ -1866,7 +1887,7 @@ function checkpointDot(item) {
 }
 
 function paintCheckpointDot(dot, item) {
-  dot.className = 'cp-dot ' + checkpointPill(item);
+  dot.className = 'cp-dot ' + (item.parent ? 'parent' : 'leaf') + ' ' + checkpointPill(item);
   dot.dataset.cpKind = item.kind;
   dot.title = checkpointTitle(item);
   dot.setAttribute('aria-label', checkpointLabel(item));

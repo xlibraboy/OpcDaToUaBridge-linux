@@ -662,8 +662,19 @@ public sealed class LogicPageTests
         string items = Between(script, "function checkpointItems(", "function checkpointName(");
         Assert.Contains("isSequenceBlock(block) && (state.steps || []).length", items);
         Assert.Contains("state.steps.map((step, index) => stepCheckpoint(block, step, index))", items);
-        Assert.Contains("(state.elements || []).map(elementCheckpoint)", items);
-        Assert.Contains("warnOnly: isWarnElement(state)", Between(script, "function elementCheckpoint(", "function stepCheckpoint("));
+        Assert.Contains("elementChildCounts(elements)", items);
+        Assert.Contains("elementCheckpoint(element, childCounts.get(element.id) || 0)", items);
+
+        // Family comes from the evaluated tree: a check with children is a parent, a contact, coil
+        // or unwired gate is a leaf, and a step is the sequence's own group check.
+        string element = Between(script, "function elementCheckpoint(", "function stepCheckpoint(");
+        Assert.Contains("warnOnly: isWarnElement(state)", element);
+        Assert.Contains("parent: childCount > 0", element);
+        Assert.Contains("family: childCount > 0 ? 'parent of ' + childCount : 'leaf'", element);
+        string step = Between(script, "function stepCheckpoint(", "function checkpointItems(");
+        Assert.Contains("parent: true", step);
+        Assert.Contains("family: 'step'", step);
+        Assert.Contains("node.children.length", Between(script, "function elementChildCounts(", "function checkpointItems("));
 
         // A warn-only element shows as a warning, never as a blocking failure; a pending sequence
         // step is neutral. The step where the sequence stands is the one that is not met.
@@ -691,7 +702,8 @@ public sealed class LogicPageTests
         Assert.Contains("label: met + '/' + items.length", summary);
 
         // One line above the board: a met/total count and a dot per check, in the board's order.
-        // Only the dot is drawn; the check's name and cause live in the tooltip and accessible label.
+        // Only the dot is drawn; the check's name, family and cause live in the tooltip and the
+        // accessible label.
         Assert.Contains("function renderCheckpointRail(block, state)", script);
         Assert.Contains("id: 'resCheckpoints'", script);
         Assert.Contains("'aria-label': blockKindLabel(block && block.kind) + ' checkpoints'", script);
@@ -699,7 +711,8 @@ public sealed class LogicPageTests
         Assert.Contains("'data-cp-kind': item.kind", script);
         Assert.Contains("'aria-label': summary.title", script);
         Assert.Contains("count.setAttribute('aria-label', summary.title);", script);
-        Assert.Contains("class: 'cp-dot ' + checkpointPill(item)", script);
+        Assert.Contains("class: 'cp-dot ' + (item.parent ? 'parent' : 'leaf') + ' ' + checkpointPill(item)", script);
+        Assert.Contains("[item.name, item.family, checkpointWord(item), item.detail]", script);
         Assert.Contains("items.map(checkpointDot)", script);
         Assert.Contains("onclick: () => revealCheckpoint(item)", script);
         Assert.Contains("function checkpointName(", script);
@@ -742,6 +755,12 @@ public sealed class LogicPageTests
         Assert.Contains("background: var(--bad);", Rule(css, ".cp-dot.bad {"));
         Assert.Contains("background: var(--panel2);", Rule(css, ".cp-dot.muted {"));
         Assert.Contains("background: var(--panel2);", Rule(css, ".cp-count.muted {"));
+        Assert.Contains("width: 8px;", Rule(css, ".cp-dot.leaf {"));
+        string parent = Rule(css, ".cp-dot.parent {");
+        Assert.Contains("width: 12px;", parent);
+        Assert.Contains("height: 12px;", parent);
+        Assert.Contains("border-width: 2px;", parent);
+        Assert.Contains("background: var(--bg);", parent);
         Assert.DoesNotContain(".cp-chip", css);
         Assert.Contains("animation: checkpoint-flash 1.6s ease-out;", Rule(css, ".rl.rl-flash .rl-card,"));
         Assert.Contains("@keyframes checkpoint-flash", css);

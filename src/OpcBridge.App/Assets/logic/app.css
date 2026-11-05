@@ -885,12 +885,13 @@ input[type=checkbox] { accent-color: var(--ink2); }
 
 /* The checkpoint rail above the board: every check the bridge reports as one strip of state dots,
    in the board's own order. An interlock or permissive contributes one dot per evaluated element,
-   a sequence one dot per step — so no unmet reading is missing from the eye. Only the dot is drawn
-   — the check's name and cause are its tooltip and its accessible label — so a long network fits
-   without a horizontal scrollbar; the dots wrap inside the strip when the window is too narrow for
-   one line. It rides under the result header while the rows scroll (--head-stick-top, measured
-   with the head), so the checks stay reachable. A dot click lands on its row (see
-   revealCheckpoint). */
+   a sequence one dot per step — so no unmet reading is missing from the eye. A parent (a check
+   with children, or a step) is a hollow ring; a leaf is a filled dot, so the tree reads by shape
+   as well as by colour. Only the dot is drawn — the check's name, family and cause are its
+   tooltip and its accessible label — so a long network fits without a horizontal scrollbar; the
+   dots wrap inside the strip when the window is too narrow for one line. It rides under the result
+   header while the rows scroll (--head-stick-top, measured with the head), so the checks stay
+   reachable. A dot click lands on its row (see revealCheckpoint). */
 .cp-rail {
   position: sticky;
   top: var(--head-stick-top, 0px);
@@ -940,18 +941,23 @@ input[type=checkbox] { accent-color: var(--ink2); }
 }
 .cp-dot {
   flex: 0 0 auto;
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
   padding: 0;
   border: 1px solid var(--border2);
   border-radius: 50%;
   background: var(--panel2);
   cursor: pointer;
 }
+/* Family is a shape, not a colour: a parent check owns the checks below it and is the larger
+   hollow ring, while a leaf check is the small filled dot. The state rules still set the colour;
+   the parent's background is the rail's own ground, so the ring reads hollow in every state. */
+.cp-dot.leaf { width: 8px; height: 8px; border-width: 1px; }
 .cp-dot.ok { border-color: var(--good); background: var(--good); }
 .cp-dot.bad { border-color: var(--bad); background: var(--bad); }
 .cp-dot.warn { border-color: var(--warn); background: var(--warn); }
 .cp-dot.muted { border-color: var(--border2); background: var(--panel2); }
+.cp-dot.parent { width: 12px; height: 12px; border-width: 2px; background: var(--bg); }
 .cp-dot:hover { box-shadow: 0 0 0 2px var(--focus); }
 
 .res-head { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }

@@ -30,17 +30,20 @@ network meant reading every card again. The Result tab now carries a **Checkpoin
 the board: an interlock or permissive contributes one dot per evaluated element — leaf contacts,
 gates, function blocks and the coils that publish the result — in the board's own order, and a
 sequence contributes one dot per step. Green is fulfilled / done, red is open / current, amber is
-no data (or a warn-only check the block does not gate on), and a pending step is neutral. The
-met/total count carries the block's own reason and names the open checks, so the eye never has to
-hunt the board for the error. Only the dot is drawn; the check's name, reading and cause are its
-tooltip and accessible label, so a long network keeps every checkpoint in one strip without a
-horizontal scrollbar (the dots wrap when the window is too narrow for one line). The rail rides
-directly under the verdict header while the rows scroll — the pinned row clears both, never
-covering the dots — so the checks stay in reach on a long network. The dots repaint in place with
-the bridge's push, and each one is a jump: clicking it scrolls its element row or sequence step
-card into view and rings it for a moment, so "which check is open" and "where is it" are the same
-click. A Result tab drawn while the first evaluation is still in flight fills in the board and the
-rail the moment the state arrives.
+no data (or a warn-only check the block does not gate on), and a pending step is neutral. A
+parent — a check with children, or a sequence step — is a larger hollow ring; a leaf is a small
+filled dot, so the tree reads by shape as well as colour, and the tooltip names the family and
+how many direct children a parent owns. The met/total count carries the block's own reason and
+names the open checks, so the eye never has to hunt the board for the error. Only the dot is
+drawn; the check's name, family, reading and cause are its tooltip and accessible label, so a
+long network keeps every checkpoint in one strip without a horizontal scrollbar (the dots wrap
+when the window is too narrow for one line). The rail rides directly under the verdict header
+while the rows scroll — the pinned row clears both, never covering the dots — so the checks stay
+in reach on a long network. The dots repaint in place with the bridge's push, and each one is a
+jump: clicking it scrolls its element row or sequence step card into view and rings it for a
+moment, so "which check is open" and "where is it" are the same click. A Result tab drawn while
+the first evaluation is still in flight fills in the board and the rail the moment the state
+arrives.
 
 **Each install can own its port block.** The HTTP and OPC UA auto-assign ranges were fixed at
 8080-8180 and 4840-4940 for every install, so two installs on one machine — or an install next
