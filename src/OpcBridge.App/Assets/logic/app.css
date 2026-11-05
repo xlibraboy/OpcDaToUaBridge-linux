@@ -122,9 +122,29 @@ body {
 .pill.live { background: var(--good-bg); border-color: var(--good-border); color: var(--good-text); }
 .pill.stale { background: var(--warn-bg); border-color: var(--warn-border); color: var(--warn-text); }
 .pill.down { background: var(--bad-bg); border-color: var(--bad-border); color: var(--bad-text); }
+/* The link state carries a dot of its own, so "live" reads at a glance and not only by its tint. */
+.pill.live::before, .pill.stale::before, .pill.down::before {
+  content: '';
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
 /* `.pill` sets display, which beats the UA [hidden] rule: the empty output pill in the Result
    header must actually disappear when the block has no output tag. */
 .pill[hidden] { display: none; }
+/* The evaluation stamp's own pulse: the time is a heartbeat, not another button. */
+#evaluated::before {
+  content: '';
+  flex: 0 0 auto;
+  width: 11px;
+  height: 11px;
+  background: currentColor;
+  opacity: .75;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 12h-4l-3 9L9 3l-3 9H2'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 12h-4l-3 9L9 3l-3 9H2'/%3E%3C/svg%3E") center / contain no-repeat;
+}
 
 /* Theme picker: three settings with visible labels; ink marks the active one. The
    dashboard's own control under the same stored key, so a choice made here is the
@@ -216,11 +236,20 @@ body {
 .rail-foot .result { min-height: 0; max-height: 46vh; overflow-y: auto; }
 
 .group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding: 8px 6px 2px;
   font-size: var(--fs-micro);
   text-transform: uppercase;
   letter-spacing: .06em;
   color: var(--muted);
+}
+.group-head::after {
+  content: '';
+  flex: 1 1 auto;
+  height: 1px;
+  background: var(--border);
 }
 
 .block-row {
@@ -350,6 +379,12 @@ body {
 .result .verdict .stamp.mismatch { color: var(--warn); }
 .result .verdict .stamp.unverified { color: var(--muted); }
 .result .reason { color: var(--ink2); }
+/* The summary's own share bar: ready and blocked in the same colours the stamp and rows use. */
+.result-bar { display: flex; height: 4px; margin-top: 2px; border-radius: 2px; overflow: hidden; background: var(--border); }
+.result-bar span { display: block; height: 100%; }
+.result-bar .ok { background: var(--good); }
+.result-bar .bad { background: var(--bad); }
+.result-bar .warn { background: var(--warn); }
 .result .reason.out-line { font-family: var(--font-mono); font-size: var(--fs-micro); }
 .result .reason.out-line.match { color: var(--verify); }
 .result .reason.out-line.mismatch { color: var(--warn); }
@@ -405,21 +440,28 @@ body {
   gap: 10px;
 }
 
+/* What tags the block resolves through: a quiet footer under its fields, ruled off from them. */
+#areaState { padding-top: 9px; border-top: 1px dashed var(--border); }
+
 .field { display: flex; align-items: center; gap: 10px; }
 .field > label { flex: 0 0 92px; color: var(--muted-strong); font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .05em; }
 
 input[type=text], input[type=number], select, textarea {
   font: inherit;
   color: var(--text);
-  background: var(--panel2);
+  background: var(--panel);
   border: 1px solid var(--border2);
   border-radius: 2px;
   padding: 4px 7px;
   min-width: 0;
+  transition: border-color .12s ease;
 }
 input[type=text], input[type=number] { width: 100%; }
 input::placeholder { color: var(--muted); }
 select { cursor: pointer; }
+input[type=text]:hover, input[type=number]:hover, select:hover, textarea:hover { border-color: var(--ink2); }
+input:disabled, select:disabled, textarea:disabled { background: var(--panel2); color: var(--muted); }
+input[type=checkbox] { accent-color: var(--ink2); }
 
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 
@@ -472,6 +514,7 @@ select { cursor: pointer; }
   align-items: center;
   gap: 10px;
 }
+.section-title::after { content: ''; flex: 1 1 auto; height: 1px; background: var(--border); }
 
 /* Network rows ------------------------------------------------------------ */
 
@@ -653,12 +696,17 @@ select { cursor: pointer; }
 .warnline { color: var(--warn); font-size: var(--fs-micro); }
 .readonly-note {
   margin: 12px 0 0;
-  padding: 8px 10px;
+  padding: 10px 12px;
   border: 1px solid var(--info-border);
+  border-left: 3px solid var(--info-border);
+  max-width: 900px;
   background: var(--info-bg);
   border-radius: 2px;
   color: var(--ink2);
+  font-size: var(--fs-micro);
+  line-height: 1.55;
 }
+.readonly-note b { color: var(--text); }
 
 /* Toast ------------------------------------------------------------------- */
 
@@ -714,7 +762,7 @@ select { cursor: pointer; }
   cursor: pointer;
 }
 .tab:hover { color: var(--text); background: var(--panel2); }
-.tab.on { color: var(--text); background: var(--panel); border-color: var(--border); font-weight: 600; }
+.tab.on { color: var(--text); background: var(--panel); border-color: var(--border); font-weight: 600; box-shadow: inset 0 -2px 0 var(--ink2); }
 
 /* State pills: the stamp always carries its own ground ------------------- */
 
@@ -769,13 +817,41 @@ select { cursor: pointer; }
 .res-side[hidden] { display: none; }
 .res-side-head { display: flex; align-items: baseline; gap: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
 .res-side-title { flex: 1 1 auto; min-width: 0; font-size: var(--fs-title); font-weight: 600; overflow-wrap: anywhere; }
+/* The inspector opens on a tag, and its head says so with the same glyph the rows carry. */
+.res-side-title::before {
+  content: '';
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-right: 6px;
+  vertical-align: -2px;
+  background: var(--muted);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z'/%3E%3Ccircle cx='7.5' cy='7.5' r='.5'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z'/%3E%3Ccircle cx='7.5' cy='7.5' r='.5'/%3E%3C/svg%3E") center / contain no-repeat;
+}
 .res-side-tabs { display: flex; flex-wrap: wrap; gap: 2px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
 .res-side-body { display: flex; flex-direction: column; gap: 6px; }
 .res-side-row { display: flex; align-items: baseline; gap: 10px; }
 .res-side-label { flex: 0 0 104px; font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
 .res-side-value { flex: 1 1 auto; min-width: 0; color: var(--ink2); overflow-wrap: anywhere; }
 .res-side .warnline { display: block; }
-.res-side-section { margin-top: 6px; font-size: var(--fs-micro); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+.res-side-section {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding-top: 9px;
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--muted);
+  font-weight: 600;
+}
+.res-side-section::after { content: ''; flex: 1 1 auto; height: 1px; background: var(--border); }
+/* The mapped tag's reading is the inspector's one number: it carries the type scale, everything
+   else stays at body size. */
+.res-side-value[data-live-tag] { font-family: var(--font-mono); font-size: 18px; font-weight: 600; color: var(--text); }
 .res-use {
   display: flex;
   flex-direction: column;
@@ -856,13 +932,13 @@ select { cursor: pointer; }
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   padding: 2px 0;
 }
 .cp-dot {
   flex: 0 0 auto;
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
   padding: 0;
   border: 1px solid var(--border2);
   border-radius: 50%;
@@ -915,11 +991,23 @@ select { cursor: pointer; }
 .rl-card.bad { border-left-color: var(--bad); }
 .rl-card.warn { border-left-color: var(--warn); }
 .rl-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.rl-mark { font-family: var(--font-mono); font-weight: 700; min-width: 18px; }
-.rl-card.ok .rl-mark { color: var(--good); }
-.rl-card.bad .rl-mark { color: var(--bad); }
-.rl-card.warn .rl-mark { color: var(--warn); }
 .rl-kind { font-family: var(--font-mono); font-size: var(--fs-micro); color: var(--muted); min-width: 56px; }
+/* A kind reads as one column-wide chip in both the authored and the evaluated rows, so the eye
+   can skip from kind to kind without reading the sentence. */
+.rl-head .rl-kind,
+.el-kind {
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 1px 6px;
+  text-align: center;
+  white-space: nowrap;
+}
+/* The result row's kind is its state marker: the chip is filled with the row's own tint, so the
+   separate ✓/✗ column is gone. The left accent still carries the same colour. */
+.rl-head .rl-kind.ok { background: var(--good-bg); border-color: var(--good-border); color: var(--good-text); }
+.rl-head .rl-kind.bad { background: var(--bad-bg); border-color: var(--bad-border); color: var(--bad-text); }
+.rl-head .rl-kind.warn { background: var(--warn-bg); border-color: var(--warn-border); color: var(--warn-text); }
 .rl-text {
   flex: 1 1 auto;
   min-width: 0;
@@ -941,6 +1029,8 @@ select { cursor: pointer; }
   font-family: var(--font-mono);
   font-size: var(--fs-micro);
   white-space: nowrap;
+  min-width: 96px;
+  text-align: right;
   color: var(--muted-strong);
 }
 .rl-compare.ok { color: var(--good); }
@@ -1022,6 +1112,11 @@ select { cursor: pointer; }
 
 .tag-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
 .tag-toolbar .grow { flex: 1 1 auto; }
+/* The primary save leads the destructive pair: a delete sits after the save, never before it. */
+.tag-toolbar #btnSaveList { order: 4; }
+.tag-toolbar #btnDeleteTags { order: 5; margin-left: 4px; }
+.tag-toolbar #btnDeleteTags:not(.armed) { border-color: transparent; background: transparent; color: var(--muted); }
+.tag-toolbar #btnDeleteTags:not(.armed):hover { color: var(--bad); border-color: var(--bad-border); background: var(--bad-bg); }
 .tag-head, .tag-row {
   display: grid;
   grid-template-columns: 190px 170px minmax(160px, 1fr) 92px 110px 58px 34px;
@@ -1033,7 +1128,8 @@ select { cursor: pointer; }
   text-transform: uppercase;
   letter-spacing: .06em;
   color: var(--muted);
-  padding: 0 2px 4px;
+  padding: 0 9px 5px;
+  border-bottom: 1px solid var(--border);
 }
 .tag-head span:nth-child(5) { text-align: center; }
 .tag-list { display: flex; flex-direction: column; gap: 5px; }
@@ -1099,3 +1195,4 @@ select { cursor: pointer; }
 .pick-row.listed:hover { background: none; }
 /* The tag cell carries the select and, under it, the read-only note. */
 .tag-cell { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.tag-cell .warnline { font-size: 10px; line-height: 1.3; }

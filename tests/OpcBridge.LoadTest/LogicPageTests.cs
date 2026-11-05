@@ -314,15 +314,23 @@ public sealed class LogicPageTests
     public void Script_MatchesTheHmisOwnWording()
     {
         string script = OnDisk(ScriptFile);
+        string css = OnDisk(CssFile);
 
         // The words the HMI's retired Avalonia editor used, so the plant reads the same thing:
-        // block kinds, the state words that always sit next to a colour, marks, and the row labels.
+        // block kinds, the state words that always sit next to a colour, and the row labels.
         Assert.Contains("BLOCK_KIND_LABEL = { interlock: 'Interlock', permissive: 'Permissive', sequence: 'Sequence' }", script);
         Assert.Contains("if (word === 'ready') return 'READY';", script);
         Assert.Contains("if (word === 'blocked') return 'BLOCKED';", script);
         Assert.Contains("if (word === 'disabled') return 'DISABLED';", script);
         Assert.Contains("return 'NO DATA';", script);
-        Assert.Contains("state.state === 'true' ? '✓' : state.state === 'false' ? '✗' : '—'", script);
+        // The separate ✓/✗ column is gone: the kind chip itself is filled with the element's state.
+        Assert.DoesNotContain("rl-mark", script);
+        Assert.DoesNotContain(".rl-mark", css);
+        Assert.Contains("class: 'rl-kind ' + statePill(state.state)", script);
+        Assert.Contains("kind.className = 'rl-kind ' + statePill(state.state);", script);
+        Assert.Contains("background: var(--good-bg);", Rule(css, ".rl-head .rl-kind.ok {"));
+        Assert.Contains("background: var(--bad-bg);", Rule(css, ".rl-head .rl-kind.bad {"));
+        Assert.Contains("background: var(--warn-bg);", Rule(css, ".rl-head .rl-kind.warn {"));
         Assert.Contains("if (kind === 'coil') return 'COIL';", script);
 
         // The Editor's network section carries the HMI's own section name, IEC number and all

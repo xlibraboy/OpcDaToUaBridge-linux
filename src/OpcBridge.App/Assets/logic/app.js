@@ -453,20 +453,24 @@ function blockWhy(block, state) {
   return [displayWord(state), why, progress].filter((part) => part).join(' · ');
 }
 
+// How the blocks divide by state — the summary line and its share bar read the same tally.
+function blockCounts() {
+  const counts = { ready: 0, blocked: 0, noData: 0 };
+  for (const block of defs.blocks) {
+    const word = (blockStates.get(block.id) || {}).state || 'unknown';
+    if (word === 'ready') counts.ready += 1;
+    else if (word === 'blocked') counts.blocked += 1;
+    else if (word !== 'disabled') counts.noData += 1;
+  }
+
+  return counts;
+}
+
 // How the plant is doing overall: the retired app's one-line summary over every block.
 function blockSummary() {
   if (!defs.blocks.length) return 'no logic blocks configured';
-  let ready = 0;
-  let blocked = 0;
-  let noData = 0;
-  for (const block of defs.blocks) {
-    const word = (blockStates.get(block.id) || {}).state || 'unknown';
-    if (word === 'ready') ready += 1;
-    else if (word === 'blocked') blocked += 1;
-    else if (word !== 'disabled') noData += 1;
-  }
-
-  return ready + ' ready · ' + blocked + ' blocked' + (noData ? ' · ' + noData + ' no data' : '');
+  const counts = blockCounts();
+  return counts.ready + ' ready · ' + counts.blocked + ' blocked' + (counts.noData ? ' · ' + counts.noData + ' no data' : '');
 }
 
 function renderResult() {
@@ -492,6 +496,13 @@ function renderResult() {
   }
   box.appendChild(h('p', { class: 'sub small mono', text: 'definitions v' + version + ' · ' + defs.blocks.length + ' blocks' }));
   box.appendChild(h('p', { class: 'sub small', text: blockSummary() }));
+  const counts = blockCounts();
+  if (defs.blocks.length) {
+    box.appendChild(h('div', { class: 'result-bar', 'aria-hidden': 'true' },
+      counts.ready ? h('span', { class: 'ok', style: 'flex:' + counts.ready }) : null,
+      counts.blocked ? h('span', { class: 'bad', style: 'flex:' + counts.blocked }) : null,
+      counts.noData ? h('span', { class: 'warn', style: 'flex:' + counts.noData }) : null));
+  }
 }
 
 // The editor is the page's own scroll region and every render rewrites it from the top, so a
@@ -1556,9 +1567,9 @@ function catalogLabel(sourceId, itemId) {
   return (tag.sourceName || '').trim() ? label + ' · ' + tag.sourceName.trim() : label;
 }
 
-// One evaluated element as a single result line: the mark, the contact form / pin, the sentence,
-// the should/actual comparison, the tag's mapped state text in its own chip, and the tag-detail
-// icon. The raw value, device contact and field state live in the shared tag inspector.
+// One evaluated element as a single result line: the state-filled kind chip, the sentence, the
+// should/actual comparison, the tag's mapped state text in its own chip, and the tag-detail icon.
+// The raw value, device contact and field state live in the shared tag inspector.
 function resultRow(state, def, depth) {
   // The bridge expands a block's flat conditions into wrappers (a TON around a held contact,
   // an OR group, the AND over the roots). Those wrappers have no authored definition of their
@@ -1567,8 +1578,7 @@ function resultRow(state, def, depth) {
   def = def || state;
   const row = h('div', { class: 'rl', 'data-id': state.id, 'data-live': '1', style: '--depth:' + depth });
   const head = h('div', { class: 'rl-head' },
-    h('span', { class: 'rl-mark', text: state.state === 'true' ? '✓' : state.state === 'false' ? '✗' : '—' }),
-    h('span', { class: 'rl-kind', text: kindLabelFor(state, def) }),
+    h('span', { class: 'rl-kind ' + statePill(state.state), text: kindLabelFor(state, def) }),
     h('span', { class: 'rl-text', text: def ? def.text : '' },
       def && def.severity === 'warn' ? h('span', { class: 'warnline', text: ' warn only' }) : null));
 
@@ -2952,8 +2962,8 @@ function paintResultCard(card, state) {
   const def = card.__def || null;
   card.className = 'rl-card ' + statePill(state.state);
 
-  const mark = card.querySelector('.rl-mark');
-  if (mark) mark.textContent = state.state === 'true' ? '✓' : state.state === 'false' ? '✗' : '—';
+  const kind = card.querySelector('.rl-kind');
+  if (kind) kind.className = 'rl-kind ' + statePill(state.state);
 
   const actual = card.querySelector('.rl-actual');
   if (actual) actual.textContent = actualBit(state, def);
