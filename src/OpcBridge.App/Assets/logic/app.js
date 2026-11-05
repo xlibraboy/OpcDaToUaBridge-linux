@@ -320,7 +320,7 @@ function renderRail() {
         class: 'block-row' + (draft && draft.id === block.id ? ' on' : ''),
         type: 'button',
         'data-block': block.id,
-        onclick: () => selectBlock(block.id, 'result')
+        onclick: () => selectBlock(block.id)
       },
         h('span', { class: 'state-dot ' + (state ? displayKey(state) : ''), 'aria-hidden': 'true' }),
         h('span', { class: 'n', text: name }),
@@ -2851,9 +2851,9 @@ function openTagPicker() {
 
 // ---------------------------------------------------------------- commands
 
-// A rail click opens the block's Result tab — the reading surface comes first, and the Editor
-// and Tags tabs are one click away. A tag panel's card also opens Result and keeps the
-// inspector open, so the tag's source/readers and the block's network are read together.
+// A rail click opens the block in the tab the operator is already on: switching blocks never pulls
+// the last tab choice away from them. A caller that must show a reading passes 'result' (the tag
+// inspector's block cards do); 'editor' forces the editor.
 function selectBlock(id, target) {
   const block = defs.blocks.find((b) => b.id === id);
   if (!block) return;
@@ -2865,19 +2865,23 @@ function selectBlock(id, target) {
     return;
   }
 
-  // Re-opening the block already in hand only moves the tab: re-cloning here would discard the
+  // No target means "keep the tab the operator last clicked"; only an explicit target moves it.
+  const nextTab = target === 'result' ? 'result' : target === 'editor' ? 'editor' : tab;
+
+  // Re-opening the block already in hand only settles the tab: re-cloning here would discard the
   // unsaved edits the guard above protects on a switch.
   if (dirty && draft && draft.id === id) {
-    tab = target === 'result' ? 'result' : 'editor';
-    if (target !== 'result') tagFocus = null;
+    tab = nextTab;
+    if (tab !== 'result') tagFocus = null;
     renderEditor(true);
     return;
   }
 
-  if (target !== 'result') tagFocus = null;
+  tab = nextTab;
+  if (tab !== 'result') tagFocus = null;
+  if (tagDraft) rememberTagDraft();
   draft = clone(block);
   draftForm = formOf(block);
-  tab = target === 'result' ? 'result' : 'editor';
   tagArea = '';
   tagDraft = null;
   newTagForId = '';

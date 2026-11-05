@@ -319,6 +319,13 @@ assigned to and left it on the rate fallback. `daGroup` now round-trips through
 
 ### Changed
 
+**The Logic page keeps the tab you last chose when you switch blocks.** Selecting another block in
+the left rail used to jump to the Result tab, so moving between blocks while authoring kept pulling
+the Editor away. A rail click now leaves the active tab where it is — Editor stays Editor, Tags
+stays Tags, Result stays Result — and only the block changes; unsaved tag edits are remembered for
+the area being left, so switching blocks on the Tags tab loses nothing. The tag inspector's block
+cards still open Result on purpose, because they are opened from a tag's detail.
+
 **The Logic page's network section is named for the standard it is drawn in.** The Editor tab headed
 its network "Network · N / 256 elements", which said what the rows below it were but not the form
 they are authored in. It now carries the HMI's own section name, **NETWORK (IEC 61131-3)**, with the

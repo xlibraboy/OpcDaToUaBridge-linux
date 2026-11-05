@@ -207,14 +207,21 @@ public sealed class LogicPageTests
     }
 
     [Fact]
-    public void Rail_OpensTheResultAndFoldsEachBlockRow()
+    public void Rail_KeepsTheLastTabAndFoldsEachBlockRow()
     {
         string html = OnDisk(HtmlFile);
         string script = OnDisk(ScriptFile);
         string css = OnDisk(CssFile);
 
-        // A rail click lands on Result, the reading surface; Editor stays a tab click away.
-        Assert.Contains("onclick: () => selectBlock(block.id, 'result')", script);
+        // A rail click opens the block in the tab the operator last clicked: Editor stays Editor,
+        // Tags stays Tags, Result stays Result. Only the tag inspector's block cards force Result.
+        Assert.Contains("onclick: () => selectBlock(block.id)", script);
+        Assert.DoesNotContain("selectBlock(block.id, 'result')", script);
+        string select = Between(script, "function selectBlock(", "// A coil authored here has no relay");
+        Assert.Contains("const nextTab = target === 'result' ? 'result' : target === 'editor' ? 'editor' : tab;", select);
+        Assert.Contains("tab = nextTab;", select);
+        Assert.Contains("if (tagDraft) rememberTagDraft();", select);
+        Assert.Contains("selectBlock(use.block.id, 'result')", script);
 
         // Each row folds to its name from its own chevron — there is no whole-list fold.
         Assert.DoesNotContain("btnToggleBlocks", html);
@@ -863,10 +870,11 @@ public sealed class LogicPageTests
         Assert.Contains("text: 'Driven by'", script);
         Assert.Contains("text: 'Mapped source'", script);
         Assert.Contains("onclick: closeTagPanel", script);
-        // A block card lands on that block's Result tab and keeps the inspector beside it.
+        // A block card lands on that block's Result tab and keeps the inspector beside it; the
+        // explicit target is what overrides the tab the operator was last on.
         Assert.Contains("onclick: () => selectBlock(use.block.id, 'result')", script);
-        Assert.Contains("tab = target === 'result' ? 'result' : 'editor';", script);
-        Assert.Contains("if (target !== 'result') tagFocus = null;", script);
+        Assert.Contains("const nextTab = target === 'result' ? 'result' : target === 'editor' ? 'editor' : tab;", script);
+        Assert.Contains("if (tab !== 'result') tagFocus = null;", script);
         // The bridge snapshot feeds its live value, refreshed with the Tags tab's slower cadence.
         Assert.Contains("'data-live-tag': ref.sourceId + '|' + ref.itemId", script);
         Assert.Contains("tab === 'result' && tagFocus", script);
