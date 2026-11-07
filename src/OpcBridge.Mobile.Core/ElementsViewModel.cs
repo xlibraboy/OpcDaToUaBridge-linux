@@ -370,8 +370,6 @@ public sealed partial class ElementsViewModel : ObservableObject
 
             group.ApplyState(blockState);
         }
-
-        ApplyFilter(forceVisible: false);
     }
 
     public void Clear()

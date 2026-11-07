@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:theme="clr-namespace:OpcBridge.Mobile"
              xmlns:views="clr-namespace:OpcBridge.Mobile.Views"
+             xmlns:core="clr-namespace:OpcBridge.Mobile.Core;assembly=OpcBridge.Mobile.Core"
              x:Class="OpcBridge.Mobile.Views.ElementsPage"
              Title="Elements"
              Shell.NavBarIsVisible="False"
@@ -154,7 +155,7 @@
                     <Label x:Name="emptyLabel" TextColor="{theme:ThemeColor MutedColor}" Margin="8" />
                 </CollectionView.EmptyView>
                 <CollectionView.GroupHeaderTemplate>
-                    <DataTemplate>
+                    <DataTemplate x:DataType="core:ElementBlockGroupViewModel">
                         <Border Margin="0,0,0,4" Style="{StaticResource ElementsGroupCardBorder}">
                             <Border.GestureRecognizers>
                                 <TapGestureRecognizer Command="{Binding ToggleCommand}" />
@@ -187,29 +188,29 @@
                     </DataTemplate>
                 </CollectionView.GroupHeaderTemplate>
                 <CollectionView.ItemTemplate>
-                    <DataTemplate>
+                    <DataTemplate x:DataType="core:LogicElementRowViewModel">
                         <Grid ColumnDefinitions="Auto,*">
                             <views:DepthGuideView Grid.Column="0" WidthRequest="{Binding IndentWidth}"
                                                   Depth="{Binding Depth}" GuideColor="{theme:ThemeColor BorderColor}"
-                                                  VerticalOptions="Fill" />
+                                                  IsVisible="{Binding HasDepth}" VerticalOptions="Fill" />
                             <Border Grid.Column="1" Margin="0,0,0,6" Style="{StaticResource ElementCardBorder}">
-                                <Grid ColumnDefinitions="16,*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto"
+                                <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto"
                                       ColumnSpacing="6" RowSpacing="3">
-                                    <Label Grid.Row="0" Grid.Column="0" Text="{Binding Mark}" FontSize="13"
-                                           FontAttributes="Bold" VerticalOptions="Center"
-                                           TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
-                                    <HorizontalStackLayout Grid.Row="0" Grid.Column="1" Spacing="6"
+                                    <HorizontalStackLayout Grid.Row="0" Grid.Column="0" Spacing="6"
                                                            VerticalOptions="Center">
                                         <Label Text="{Binding Text}" FontSize="13" FontAttributes="Bold"
                                                MaxLines="1" LineBreakMode="TailTruncation"
                                                VerticalOptions="Center" />
-                                        <Border Style="{StaticResource ElementBadgeBorder}" VerticalOptions="Center">
+                                        <Border Style="{StaticResource ElementBadgeBorder}" VerticalOptions="Center"
+                                                BackgroundColor="{Binding StateKey, Converter={StaticResource StateTint}, ConverterParameter=bg}"
+                                                Stroke="{Binding StateKey, Converter={StaticResource StateTint}, ConverterParameter=border}"
+                                                StrokeThickness="1">
                                             <Label Text="{Binding KindLabel}" FontSize="8.5" FontAttributes="Bold"
                                                    FontFamily="monospace"
-                                                   TextColor="{theme:ThemeColor MutedColor}" />
+                                                   TextColor="{Binding StateKey, Converter={StaticResource StateTint}, ConverterParameter=text}" />
                                         </Border>
                                     </HorizontalStackLayout>
-                                    <VerticalStackLayout Grid.Row="0" Grid.Column="2" Spacing="0"
+                                    <VerticalStackLayout Grid.Row="0" Grid.Column="1" Spacing="0"
                                                          HorizontalOptions="End">
                                         <Label Text="{Binding ActualText}" FontSize="16" FontFamily="monospace"
                                                FontAttributes="Bold" HorizontalTextAlignment="End"
@@ -218,21 +219,27 @@
                                                HorizontalTextAlignment="End"
                                                TextColor="{theme:ThemeColor MutedColor}" />
                                     </VerticalStackLayout>
-                                    <Label Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding StepLabel}"
+                                    <Label Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Text="{Binding StepLabel}"
                                            IsVisible="{Binding HasStep}" FontSize="9.5"
                                            TextColor="{theme:ThemeColor MutedColor}" />
-                                    <Label Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding TagLabel}"
-                                           IsVisible="{Binding HasTag}"
-                                           FontFamily="monospace" FontSize="9.5"
-                                           TextColor="{theme:ThemeColor MutedColor}"
-                                           LineBreakMode="WordWrap" />
-                                    <Label Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding ShouldLine}"
-                                           IsVisible="{Binding ShowShould}" FontFamily="monospace" FontSize="10.5"
-                                           TextColor="{Binding ShouldKey, Converter={StaticResource StateColor}}" />
-                                    <Label Grid.Row="4" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding ProgressText}"
+                                    <Grid Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
+                                          ColumnDefinitions="*,Auto" ColumnSpacing="8" IsVisible="{Binding ShowShould}">
+                                        <Label Text="{Binding ShouldLine}" FontFamily="monospace" FontSize="10.5"
+                                               TextColor="{Binding ShouldKey, Converter={StaticResource StateColor}}" />
+                                        <Border Grid.Column="1" Style="{StaticResource StateChipBorder}"
+                                                VerticalOptions="Center" IsVisible="{Binding HasStateWord}">
+                                            <HorizontalStackLayout Spacing="4">
+                                                <Label Text="STATE" FontFamily="monospace" FontSize="8.5"
+                                                       FontAttributes="Bold" CharacterSpacing="0.5"
+                                                       TextColor="{theme:ThemeColor MutedColor}" />
+                                                <Label Text="{Binding StateWord}" FontSize="9.5" FontAttributes="Bold" />
+                                            </HorizontalStackLayout>
+                                        </Border>
+                                    </Grid>
+                                    <Label Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2" Text="{Binding ProgressText}"
                                            IsVisible="{Binding ShowProgress}" FontSize="10.5"
                                            TextColor="{theme:ThemeColor WarnColor}" />
-                                    <Label Grid.Row="5" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding NextStepText}"
+                                    <Label Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="2" Text="{Binding NextStepText}"
                                            IsVisible="{Binding ShowNextStep}" FontSize="10.5"
                                            TextColor="{theme:ThemeColor WarnColor}" />
                                 </Grid>

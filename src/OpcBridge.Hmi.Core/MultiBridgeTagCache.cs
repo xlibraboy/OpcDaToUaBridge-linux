@@ -22,6 +22,10 @@ public sealed class MultiBridgeTagEntry
     public int? DaQuality { get; set; }
     public bool? IsGood { get; set; }
     public bool Writeable { get; set; }
+
+    /// <summary>Effective update rate in ms (per-tag override, else the source default). 0 = unknown.</summary>
+    public int UpdateRateMs { get; set; }
+
     public string? Unit { get; set; }
 
     /// <summary>
@@ -196,6 +200,7 @@ public sealed class MultiBridgeTagCache
         DaQuality = dto.DaQuality,
         IsGood = dto.IsGood,
         Writeable = dto.Writeable,
+        UpdateRateMs = dto.UpdateRateMs,
         Unit = string.IsNullOrWhiteSpace(dto.Unit) ? null : dto.Unit,
         RangeMin = dto.RangeMin,
         RangeMax = dto.RangeMax,

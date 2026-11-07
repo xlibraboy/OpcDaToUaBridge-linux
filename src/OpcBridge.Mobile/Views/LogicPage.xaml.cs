@@ -7,6 +7,10 @@ public partial class LogicPage : ContentPage
 {
     private readonly BridgeCoordinator coordinator_;
     private LogicOverviewViewModel? subscribed_;
+    private volatile bool scrolling_;
+    private volatile bool pendingRepaint_;
+    private CancellationTokenSource? scrollSettle_;
+    private DateTime appearedAt_;
 
     public LogicPage(BridgeCoordinator coordinator)
     {
@@ -14,6 +18,7 @@ public partial class LogicPage : ContentPage
         coordinator_ = coordinator;
         coordinator_.Changed += OnChanged;
         ThemeManager.Changed += OnThemeChanged;
+        blocksView.Scrolled += OnBlocksScrolled;
         // Adding a bridge lives under Settings; the sheet hands the operator over there.
         bridgeSheet.NewBridgeRequested += async () => await Shell.Current.GoToAsync("//settings");
         RefreshFilterUi();
@@ -22,12 +27,55 @@ public partial class LogicPage : ContentPage
     protected override async void OnAppearing()
     {
         base.OnAppearing();
+        scrolling_ = false;
+        pendingRepaint_ = false;
+        appearedAt_ = DateTime.UtcNow;
         Repaint();
         await coordinator_.ConnectActiveAsync(CancellationToken.None);
         Repaint();
     }
 
-    private void OnChanged() => MainThread.BeginInvokeOnMainThread(Repaint);
+    /// <summary>Live pushes repaint the whole grouped list; hold them while the list is moving.</summary>
+    private void OnChanged()
+    {
+        if (scrolling_)
+        {
+            pendingRepaint_ = true;
+            return;
+        }
+
+        MainThread.BeginInvokeOnMainThread(Repaint);
+    }
+
+    private void OnBlocksScrolled(object? sender, ItemsViewScrolledEventArgs e)
+    {
+        scrolling_ = true;
+        scrollSettle_?.Cancel();
+        CancellationTokenSource settle = new();
+        scrollSettle_ = settle;
+        _ = Task.Delay(160, settle.Token).ContinueWith(task =>
+        {
+            if (task.IsCanceled)
+            {
+                return;
+            }
+
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                if (!ReferenceEquals(scrollSettle_, settle))
+                {
+                    return;
+                }
+
+                scrolling_ = false;
+                if (pendingRepaint_)
+                {
+                    pendingRepaint_ = false;
+                    Repaint();
+                }
+            });
+        }, TaskScheduler.Default);
+    }
 
     /// <summary>
     /// Converters resolve a state colour when a row is built, so a theme switch rebuilds the
@@ -240,6 +288,13 @@ public partial class LogicPage : ContentPage
     {
         if (e.CurrentSelection.FirstOrDefault() is not LogicBlockCardViewModel card)
         {
+            return;
+        }
+
+        // A tab switch tap can ghost onto the row under the bar; let the tab settle first.
+        if ((DateTime.UtcNow - appearedAt_).TotalMilliseconds < 350)
+        {
+            blocksView.SelectedItem = null;
             return;
         }
 

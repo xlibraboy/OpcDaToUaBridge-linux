@@ -40,6 +40,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The Result board follows the web Result reading surface.** The checkpoint rail now marks
+  every evaluated element, not only the network's parents: a parent is a hollow ring and a leaf
+  a filled dot, with the met/total count in a state-tinted pill. Result rows drop the ✓/✗
+  column; the kind chip is filled with the row's state and repeated by a left accent, the raw
+  should · actual stays the source of truth, and the mapping's operator word sits in its own
+  STATE chip. The tag name no longer appears in the row — only the shared tag icon remains,
+  and it opens the tag sheet, as on the web. Elements rows carry the same state tint and chip.
+- **Opening a block no longer blocks the transition.** The view model is built off the UI
+  thread, its initial state and values are applied once instead of twice, and the plant-wide
+  tag-usage scan is lazy and prewarmed on a worker after the page is visible, so the tag sheet
+  opens immediately. This is the same memory-first path online and offline. A page that is
+  superseded by a fast back/switch discards its background load instead of binding late.
+- **Scrolling no longer fights the live feed.** The Logic and Elements lists hold live repaints
+  while the list is moving and apply them once it settles; a state push no longer re-runs the
+  search/kind filter over every element. The nesting rails are a lightweight grid instead of a
+  GraphicsView per row, the hot list/result templates use compiled bindings, and the palette
+  colours are cached. A tab switch also ignores the ghost row selection under the bar. The
+  Elements list drops the raw tag string from its rows, and its row template no longer carries
+  the nested accent grid that could stall the CollectionView measure pass.
+- **The tag sheet is split into Source and Used by views.** Source shows the tag identity,
+  DRIVEN BY, and the mapped source including the raw live reading with its STATE chip, quality,
+  update rate and writable flag; Used by lists the blocks that read or write the tag on its own
+  tab. The update rate now rides the tag cache (`MultiBridgeTagEntry.UpdateRateMs`).
 - **Offline screens show structure only.** Elements no longer renders last-known readings when
   the link is down: offline rows keep their names, tags and step order, but every contact,
   timer, counter and block state reads as no data. A lost link also no longer keeps stale

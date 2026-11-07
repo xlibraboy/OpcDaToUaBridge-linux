@@ -98,9 +98,10 @@ public sealed class MobileElementsTests
 
         LogicElementRowViewModel row = Assert.Single(vm.AllRows);
         Assert.Equal("Pressure switch PS1 must read 1", row.Text);
-        Assert.Equal("✗", row.Mark);
         Assert.Equal("0", row.ActualText);
         Assert.Equal("Off", row.ValueText);
+        Assert.Equal("Off", row.StateWord);
+        Assert.True(row.HasStateWord);
         Assert.Equal("should 1 · actual 0", row.ShouldLine);
         Assert.Contains("Pressure switch PS1", row.TagLabel);
 
@@ -139,7 +140,8 @@ public sealed class MobileElementsTests
         // The row keeps its structure and label, but no reading or evaluated state survives.
         LogicElementRowViewModel row = Assert.Single(vm.AllRows);
         Assert.Equal("Pressure switch PS1 must read 1", row.Text);
-        Assert.Equal("—", row.Mark);
+        Assert.Equal(string.Empty, row.StateWord);
+        Assert.False(row.HasStateWord);
         Assert.Empty(row.ValueText);
         Assert.Equal("?", row.ActualText);
 

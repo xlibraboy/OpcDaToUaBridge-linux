@@ -4,9 +4,10 @@ namespace OpcBridge.Mobile.Views;
 
 /// <summary>
 /// The nesting rails beside an element row: one 1px vertical guide per enclosing level, on the
-/// same step the row indents by. The web Result board draws the same rails on its .rl-kids.
+/// same step the row indents by. A lightweight grid of BoxViews rather than a GraphicsView —
+/// the Elements list creates one of these per row, so the draws must stay cheap while scrolling.
 /// </summary>
-public sealed class DepthGuideView : GraphicsView
+public sealed class DepthGuideView : Grid
 {
     /// <summary>The indent step a row and its guides share (matches IndentWidth's 14 px per level).</summary>
     public const double Step = 14;
@@ -16,18 +17,18 @@ public sealed class DepthGuideView : GraphicsView
         typeof(int),
         typeof(DepthGuideView),
         0,
-        propertyChanged: static (bindable, _, _) => ((DepthGuideView)bindable).Invalidate());
+        propertyChanged: static (bindable, _, _) => ((DepthGuideView)bindable).Rebuild());
 
     public static readonly BindableProperty GuideColorProperty = BindableProperty.Create(
         nameof(GuideColor),
         typeof(Color),
         typeof(DepthGuideView),
         Colors.Transparent,
-        propertyChanged: static (bindable, _, _) => ((DepthGuideView)bindable).Invalidate());
+        propertyChanged: static (bindable, _, _) => ((DepthGuideView)bindable).Recolor());
 
     public DepthGuideView()
     {
-        Drawable = new Rails(this);
+        Rebuild();
     }
 
     /// <summary>How many levels enclose the row; 0 draws nothing.</summary>
@@ -43,27 +44,35 @@ public sealed class DepthGuideView : GraphicsView
         set => SetValue(GuideColorProperty, value);
     }
 
-    private sealed class Rails : IDrawable
+    private void Rebuild()
     {
-        private readonly DepthGuideView owner_;
+        ColumnDefinitions.Clear();
+        Children.Clear();
 
-        public Rails(DepthGuideView owner) => owner_ = owner;
-
-        public void Draw(ICanvas canvas, RectF dirtyRect)
+        int depth = Math.Max(0, Depth);
+        for (int level = 0; level < depth; level++)
         {
-            int depth = Math.Max(0, owner_.Depth);
-            if (depth == 0)
-            {
-                return;
-            }
+            ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1) });
+            ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Step - 1) });
 
-            canvas.StrokeColor = owner_.GuideColor;
-            canvas.StrokeSize = 1;
-            for (int level = 0; level < depth; level++)
+            BoxView rail = new()
             {
-                float x = (float)(level * Step) + 0.5f;
-                // One pixel past each end so consecutive rows' segments meet without a hairline gap.
-                canvas.DrawLine(x, -1, x, dirtyRect.Height + 1);
+                Color = GuideColor,
+                HorizontalOptions = LayoutOptions.Fill,
+                VerticalOptions = LayoutOptions.Fill
+            };
+            SetColumn((BindableObject)rail, level * 2);
+            Children.Add(rail);
+        }
+    }
+
+    private void Recolor()
+    {
+        foreach (IView child in Children)
+        {
+            if (child is BoxView rail)
+            {
+                rail.Color = GuideColor;
             }
         }
     }

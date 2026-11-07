@@ -516,7 +516,9 @@ public sealed class LogicBlockDetailViewModelTests
 
         LogicElementRowViewModel row = Contacts(vm)[0];
         Assert.Equal("NO", row.KindLabel);
-        Assert.Equal("✗", row.Mark);
+        // The state rides the kind chip; the mapped word gets its own STATE chip.
+        Assert.Equal("Blocked", row.StateWord);
+        Assert.True(row.HasStateWord);
         // The plant reads the element as 0 (false); the mapped texts stay as the live value.
         Assert.Equal("0", row.ActualText);
         Assert.True(row.Blocks);
@@ -556,7 +558,8 @@ public sealed class LogicBlockDetailViewModelTests
             cache);
 
         LogicElementRowViewModel row = Contacts(vm)[0];
-        Assert.Equal("✓", row.Mark);
+        Assert.Equal("Permit", row.StateWord);
+        Assert.True(row.HasStateWord);
         Assert.Equal("1", row.ActualText);
         Assert.Equal("Permit", row.ValueText);
         Assert.Equal("should 1 · actual 1", row.ShouldLine);
@@ -566,7 +569,8 @@ public sealed class LogicBlockDetailViewModelTests
         vm.ApplyState(null);
         vm.ApplyValues();
 
-        Assert.Equal("—", row.Mark);
+        Assert.Equal(string.Empty, row.StateWord);
+        Assert.False(row.HasStateWord);
         Assert.Equal("?", row.ActualText);
         Assert.Equal(string.Empty, row.ValueText);
         Assert.False(row.ShowShould);
@@ -1049,7 +1053,7 @@ public sealed class LogicBlockDetailViewModelTests
     }
 
     [Fact]
-    public void Checkpoints_ListTheNetworksParentsAsDotsWithAMetCount()
+    public void Checkpoints_ListEveryElementAsARingOrDotWithAMetCount()
     {
         LogicConditionDto local = Condition("Local start PB must be pressed", itemId: "PB1");
         LogicConditionDto remote = Condition("Remote start PB must be pressed", itemId: "PB2");
@@ -1059,12 +1063,17 @@ public sealed class LogicBlockDetailViewModelTests
         LogicBlockDto block = Interlock(local, remote, plain);
         LogicBlockDetailViewModel vm = new(block, BridgeKey);
 
-        // The AND over the roots and the OR group are the parents; the contacts are leaves.
+        // Every check is on the rail: the AND over the roots and the OR group are parents
+        // (rings); the three contacts are leaves (dots).
         Assert.True(vm.HasCheckpoints);
-        Assert.Equal(2, vm.Checkpoints.Count);
+        Assert.Equal(5, vm.Checkpoints.Count);
         Assert.Equal("root AND", vm.Checkpoints[0].Name);
         Assert.Equal("Start permissive", vm.Checkpoints[1].Name);
-        Assert.Equal("0/2", vm.CheckpointSummary);
+        Assert.True(vm.Checkpoints[0].IsParent);
+        Assert.True(vm.Checkpoints[1].IsParent);
+        Assert.All(vm.Checkpoints.Skip(2), checkpoint => Assert.False(checkpoint.IsParent));
+        Assert.All(vm.Checkpoints.Skip(2), checkpoint => Assert.Equal("Go to this element", checkpoint.Hint));
+        Assert.Equal("0/5", vm.CheckpointSummary);
         Assert.Equal(LogicConditionStates.Unknown, vm.CheckpointSummaryKey);
         Assert.All(vm.Checkpoints, checkpoint => Assert.Equal("no data", checkpoint.StateWord));
 
@@ -1089,14 +1098,15 @@ public sealed class LogicBlockDetailViewModelTests
         Assert.Equal("not fulfilled", and.StateWord);
         Assert.Equal(LogicConditionStates.True, or.StateKey);
         Assert.Equal("fulfilled", or.StateWord);
-        Assert.Equal("1/2", vm.CheckpointSummary);
+        Assert.Equal("2/5", vm.CheckpointSummary);
         Assert.Equal(LogicConditionStates.False, vm.CheckpointSummaryKey);
-        Assert.Equal("1 of 2 checkpoints fulfilled · 1 not fulfilled", vm.CheckpointSummaryDescription);
+        Assert.Equal("2 of 5 checkpoints fulfilled · 3 not fulfilled", vm.CheckpointSummaryDescription);
         Assert.Contains("root AND — not fulfilled.", and.Description);
+        Assert.EndsWith("Go to this parent.", and.Description);
     }
 
     [Fact]
-    public void Checkpoints_SkipCoilsAndLeaves()
+    public void Checkpoints_IncludeLeavesAndCoilsAsDots()
     {
         var coil = new LogicElementDto
         {
@@ -1124,15 +1134,15 @@ public sealed class LogicBlockDetailViewModelTests
 
         LogicBlockDetailViewModel vm = new(block, BridgeKey);
 
-        // A coil publishes the result rather than checking it, and a contact is already named
-        // in the block's reason.
-        Assert.False(vm.HasCheckpoints);
-        Assert.Empty(vm.Checkpoints);
-        Assert.Empty(vm.CheckpointSummary);
+        // The coil publishes the result but still counts as one check; both are leaves.
+        Assert.True(vm.HasCheckpoints);
+        Assert.Equal(2, vm.Checkpoints.Count);
+        Assert.All(vm.Checkpoints, checkpoint => Assert.False(checkpoint.IsParent));
+        Assert.Equal("0/2", vm.CheckpointSummary);
     }
 
     [Fact]
-    public void Checkpoints_CoverASequencesStepParentsToo()
+    public void Checkpoints_CoverEverySequenceStepElement()
     {
         LogicConditionDto first = Condition("Permit must be given");
         LogicConditionDto second = Condition("Valve 01 must be open", itemId: "Valve01");
@@ -1150,11 +1160,12 @@ public sealed class LogicBlockDetailViewModelTests
 
         LogicBlockDetailViewModel vm = new(sequence, BridgeKey);
 
-        // The step with two conditions was expanded into an AND; a single-condition step is
-        // one contact and therefore no checkpoint.
-        LogicCheckpointViewModel checkpoint = Assert.Single(vm.Checkpoints);
-        Assert.Equal("root AND", checkpoint.Name);
-        Assert.Equal("0/1", vm.CheckpointSummary);
+        // The step with two conditions was expanded into an AND (a parent ring); its two
+        // contacts and the single-condition step are leaves.
+        Assert.Equal(4, vm.Checkpoints.Count);
+        Assert.True(vm.Checkpoints[0].IsParent);
+        Assert.All(vm.Checkpoints.Skip(1), checkpoint => Assert.False(checkpoint.IsParent));
+        Assert.Equal("0/4", vm.CheckpointSummary);
     }
 
     [Fact]

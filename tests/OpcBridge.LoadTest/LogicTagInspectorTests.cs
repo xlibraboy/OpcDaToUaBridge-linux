@@ -165,7 +165,8 @@ public sealed class LogicTagInspectorTests
                 OnText = "On",
                 OffText = "Off",
                 Value = false,
-                IsGood = true
+                IsGood = true,
+                UpdateRateMs = 1000
             }
         });
 
@@ -197,19 +198,29 @@ public sealed class LogicTagInspectorTests
         LogicTagInspectorViewModel inspector = vm.SelectedTag!;
         Assert.Equal("START_PB", inspector.Title);
         Assert.Equal("Area DRY END", inspector.Subtitle);
-        Assert.Contains(inspector.SourceRows, row => row.Label == "Area" && row.Value == "DRY END");
-        Assert.Contains(inspector.SourceRows, row => row.Label == "Device contact" && row.Value == "NC");
-        Assert.Contains(inspector.SourceRows, row => row.Label == "Field" && row.Value == "actuated");
-        Assert.Contains(inspector.SourceRows, row => row.Label == "Source" && row.Value == "Simulation");
-        Assert.Contains(inspector.SourceRows, row => row.Label == "Live" && row.Value == "Off");
-        Assert.Contains(inspector.SourceRows, row => row.Label == "Quality" && row.Value == "good");
+        Assert.Contains(inspector.IdentityRows, row => row.Label == "Area" && row.Value == "DRY END");
+        Assert.Contains(inspector.IdentityRows, row => row.Label == "Device contact" && row.Value == "NC");
+        Assert.Contains(inspector.IdentityRows, row => row.Label == "Field" && row.Value == "actuated");
+        Assert.Contains(inspector.MappedRows, row => row.Label == "Source" && row.Value == "Simulation");
+        Assert.Contains(inspector.MappedRows, row => row.Label == "Live" && row.Value == "Off"
+            && row.RawValue == "0" && row.StateWord == "Off" && row.ShowStateWord);
+        Assert.Contains(inspector.MappedRows, row => row.Label == "Quality" && row.Value == "good");
+        Assert.Contains(inspector.MappedRows, row => row.Label == "Rate" && row.Value == "1000 ms");
+
+        // The two views are one sheet: Source first, Used by on its own tab.
+        Assert.True(inspector.IsSourceView);
+        Assert.False(inspector.IsUsageView);
+        Assert.Equal("Used by (1)", inspector.UsageTabLabel);
+        inspector.ShowUsage();
+        Assert.True(inspector.IsUsageView);
+        inspector.ShowSource();
+        Assert.True(inspector.IsSourceView);
 
         Assert.Single(inspector.Drivers);
         Assert.Equal("Drive", inspector.Drivers[0].Name);
         Assert.Single(inspector.Readers);
         Assert.Equal("Read", inspector.Readers[0].Name);
         Assert.Equal("BLOCKED", inspector.Readers[0].StateLabel);
-        Assert.Equal("USED BY (1)", inspector.UsageHeading);
 
         // A push repaints the cards' state without rebuilding the sheet.
         vm.ApplyUsageStates(new LogicStateSnapshot
@@ -245,8 +256,8 @@ public sealed class LogicTagInspectorTests
         LogicTagInspectorViewModel inspector = vm.SelectedTag!;
 
         Assert.Equal("START_PB", inspector.Title);
-        Assert.Contains(inspector.SourceRows, item => item.Label == "Source" && item.Value == "not assigned");
-        Assert.Contains(inspector.SourceRows, item => item.IsWarning && item.Value.Contains("not assigned", StringComparison.Ordinal));
+        Assert.Contains(inspector.MappedRows, item => item.Label == "Source" && item.Value == "not assigned");
+        Assert.Contains(inspector.IdentityRows, item => item.IsWarning && item.Value.Contains("not assigned", StringComparison.Ordinal));
         Assert.Empty(inspector.Drivers);
         // The block itself reads the name, so it is the one user the inspector lists.
         Assert.Single(inspector.Readers);

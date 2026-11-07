@@ -23,6 +23,46 @@ public static class LogicTagText
         return entry.IsGood == false ? text + " · bad" : text;
     }
 
+    /// <summary>
+    /// The raw reading for the inspector's LIVE row: the bit as 1/0, or the Analog value with
+    /// its unit. The operator's word is drawn separately in its own STATE chip.
+    /// </summary>
+    public static string Raw(MultiBridgeTagEntry? entry)
+    {
+        if (entry?.Value is null)
+        {
+            return "—";
+        }
+
+        if (!entry.Digital)
+        {
+            return FormatAnalog(entry);
+        }
+
+        return TagDigital.CoerceBool(entry.Value) ? "1" : "0";
+    }
+
+    /// <summary>
+    /// The mapping's operator word for a digital tag (OnText/OffText, else On/Off). Numeric
+    /// readings have no word: the comparison carries them, as in the web Result panel.
+    /// </summary>
+    public static string StateWord(MultiBridgeTagEntry? entry)
+    {
+        if (entry?.Value is null || !entry.Digital)
+        {
+            return string.Empty;
+        }
+
+        bool on = TagDigital.CoerceBool(entry.Value);
+        string? text = on ? entry.OnText : entry.OffText;
+        if (!string.IsNullOrWhiteSpace(text))
+        {
+            return text!.Trim();
+        }
+
+        return on ? "On" : "Off";
+    }
+
     private static string FormatDigital(MultiBridgeTagEntry entry)
     {
         bool on = TagDigital.CoerceBool(entry.Value);

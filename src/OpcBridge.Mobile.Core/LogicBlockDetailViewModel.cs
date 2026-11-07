@@ -8,28 +8,34 @@ using OpcBridge.Hmi.Core;
 namespace OpcBridge.Mobile.Core;
 
 /// <summary>
-/// One checkpoint of the block screen: a parent of the network — the gate or function block that
-/// owns the checks below it — with its live state. The dot is all that is drawn; the parent's name
-/// lives in <see cref="Description"/>, and tapping the dot jumps to its row.
+/// One check on the block screen's rail: every evaluated element, drawn as a hollow ring when it
+/// owns the checks below it and as a filled dot when it is one reading. The check's name lives in
+/// <see cref="Description"/>, and tapping it jumps to its row.
 /// </summary>
 public sealed partial class LogicCheckpointViewModel : ObservableObject
 {
     [ObservableProperty] private string _stateKey = LogicConditionStates.Unknown;
     [ObservableProperty] private string _stateWord = "no data";
 
-    public LogicCheckpointViewModel(Guid id, string name)
+    public LogicCheckpointViewModel(Guid id, string name, bool isParent)
     {
         Id = id;
         Name = name;
+        IsParent = isParent;
     }
 
     public Guid Id { get; }
 
-    /// <summary>The parent's sentence, or its kind when it has none ("root AND").</summary>
+    /// <summary>The check's sentence, or its kind when it has none ("root AND").</summary>
     public string Name { get; }
 
+    /// <summary>True when this check owns the checks below it (a gate or function block).</summary>
+    public bool IsParent { get; }
+
+    public string Hint => IsParent ? "Go to this parent" : "Go to this element";
+
     /// <summary>"Name — not fulfilled. Go to this parent." — the dot's accessible label.</summary>
-    public string Description => Name + " — " + StateWord + ". Go to this parent.";
+    public string Description => Name + " — " + StateWord + ". " + Hint + ".";
 
     partial void OnStateWordChanged(string value) => OnPropertyChanged(nameof(Description));
 
@@ -56,8 +62,11 @@ public sealed partial class LogicElementRowViewModel : ObservableObject
     private string lastState_ = LogicConditionStates.Unknown;
     private bool? lastMatches_;
     private string should_text_ = string.Empty;
+    private MultiBridgeTagEntry? tagEntry_;
 
-    [ObservableProperty] private string _mark = "—";
+    /// <summary>The mapping's operator word (Closed, Run, Off) for the row's STATE chip.</summary>
+    [ObservableProperty] private string _stateWord = string.Empty;
+
     [ObservableProperty] private string _stateKey = LogicConditionStates.Unknown;
     [ObservableProperty] private string _actualText = "—";
     [ObservableProperty] private string _valueText = string.Empty;
@@ -68,6 +77,13 @@ public sealed partial class LogicElementRowViewModel : ObservableObject
 
     /// <summary>True for a contact whose requirement can be stated.</summary>
     [ObservableProperty] private bool _showShould;
+
+    /// <summary>True when the row has both a comparison and a mapped operator word to chip.</summary>
+    public bool HasStateWord => ShowShould && StateWord.Length > 0;
+
+    partial void OnStateWordChanged(string value) => OnPropertyChanged(nameof(HasStateWord));
+
+    partial void OnShowShouldChanged(bool value) => OnPropertyChanged(nameof(HasStateWord));
 
     /// <summary>True while the live reading does not satisfy a contact.</summary>
     [ObservableProperty] private bool _mismatch;
@@ -121,6 +137,9 @@ public sealed partial class LogicElementRowViewModel : ObservableObject
     /// <summary>Pixels to indent by, so the tree reads without extra glyphs.</summary>
     public double IndentWidth => Depth * 14;
 
+    /// <summary>True for a nested row, the only ones that draw rails.</summary>
+    public bool HasDepth => Depth > 0;
+
     /// <summary>True for a contact / comparison; false for a gate or function block.</summary>
     public bool IsContact { get; }
 
@@ -158,12 +177,6 @@ public sealed partial class LogicElementRowViewModel : ObservableObject
         lastState_ = value;
         lastMatches_ = state?.Matches;
         StateKey = value;
-        Mark = value switch
-        {
-            LogicConditionStates.True => "✓",
-            LogicConditionStates.False => "✗",
-            _ => "—"
-        };
 
         ShowNextStep = !string.IsNullOrWhiteSpace(NextStepText) && value != LogicConditionStates.True;
         if (state is null)
@@ -194,6 +207,7 @@ public sealed partial class LogicElementRowViewModel : ObservableObject
         ApplyProgress(state);
         UpdateActualText();
         UpdateShouldLine();
+        RefreshStateWord();
     }
 
     /// <summary>
@@ -207,6 +221,7 @@ public sealed partial class LogicElementRowViewModel : ObservableObject
             return;
         }
 
+        tagEntry_ = entry;
         if (entry is null || entry.Value is null)
         {
             // No entry, or an entry whose reading was cleared with the link: the row reads
@@ -214,11 +229,13 @@ public sealed partial class LogicElementRowViewModel : ObservableObject
             ValueText = string.Empty;
             UpdateActualText();
             UpdateShouldLine();
+            RefreshStateWord();
             return;
         }
 
         isBoolean_ = entry.Digital;
         ApplyValueText(LogicTagText.Format(entry));
+        RefreshStateWord();
     }
 
     public void ApplyValueText(string valueText)
@@ -311,6 +328,15 @@ public sealed partial class LogicElementRowViewModel : ObservableObject
     {
         ShowShould = should_text_.Length > 0;
         ShouldLine = ShowShould ? "should " + should_text_ + " · actual " + ActualText : string.Empty;
+    }
+
+    /// <summary>
+    /// The mapped operator word rides only a row that states a comparison, so a coil or a gate
+    /// never adds a word the plant did not map. A numeric reading keeps the numbers alone.
+    /// </summary>
+    private void RefreshStateWord()
+    {
+        StateWord = ShowShould ? LogicTagText.StateWord(tagEntry_) : string.Empty;
     }
 
     private static string FormatSeconds(int milliseconds) =>
@@ -455,7 +481,10 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
     private readonly string bridgeKey_;
     private readonly MultiBridgeTagCache? tags_;
     private readonly LogicAreaTagsDto? areaTags_;
-    private readonly LogicTagUsageIndex usage_;
+    private readonly IReadOnlyList<LogicBlockDto> definitions_;
+    private readonly IReadOnlyList<LogicAreaTagsDto> allAreaTags_;
+    private readonly object usageLock_ = new();
+    private LogicTagUsageIndex? usage_;
     private IReadOnlyDictionary<Guid, LogicBlockStateDto> usageStates_ = new Dictionary<Guid, LogicBlockStateDto>();
     private readonly Dictionary<Guid, LogicElementRowViewModel> elementRows_ = new();
     private readonly Dictionary<Guid, LogicStepRowViewModel> stepRows_ = new();
@@ -505,9 +534,9 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
         tags_ = tags;
         areaTags_ = areaTags;
 
-        IReadOnlyList<LogicAreaTagsDto> areaLists = allAreaTags
+        definitions_ = definitions ?? new[] { block };
+        allAreaTags_ = allAreaTags
             ?? (areaTags is null ? Array.Empty<LogicAreaTagsDto>() : new[] { areaTags });
-        usage_ = LogicTagUsageIndex.Build(definitions ?? new[] { block }, areaLists);
 
         Title = block.Name;
         Description = block.Description;
@@ -754,6 +783,23 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Builds the plant-wide tag usage index away from the page-open path. The page calls this
+    /// on a worker after it is visible; a tag tap before it finishes builds it on demand.
+    /// </summary>
+    public void PrepareTagUsage()
+    {
+        if (usage_ is not null)
+        {
+            return;
+        }
+
+        lock (usageLock_)
+        {
+            usage_ ??= LogicTagUsageIndex.Build(definitions_, allAreaTags_);
+        }
+    }
+
     /// <summary>Opens the tag inspector for a row that names a tag.</summary>
     public void OpenTagPanel(LogicElementRowViewModel? row)
     {
@@ -762,10 +808,13 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
             return;
         }
 
+        // The tag sheet is the only consumer of the usage index. It is prebuilt in the
+        // background after the page is visible, so opening the sheet is normally instant.
+        PrepareTagUsage();
         SelectedTag = new LogicTagInspectorViewModel(
             reference,
             areaTags_,
-            usage_,
+            usage_!,
             tags_,
             bridgeKey_,
             usageStates_);
@@ -806,9 +855,10 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
     }
 
     /// <summary>
-    /// The screen's checkpoints are the network's parents — the gates and function blocks that
-    /// own the checks below them — in the network's own order. A leaf contact is already named in
-    /// the block's reason, and a coil publishes the result rather than checking it.
+    /// The rail marks every evaluated element in the network's own order. A gate or function
+    /// block that owns checks below it is a parent (a hollow ring); a contact or coil is one
+    /// reading (a filled dot). Coils publish the result but still sit on the rail, as in the web
+    /// Result board, so no check is missed from the met/total count.
     /// </summary>
     private void BuildCheckpoints()
     {
@@ -824,14 +874,14 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
     {
         foreach ((LogicElementDto element, int depth) in LogicNetwork.Walk(roots))
         {
-            if (element.Inputs.Count == 0 ||
-                string.Equals(element.Kind, LogicElementKinds.Coil, StringComparison.OrdinalIgnoreCase) ||
-                !seen.Add(element.Id))
+            if (!seen.Add(element.Id))
             {
                 continue;
             }
 
-            Checkpoints.Add(new LogicCheckpointViewModel(element.Id, CheckpointName(element, depth)));
+            bool parent = element.Inputs.Count > 0 &&
+                !string.Equals(element.Kind, LogicElementKinds.Coil, StringComparison.OrdinalIgnoreCase);
+            Checkpoints.Add(new LogicCheckpointViewModel(element.Id, CheckpointName(element, depth), parent));
         }
     }
 

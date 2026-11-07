@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:theme="clr-namespace:OpcBridge.Mobile"
              xmlns:views="clr-namespace:OpcBridge.Mobile.Views"
+             xmlns:core="clr-namespace:OpcBridge.Mobile.Core;assembly=OpcBridge.Mobile.Core"
              x:Class="OpcBridge.Mobile.Views.LogicPage"
              Title="Logic"
              Shell.NavBarIsVisible="False"
@@ -10,7 +11,7 @@
     <ContentPage.Resources>
         <!-- One search/filter chip: filled and dark-texted while selected, dark with muted
              text otherwise, so the choice reads without relying on colour alone. -->
-        <DataTemplate x:Key="FilterChip">
+        <DataTemplate x:Key="FilterChip" x:DataType="core:LogicFilterChipViewModel">
             <Button Text="{Binding Label}" Clicked="OnFilterChipClicked" FontSize="10" Padding="10,0" CornerRadius="9"
                     HeightRequest="26" MinimumHeightRequest="26"
                     BackgroundColor="{Binding IsSelected, Converter={StaticResource ChipColor}}"
@@ -221,7 +222,7 @@
                     <Label x:Name="emptyLabel" TextColor="{theme:ThemeColor MutedColor}" Margin="8" />
                 </CollectionView.EmptyView>
                 <CollectionView.GroupHeaderTemplate>
-                    <DataTemplate>
+                    <DataTemplate x:DataType="core:LogicBlockGroupViewModel">
                         <Border Margin="0,0,0,4" Style="{StaticResource LogicGroupCardBorder}"
                                 IsVisible="{Binding ShowHeader}">
                             <Border.GestureRecognizers>
@@ -246,7 +247,7 @@
                     </DataTemplate>
                 </CollectionView.GroupHeaderTemplate>
                 <CollectionView.ItemTemplate>
-                    <DataTemplate>
+                    <DataTemplate x:DataType="core:LogicBlockCardViewModel">
                         <Border Margin="0,0,0,8" Style="{StaticResource BlockCardBorder}">
                             <VerticalStackLayout Spacing="8">
                                 <Grid ColumnDefinitions="Auto,*,Auto,Auto" ColumnSpacing="8">
@@ -301,7 +302,7 @@
                                             <Binding Path="Tags" />
                                         </BindableLayout.ItemsSource>
                                         <BindableLayout.ItemTemplate>
-                                            <DataTemplate>
+                                            <DataTemplate x:DataType="x:String">
                                                 <Border Margin="0,0,6,2" Style="{StaticResource PillBorder}">
                                                     <Label Text="{Binding}" FontSize="9"
                                                            TextColor="{theme:ThemeColor MutedColor}" />

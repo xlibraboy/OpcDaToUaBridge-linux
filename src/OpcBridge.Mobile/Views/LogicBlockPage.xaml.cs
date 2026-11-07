@@ -150,25 +150,26 @@ public partial class LogicBlockPage : ContentPage
 
     private async Task LoadAsync()
     {
-        if (Active is null)
+        BridgeConnection? active = Active;
+        if (active is null)
         {
             titleLabel.Text = "No bridge selected";
             messageLabel.Text = "Pick a bridge on the Logic tab.";
             return;
         }
 
-        LogicBlockDto? block = Active.Overview.Definitions.FirstOrDefault(candidate => candidate.Id == blockId_);
-        if (block is null && Active.IsConnected)
+        LogicBlockDto? block = active.Overview.Definitions.FirstOrDefault(candidate => candidate.Id == blockId_);
+        if (block is null && active.IsConnected)
         {
             // The id is not in the last list; one refresh can recover a list that is stale.
-            await Active.RefreshAsync(CancellationToken.None);
-            block = Active.Overview.Definitions.FirstOrDefault(candidate => candidate.Id == blockId_);
+            await active.RefreshAsync(CancellationToken.None);
+            block = active.Overview.Definitions.FirstOrDefault(candidate => candidate.Id == blockId_);
         }
 
         if (block is null)
         {
             titleLabel.Text = "Block not found";
-            messageLabel.Text = Active.IsConnected
+            messageLabel.Text = active.IsConnected
                 ? "The block is not in the bridge's list — it may have been deleted."
                 : "This block is not in the last synced list — connect once to refresh.";
             return;
@@ -176,26 +177,48 @@ public partial class LogicBlockPage : ContentPage
 
         // Everything on screen comes from memory first — the definitions, state and values the
         // cache holds, and the notes last served — so the block opens instantly and reads fully
-        // while the link is down, instead of waiting on a network call.
-        viewModel_ = new LogicBlockDetailViewModel(
+        // while the link is down, instead of waiting on a network call. The view model's row,
+        // checkpoint and tag work is CPU-only: build it off the UI thread so the page transition
+        // stays animated even for the deeper blocks.
+        LogicBlockStateDto? blockState = active.Overview.State?.Blocks
+            .FirstOrDefault(candidate => candidate.Id == blockId_);
+        IReadOnlyList<LogicNoteDto> notes = active.CachedNotes(blockId_);
+        LogicAreaTagsDto? areaTags = active.Overview.AreaTagsFor(block);
+        IReadOnlyList<LogicBlockDto> definitions = active.Overview.Definitions;
+        IReadOnlyList<LogicAreaTagsDto> allAreaTags = active.Overview.AreaTags;
+        string cacheKey = active.CacheKey;
+        LogicBlockDetailViewModel vm = await Task.Run(() => new LogicBlockDetailViewModel(
             block,
-            Active.CacheKey,
-            Active.Overview.State?.Blocks.FirstOrDefault(candidate => candidate.Id == blockId_),
+            cacheKey,
+            blockState,
             coordinator_.Tags,
-            Active.CachedNotes(blockId_),
-            Active.Overview.AreaTagsFor(block),
-            Active.Overview.Definitions,
-            Active.Overview.AreaTags);
-        viewModel_.ActionRequested += OnActionRequested;
-        viewModel_.IsReadOnly = Active.IsOfflineViewer;
-        viewModel_.ApplyUsageStates(Active.Overview.State);
+            notes,
+            areaTags,
+            definitions,
+            allAreaTags));
 
-        BindingContext = viewModel_;
+        // A fast back/switch can finish loading a page that is no longer the one on screen.
+        if (blockId_ != block.Id || !ReferenceEquals(Active, active))
+        {
+            return;
+        }
+
+        viewModel_ = vm;
+        vm.ActionRequested += OnActionRequested;
+        vm.IsReadOnly = active.IsOfflineViewer;
+
+        BindingContext = vm;
         Title = block.Name;
         titleLabel.Text = block.Name;
         descriptionLabel.Text = block.Description;
         descriptionLabel.IsVisible = !string.IsNullOrWhiteSpace(block.Description);
-        Repaint();
+        // The view model already holds the state and values; only the page's own labels and
+        // note cards need seating, not a second pass over every row.
+        RefreshChrome();
+
+        // The tag sheet's plant-wide usage scan is not needed to show the block; warm it on a
+        // worker so the first tag tap does not pay for it.
+        _ = Task.Run(vm.PrepareTagUsage);
 
         // Notes are the one part the cache can be behind on: read them in the background and
         // keep the cached ones when the bridge cannot answer.
@@ -255,6 +278,17 @@ public partial class LogicBlockPage : ContentPage
         viewModel_.ApplyState(blockState);
         viewModel_.ApplyValues();
         viewModel_.ApplyUsageStates(Active.Overview.State);
+        RefreshChrome();
+    }
+
+    /// <summary>The page's own labels and note cards, after the rows themselves are current.</summary>
+    private void RefreshChrome()
+    {
+        if (viewModel_ is null || Active is null)
+        {
+            return;
+        }
+
         offlineLabel.IsVisible = Active.IsOffline;
         offlineLabel.Text = Active.OfflineText;
         stateLabel.Text = viewModel_.StateLabel;
@@ -271,6 +305,7 @@ public partial class LogicBlockPage : ContentPage
     {
         if (e.Parameter is LogicElementRowViewModel row)
         {
+            viewModel_?.ApplyUsageStates(Active?.Overview.State);
             viewModel_?.OpenTagPanel(row);
         }
     }
@@ -284,6 +319,22 @@ public partial class LogicBlockPage : ContentPage
     private void OnTagPanelCloseClicked(object? sender, TappedEventArgs e) => viewModel_?.CloseTagPanel();
 
     private void OnTagPanelScrimTapped(object? sender, TappedEventArgs e) => viewModel_?.CloseTagPanel();
+
+    private void OnTagSourceTabTapped(object? sender, TappedEventArgs e)
+    {
+        if (sender is BindableObject { BindingContext: LogicTagInspectorViewModel tag })
+        {
+            tag.ShowSource();
+        }
+    }
+
+    private void OnTagUsageTabTapped(object? sender, TappedEventArgs e)
+    {
+        if (sender is BindableObject { BindingContext: LogicTagInspectorViewModel tag })
+        {
+            tag.ShowUsage();
+        }
+    }
 
     /// <summary>A block card in the inspector opens that block's Result, as the web panel does.</summary>
     private async void OnTagUseTapped(object? sender, TappedEventArgs e)

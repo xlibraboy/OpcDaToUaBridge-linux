@@ -8,12 +8,17 @@ public partial class ElementsPage : ContentPage
 {
     private readonly BridgeCoordinator coordinator_;
     private readonly ElementsViewModel elements_ = new();
+    private volatile bool scrolling_;
+    private volatile bool pendingRepaint_;
+    private CancellationTokenSource? scrollSettle_;
+    private DateTime appearedAt_;
 
     public ElementsPage(BridgeCoordinator coordinator)
     {
         InitializeComponent();
         coordinator_ = coordinator;
         elementsView.ItemsSource = elements_.VisibleGroups;
+        elementsView.Scrolled += OnElementsScrolled;
         kindAllButton.BindingContext = elements_.KindFilters[0];
         kindInterlockButton.BindingContext = elements_.KindFilters[1];
         kindPermissiveButton.BindingContext = elements_.KindFilters[2];
@@ -26,12 +31,58 @@ public partial class ElementsPage : ContentPage
     protected override async void OnAppearing()
     {
         base.OnAppearing();
+        scrolling_ = false;
+        pendingRepaint_ = false;
+        appearedAt_ = DateTime.UtcNow;
         Repaint();
         await coordinator_.ConnectActiveAsync(CancellationToken.None);
         Repaint();
     }
 
-    private void OnChanged() => MainThread.BeginInvokeOnMainThread(Repaint);
+    /// <summary>
+    /// Live pushes can repaint dozens of rows; doing that mid-fling is what made the list hitch.
+    /// Keep the values arriving, but hold the repaint until the finger stops.
+    /// </summary>
+    private void OnChanged()
+    {
+        if (scrolling_)
+        {
+            pendingRepaint_ = true;
+            return;
+        }
+
+        MainThread.BeginInvokeOnMainThread(Repaint);
+    }
+
+    private void OnElementsScrolled(object? sender, ItemsViewScrolledEventArgs e)
+    {
+        scrolling_ = true;
+        scrollSettle_?.Cancel();
+        CancellationTokenSource settle = new();
+        scrollSettle_ = settle;
+        _ = Task.Delay(160, settle.Token).ContinueWith(task =>
+        {
+            if (task.IsCanceled)
+            {
+                return;
+            }
+
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                if (!ReferenceEquals(scrollSettle_, settle))
+                {
+                    return;
+                }
+
+                scrolling_ = false;
+                if (pendingRepaint_)
+                {
+                    pendingRepaint_ = false;
+                    Repaint();
+                }
+            });
+        }, TaskScheduler.Default);
+    }
 
     /// <summary>
     /// Converters resolve a state colour when a row is built, so a theme switch rebuilds the
@@ -191,6 +242,14 @@ public partial class ElementsPage : ContentPage
     {
         if (e.CurrentSelection.FirstOrDefault() is not LogicElementRowViewModel row)
         {
+            return;
+        }
+
+        // The tap that switches to this tab can also land on the row beneath it. Ignore that
+        // ghost selection for a moment so the tab opens its list instead of a block page.
+        if ((DateTime.UtcNow - appearedAt_).TotalMilliseconds < 350)
+        {
+            elementsView.SelectedItem = null;
             return;
         }
 

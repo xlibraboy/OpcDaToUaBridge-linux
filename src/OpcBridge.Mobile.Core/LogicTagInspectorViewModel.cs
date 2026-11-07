@@ -6,29 +6,50 @@ using OpcBridge.Hmi.Core;
 
 namespace OpcBridge.Mobile.Core;
 
-/// <summary>One line of the tag inspector: a label/value pair, a section heading or a warning.</summary>
+/// <summary>One line of the tag inspector: a label/value pair, or a warning.</summary>
 public sealed partial class LogicTagRowViewModel : ObservableObject
 {
     [ObservableProperty] private string _value;
+    [ObservableProperty] private bool _isVisible = true;
 
-    public LogicTagRowViewModel(string key, string label, string value, bool isSection = false, bool isWarning = false)
+    /// <summary>The raw bit/number drawn by the LIVE row, before the STATE chip.</summary>
+    [ObservableProperty] private string _rawValue = "—";
+
+    /// <summary>The mapping's operator word drawn in the LIVE row's STATE chip.</summary>
+    [ObservableProperty] private string _stateWord = string.Empty;
+
+    public LogicTagRowViewModel(string key, string label, string value, bool isWarning = false, bool isLive = false)
     {
         Key = key;
         Label = label;
         _value = value;
-        IsSection = isSection;
         IsWarning = isWarning;
+        IsLive = isLive;
     }
 
     public string Key { get; }
 
     public string Label { get; }
 
-    public bool IsSection { get; }
-
     public bool IsWarning { get; }
 
-    public bool IsPair => !IsSection && !IsWarning;
+    public bool IsLive { get; }
+
+    public bool IsPair => !IsWarning;
+
+    /// <summary>A pair renders its plain value unless the LIVE row draws raw + STATE instead.</summary>
+    public bool ShowPlainValue => IsPair && !IsLive;
+
+    public bool ShowStateWord => IsLive && StateWord.Length > 0;
+
+    partial void OnStateWordChanged(string value) => OnPropertyChanged(nameof(ShowStateWord));
+
+    public void ApplyLive(string raw, string word)
+    {
+        RawValue = raw;
+        StateWord = word;
+        OnPropertyChanged(nameof(ShowStateWord));
+    }
 }
 
 /// <summary>One block behind a tag, as the inspector's card: who it is, what it makes of the plant, and why it references the tag.</summary>
@@ -95,15 +116,17 @@ public sealed partial class LogicTagUseViewModel : ObservableObject
 /// <summary>
 /// The Result row's tag door: where the tag comes from (its area entry, device contact, mapped
 /// source and live reading) and which blocks read, write or drive it. Mirrors the web Result
-/// tab's tag inspector, on one sheet instead of two tabs.
+/// tab's tag inspector: a Source view and a Used by view, switched by the sheet's own tabs.
 /// </summary>
-public sealed class LogicTagInspectorViewModel
+public sealed partial class LogicTagInspectorViewModel : ObservableObject
 {
     private readonly LogicTagReference reference_;
     private readonly LogicTagUsageIndex usage_;
     private readonly LogicTagDto? areaEntry_;
     private readonly Dictionary<string, LogicTagRowViewModel> rows_ = new(StringComparer.Ordinal);
     private MultiBridgeTagEntry? tagEntry_;
+
+    [ObservableProperty] private bool _isSourceView = true;
 
     public LogicTagInspectorViewModel(
         LogicTagReference reference,
@@ -133,7 +156,8 @@ public sealed class LogicTagInspectorViewModel
             Readers.Add(new LogicTagUseViewModel(use.Block, use.Lines));
         }
 
-        AddSourceRows();
+        AddIdentityRows();
+        AddMappedRows();
         ApplyStates(states);
     }
 
@@ -144,7 +168,11 @@ public sealed class LogicTagInspectorViewModel
 
     public string Subtitle { get; }
 
-    public ObservableCollection<LogicTagRowViewModel> SourceRows { get; } = new();
+    /// <summary>The Source tab's tag identity and area-entry rows.</summary>
+    public ObservableCollection<LogicTagRowViewModel> IdentityRows { get; } = new();
+
+    /// <summary>The MAPPED SOURCE rows, including the live raw reading and its state chip.</summary>
+    public ObservableCollection<LogicTagRowViewModel> MappedRows { get; } = new();
 
     /// <summary>Blocks whose output/coil drives the tag.</summary>
     public ObservableCollection<LogicTagUseViewModel> Drivers { get; } = new();
@@ -159,24 +187,34 @@ public sealed class LogicTagInspectorViewModel
             ? "No block drives this tag — it comes from the mapped source below."
             : "No block drives this tag.";
 
-    public string UsageHeading => "USED BY (" + Readers.Count + ")";
+    /// <summary>"Used by (2)" — the second tab's own count.</summary>
+    public string UsageTabLabel => "Used by (" + Readers.Count + ")";
 
     public string UsageSummary => Readers.Count > 0
         ? Readers.Count + (Readers.Count == 1 ? " block uses this tag" : " blocks use this tag")
             + " — open one for its Result."
         : "No block reads this tag.";
 
+    public bool IsUsageView => !IsSourceView;
+
+    partial void OnIsSourceViewChanged(bool value) => OnPropertyChanged(nameof(IsUsageView));
+
+    public void ShowSource() => IsSourceView = true;
+
+    public void ShowUsage() => IsSourceView = false;
+
     /// <summary>Updates the live/source rows when a value delta arrives, without rebuilding the sheet.</summary>
     public void ApplyEntry(MultiBridgeTagEntry? entry)
     {
         tagEntry_ = entry;
         SetRow("source", SourceLabel());
-        SetRow("source-type", Optional(tagEntry_?.SourceType));
-        SetRow("display", Optional(tagEntry_?.DisplayName));
-        SetRow("type", Optional(tagEntry_?.DataType));
-        SetRow("unit", Optional(tagEntry_?.Unit));
-        SetRow("live", LogicTagText.Format(entry));
+        SetOptionalRow("source-type", Optional(entry?.SourceType));
+        SetRow("display", Optional(entry?.DisplayName));
+        SetRow("type", Optional(entry?.DataType));
+        SetOptionalRow("unit", Optional(entry?.Unit));
+        SetLive(entry);
         SetRow("quality", Quality(entry));
+        SetOptionalRow("rate", Rate(entry));
         SetRow("writable", Writable(entry));
         string form = ContactForm(areaEntry_);
         if (form is "no" or "nc")
@@ -184,15 +222,15 @@ public sealed class LogicTagInspectorViewModel
             SetRow("field", FieldState(form, entry));
         }
 
-        LogicTagRowViewModel? missing = SourceRows.FirstOrDefault(row => row.Key == "no-mapped-tag");
+        LogicTagRowViewModel? missing = MappedRows.FirstOrDefault(row => row.Key == "no-mapped-tag");
         if (entry is not null && missing is not null)
         {
-            SourceRows.Remove(missing);
+            MappedRows.Remove(missing);
             rows_.Remove(missing.Key);
         }
         else if (entry is null && reference_.IsBound && missing is null)
         {
-            AddWarning("no-mapped-tag", "The bridge has no mapped tag for " + PairText() + ".");
+            AddWarning(MappedRows, "no-mapped-tag", "The bridge has no mapped tag for " + PairText() + ".");
         }
     }
 
@@ -206,14 +244,14 @@ public sealed class LogicTagInspectorViewModel
         }
     }
 
-    private void AddSourceRows()
+    private void AddIdentityRows()
     {
         if (reference_.Named)
         {
-            AddRow("tag", "Tag", reference_.Name);
-            AddRow("area", "Area", reference_.Area.Length > 0 ? reference_.Area : "—");
+            AddRow(IdentityRows, "tag", "Tag", reference_.Name);
+            AddRow(IdentityRows, "area", "Area", reference_.Area.Length > 0 ? reference_.Area : "—");
             string form = ContactForm(areaEntry_);
-            AddRow("contact", "Device contact", form switch
+            AddRow(IdentityRows, "contact", "Device contact", form switch
             {
                 "no" => "NO",
                 "nc" => "NC",
@@ -221,64 +259,78 @@ public sealed class LogicTagInspectorViewModel
             });
             if (form is "no" or "nc")
             {
-                AddRow("field", "Field", FieldState(form, tagEntry_));
+                AddRow(IdentityRows, "field", "Field", FieldState(form, tagEntry_));
             }
 
             if (reference_.Area.Length == 0)
             {
-                AddWarning("no-area", "This block has no area — the name cannot resolve to a source.");
+                AddWarning(IdentityRows, "no-area", "This block has no area — the name cannot resolve to a source.");
             }
             else if (areaEntry_ is null)
             {
-                AddWarning("no-entry", "No tag named " + reference_.Name + " in " + reference_.Area + " — add it on the Tags tab.");
+                AddWarning(IdentityRows, "no-entry", "No tag named " + reference_.Name + " in " + reference_.Area + " — add it on the Tags tab.");
             }
             else if (!reference_.IsBound && Drivers.Count == 0)
             {
-                AddWarning("unassigned", reference_.Name + " is not assigned a source and tag yet — assign it on the Tags tab.");
+                AddWarning(IdentityRows, "unassigned", reference_.Name + " is not assigned a source and tag yet — assign it on the Tags tab.");
             }
         }
         else
         {
-            AddRow("tag", "Tag", Title);
+            AddRow(IdentityRows, "tag", "Tag", Title);
         }
+    }
 
-        AddSection("section-source", "MAPPED SOURCE");
-        AddRow("source", "Source", SourceLabel());
-        AddRow("source-id", "Source id", reference_.SourceId.Length > 0 ? reference_.SourceId : "—");
-        AddRow("source-type", "Source type", Optional(tagEntry_?.SourceType));
-        AddRow("item", "Item", reference_.ItemId.Length > 0 ? reference_.ItemId : "—");
-        AddRow("display", "Display", Optional(tagEntry_?.DisplayName));
-        AddRow("type", "Type", Optional(tagEntry_?.DataType));
-        AddRow("unit", "Unit", Optional(tagEntry_?.Unit));
-        AddRow("live", "Live", LogicTagText.Format(tagEntry_));
-        AddRow("quality", "Quality", Quality(tagEntry_));
-        AddRow("writable", "Writable", Writable(tagEntry_));
+    private void AddMappedRows()
+    {
+        AddRow(MappedRows, "source", "Source", SourceLabel());
+        AddRow(MappedRows, "source-id", "Source id", reference_.SourceId.Length > 0 ? reference_.SourceId : "—");
+        AddOptionalRow(MappedRows, "source-type", "Source type", Optional(tagEntry_?.SourceType));
+        AddRow(MappedRows, "item", "Item", reference_.ItemId.Length > 0 ? reference_.ItemId : "—");
+        AddRow(MappedRows, "display", "Display", Optional(tagEntry_?.DisplayName));
+        AddRow(MappedRows, "type", "Type", Optional(tagEntry_?.DataType));
+        AddOptionalRow(MappedRows, "unit", "Unit", Optional(tagEntry_?.Unit));
+        LogicTagRowViewModel live = AddRow(MappedRows, "live", "Live", LogicTagText.Format(tagEntry_), isLive: true);
+        live.ApplyLive(LogicTagText.Raw(tagEntry_), LogicTagText.StateWord(tagEntry_));
+        AddRow(MappedRows, "quality", "Quality", Quality(tagEntry_));
+        AddOptionalRow(MappedRows, "rate", "Rate", Rate(tagEntry_));
+        AddRow(MappedRows, "writable", "Writable", Writable(tagEntry_));
 
         if (reference_.IsBound && tagEntry_ is null)
         {
-            AddWarning("no-mapped-tag", "The bridge has no mapped tag for " + PairText() + ".");
+            AddWarning(MappedRows, "no-mapped-tag", "The bridge has no mapped tag for " + PairText() + ".");
         }
     }
 
-    private void AddRow(string key, string label, string value)
+    private LogicTagRowViewModel AddRow(
+        ObservableCollection<LogicTagRowViewModel> target,
+        string key,
+        string label,
+        string value,
+        bool isLive = false)
     {
-        LogicTagRowViewModel row = new(key, label, value);
+        LogicTagRowViewModel row = new(key, label, value, isLive: isLive);
         rows_[key] = row;
-        SourceRows.Add(row);
+        target.Add(row);
+        return row;
     }
 
-    private void AddSection(string key, string label)
+    private LogicTagRowViewModel AddOptionalRow(
+        ObservableCollection<LogicTagRowViewModel> target,
+        string key,
+        string label,
+        string value)
     {
-        LogicTagRowViewModel row = new(key, label, string.Empty, isSection: true);
-        rows_[key] = row;
-        SourceRows.Add(row);
+        LogicTagRowViewModel row = AddRow(target, key, label, value);
+        row.IsVisible = value != "—";
+        return row;
     }
 
-    private void AddWarning(string key, string text)
+    private void AddWarning(ObservableCollection<LogicTagRowViewModel> target, string key, string text)
     {
         LogicTagRowViewModel row = new(key, string.Empty, text, isWarning: true);
         rows_[key] = row;
-        SourceRows.Add(row);
+        target.Add(row);
     }
 
     private void SetRow(string key, string value)
@@ -287,6 +339,26 @@ public sealed class LogicTagInspectorViewModel
         {
             row.Value = value;
         }
+    }
+
+    private void SetOptionalRow(string key, string value)
+    {
+        if (rows_.TryGetValue(key, out LogicTagRowViewModel? row))
+        {
+            row.Value = value;
+            row.IsVisible = value != "—";
+        }
+    }
+
+    private void SetLive(MultiBridgeTagEntry? entry)
+    {
+        if (!rows_.TryGetValue("live", out LogicTagRowViewModel? row))
+        {
+            return;
+        }
+
+        row.Value = LogicTagText.Format(entry);
+        row.ApplyLive(LogicTagText.Raw(entry), LogicTagText.StateWord(entry));
     }
 
     private MultiBridgeTagEntry? ResolveEntry(MultiBridgeTagCache? tags, string bridgeKey)
@@ -342,6 +414,9 @@ public sealed class LogicTagInspectorViewModel
         false => "bad",
         _ => "—"
     };
+
+    private static string Rate(MultiBridgeTagEntry? entry) =>
+        entry is { UpdateRateMs: > 0 } ? entry.UpdateRateMs + " ms" : "—";
 
     private static string Writable(MultiBridgeTagEntry? entry) =>
         entry is null ? "—" : entry.Writeable ? "yes" : "no";
