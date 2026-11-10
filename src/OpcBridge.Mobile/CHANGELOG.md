@@ -59,6 +59,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   colours are cached. A tab switch also ignores the ghost row selection under the bar. The
   Elements list drops the raw tag string from its rows, and its row template no longer carries
   the nested accent grid that could stall the CollectionView measure pass.
+- **Only the screen in front of the operator follows the live feed.** A values push updates just
+  the rows behind the tags it names, for both the Elements list and a block's network; a hidden
+  tab, a folded element group and a row whose reading did not move do no work. A burst of
+  pushes is coalesced into one repaint, and the nesting rails reuse their guides instead of
+  rebuilding the row's view tree on every recycled bind. A replaced hub link can also no longer
+  leave a connected bridge showing the offline structure.
+- **A block opens without building its whole network first.** The block screen's elements are
+  now a virtualized list under the same header card and checkpoint rail, so only the rows on
+  screen are created: a thirty-element interlock binds in a fraction of the time it took to
+  lay out every row up front, and the back gesture returns at once. A swipe no longer counts
+  as a row tap, so scrolling a list cannot open a block by accident.
 - **The tag sheet is split into Source and Used by views.** Source shows the tag identity,
   DRIVEN BY, and the mapped source including the raw live reading with its STATE chip, quality,
   update rate and writable flag; Used by lists the blocks that read or write the tag on its own

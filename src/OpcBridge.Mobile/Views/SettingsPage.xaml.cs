@@ -13,8 +13,6 @@ public partial class SettingsPage : ContentPage
         InitializeComponent();
         coordinator_ = coordinator;
         BindableLayout.SetItemsSource(bridgesList, coordinator_.Bridges);
-        coordinator_.Changed += OnChanged;
-        ThemeManager.Changed += OnThemeChanged;
         aboutVersionLabel.Text = AppInfo.Current.VersionString;
         aboutTextLabel.Text = "OpcBridge Logic · plant logic viewer for the bridge HMI.";
         aboutFooterLabel.Text = "Writes that may already have reached the bridge are never replayed automatically.";
@@ -24,8 +22,20 @@ public partial class SettingsPage : ContentPage
     protected override void OnAppearing()
     {
         base.OnAppearing();
+        // Follow the coordinator only while this page is the one on screen.
+        coordinator_.Changed -= OnChanged;
+        coordinator_.Changed += OnChanged;
+        ThemeManager.Changed -= OnThemeChanged;
+        ThemeManager.Changed += OnThemeChanged;
         Repaint();
         PaintThemeSelection();
+    }
+
+    protected override void OnDisappearing()
+    {
+        coordinator_.Changed -= OnChanged;
+        ThemeManager.Changed -= OnThemeChanged;
+        base.OnDisappearing();
     }
 
     private void OnChanged() => MainThread.BeginInvokeOnMainThread(Repaint);

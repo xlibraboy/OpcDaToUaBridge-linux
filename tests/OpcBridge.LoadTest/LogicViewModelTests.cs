@@ -97,6 +97,38 @@ public sealed class LogicOverviewViewModelTests
     }
 
     [Fact]
+    public void ApplyState_ReapplyingAnUnchangedSnapshotLeavesTheListsAlone()
+    {
+        LogicOverviewViewModel vm = new();
+        LogicBlockDto blocked = Block("Line 01 Start", conditions: Condition());
+        LogicBlockDto ready = Block("Line 02 Start", conditions: Condition());
+        vm.ApplyDefinitions(new[] { blocked, ready });
+
+        LogicStateSnapshot snapshot = new()
+        {
+            Blocks =
+            {
+                State(blocked.Id, LogicBlockStates.Blocked, "Line 01 start permit must be given"),
+                State(ready.Id, LogicBlockStates.Ready)
+            }
+        };
+        vm.ApplyState(snapshot);
+
+        LogicBlockCardViewModel card = vm.Blocks.Single(candidate => candidate.Id == blocked.Id);
+        LogicBlockGroupViewModel group = Assert.Single(vm.VisibleGroups);
+        int cardChanges = 0;
+        card.PropertyChanged += (_, _) => cardChanges++;
+
+        // A values-push echo of the same evaluation must not re-parent or re-filter anything.
+        vm.ApplyState(snapshot);
+
+        Assert.Same(group, Assert.Single(vm.VisibleGroups));
+        Assert.Equal(0, cardChanges);
+        Assert.False(card.ApplyState(snapshot.Blocks.Single(state => state.Id == blocked.Id)));
+        Assert.True(card.ApplyState(State(blocked.Id, LogicBlockStates.Ready)));
+    }
+
+    [Fact]
     public void ApplyState_DerivesSequenceProgressFromTheCurrentStep()
     {
         LogicOverviewViewModel vm = new();

@@ -60,7 +60,10 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
             LastSyncedUtc = DateTime.UtcNow;
             RecomputeSync();
             TryFlushOutbox();
-            RaiseChanged();
+            // A values batch changes readings, not structure or evaluated state, so the screens
+            // that show readings update just the rows behind these tags. Rebuilding every list
+            // ten times a second is what made the app hitch between screens.
+            TagValuesChanged?.Invoke(deltas);
         });
         hub_.Reconnecting += _ => post_(() =>
         {
@@ -98,6 +101,12 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
 
     /// <summary>Raised on the posting thread after any change this bridge caused.</summary>
     public event Action? Changed;
+
+    /// <summary>
+    /// Raised on the posting thread with the readings one live push changed. Only the rows
+    /// behind these tags need repainting; everything else can wait for its own change.
+    /// </summary>
+    public event Action<IReadOnlyList<HmiValueDelta>>? TagValuesChanged;
 
     public SavedBridge Bridge { get; }
 
@@ -1065,6 +1074,11 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
         {
             await hub_.ConnectAsync(Bridge.Url, cancellationToken, null, api_.Cookies);
             StatusText = LiveText;
+            // Reaching the bridge's hub means the link is back. Clear the offline view here
+            // as well as in RefreshAsync: a reconnect can follow a state that was marked
+            // offline without a new refresh.
+            IsOffline = false;
+            IsOfflineViewer = false;
         }
         catch (Exception exception)
         {

@@ -9,15 +9,15 @@ public partial class LogicPage : ContentPage
     private LogicOverviewViewModel? subscribed_;
     private volatile bool scrolling_;
     private volatile bool pendingRepaint_;
-    private CancellationTokenSource? scrollSettle_;
+    private bool visible_;
+    private bool repaintQueued_;
+    private IDispatcherTimer? scrollSettle_;
     private DateTime appearedAt_;
 
     public LogicPage(BridgeCoordinator coordinator)
     {
         InitializeComponent();
         coordinator_ = coordinator;
-        coordinator_.Changed += OnChanged;
-        ThemeManager.Changed += OnThemeChanged;
         blocksView.Scrolled += OnBlocksScrolled;
         // Adding a bridge lives under Settings; the sheet hands the operator over there.
         bridgeSheet.NewBridgeRequested += async () => await Shell.Current.GoToAsync("//settings");
@@ -27,42 +27,99 @@ public partial class LogicPage : ContentPage
     protected override async void OnAppearing()
     {
         base.OnAppearing();
+        visible_ = true;
         scrolling_ = false;
         pendingRepaint_ = false;
         appearedAt_ = DateTime.UtcNow;
+        // Only the page on screen follows the feed; a hidden tab must not repaint behind it.
+        coordinator_.Changed -= OnChanged;
+        coordinator_.Changed += OnChanged;
+        ThemeManager.Changed -= OnThemeChanged;
+        ThemeManager.Changed += OnThemeChanged;
         Repaint();
         await coordinator_.ConnectActiveAsync(CancellationToken.None);
         Repaint();
     }
 
+    protected override void OnDisappearing()
+    {
+        visible_ = false;
+        scrolling_ = false;
+        pendingRepaint_ = false;
+        repaintQueued_ = false;
+        scrollSettle_?.Stop();
+        coordinator_.Changed -= OnChanged;
+        ThemeManager.Changed -= OnThemeChanged;
+        base.OnDisappearing();
+    }
+
     /// <summary>Live pushes repaint the whole grouped list; hold them while the list is moving.</summary>
     private void OnChanged()
     {
+        if (!visible_)
+        {
+            return;
+        }
+
         if (scrolling_)
         {
             pendingRepaint_ = true;
             return;
         }
 
-        MainThread.BeginInvokeOnMainThread(Repaint);
+        QueueRepaint();
+    }
+
+    /// <summary>Coalesces a burst of pushes (a connect, a snapshot and status changes) into one repaint.</summary>
+    private void QueueRepaint()
+    {
+        if (repaintQueued_)
+        {
+            return;
+        }
+
+        repaintQueued_ = true;
+        Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(80), () =>
+        {
+            repaintQueued_ = false;
+            if (!visible_)
+            {
+                return;
+            }
+
+            if (scrolling_)
+            {
+                pendingRepaint_ = true;
+                return;
+            }
+
+            Repaint();
+        });
     }
 
     private void OnBlocksScrolled(object? sender, ItemsViewScrolledEventArgs e)
     {
         scrolling_ = true;
-        scrollSettle_?.Cancel();
-        CancellationTokenSource settle = new();
-        scrollSettle_ = settle;
-        _ = Task.Delay(160, settle.Token).ContinueWith(task =>
+        IDispatcherTimer settle = ScrollSettle;
+        settle.Stop();
+        settle.Start();
+    }
+
+    private IDispatcherTimer ScrollSettle
+    {
+        get
         {
-            if (task.IsCanceled)
+            if (scrollSettle_ is not null)
             {
-                return;
+                return scrollSettle_;
             }
 
-            MainThread.BeginInvokeOnMainThread(() =>
+            scrollSettle_ = Dispatcher.CreateTimer();
+            scrollSettle_.Interval = TimeSpan.FromMilliseconds(160);
+            scrollSettle_.IsRepeating = false;
+            scrollSettle_.Tick += (_, _) =>
             {
-                if (!ReferenceEquals(scrollSettle_, settle))
+                if (!visible_)
                 {
                     return;
                 }
@@ -73,8 +130,9 @@ public partial class LogicPage : ContentPage
                     pendingRepaint_ = false;
                     Repaint();
                 }
-            });
-        }, TaskScheduler.Default);
+            };
+            return scrollSettle_;
+        }
     }
 
     /// <summary>
@@ -291,8 +349,9 @@ public partial class LogicPage : ContentPage
             return;
         }
 
-        // A tab switch tap can ghost onto the row under the bar; let the tab settle first.
-        if ((DateTime.UtcNow - appearedAt_).TotalMilliseconds < 350)
+        // A tab switch tap can ghost onto the row under the bar; a fling can land on a row
+        // too. Only a deliberate tap while the list is still opens the block.
+        if (scrolling_ || (DateTime.UtcNow - appearedAt_).TotalMilliseconds < 350)
         {
             blocksView.SelectedItem = null;
             return;

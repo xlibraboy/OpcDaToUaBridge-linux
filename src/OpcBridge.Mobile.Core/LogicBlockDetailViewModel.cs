@@ -63,6 +63,11 @@ public sealed partial class LogicElementRowViewModel : ObservableObject
     private bool? lastMatches_;
     private string should_text_ = string.Empty;
     private MultiBridgeTagEntry? tagEntry_;
+    private string? cachedTagText_;
+    private bool cachedTagTextSet_;
+    private bool cachedTagDigital_;
+    private string? builtShouldText_;
+    private string? builtActualText_;
 
     /// <summary>The mapping's operator word (Closed, Run, Off) for the row's STATE chip.</summary>
     [ObservableProperty] private string _stateWord = string.Empty;
@@ -194,8 +199,7 @@ public sealed partial class LogicElementRowViewModel : ObservableObject
             ValueText = state.ValueText;
         }
 
-        ShouldLine = state?.Should is { Length: > 0 } should ? should : string.Empty;
-        should_text_ = ShouldLine;
+        should_text_ = state?.Should is { Length: > 0 } should ? should : string.Empty;
         Mismatch = state?.Matches == false;
         ShouldKey = state?.Matches switch
         {
@@ -222,7 +226,24 @@ public sealed partial class LogicElementRowViewModel : ObservableObject
         }
 
         tagEntry_ = entry;
-        if (entry is null || entry.Value is null)
+        string? text = entry is null || entry.Value is null ? null : LogicTagText.Format(entry);
+
+        // A values batch carries every tag that moved, but most rows are untouched by it.
+        // Leave their reading and derived texts exactly as they are instead of re-formatting
+        // and re-raising the same strings ten times a second.
+        if (cachedTagTextSet_ &&
+            string.Equals(cachedTagText_, text, StringComparison.Ordinal) &&
+            cachedTagDigital_ == (entry?.Digital ?? false) &&
+            string.Equals(ValueText, text ?? string.Empty, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        cachedTagTextSet_ = true;
+        cachedTagText_ = text;
+        cachedTagDigital_ = entry?.Digital ?? false;
+
+        if (text is null)
         {
             // No entry, or an entry whose reading was cleared with the link: the row reads
             // nothing instead of the value that was on screen when the bridge went away.
@@ -233,8 +254,8 @@ public sealed partial class LogicElementRowViewModel : ObservableObject
             return;
         }
 
-        isBoolean_ = entry.Digital;
-        ApplyValueText(LogicTagText.Format(entry));
+        isBoolean_ = entry!.Digital;
+        ApplyValueText(text);
         RefreshStateWord();
     }
 
@@ -327,7 +348,27 @@ public sealed partial class LogicElementRowViewModel : ObservableObject
     private void UpdateShouldLine()
     {
         ShowShould = should_text_.Length > 0;
-        ShouldLine = ShowShould ? "should " + should_text_ + " · actual " + ActualText : string.Empty;
+        if (!ShowShould)
+        {
+            if (ShouldLine.Length > 0)
+            {
+                ShouldLine = string.Empty;
+            }
+
+            return;
+        }
+
+        // The line is a string the list shows on a row; build it only when one of its two
+        // readings changed, not on every push that re-applies the same state.
+        if (string.Equals(builtShouldText_, should_text_, StringComparison.Ordinal) &&
+            string.Equals(builtActualText_, ActualText, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        builtShouldText_ = should_text_;
+        builtActualText_ = ActualText;
+        ShouldLine = "should " + should_text_ + " · actual " + ActualText;
     }
 
     /// <summary>
@@ -488,6 +529,8 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
     private IReadOnlyDictionary<Guid, LogicBlockStateDto> usageStates_ = new Dictionary<Guid, LogicBlockStateDto>();
     private readonly Dictionary<Guid, LogicElementRowViewModel> elementRows_ = new();
     private readonly Dictionary<Guid, LogicStepRowViewModel> stepRows_ = new();
+    private readonly Dictionary<TagBindingKey, List<LogicElementRowViewModel>> rowsByTag_ =
+        new(TagBindingKeyComparer.Instance);
 
     [ObservableProperty] private string _stateLabel = "no data";
     [ObservableProperty] private string _stateKey = LogicBlockStates.Unknown;
@@ -572,6 +615,7 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
             Steps.Add(row);
         }
 
+        IndexTagRows();
         BuildCheckpoints();
 
         foreach (LogicActionDto action in block.Actions)
@@ -716,6 +760,31 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// The item the list scrolls to for one checkpoint: the element's own row, or — in a
+    /// sequence, where the item source is the steps — the step that holds it.
+    /// </summary>
+    public object? FindScrollTarget(Guid elementId)
+    {
+        if (!elementRows_.TryGetValue(elementId, out LogicElementRowViewModel? row))
+        {
+            return null;
+        }
+
+        if (IsSequence)
+        {
+            foreach (LogicStepRowViewModel step in Steps)
+            {
+                if (step.Elements.Any(element => element.Id == elementId))
+                {
+                    return step;
+                }
+            }
+        }
+
+        return row;
+    }
+
     /// <summary>Live value text for every contact, straight from the tag cache.</summary>
     public void ApplyValues()
     {
@@ -758,6 +827,58 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
         if (SelectedTag is not null)
         {
             SelectedTag.ApplyEntry(FindEntry(SelectedTag.Reference));
+        }
+    }
+
+    /// <summary>
+    /// Applies one live values batch to only the rows that read those tags. The page stays
+    /// current without re-reading every contact on the screen for each push.
+    /// </summary>
+    public void ApplyTagDeltas(IReadOnlyList<HmiValueDelta> deltas)
+    {
+        if (tags_ is null)
+        {
+            return;
+        }
+
+        foreach (HmiValueDelta delta in deltas)
+        {
+            TagBindingKey key = TagBindingKey.Create(bridgeKey_, delta.SourceId, delta.ItemId);
+            if (!rowsByTag_.TryGetValue(key, out List<LogicElementRowViewModel>? rows))
+            {
+                continue;
+            }
+
+            tags_.TryGet(key, out MultiBridgeTagEntry? entry);
+            foreach (LogicElementRowViewModel row in rows)
+            {
+                row.ApplyTag(entry);
+            }
+        }
+
+        if (IsTagPanelOpen && SelectedTag is not null)
+        {
+            SelectedTag.ApplyEntry(FindEntry(SelectedTag.Reference));
+        }
+    }
+
+    private void IndexTagRows()
+    {
+        foreach (LogicElementRowViewModel row in elementRows_.Values)
+        {
+            if (!row.IsContact || row.TagReference is not { IsBound: true } reference)
+            {
+                continue;
+            }
+
+            TagBindingKey key = TagBindingKey.Create(bridgeKey_, reference.SourceId, reference.ItemId);
+            if (!rowsByTag_.TryGetValue(key, out List<LogicElementRowViewModel>? indexed))
+            {
+                indexed = new List<LogicElementRowViewModel>();
+                rowsByTag_[key] = indexed;
+            }
+
+            indexed.Add(row);
         }
     }
 

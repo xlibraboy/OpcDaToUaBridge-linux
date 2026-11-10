@@ -18,16 +18,17 @@ public partial class LogicBlockPage : ContentPage
     {
         InitializeComponent();
         coordinator_ = coordinator;
-        coordinator_.Changed += OnLiveChanged;
     }
 
     protected override void OnAppearing()
     {
         base.OnAppearing();
-        // The ctor subscribes for the earliest repaint; re-subscribing here is idempotent and
-        // keeps a page that was navigated away from and back alive to live updates.
+        // The page follows the feed only while it is the one on screen; re-subscribing here
+        // also restores a page that was navigated away from and back.
         coordinator_.Changed -= OnLiveChanged;
         coordinator_.Changed += OnLiveChanged;
+        coordinator_.TagValuesChanged -= OnTagValuesChanged;
+        coordinator_.TagValuesChanged += OnTagValuesChanged;
         ThemeManager.Changed -= OnThemeChanged;
         ThemeManager.Changed += OnThemeChanged;
     }
@@ -37,6 +38,7 @@ public partial class LogicBlockPage : ContentPage
         // The page is transient (a new instance per navigation): without this the singleton
         // coordinator would keep every visited block page alive and repainting.
         coordinator_.Changed -= OnLiveChanged;
+        coordinator_.TagValuesChanged -= OnTagValuesChanged;
         ThemeManager.Changed -= OnThemeChanged;
         flashToken_?.Cancel();
         flashToken_ = null;
@@ -79,13 +81,18 @@ public partial class LogicBlockPage : ContentPage
     private async void OnCheckpointTapped(object? sender, TappedEventArgs e)
     {
         if (e.Parameter is not LogicCheckpointViewModel checkpoint ||
-            !elementViews_.TryGetValue(checkpoint.Id, out Border? row))
+            viewModel_?.FindScrollTarget(checkpoint.Id) is not { } target)
         {
             return;
         }
 
-        _ = FlashRowAsync(row);
-        await pageScroll.ScrollToAsync(row, ScrollToPosition.Center, true);
+        pageScroll.ScrollTo(target, position: ScrollToPosition.Center, animate: true);
+        // The row is realized by the virtualized list as it scrolls into view.
+        await Task.Delay(180);
+        if (elementViews_.TryGetValue(checkpoint.Id, out Border? row))
+        {
+            _ = FlashRowAsync(row);
+        }
     }
 
     private async Task FlashRowAsync(Border row)
@@ -212,6 +219,14 @@ public partial class LogicBlockPage : ContentPage
         titleLabel.Text = block.Name;
         descriptionLabel.Text = block.Description;
         descriptionLabel.IsVisible = !string.IsNullOrWhiteSpace(block.Description);
+        // A sequence's list is its ordered steps; an interlock's is its network. Both are
+        // virtualized, so only what is on screen is built.
+        if (vm.IsSequence)
+        {
+            pageScroll.ItemTemplate = (DataTemplate)Resources["StepRow"];
+            pageScroll.ItemsSource = vm.Steps;
+        }
+
         // The view model already holds the state and values; only the page's own labels and
         // note cards need seating, not a second pass over every row.
         RefreshChrome();
@@ -249,6 +264,13 @@ public partial class LogicBlockPage : ContentPage
     {
         MainThread.BeginInvokeOnMainThread(Repaint);
     }
+
+    /// <summary>
+    /// A values push carries only the tags that moved; the rows behind them are repainted and
+    /// the rest of the network is left alone.
+    /// </summary>
+    private void OnTagValuesChanged(IReadOnlyList<HmiValueDelta> deltas) =>
+        MainThread.BeginInvokeOnMainThread(() => viewModel_?.ApplyTagDeltas(deltas));
 
     /// <summary>
     /// The network and tag cards resolve their state colours when built; re-seating the binding

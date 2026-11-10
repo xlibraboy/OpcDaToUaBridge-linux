@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using OpcBridge.Client;
 using OpcBridge.Hmi.Core;
 
 namespace OpcBridge.Mobile.Core;
@@ -37,6 +38,12 @@ public sealed class BridgeCoordinator : IDisposable
 
     /// <summary>Raised on the posting thread when the list, the active bridge or a state changes.</summary>
     public event Action? Changed;
+
+    /// <summary>
+    /// Raised on the posting thread with the readings one live push changed. Screens that show
+    /// readings update only the rows behind these tags instead of repainting their whole list.
+    /// </summary>
+    public event Action<IReadOnlyList<HmiValueDelta>>? TagValuesChanged;
 
     public ObservableCollection<BridgeConnection> Bridges { get; } = new();
 
@@ -163,6 +170,7 @@ public sealed class BridgeCoordinator : IDisposable
     {
         BridgeConnection connection = new(bridge, tags_, post_, store_);
         connection.Changed += RaiseChanged;
+        connection.TagValuesChanged += RaiseTagValuesChanged;
         return connection;
     }
 
@@ -173,4 +181,6 @@ public sealed class BridgeCoordinator : IDisposable
     }
 
     private void RaiseChanged() => Changed?.Invoke();
+
+    private void RaiseTagValuesChanged(IReadOnlyList<HmiValueDelta> deltas) => TagValuesChanged?.Invoke(deltas);
 }

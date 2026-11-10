@@ -50,7 +50,7 @@ public sealed class MobileHubClient : IAsyncDisposable
         await DisposeAsync().ConfigureAwait(false);
         MobileHubTiming settings = timing ?? MobileHubTiming.Default;
 
-        connection_ = new HubConnectionBuilder()
+        HubConnection connection = new HubConnectionBuilder()
             .WithUrl(baseUrl.TrimEnd('/') + "/hmi", options =>
             {
                 if (cookies is not null)
@@ -60,24 +60,66 @@ public sealed class MobileHubClient : IAsyncDisposable
             })
             .WithAutomaticReconnect(settings.ReconnectDelays.ToArray())
             .Build();
-        connection_.KeepAliveInterval = settings.KeepAliveInterval;
-        connection_.ServerTimeout = settings.ServerTimeout;
+        connection_ = connection;
+        connection.KeepAliveInterval = settings.KeepAliveInterval;
+        connection.ServerTimeout = settings.ServerTimeout;
 
-        connection_.On<LogicStateSnapshot>("logic", snapshot => LogicStateChanged?.Invoke(snapshot));
-        connection_.On<HmiValueDelta[]>("values", batch => ValuesChanged?.Invoke(batch));
-        connection_.Reconnecting += error => { Reconnecting?.Invoke(error); return Task.CompletedTask; };
-        connection_.Reconnected += connectionId => { Reconnected?.Invoke(connectionId); return Task.CompletedTask; };
-        connection_.Closed += error => { Closed?.Invoke(error); return Task.CompletedTask; };
+        // Replacing a link disposes the old one; its closing events must not be mistaken for
+        // the current link dropping. Every handler checks that it still owns connection_.
+        connection.On<LogicStateSnapshot>("logic", snapshot =>
+        {
+            if (ReferenceEquals(connection_, connection))
+            {
+                LogicStateChanged?.Invoke(snapshot);
+            }
+        });
+        connection.On<HmiValueDelta[]>("values", batch =>
+        {
+            if (ReferenceEquals(connection_, connection))
+            {
+                ValuesChanged?.Invoke(batch);
+            }
+        });
+        connection.Reconnecting += error =>
+        {
+            if (ReferenceEquals(connection_, connection))
+            {
+                Reconnecting?.Invoke(error);
+            }
 
-        await connection_.StartAsync(cancellationToken).ConfigureAwait(false);
+            return Task.CompletedTask;
+        };
+        connection.Reconnected += connectionId =>
+        {
+            if (ReferenceEquals(connection_, connection))
+            {
+                Reconnected?.Invoke(connectionId);
+            }
+
+            return Task.CompletedTask;
+        };
+        connection.Closed += error =>
+        {
+            if (ReferenceEquals(connection_, connection))
+            {
+                Closed?.Invoke(error);
+            }
+
+            return Task.CompletedTask;
+        };
+
+        await connection.StartAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async ValueTask DisposeAsync()
     {
-        if (connection_ is not null)
+        HubConnection? connection = connection_;
+        // Clear the field first: disposing raises Closed, and the handler must see that this
+        // connection is no longer the current one.
+        connection_ = null;
+        if (connection is not null)
         {
-            await connection_.DisposeAsync().ConfigureAwait(false);
-            connection_ = null;
+            await connection.DisposeAsync().ConfigureAwait(false);
         }
     }
 }

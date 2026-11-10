@@ -113,6 +113,24 @@
             </Border>
         </DataTemplate>
 
+        <!-- One ordered step of a sequence: its own heading and its element rows. Steps are the
+             page's virtualized items, so a long sequence builds only the steps on screen. -->
+        <DataTemplate x:Key="StepRow" x:DataType="core:LogicStepRowViewModel">
+            <Border Style="{StaticResource SubtleBorder}" Margin="0,0,0,8">
+                <VerticalStackLayout Spacing="6">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                        <Label Text="{Binding Name}" FontAttributes="Bold" />
+                        <Label Grid.Column="1" Text="{Binding StateLabel}"
+                               TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
+                    </Grid>
+                    <Label Text="{Binding Reason}" FontSize="11"
+                           TextColor="{theme:ThemeColor WarnColor}" />
+                    <VerticalStackLayout Spacing="0" BindableLayout.ItemsSource="{Binding Elements}"
+                                         BindableLayout.ItemTemplate="{StaticResource ElementRow}" />
+                </VerticalStackLayout>
+            </Border>
+        </DataTemplate>
+
         <!-- One inspector row: a quiet label/value pair, the LIVE raw + STATE chip, or a warning. -->
         <DataTemplate x:Key="TagPairRow" x:DataType="core:LogicTagRowViewModel">
             <VerticalStackLayout Spacing="2" IsVisible="{Binding IsVisible}">
@@ -173,8 +191,14 @@
                 </Border>
             </Grid>
 
-            <ScrollView x:Name="pageScroll" Grid.Row="1">
-                <VerticalStackLayout Padding="16,0,16,28" Spacing="12">
+            <CollectionView x:Name="pageScroll"
+                            Grid.Row="1"
+                            Margin="16,0,16,0"
+                            ItemsSource="{Binding Elements}"
+                            ItemTemplate="{StaticResource ElementRow}"
+                            SelectionMode="None">
+                <CollectionView.Header>
+                    <VerticalStackLayout Padding="0,0,0,12" Spacing="12">
                     <Label x:Name="offlineLabel" FontSize="10.5"
                            TextColor="{theme:ThemeColor WarnColor}" IsVisible="false" />
 
@@ -262,31 +286,12 @@
                     </Label>
 
                     <Label Text="NETWORK" Style="{StaticResource UppercaseLabel}" IsVisible="{Binding ShowNetwork}" />
-                    <VerticalStackLayout IsVisible="{Binding ShowNetwork}" Spacing="0"
-                                         BindableLayout.ItemsSource="{Binding Elements}"
-                                         BindableLayout.ItemTemplate="{StaticResource ElementRow}" />
-
                     <Label Text="STEPS" Style="{StaticResource UppercaseLabel}" IsVisible="{Binding IsSequence}" />
-                    <VerticalStackLayout IsVisible="{Binding IsSequence}" Spacing="8"
-                                         BindableLayout.ItemsSource="{Binding Steps}">
-                        <BindableLayout.ItemTemplate>
-                            <DataTemplate>
-                                <Border Style="{StaticResource SubtleBorder}">
-                                    <VerticalStackLayout Spacing="6">
-                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
-                                            <Label Text="{Binding Name}" FontAttributes="Bold" />
-                                            <Label Grid.Column="1" Text="{Binding StateLabel}"
-                                                   TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
-                                        </Grid>
-                                        <Label Text="{Binding Reason}" FontSize="11"
-                                               TextColor="{theme:ThemeColor WarnColor}" />
-                                        <VerticalStackLayout Spacing="0" BindableLayout.ItemsSource="{Binding Elements}"
-                                                             BindableLayout.ItemTemplate="{StaticResource ElementRow}" />
-                                    </VerticalStackLayout>
-                                </Border>
-                            </DataTemplate>
-                        </BindableLayout.ItemTemplate>
                     </VerticalStackLayout>
+                </CollectionView.Header>
+
+                <CollectionView.Footer>
+                    <VerticalStackLayout Padding="0,12,0,28" Spacing="12">
 
                     <Label Text="ACTIONS" Style="{StaticResource UppercaseLabel}"
                            IsVisible="{Binding ShowActions}" />
@@ -347,8 +352,9 @@
                             </DataTemplate>
                         </BindableLayout.ItemTemplate>
                     </VerticalStackLayout>
-                </VerticalStackLayout>
-            </ScrollView>
+                    </VerticalStackLayout>
+                </CollectionView.Footer>
+            </CollectionView>
         </Grid>
 
         <!-- The tag inspector: the web Result tab's Source / Used by views, on the sheet's own tabs. -->

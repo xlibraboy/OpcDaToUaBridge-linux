@@ -257,4 +257,162 @@ public sealed class MobileElementsTests
 
         Assert.Equal(new[] { "Alpha", "Beta" }, vm.VisibleGroups.Select(group => group.Name));
     }
+
+    [Fact]
+    public void TagDeltas_UpdateOnlyTheRowsBehindTheChangedTags()
+    {
+        LogicConditionDto first = Condition("First permit", "PS1");
+        LogicConditionDto second = Condition("Second permit", "PS2");
+        LogicBlockDto block = Block("Line 01 Start", LogicBlockKinds.Interlock, first, second);
+        MultiBridgeTagCache tags = new();
+        tags.ReplaceBridge(BridgeKey, new[]
+        {
+            TagItem(itemId: "PS1"),
+            TagItem(itemId: "PS2")
+        });
+
+        ElementsViewModel vm = new();
+        vm.ApplyDefinitions(new[] { block }, null, tags, BridgeKey);
+        vm.ApplyState(
+            State(
+                block,
+                LogicBlockStates.Blocked,
+                new LogicElementStateDto { Id = first.Id, State = LogicConditionStates.False, Should = "1", Matches = false, ValueText = "Off" },
+                new LogicElementStateDto { Id = second.Id, State = LogicConditionStates.False, Should = "1", Matches = false, ValueText = "Off" }),
+            tags,
+            BridgeKey,
+            offline: false,
+            LiveUtc);
+
+        LogicElementRowViewModel firstRow = vm.AllRows.Single(row => row.Id == first.Id);
+        LogicElementRowViewModel secondRow = vm.AllRows.Single(row => row.Id == second.Id);
+        int secondChanges = 0;
+        secondRow.PropertyChanged += (_, _) => secondChanges++;
+
+        tags.ApplyDeltas(BridgeKey, new[]
+        {
+            new HmiValueDelta { SourceId = "sim", ItemId = "PS1", Value = true, IsGood = true }
+        });
+        vm.ApplyTagDeltas(
+            new[] { new HmiValueDelta { SourceId = "sim", ItemId = "PS1", Value = true, IsGood = true } },
+            tags,
+            BridgeKey);
+
+        Assert.Equal("On", firstRow.ValueText);
+        Assert.Equal("Off", secondRow.ValueText);
+        Assert.Equal(0, secondChanges);
+    }
+
+    [Fact]
+    public void CollapsedGroup_DefersRowStateUntilItOpens()
+    {
+        LogicConditionDto permit = Condition("Pump permit must be given", "Pump");
+        LogicBlockDto block = Block("Line 01 Start", LogicBlockKinds.Interlock, permit);
+        MultiBridgeTagCache tags = Tags(Tag(value: false));
+
+        ElementsViewModel vm = new();
+        vm.ApplyDefinitions(new[] { block }, null, tags, BridgeKey);
+        vm.ApplyState(
+            State(block, LogicBlockStates.Ready,
+                new LogicElementStateDto { Id = permit.Id, State = LogicConditionStates.True, Should = "1", Matches = true, ValueText = "On" }),
+            tags,
+            BridgeKey,
+            offline: false,
+            LiveUtc);
+
+        ElementBlockGroupViewModel group = Assert.Single(vm.VisibleGroups);
+        LogicElementRowViewModel row = Assert.Single(vm.AllRows);
+        group.IsExpanded = false;
+
+        vm.ApplyState(
+            State(block, LogicBlockStates.Blocked,
+                new LogicElementStateDto { Id = permit.Id, State = LogicConditionStates.False, Should = "1", Matches = false, ValueText = "Off" }),
+            tags,
+            BridgeKey,
+            offline: false,
+            LiveUtc);
+
+        // The heading reports the new evaluation while the folded rows stay untouched.
+        Assert.Equal("BLOCKED", group.StateLabel);
+        Assert.Contains("1 not met", group.Summary);
+        Assert.Equal(LogicConditionStates.True, row.StateKey);
+
+        group.IsExpanded = true;
+
+        Assert.Equal(LogicConditionStates.False, row.StateKey);
+        Assert.Equal("0", row.ActualText);
+        Assert.Equal("should 1 · actual 0", row.ShouldLine);
+    }
+
+    [Fact]
+    public void ReapplyingAnUnchangedTag_DoesNotRaiseTheRowAgain()
+    {
+        LogicConditionDto permit = Condition("Pump permit must be given", "PS1");
+        LogicBlockDto block = Block("Line 01 Start", LogicBlockKinds.Interlock, permit);
+        MultiBridgeTagCache tags = Tags(Tag(value: true));
+
+        ElementsViewModel vm = new();
+        vm.ApplyDefinitions(new[] { block }, null, tags, BridgeKey);
+        vm.ApplyState(
+            State(block, LogicBlockStates.Ready,
+                new LogicElementStateDto { Id = permit.Id, State = LogicConditionStates.True, Should = "1", Matches = true, ValueText = "On" }),
+            tags,
+            BridgeKey,
+            offline: false,
+            LiveUtc);
+
+        LogicElementRowViewModel row = Assert.Single(vm.AllRows);
+        int changes = 0;
+        row.PropertyChanged += (_, _) => changes++;
+        tags.TryGet(TagBindingKey.Create(BridgeKey, "sim", "PS1"), out MultiBridgeTagEntry? entry);
+
+        row.ApplyTag(entry);
+        row.ApplyTag(entry);
+
+        Assert.Equal(0, changes);
+    }
+
+    [Fact]
+    public void ReapplyingTheSameState_KeepsTheShouldLine()
+    {
+        LogicConditionDto permit = Condition("Pump permit must be given", "PS1");
+        LogicBlockDto block = Block("Line 01 Start", LogicBlockKinds.Interlock, permit);
+        MultiBridgeTagCache tags = Tags(Tag(value: true));
+
+        ElementsViewModel vm = new();
+        vm.ApplyDefinitions(new[] { block }, null, tags, BridgeKey);
+        LogicStateSnapshot state = State(
+            block,
+            LogicBlockStates.Ready,
+            new LogicElementStateDto
+            {
+                Id = permit.Id,
+                State = LogicConditionStates.True,
+                Should = "1",
+                Matches = true,
+                ValueText = "On"
+            });
+
+        vm.ApplyState(state, tags, BridgeKey, offline: false, LiveUtc);
+        LogicElementRowViewModel row = Assert.Single(vm.AllRows);
+        Assert.Equal("should 1 · actual 1", row.ShouldLine);
+
+        // A second push of the same evaluation must not leave the raw "should" behind.
+        vm.ApplyState(state, tags, BridgeKey, offline: false, LiveUtc);
+        Assert.Equal("should 1 · actual 1", row.ShouldLine);
+    }
+
+    private static HmiTagDto TagItem(bool value = false, string itemId = "PS1") => new()
+    {
+        SourceId = "sim",
+        SourceName = "Simulation",
+        ItemId = itemId,
+        DisplayName = "Pressure switch " + itemId,
+        Digital = true,
+        OnText = "On",
+        OffText = "Off",
+        Value = value,
+        IsGood = true,
+        TimestampUtc = SavedUtc
+    };
 }

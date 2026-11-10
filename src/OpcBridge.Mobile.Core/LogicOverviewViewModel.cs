@@ -114,15 +114,25 @@ public sealed partial class LogicBlockCardViewModel : ObservableObject
         ProgressText = string.Empty;
     }
 
-    public void ApplyState(LogicBlockStateDto? state)
+    /// <summary>
+    /// Applies one block's evaluation. True when something the list shows changed, so the
+    /// overview can skip its search/group pass for a push that only moved readings.
+    /// </summary>
+    public bool ApplyState(LogicBlockStateDto? state)
     {
+        string beforeKey = StateKey;
+        string? beforeReason = Reason;
+        string beforeProgress = ProgressText;
+
         if (state is null)
         {
             StateLabel = "no data";
             StateKey = LogicBlockStates.Unknown;
             Reason = "reading…";
             ProgressText = string.Empty;
-            return;
+            return !string.Equals(beforeKey, StateKey, StringComparison.Ordinal)
+                || !string.Equals(beforeReason, Reason, StringComparison.Ordinal)
+                || !string.Equals(beforeProgress, ProgressText, StringComparison.Ordinal);
         }
 
         StateKey = state.State;
@@ -145,6 +155,10 @@ public sealed partial class LogicBlockCardViewModel : ObservableObject
         ProgressText = block_.Kind == LogicBlockKinds.Sequence && block_.Steps.Count > 0
             ? BuildProgress(state)
             : string.Empty;
+
+        return !string.Equals(beforeKey, StateKey, StringComparison.Ordinal)
+            || !string.Equals(beforeReason, Reason, StringComparison.Ordinal)
+            || !string.Equals(beforeProgress, ProgressText, StringComparison.Ordinal);
     }
 
     private string BuildProgress(LogicBlockStateDto state)
@@ -548,10 +562,12 @@ public sealed partial class LogicOverviewViewModel : ObservableObject
 
         RebuildTagFilters(sorted);
         anyGrouped_ = sorted.Any(block => !string.IsNullOrWhiteSpace(block.Group));
-        ApplyState(State);
+        // A definitions change can move a card through the search or tag filter even when its
+        // state did not move, so the visible set is always rebuilt here.
+        ApplyState(State, forceFilter: true);
     }
 
-    public void ApplyState(LogicStateSnapshot? snapshot)
+    public void ApplyState(LogicStateSnapshot? snapshot, bool forceFilter = false)
     {
         State = snapshot;
         Dictionary<Guid, LogicBlockStateDto> byId = new();
@@ -560,9 +576,17 @@ public sealed partial class LogicOverviewViewModel : ObservableObject
             byId[block.Id] = block;
         }
 
+        bool changed = false;
         foreach (LogicBlockCardViewModel card in Blocks)
         {
-            card.ApplyState(byId.TryGetValue(card.Id, out LogicBlockStateDto? state) ? state : null);
+            changed |= card.ApplyState(byId.TryGetValue(card.Id, out LogicBlockStateDto? state) ? state : null);
+        }
+
+        // A snapshot whose visible states did not move (a value re-push, a definitions echo)
+        // must not re-run the search and re-parent groups under the operator's finger.
+        if (!changed && !forceFilter)
+        {
+            return;
         }
 
         ApplyFilter();

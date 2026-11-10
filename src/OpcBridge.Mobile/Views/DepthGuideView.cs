@@ -6,18 +6,22 @@ namespace OpcBridge.Mobile.Views;
 /// The nesting rails beside an element row: one 1px vertical guide per enclosing level, on the
 /// same step the row indents by. A lightweight grid of BoxViews rather than a GraphicsView —
 /// the Elements list creates one of these per row, so the draws must stay cheap while scrolling.
+/// The rails are grown once per view and shown or hidden on rebind; rebuilding the view tree on
+/// every recycled row was what made a fling stutter.
 /// </summary>
 public sealed class DepthGuideView : Grid
 {
     /// <summary>The indent step a row and its guides share (matches IndentWidth's 14 px per level).</summary>
     public const double Step = 14;
 
+    private readonly List<BoxView> rails_ = new();
+
     public static readonly BindableProperty DepthProperty = BindableProperty.Create(
         nameof(Depth),
         typeof(int),
         typeof(DepthGuideView),
         0,
-        propertyChanged: static (bindable, _, _) => ((DepthGuideView)bindable).Rebuild());
+        propertyChanged: static (bindable, _, _) => ((DepthGuideView)bindable).ApplyDepth());
 
     public static readonly BindableProperty GuideColorProperty = BindableProperty.Create(
         nameof(GuideColor),
@@ -25,11 +29,6 @@ public sealed class DepthGuideView : Grid
         typeof(DepthGuideView),
         Colors.Transparent,
         propertyChanged: static (bindable, _, _) => ((DepthGuideView)bindable).Recolor());
-
-    public DepthGuideView()
-    {
-        Rebuild();
-    }
 
     /// <summary>How many levels enclose the row; 0 draws nothing.</summary>
     public int Depth
@@ -44,36 +43,34 @@ public sealed class DepthGuideView : Grid
         set => SetValue(GuideColorProperty, value);
     }
 
-    private void Rebuild()
+    private void ApplyDepth()
     {
-        ColumnDefinitions.Clear();
-        Children.Clear();
-
         int depth = Math.Max(0, Depth);
-        for (int level = 0; level < depth; level++)
+        while (rails_.Count < depth)
         {
-            ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1) });
-            ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Step - 1) });
-
             BoxView rail = new()
             {
                 Color = GuideColor,
-                HorizontalOptions = LayoutOptions.Fill,
-                VerticalOptions = LayoutOptions.Fill
+                WidthRequest = 1,
+                HorizontalOptions = LayoutOptions.Start,
+                VerticalOptions = LayoutOptions.Fill,
+                Margin = new Thickness(rails_.Count * Step, 0, 0, 0)
             };
-            SetColumn((BindableObject)rail, level * 2);
+            rails_.Add(rail);
             Children.Add(rail);
+        }
+
+        for (int level = 0; level < rails_.Count; level++)
+        {
+            rails_[level].IsVisible = level < depth;
         }
     }
 
     private void Recolor()
     {
-        foreach (IView child in Children)
+        foreach (BoxView rail in rails_)
         {
-            if (child is BoxView rail)
-            {
-                rail.Color = GuideColor;
-            }
+            rail.Color = GuideColor;
         }
     }
 }

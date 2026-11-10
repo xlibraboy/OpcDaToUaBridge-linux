@@ -20,6 +20,7 @@ public sealed class ElementBlockGroupViewModel : ObservableCollection<LogicEleme
     private string state_label_ = "no data";
     private string state_key_ = LogicBlockStates.Unknown;
     private string summary_ = string.Empty;
+    private int notMet_;
 
     public ElementBlockGroupViewModel(LogicBlockDto block)
     {
@@ -56,6 +57,12 @@ public sealed class ElementBlockGroupViewModel : ObservableCollection<LogicEleme
     /// <summary>"▾" / "▸" — the heading reports its own state without colour.</summary>
     public string Chevron => expanded_ ? "▾" : "▸";
 
+    /// <summary>
+    /// Raised when the operator opens a folded heading, so its rows can be brought up to the
+    /// latest push before they become visible for the first time.
+    /// </summary>
+    internal Action<ElementBlockGroupViewModel>? Expanded;
+
     public IRelayCommand ToggleCommand => toggle_command_ ??= new RelayCommand(() => IsExpanded = !IsExpanded);
 
     public bool IsExpanded
@@ -72,6 +79,10 @@ public sealed class ElementBlockGroupViewModel : ObservableCollection<LogicEleme
             OnPropertyChanged(new PropertyChangedEventArgs(nameof(IsExpanded)));
             OnPropertyChanged(new PropertyChangedEventArgs(nameof(Chevron)));
             SyncItems();
+            if (expanded_)
+            {
+                Expanded?.Invoke(this);
+            }
         }
     }
 
@@ -145,15 +156,24 @@ public sealed class ElementBlockGroupViewModel : ObservableCollection<LogicEleme
             _ => "NO DATA"
         };
 
+        // The heading's "not met" count comes from the evaluation, not from the rows: a folded
+        // group's rows are deliberately left untouched until it opens.
+        notMet_ = 0;
+        foreach (LogicElementStateDto element in state?.Elements ?? Enumerable.Empty<LogicElementStateDto>())
+        {
+            if (string.Equals(element.State, LogicConditionStates.False, StringComparison.OrdinalIgnoreCase))
+            {
+                notMet_++;
+            }
+        }
+
         UpdateSummary();
     }
 
     private void UpdateSummary()
     {
-        int notMet = members_.Count(row =>
-            string.Equals(row.StateKey, LogicConditionStates.False, StringComparison.OrdinalIgnoreCase));
         string text = members_.Count + (members_.Count == 1 ? " element" : " elements");
-        Summary = notMet > 0 ? text + " · " + notMet + " not met" : text;
+        Summary = notMet_ > 0 ? text + " · " + notMet_ + " not met" : text;
     }
 
     private void SyncItems()
@@ -214,9 +234,15 @@ public sealed partial class ElementsViewModel : ObservableObject
     private readonly Dictionary<Guid, LogicBlockDto> blocks_ = new();
     private readonly Dictionary<Guid, bool> collapsed_ = new();
     private readonly List<ElementBlockGroupViewModel> orderedGroups_ = new();
+    private readonly Dictionary<TagBindingKey, List<LogicElementRowViewModel>> rowsByTag_ =
+        new(TagBindingKeyComparer.Instance);
+    private readonly Dictionary<Guid, LogicBlockStateDto> lastBlockStates_ = new();
 
     private IReadOnlyList<LogicBlockDto>? definitions_;
     private IReadOnlyList<LogicAreaTagsDto> areaTags_ = Array.Empty<LogicAreaTagsDto>();
+    private MultiBridgeTagCache? lastTags_;
+    private string lastBridgeKey_ = string.Empty;
+    private bool hasState_;
 
     public ElementsViewModel()
     {
@@ -291,6 +317,7 @@ public sealed partial class ElementsViewModel : ObservableObject
 
         blocks_.Clear();
         orderedGroups_.Clear();
+        rowsByTag_.Clear();
 
         foreach (LogicBlockDto block in blocks
             .OrderBy(block => block.Order)
@@ -301,9 +328,11 @@ public sealed partial class ElementsViewModel : ObservableObject
             {
                 IsExpanded = !collapsed_.TryGetValue(block.Id, out bool collapsed) || !collapsed
             };
+            group.Expanded = ApplyGroupState;
             LogicAreaTagsDto? area = AreaTagsFor(block);
             List<LogicElementRowViewModel> members = LogicElementRows.Build(block, area, tags, bridgeKey);
             group.SetMembers(members);
+            IndexRows(members, bridgeKey);
             orderedGroups_.Add(group);
         }
 
@@ -324,51 +353,129 @@ public sealed partial class ElementsViewModel : ObservableObject
         DateTime? syncedUtc)
     {
         IsOffline = offline;
+        SourceText = SourceLine(offline, syncedUtc);
+        lastTags_ = tags;
+        lastBridgeKey_ = bridgeKey;
+        hasState_ = true;
+
+        lastBlockStates_.Clear();
+        foreach (LogicBlockStateDto block in state?.Blocks ?? Enumerable.Empty<LogicBlockStateDto>())
+        {
+            lastBlockStates_[block.Id] = block;
+        }
+
+        foreach (ElementBlockGroupViewModel group in orderedGroups_)
+        {
+            lastBlockStates_.TryGetValue(group.BlockId, out LogicBlockStateDto? blockState);
+            group.ApplyState(blockState);
+
+            // A folded heading shows its summary only. Its rows are brought up to date when it
+            // opens, which keeps a plant's worth of hidden elements off every push.
+            if (group.IsExpanded)
+            {
+                ApplyGroupState(group);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Applies one live values batch to only the rows that read those tags. The rest of the
+    /// list keeps its readings; nothing is rebuilt and no header moves.
+    /// </summary>
+    public void ApplyTagDeltas(IReadOnlyList<HmiValueDelta> deltas, MultiBridgeTagCache? tags, string bridgeKey)
+    {
+        if (tags is null)
+        {
+            return;
+        }
+
+        foreach (HmiValueDelta delta in deltas)
+        {
+            TagBindingKey key = TagBindingKey.Create(bridgeKey, delta.SourceId, delta.ItemId);
+            if (!rowsByTag_.TryGetValue(key, out List<LogicElementRowViewModel>? rows))
+            {
+                continue;
+            }
+
+            tags.TryGet(key, out MultiBridgeTagEntry? entry);
+            foreach (LogicElementRowViewModel row in rows)
+            {
+                row.ApplyTag(entry);
+            }
+        }
+    }
+
+    /// <summary>Refreshes the source line after a values push without touching the rows.</summary>
+    public void MarkSynced(DateTime? syncedUtc)
+    {
+        if (!IsOffline)
+        {
+            SourceText = SourceLine(offline: false, syncedUtc);
+        }
+    }
+
+    private static string SourceLine(bool offline, DateTime? syncedUtc) =>
         // The sync badge beside this label already carries the full last-sync time; keep the
         // source line short so it cannot run into those readings on a narrow phone.
-        SourceText = offline
+        offline
             ? "offline · structure only"
             : "live" + (syncedUtc is { } synced
                 ? " · synced " + synced.ToLocalTime().ToString("HH:mm:ss")
                 : string.Empty);
 
-        Dictionary<Guid, LogicBlockStateDto> blockStates = new();
-        foreach (LogicBlockStateDto block in state?.Blocks ?? Enumerable.Empty<LogicBlockStateDto>())
+    private void ApplyGroupState(ElementBlockGroupViewModel group)
+    {
+        if (!hasState_)
         {
-            blockStates[block.Id] = block;
+            return;
         }
 
-        foreach (ElementBlockGroupViewModel group in orderedGroups_)
+        lastBlockStates_.TryGetValue(group.BlockId, out LogicBlockStateDto? blockState);
+
+        Dictionary<Guid, LogicElementStateDto> elementStates = new();
+        foreach (LogicElementStateDto element in blockState?.Elements ?? Enumerable.Empty<LogicElementStateDto>())
         {
-            blockStates.TryGetValue(group.BlockId, out LogicBlockStateDto? blockState);
+            elementStates[element.Id] = element;
+        }
 
-            Dictionary<Guid, LogicElementStateDto> elementStates = new();
-            foreach (LogicElementStateDto element in blockState?.Elements ?? Enumerable.Empty<LogicElementStateDto>())
+        foreach (LogicElementRowViewModel row in group.Members)
+        {
+            elementStates.TryGetValue(row.Id, out LogicElementStateDto? elementState);
+            row.ApplyState(elementState);
+
+            MultiBridgeTagEntry? entry = null;
+            bool hasEntry = row.TagReference is { IsBound: true } reference &&
+                lastTags_ is not null &&
+                lastTags_.TryGet(
+                    TagBindingKey.Create(lastBridgeKey_, reference.SourceId, reference.ItemId),
+                    out entry);
+
+            // Contacts read the cache; non-contacts ignore it. A cleared entry clears the
+            // row, so the offline view never keeps a reading alive.
+            if (hasEntry || elementState is null)
             {
-                elementStates[element.Id] = element;
+                row.ApplyTag(entry);
+            }
+        }
+    }
+
+    private void IndexRows(IReadOnlyList<LogicElementRowViewModel> rows, string bridgeKey)
+    {
+        foreach (LogicElementRowViewModel row in rows)
+        {
+            if (!row.IsContact || row.TagReference is not { IsBound: true } reference)
+            {
+                continue;
             }
 
-            foreach (LogicElementRowViewModel row in group.Members)
+            TagBindingKey key = TagBindingKey.Create(bridgeKey, reference.SourceId, reference.ItemId);
+            if (!rowsByTag_.TryGetValue(key, out List<LogicElementRowViewModel>? indexed))
             {
-                elementStates.TryGetValue(row.Id, out LogicElementStateDto? elementState);
-                row.ApplyState(elementState);
-
-                MultiBridgeTagEntry? entry = null;
-                bool hasEntry = row.TagReference is { IsBound: true } reference &&
-                    tags is not null &&
-                    tags.TryGet(
-                        TagBindingKey.Create(bridgeKey, reference.SourceId, reference.ItemId),
-                        out entry);
-
-                // Contacts read the cache; non-contacts ignore it. A cleared entry clears the
-                // row, so the offline view never keeps a reading alive.
-                if (hasEntry || elementState is null)
-                {
-                    row.ApplyTag(entry);
-                }
+                indexed = new List<LogicElementRowViewModel>();
+                rowsByTag_[key] = indexed;
             }
 
-            group.ApplyState(blockState);
+            indexed.Add(row);
         }
     }
 
@@ -377,6 +484,11 @@ public sealed partial class ElementsViewModel : ObservableObject
         definitions_ = null;
         blocks_.Clear();
         orderedGroups_.Clear();
+        rowsByTag_.Clear();
+        lastBlockStates_.Clear();
+        lastTags_ = null;
+        lastBridgeKey_ = string.Empty;
+        hasState_ = false;
         VisibleGroups.Clear();
         Summary = string.Empty;
         SourceText = string.Empty;
