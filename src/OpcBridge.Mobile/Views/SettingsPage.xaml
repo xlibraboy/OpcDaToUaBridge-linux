@@ -131,7 +131,8 @@
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                         <Label Text="Add a bridge" Style="{StaticResource SectionTitleLabel}" />
                         <Border Grid.Column="1" Style="{StaticResource MetaBadgeBorder}" VerticalOptions="Center">
-                            <Label Text="HOST / IP" FontFamily="monospace" FontSize="8" FontAttributes="Bold"
+                            <Label Text="HOST / IP" Style="{StaticResource BadgeLabel}"
+                                   FontFamily="monospace" FontSize="8" FontAttributes="Bold"
                                    TextColor="{theme:ThemeColor MutedColor}" />
                         </Border>
                     </Grid>
@@ -193,7 +194,8 @@
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                         <Label Text="Appearance" Style="{StaticResource SectionTitleLabel}" VerticalOptions="Center" />
                         <Border Grid.Column="1" Style="{StaticResource MetaBadgeBorder}" VerticalOptions="Center">
-                            <Label Text="DISPLAY" FontFamily="monospace" FontSize="8" FontAttributes="Bold"
+                            <Label Text="DISPLAY" Style="{StaticResource BadgeLabel}"
+                                   FontFamily="monospace" FontSize="8" FontAttributes="Bold"
                                    TextColor="{theme:ThemeColor MutedColor}" />
                         </Border>
                     </Grid>
@@ -265,7 +267,7 @@
                                 StrokeThickness="1"
                                 StrokeShape="RoundRectangle 6"
                                 VerticalOptions="Center">
-                            <Label x:Name="syncBadgeLabel"
+                            <Label x:Name="syncBadgeLabel" Style="{StaticResource BadgeLabel}"
                                    FontFamily="monospace"
                                    FontSize="8.5"
                                    FontAttributes="Bold" />
@@ -306,8 +308,8 @@
                                             <Label Text="{Binding KindLabel}" FontAttributes="Bold" FontSize="12" />
                                             <Border Grid.Column="1" Style="{StaticResource MetaInsetBadgeBorder}"
                                                     VerticalOptions="Center">
-                                                <Label Text="{Binding StateLabel}" FontFamily="monospace"
-                                                       FontSize="8.5" FontAttributes="Bold"
+                                                <Label Text="{Binding StateLabel}" Style="{StaticResource BadgeLabel}"
+                                                       FontFamily="monospace" FontSize="8.5" FontAttributes="Bold"
                                                        TextColor="{Binding StateKey, Converter={StaticResource StateColor}}" />
                                             </Border>
                                         </Grid>
@@ -340,8 +342,9 @@
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                         <Label Text="About" Style="{StaticResource SectionTitleLabel}" />
                         <Border Grid.Column="1" Style="{StaticResource MetaBadgeBorder}" VerticalOptions="Center">
-                            <Label x:Name="aboutVersionLabel" FontFamily="monospace" FontSize="8"
-                                   FontAttributes="Bold" TextColor="{theme:ThemeColor MutedColor}" />
+                            <Label x:Name="aboutVersionLabel" Style="{StaticResource BadgeLabel}"
+                                   FontFamily="monospace" FontSize="8" FontAttributes="Bold"
+                                   TextColor="{theme:ThemeColor MutedColor}" />
                         </Border>
                     </Grid>
                     <Label x:Name="aboutTextLabel" FontSize="10.5"

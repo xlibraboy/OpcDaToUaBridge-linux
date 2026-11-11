@@ -235,7 +235,8 @@
                                        VerticalOptions="Center" />
                                 <Border Grid.Column="2" Style="{StaticResource InsetBadgeBorder}"
                                         VerticalOptions="Center">
-                                    <Label Text="{Binding CountText}" FontSize="9" FontAttributes="Bold"
+                                    <Label Text="{Binding CountText}" Style="{StaticResource BadgeLabel}"
+                                           FontSize="9" FontAttributes="Bold"
                                            TextColor="{theme:ThemeColor MutedColor}" />
                                 </Border>
                                 <Label Grid.Column="4" Text="{Binding NoteText}"
@@ -259,7 +260,8 @@
                                                MaxLines="1" LineBreakMode="TailTruncation"
                                                VerticalOptions="Center" />
                                         <Border Style="{StaticResource BadgeBorder}" VerticalOptions="Center">
-                                            <Label Text="{Binding KindLabel}" FontSize="9" FontAttributes="Bold"
+                                            <Label Text="{Binding KindLabel}" Style="{StaticResource BadgeLabel}"
+                                                   FontSize="9" FontAttributes="Bold"
                                                    TextColor="{theme:ThemeColor MutedColor}" />
                                         </Border>
                                     </HorizontalStackLayout>
@@ -304,7 +306,8 @@
                                         <BindableLayout.ItemTemplate>
                                             <DataTemplate x:DataType="x:String">
                                                 <Border Margin="0,0,6,2" Style="{StaticResource PillBorder}">
-                                                    <Label Text="{Binding}" FontSize="9"
+                                                    <Label Text="{Binding}" Style="{StaticResource BadgeLabel}"
+                                                           FontSize="9"
                                                            TextColor="{theme:ThemeColor MutedColor}" />
                                                 </Border>
                                             </DataTemplate>

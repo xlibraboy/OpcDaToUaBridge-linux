@@ -118,6 +118,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Badge text is centred.** Kind chips (AND / NO / NC), block families (Interlock / Sequence /
+  Startup), group counts, state chips, fullsheet filters, LATEST / NEVER badges and the Settings
+  pills now share one `BadgeLabel` vertical alignment instead of leaving the text on the top edge
+  of its fixed-height box.
 - **The offline banner says when nothing is stored.** A bridge that has never synced now reads
   *offline · no stored structure yet* instead of implying a stored structure exists; the
   **View offline data** button stays hidden until a sync has stored one.

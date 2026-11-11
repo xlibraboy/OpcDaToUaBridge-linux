@@ -131,6 +131,12 @@
                 <Setter Property="Padding" Value="6,0" />
                 <Setter Property="HeightRequest" Value="18" />
             </Style>
+            <!-- Every badge shares one text alignment: the fixed-height Border must not leave the
+                 label sitting on its top edge (AND/NO/NC, Interlock/Sequence/Startup, counts, etc.). -->
+            <Style x:Key="BadgeLabel" TargetType="Label">
+                <Setter Property="VerticalOptions" Value="Center" />
+                <Setter Property="VerticalTextAlignment" Value="Center" />
+            </Style>
             <Style x:Key="InsetBadgeBorder" TargetType="Border" BasedOn="{StaticResource BadgeBorder}">
                 <Setter Property="BackgroundColor" Value="{theme:ThemeColor SurfaceColor}" />
             </Style>

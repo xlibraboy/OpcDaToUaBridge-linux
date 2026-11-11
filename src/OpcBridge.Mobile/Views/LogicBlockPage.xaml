@@ -36,7 +36,8 @@
                                         BackgroundColor="{Binding StateKey, Converter={StaticResource StateTint}, ConverterParameter=bg}"
                                         Stroke="{Binding StateKey, Converter={StaticResource StateTint}, ConverterParameter=border}"
                                         StrokeThickness="1">
-                                    <Label Text="{Binding KindLabel}" FontSize="8.5" FontAttributes="Bold"
+                                    <Label Text="{Binding KindLabel}" Style="{StaticResource BadgeLabel}"
+                                           FontSize="8.5" FontAttributes="Bold"
                                            FontFamily="monospace"
                                            TextColor="{Binding StateKey, Converter={StaticResource StateTint}, ConverterParameter=text}" />
                                 </Border>
@@ -71,9 +72,11 @@
                                 <Border Grid.Column="1" Style="{StaticResource StateChipBorder}"
                                         VerticalOptions="Center" IsVisible="{Binding HasStateWord}">
                                     <HorizontalStackLayout Spacing="4">
-                                        <Label Text="STATE" FontFamily="monospace" FontSize="8.5" FontAttributes="Bold"
+                                        <Label Text="STATE" Style="{StaticResource BadgeLabel}"
+                                               FontFamily="monospace" FontSize="8.5" FontAttributes="Bold"
                                                CharacterSpacing="0.5" TextColor="{theme:ThemeColor MutedColor}" />
-                                        <Label Text="{Binding StateWord}" FontSize="9.5" FontAttributes="Bold" />
+                                        <Label Text="{Binding StateWord}" Style="{StaticResource BadgeLabel}"
+                                               FontSize="9.5" FontAttributes="Bold" />
                                     </HorizontalStackLayout>
                                 </Border>
                             </Grid>
@@ -144,10 +147,12 @@
                         <Border Grid.Column="1" Style="{StaticResource StateChipBorder}"
                                 VerticalOptions="Center" IsVisible="{Binding ShowStateWord}">
                             <HorizontalStackLayout Spacing="4">
-                                <Label Text="STATE" FontFamily="monospace" FontSize="8.5"
+                                <Label Text="STATE" Style="{StaticResource BadgeLabel}"
+                                       FontFamily="monospace" FontSize="8.5"
                                        FontAttributes="Bold" CharacterSpacing="0.5"
                                        TextColor="{theme:ThemeColor MutedColor}" />
-                                <Label Text="{Binding StateWord}" FontSize="9.5" FontAttributes="Bold" />
+                                <Label Text="{Binding StateWord}" Style="{StaticResource BadgeLabel}"
+                                       FontSize="9.5" FontAttributes="Bold" />
                             </HorizontalStackLayout>
                         </Border>
                     </Grid>
@@ -212,7 +217,8 @@
                                         IsVisible="{Binding HasOutput}"
                                         Stroke="{Binding OutputKey, Converter={StaticResource StateColor}}"
                                         VerticalOptions="Center">
-                                    <Label Text="{Binding OutputText}" FontSize="8.5" FontFamily="monospace"
+                                    <Label Text="{Binding OutputText}" Style="{StaticResource BadgeLabel}"
+                                           FontSize="8.5" FontFamily="monospace"
                                            FontAttributes="Bold" MaxLines="1" LineBreakMode="TailTruncation"
                                            VerticalOptions="Center"
                                            TextColor="{Binding OutputKey, Converter={StaticResource StateColor}}"
@@ -583,7 +589,8 @@
                                         <TapGestureRecognizer Tapped="OnCheckpointFilterTapped" CommandParameter="{Binding .}" />
                                     </Border.GestureRecognizers>
                                     <HorizontalStackLayout Spacing="4" VerticalOptions="Center">
-                                        <Label Text="{Binding Label}" FontSize="9.5" FontAttributes="Bold"
+                                        <Label Text="{Binding Label}" Style="{StaticResource BadgeLabel}"
+                                               FontSize="9.5" FontAttributes="Bold"
                                                TextColor="{theme:ThemeColor MutedColor}">
                                             <Label.Triggers>
                                                 <DataTrigger TargetType="Label" Binding="{Binding IsActive}" Value="True">
@@ -591,7 +598,8 @@
                                                 </DataTrigger>
                                             </Label.Triggers>
                                         </Label>
-                                        <Label Text="{Binding Count}" FontSize="8.5" FontFamily="monospace"
+                                        <Label Text="{Binding Count}" Style="{StaticResource BadgeLabel}"
+                                               FontSize="8.5" FontFamily="monospace"
                                                TextColor="{theme:ThemeColor MutedColor}">
                                             <Label.Triggers>
                                                 <DataTrigger TargetType="Label" Binding="{Binding IsActive}" Value="True">
@@ -697,7 +705,8 @@
                                                         BackgroundColor="{theme:ThemeColor SurfaceColor}"
                                                         Stroke="{theme:ThemeColor UsageWarmColor}" StrokeThickness="1"
                                                         StrokeShape="RoundRectangle 3">
-                                                    <Label Text="LATEST" FontSize="7.5" FontAttributes="Bold"
+                                                    <Label Text="LATEST" Style="{StaticResource BadgeLabel}"
+                                                           FontSize="7.5" FontAttributes="Bold"
                                                            CharacterSpacing="0.4"
                                                            TextColor="{theme:ThemeColor UsageHotColor}" />
                                                 </Border>
@@ -705,7 +714,8 @@
                                                         BackgroundColor="{theme:ThemeColor SurfaceAltColor}"
                                                         Stroke="{theme:ThemeColor BorderColor}" StrokeThickness="1"
                                                         StrokeShape="RoundRectangle 3">
-                                                    <Label Text="NEVER" FontSize="7.5" FontAttributes="Bold"
+                                                    <Label Text="NEVER" Style="{StaticResource BadgeLabel}"
+                                                           FontSize="7.5" FontAttributes="Bold"
                                                            CharacterSpacing="0.4"
                                                            TextColor="{theme:ThemeColor MutedColor}" />
                                                 </Border>
@@ -727,7 +737,8 @@
                                                 BackgroundColor="{Binding StateKey, Converter={StaticResource StateTint}, ConverterParameter=bg}"
                                                 Stroke="{Binding StateKey, Converter={StaticResource StateTint}, ConverterParameter=border}"
                                                 StrokeThickness="1" StrokeShape="RoundRectangle 5">
-                                            <Label Text="{Binding ChipWord}" FontSize="8" FontAttributes="Bold"
+                                            <Label Text="{Binding ChipWord}" Style="{StaticResource BadgeLabel}"
+                                                   FontSize="8" FontAttributes="Bold"
                                                    CharacterSpacing="0.4"
                                                    TextColor="{Binding StateKey, Converter={StaticResource StateTint}, ConverterParameter=text}" />
                                         </Border>

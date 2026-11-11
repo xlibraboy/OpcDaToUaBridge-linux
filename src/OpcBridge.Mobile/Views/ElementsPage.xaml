@@ -167,7 +167,8 @@
                                     <Label Grid.Column="1" Text="{Binding Name}" FontAttributes="Bold" FontSize="13"
                                            MaxLines="1" LineBreakMode="TailTruncation" VerticalOptions="Center" />
                                     <Border Grid.Column="2" Style="{StaticResource ElementBadgeBorder}" VerticalOptions="Center">
-                                        <Label Text="{Binding KindLabel}" FontSize="8.5" FontAttributes="Bold"
+                                        <Label Text="{Binding KindLabel}" Style="{StaticResource BadgeLabel}"
+                                               FontSize="8.5" FontAttributes="Bold"
                                                FontFamily="monospace"
                                                TextColor="{theme:ThemeColor MutedColor}" />
                                     </Border>
@@ -205,7 +206,8 @@
                                                 BackgroundColor="{Binding StateKey, Converter={StaticResource StateTint}, ConverterParameter=bg}"
                                                 Stroke="{Binding StateKey, Converter={StaticResource StateTint}, ConverterParameter=border}"
                                                 StrokeThickness="1">
-                                            <Label Text="{Binding KindLabel}" FontSize="8.5" FontAttributes="Bold"
+                                            <Label Text="{Binding KindLabel}" Style="{StaticResource BadgeLabel}"
+                                               FontSize="8.5" FontAttributes="Bold"
                                                    FontFamily="monospace"
                                                    TextColor="{Binding StateKey, Converter={StaticResource StateTint}, ConverterParameter=text}" />
                                         </Border>
@@ -229,10 +231,12 @@
                                         <Border Grid.Column="1" Style="{StaticResource StateChipBorder}"
                                                 VerticalOptions="Center" IsVisible="{Binding HasStateWord}">
                                             <HorizontalStackLayout Spacing="4">
-                                                <Label Text="STATE" FontFamily="monospace" FontSize="8.5"
+                                                <Label Text="STATE" Style="{StaticResource BadgeLabel}"
+                                                       FontFamily="monospace" FontSize="8.5"
                                                        FontAttributes="Bold" CharacterSpacing="0.5"
                                                        TextColor="{theme:ThemeColor MutedColor}" />
-                                                <Label Text="{Binding StateWord}" FontSize="9.5" FontAttributes="Bold" />
+                                                <Label Text="{Binding StateWord}" Style="{StaticResource BadgeLabel}"
+                                                       FontSize="9.5" FontAttributes="Bold" />
                                             </HorizontalStackLayout>
                                         </Border>
                                     </Grid>
