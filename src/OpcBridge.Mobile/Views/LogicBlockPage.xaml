@@ -228,25 +228,76 @@
                             <BoxView HeightRequest="1" Color="{theme:ThemeColor BorderColor}"
                                      IsVisible="{Binding HasCheckpoints}" />
 
-                            <!-- Every check on one rail, in the network's own order: a parent is a 12px
-                                 hollow ring, a leaf a filled 8px dot; the met/total count is a state pill.
-                                 A check's name lives in its accessible label, and tapping it scrolls to
-                                 its row. -->
-                            <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" ColumnSpacing="6"
-                                  IsVisible="{Binding HasCheckpoints}">
-                                <Label Text="CHECKPOINTS" Style="{StaticResource UppercaseLabel}"
-                                       VerticalOptions="Center" />
-                                <Border Grid.Column="1" VerticalOptions="Center"
-                                        BackgroundColor="{Binding CheckpointSummaryKey, Converter={StaticResource StateTint}, ConverterParameter=bg}"
-                                        Stroke="{Binding CheckpointSummaryKey, Converter={StaticResource StateTint}, ConverterParameter=border}"
-                                        StrokeThickness="1" StrokeShape="RoundRectangle 4" Padding="5,1">
-                                    <Label Text="{Binding CheckpointSummary}" FontFamily="monospace"
-                                           FontSize="9.5" FontAttributes="Bold"
-                                           TextColor="{Binding CheckpointSummaryKey, Converter={StaticResource StateTint}, ConverterParameter=text}"
-                                           SemanticProperties.Description="{Binding CheckpointSummaryDescription}" />
-                                </Border>
-                                <FlexLayout Grid.Column="2" Wrap="Wrap" Direction="Row" AlignItems="Center"
-                                            VerticalOptions="Center"
+                            <!-- The header keeps the name, count, Usage and expand on one line;
+                                 the checks get their own full-width row so a longer network does not
+                                 stack in the middle of the header. A parent is a 12px hollow ring, a
+                                 leaf a filled 8px dot; the name lives in the accessible label. -->
+                            <VerticalStackLayout Spacing="4"
+                                                 IsVisible="{Binding HasCheckpoints}">
+                                <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" ColumnSpacing="6">
+                                    <Label Text="CHECKPOINTS" Style="{StaticResource UppercaseLabel}"
+                                           VerticalOptions="Center" />
+                                    <Border Grid.Column="1" VerticalOptions="Center"
+                                            BackgroundColor="{Binding CheckpointSummaryKey, Converter={StaticResource StateTint}, ConverterParameter=bg}"
+                                            Stroke="{Binding CheckpointSummaryKey, Converter={StaticResource StateTint}, ConverterParameter=border}"
+                                            StrokeThickness="1" StrokeShape="RoundRectangle 4" Padding="5,1">
+                                        <Label Text="{Binding CheckpointSummary}" FontFamily="monospace"
+                                               FontSize="9.5" FontAttributes="Bold"
+                                               TextColor="{Binding CheckpointSummaryKey, Converter={StaticResource StateTint}, ConverterParameter=text}"
+                                               SemanticProperties.Description="{Binding CheckpointSummaryDescription}" />
+                                    </Border>
+
+                                    <!-- Usage is a second, remembered toggle, shared with the fullsheet. -->
+                                    <Border Grid.Column="3" HeightRequest="24" Padding="6,0" VerticalOptions="Center"
+                                            BackgroundColor="{theme:ThemeColor SurfaceAltColor}"
+                                            Stroke="{theme:ThemeColor BorderColor}" StrokeThickness="1"
+                                            StrokeShape="RoundRectangle 8"
+                                            SemanticProperties.Description="Checkpoint usage dots">
+                                        <Border.GestureRecognizers>
+                                            <TapGestureRecognizer Tapped="OnCheckpointUsageTapped" />
+                                        </Border.GestureRecognizers>
+                                        <HorizontalStackLayout Spacing="4" VerticalOptions="Center">
+                                            <Image Source="{theme:ThemeIcon icon_activity}" WidthRequest="10" HeightRequest="10"
+                                                   VerticalOptions="Center" />
+                                            <Label Text="Usage" FontSize="9" FontAttributes="Bold" VerticalOptions="Center" />
+                                            <Grid WidthRequest="22" HeightRequest="12" VerticalOptions="Center">
+                                                <Border StrokeThickness="0" StrokeShape="RoundRectangle 6"
+                                                        BackgroundColor="{theme:ThemeColor BorderColor}">
+                                                    <Border.Triggers>
+                                                        <DataTrigger TargetType="Border" Binding="{Binding IsUsageOn}" Value="True">
+                                                            <Setter Property="BackgroundColor" Value="{theme:ThemeColor GoodColor}" />
+                                                        </DataTrigger>
+                                                    </Border.Triggers>
+                                                </Border>
+                                                <Border WidthRequest="8" HeightRequest="8" Margin="2,0,0,0"
+                                                        HorizontalOptions="Start" VerticalOptions="Center"
+                                                        StrokeThickness="0" StrokeShape="RoundRectangle 4"
+                                                        BackgroundColor="{theme:ThemeColor SurfaceColor}">
+                                                    <Border.Triggers>
+                                                        <DataTrigger TargetType="Border" Binding="{Binding IsUsageOn}" Value="True">
+                                                            <Setter Property="HorizontalOptions" Value="End" />
+                                                            <Setter Property="Margin" Value="0,0,2,0" />
+                                                        </DataTrigger>
+                                                    </Border.Triggers>
+                                                </Border>
+                                            </Grid>
+                                        </HorizontalStackLayout>
+                                    </Border>
+
+                                    <Border Grid.Column="4" WidthRequest="26" HeightRequest="26" VerticalOptions="Center"
+                                            BackgroundColor="{theme:ThemeColor SurfaceAltColor}" StrokeThickness="0"
+                                            StrokeShape="RoundRectangle 8"
+                                            SemanticProperties.Description="Open all checkpoints">
+                                        <Border.GestureRecognizers>
+                                            <TapGestureRecognizer Tapped="OnCheckpointSheetExpandTapped" />
+                                        </Border.GestureRecognizers>
+                                        <Image Source="{theme:ThemeIcon icon_expand}" WidthRequest="12" HeightRequest="12"
+                                               HorizontalOptions="Center" VerticalOptions="Center" />
+                                    </Border>
+                                </Grid>
+
+                                <FlexLayout Wrap="Wrap" Direction="Row" AlignItems="Center"
+                                            JustifyContent="Start" HorizontalOptions="Fill"
                                             BindableLayout.ItemsSource="{Binding Checkpoints}">
                                     <BindableLayout.ItemTemplate>
                                         <DataTemplate x:DataType="core:LogicCheckpointViewModel">
@@ -286,55 +337,7 @@
                                         </DataTemplate>
                                     </BindableLayout.ItemTemplate>
                                 </FlexLayout>
-
-                                <!-- Usage is a second, remembered toggle, shared with the fullsheet. -->
-                                <Border Grid.Column="3" HeightRequest="24" Padding="6,0" VerticalOptions="Center"
-                                        BackgroundColor="{theme:ThemeColor SurfaceAltColor}"
-                                        Stroke="{theme:ThemeColor BorderColor}" StrokeThickness="1"
-                                        StrokeShape="RoundRectangle 8"
-                                        SemanticProperties.Description="Checkpoint usage dots">
-                                    <Border.GestureRecognizers>
-                                        <TapGestureRecognizer Tapped="OnCheckpointUsageTapped" />
-                                    </Border.GestureRecognizers>
-                                    <HorizontalStackLayout Spacing="4" VerticalOptions="Center">
-                                        <Image Source="{theme:ThemeIcon icon_activity}" WidthRequest="10" HeightRequest="10"
-                                               VerticalOptions="Center" />
-                                        <Label Text="Usage" FontSize="9" FontAttributes="Bold" VerticalOptions="Center" />
-                                        <Grid WidthRequest="22" HeightRequest="12" VerticalOptions="Center">
-                                            <Border StrokeThickness="0" StrokeShape="RoundRectangle 6"
-                                                    BackgroundColor="{theme:ThemeColor BorderColor}">
-                                                <Border.Triggers>
-                                                    <DataTrigger TargetType="Border" Binding="{Binding IsUsageOn}" Value="True">
-                                                        <Setter Property="BackgroundColor" Value="{theme:ThemeColor GoodColor}" />
-                                                    </DataTrigger>
-                                                </Border.Triggers>
-                                            </Border>
-                                            <Border WidthRequest="8" HeightRequest="8" Margin="2,0,0,0"
-                                                    HorizontalOptions="Start" VerticalOptions="Center"
-                                                    StrokeThickness="0" StrokeShape="RoundRectangle 4"
-                                                    BackgroundColor="{theme:ThemeColor SurfaceColor}">
-                                                <Border.Triggers>
-                                                    <DataTrigger TargetType="Border" Binding="{Binding IsUsageOn}" Value="True">
-                                                        <Setter Property="HorizontalOptions" Value="End" />
-                                                        <Setter Property="Margin" Value="0,0,2,0" />
-                                                    </DataTrigger>
-                                                </Border.Triggers>
-                                            </Border>
-                                        </Grid>
-                                    </HorizontalStackLayout>
-                                </Border>
-
-                                <Border Grid.Column="4" WidthRequest="26" HeightRequest="26" VerticalOptions="Center"
-                                        BackgroundColor="{theme:ThemeColor SurfaceAltColor}" StrokeThickness="0"
-                                        StrokeShape="RoundRectangle 8"
-                                        SemanticProperties.Description="Open all checkpoints">
-                                    <Border.GestureRecognizers>
-                                        <TapGestureRecognizer Tapped="OnCheckpointSheetExpandTapped" />
-                                    </Border.GestureRecognizers>
-                                    <Image Source="{theme:ThemeIcon icon_expand}" WidthRequest="12" HeightRequest="12"
-                                           HorizontalOptions="Center" VerticalOptions="Center" />
-                                </Border>
-                            </Grid>
+                            </VerticalStackLayout>
                         </VerticalStackLayout>
                     </Border>
 

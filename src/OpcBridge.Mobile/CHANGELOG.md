@@ -16,8 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Checkpoint usage on the block rail, and a full checkpoint sheet.** The block screen's
-  checkpoint rail now carries a remembered **Usage** toggle and an expand control. Usage adds one
-  4px dot under each state dot, all on the same baseline: blue intensity reads the check's
+  checkpoint rail now keeps **CHECKPOINTS**, the count, a remembered **Usage** toggle and an expand
+  control on a header line, with the dots on their own full-width row so longer networks no longer
+  stack. Usage adds one 4px dot under each state dot, all on the same baseline: blue intensity reads the check's
   activations in the last seven days, a hollow dot means the check has no tag source, and no dot
   means never activated. Expand opens the full checkpoint sequence with **All / Parents / Leaves
   / Unused** filters, each row's count and last-active time, **LATEST / NEVER** badges, parent
