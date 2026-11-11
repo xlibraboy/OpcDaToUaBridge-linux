@@ -15,7 +15,8 @@ public static class LogicStateRead
         MappingStore mappingStore,
         BridgeState bridgeState,
         DateTime nowUtc,
-        LogicStateStore? states = null)
+        LogicStateStore? states = null,
+        bool recordUsage = false)
     {
         (IReadOnlyList<LogicBlockDto> blocks, long version) = logicStore.GetSnapshot();
         (IReadOnlyList<TagMapping> mappings, _) = mappingStore.GetSnapshot();
@@ -30,6 +31,7 @@ public static class LogicStateRead
                 index.TryGetValue(LogicStateEvaluator.Key(sourceId, itemId), out TagMapping mapping) ? mapping : null,
             nowUtc,
             states,
-            logicStore.GetAreaTags());
+            logicStore.GetAreaTags(),
+            recordUsage);
     }
 }

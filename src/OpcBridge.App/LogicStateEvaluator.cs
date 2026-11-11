@@ -55,7 +55,8 @@ public static class LogicStateEvaluator
         Func<string, string, TagMapping?> mappingLookup,
         DateTime nowUtc,
         LogicStateStore? states = null,
-        IReadOnlyList<LogicAreaTagsDto>? tagSources = null)
+        IReadOnlyList<LogicAreaTagsDto>? tagSources = null,
+        bool recordUsage = false)
     {
         ArgumentNullException.ThrowIfNull(blocks);
 
@@ -70,7 +71,29 @@ public static class LogicStateEvaluator
 
             foreach (LogicBlockDto block in blocks.OrderBy(block => block.Order))
             {
-                snapshot.Blocks.Add(EvaluateBlock(block, valueLookup, mappingLookup, states, nowUtc, tagSources));
+                LogicBlockStateDto blockState = EvaluateBlock(block, valueLookup, mappingLookup, states, nowUtc, tagSources);
+                if (states is not null)
+                {
+                    // Usage is attached once per block from the finished rows, so the recursive walk
+                    // stays pure. A disabled block is reported but not operating, so it neither
+                    // records a new activation nor decays the history it had while enabled.
+                    bool disabled = blockState.State == LogicBlockStates.Disabled;
+                    foreach (LogicElementStateDto element in blockState.Elements)
+                    {
+                        element.Usage = recordUsage && !disabled
+                            ? states.RecordUsage(element.Id, element.State == LogicConditionStates.True, nowUtc)
+                            : states.UsageFor(element.Id, nowUtc);
+                    }
+
+                    foreach (LogicStepStateDto step in blockState.Steps)
+                    {
+                        step.Usage = recordUsage && !disabled
+                            ? states.RecordUsage(step.Id, step.State == LogicStepStates.Done, nowUtc)
+                            : states.UsageFor(step.Id, nowUtc);
+                    }
+                }
+
+                snapshot.Blocks.Add(blockState);
             }
 
             return snapshot;

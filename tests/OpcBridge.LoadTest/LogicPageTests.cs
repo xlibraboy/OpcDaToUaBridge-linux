@@ -785,6 +785,64 @@ public sealed class LogicPageTests
     }
 
     [Fact]
+    public void Script_AddsUsageToTheRailAndACompleteFullsheet()
+    {
+        string script = OnDisk(ScriptFile);
+        string css = OnDisk(CssFile);
+
+        // Usage comes from the bridge's activation history: a tag-backed leaf owns its count, a
+        // parent rolls its subtree up, and a check with no source shows only when it last ran.
+        Assert.Contains("const CHECKPOINT_USAGE_KEY = 'opcbridge.checkpoints.usage';", script);
+        Assert.Contains("function attachCheckpointUsage(block, state, items)", script);
+        Assert.Contains("usage: state.usage || null", script);
+        Assert.Contains("usage: step.usage || null", script);
+        Assert.Contains("item.usageCount = Number(usage.count || 0);", script);
+        Assert.Contains("item.usageLast = usage.lastActiveUtc ? new Date(usage.lastActiveUtc) : null;", script);
+        Assert.Contains("if (child.depth !== item.depth + 1) continue;", script);
+        Assert.Contains("if (child.hasSource) count += child.usageCount;", script);
+        Assert.Contains("sourced = sourced || child.hasSource;", script);
+        Assert.Contains("item.usageCount = sourced ? count : 0;", script);
+        Assert.Contains("return item.usageLast ? 'last activated ' + activeAgo(item.usageLast) : 'not activated yet';", script);
+
+        // The rail keeps its dots and count but gains the two controls; usage is a second channel
+        // under the state dot, so a verdict colour is never repainted.
+        Assert.Contains("function checkpointUsageToggle(focusKey)", script);
+        Assert.Contains("function checkpointFullscreenButton()", script);
+        Assert.Contains("rail.classList.toggle('usage-on', checkpointUsageOn);", script);
+        Assert.Contains("applyCheckpointUsage(dot, item);", script);
+        Assert.Contains("dot.dataset.usage = item.usageHeat || 'none';", script);
+        Assert.Contains("h('div', { class: 'cp-actions' }, checkpointFullscreenButton())", script);
+        Assert.Contains(".cp-rail.usage-on .cp-dot::after", css);
+        Assert.Contains("background: var(--usage-hot);",
+            Rule(css, ".cp-rail.usage-on .cp-dot[data-usage=\"hot\"]::after {"));
+        Assert.Contains("--usage-hot:", Rule(css, ":root {"));
+        Assert.Contains("--usage-hot:", Rule(css, ":root[data-theme=\"dark\"] {"));
+
+        // The fullsheet lists the complete sequence and filters it by family. It opens on All,
+        // hides the usage column when Usage is off, and closes on Escape.
+        Assert.Contains("const CHECKPOINT_FILTERS = [", script);
+        Assert.Contains("{ id: 'unused', label: 'Unused' }", script);
+        Assert.Contains("function checkpointFiltered(items, filter)", script);
+        Assert.Contains("checkpointFilter = 'all';",
+            Between(script, "function openCheckpointSheet()", "function closeCheckpointSheet()"));
+        Assert.Contains("function checkpointSheetRow(item, index)", script);
+        Assert.Contains("function goToCheckpointSheetRow(item)", script);
+        Assert.Contains("onclick: () => goToCheckpointSheetRow(item)", script);
+        Assert.Contains("event.key !== 'Enter' && event.key !== ' '", script);
+        Assert.Contains("Click a row to jump to its network row.", script);
+        Assert.Contains("checkpointUsageOn ? checkpointUsageCell(item) : null", script);
+        Assert.Contains("checkpointSheetMark(item)", script);
+        Assert.Contains("if (checkpointSheetOpen) renderCheckpointSheet();", script);
+        Assert.Contains("role: 'button'", script);
+        Assert.Contains("box-shadow: inset 2px 0 var(--focus);", Rule(css, ".cp-row:hover {"));
+        Assert.Contains("nextList.scrollTop = listScroll;", script);
+        Assert.Contains("event.key !== 'Escape'", script);
+        Assert.Contains("cp-sheet-scrim", css);
+        Assert.Contains(".cp-sheet:not(.usage-on) .cp-use", css);
+        Assert.Contains("border-radius: 50%;", Rule(css, ".cp-mark {"));
+    }
+
+    [Fact]
     public void Script_OpensTheResultInANarrowColumnWithAWideControl()
     {
         string script = OnDisk(ScriptFile);

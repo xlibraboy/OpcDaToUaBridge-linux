@@ -155,6 +155,13 @@ public sealed class LogicElementStateDto
 
     /// <summary>Counter value (CV) for CTU / CTD; 0 for every other kind.</summary>
     public int Count { get; set; }
+
+    /// <summary>
+    /// How often the check has been activated (met) in the rolling 7-day window, and when it was
+    /// last met. The bridge records this on its own evaluation passes; a read of the snapshot does
+    /// not count.
+    /// </summary>
+    public LogicCheckpointUsageDto Usage { get; set; } = new();
 }
 
 /// <summary>Evaluated state of one sequence step, joined to the definition by <see cref="Id"/>.</summary>
@@ -167,4 +174,21 @@ public sealed class LogicStepStateDto
 
     /// <summary>Why the step is not done (failing condition text, or a missing completion handshake).</summary>
     public string? Reason { get; set; }
+
+    /// <summary>How often the step has been done in the rolling 7-day window, and when it last was.</summary>
+    public LogicCheckpointUsageDto Usage { get; set; } = new();
+}
+
+/// <summary>
+/// Activation history of one check: met (true / done) transitions inside a rolling seven-day
+/// window, and the wall-clock time it was last met. The window is the bridge's own evaluation
+/// history — a restart starts a new window.
+/// </summary>
+public sealed class LogicCheckpointUsageDto
+{
+    /// <summary>Times the check became met in the window.</summary>
+    public int Count { get; set; }
+
+    /// <summary>When the check was last met; null when it has not been met since the bridge started.</summary>
+    public DateTime? LastActiveUtc { get; set; }
 }

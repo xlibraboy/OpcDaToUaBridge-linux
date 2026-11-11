@@ -51,6 +51,7 @@ const LIVE_REFRESH_MS = 5000; // the safety refresh under the push (raw value te
 const HUB_PATH = '/hmi';      // the bridge's SignalR hub: `logic` snapshots, the HMI's own feed
 const HUB_RETRY_MS = [0, 1000, 2000, 5000];
 const NEW_TAG = '__new__';
+const CHECKPOINT_USAGE_KEY = 'opcbridge.checkpoints.usage';
 
 const api = {
   defs: '/api/logic',
@@ -87,6 +88,10 @@ let catalogFetchedAt = 0; // when the bridge's tag snapshot was last read
 let feedState = 'unknown'; // live | reconnecting | failed — the Result header's freshness follows it
 let tagFocus = null;       // the tag whose details the Result tab's side panel shows: { ref, view }
 let tagUsageCache = null;  // tag key → the blocks that read it, rebuilt when the definitions change
+let checkpointUsageOn = storedCollapsed(CHECKPOINT_USAGE_KEY); // rail tint + sheet usage column
+let checkpointSheetOpen = false; // the fullscreen checkpoint sheet
+let checkpointFilter = 'all';    // all | parents | leaves | unused
+let checkpointSheetReturnFocus = null;
 
 const el = (id) => document.getElementById(id);
 
@@ -1542,6 +1547,31 @@ function tagGlyph() {
   return svg;
 }
 
+// The page's small icons are inline SVG like the tag glyph: the checkpoint controls and the
+// fullsheet's last-active line need a shape that a text button cannot carry.
+const UI_ICON_PATHS = {
+  activity: 'M22 12h-4l-3 9L9 3l-3 9H2',
+  maximize: 'M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7',
+  close: 'M18 6 6 18M6 6l12 12',
+  history: 'M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l4 2'
+};
+
+function uiIcon(name) {
+  const svg = document.createElementNS(TAG_ICON_NS, 'svg');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('class', 'ui-icon');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '2');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  const path = document.createElementNS(TAG_ICON_NS, 'path');
+  path.setAttribute('d', UI_ICON_PATHS[name] || '');
+  svg.appendChild(path);
+  return svg;
+}
+
 // A result row's tag detail: one icon opens the shared inspector for this tag. An internal
 // relay has no source tag and stays plain.
 function renderTagIcon(def) {
@@ -1706,7 +1736,10 @@ function elementCheckpoint(state, childCount) {
     warnOnly: isWarnElement(state),
     detail: checkpointDetail(state),
     parent: childCount > 0,
-    family: childCount > 0 ? 'parent of ' + childCount : 'leaf'
+    family: childCount > 0 ? 'parent of ' + childCount : 'leaf',
+    depth: Number(state.depth || 0),
+    usage: state.usage || null,
+    chip: stateChipText(state)
   };
 }
 
@@ -1720,7 +1753,10 @@ function stepCheckpoint(block, step, index) {
     warnOnly: false,
     detail: (step.reason || '').trim(),
     parent: true,
-    family: 'step'
+    family: 'step',
+    depth: 0,
+    usage: step.usage || null,
+    chip: STEP_WORD[step.state] || step.state
   };
 }
 
@@ -1770,17 +1806,121 @@ function checkpointWord(item) {
 // accessible label. Dots are small enough that a long network stays in one strip without a
 // horizontal bar.
 function checkpointTitle(item) {
-  return [item.name, item.family, checkpointWord(item), item.detail]
+  const base = [item.name, item.family, checkpointWord(item), item.detail]
     .filter((part) => part)
-    .join(' · ') + (item.kind === 'step'
-      ? ' — click to go to this step'
-      : ' — click to go to this element');
+    .join(' · ');
+  const usage = checkpointUsageTitle(item);
+  return base + (usage ? ' · ' + usage : '') + (item.kind === 'step'
+    ? ' — click to go to this step'
+    : ' — click to go to this element');
 }
 
 function checkpointLabel(item) {
+  const usage = checkpointUsageTitle(item);
   return item.name + ' — ' + item.family + ', ' + checkpointWord(item)
     + (item.detail ? '. ' + item.detail : '')
+    + (usage ? '. ' + usage : '')
     + (item.kind === 'step' ? '. Go to this step.' : '. Go to this element.');
+}
+
+// How long ago a check was last met, in the rail's own short vocabulary. A null date means the
+// bridge has not seen it met since it started — the honest "never" for this evaluation history.
+function activeAgo(value) {
+  const date = value instanceof Date ? value : (value ? new Date(value) : null);
+  if (!date || Number.isNaN(date.getTime())) return 'never';
+  const seconds = Math.max(0, (Date.now() - date.getTime()) / 1000);
+  if (seconds < 60) return 'just now';
+  if (seconds < 3600) return Math.floor(seconds / 60) + 'm ago';
+  if (seconds < 86400) return Math.floor(seconds / 3600) + 'h ago';
+  return Math.floor(seconds / 86400) + 'd ago';
+}
+
+// Usage is kept on a source's own activations: a leaf reads its own count, a parent rolls up the
+// checks below it, and a check whose subtree has no tag source has no usage to show — only its
+// last activation. The rail and the fullsheet read the same fields, so they can never disagree.
+function usageHeat(count, hasSource) {
+  if (!hasSource) return 'none';
+  const value = Number(count || 0);
+  return value >= 100 ? 'hot' : value >= 10 ? 'warm' : value > 0 ? 'cool' : 'never';
+}
+
+function attachCheckpointUsage(block, state, items) {
+  const defs = block ? indexBlock(block) : { byId: new Map() };
+  for (const item of items) {
+    const def = item.kind === 'element' ? defs.byId.get(item.id) : null;
+    const ref = def ? tagReference(block, def) : null;
+    item.sourceLabel = item.kind === 'step'
+      ? 'sequence step'
+      : def ? tagLabel(def, block) : '';
+    item.hasSource = item.kind === 'step' ? true : !!ref;
+    const usage = item.usage || {};
+    item.usageCount = Number(usage.count || 0);
+    item.usageLast = usage.lastActiveUtc ? new Date(usage.lastActiveUtc) : null;
+  }
+
+  // Depth-first order means every child follows its parent; walking backwards aggregates nested
+  // parents before the parent that owns them.
+  for (let i = items.length - 1; i >= 0; i--) {
+    const item = items[i];
+    if (!item.parent) continue;
+    let count = 0;
+    let last = null;
+    let sourced = item.hasSource;
+    let children = 0;
+    for (let j = i + 1; j < items.length && items[j].depth > item.depth; j++) {
+      const child = items[j];
+      // Only direct children count: a nested parent has already rolled its own subtree up, so
+      // adding every descendant would count the same activation several times. A child with no
+      // tag source has no source usage to contribute; its last activation still dates the parent.
+      if (child.depth !== item.depth + 1) continue;
+      if (child.hasSource) count += child.usageCount;
+      if (child.usageLast && (!last || child.usageLast > last)) last = child.usageLast;
+      sourced = sourced || child.hasSource;
+      children++;
+    }
+
+    if (children) {
+      item.usageCount = sourced ? count : 0;
+      item.usageLast = last;
+      item.hasSource = sourced;
+    }
+  }
+
+  let latest = null;
+  for (const item of items) {
+    item.usageHeat = usageHeat(item.usageCount, item.hasSource);
+    item.everActive = !!item.usageLast;
+    item.neverUsed = item.hasSource && !item.usageLast;
+    if (!item.parent && item.hasSource && item.usageLast
+      && (!latest || item.usageLast > latest.usageLast)) {
+      latest = item;
+    }
+  }
+
+  if (latest) latest.isLatest = true;
+  return items;
+}
+
+function checkpointUsageTitle(item) {
+  if (!item.hasSource) {
+    return item.usageLast ? 'last activated ' + activeAgo(item.usageLast) : 'not activated yet';
+  }
+
+  const count = Number(item.usageCount || 0);
+  const window = count
+    ? count + (count === 1 ? ' activation' : ' activations') + ' in 7 days'
+    : 'not activated in 7 days';
+  return window + (item.usageLast ? ' · last ' + activeAgo(item.usageLast) : '');
+}
+
+function applyCheckpointUsage(dot, item) {
+  dot.classList.remove('u-hot', 'u-warm', 'u-cool', 'u-never', 'u-none');
+  if (!checkpointUsageOn) {
+    delete dot.dataset.usage;
+    return;
+  }
+
+  dot.dataset.usage = item.usageHeat || 'none';
 }
 
 // The dot's colour: the check's own verdict. A warn-only element never reads as a block — met it
@@ -1855,14 +1995,49 @@ function checkpointSummary(items, state) {
   };
 }
 
-// The rail above the board: a met/total count, then one dot per check. The feed repaints the dots
-// in place (paintCheckpointRail), so a push never rewrites the strip being read.
+function checkpointUsageToggle(focusKey) {
+  return h('button', {
+    class: 'btn small cp-usage' + (checkpointUsageOn ? ' primary' : ''),
+    type: 'button',
+    'data-focus-key': focusKey || undefined,
+    'aria-pressed': checkpointUsageOn ? 'true' : 'false',
+    title: checkpointUsageOn
+      ? 'Hide checkpoint usage'
+      : 'Tint checkpoints by how often their tag source is activated',
+    onclick: toggleCheckpointUsage
+  }, uiIcon('activity'), h('span', { text: 'Usage' }));
+}
+
+function checkpointFullscreenButton() {
+  return h('button', {
+    class: 'btn small cp-full',
+    type: 'button',
+    title: 'Open the full checkpoint sheet',
+    'aria-haspopup': 'dialog',
+    onclick: openCheckpointSheet
+  }, uiIcon('maximize'), h('span', { text: 'Fullscreen' }));
+}
+
+function toggleCheckpointUsage() {
+  checkpointUsageOn = !checkpointUsageOn;
+  storeCollapsed(CHECKPOINT_USAGE_KEY, checkpointUsageOn);
+  const rail = el('resCheckpoints');
+  if (rail) rail.classList.toggle('usage-on', checkpointUsageOn);
+  paintCheckpointRail();
+  if (checkpointSheetOpen) renderCheckpointSheet();
+}
+
+// The rail above the board: a met/total count, then one dot per check, then the Usage and
+// Fullscreen controls. The feed repaints the dots in place (paintCheckpointRail), so a push never
+// rewrites the strip being read.
 function renderCheckpointRail(block, state) {
   const items = checkpointItems(block, state);
   if (!items.length) return null;
+  attachCheckpointUsage(block, state, items);
   const summary = checkpointSummary(items, state);
   return h('div', {
-    class: 'cp-rail', id: 'resCheckpoints', role: 'group',
+    class: 'cp-rail' + (checkpointUsageOn ? ' usage-on' : ''),
+    id: 'resCheckpoints', role: 'group',
     'aria-label': blockKindLabel(block && block.kind) + ' checkpoints'
   },
     h('span', { class: 'cp-label' },
@@ -1870,12 +2045,13 @@ function renderCheckpointRail(block, state) {
       h('span', {
         class: 'cp-count' + summary.className, id: 'resCpCount', text: summary.label,
         title: summary.title, 'aria-label': summary.title
-      })),
-    h('div', { class: 'cp-track', id: 'resCpTrack' }, items.map(checkpointDot)));
+      }), checkpointUsageToggle()),
+    h('div', { class: 'cp-track', id: 'resCpTrack' }, items.map(checkpointDot)),
+    h('div', { class: 'cp-actions' }, checkpointFullscreenButton()));
 }
 
 function checkpointDot(item) {
-  return h('button', {
+  const dot = h('button', {
     class: 'cp-dot ' + (item.parent ? 'parent' : 'leaf') + ' ' + checkpointPill(item),
     type: 'button',
     'data-cp-id': item.id,
@@ -1884,6 +2060,8 @@ function checkpointDot(item) {
     'aria-label': checkpointLabel(item),
     onclick: () => revealCheckpoint(item)
   });
+  applyCheckpointUsage(dot, item);
+  return dot;
 }
 
 function paintCheckpointDot(dot, item) {
@@ -1891,6 +2069,7 @@ function paintCheckpointDot(dot, item) {
   dot.dataset.cpKind = item.kind;
   dot.title = checkpointTitle(item);
   dot.setAttribute('aria-label', checkpointLabel(item));
+  applyCheckpointUsage(dot, item);
 }
 
 function paintCheckpointRail() {
@@ -1899,6 +2078,7 @@ function paintCheckpointRail() {
   if (!track || !count) return;
   const state = draft ? blockStates.get(draft.id) : null;
   const items = checkpointItems(draft, state);
+  attachCheckpointUsage(draft, state, items);
   const dots = Array.from(track.querySelectorAll('.cp-dot'));
   const changed = dots.length !== items.length
     || dots.some((dot, i) => dot.dataset.cpId !== items[i].id || dot.dataset.cpKind !== items[i].kind);
@@ -1916,8 +2096,294 @@ function paintCheckpointRail() {
   count.setAttribute('aria-label', summary.title);
 
   const rail = el('resCheckpoints');
-  if (rail) rail.setAttribute('aria-label', blockKindLabel(draft && draft.kind) + ' checkpoints');
+  if (rail) {
+    rail.setAttribute('aria-label', blockKindLabel(draft && draft.kind) + ' checkpoints');
+    rail.classList.toggle('usage-on', checkpointUsageOn);
+    const toggle = rail.querySelector('.cp-usage');
+    if (toggle) {
+      toggle.classList.toggle('primary', checkpointUsageOn);
+      toggle.setAttribute('aria-pressed', checkpointUsageOn ? 'true' : 'false');
+      toggle.title = checkpointUsageOn
+        ? 'Hide checkpoint usage'
+        : 'Tint checkpoints by how often their tag source is activated';
+    }
+  }
 }
+
+// ---------------------------------------------------------------- checkpoint fullsheet
+//
+// The rail answers "what is still open" in one line. The sheet answers "what is this block
+// checking, in order" and "which readings are actually being used": the complete depth-first
+// sequence, a type filter (all / parents / leaves / unused), and — with Usage on — each
+// tag-backed leaf's activations in the last seven days, with a last-activated time for the
+// checks that have no source of their own. State colour and usage colour stay separate channels.
+
+const CHECKPOINT_FILTERS = [
+  { id: 'all', label: 'All' },
+  { id: 'parents', label: 'Parents' },
+  { id: 'leaves', label: 'Leaves' },
+  { id: 'unused', label: 'Unused' }
+];
+
+function checkpointFilterCounts(items) {
+  const parents = items.filter((item) => item.parent).length;
+  const unused = items.filter((item) => !item.parent && item.hasSource && item.usageCount === 0).length;
+  return { all: items.length, parents: parents, leaves: items.length - parents, unused: unused };
+}
+
+function checkpointFiltered(items, filter) {
+  if (filter === 'parents') return items.filter((item) => item.parent);
+  if (filter === 'leaves') return items.filter((item) => !item.parent);
+  if (filter === 'unused') {
+    return items.filter((item) => !item.parent && item.hasSource && item.usageCount === 0);
+  }
+  return items;
+}
+
+function openCheckpointSheet() {
+  if (!draft) return;
+  checkpointSheetReturnFocus = document.activeElement;
+  checkpointSheetOpen = true;
+  checkpointFilter = 'all';
+  renderCheckpointSheet();
+  const close = document.querySelector('#cpSheet .cp-sheet-close');
+  if (close) close.focus();
+}
+
+function closeCheckpointSheet() {
+  checkpointSheetOpen = false;
+  const overlay = el('cpSheet');
+  if (overlay) overlay.remove();
+  const back = checkpointSheetReturnFocus;
+  checkpointSheetReturnFocus = null;
+  if (back && typeof back.focus === 'function' && document.contains(back)) back.focus();
+}
+
+function checkpointFilterButton(filter, counts) {
+  const on = checkpointFilter === filter.id;
+  return h('button', {
+    class: 'cp-seg-btn' + (on ? ' on' : ''),
+    type: 'button',
+    'data-focus-key': 'filter-' + filter.id,
+    'aria-pressed': on ? 'true' : 'false',
+    onclick: () => { checkpointFilter = filter.id; renderCheckpointSheet(); }
+  },
+    h('span', { text: filter.label }),
+    h('span', { class: 'cp-seg-count mono', text: String(counts[filter.id] || 0) }));
+}
+
+function checkpointSheetMark(item) {
+  const shape = item.parent ? 'parent' : item.kind === 'step' ? 'step' : 'leaf';
+  return h('span', { class: 'cp-mark ' + shape + ' ' + checkpointPill(item) });
+}
+
+function checkpointUsageCell(item) {
+  const cell = h('div', { class: 'cp-use' + (item.hasSource ? '' : ' no-source') });
+  if (!item.hasSource) {
+    cell.appendChild(uiIcon('history'));
+    cell.appendChild(h('span', {
+      class: 'cp-use-last mono small',
+      text: item.usageLast ? 'last activated · ' + activeAgo(item.usageLast) : 'not activated yet'
+    }));
+    return cell;
+  }
+
+  cell.appendChild(h('span', {
+    class: 'cp-use-count mono ' + item.usageHeat,
+    text: Number(item.usageCount || 0) + '×',
+    title: checkpointUsageTitle(item)
+  }));
+  const bar = h('span', { class: 'cp-use-bar ' + item.usageHeat });
+  bar.appendChild(h('span', { class: 'cp-use-fill' }));
+  cell.appendChild(bar);
+  cell.appendChild(h('span', {
+    class: 'cp-use-last mono small',
+    text: item.usageLast ? activeAgo(item.usageLast) : 'never',
+    title: item.usageLast ? 'last activated ' + activeAgo(item.usageLast) : 'not activated since the bridge started'
+  }));
+  return cell;
+}
+
+function goToCheckpointSheetRow(item) {
+  closeCheckpointSheet();
+  revealCheckpoint(item);
+}
+
+function checkpointSheetRow(item, index) {
+  const raw = item.chip || checkpointWord(item);
+  const word = raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : raw;
+  const badge = h('span', { class: 'cp-row-badges' });
+  if (item.isLatest) badge.appendChild(h('span', { class: 'cp-badge latest', text: 'LATEST' }));
+  if (item.neverUsed) badge.appendChild(h('span', { class: 'cp-badge never', text: 'NEVER' }));
+
+  const name = h('div', { class: 'cp-row-name', style: '--cp-depth:' + Number(item.depth || 0) },
+    checkpointSheetMark(item),
+    h('div', { class: 'cp-row-text' },
+      h('div', { class: 'cp-row-title-line' },
+        h('span', { class: 'cp-row-title', text: item.name }), badge),
+      h('span', { class: 'cp-row-meta muted small', text: item.family })));
+
+  return h('div', {
+    class: 'cp-row' + (item.parent ? ' parent' : '') + (item.kind === 'step' ? ' step' : ''),
+    role: 'button',
+    tabindex: '0',
+    title: 'Go to this check in the network',
+    'aria-label': checkpointLabel(item),
+    onclick: () => goToCheckpointSheetRow(item),
+    onkeydown: (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      goToCheckpointSheetRow(item);
+    }
+  },
+    h('span', { class: 'cp-seq mono', text: String(index).padStart(2, '0') }),
+    name,
+    h('span', { class: 'cp-row-source mono small', text: item.sourceLabel || item.family || '—' }),
+    h('span', { class: 'cp-row-state' },
+      h('span', { class: 'pill cp-state-chip ' + checkpointPill(item) },
+        h('span', { class: 'cp-state-dot' }),
+        h('span', { text: word }))),
+    checkpointUsageOn ? checkpointUsageCell(item) : null);
+}
+
+function checkpointSheetRail(items, counts) {
+  const rail = h('aside', { class: 'cp-sheet-rail' });
+  if (!checkpointUsageOn) {
+    rail.appendChild(h('div', { class: 'cp-rail-eyebrow', text: 'USAGE' }));
+    rail.appendChild(h('div', { class: 'cp-rail-title', text: 'What the button adds' }));
+    rail.appendChild(h('p', { class: 'cp-rail-copy muted small', text:
+      'Turn Usage on to colour each tag-backed check by how often it is activated in the last 7 days. Checks without a tag source show their last activation instead.' }));
+    return rail;
+  }
+
+  rail.appendChild(h('div', { class: 'cp-rail-eyebrow', text: 'USAGE · LAST 7 DAYS' }));
+  rail.appendChild(h('div', { class: 'cp-rail-title', text: 'Most-activated sources' }));
+
+  const legend = h('div', { class: 'cp-usage-legend' });
+  for (const [heat, text] of [['hot', 'Frequent · 100+'], ['warm', 'Regular · 10–100'], ['cool', 'Rare · 1–9'], ['never', 'Never · 0']]) {
+    legend.appendChild(h('div', { class: 'cp-usage-legend-row' },
+      h('span', { class: 'cp-usage-swatch ' + heat }), h('span', { text: text, class: 'small' })));
+  }
+  rail.appendChild(legend);
+
+  const sourced = items.filter((item) => !item.parent && item.hasSource)
+    .sort((a, b) => b.usageCount - a.usageCount);
+  const max = Math.max(1, ...sourced.map((item) => item.usageCount));
+  rail.appendChild(h('div', { class: 'cp-rail-rule' }));
+  rail.appendChild(h('div', { class: 'cp-rail-eyebrow', text: 'TOP SOURCES' }));
+  for (const item of sourced.slice(0, 3)) {
+    const width = item.usageCount > 0 ? Math.max(4, Math.round((item.usageCount / max) * 100)) : 0;
+    rail.appendChild(h('div', { class: 'cp-top-source' },
+      h('div', { class: 'cp-top-source-line' },
+        h('span', { class: 'cp-top-source-name mono small', text: item.name }),
+        h('span', { class: 'cp-top-source-count mono small ' + item.usageHeat, text: item.usageCount + '×' })),
+      h('div', { class: 'cp-top-source-bar ' + item.usageHeat },
+        h('span', { class: 'cp-top-source-fill', style: 'width:' + width + '%' }))));
+  }
+
+  const never = sourced.filter((item) => !item.usageLast);
+  rail.appendChild(h('div', { class: 'cp-rail-rule' }));
+  rail.appendChild(h('div', { class: 'cp-rail-callout' },
+    h('div', { class: 'cp-rail-title', text: never.length + ' of ' + sourced.length + ' leaves never activated' }),
+    h('div', { class: 'cp-rail-names mono small', text: never.length ? never.map((item) => item.name).join(' · ') : '—' })));
+  rail.appendChild(h('p', { class: 'cp-rail-copy muted small', text:
+    'Counts are activations of the tag source in the window. Parents roll up their leaves; checks without a source show the last time they were met.' }));
+  return rail;
+}
+
+function renderCheckpointSheet() {
+  if (!checkpointSheetOpen || !draft) return;
+  const state = blockStates.get(draft.id);
+  const items = checkpointItems(draft, state);
+  if (!items.length) { closeCheckpointSheet(); return; }
+  attachCheckpointUsage(draft, state, items);
+
+  const counts = checkpointFilterCounts(items);
+  const visible = checkpointFiltered(items, checkpointFilter);
+  const summary = checkpointSummary(items, state);
+  const focused = document.activeElement && document.activeElement.closest
+    ? document.activeElement.closest('#cpSheet')
+    : null;
+  const focusKey = focused && document.activeElement.dataset.focusKey;
+  const previous = el('cpSheet');
+  const listScroll = previous ? (previous.querySelector('.cp-sheet-list') || {}).scrollTop || 0 : 0;
+  const railScroll = previous ? (previous.querySelector('.cp-sheet-rail') || {}).scrollTop || 0 : 0;
+
+  let overlay = previous;
+  if (!overlay) {
+    overlay = h('div', { id: 'cpSheet', class: 'cp-sheet-scrim', role: 'presentation' });
+    overlay.addEventListener('mousedown', (event) => {
+      if (event.target === overlay) closeCheckpointSheet();
+    });
+    document.body.appendChild(overlay);
+  }
+  overlay.textContent = '';
+
+  const head = h('div', { class: 'cp-sheet-head' },
+    h('div', { class: 'cp-sheet-titleblock' },
+      h('div', { class: 'cp-sheet-title', id: 'cpSheetTitle', text: 'Checkpoints' }),
+      h('div', { class: 'cp-sheet-sub muted small', text: (draft.name || '(unnamed)') + ' · '
+        + items.length + ' checks · ' + (lastEvaluated ? 'evaluated ' + formatTime(lastEvaluated) : 'waiting for the bridge') })),
+    h('div', { class: 'cp-sheet-head-actions' },
+      h('span', { class: 'cp-count ' + summary.className, text: summary.label, title: summary.title }),
+      h('button', {
+        class: 'btn small cp-sheet-close', type: 'button', 'data-focus-key': 'close',
+        title: 'Close (Esc)', onclick: closeCheckpointSheet
+      }, uiIcon('close'), h('span', { text: 'Close' }))));
+
+  const filters = h('div', { class: 'cp-sheet-filters' },
+    h('div', { class: 'cp-seg', role: 'group', 'aria-label': 'Checkpoint type filter' },
+      CHECKPOINT_FILTERS.map((filter) => checkpointFilterButton(filter, counts))),
+    h('span', { class: 'cp-order mono small muted', text: 'sequence · start → end' }),
+    h('div', { class: 'cp-sheet-filter-actions' }, checkpointUsageToggle('usage')));
+
+  const body = h('div', { class: 'cp-sheet-body' });
+  const list = h('div', { class: 'cp-sheet-list' });
+  list.appendChild(h('div', { class: 'cp-sheet-colhead' },
+    h('span', { class: 'cp-col-seq', text: 'SEQ' }),
+    h('span', { text: 'CHECKPOINT' }),
+    h('span', { class: 'cp-col-source', text: 'TAG SOURCE' }),
+    h('span', { class: 'cp-col-state', text: 'STATE' }),
+    checkpointUsageOn ? h('span', { class: 'cp-col-use', text: 'USAGE / LAST ACTIVE' }) : null));
+  if (!visible.length) {
+    list.appendChild(h('p', { class: 'cp-sheet-empty muted small', text: 'No checkpoints match this filter.' }));
+  } else {
+    for (const item of visible) list.appendChild(checkpointSheetRow(item, items.indexOf(item) + 1));
+  }
+  body.appendChild(list);
+  body.appendChild(checkpointSheetRail(items, counts));
+
+  const foot = h('div', { class: 'cp-sheet-foot' },
+    h('span', { class: 'cp-sheet-note muted small', text:
+      'Click a row to jump to its network row. State colour comes from the evaluation; usage colour is a separate reading.' }),
+    h('span', {
+      class: 'cp-sheet-window mono small',
+      title: 'Activation history recorded by this bridge; the window is the last 7 days.',
+      text: 'window · last 7 days · Esc closes'
+    }));
+
+  overlay.appendChild(h('div', {
+    class: 'cp-sheet' + (checkpointUsageOn ? ' usage-on' : ''),
+    role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': 'cpSheetTitle'
+  }, head, filters, body, foot));
+
+  // A push must not move the list under the operator's eye; put the scroll back where it was.
+  const nextList = overlay.querySelector('.cp-sheet-list');
+  if (nextList) nextList.scrollTop = listScroll;
+  const nextRail = overlay.querySelector('.cp-sheet-rail');
+  if (nextRail) nextRail.scrollTop = railScroll;
+
+  const refocus = focusKey
+    ? overlay.querySelector('[data-focus-key="' + focusKey + '"]')
+    : null;
+  if (refocus) refocus.focus();
+}
+
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape' || !checkpointSheetOpen) return;
+  event.preventDefault();
+  closeCheckpointSheet();
+});
 
 // A checkpoint chip is a jump: the row it names is scrolled to the middle of the editor (clear of
 // the sticky head) and marked for a moment, so "which one is open" and "where is it" are one click.
@@ -3091,6 +3557,7 @@ function applyState(snapshot) {
   }
 
   paintCheckpointRail();
+  if (checkpointSheetOpen) renderCheckpointSheet();
 
   const blockState = draft ? blockStates.get(draft.id) : null;
   for (const pill of document.querySelectorAll('[data-step]')) {

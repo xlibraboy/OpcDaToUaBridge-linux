@@ -147,7 +147,8 @@ public sealed class HmiBroadcastService : IHostedService
     /// </summary>
     internal void PushLogicIfChanged()
     {
-        LogicStateSnapshot snapshot = LogicStateRead.Snapshot(logic_store_, mapping_store_, bridge_state_, DateTime.UtcNow, logic_states_);
+        LogicStateSnapshot snapshot = LogicStateRead.Snapshot(
+            logic_store_, mapping_store_, bridge_state_, DateTime.UtcNow, logic_states_, recordUsage: true);
         Volatile.Write(ref timer_pending_, HasRunningTimer(snapshot) ? 1 : 0);
 
         string signature = LogicStateEvaluator.Signature(snapshot);

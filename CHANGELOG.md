@@ -45,6 +45,21 @@ moment, so "which check is open" and "where is it" are the same click. A Result 
 the first evaluation is still in flight fills in the board and the rail the moment the state
 arrives.
 
+**The checkpoint rail can show how each check is used, and opens a complete fullsheet.** The rail now
+carries a **Usage** toggle and a **Fullscreen** button beside its count. Usage is a second channel under
+each dot — a blue underline, deeper for a check that activates more often — while the dot keeps its
+READY / BLOCKED colour; a check with no tag source gets a hairline and a check never met gets nothing.
+The bridge records each check's activations in a rolling seven-day window (a restart starts a fresh
+window) and the page shows the count with the time it was last activated. Fullscreen opens the block's
+complete checkpoint sequence, numbered start to end and grouped by its parent/child tree, with All /
+Parents / Leaves / Unused filters. Each tag-backed leaf carries its count and last activation, a parent
+rolls up its source-backed children, and a check without a source shows only when it last ran. The
+sheet's rail names the most-activated sources and the leaves never activated; Esc closes it, a state
+push keeps the list's scroll and focus where the operator left them, and each row is a jump back to its
+network row (Enter / Space works too). Usage is remembered per browser
+like the theme, and the state snapshot now carries each check's `usage` (count and last active) for
+other clients too.
+
 **Each install can own its port block.** The HTTP and OPC UA auto-assign ranges were fixed at
 8080-8180 and 4840-4940 for every install, so two installs on one machine — or an install next
 to another product — competed for the same numbers, and the Logic page, which the bridge

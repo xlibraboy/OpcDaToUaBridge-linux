@@ -533,6 +533,96 @@ public sealed class LogicStateEvaluatorTests
     }
 
     [Fact]
+    public void Usage_CountsActivationsWithoutCountingReadsOrAStandingTruth()
+    {
+        LogicStateStore states = new();
+        LogicBlockDto block = Flat(Condition());
+
+        LogicElementStateDto Pass(bool value, DateTime now, bool recordUsage = true) =>
+            LogicStateEvaluator.Evaluate(
+                new[] { block }, 1, Values(("sim", "Permit", value, true)), Mappings(), now, states,
+                recordUsage: recordUsage).Blocks[0].Elements[0];
+
+        LogicElementStateDto off = Pass(false, Now);
+        Assert.Equal(0, off.Usage.Count);
+        Assert.Null(off.Usage.LastActiveUtc);
+
+        LogicElementStateDto on = Pass(true, Now.AddMinutes(1));
+        Assert.Equal(1, on.Usage.Count);
+        Assert.Equal(Now.AddMinutes(1), on.Usage.LastActiveUtc);
+
+        // Still met on the next pass: one activation, not one per scan.
+        LogicElementStateDto standing = Pass(true, Now.AddMinutes(2));
+        Assert.Equal(1, standing.Usage.Count);
+        Assert.Equal(Now.AddMinutes(1), standing.Usage.LastActiveUtc);
+
+        Pass(false, Now.AddMinutes(3));
+        LogicElementStateDto again = Pass(true, Now.AddMinutes(4));
+        Assert.Equal(2, again.Usage.Count);
+        Assert.Equal(Now.AddMinutes(4), again.Usage.LastActiveUtc);
+
+        // A snapshot read reports the history instead of adding to it.
+        LogicElementStateDto read = Pass(false, Now.AddMinutes(5), recordUsage: false);
+        Assert.Equal(2, read.Usage.Count);
+        Assert.Equal(Now.AddMinutes(4), read.Usage.LastActiveUtc);
+    }
+
+    [Fact]
+    public void Usage_DropsActivationsOlderThanSevenDaysButKeepsTheLastActiveTime()
+    {
+        LogicStateStore states = new();
+        LogicBlockDto block = Flat(Condition());
+
+        LogicElementStateDto Pass(bool value, DateTime now) =>
+            LogicStateEvaluator.Evaluate(
+                new[] { block }, 1, Values(("sim", "Permit", value, true)), Mappings(), now, states,
+                recordUsage: true).Blocks[0].Elements[0];
+
+        Pass(false, Now);
+        Pass(true, Now.AddMinutes(1));
+        Pass(false, Now.AddMinutes(2));
+        Pass(true, Now.AddMinutes(3));
+
+        LogicElementStateDto expired = Pass(false, Now.AddDays(8));
+        Assert.Equal(0, expired.Usage.Count);
+        Assert.Equal(Now.AddMinutes(3), expired.Usage.LastActiveUtc);
+
+        LogicElementStateDto fresh = Pass(true, Now.AddDays(8).AddMinutes(1));
+        Assert.Equal(1, fresh.Usage.Count);
+        Assert.Equal(Now.AddDays(8).AddMinutes(1), fresh.Usage.LastActiveUtc);
+    }
+
+    [Fact]
+    public void Usage_CountsASequenceStepWhenItBecomesDone()
+    {
+        LogicStateStore states = new();
+        LogicBlockDto block = Sequence(Step("Step 1", completionItemId: "Done", Condition()));
+
+        LogicStepStateDto Pass(bool permit, DateTime now) =>
+            LogicStateEvaluator.Evaluate(
+                new[] { block }, 1,
+                Values(("sim", "Permit", permit, true), ("sim", "Done", true, true)),
+                Mappings(), now, states, recordUsage: true).Blocks[0].Steps[0];
+
+        LogicStepStateDto current = Pass(false, Now);
+        Assert.Equal(LogicStepStates.Current, current.State);
+        Assert.Equal(0, current.Usage.Count);
+
+        LogicStepStateDto done = Pass(true, Now.AddMinutes(1));
+        Assert.Equal(LogicStepStates.Done, done.State);
+        Assert.Equal(1, done.Usage.Count);
+        Assert.Equal(Now.AddMinutes(1), done.Usage.LastActiveUtc);
+
+        LogicStepStateDto stillDone = Pass(true, Now.AddMinutes(2));
+        Assert.Equal(1, stillDone.Usage.Count);
+
+        Pass(false, Now.AddMinutes(3));
+        LogicStepStateDto again = Pass(true, Now.AddMinutes(4));
+        Assert.Equal(2, again.Usage.Count);
+        Assert.Equal(Now.AddMinutes(4), again.Usage.LastActiveUtc);
+    }
+
+    [Fact]
     public void Signature_FollowsShouldMatchesAndTheTimersWholeSeconds()
     {
         LogicStateStore states = new();

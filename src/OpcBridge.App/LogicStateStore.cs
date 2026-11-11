@@ -1,3 +1,5 @@
+using OpcBridge.Client;
+
 namespace OpcBridge.App;
 
 /// <summary>
@@ -18,6 +20,7 @@ public sealed class LogicStateStore
 {
     private readonly object sync_ = new();
     private readonly Dictionary<Guid, Memory> memories_ = new();
+    private readonly Dictionary<Guid, UsageMemory> usages_ = new();
     private readonly Dictionary<string, bool> relays_ = new(StringComparer.OrdinalIgnoreCase);
     private HashSet<Guid>? seen_;
     private HashSet<string>? seenRelays_;
@@ -28,6 +31,15 @@ public sealed class LogicStateStore
         public bool? LastInput;
         public bool CountLoaded;
         public int Count;
+    }
+
+    private sealed class UsageMemory
+    {
+        public bool? LastActive;
+        public DateTime? LastActiveUtc;
+
+        /// <summary>One entry per day the check was activated, newest last; pruned to the window.</summary>
+        public readonly List<(DateTime Day, int Count)> Days = new();
     }
 
     /// <summary>Starts an evaluation pass over every element and relay of every block.</summary>
@@ -56,6 +68,15 @@ public sealed class LogicStateStore
                 foreach (Guid id in stale)
                 {
                     memories_.Remove(id);
+                }
+            }
+
+            if (usages_.Count > 0)
+            {
+                List<Guid> staleUsage = usages_.Keys.Where(id => !seen_.Contains(id)).ToList();
+                foreach (Guid id in staleUsage)
+                {
+                    usages_.Remove(id);
                 }
             }
 
@@ -305,6 +326,70 @@ public sealed class LogicStateStore
 
             return rising ? previous == false && input : previous == true && !input;
         }
+    }
+
+    /// <summary>
+    /// Records one check's verdict for this evaluation pass. A check counts as used when it
+    /// becomes met (false/unknown → true, or not-done → done); a pass that finds it still met
+    /// adds nothing, so a standing condition is one activation, not one per scan. The window is
+    /// the last seven calendar days; a restart starts a fresh one.
+    /// </summary>
+    public LogicCheckpointUsageDto RecordUsage(Guid id, bool active, DateTime nowUtc)
+    {
+        lock (sync_)
+        {
+            seen_?.Add(id);
+            if (!usages_.TryGetValue(id, out UsageMemory? usage))
+            {
+                usage = new UsageMemory();
+                usages_[id] = usage;
+            }
+
+            if (active && usage.LastActive != true)
+            {
+                usage.LastActiveUtc = nowUtc;
+                DateTime day = nowUtc.Date;
+                int index = usage.Days.FindIndex(entry => entry.Day == day);
+                if (index >= 0)
+                {
+                    usage.Days[index] = (day, usage.Days[index].Count + 1);
+                }
+                else
+                {
+                    usage.Days.Add((day, 1));
+                }
+            }
+
+            usage.LastActive = active;
+            return UsageSnapshot(usage, nowUtc);
+        }
+    }
+
+    /// <summary>
+    /// The usage already recorded for a check. Unlike <see cref="RecordUsage"/>, this never adds
+    /// an activation — a snapshot read reports the history without becoming part of it.
+    /// </summary>
+    public LogicCheckpointUsageDto UsageFor(Guid id, DateTime nowUtc)
+    {
+        lock (sync_)
+        {
+            seen_?.Add(id);
+            return usages_.TryGetValue(id, out UsageMemory? usage)
+                ? UsageSnapshot(usage, nowUtc)
+                : new LogicCheckpointUsageDto();
+        }
+    }
+
+    private static LogicCheckpointUsageDto UsageSnapshot(UsageMemory usage, DateTime nowUtc)
+    {
+        // Seven calendar days, today included: the oldest day still inside the window.
+        DateTime first = nowUtc.Date.AddDays(-6);
+        usage.Days.RemoveAll(entry => entry.Day < first);
+        return new LogicCheckpointUsageDto
+        {
+            Count = usage.Days.Sum(entry => entry.Count),
+            LastActiveUtc = usage.LastActiveUtc
+        };
     }
 
     private Memory MemoryFor(Guid id)
