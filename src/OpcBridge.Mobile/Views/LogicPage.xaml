@@ -7,6 +7,7 @@
              x:Class="OpcBridge.Mobile.Views.LogicPage"
              Title="Logic"
              Shell.NavBarIsVisible="False"
+             Shell.TabBarIsVisible="False"
              BackgroundColor="{theme:ThemeColor PageBg}">
     <ContentPage.Resources>
         <!-- One search/filter chip: filled and dark-texted while selected, dark with muted
@@ -24,7 +25,7 @@
             </Button>
         </DataTemplate>
     </ContentPage.Resources>
-    <Grid>
+    <Grid RowDefinitions="*,Auto">
         <Grid RowDefinitions="Auto,*" Padding="16,4,16,0" RowSpacing="12">
         <VerticalStackLayout Grid.Row="0" Spacing="12">
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10" Padding="0,2,0,4">
@@ -325,5 +326,6 @@
         </RefreshView>
         </Grid>
         <views:BridgePickerSheet x:Name="bridgeSheet" />
+        <views:BottomTabBar Grid.Row="1" ActiveTab="logic" />
     </Grid>
 </ContentPage>

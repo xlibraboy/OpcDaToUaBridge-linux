@@ -7,6 +7,7 @@
              x:Class="OpcBridge.Mobile.Views.LogicBlockPage"
              Title="Logic block"
              Shell.NavBarIsVisible="False"
+             Shell.TabBarIsVisible="False"
              BackgroundColor="{theme:ThemeColor PageBg}">
     <ContentPage.Resources>
         <!-- One element of the IEC network: a contact, a gate or a function block. The row indents
@@ -165,7 +166,7 @@
         </DataTemplate>
     </ContentPage.Resources>
 
-    <Grid>
+    <Grid RowDefinitions="*,Auto">
         <Grid RowDefinitions="Auto,*">
             <Grid Grid.Row="0" Padding="16,2,16,4" ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
                 <Border Style="{StaticResource IconActionBorder}"
@@ -543,7 +544,7 @@
                     <TapGestureRecognizer Tapped="OnCheckpointSheetScrimTapped" />
                 </BoxView.GestureRecognizers>
             </BoxView>
-            <Border Margin="10,8,10,6" Padding="14" Style="{StaticResource CardBorder}">
+            <Border Margin="10,8,10,10" Padding="14" Style="{StaticResource CardBorder}">
                 <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto" RowSpacing="8">
                     <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
                         <VerticalStackLayout Spacing="2">
@@ -804,5 +805,6 @@
                 </Grid>
             </Border>
         </Grid>
+        <views:BottomTabBar Grid.Row="1" ActiveTab="logic" />
     </Grid>
 </ContentPage>

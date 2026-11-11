@@ -50,6 +50,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The bottom bar matches the design frames.** A custom 64dp tab bar replaces the native Shell
+  tab bar: 19px icons inside a 34×24 active pill, 9.5sp labels and the frame's active / inactive
+  colours, on Logic, Elements, Settings and the block detail. The native Shell bar is hidden so
+  its own height and label size can no longer override the design.
 - **The Result board follows the web Result reading surface.** The checkpoint rail now marks
   every evaluated element, not only the network's parents: a parent is a hollow ring and a leaf
   a filled dot, with the met/total count in a state-tinted pill. Result rows drop the ✓/✗

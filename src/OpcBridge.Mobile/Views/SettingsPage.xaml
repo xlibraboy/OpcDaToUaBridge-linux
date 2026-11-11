@@ -2,9 +2,11 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:theme="clr-namespace:OpcBridge.Mobile"
+             xmlns:views="clr-namespace:OpcBridge.Mobile.Views"
              x:Class="OpcBridge.Mobile.Views.SettingsPage"
              Title="Settings"
              Shell.NavBarIsVisible="False"
+             Shell.TabBarIsVisible="False"
              BackgroundColor="{theme:ThemeColor PageBg}">
     <ContentPage.Resources>
         <!-- The Appearance rail: the chosen segment sits on the raised surface, the others stay
@@ -19,7 +21,8 @@
             <Setter Property="MinimumHeightRequest" Value="30" />
         </Style>
     </ContentPage.Resources>
-    <ScrollView>
+    <Grid RowDefinitions="*,Auto">
+        <ScrollView Grid.Row="0">
         <VerticalStackLayout Padding="16,4,16,12" Spacing="12">
             <VerticalStackLayout Spacing="3" Padding="0,2,0,4">
                 <Label Text="Settings" FontSize="22" FontAttributes="Bold" />
@@ -354,5 +357,7 @@
                 </VerticalStackLayout>
             </Border>
         </VerticalStackLayout>
-    </ScrollView>
+        </ScrollView>
+        <views:BottomTabBar Grid.Row="1" ActiveTab="settings" />
+    </Grid>
 </ContentPage>

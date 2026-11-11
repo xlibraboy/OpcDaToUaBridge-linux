@@ -7,6 +7,7 @@
              x:Class="OpcBridge.Mobile.Views.ElementsPage"
              Title="Elements"
              Shell.NavBarIsVisible="False"
+             Shell.TabBarIsVisible="False"
              BackgroundColor="{theme:ThemeColor PageBg}">
     <ContentPage.Resources>
         <!-- V2 segmented kind filter: one rail, the chosen segment raised on its own surface. -->
@@ -28,7 +29,8 @@
         </Style>
     </ContentPage.Resources>
 
-    <Grid RowDefinitions="Auto,*" Padding="16,4,16,0" RowSpacing="12">
+    <Grid RowDefinitions="*,Auto">
+        <Grid Grid.Row="0" RowDefinitions="Auto,*" Padding="16,4,16,0" RowSpacing="12">
         <VerticalStackLayout Grid.Row="0" Spacing="12">
             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10" Padding="0,2,0,4">
                 <VerticalStackLayout Spacing="3">
@@ -253,5 +255,7 @@
                 </CollectionView.ItemTemplate>
             </CollectionView>
         </RefreshView>
+        </Grid>
+        <views:BottomTabBar Grid.Row="1" ActiveTab="elements" />
     </Grid>
 </ContentPage>

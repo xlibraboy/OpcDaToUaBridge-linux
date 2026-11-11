@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:theme="clr-namespace:OpcBridge.Mobile"
+             x:Class="OpcBridge.Mobile.Views.BottomTabBar"
+             x:Name="Root">
+    <!-- The frame's bottom bar: 64dp, a 34×24 active pill, 19px icons, 9.5sp labels. -->
+    <Grid HeightRequest="64" ColumnDefinitions="*,*,*"
+          BackgroundColor="{theme:ThemeColor TabBarColor}">
+        <Grid Grid.Column="0" SemanticProperties.Description="Logic tab">
+            <Grid.GestureRecognizers>
+                <TapGestureRecognizer Tapped="OnLogicTapped" />
+            </Grid.GestureRecognizers>
+            <VerticalStackLayout Spacing="2" HorizontalOptions="Center" VerticalOptions="Center">
+                <Border WidthRequest="34" HeightRequest="24" BackgroundColor="Transparent"
+                        StrokeThickness="0" StrokeShape="RoundRectangle 8">
+                    <Border.Triggers>
+                        <DataTrigger TargetType="Border"
+                                     Binding="{Binding Source={x:Reference Root}, Path=ActiveTab}" Value="logic">
+                            <Setter Property="BackgroundColor" Value="{theme:ThemeColor SurfaceAltColor}" />
+                        </DataTrigger>
+                    </Border.Triggers>
+                    <Grid>
+                        <Image Source="{theme:ThemeIcon tab_logic_active}" WidthRequest="19" HeightRequest="19"
+                               IsVisible="False">
+                            <Image.Triggers>
+                                <DataTrigger TargetType="Image"
+                                             Binding="{Binding Source={x:Reference Root}, Path=ActiveTab}" Value="logic">
+                                    <Setter Property="IsVisible" Value="True" />
+                                </DataTrigger>
+                            </Image.Triggers>
+                        </Image>
+                        <Image Source="{theme:ThemeIcon tab_logic_muted}" WidthRequest="19" HeightRequest="19">
+                            <Image.Triggers>
+                                <DataTrigger TargetType="Image"
+                                             Binding="{Binding Source={x:Reference Root}, Path=ActiveTab}" Value="logic">
+                                    <Setter Property="IsVisible" Value="False" />
+                                </DataTrigger>
+                            </Image.Triggers>
+                        </Image>
+                    </Grid>
+                </Border>
+                <Label Text="Logic" FontSize="9.5" HorizontalOptions="Center"
+                       TextColor="{theme:ThemeColor MutedColor}">
+                    <Label.Triggers>
+                        <DataTrigger TargetType="Label"
+                                     Binding="{Binding Source={x:Reference Root}, Path=ActiveTab}" Value="logic">
+                            <Setter Property="TextColor" Value="{theme:ThemeColor GoodColor}" />
+                        </DataTrigger>
+                    </Label.Triggers>
+                </Label>
+            </VerticalStackLayout>
+        </Grid>
+
+        <Grid Grid.Column="1" SemanticProperties.Description="Elements tab">
+            <Grid.GestureRecognizers>
+                <TapGestureRecognizer Tapped="OnElementsTapped" />
+            </Grid.GestureRecognizers>
+            <VerticalStackLayout Spacing="2" HorizontalOptions="Center" VerticalOptions="Center">
+                <Border WidthRequest="34" HeightRequest="24" BackgroundColor="Transparent"
+                        StrokeThickness="0" StrokeShape="RoundRectangle 8">
+                    <Border.Triggers>
+                        <DataTrigger TargetType="Border"
+                                     Binding="{Binding Source={x:Reference Root}, Path=ActiveTab}" Value="elements">
+                            <Setter Property="BackgroundColor" Value="{theme:ThemeColor SurfaceAltColor}" />
+                        </DataTrigger>
+                    </Border.Triggers>
+                    <Grid>
+                        <Image Source="{theme:ThemeIcon tab_elements_active}" WidthRequest="19" HeightRequest="19"
+                               IsVisible="False">
+                            <Image.Triggers>
+                                <DataTrigger TargetType="Image"
+                                             Binding="{Binding Source={x:Reference Root}, Path=ActiveTab}" Value="elements">
+                                    <Setter Property="IsVisible" Value="True" />
+                                </DataTrigger>
+                            </Image.Triggers>
+                        </Image>
+                        <Image Source="{theme:ThemeIcon tab_elements_muted}" WidthRequest="19" HeightRequest="19">
+                            <Image.Triggers>
+                                <DataTrigger TargetType="Image"
+                                             Binding="{Binding Source={x:Reference Root}, Path=ActiveTab}" Value="elements">
+                                    <Setter Property="IsVisible" Value="False" />
+                                </DataTrigger>
+                            </Image.Triggers>
+                        </Image>
+                    </Grid>
+                </Border>
+                <Label Text="Elements" FontSize="9.5" HorizontalOptions="Center"
+                       TextColor="{theme:ThemeColor MutedColor}">
+                    <Label.Triggers>
+                        <DataTrigger TargetType="Label"
+                                     Binding="{Binding Source={x:Reference Root}, Path=ActiveTab}" Value="elements">
+                            <Setter Property="TextColor" Value="{theme:ThemeColor GoodColor}" />
+                        </DataTrigger>
+                    </Label.Triggers>
+                </Label>
+            </VerticalStackLayout>
+        </Grid>
+
+        <Grid Grid.Column="2" SemanticProperties.Description="Settings tab">
+            <Grid.GestureRecognizers>
+                <TapGestureRecognizer Tapped="OnSettingsTapped" />
+            </Grid.GestureRecognizers>
+            <VerticalStackLayout Spacing="2" HorizontalOptions="Center" VerticalOptions="Center">
+                <Border WidthRequest="34" HeightRequest="24" BackgroundColor="Transparent"
+                        StrokeThickness="0" StrokeShape="RoundRectangle 8">
+                    <Border.Triggers>
+                        <DataTrigger TargetType="Border"
+                                     Binding="{Binding Source={x:Reference Root}, Path=ActiveTab}" Value="settings">
+                            <Setter Property="BackgroundColor" Value="{theme:ThemeColor SurfaceAltColor}" />
+                        </DataTrigger>
+                    </Border.Triggers>
+                    <Grid>
+                        <Image Source="{theme:ThemeIcon tab_settings_active}" WidthRequest="19" HeightRequest="19"
+                               IsVisible="False">
+                            <Image.Triggers>
+                                <DataTrigger TargetType="Image"
+                                             Binding="{Binding Source={x:Reference Root}, Path=ActiveTab}" Value="settings">
+                                    <Setter Property="IsVisible" Value="True" />
+                                </DataTrigger>
+                            </Image.Triggers>
+                        </Image>
+                        <Image Source="{theme:ThemeIcon tab_settings_muted}" WidthRequest="19" HeightRequest="19">
+                            <Image.Triggers>
+                                <DataTrigger TargetType="Image"
+                                             Binding="{Binding Source={x:Reference Root}, Path=ActiveTab}" Value="settings">
+                                    <Setter Property="IsVisible" Value="False" />
+                                </DataTrigger>
+                            </Image.Triggers>
+                        </Image>
+                    </Grid>
+                </Border>
+                <Label Text="Settings" FontSize="9.5" HorizontalOptions="Center"
+                       TextColor="{theme:ThemeColor MutedColor}">
+                    <Label.Triggers>
+                        <DataTrigger TargetType="Label"
+                                     Binding="{Binding Source={x:Reference Root}, Path=ActiveTab}" Value="settings">
+                            <Setter Property="TextColor" Value="{theme:ThemeColor GoodColor}" />
+                        </DataTrigger>
+                    </Label.Triggers>
+                </Label>
+            </VerticalStackLayout>
+        </Grid>
+    </Grid>
+</ContentView>
