@@ -2002,8 +2002,8 @@ function checkpointUsageToggle(focusKey) {
     'data-focus-key': focusKey || undefined,
     'aria-pressed': checkpointUsageOn ? 'true' : 'false',
     title: checkpointUsageOn
-      ? 'Hide checkpoint usage'
-      : 'Tint checkpoints by how often their tag source is activated',
+      ? 'Hide the usage dots'
+      : 'Show a tiny usage dot under each checkpoint',
     onclick: toggleCheckpointUsage
   }, uiIcon('activity'), h('span', { text: 'Usage' }));
 }
@@ -2104,8 +2104,8 @@ function paintCheckpointRail() {
       toggle.classList.toggle('primary', checkpointUsageOn);
       toggle.setAttribute('aria-pressed', checkpointUsageOn ? 'true' : 'false');
       toggle.title = checkpointUsageOn
-        ? 'Hide checkpoint usage'
-        : 'Tint checkpoints by how often their tag source is activated';
+        ? 'Hide the usage dots'
+        : 'Show a tiny usage dot under each checkpoint';
     }
   }
 }

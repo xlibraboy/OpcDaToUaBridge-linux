@@ -813,8 +813,16 @@ public sealed class LogicPageTests
         Assert.Contains("dot.dataset.usage = item.usageHeat || 'none';", script);
         Assert.Contains("h('div', { class: 'cp-actions' }, checkpointFullscreenButton())", script);
         Assert.Contains(".cp-rail.usage-on .cp-dot::after", css);
+        string usageDot = Rule(css, ".cp-rail.usage-on .cp-dot::after {");
+        Assert.Contains("width: 4px;", usageDot);
+        Assert.Contains("height: 4px;", usageDot);
+        Assert.Contains("top: 50%;", usageDot);
+        Assert.Contains("margin-top: 7px;", usageDot);
+        Assert.Contains("border-radius: 50%;", usageDot);
         Assert.Contains("background: var(--usage-hot);",
             Rule(css, ".cp-rail.usage-on .cp-dot[data-usage=\"hot\"]::after {"));
+        Assert.Contains("box-shadow: inset 0 0 0 1px var(--usage-none);",
+            Rule(css, ".cp-rail.usage-on .cp-dot[data-usage=\"none\"]::after {"));
         Assert.Contains("--usage-hot:", Rule(css, ":root {"));
         Assert.Contains("--usage-hot:", Rule(css, ":root[data-theme=\"dark\"] {"));
 

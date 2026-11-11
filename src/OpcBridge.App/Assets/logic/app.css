@@ -976,25 +976,30 @@ input[type=checkbox] { accent-color: var(--ink2); }
 .cp-dot.parent { width: 12px; height: 12px; border-width: 2px; background: var(--bg); }
 .cp-dot:hover { box-shadow: 0 0 0 2px var(--focus); }
 
-/* Usage is the second channel under the state dot, never a repaint of it: a 2px underline in
-   blue. A check with no tag source gets a hairline, and a check never met gets nothing, so the
-   strip stays honest about what the colour is saying. */
+/* Usage is the second channel under the state dot, never a repaint of it: one tiny 4px dot
+   below the check. A check with no tag source gets a hollow dot, and a check never met gets no
+   usage dot, so the strip stays honest about what the colour is saying. */
 .cp-actions { margin-left: auto; display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
-.cp-rail.usage-on .cp-track { padding: 2px 0 7px; }
+.cp-rail.usage-on .cp-track { padding: 2px 0 8px; }
 .cp-rail.usage-on .cp-dot::after {
   content: '';
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: -5px;
-  height: 2px;
-  border-radius: 1px;
+  left: 50%;
+  top: 50%;
+  width: 4px;
+  height: 4px;
+  margin-left: -2px;
+  margin-top: 7px;
+  border-radius: 50%;
   background: transparent;
 }
 .cp-rail.usage-on .cp-dot[data-usage="hot"]::after { background: var(--usage-hot); }
 .cp-rail.usage-on .cp-dot[data-usage="warm"]::after { background: var(--usage-warm); }
 .cp-rail.usage-on .cp-dot[data-usage="cool"]::after { background: var(--usage-cool); }
-.cp-rail.usage-on .cp-dot[data-usage="none"]::after { height: 1px; bottom: -4px; background: var(--usage-none); }
+.cp-rail.usage-on .cp-dot[data-usage="none"]::after {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--usage-none);
+}
 .cp-rail.usage-on .cp-dot[data-usage="never"]::after { background: transparent; }
 .ui-icon { width: 12px; height: 12px; flex: 0 0 auto; }
 .cp-usage, .cp-full { text-transform: none; letter-spacing: normal; gap: 5px; }

@@ -47,8 +47,9 @@ arrives.
 
 **The checkpoint rail can show how each check is used, and opens a complete fullsheet.** The rail now
 carries a **Usage** toggle and a **Fullscreen** button beside its count. Usage is a second channel under
-each dot — a blue underline, deeper for a check that activates more often — while the dot keeps its
-READY / BLOCKED colour; a check with no tag source gets a hairline and a check never met gets nothing.
+each dot — a tiny 4px blue dot below the check, deeper for a check that activates more often — while the
+state dot keeps its READY / BLOCKED colour; a check with no tag source gets a hollow dot and a check
+never met gets no usage dot.
 The bridge records each check's activations in a rolling seven-day window (a restart starts a fresh
 window) and the page shows the count with the time it was last activated. Fullscreen opens the block's
 complete checkpoint sequence, numbered start to end and grouped by its parent/child tree, with All /
