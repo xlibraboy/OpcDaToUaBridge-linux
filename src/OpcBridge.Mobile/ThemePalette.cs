@@ -33,6 +33,10 @@ public static class ThemePalette
         ["WarnBgColor"] = Color.FromArgb("#F8F1E2"),
         ["WarnBorderColor"] = Color.FromArgb("#DDC9A0"),
         ["WarnTextColor"] = Color.FromArgb("#6B4500"),
+        ["UsageHotColor"] = Color.FromArgb("#1F5FAF"),
+        ["UsageWarmColor"] = Color.FromArgb("#6B9BD8"),
+        ["UsageCoolColor"] = Color.FromArgb("#B7CDE8"),
+        ["UsageNoneColor"] = Color.FromArgb("#AEB7B2"),
         ["OnPrimaryColor"] = Color.FromArgb("#FFFFFF"),
         ["TabBarColor"] = Color.FromArgb("#FFFFFF"),
         ["ScrimColor"] = Color.FromArgb("#66000000")
@@ -58,6 +62,10 @@ public static class ThemePalette
         ["WarnBgColor"] = Color.FromArgb("#292112"),
         ["WarnBorderColor"] = Color.FromArgb("#504020"),
         ["WarnTextColor"] = Color.FromArgb("#E2A336"),
+        ["UsageHotColor"] = Color.FromArgb("#7AA2FF"),
+        ["UsageWarmColor"] = Color.FromArgb("#5F8ED8"),
+        ["UsageCoolColor"] = Color.FromArgb("#3D5F8A"),
+        ["UsageNoneColor"] = Color.FromArgb("#56645D"),
         ["OnPrimaryColor"] = Color.FromArgb("#07130D"),
         ["TabBarColor"] = Color.FromArgb("#101714"),
         ["ScrimColor"] = Color.FromArgb("#CC0C1210")

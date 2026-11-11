@@ -1201,6 +1201,153 @@ public sealed class LogicBlockDetailViewModelTests
     }
 
     [Fact]
+    public void CheckpointUsage_RollsUpParentsAndFeedsTheSheetFilters()
+    {
+        LogicConditionDto local = Condition("Local start PB must be pressed", itemId: "PB1");
+        LogicConditionDto remote = Condition("Remote start PB must be pressed", itemId: "PB2");
+        local.Group = "Start permissive";
+        remote.Group = "Start permissive";
+        LogicConditionDto plain = Condition("Pressure switch PS1 must read 1", itemId: "PS1");
+        LogicBlockDto block = Interlock(local, remote, plain);
+        LogicBlockDetailViewModel vm = new(block, BridgeKey);
+        DateTime now = DateTime.UtcNow;
+
+        vm.IsUsageOn = true;
+        vm.ApplyState(new LogicBlockStateDto
+        {
+            Id = block.Id,
+            State = LogicBlockStates.Blocked,
+            Elements =
+            {
+                new LogicElementStateDto { Id = vm.Checkpoints[0].Id, Kind = LogicElementKinds.And, Depth = 0, State = LogicConditionStates.False },
+                new LogicElementStateDto { Id = vm.Checkpoints[1].Id, Kind = LogicElementKinds.Or, Text = "Start permissive", Depth = 1, State = LogicConditionStates.True },
+                new LogicElementStateDto
+                {
+                    Id = local.Id, Kind = LogicElementKinds.Contact, Depth = 2, State = LogicConditionStates.True,
+                    Usage = new LogicCheckpointUsageDto { Count = 12, LastActiveUtc = now.AddMinutes(-5) }
+                },
+                new LogicElementStateDto
+                {
+                    Id = remote.Id, Kind = LogicElementKinds.Contact, Depth = 2, State = LogicConditionStates.False,
+                    Usage = new LogicCheckpointUsageDto { Count = 2, LastActiveUtc = now.AddHours(-2) }
+                },
+                new LogicElementStateDto
+                {
+                    Id = plain.Id, Kind = LogicElementKinds.Contact, Depth = 1, State = LogicConditionStates.False,
+                    Usage = new LogicCheckpointUsageDto { Count = 0, LastActiveUtc = null }
+                }
+            }
+        });
+
+        // The children own the counts; the OR and the root AND roll their source-backed
+        // direct children up without counting the same activation twice.
+        LogicCheckpointViewModel localCheck = vm.Checkpoints.Single(checkpoint => checkpoint.Id == local.Id);
+        LogicCheckpointViewModel orCheck = vm.Checkpoints[1];
+        LogicCheckpointViewModel andCheck = vm.Checkpoints[0];
+        LogicCheckpointViewModel plainCheck = vm.Checkpoints.Single(checkpoint => checkpoint.Id == plain.Id);
+        Assert.Equal(12, localCheck.UsageCount);
+        Assert.Equal("warm", localCheck.UsageKey);
+        Assert.Equal("12×", localCheck.UsageCountText);
+        Assert.True(localCheck.ShowUsageDot);
+        Assert.Equal(14, orCheck.UsageCount);
+        Assert.Equal(14, andCheck.UsageCount);
+        Assert.Equal("warm", andCheck.UsageKey);
+        Assert.Equal("never", plainCheck.UsageKey);
+        Assert.True(plainCheck.ShowNever);
+        Assert.False(plainCheck.ShowUsageDot);
+        Assert.True(localCheck.IsLatest);
+
+        // The sheet opens on All; the type filters are fixed, Unused counts the source-backed
+        // leaves at 0 activations.
+        vm.OpenCheckpointSheet();
+        Assert.True(vm.IsCheckpointSheetOpen);
+        Assert.Equal("Line 01 Start · 5 checks", vm.CheckpointSheetSubtitle);
+        Assert.Equal(5, vm.CheckpointSheetRows.Count);
+        Assert.Equal(5, vm.CheckpointFilters.Single(filter => filter.Key == "all").Count);
+        Assert.Equal(2, vm.CheckpointFilters.Single(filter => filter.Key == "parents").Count);
+        Assert.Equal(3, vm.CheckpointFilters.Single(filter => filter.Key == "leaves").Count);
+        Assert.Equal(1, vm.CheckpointFilters.Single(filter => filter.Key == "unused").Count);
+        Assert.Contains("Local start PB", vm.CheckpointSheetTopText);
+        Assert.Equal("warm", vm.CheckpointSheetTopKey);
+        Assert.False(vm.ShowCheckpointSheetNoSource);
+
+        vm.SelectCheckpointFilter("parents");
+        Assert.Equal(2, vm.CheckpointSheetRows.Count);
+        vm.SelectCheckpointFilter("leaves");
+        Assert.Equal(3, vm.CheckpointSheetRows.Count);
+        vm.SelectCheckpointFilter("unused");
+        Assert.Same(plainCheck, Assert.Single(vm.CheckpointSheetRows));
+
+        vm.ToggleCheckpointUsage();
+        Assert.False(vm.IsUsageOn);
+        Assert.All(vm.Checkpoints, checkpoint => Assert.False(checkpoint.ShowUsageDot));
+    }
+
+    [Fact]
+    public void CheckpointUsage_SourceLessCheckShowsLastActivated()
+    {
+        var permit = new LogicElementDto
+        {
+            Id = Guid.NewGuid(),
+            Kind = LogicElementKinds.Contact,
+            Text = "Permit must be given",
+            Op = LogicConditionOps.On,
+            SourceId = "sim",
+            ItemId = "Permit"
+        };
+        var coil = new LogicElementDto
+        {
+            Id = Guid.NewGuid(),
+            Kind = LogicElementKinds.Coil,
+            Relay = "M01",
+            Inputs = { permit }
+        };
+        var block = new LogicBlockDto
+        {
+            Id = Guid.NewGuid(),
+            Name = "Relay network",
+            Kind = LogicBlockKinds.Interlock,
+            Elements = { coil }
+        };
+        LogicBlockDetailViewModel vm = new(block, BridgeKey);
+        DateTime now = DateTime.UtcNow;
+
+        vm.IsUsageOn = true;
+        vm.ApplyState(new LogicBlockStateDto
+        {
+            Id = block.Id,
+            Elements =
+            {
+                new LogicElementStateDto
+                {
+                    Id = coil.Id, Kind = LogicElementKinds.Coil, Depth = 0, State = LogicConditionStates.True,
+                    Usage = new LogicCheckpointUsageDto { Count = 0, LastActiveUtc = now.AddHours(-3) }
+                },
+                new LogicElementStateDto
+                {
+                    Id = permit.Id, Kind = LogicElementKinds.Contact, Depth = 1, State = LogicConditionStates.True,
+                    Usage = new LogicCheckpointUsageDto { Count = 4, LastActiveUtc = now.AddMinutes(-1) }
+                }
+            }
+        });
+
+        LogicCheckpointViewModel coilCheck = vm.Checkpoints.Single(checkpoint => checkpoint.Id == coil.Id);
+        LogicCheckpointViewModel permitCheck = vm.Checkpoints.Single(checkpoint => checkpoint.Id == permit.Id);
+        Assert.False(coilCheck.HasSource);
+        Assert.Equal("none", coilCheck.UsageKey);
+        Assert.Equal("last activated", coilCheck.UsageCountText);
+        Assert.Contains("ago", coilCheck.UsageLastText);
+        Assert.True(coilCheck.ShowUsageDot);
+        Assert.Equal(4, permitCheck.UsageCount);
+
+        vm.OpenCheckpointSheet();
+        Assert.True(vm.ShowCheckpointSheetNoSource);
+        Assert.StartsWith("leaf · ", coilCheck.SourceLabel);
+        Assert.Contains(coilCheck.Name, vm.CheckpointSheetNoSourceText);
+        Assert.Contains(permitCheck.Name, vm.CheckpointSheetTopText);
+    }
+
+    [Fact]
     public void OutputPill_ShowsTheOutputTagsFeedbackAgainstTheInterlock()
     {
         LogicBlockDto block = Interlock(Condition("Permit must be given"));

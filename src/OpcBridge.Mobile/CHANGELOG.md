@@ -15,6 +15,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Checkpoint usage on the block rail, and a full checkpoint sheet.** The block screen's
+  checkpoint rail now carries a remembered **Usage** toggle and an expand control. Usage adds one
+  4px dot under each state dot, all on the same baseline: blue intensity reads the check's
+  activations in the last seven days, a hollow dot means the check has no tag source, and no dot
+  means never activated. Expand opens the full checkpoint sequence with **All / Parents / Leaves
+  / Unused** filters, each row's count and last-active time, **LATEST / NEVER** badges, parent
+  roll-ups and the last-activated fallback for a check with no tag source. Tapping a row closes
+  the sheet and jumps to its network row; the rail and sheet follow the selected light or dark
+  surface.
 - **A light surface, with an Appearance selector.** The viewer now draws on either the dark
   plant-floor palette or a light daylight palette, chosen in Settings ▸ Appearance as **System**
   (follow the phone's day/night setting), **Light** or **Dark**. The choice is remembered across

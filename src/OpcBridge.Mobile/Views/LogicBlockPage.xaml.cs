@@ -1,4 +1,5 @@
 using System.Globalization;
+using Microsoft.Maui.Storage;
 using OpcBridge.Client;
 using OpcBridge.Mobile.Core;
 
@@ -7,6 +8,8 @@ namespace OpcBridge.Mobile.Views;
 [QueryProperty(nameof(BlockId), "id")]
 public partial class LogicBlockPage : ContentPage
 {
+    private const string CheckpointUsagePreferenceKey = "logic.checkpointUsage";
+
     private readonly BridgeCoordinator coordinator_;
     private readonly Dictionary<Guid, Border> elementViews_ = new();
     private LogicBlockDetailViewModel? viewModel_;
@@ -80,8 +83,15 @@ public partial class LogicBlockPage : ContentPage
     /// </summary>
     private async void OnCheckpointTapped(object? sender, TappedEventArgs e)
     {
-        if (e.Parameter is not LogicCheckpointViewModel checkpoint ||
-            viewModel_?.FindScrollTarget(checkpoint.Id) is not { } target)
+        if (e.Parameter is LogicCheckpointViewModel checkpoint)
+        {
+            await JumpToCheckpointAsync(checkpoint);
+        }
+    }
+
+    private async Task JumpToCheckpointAsync(LogicCheckpointViewModel checkpoint)
+    {
+        if (viewModel_?.FindScrollTarget(checkpoint.Id) is not { } target)
         {
             return;
         }
@@ -93,6 +103,45 @@ public partial class LogicBlockPage : ContentPage
         {
             _ = FlashRowAsync(row);
         }
+    }
+
+    private void OnCheckpointUsageTapped(object? sender, TappedEventArgs e)
+    {
+        if (viewModel_ is null)
+        {
+            return;
+        }
+
+        viewModel_.ToggleCheckpointUsage();
+        Preferences.Default.Set(CheckpointUsagePreferenceKey, viewModel_.IsUsageOn);
+    }
+
+    private void OnCheckpointSheetExpandTapped(object? sender, TappedEventArgs e) =>
+        viewModel_?.OpenCheckpointSheet();
+
+    private void OnCheckpointSheetCloseClicked(object? sender, TappedEventArgs e) =>
+        viewModel_?.CloseCheckpointSheet();
+
+    private void OnCheckpointSheetScrimTapped(object? sender, TappedEventArgs e) =>
+        viewModel_?.CloseCheckpointSheet();
+
+    private void OnCheckpointFilterTapped(object? sender, TappedEventArgs e)
+    {
+        if (e.Parameter is LogicCheckpointFilterViewModel filter)
+        {
+            viewModel_?.SelectCheckpointFilter(filter.Key);
+        }
+    }
+
+    private async void OnCheckpointSheetRowTapped(object? sender, TappedEventArgs e)
+    {
+        if (e.Parameter is not LogicCheckpointViewModel checkpoint)
+        {
+            return;
+        }
+
+        viewModel_?.CloseCheckpointSheet();
+        await JumpToCheckpointAsync(checkpoint);
     }
 
     private async Task FlashRowAsync(Border row)
@@ -213,6 +262,7 @@ public partial class LogicBlockPage : ContentPage
         viewModel_ = vm;
         vm.ActionRequested += OnActionRequested;
         vm.IsReadOnly = active.IsOfflineViewer;
+        vm.IsUsageOn = Preferences.Default.Get(CheckpointUsagePreferenceKey, false);
 
         BindingContext = vm;
         Title = block.Name;

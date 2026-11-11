@@ -16,12 +16,33 @@ public sealed partial class LogicCheckpointViewModel : ObservableObject
 {
     [ObservableProperty] private string _stateKey = LogicConditionStates.Unknown;
     [ObservableProperty] private string _stateWord = "no data";
+    [ObservableProperty] private string _chipWord = "NO DATA";
+    [ObservableProperty] private string _usageKey = "none";
+    [ObservableProperty] private int _usageCount;
+    [ObservableProperty] private DateTime? _usageLastUtc;
+    [ObservableProperty] private bool _hasSource;
+    [ObservableProperty] private bool _isUsageOn;
+    [ObservableProperty] private bool _isLatest;
+    [ObservableProperty] private bool _isNever;
 
-    public LogicCheckpointViewModel(Guid id, string name, bool isParent)
+    public LogicCheckpointViewModel(
+        Guid id,
+        string name,
+        bool isParent,
+        int depth,
+        int childCount,
+        int sequence,
+        string sourceLabel,
+        bool hasSource)
     {
         Id = id;
         Name = name;
         IsParent = isParent;
+        Depth = depth;
+        ChildCount = childCount;
+        Sequence = sequence;
+        SourceLabel = sourceLabel;
+        HasSource = hasSource;
     }
 
     public Guid Id { get; }
@@ -32,12 +53,87 @@ public sealed partial class LogicCheckpointViewModel : ObservableObject
     /// <summary>True when this check owns the checks below it (a gate or function block).</summary>
     public bool IsParent { get; }
 
+    /// <summary>Depth in the evaluated network — the usage roll-up follows it.</summary>
+    public int Depth { get; }
+
+    /// <summary>Direct inputs of a parent; 0 for a leaf.</summary>
+    public int ChildCount { get; }
+
+    /// <summary>1-based position in the complete checkpoint sequence.</summary>
+    public int Sequence { get; }
+
+    /// <summary>"parent of 1" / "leaf · Sim 03 · UA Sim" — the sheet's second line.</summary>
+    public string SourceLabel { get; }
+
     public string Hint => IsParent ? "Go to this parent" : "Go to this element";
 
-    /// <summary>"Name — not fulfilled. Go to this parent." — the dot's accessible label.</summary>
-    public string Description => Name + " — " + StateWord + ". " + Hint + ".";
+    public bool IsSourceLess => !HasSource;
+
+    /// <summary>The 4px dot is only drawn while Usage is on and the check has a mark.</summary>
+    public bool ShowUsageDot => IsUsageOn && UsageKey != "never";
+
+    public bool ShowUsageLine => IsUsageOn;
+    public bool ShowLatest => IsUsageOn && IsLatest;
+    public bool ShowNever => IsUsageOn && IsNever;
+
+    /// <summary>"24×" for a tag-backed check; "last activated" (or "not activated yet") without a source.</summary>
+    public string UsageCountText => HasSource
+        ? UsageCount + "×"
+        : UsageLastUtc is null ? "not activated yet" : "last activated";
+
+    /// <summary>"· last 5m ago" — or "· 3h ago" for a source-less check.</summary>
+    public string UsageLastText => UsageLastUtc is null
+        ? (HasSource ? "never" : string.Empty)
+        : (HasSource ? "· last " + Ago(UsageLastUtc.Value) : "· " + Ago(UsageLastUtc.Value));
+
+    public string LastActiveAgo => UsageLastUtc is null ? "never" : Ago(UsageLastUtc.Value);
+
+    /// <summary>"Name — not fulfilled. 24 activations in 7 days, last 5m ago. Go to this element."</summary>
+    public string Description => Name + " — " + StateWord + "."
+        + (IsUsageOn && UsageDescription.Length > 0 ? " " + UsageDescription + "." : string.Empty)
+        + " " + Hint + ".";
+
+    private string UsageDescription => !HasSource
+        ? (UsageLastUtc is null ? string.Empty : "last activated " + Ago(UsageLastUtc.Value))
+        : UsageCount + (UsageCount == 1 ? " activation" : " activations") + " in 7 days"
+            + (UsageLastUtc is null ? string.Empty : ", last " + Ago(UsageLastUtc.Value));
 
     partial void OnStateWordChanged(string value) => OnPropertyChanged(nameof(Description));
+
+    partial void OnUsageKeyChanged(string value) => OnPropertyChanged(nameof(ShowUsageDot));
+
+    partial void OnUsageCountChanged(int value)
+    {
+        OnPropertyChanged(nameof(UsageCountText));
+        OnPropertyChanged(nameof(Description));
+    }
+
+    partial void OnUsageLastUtcChanged(DateTime? value)
+    {
+        OnPropertyChanged(nameof(UsageLastText));
+        OnPropertyChanged(nameof(LastActiveAgo));
+        OnPropertyChanged(nameof(Description));
+    }
+
+    partial void OnHasSourceChanged(bool value)
+    {
+        OnPropertyChanged(nameof(IsSourceLess));
+        OnPropertyChanged(nameof(UsageCountText));
+        OnPropertyChanged(nameof(UsageLastText));
+        OnPropertyChanged(nameof(Description));
+    }
+
+    partial void OnIsUsageOnChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShowUsageDot));
+        OnPropertyChanged(nameof(ShowUsageLine));
+        OnPropertyChanged(nameof(ShowLatest));
+        OnPropertyChanged(nameof(ShowNever));
+        OnPropertyChanged(nameof(Description));
+    }
+
+    partial void OnIsLatestChanged(bool value) => OnPropertyChanged(nameof(ShowLatest));
+    partial void OnIsNeverChanged(bool value) => OnPropertyChanged(nameof(ShowNever));
 
     public void ApplyState(LogicElementStateDto? state)
     {
@@ -49,6 +145,65 @@ public sealed partial class LogicCheckpointViewModel : ObservableObject
             _ => "no data"
         };
     }
+
+    /// <summary>Stores one check's own activation history; a parent is rolled up separately.</summary>
+    public void ApplyUsage(LogicCheckpointUsageDto? usage, bool hasSource)
+    {
+        UsageCount = usage?.Count ?? 0;
+        UsageLastUtc = usage?.LastActiveUtc;
+        HasSource = hasSource;
+        UsageKey = Heat(hasSource, UsageCount);
+    }
+
+    /// <summary>Replaces a parent's own history with its source-backed direct children's.</summary>
+    public void SetAggregateUsage(int count, DateTime? last, bool sourced)
+    {
+        UsageCount = sourced ? count : 0;
+        UsageLastUtc = last;
+        HasSource = sourced;
+        UsageKey = Heat(sourced, UsageCount);
+    }
+
+    public void SetChipWord(string word) => ChipWord = word;
+    public void SetUsageOn(bool on) => IsUsageOn = on;
+    public void SetLatest(bool latest) => IsLatest = latest;
+    public void SetNever(bool never) => IsNever = never;
+
+    private static string Heat(bool hasSource, int count) => !hasSource
+        ? "none"
+        : count >= 100 ? "hot" : count >= 10 ? "warm" : count > 0 ? "cool" : "never";
+
+    private static string Ago(DateTime value)
+    {
+        double seconds = Math.Max(0, (DateTime.UtcNow - value.ToUniversalTime()).TotalSeconds);
+        if (seconds < 60)
+        {
+            return "just now";
+        }
+
+        if (seconds < 3600)
+        {
+            return (int)(seconds / 60) + "m ago";
+        }
+
+        return seconds < 86400 ? (int)(seconds / 3600) + "h ago" : (int)(seconds / 86400) + "d ago";
+    }
+}
+
+/// <summary>One chip in the fullsheet's type filter, with its total.</summary>
+public sealed partial class LogicCheckpointFilterViewModel : ObservableObject
+{
+    public LogicCheckpointFilterViewModel(string key, string label)
+    {
+        Key = key;
+        Label = label;
+    }
+
+    public string Key { get; }
+    public string Label { get; }
+
+    [ObservableProperty] private int _count;
+    [ObservableProperty] private bool _isActive;
 }
 
 /// <summary>
@@ -556,6 +711,194 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
     [ObservableProperty] private string _checkpointSummaryKey = LogicConditionStates.Unknown;
     [ObservableProperty] private string _checkpointSummaryDescription = string.Empty;
 
+    /// <summary>The rail's Usage toggle, shared by the rail and the fullsheet.</summary>
+    [ObservableProperty] private bool _isUsageOn;
+
+    [ObservableProperty] private bool _isCheckpointSheetOpen;
+    [ObservableProperty] private string _checkpointSheetSubtitle = string.Empty;
+    [ObservableProperty] private string _checkpointSheetTopText = string.Empty;
+    [ObservableProperty] private string _checkpointSheetTopCount = string.Empty;
+    [ObservableProperty] private string _checkpointSheetTopKey = "none";
+    [ObservableProperty] private string _checkpointSheetNoSourceText = string.Empty;
+    [ObservableProperty] private string _checkpointSheetNoSourceLast = string.Empty;
+    [ObservableProperty] private bool _showCheckpointSheetTop;
+    [ObservableProperty] private bool _showCheckpointSheetNoSource;
+
+    /// <summary>The rows behind the sheet, filtered in the complete checkpoint order.</summary>
+    public ObservableCollection<LogicCheckpointViewModel> CheckpointSheetRows { get; } = new();
+
+    /// <summary>All / Parents / Leaves / Unused — the sheet's type chips.</summary>
+    public ObservableCollection<LogicCheckpointFilterViewModel> CheckpointFilters { get; } = new()
+    {
+        new LogicCheckpointFilterViewModel("all", "All"),
+        new LogicCheckpointFilterViewModel("parents", "Parents"),
+        new LogicCheckpointFilterViewModel("leaves", "Leaves"),
+        new LogicCheckpointFilterViewModel("unused", "Unused")
+    };
+
+    private string selected_checkpoint_filter_ = "all";
+
+    partial void OnIsUsageOnChanged(bool value)
+    {
+        foreach (LogicCheckpointViewModel checkpoint in Checkpoints)
+        {
+            checkpoint.SetUsageOn(value);
+        }
+    }
+
+    public void ToggleCheckpointUsage() => IsUsageOn = !IsUsageOn;
+
+    public void OpenCheckpointSheet()
+    {
+        selected_checkpoint_filter_ = "all";
+        UpdateCheckpointFilters();
+        RebuildCheckpointSheetRows();
+        IsCheckpointSheetOpen = true;
+    }
+
+    public void CloseCheckpointSheet() => IsCheckpointSheetOpen = false;
+
+    public void SelectCheckpointFilter(string key)
+    {
+        selected_checkpoint_filter_ = key;
+        UpdateCheckpointFilters();
+        RebuildCheckpointSheetRows();
+    }
+
+    public void RebuildCheckpointSheetRows()
+    {
+        CheckpointSheetRows.Clear();
+        IEnumerable<LogicCheckpointViewModel> rows = selected_checkpoint_filter_ switch
+        {
+            "parents" => Checkpoints.Where(checkpoint => checkpoint.IsParent),
+            "leaves" => Checkpoints.Where(checkpoint => !checkpoint.IsParent),
+            "unused" => Checkpoints.Where(checkpoint =>
+                !checkpoint.IsParent && checkpoint.HasSource && checkpoint.UsageCount == 0),
+            _ => Checkpoints
+        };
+
+        foreach (LogicCheckpointViewModel checkpoint in rows)
+        {
+            CheckpointSheetRows.Add(checkpoint);
+        }
+    }
+
+    private void UpdateCheckpointFilters()
+    {
+        int parents = Checkpoints.Count(checkpoint => checkpoint.IsParent);
+        int unused = Checkpoints.Count(checkpoint =>
+            !checkpoint.IsParent && checkpoint.HasSource && checkpoint.UsageCount == 0);
+        foreach (LogicCheckpointFilterViewModel filter in CheckpointFilters)
+        {
+            filter.Count = filter.Key switch
+            {
+                "parents" => parents,
+                "leaves" => Checkpoints.Count - parents,
+                "unused" => unused,
+                _ => Checkpoints.Count
+            };
+            filter.IsActive = filter.Key == selected_checkpoint_filter_;
+        }
+
+        CheckpointSheetSubtitle = Title + " · " + Checkpoints.Count + " checks";
+    }
+
+    /// <summary>
+    /// The rail's second channel: a check's own activations, then a parent's source-backed direct
+    /// children. The latest source-backed leaf gets LATEST; a source-backed check never activated
+    /// gets NEVER; a check with no tag source stays "none" (a hollow usage dot).
+    /// </summary>
+    private void UpdateCheckpointUsage()
+    {
+        foreach (LogicCheckpointViewModel checkpoint in Checkpoints)
+        {
+            checkpoint.SetLatest(false);
+            checkpoint.SetNever(false);
+        }
+
+        for (int i = Checkpoints.Count - 1; i >= 0; i--)
+        {
+            LogicCheckpointViewModel parent = Checkpoints[i];
+            if (!parent.IsParent)
+            {
+                continue;
+            }
+
+            int count = 0;
+            DateTime? last = null;
+            bool sourced = parent.HasSource;
+            int children = 0;
+            for (int j = i + 1; j < Checkpoints.Count && Checkpoints[j].Depth > parent.Depth; j++)
+            {
+                LogicCheckpointViewModel child = Checkpoints[j];
+                if (child.Depth != parent.Depth + 1)
+                {
+                    continue;
+                }
+
+                if (child.HasSource)
+                {
+                    count += child.UsageCount;
+                }
+
+                if (child.UsageLastUtc is { } childLast && (last is null || childLast > last))
+                {
+                    last = childLast;
+                }
+
+                sourced |= child.HasSource;
+                children++;
+            }
+
+            if (children > 0)
+            {
+                parent.SetAggregateUsage(count, last, sourced);
+            }
+        }
+
+        LogicCheckpointViewModel? latest = null;
+        foreach (LogicCheckpointViewModel checkpoint in Checkpoints)
+        {
+            // NEVER belongs to a leaf whose own tag source has no activation; a parent's 0 is
+            // a roll-up and cannot say which child was never used.
+            checkpoint.SetNever(!checkpoint.IsParent && checkpoint.HasSource && checkpoint.UsageLastUtc is null);
+            if (!checkpoint.IsParent && checkpoint.HasSource && checkpoint.UsageLastUtc is { } last
+                && (latest is null || last > latest.UsageLastUtc))
+            {
+                latest = checkpoint;
+            }
+        }
+
+        latest?.SetLatest(true);
+        UpdateCheckpointFilters();
+        UpdateCheckpointSheetSummary();
+        if (IsCheckpointSheetOpen && selected_checkpoint_filter_ == "unused")
+        {
+            // The unused set is the one filter whose membership can change with an activation.
+            RebuildCheckpointSheetRows();
+        }
+    }
+
+    private void UpdateCheckpointSheetSummary()
+    {
+        LogicCheckpointViewModel? top = Checkpoints
+            .Where(checkpoint => !checkpoint.IsParent && checkpoint.HasSource)
+            .OrderByDescending(checkpoint => checkpoint.UsageCount)
+            .FirstOrDefault();
+        ShowCheckpointSheetTop = top is not null;
+        CheckpointSheetTopText = top is null ? string.Empty : "Most activated · " + top.Name;
+        CheckpointSheetTopCount = top is null ? string.Empty : top.UsageCount + "×";
+        CheckpointSheetTopKey = top?.UsageKey ?? "none";
+
+        LogicCheckpointViewModel? noSource = Checkpoints
+            .Where(checkpoint => !checkpoint.IsParent && !checkpoint.HasSource)
+            .OrderByDescending(checkpoint => checkpoint.UsageLastUtc)
+            .FirstOrDefault();
+        ShowCheckpointSheetNoSource = noSource is not null;
+        CheckpointSheetNoSourceText = noSource is null ? string.Empty : "No source · " + noSource.Name;
+        CheckpointSheetNoSourceLast = noSource?.LastActiveAgo ?? string.Empty;
+    }
+
     /// <summary>True while the row's tag inspector sheet is open over the screen.</summary>
     [ObservableProperty] private bool _isTagPanelOpen;
 
@@ -736,11 +1079,25 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
 
         foreach (LogicCheckpointViewModel checkpoint in Checkpoints)
         {
-            checkpoint.ApplyState(elementStates.TryGetValue(checkpoint.Id, out LogicElementStateDto? checkpointState)
-                ? checkpointState
-                : null);
+            LogicElementStateDto? checkpointState = elementStates.TryGetValue(checkpoint.Id, out LogicElementStateDto? found)
+                ? found
+                : null;
+            checkpoint.ApplyState(checkpointState);
+
+            LogicElementRowViewModel? row = elementRows_.TryGetValue(checkpoint.Id, out LogicElementRowViewModel? elementRow)
+                ? elementRow
+                : null;
+            bool hasSource = !checkpoint.IsParent && row?.HasTagReference == true;
+            checkpoint.ApplyUsage(checkpointState?.Usage, hasSource);
+
+            string mappedWord = (row?.StateWord ?? string.Empty).Trim();
+            checkpoint.SetChipWord(!checkpoint.IsParent && mappedWord.Length > 0
+                && mappedWord != "1" && mappedWord != "0"
+                ? mappedWord.ToUpperInvariant()
+                : checkpoint.StateWord.ToUpperInvariant());
         }
 
+        UpdateCheckpointUsage();
         UpdateCheckpointSummary();
         ApplyOutput(state);
         // A lost evaluation clears the progress line: "0/N steps" would read as a real count
@@ -984,14 +1341,15 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
     private void BuildCheckpoints()
     {
         HashSet<Guid> seen = new();
-        AddCheckpoints(LogicNetwork.For(block_), seen);
+        int sequence = 0;
+        AddCheckpoints(LogicNetwork.For(block_), seen, ref sequence);
         foreach (LogicStepDto step in block_.Steps)
         {
-            AddCheckpoints(LogicNetwork.For(step), seen);
+            AddCheckpoints(LogicNetwork.For(step), seen, ref sequence);
         }
     }
 
-    private void AddCheckpoints(IEnumerable<LogicElementDto> roots, HashSet<Guid> seen)
+    private void AddCheckpoints(IEnumerable<LogicElementDto> roots, HashSet<Guid> seen, ref int sequence)
     {
         foreach ((LogicElementDto element, int depth) in LogicNetwork.Walk(roots))
         {
@@ -1000,9 +1358,26 @@ public sealed partial class LogicBlockDetailViewModel : ObservableObject
                 continue;
             }
 
+            sequence++;
             bool parent = element.Inputs.Count > 0 &&
                 !string.Equals(element.Kind, LogicElementKinds.Coil, StringComparison.OrdinalIgnoreCase);
-            Checkpoints.Add(new LogicCheckpointViewModel(element.Id, CheckpointName(element, depth), parent));
+            LogicElementRowViewModel? row = elementRows_.TryGetValue(element.Id, out LogicElementRowViewModel? elementRow)
+                ? elementRow
+                : null;
+            string tagLabel = (row?.TagLabel ?? string.Empty).Trim();
+            bool hasSource = row?.HasTagReference == true;
+            string sourceLabel = parent
+                ? "parent of " + element.Inputs.Count
+                : tagLabel.Length > 0 ? "leaf · " + tagLabel : "leaf · no tag source";
+            Checkpoints.Add(new LogicCheckpointViewModel(
+                element.Id,
+                CheckpointName(element, depth),
+                parent,
+                depth,
+                element.Inputs.Count,
+                sequence,
+                sourceLabel,
+                hasSource));
         }
     }
 

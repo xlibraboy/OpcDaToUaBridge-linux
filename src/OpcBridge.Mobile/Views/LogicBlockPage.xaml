@@ -232,7 +232,7 @@
                                  hollow ring, a leaf a filled 8px dot; the met/total count is a state pill.
                                  A check's name lives in its accessible label, and tapping it scrolls to
                                  its row. -->
-                            <Grid ColumnDefinitions="Auto,Auto,*" ColumnSpacing="8"
+                            <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto" ColumnSpacing="6"
                                   IsVisible="{Binding HasCheckpoints}">
                                 <Label Text="CHECKPOINTS" Style="{StaticResource UppercaseLabel}"
                                        VerticalOptions="Center" />
@@ -246,32 +246,94 @@
                                            SemanticProperties.Description="{Binding CheckpointSummaryDescription}" />
                                 </Border>
                                 <FlexLayout Grid.Column="2" Wrap="Wrap" Direction="Row" AlignItems="Center"
+                                            VerticalOptions="Center"
                                             BindableLayout.ItemsSource="{Binding Checkpoints}">
                                     <BindableLayout.ItemTemplate>
                                         <DataTemplate x:DataType="core:LogicCheckpointViewModel">
-                                            <Border Margin="0,2,5,2" WidthRequest="8" HeightRequest="8"
-                                                    StrokeThickness="1"
-                                                    Stroke="{Binding StateKey, Converter={StaticResource StateColor}, ConverterParameter=checkpoint}"
-                                                    StrokeShape="RoundRectangle 4"
-                                                    BackgroundColor="{Binding StateKey, Converter={StaticResource StateColor}, ConverterParameter=checkpoint}"
-                                                    SemanticProperties.Description="{Binding Description}"
-                                                    SemanticProperties.Hint="{Binding Hint}">
-                                                <Border.Triggers>
-                                                    <DataTrigger TargetType="Border" Binding="{Binding IsParent}" Value="True">
-                                                        <Setter Property="WidthRequest" Value="12" />
-                                                        <Setter Property="HeightRequest" Value="12" />
-                                                        <Setter Property="StrokeThickness" Value="2" />
-                                                        <Setter Property="StrokeShape" Value="RoundRectangle 6" />
-                                                        <Setter Property="BackgroundColor" Value="{theme:ThemeColor SurfaceColor}" />
-                                                    </DataTrigger>
-                                                </Border.Triggers>
-                                                <Border.GestureRecognizers>
+                                            <!-- The state dot keeps its size and colour; the 4px usage
+                                                 dot shares one baseline under every parent ring / leaf dot. -->
+                                            <Grid WidthRequest="12" HeightRequest="22" Margin="0,0,5,0"
+                                                  SemanticProperties.Description="{Binding Description}"
+                                                  SemanticProperties.Hint="{Binding Hint}">
+                                                <Grid.GestureRecognizers>
                                                     <TapGestureRecognizer Tapped="OnCheckpointTapped" CommandParameter="{Binding .}" />
-                                                </Border.GestureRecognizers>
-                                            </Border>
+                                                </Grid.GestureRecognizers>
+                                                <Border WidthRequest="8" HeightRequest="8" Margin="0,2,0,0"
+                                                        HorizontalOptions="Center" VerticalOptions="Start"
+                                                        StrokeThickness="1"
+                                                        Stroke="{Binding StateKey, Converter={StaticResource StateColor}, ConverterParameter=checkpoint}"
+                                                        StrokeShape="RoundRectangle 4"
+                                                        BackgroundColor="{Binding StateKey, Converter={StaticResource StateColor}, ConverterParameter=checkpoint}">
+                                                    <Border.Triggers>
+                                                        <DataTrigger TargetType="Border" Binding="{Binding IsParent}" Value="True">
+                                                            <Setter Property="WidthRequest" Value="12" />
+                                                            <Setter Property="HeightRequest" Value="12" />
+                                                            <Setter Property="Margin" Value="0" />
+                                                            <Setter Property="StrokeThickness" Value="2" />
+                                                            <Setter Property="StrokeShape" Value="RoundRectangle 6" />
+                                                            <Setter Property="BackgroundColor" Value="{theme:ThemeColor SurfaceColor}" />
+                                                        </DataTrigger>
+                                                    </Border.Triggers>
+                                                </Border>
+                                                <Border WidthRequest="4" HeightRequest="4"
+                                                        HorizontalOptions="Center" VerticalOptions="End" Margin="0,0,0,2"
+                                                        IsVisible="{Binding ShowUsageDot}"
+                                                        BackgroundColor="{Binding UsageKey, Converter={StaticResource UsageColor}, ConverterParameter=fill}"
+                                                        Stroke="{Binding UsageKey, Converter={StaticResource UsageColor}, ConverterParameter=stroke}"
+                                                        StrokeThickness="{Binding UsageKey, Converter={StaticResource UsageColor}, ConverterParameter=thickness}"
+                                                        StrokeShape="RoundRectangle 2" />
+                                            </Grid>
                                         </DataTemplate>
                                     </BindableLayout.ItemTemplate>
                                 </FlexLayout>
+
+                                <!-- Usage is a second, remembered toggle, shared with the fullsheet. -->
+                                <Border Grid.Column="3" HeightRequest="24" Padding="6,0" VerticalOptions="Center"
+                                        BackgroundColor="{theme:ThemeColor SurfaceAltColor}"
+                                        Stroke="{theme:ThemeColor BorderColor}" StrokeThickness="1"
+                                        StrokeShape="RoundRectangle 8"
+                                        SemanticProperties.Description="Checkpoint usage dots">
+                                    <Border.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnCheckpointUsageTapped" />
+                                    </Border.GestureRecognizers>
+                                    <HorizontalStackLayout Spacing="4" VerticalOptions="Center">
+                                        <Image Source="{theme:ThemeIcon icon_activity}" WidthRequest="10" HeightRequest="10"
+                                               VerticalOptions="Center" />
+                                        <Label Text="Usage" FontSize="9" FontAttributes="Bold" VerticalOptions="Center" />
+                                        <Grid WidthRequest="22" HeightRequest="12" VerticalOptions="Center">
+                                            <Border StrokeThickness="0" StrokeShape="RoundRectangle 6"
+                                                    BackgroundColor="{theme:ThemeColor BorderColor}">
+                                                <Border.Triggers>
+                                                    <DataTrigger TargetType="Border" Binding="{Binding IsUsageOn}" Value="True">
+                                                        <Setter Property="BackgroundColor" Value="{theme:ThemeColor GoodColor}" />
+                                                    </DataTrigger>
+                                                </Border.Triggers>
+                                            </Border>
+                                            <Border WidthRequest="8" HeightRequest="8" Margin="2,0,0,0"
+                                                    HorizontalOptions="Start" VerticalOptions="Center"
+                                                    StrokeThickness="0" StrokeShape="RoundRectangle 4"
+                                                    BackgroundColor="{theme:ThemeColor SurfaceColor}">
+                                                <Border.Triggers>
+                                                    <DataTrigger TargetType="Border" Binding="{Binding IsUsageOn}" Value="True">
+                                                        <Setter Property="HorizontalOptions" Value="End" />
+                                                        <Setter Property="Margin" Value="0,0,2,0" />
+                                                    </DataTrigger>
+                                                </Border.Triggers>
+                                            </Border>
+                                        </Grid>
+                                    </HorizontalStackLayout>
+                                </Border>
+
+                                <Border Grid.Column="4" WidthRequest="26" HeightRequest="26" VerticalOptions="Center"
+                                        BackgroundColor="{theme:ThemeColor SurfaceAltColor}" StrokeThickness="0"
+                                        StrokeShape="RoundRectangle 8"
+                                        SemanticProperties.Description="Open all checkpoints">
+                                    <Border.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnCheckpointSheetExpandTapped" />
+                                    </Border.GestureRecognizers>
+                                    <Image Source="{theme:ThemeIcon icon_expand}" WidthRequest="12" HeightRequest="12"
+                                           HorizontalOptions="Center" VerticalOptions="Center" />
+                                </Border>
                             </Grid>
                         </VerticalStackLayout>
                     </Border>
@@ -460,6 +522,271 @@
                             </VerticalStackLayout>
                         </VerticalStackLayout>
                     </ScrollView>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- The fullsheet: the complete checkpoint sequence, type filters, activation counts and
+             last-active times. It fills the page above the tab bar and follows the app theme. -->
+        <Grid IsVisible="{Binding IsCheckpointSheetOpen}">
+            <BoxView Color="{theme:ThemeColor ScrimColor}">
+                <BoxView.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnCheckpointSheetScrimTapped" />
+                </BoxView.GestureRecognizers>
+            </BoxView>
+            <Border Margin="10,8,10,6" Padding="14" Style="{StaticResource CardBorder}">
+                <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto" RowSpacing="8">
+                    <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                        <VerticalStackLayout Spacing="2">
+                            <Label Text="Checkpoints" FontSize="19" FontAttributes="Bold" />
+                            <Label Text="{Binding CheckpointSheetSubtitle}" FontSize="10.5"
+                                   TextColor="{theme:ThemeColor MutedColor}" />
+                        </VerticalStackLayout>
+                        <Border Grid.Column="1" VerticalOptions="Center"
+                                BackgroundColor="{Binding CheckpointSummaryKey, Converter={StaticResource StateTint}, ConverterParameter=bg}"
+                                Stroke="{Binding CheckpointSummaryKey, Converter={StaticResource StateTint}, ConverterParameter=border}"
+                                StrokeThickness="1" StrokeShape="RoundRectangle 4" Padding="5,1">
+                            <Label Text="{Binding CheckpointSummary}" FontFamily="monospace"
+                                   FontSize="9.5" FontAttributes="Bold"
+                                   TextColor="{Binding CheckpointSummaryKey, Converter={StaticResource StateTint}, ConverterParameter=text}" />
+                        </Border>
+                        <Border Grid.Column="2" WidthRequest="28" HeightRequest="28"
+                                BackgroundColor="{theme:ThemeColor SurfaceAltColor}" StrokeThickness="0"
+                                StrokeShape="RoundRectangle 8"
+                                SemanticProperties.Description="Close checkpoints">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnCheckpointSheetCloseClicked" />
+                            </Border.GestureRecognizers>
+                            <Image Source="{theme:ThemeIcon icon_x}" WidthRequest="14" HeightRequest="14"
+                                   HorizontalOptions="Center" VerticalOptions="Center" />
+                        </Border>
+                    </Grid>
+
+                    <FlexLayout Grid.Row="1" Wrap="Wrap" Direction="Row" AlignItems="Center"
+                                BindableLayout.ItemsSource="{Binding CheckpointFilters}">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate x:DataType="core:LogicCheckpointFilterViewModel">
+                                <Border HeightRequest="26" Padding="8,0" Margin="0,0,6,4"
+                                        BackgroundColor="{theme:ThemeColor SurfaceAltColor}"
+                                        Stroke="{theme:ThemeColor BorderColor}" StrokeThickness="1"
+                                        StrokeShape="RoundRectangle 6">
+                                    <Border.Triggers>
+                                        <DataTrigger TargetType="Border" Binding="{Binding IsActive}" Value="True">
+                                            <Setter Property="BackgroundColor" Value="{theme:ThemeColor TextColor}" />
+                                            <Setter Property="Stroke" Value="{theme:ThemeColor TextColor}" />
+                                        </DataTrigger>
+                                    </Border.Triggers>
+                                    <Border.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnCheckpointFilterTapped" CommandParameter="{Binding .}" />
+                                    </Border.GestureRecognizers>
+                                    <HorizontalStackLayout Spacing="4" VerticalOptions="Center">
+                                        <Label Text="{Binding Label}" FontSize="9.5" FontAttributes="Bold"
+                                               TextColor="{theme:ThemeColor MutedColor}">
+                                            <Label.Triggers>
+                                                <DataTrigger TargetType="Label" Binding="{Binding IsActive}" Value="True">
+                                                    <Setter Property="TextColor" Value="{theme:ThemeColor PageBg}" />
+                                                </DataTrigger>
+                                            </Label.Triggers>
+                                        </Label>
+                                        <Label Text="{Binding Count}" FontSize="8.5" FontFamily="monospace"
+                                               TextColor="{theme:ThemeColor MutedColor}">
+                                            <Label.Triggers>
+                                                <DataTrigger TargetType="Label" Binding="{Binding IsActive}" Value="True">
+                                                    <Setter Property="TextColor" Value="{theme:ThemeColor PageBg}" />
+                                                </DataTrigger>
+                                            </Label.Triggers>
+                                        </Label>
+                                    </HorizontalStackLayout>
+                                </Border>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </FlexLayout>
+
+                    <Grid Grid.Row="2" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <Label Text="sequence · start → end" FontSize="9" FontFamily="monospace"
+                               TextColor="{theme:ThemeColor MutedColor}" VerticalOptions="Center" />
+                        <Border Grid.Column="1" HeightRequest="24" Padding="6,0" VerticalOptions="Center"
+                                BackgroundColor="{theme:ThemeColor SurfaceAltColor}"
+                                Stroke="{theme:ThemeColor BorderColor}" StrokeThickness="1"
+                                StrokeShape="RoundRectangle 8"
+                                SemanticProperties.Description="Checkpoint usage dots">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Tapped="OnCheckpointUsageTapped" />
+                            </Border.GestureRecognizers>
+                            <HorizontalStackLayout Spacing="4" VerticalOptions="Center">
+                                <Image Source="{theme:ThemeIcon icon_activity}" WidthRequest="10" HeightRequest="10"
+                                       VerticalOptions="Center" />
+                                <Label Text="Usage" FontSize="9" FontAttributes="Bold" VerticalOptions="Center" />
+                                <Grid WidthRequest="22" HeightRequest="12" VerticalOptions="Center">
+                                    <Border StrokeThickness="0" StrokeShape="RoundRectangle 6"
+                                            BackgroundColor="{theme:ThemeColor BorderColor}">
+                                        <Border.Triggers>
+                                            <DataTrigger TargetType="Border" Binding="{Binding IsUsageOn}" Value="True">
+                                                <Setter Property="BackgroundColor" Value="{theme:ThemeColor GoodColor}" />
+                                            </DataTrigger>
+                                        </Border.Triggers>
+                                    </Border>
+                                    <Border WidthRequest="8" HeightRequest="8" Margin="2,0,0,0"
+                                            HorizontalOptions="Start" VerticalOptions="Center"
+                                            StrokeThickness="0" StrokeShape="RoundRectangle 4"
+                                            BackgroundColor="{theme:ThemeColor SurfaceColor}">
+                                        <Border.Triggers>
+                                            <DataTrigger TargetType="Border" Binding="{Binding IsUsageOn}" Value="True">
+                                                <Setter Property="HorizontalOptions" Value="End" />
+                                                <Setter Property="Margin" Value="0,0,2,0" />
+                                            </DataTrigger>
+                                        </Border.Triggers>
+                                    </Border>
+                                </Grid>
+                            </HorizontalStackLayout>
+                        </Border>
+                    </Grid>
+
+                    <BoxView Grid.Row="3" HeightRequest="1" Color="{theme:ThemeColor BorderColor}" />
+
+                    <CollectionView Grid.Row="4" ItemsSource="{Binding CheckpointSheetRows}"
+                                    SelectionMode="None" ItemSizingStrategy="MeasureAllItems">
+                        <CollectionView.EmptyView>
+                            <Label Text="No checkpoints match this filter." FontSize="11"
+                                   TextColor="{theme:ThemeColor MutedColor}" Margin="4,20" />
+                        </CollectionView.EmptyView>
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="core:LogicCheckpointViewModel">
+                                <Border Margin="0,0,0,6" Padding="10"
+                                        BackgroundColor="{theme:ThemeColor SurfaceColor}"
+                                        Stroke="{theme:ThemeColor BorderColor}" StrokeThickness="1"
+                                        StrokeShape="RoundRectangle 10"
+                                        SemanticProperties.Description="{Binding Description}"
+                                        SemanticProperties.Hint="{Binding Hint}">
+                                    <Border.Triggers>
+                                        <DataTrigger TargetType="Border" Binding="{Binding IsParent}" Value="True">
+                                            <Setter Property="BackgroundColor" Value="{theme:ThemeColor SurfaceAltColor}" />
+                                        </DataTrigger>
+                                    </Border.Triggers>
+                                    <Border.GestureRecognizers>
+                                        <TapGestureRecognizer Tapped="OnCheckpointSheetRowTapped" CommandParameter="{Binding .}" />
+                                    </Border.GestureRecognizers>
+                                    <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="6">
+                                        <Label Text="{Binding Sequence}" FontSize="9" FontFamily="monospace"
+                                               TextColor="{theme:ThemeColor MutedColor}" VerticalOptions="Start" />
+                                        <Border Grid.Column="1" WidthRequest="8" HeightRequest="8" Margin="0,3,0,0"
+                                                HorizontalOptions="Center" VerticalOptions="Start"
+                                                StrokeThickness="1"
+                                                Stroke="{Binding StateKey, Converter={StaticResource StateColor}, ConverterParameter=checkpoint}"
+                                                StrokeShape="RoundRectangle 4"
+                                                BackgroundColor="{Binding StateKey, Converter={StaticResource StateColor}, ConverterParameter=checkpoint}">
+                                            <Border.Triggers>
+                                                <DataTrigger TargetType="Border" Binding="{Binding IsParent}" Value="True">
+                                                    <Setter Property="WidthRequest" Value="12" />
+                                                    <Setter Property="HeightRequest" Value="12" />
+                                                    <Setter Property="Margin" Value="0" />
+                                                    <Setter Property="StrokeThickness" Value="2" />
+                                                    <Setter Property="StrokeShape" Value="RoundRectangle 6" />
+                                                    <Setter Property="BackgroundColor" Value="{theme:ThemeColor SurfaceColor}" />
+                                                </DataTrigger>
+                                            </Border.Triggers>
+                                        </Border>
+                                        <VerticalStackLayout Grid.Column="2" Spacing="2">
+                                            <HorizontalStackLayout Spacing="4" VerticalOptions="Center">
+                                                <Label Text="{Binding Name}" FontSize="12.5" FontAttributes="Bold"
+                                                       MaxLines="1" LineBreakMode="TailTruncation" />
+                                                <Border HeightRequest="15" Padding="4,0" IsVisible="{Binding ShowLatest}"
+                                                        BackgroundColor="{theme:ThemeColor SurfaceColor}"
+                                                        Stroke="{theme:ThemeColor UsageWarmColor}" StrokeThickness="1"
+                                                        StrokeShape="RoundRectangle 3">
+                                                    <Label Text="LATEST" FontSize="7.5" FontAttributes="Bold"
+                                                           CharacterSpacing="0.4"
+                                                           TextColor="{theme:ThemeColor UsageHotColor}" />
+                                                </Border>
+                                                <Border HeightRequest="15" Padding="4,0" IsVisible="{Binding ShowNever}"
+                                                        BackgroundColor="{theme:ThemeColor SurfaceAltColor}"
+                                                        Stroke="{theme:ThemeColor BorderColor}" StrokeThickness="1"
+                                                        StrokeShape="RoundRectangle 3">
+                                                    <Label Text="NEVER" FontSize="7.5" FontAttributes="Bold"
+                                                           CharacterSpacing="0.4"
+                                                           TextColor="{theme:ThemeColor MutedColor}" />
+                                                </Border>
+                                            </HorizontalStackLayout>
+                                            <Label Text="{Binding SourceLabel}" FontSize="9.5"
+                                                   TextColor="{theme:ThemeColor MutedColor}"
+                                                   MaxLines="1" LineBreakMode="TailTruncation" />
+                                            <HorizontalStackLayout Spacing="4" IsVisible="{Binding ShowUsageLine}">
+                                                <Image Source="{theme:ThemeIcon icon_history}" WidthRequest="9" HeightRequest="9"
+                                                       IsVisible="{Binding IsSourceLess}" VerticalOptions="Center" />
+                                                <Label Text="{Binding UsageCountText}" FontSize="10" FontFamily="monospace"
+                                                       FontAttributes="Bold" VerticalOptions="Center"
+                                                       TextColor="{Binding UsageKey, Converter={StaticResource UsageColor}, ConverterParameter=text}" />
+                                                <Label Text="{Binding UsageLastText}" FontSize="9.5"
+                                                       TextColor="{theme:ThemeColor MutedColor}" VerticalOptions="Center" />
+                                            </HorizontalStackLayout>
+                                        </VerticalStackLayout>
+                                        <Border Grid.Column="3" VerticalOptions="Start" Padding="6,2"
+                                                BackgroundColor="{Binding StateKey, Converter={StaticResource StateTint}, ConverterParameter=bg}"
+                                                Stroke="{Binding StateKey, Converter={StaticResource StateTint}, ConverterParameter=border}"
+                                                StrokeThickness="1" StrokeShape="RoundRectangle 5">
+                                            <Label Text="{Binding ChipWord}" FontSize="8" FontAttributes="Bold"
+                                                   CharacterSpacing="0.4"
+                                                   TextColor="{Binding StateKey, Converter={StaticResource StateTint}, ConverterParameter=text}" />
+                                        </Border>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+
+                    <Border Grid.Row="5" Style="{StaticResource SubtleBorder}" Padding="10"
+                            IsVisible="{Binding IsUsageOn}">
+                        <VerticalStackLayout Spacing="4">
+                            <Label Text="USAGE · LAST 7 DAYS" Style="{StaticResource UppercaseLabel}" />
+                            <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding ShowCheckpointSheetTop}">
+                                <Label Text="{Binding CheckpointSheetTopText}" FontSize="9.5" />
+                                <Label Grid.Column="1" Text="{Binding CheckpointSheetTopCount}"
+                                       FontSize="9.5" FontFamily="monospace" FontAttributes="Bold"
+                                       TextColor="{Binding CheckpointSheetTopKey, Converter={StaticResource UsageColor}, ConverterParameter=text}" />
+                            </Grid>
+                            <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding ShowCheckpointSheetNoSource}">
+                                <Label Text="{Binding CheckpointSheetNoSourceText}" FontSize="9"
+                                       TextColor="{theme:ThemeColor MutedColor}" />
+                                <Label Grid.Column="1" Text="{Binding CheckpointSheetNoSourceLast}"
+                                       FontSize="9" FontFamily="monospace"
+                                       TextColor="{theme:ThemeColor MutedColor}" />
+                            </Grid>
+                            <HorizontalStackLayout Spacing="8">
+                                <HorizontalStackLayout Spacing="4">
+                                    <Border WidthRequest="6" HeightRequest="6" StrokeThickness="0"
+                                            StrokeShape="RoundRectangle 3"
+                                            BackgroundColor="{theme:ThemeColor UsageHotColor}" />
+                                    <Label Text="Frequent" FontSize="8" TextColor="{theme:ThemeColor MutedColor}" />
+                                </HorizontalStackLayout>
+                                <HorizontalStackLayout Spacing="4">
+                                    <Border WidthRequest="6" HeightRequest="6" StrokeThickness="0"
+                                            StrokeShape="RoundRectangle 3"
+                                            BackgroundColor="{theme:ThemeColor UsageWarmColor}" />
+                                    <Label Text="Regular" FontSize="8" TextColor="{theme:ThemeColor MutedColor}" />
+                                </HorizontalStackLayout>
+                                <HorizontalStackLayout Spacing="4">
+                                    <Border WidthRequest="6" HeightRequest="6" StrokeThickness="0"
+                                            StrokeShape="RoundRectangle 3"
+                                            BackgroundColor="{theme:ThemeColor UsageCoolColor}" />
+                                    <Label Text="Rare" FontSize="8" TextColor="{theme:ThemeColor MutedColor}" />
+                                </HorizontalStackLayout>
+                                <HorizontalStackLayout Spacing="4">
+                                    <Border WidthRequest="6" HeightRequest="6" StrokeThickness="1"
+                                            StrokeShape="RoundRectangle 3"
+                                            Stroke="{theme:ThemeColor UsageNoneColor}"
+                                            BackgroundColor="{theme:ThemeColor SurfaceColor}" />
+                                    <Label Text="No source" FontSize="8" TextColor="{theme:ThemeColor MutedColor}" />
+                                </HorizontalStackLayout>
+                            </HorizontalStackLayout>
+                        </VerticalStackLayout>
+                    </Border>
+
+                    <Grid Grid.Row="6" ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <Label Text="State is the evaluation · usage is blue" FontSize="8.5"
+                               TextColor="{theme:ThemeColor MutedColor}" />
+                        <Label Grid.Column="1" Text="tap a row to jump · 7 days" FontSize="8.5"
+                               FontFamily="monospace" TextColor="{theme:ThemeColor MutedColor}" />
+                    </Grid>
                 </Grid>
             </Border>
         </Grid>

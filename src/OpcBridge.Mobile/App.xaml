@@ -12,6 +12,7 @@
             <local:StateColorConverter x:Key="StateColor" />
             <local:StateTintColorConverter x:Key="StateTint" />
             <local:ChipColorConverter x:Key="ChipColor" />
+            <local:UsageColorConverter x:Key="UsageColor" />
 
             <Style TargetType="Label">
                 <Setter Property="TextColor" Value="{theme:ThemeColor TextColor}" />
