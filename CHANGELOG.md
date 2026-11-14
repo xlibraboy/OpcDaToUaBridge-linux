@@ -22,14 +22,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 **The bridge now shows which clients are connected, with the PC behind them.** Every live
 `/hmi` connection registers itself in a small presence registry rendered as **Ops ▸ Sessions ▸
 Bridge Clients**: the Logic page in a browser, the HMI runtime and the Android viewer. The
-desktop apps send their machine name, OS and app version with the connection, so an HMI row
-reads `DESKTOP-PLANT-1 · HMI · 192.168.1.30 · Windows 10.0.19045 · v1.8.2 · connected 12m ago`,
-and a signed-in Logic page adds its account. A browser cannot read its PC's name, so its row is
-named by the address it connected from and described by the browser/OS parsed from its user
-agent. A reconnect reuses the client's id instead of adding a second row, two links (or two tabs)
-collapse into one entry with a link count, and an entry disappears when its last link closes. The
-list is part of `GET /api/diagnostics` (`clients`), so the Sessions page keeps it live while it
-is open; it is in-memory, like the sign-in sessions, and resets with a bridge restart.
+HMI and the phone send the machine/device name, OS and app version they can read with the
+connection, so an HMI row reads `DESKTOP-PLANT-1 · HMI · 192.168.1.30 · Windows 10.0.19045 ·
+v1.8.2 · connected 12m ago`, and a signed-in Logic page adds its account. A browser cannot read
+its PC's name, so its row is named by the address it connected from and described by the
+browser/OS parsed from its user agent. A reconnect reuses the client's id instead of adding a
+second row, two links (or two tabs) collapse into one entry with a link count, and an entry
+disappears when its last link closes. The list is part of `GET /api/diagnostics` (`clients`), so
+the Sessions page keeps it live while it is open; it is in-memory, like the sign-in sessions, and
+resets with a bridge restart.
 
 **The Logic page now uses the bridge's control users.** It carries the dashboard's
 `/api/auth/login` session and `users.json` instead of opening anonymously: Operators and

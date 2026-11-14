@@ -326,7 +326,9 @@ runtime and the Android viewer — every surface that holds a live link.
   collapse into one row with a link count; the entry disappears when its last connection closes.
 - **What a browser can report:** a browser cannot read the PC's name. Its row is named by the
   IP address it connected from and described by the OS/browser parsed from its user agent, plus
-  the signed-in account. The HMI and phone rows carry the real machine/device name.
+  the signed-in account. The HMI row carries the real PC name; the phone reports its OS and app
+  version and whatever device name Android exposes (`localhost` is treated as unknown), falling
+  back to its address.
 - **Exposure:** `GET /api/diagnostics` → `clients: { total, items[] }` (each item has
   `clientId`, `kind`, `machineName`, `address`, `username`, `platform`, `userAgent`,
   `appVersion`, `connectedAtUtc`, `lastSeenUtc`, `connectionCount`); the Sessions page re-renders
