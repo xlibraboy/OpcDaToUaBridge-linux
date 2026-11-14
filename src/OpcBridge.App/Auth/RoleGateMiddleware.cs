@@ -55,11 +55,13 @@ public sealed class RoleGateMiddleware
 
         string path = context.Request.Path.Value ?? "/";
         string method = context.Request.Method;
+        bool enforced = AuthPolicy.TryEnforcedRole(method, path, out UserRole enforcedRole);
 
         // Public surface: health probes, the dashboard shell (it renders the login
         // form itself), and the auth endpoints. HMI paths stay open while the
-        // Avalonia apps are trusted on the LAN.
-        if (AuthPolicy.IsPublic(path) || (options_.TrustHmi && AuthPolicy.IsHmiPath(path)))
+        // Avalonia apps are trusted on the LAN. Logic authoring writes are the
+        // exception: they always carry the shared browser session and its role.
+        if (!enforced && (AuthPolicy.IsPublic(path) || (options_.TrustHmi && AuthPolicy.IsHmiPath(path))))
         {
             // A signed-in caller is still identified, so public endpoints can act on their behalf.
             if (TryResolve(context, out AuthCaller caller))
@@ -77,7 +79,7 @@ public sealed class RoleGateMiddleware
             return;
         }
 
-        UserRole required = AuthPolicy.RequiredRole(method, path);
+        UserRole required = enforced ? enforcedRole : AuthPolicy.RequiredRole(method, path);
         if ((int)resolved.Role < (int)required)
         {
             logger_.LogWarning(

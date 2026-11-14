@@ -19,6 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+**The Logic page now uses the bridge's control users.** It carries the dashboard's
+`/api/auth/login` session and `users.json` instead of opening anonymously: Operators and
+Viewers get the **Result** tab read-only, while Engineers and Admins keep the **Editor** and
+**Tags** tabs. Authoring writes — `POST/DELETE /api/logic/blocks` and
+`/api/logic/tagsources` — are enforced at Engineer even with `Auth:TrustHmi`, so an Operator
+cannot save by calling the API directly. The logic reads stay on the HMI-trusted surface so
+the Android viewer can still sync its offline dataset before sign-in.
+
 **Operator notes accept a client id for safe retries.** `POST /api/logic/notes` now takes an
 optional `id`; posting the same id again returns the note already stored instead of adding a
 duplicate, and omitting it still mints one. The Android viewer's offline sync outbox uses it, so

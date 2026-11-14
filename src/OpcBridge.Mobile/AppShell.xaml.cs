@@ -8,5 +8,6 @@ public partial class AppShell : Shell
     {
         InitializeComponent();
         Routing.RegisterRoute("block", typeof(LogicBlockPage));
+        Routing.RegisterRoute("accesspoint", typeof(AccessPointPage));
     }
 }

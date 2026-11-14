@@ -24,7 +24,21 @@
 <script src="/logic/signalr.min.js" defer></script>
 <script src="/logic/app.js" defer></script>
 </head>
-<body>
+<body class="auth-checking">
+<div class="auth-gate" id="authGate">
+  <form class="auth-card" id="authForm" autocomplete="on">
+    <div class="auth-eyebrow">OpcBridge · Logic</div>
+    <h1 class="auth-title">Sign in to Logic</h1>
+    <p class="auth-copy" id="authCopy">Sign in with your OpcBridge account. Operators can view the Result board; Engineers and Admins can edit plant logic.</p>
+    <div id="authFields">
+      <label class="auth-field"><span>Username</span><input id="authUser" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
+      <label class="auth-field"><span>Password</span><input id="authPass" name="password" type="password" autocomplete="current-password" required></label>
+      <p class="auth-msg" id="authMsg" role="alert"></p>
+      <button class="btn primary auth-submit" id="authSubmit" type="submit">Sign in</button>
+    </div>
+  </form>
+</div>
+
 <header class="topbar">
   <div class="brand">
     <span class="title">Logic</span>
@@ -72,8 +86,8 @@
 
   <section class="editor" id="editor">
     <div class="placeholder" id="placeholder">
-      <p>Pick a block on the left to edit its network, or press <b>+ New</b> for a new one.</p>
-      <p class="muted small">Live state is pushed from the bridge as it is evaluated. Saving writes the block to the bridge, the same store the HMI and the phone read.</p>
+      <p id="placeholderLead">Pick a block on the left to edit its network, or press <b>+ New</b> for a new one.</p>
+      <p class="muted small" id="placeholderNote">Live state is pushed from the bridge as it is evaluated. Saving writes the block to the bridge, the same store the HMI and the phone read.</p>
     </div>
   </section>
 </main>

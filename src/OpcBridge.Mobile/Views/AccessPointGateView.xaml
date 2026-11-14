@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:theme="clr-namespace:OpcBridge.Mobile"
+             x:Class="OpcBridge.Mobile.Views.AccessPointGateView"
+             x:Name="Root">
+    <!-- The start-up online lock, drawn in the app's own palette: live data stays off until the
+         phone is on the bound plant access point. The operator can still read the synced
+         structure offline, or open the Plant Wi-Fi screen to bind/connect. -->
+    <Grid x:Name="overlayRoot"
+          IsVisible="False"
+          BackgroundColor="{theme:ThemeColor PageBg}"
+          Padding="20,8,20,18"
+          RowDefinitions="Auto,*,Auto,Auto,Auto,Auto"
+          RowSpacing="14">
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,*" ColumnSpacing="10">
+            <Border WidthRequest="34" HeightRequest="34"
+                    BackgroundColor="{theme:ThemeColor SurfaceAltColor}"
+                    Stroke="{theme:ThemeColor BorderColor}"
+                    StrokeThickness="1"
+                    StrokeShape="RoundRectangle 9"
+                    VerticalOptions="Center">
+                <Image Source="{theme:ThemeIcon icon_workflow}" WidthRequest="17" HeightRequest="17"
+                       HorizontalOptions="Center" VerticalOptions="Center" />
+            </Border>
+            <Label Grid.Column="1" Text="OpcBridge" FontSize="14" FontAttributes="Bold"
+                   VerticalOptions="Center" />
+        </Grid>
+
+        <VerticalStackLayout Grid.Row="1" Spacing="12" HorizontalOptions="Center"
+                             VerticalOptions="Center">
+            <Border x:Name="iconTile"
+                    WidthRequest="72" HeightRequest="72"
+                    BackgroundColor="{theme:ThemeColor BadBgColor}"
+                    Stroke="{theme:ThemeColor BadBorderColor}"
+                    StrokeThickness="1"
+                    StrokeShape="RoundRectangle 22"
+                    HorizontalOptions="Center">
+                <Image x:Name="gateIcon" Source="{theme:ThemeIcon icon_wifi_off}"
+                       WidthRequest="30" HeightRequest="30"
+                       HorizontalOptions="Center" VerticalOptions="Center" />
+            </Border>
+            <Label x:Name="eyebrowLabel" Text="ONLINE LOCKED"
+                   FontSize="9.5" FontAttributes="Bold" CharacterSpacing="1.4"
+                   TextColor="{theme:ThemeColor BadColor}"
+                   HorizontalOptions="Center" />
+            <Label x:Name="titleLabel" Text="Plant Wi-Fi required"
+                   FontSize="24" FontAttributes="Bold"
+                   HorizontalTextAlignment="Center"
+                   HorizontalOptions="Center" />
+            <Label x:Name="bodyLabel"
+                   FontSize="11"
+                   TextColor="{theme:ThemeColor MutedColor}"
+                   HorizontalTextAlignment="Center"
+                   LineBreakMode="WordWrap"
+                   MaximumWidthRequest="330"
+                   HorizontalOptions="Center" />
+        </VerticalStackLayout>
+
+        <Border Grid.Row="2" Style="{StaticResource CardBorder}">
+            <VerticalStackLayout Spacing="10">
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                    <Label Text="BOUND ACCESS POINT" Style="{StaticResource UppercaseLabel}"
+                           VerticalOptions="Center" />
+                    <Border x:Name="statePill"
+                            Grid.Column="1"
+                            BackgroundColor="{theme:ThemeColor BadBgColor}"
+                            Stroke="{theme:ThemeColor BadBorderColor}"
+                            StrokeThickness="1"
+                            StrokeShape="RoundRectangle 5"
+                            HeightRequest="18"
+                            Padding="6,0"
+                            VerticalOptions="Center">
+                        <Label x:Name="statePillLabel"
+                               Text="NOT CONNECTED"
+                               Style="{StaticResource BadgeLabel}"
+                               FontFamily="monospace"
+                               FontSize="7.5"
+                               FontAttributes="Bold"
+                               TextColor="{theme:ThemeColor BadTextColor}" />
+                    </Border>
+                </Grid>
+                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="11">
+                    <Border WidthRequest="38" HeightRequest="38"
+                            BackgroundColor="{theme:ThemeColor SurfaceAltColor}"
+                            StrokeThickness="0"
+                            StrokeShape="RoundRectangle 10"
+                            VerticalOptions="Center">
+                        <Image Source="{theme:ThemeIcon icon_wifi}" WidthRequest="18" HeightRequest="18"
+                               HorizontalOptions="Center" VerticalOptions="Center" />
+                    </Border>
+                    <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Center">
+                        <Label x:Name="boundSsidLabel" Text="Not provisioned"
+                               FontSize="15" FontAttributes="Bold" />
+                        <Label x:Name="boundBssidLabel" Text="Engineer/Admin setup required"
+                               FontFamily="monospace" FontSize="9.5"
+                               TextColor="{theme:ThemeColor MutedColor}" />
+                    </VerticalStackLayout>
+                </Grid>
+                <BoxView HeightRequest="1" Color="{theme:ThemeColor BorderColor}" />
+                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                    <Label Text="Phone is on" FontSize="10"
+                           TextColor="{theme:ThemeColor MutedColor}" VerticalOptions="Center" />
+                    <Label x:Name="currentNetworkLabel" Grid.Column="1"
+                           Text="not connected"
+                           FontFamily="monospace" FontSize="10" FontAttributes="Bold"
+                           VerticalOptions="Center" />
+                </Grid>
+            </VerticalStackLayout>
+        </Border>
+
+        <VerticalStackLayout Grid.Row="3" Spacing="8">
+            <Button x:Name="primaryButton" Text="Connect to the plant AP"
+                    Style="{StaticResource PrimaryButton}"
+                    Clicked="OnPrimaryClicked" />
+            <Button Text="Access point details"
+                    Style="{StaticResource SecondaryButton}"
+                    HeightRequest="40"
+                    Clicked="OnConfigureClicked" />
+            <Button Text="Continue offline with saved data"
+                    Style="{StaticResource GhostButton}"
+                    HeightRequest="34"
+                    FontSize="10.5"
+                    Clicked="OnContinueClicked" />
+            <Button x:Name="controlSignInButton" Text="Engineer/Admin sign-in"
+                    Style="{StaticResource GhostButton}"
+                    HeightRequest="28"
+                    FontSize="10"
+                    IsVisible="False"
+                    Clicked="OnControlSignInClicked" />
+        </VerticalStackLayout>
+
+        <HorizontalStackLayout Grid.Row="4" Spacing="7" HorizontalOptions="Center">
+            <ActivityIndicator x:Name="busyIndicator" WidthRequest="14" HeightRequest="14"
+                               Color="{theme:ThemeColor GoodColor}"
+                               IsRunning="False" IsVisible="False"
+                               VerticalOptions="Center" />
+            <Label x:Name="errorLabel" FontSize="10"
+                   TextColor="{theme:ThemeColor BadColor}"
+                   LineBreakMode="WordWrap"
+                   MaximumWidthRequest="330"
+                   IsVisible="False"
+                   VerticalOptions="Center" />
+        </HorizontalStackLayout>
+
+        <Grid Grid.Row="5" ColumnDefinitions="Auto,*" ColumnSpacing="7">
+            <Image Source="{theme:ThemeIcon icon_shield_check}" WidthRequest="13" HeightRequest="13"
+                   VerticalOptions="Start" Margin="0,2,0,0" />
+            <Label Grid.Column="1"
+                   Text="Live readings and sign-in stay off until the bound access point is connected. Cached structure remains readable."
+                   FontSize="9.5"
+                   TextColor="{theme:ThemeColor MutedColor}"
+                   LineBreakMode="WordWrap" />
+        </Grid>
+    </Grid>
+</ContentView>

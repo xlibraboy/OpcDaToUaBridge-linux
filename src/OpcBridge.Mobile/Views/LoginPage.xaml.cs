@@ -11,19 +11,27 @@ namespace OpcBridge.Mobile.Views;
 public partial class LoginPage : ContentPage
 {
     private readonly BridgeCoordinator coordinator_;
+    private readonly AccessPointGate accessPointGate_;
     private int busyOperations_;
     private CancellationTokenSource? connectCts_;
     private CancellationTokenSource? startupCts_;
     private bool startingUp_;
+    private bool offlineChosen_;
+    private bool provisioningFlow_;
     private string? statusNote_;
 
     /// <summary>True while any operation owns the bridge (start-up search, add, activation).</summary>
     private bool Busy => busyOperations_ > 0;
 
-    public LoginPage(BridgeCoordinator coordinator)
+    public LoginPage(BridgeCoordinator coordinator, AccessPointGate accessPointGate)
     {
         InitializeComponent();
         coordinator_ = coordinator;
+        accessPointGate_ = accessPointGate;
+        this.accessPointGate.PrimaryRequested += OnGatePrimaryRequested;
+        this.accessPointGate.ConfigureRequested += OnGateConfigureRequested;
+        this.accessPointGate.ContinueOfflineRequested += OnGateContinueRequested;
+        this.accessPointGate.ControlSignInRequested += OnGateControlSignInRequested;
         // The add-bridge form lives in its own card, opened on request — picking a saved
         // bridge never lands beside the Add & connect button.
         bridgeSheet.NewBridgeRequested += OpenAddCard;
@@ -35,8 +43,12 @@ public partial class LoginPage : ContentPage
         base.OnAppearing();
         coordinator_.Changed -= OnChanged;
         coordinator_.Changed += OnChanged;
+        accessPointGate_.Changed -= OnAccessPointChanged;
+        accessPointGate_.Changed += OnAccessPointChanged;
         ThemeManager.Changed -= OnThemeChanged;
         ThemeManager.Changed += OnThemeChanged;
+        accessPointGate_.Refresh();
+        RefreshAccessPointGate();
         Repaint();
 
         // A saved bridge is remembered across launches; asking it for its session is what puts
@@ -58,6 +70,7 @@ public partial class LoginPage : ContentPage
         {
             startingUp_ = false;
             EndBusy();
+            RefreshAccessPointGate();
         }
     }
 
@@ -66,11 +79,102 @@ public partial class LoginPage : ContentPage
         connectCts_?.Cancel();
         startupCts_?.Cancel();
         coordinator_.Changed -= OnChanged;
+        accessPointGate_.Changed -= OnAccessPointChanged;
         ThemeManager.Changed -= OnThemeChanged;
         base.OnDisappearing();
     }
 
     private void OnChanged() => MainThread.BeginInvokeOnMainThread(Repaint);
+
+    private void OnAccessPointChanged() => MainThread.BeginInvokeOnMainThread(() =>
+    {
+        if (accessPointGate_.Status.OnlineAllowed)
+        {
+            statusNote_ = null;
+            provisioningFlow_ = false;
+        }
+
+        RefreshAccessPointGate();
+        Repaint();
+    });
+
+    /// <summary>
+    /// The online lock covers Sign in until the phone is on the bound AP. "Continue offline"
+    /// dismisses it for this visit so the stored structure is still reachable.
+    /// </summary>
+    private void RefreshAccessPointGate()
+    {
+        AccessPointGateStatus status = accessPointGate_.Status;
+        if (status.OnlineAllowed || offlineChosen_ || provisioningFlow_)
+        {
+            accessPointGate.Hide();
+            return;
+        }
+
+        accessPointGate.Show(status);
+    }
+
+    private async void OnGatePrimaryRequested()
+    {
+        AccessPointGateStatus status = accessPointGate_.Status;
+        if (status.State == AccessPointGateState.NotBound)
+        {
+            // Provisioning uses the bridge's own Engineer/Admin accounts. The phone must already
+            // be on the plant Wi-Fi for the bridge to answer; from here the normal Sign in form
+            // is shown and the gate stays shut until the BSSID is bound and matched.
+            provisioningFlow_ = true;
+            accessPointGate.Hide();
+            statusNote_ = "sign in with an Engineer or Admin account to provision the plant access point. Connect the phone to the plant Wi-Fi first.";
+            Repaint();
+            return;
+        }
+
+        accessPointGate.SetBusy(true);
+        accessPointGate.SetError(null);
+        try
+        {
+            MobileResult<AccessPointGateStatus> result = await accessPointGate_.ConnectAsync(CancellationToken.None);
+            if (!result.Ok)
+            {
+                accessPointGate.SetError(result.Error ?? "could not connect to the plant access point");
+                return;
+            }
+
+            offlineChosen_ = false;
+            RefreshAccessPointGate();
+        }
+        catch (Exception exception)
+        {
+            accessPointGate.SetError("✗ " + exception.Message);
+        }
+        finally
+        {
+            accessPointGate.SetBusy(false);
+        }
+    }
+
+    private async void OnGateConfigureRequested() =>
+        await Shell.Current.GoToAsync("accesspoint");
+
+    private void OnGateControlSignInRequested()
+    {
+        provisioningFlow_ = true;
+        accessPointGate.Hide();
+        statusNote_ = "sign in with an Engineer or Admin account to re-provision the plant access point.";
+        Repaint();
+    }
+
+    private void OnGateContinueRequested()
+    {
+        offlineChosen_ = true;
+        provisioningFlow_ = false;
+        accessPointGate.Hide();
+        statusNote_ = "offline · " + AccessPointGate.BlockedText;
+        Repaint();
+    }
+
+    private async void OnAccessPointTapped(object? sender, TappedEventArgs e) =>
+        await Shell.Current.GoToAsync("accesspoint");
 
     private void OnThemeChanged() => MainThread.BeginInvokeOnMainThread(Repaint);
 
@@ -114,6 +218,14 @@ public partial class LoginPage : ContentPage
         statusLabel.Text = statusNote_ ?? (active is null
             ? "No bridge yet — add one below."
             : active.IsOffline ? active.OfflineText : active.Bridge.Url);
+
+        AccessPointGateStatus access = accessPointGate_.Status;
+        wifiStateLabel.Text = access.StateText.ToUpperInvariant();
+        wifiStateLabel.TextColor = AccessPointColor(access);
+        wifiNameLabel.Text = access.Bound?.DisplayName ?? "Not provisioned";
+        wifiDetailLabel.Text = access.Bound is null
+            ? "Engineer/Admin setup required"
+            : access.Bound.BssidText;
 
         // One action at a time: a connect in flight owns the bridge.
         connectButton.IsEnabled = !Busy;
@@ -274,6 +386,15 @@ public partial class LoginPage : ContentPage
         _ => ThemePalette.Get("MutedColor")
     };
 
+    private static Color AccessPointColor(AccessPointGateStatus status) => status.State switch
+    {
+        AccessPointGateState.ConnectedToBound => ThemePalette.Get("GoodColor"),
+        AccessPointGateState.PermissionRequired or AccessPointGateState.Unverifiable
+            => ThemePalette.Get("WarnColor"),
+        AccessPointGateState.NotBound => ThemePalette.Get("MutedColor"),
+        _ => ThemePalette.Get("BadColor")
+    };
+
     private async void OnSignInClicked(object? sender, EventArgs e)
     {
         BridgeConnection? active = coordinator_.Active;
@@ -306,7 +427,36 @@ public partial class LoginPage : ContentPage
             }
 
             passwordEntry.Text = string.Empty;
-            // The session now opens the gate; the app shows the tabs.
+            bool controlUser = result.Value is { IsControlUser: true };
+            if (controlUser && !accessPointGate_.Status.OnlineAllowed)
+            {
+                // The same Engineer/Admin account that controls the Logic web page assigns or
+                // repairs the AP here. A short delay lets the app's own access rule settle first,
+                // then the AP page is the one on top.
+                provisioningFlow_ = true;
+                statusNote_ = null;
+                Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(250), async () =>
+                {
+                    try
+                    {
+                        await Shell.Current.GoToAsync("accesspoint");
+                    }
+                    catch (Exception exception)
+                    {
+                        System.Diagnostics.Debug.WriteLine("provisioning navigation failed: " + exception.Message);
+                    }
+                });
+                return;
+            }
+
+            if (accessPointGate_.Binding is null)
+            {
+                // Operators cannot assign the AP; they stay on Sign in (or use offline data).
+                errorLabel.Text = "Only an Engineer or Admin can provision the plant access point. Live data stays off until an administrator assigns it.";
+                return;
+            }
+
+            // A provisioned phone with a session opens the tabs; the app access rule publishes it.
         }
         catch (Exception ex)
         {

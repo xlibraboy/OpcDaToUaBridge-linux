@@ -1256,8 +1256,10 @@ function setSaveMessage(text, kind) {
 
 function renderTabs() {
   const labels = { editor: 'Editor', tags: 'Tags', result: 'Result' };
+  const ids = logicCanEdit ? ['editor', 'tags', 'result'] : ['result'];
+  if (!logicCanEdit) tab = 'result';
   return h('div', { class: 'tabs', role: 'tablist' },
-    ['editor', 'tags', 'result'].map((id) => h('button', {
+    ids.map((id) => h('button', {
       class: 'tab' + (tab === id ? ' on' : ''), type: 'button', role: 'tab',
       'aria-selected': tab === id ? 'true' : 'false',
       onclick: () => { tab = id; renderEditor(true); }
@@ -3773,6 +3775,12 @@ function initTheme() {
 }
 
 function start() {
+  if (!logicCanEdit) {
+    tab = 'result';
+    el('placeholderLead').textContent = 'Pick a block on the left to see its Result.';
+    el('placeholderNote').textContent = 'The Result board is read-only. Engineers and Admins edit plant logic.';
+  }
+  el('btnNew').hidden = !logicCanEdit;
   el('btnNew').addEventListener('click', newBlockForm);
   initRailFolding();
   initTheme();
@@ -3785,7 +3793,7 @@ function start() {
   document.addEventListener('keydown', (event) => {
     if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
       event.preventDefault();
-      if (dirty) saveBlock();
+      if (logicCanEdit && dirty) saveBlock();
     }
   });
 
@@ -3800,4 +3808,133 @@ function start() {
   }).catch((error) => toast(error.message, 'err'));
 }
 
-document.addEventListener('DOMContentLoaded', start);
+// Control-user gate ----------------------------------------------------------
+//
+// The Logic page shares the dashboard's users.json and session cookie. Operators use the
+// mobile viewer; this page is for the Engineer/Admin control accounts. The data reads stay
+// on the HMI surface so the phone can sync before sign-in, but every authoring write is
+// enforced server-side by AuthPolicy.
+
+const CONTROL_ROLE_RANK = { Engineer: 2, Admin: 3 };
+let authResolve = null;
+let authBound = false;
+let logicStarted = false;
+// Operators and Viewers read the Result board; only Engineer/Admin may author.
+let logicCanEdit = true;
+
+function isControlRole(role) {
+  return (CONTROL_ROLE_RANK[role] || 0) >= CONTROL_ROLE_RANK.Engineer;
+}
+
+async function readAuthMe() {
+  const response = await fetch('/api/auth/me', { headers: { Accept: 'application/json' } });
+  if (!response.ok) throw new Error('HTTP ' + response.status);
+  return response.json();
+}
+
+function setAuthMessage(text, ok) {
+  const message = document.getElementById('authMsg');
+  message.textContent = text || '';
+  message.classList.toggle('ok', !!ok);
+}
+
+function showAuthLogin() {
+  document.getElementById('authFields').hidden = false;
+  document.getElementById('authGate').hidden = false;
+  document.body.classList.add('auth-checking');
+  const user = document.getElementById('authUser');
+  if (user && !user.value) user.focus();
+}
+
+function hideAuthGate() {
+  document.getElementById('authGate').hidden = true;
+  document.body.classList.remove('auth-checking');
+}
+
+async function evaluateAuth(initial) {
+  let me;
+  try {
+    me = await readAuthMe();
+  } catch (error) {
+    if (initial) {
+      showAuthLogin();
+      setAuthMessage('Could not reach the bridge. Check the connection and try again.');
+      return false;
+    }
+    setAuthMessage('Could not reach the bridge. Check the connection and try again.');
+    return false;
+  }
+
+  if (!me.authEnabled) {
+    logicCanEdit = true;
+    hideAuthGate();
+    return true;
+  }
+
+  if (me.authenticated) {
+    // Operators/Viewers open the Result board read-only; Engineer/Admin keep the editor.
+    logicCanEdit = isControlRole(me.role);
+    hideAuthGate();
+    return true;
+  }
+
+  if (initial) showAuthLogin();
+  return false;
+}
+
+function bindAuthHandlers() {
+  if (authBound) return;
+  authBound = true;
+
+  document.getElementById('authForm').addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const username = document.getElementById('authUser').value.trim();
+    const password = document.getElementById('authPass').value;
+    if (!username || !password) {
+      setAuthMessage('Enter your username and password.');
+      return;
+    }
+
+    const submit = document.getElementById('authSubmit');
+    submit.disabled = true;
+    setAuthMessage('Signing in…', true);
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setAuthMessage(body.error || 'Sign-in failed.');
+        return;
+      }
+
+      document.getElementById('authPass').value = '';
+      if (await evaluateAuth(false)) {
+        const resolve = authResolve;
+        authResolve = null;
+        if (resolve) resolve();
+      }
+    } catch (error) {
+      setAuthMessage('Could not reach the bridge. Check the connection and try again.');
+    } finally {
+      submit.disabled = false;
+    }
+  });
+
+}
+
+async function bootLogic() {
+  if (logicStarted) return;
+  bindAuthHandlers();
+  if (!(await evaluateAuth(true))) {
+    await new Promise((resolve) => { authResolve = resolve; });
+  }
+
+  logicStarted = true;
+  hideAuthGate();
+  start();
+}
+
+document.addEventListener('DOMContentLoaded', bootLogic);

@@ -26,6 +26,9 @@ public sealed record MobileSession(
 {
     public bool IsOperator => RoleRank(Role) >= RoleRank("Operator");
 
+    /// <summary>Engineer or Admin: the control users that may provision the phone and edit logic.</summary>
+    public bool IsControlUser => RoleRank(Role) >= RoleRank("Engineer");
+
     private static int RoleRank(string? role) => role switch
     {
         "Admin" => 3,

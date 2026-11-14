@@ -45,8 +45,18 @@ public sealed class MobileHubClient : IAsyncDisposable
     /// Opens the link. <paramref name="cookies"/> carries the bridge session from
     /// <see cref="LogicApiClient"/>, so a bridge that gates the hub accepts the handshake.
     /// </summary>
-    public async Task ConnectAsync(string baseUrl, CancellationToken cancellationToken, MobileHubTiming? timing = null, CookieContainer? cookies = null)
+    public async Task ConnectAsync(
+        string baseUrl,
+        CancellationToken cancellationToken,
+        MobileHubTiming? timing = null,
+        CookieContainer? cookies = null,
+        Func<bool>? canGoOnline = null)
     {
+        if (canGoOnline?.Invoke() == false)
+        {
+            throw new InvalidOperationException(AccessPointGate.BlockedText);
+        }
+
         await DisposeAsync().ConfigureAwait(false);
         MobileHubTiming settings = timing ?? MobileHubTiming.Default;
 

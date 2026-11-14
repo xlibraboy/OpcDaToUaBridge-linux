@@ -85,6 +85,25 @@ public sealed class AuthPolicyTests
     public void RequiredRole_MatchesTheEndpointTable(string method, string path, UserRole expected) =>
         Assert.Equal(expected, AuthPolicy.RequiredRole(method, path));
 
+    [Theory]
+    [InlineData("POST", "/api/logic/blocks")]
+    [InlineData("DELETE", "/api/logic/blocks/6c1d1a5e-2a7b-4a3f-9a1f-8f5f5c2b7d10")]
+    [InlineData("POST", "/api/logic/tagsources")]
+    [InlineData("DELETE", "/api/logic/tagsources/DRYEND")]
+    public void LogicAuthoringWrites_AreEnforcedEvenForTrustedHmi(string method, string path)
+    {
+        Assert.True(AuthPolicy.TryEnforcedRole(method, path, out UserRole role));
+        Assert.Equal(UserRole.Engineer, role);
+    }
+
+    [Theory]
+    [InlineData("GET", "/api/logic")]
+    [InlineData("GET", "/api/logic/state")]
+    [InlineData("POST", "/api/logic/notes")]
+    [InlineData("GET", "/api/hmi/tags")]
+    public void LogicReadsAndOperatorNotes_StayOnTheHmiSurface(string method, string path) =>
+        Assert.False(AuthPolicy.TryEnforcedRole(method, path, out _));
+
     [Fact]
     public void RoleHierarchy_IsOrdered()
     {

@@ -6,21 +6,24 @@ namespace OpcBridge.Mobile;
 public partial class App : Application
 {
     private readonly BridgeCoordinator coordinator_;
+    private readonly AccessPointGate accessPointGate_;
     private readonly AppShell shell_;
     private bool signedIn_;
 
-    public App(BridgeCoordinator coordinator)
+    public App(BridgeCoordinator coordinator, AccessPointGate accessPointGate)
     {
         InitializeComponent();
         ThemeManager.Apply();
         RequestedThemeChanged += OnRequestedThemeChanged;
         coordinator_ = coordinator;
+        accessPointGate_ = accessPointGate;
+        accessPointGate_.Load();
         coordinator.Load();
         shell_ = new AppShell();
         MainPage = shell_;
         // The shell starts on the sign-in page, so the first rule evaluation only records
         // where the app already is.
-        signedIn_ = MobileAccess.IsGranted(coordinator_.Active);
+        signedIn_ = AccessGranted();
         coordinator_.Changed += OnCoordinatorChanged;
     }
 
@@ -41,7 +44,7 @@ public partial class App : Application
     /// </summary>
     private void ApplyAccessRule()
     {
-        bool signedIn = MobileAccess.IsGranted(coordinator_.Active);
+        bool signedIn = AccessGranted();
         if (signedIn == signedIn_)
         {
             return;
@@ -49,6 +52,18 @@ public partial class App : Application
 
         signedIn_ = signedIn;
         _ = NavigateAsync(signedIn ? "//logic" : "//login");
+    }
+
+    /// <summary>
+    /// A bridge account opens the tabs only once the phone has a plant AP provisioned (or the
+    /// operator is in the local read-only offline view). An unprovisioned account stays on Sign
+    /// in so an Engineer/Admin can assign the AP; the bridge data itself is gated separately.
+    /// </summary>
+    private bool AccessGranted()
+    {
+        BridgeConnection? active = coordinator_.Active;
+        return MobileAccess.IsGranted(active)
+            && (accessPointGate_.Binding is not null || active?.IsOfflineViewer == true);
     }
 
     private async Task NavigateAsync(string route)

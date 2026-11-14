@@ -23,17 +23,24 @@ public sealed class BridgeCoordinator : IDisposable
     private readonly Action<Action> post_;
     private readonly MultiBridgeTagCache tags_;
     private readonly IMobileStore store_;
+    private readonly AccessPointGate? accessPointGate_;
 
     public BridgeCoordinator(
         IBridgeSettings settings,
         MultiBridgeTagCache? tags = null,
         Action<Action>? post = null,
-        IMobileStore? store = null)
+        IMobileStore? store = null,
+        AccessPointGate? accessPointGate = null)
     {
         settings_ = settings;
         tags_ = tags ?? new MultiBridgeTagCache();
         store_ = store ?? new MemoryMobileStore();
         post_ = post ?? (action => action());
+        accessPointGate_ = accessPointGate;
+        if (accessPointGate_ is not null)
+        {
+            accessPointGate_.Changed += OnAccessPointChanged;
+        }
     }
 
     /// <summary>Raised on the posting thread when the list, the active bridge or a state changes.</summary>
@@ -76,6 +83,15 @@ public sealed class BridgeCoordinator : IDisposable
     /// </summary>
     public async Task<MobileResult<BridgeConnection>> AddOrConnectAsync(string host, string? name, CancellationToken cancellationToken)
     {
+        // A phone with no access point provisioned may still find and sign in to a bridge on
+        // the plant network; that session is how an Engineer/Admin provisions the AP. A bound
+        // phone may only probe while the bound BSSID is the one it is on.
+        if (accessPointGate_ is { Binding: not null, IsOnlineAllowed: false })
+        {
+            return MobileResult<BridgeConnection>.Fail(
+                "connect to the plant access point first — Settings ▸ Plant Wi-Fi");
+        }
+
         // The sweep is network-bound and must not share the UI thread with the page that is
         // waiting for it; the coordinator returns to the caller's context after the probe.
         string? url = await Task.Run(
@@ -121,7 +137,19 @@ public sealed class BridgeCoordinator : IDisposable
     /// <summary>Connects the remembered bridge on start-up, when it is not connected yet.</summary>
     public async Task ConnectActiveAsync(CancellationToken cancellationToken)
     {
-        if (Active is not null && !Active.IsConnected)
+        if (Active is null)
+        {
+            return;
+        }
+
+        if (accessPointGate_ is { IsOnlineAllowed: false })
+        {
+            await Active.SuspendForAccessPointAsync(AccessPointGate.BlockedText);
+            RaiseChanged();
+            return;
+        }
+
+        if (!Active.IsConnected)
         {
             await Active.ConnectAsync(cancellationToken);
         }
@@ -157,6 +185,11 @@ public sealed class BridgeCoordinator : IDisposable
 
     public void Dispose()
     {
+        if (accessPointGate_ is not null)
+        {
+            accessPointGate_.Changed -= OnAccessPointChanged;
+        }
+
         foreach (BridgeConnection connection in Bridges)
         {
             connection.Dispose();
@@ -168,10 +201,65 @@ public sealed class BridgeCoordinator : IDisposable
 
     private BridgeConnection NewConnection(SavedBridge bridge)
     {
-        BridgeConnection connection = new(bridge, tags_, post_, store_);
+        BridgeConnection connection = new(bridge, tags_, post_, store_, accessPointGate_);
         connection.Changed += RaiseChanged;
         connection.TagValuesChanged += RaiseTagValuesChanged;
         return connection;
+    }
+
+    /// <summary>
+    /// The phone's Wi-Fi changed. Leaving the bound AP closes the live link immediately;
+    /// rejoining it brings the remembered bridge back without waiting for the operator.
+    /// </summary>
+    private void OnAccessPointChanged()
+    {
+        post_(() =>
+        {
+            BridgeConnection? active = Active;
+            if (active is not null)
+            {
+                if (accessPointGate_ is { IsOnlineAllowed: false })
+                {
+                    _ = SuspendActiveAsync(active);
+                }
+                else if (!active.IsConnected)
+                {
+                    _ = ReconnectActiveAsync(active);
+                }
+            }
+
+            RaiseChanged();
+        });
+    }
+
+    private async Task SuspendActiveAsync(BridgeConnection connection)
+    {
+        try
+        {
+            await connection.SuspendForAccessPointAsync(AccessPointGate.BlockedText);
+        }
+        catch (Exception)
+        {
+            // The link is already gone; the stored structure stays on screen and the next
+            // change reapplies the gate.
+        }
+    }
+
+    private async Task ReconnectActiveAsync(BridgeConnection connection)
+    {
+        if (!ReferenceEquals(Active, connection))
+        {
+            return;
+        }
+
+        try
+        {
+            await connection.ConnectAsync(CancellationToken.None);
+        }
+        catch (Exception)
+        {
+            // A reconnect that fails leaves the offline banner in place.
+        }
     }
 
     private void Persist()

@@ -1,0 +1,237 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:theme="clr-namespace:OpcBridge.Mobile"
+             x:Class="OpcBridge.Mobile.Views.AccessPointPage"
+             Title="Plant Wi-Fi"
+             Shell.NavBarIsVisible="False"
+             Shell.TabBarIsVisible="False"
+             BackgroundColor="{theme:ThemeColor PageBg}">
+    <ScrollView>
+        <VerticalStackLayout Padding="16,4,16,12" Spacing="12">
+            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10" Padding="0,2,0,4">
+                <Border Style="{StaticResource IconActionBorder}"
+                        VerticalOptions="Center"
+                        SemanticProperties.Description="Back to Settings">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnBackClicked" />
+                    </Border.GestureRecognizers>
+                    <Image Source="{theme:ThemeIcon icon_chevron_left}"
+                           WidthRequest="18" HeightRequest="18"
+                           HorizontalOptions="Center" VerticalOptions="Center" />
+                </Border>
+                <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                    <Label Text="Plant Wi-Fi" FontSize="22" FontAttributes="Bold" />
+                    <HorizontalStackLayout Spacing="5" VerticalOptions="Center">
+                        <BoxView x:Name="statusDot" WidthRequest="6" HeightRequest="6"
+                                 CornerRadius="3" Color="{theme:ThemeColor MutedColor}"
+                                 VerticalOptions="Center" />
+                        <Label x:Name="statusLabel" Text="not bound"
+                               FontSize="10.5" TextColor="{theme:ThemeColor MutedColor}"
+                               MaxLines="1" LineBreakMode="TailTruncation"
+                               VerticalOptions="Center" />
+                    </HorizontalStackLayout>
+                </VerticalStackLayout>
+                <Border x:Name="scanButton"
+                        Grid.Column="2"
+                        Style="{StaticResource IconActionBorder}"
+                        SemanticProperties.Description="Scan for access points"
+                        VerticalOptions="Center">
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnScanClicked" />
+                    </Border.GestureRecognizers>
+                    <Image Source="{theme:ThemeIcon icon_refresh}"
+                           WidthRequest="16" HeightRequest="16"
+                           HorizontalOptions="Center" VerticalOptions="Center" />
+                </Border>
+            </Grid>
+
+            <Label x:Name="messageLabel" IsVisible="False"
+                   FontSize="10.5" TextColor="{theme:ThemeColor BadColor}"
+                   LineBreakMode="WordWrap" />
+
+            <Border Style="{StaticResource CardBorder}">
+                <VerticalStackLayout Spacing="10">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <Label Text="BOUND ACCESS POINT" Style="{StaticResource UppercaseLabel}"
+                               VerticalOptions="Center" />
+                        <Border x:Name="boundBadge"
+                                Grid.Column="1"
+                                BackgroundColor="{theme:ThemeColor SurfaceAltColor}"
+                                StrokeThickness="0"
+                                StrokeShape="RoundRectangle 5"
+                                HeightRequest="18"
+                                Padding="6,0"
+                                VerticalOptions="Center">
+                            <Label x:Name="boundBadgeLabel" Text="NOT BOUND"
+                                   Style="{StaticResource BadgeLabel}"
+                                   FontFamily="monospace" FontSize="8"
+                                   FontAttributes="Bold"
+                                   TextColor="{theme:ThemeColor MutedColor}" />
+                        </Border>
+                    </Grid>
+                    <Border Style="{StaticResource FieldBorder}" Padding="12,0">
+                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                            <Image Source="{theme:ThemeIcon icon_lock}"
+                                   WidthRequest="14" HeightRequest="14"
+                                   VerticalOptions="Center" />
+                            <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Center">
+                                <Label x:Name="boundSsidLabel" Text="Not provisioned"
+                                       FontSize="13" FontAttributes="Bold"
+                                       MaxLines="1" LineBreakMode="TailTruncation" />
+                                <Label x:Name="boundBssidLabel" Text="Engineer/Admin setup required"
+                                       FontFamily="monospace" FontSize="9.5"
+                                       TextColor="{theme:ThemeColor MutedColor}"
+                                       MaxLines="1" LineBreakMode="TailTruncation" />
+                            </VerticalStackLayout>
+                            <Image x:Name="boundCheck"
+                                   Grid.Column="2"
+                                   Source="{theme:ThemeIcon icon_check}"
+                                   WidthRequest="14" HeightRequest="14"
+                                   IsVisible="False"
+                                   VerticalOptions="Center" />
+                        </Grid>
+                    </Border>
+                    <Label x:Name="boundNoteLabel"
+                           Text="The bridge link may only run on this BSSID. Any other Wi-Fi keeps the app offline."
+                           FontSize="10.5" TextColor="{theme:ThemeColor MutedColor}"
+                           LineBreakMode="WordWrap" />
+                    <Button x:Name="connectBoundButton" Text="Connect"
+                            Style="{StaticResource SecondaryButton}"
+                            HeightRequest="38" IsVisible="False"
+                            Clicked="OnConnectBoundClicked" />
+                    <Button x:Name="forgetButton" Text="Forget current binding"
+                            Style="{StaticResource SecondaryButton}"
+                            HeightRequest="38" IsVisible="False"
+                            Clicked="OnForgetClicked" />
+                </VerticalStackLayout>
+            </Border>
+
+            <Border x:Name="provisioningCard" Style="{StaticResource CardBorder}">
+                <VerticalStackLayout Spacing="10">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <Label Text="Provisioning" Style="{StaticResource SectionTitleLabel}"
+                               VerticalOptions="Center" />
+                        <Border Grid.Column="1" Style="{StaticResource MetaBadgeBorder}"
+                                VerticalOptions="Center">
+                            <Label Text="ADMIN" Style="{StaticResource BadgeLabel}"
+                                   FontFamily="monospace" FontSize="8"
+                                   FontAttributes="Bold"
+                                   TextColor="{theme:ThemeColor MutedColor}" />
+                        </Border>
+                    </Grid>
+                    <Label x:Name="provisioningNote"
+                           Text="Sign in with an Engineer or Admin bridge account to provision the plant access point."
+                           Style="{StaticResource MetaLabel}" LineBreakMode="WordWrap" />
+                    <Button x:Name="provisionAccountButton" Text="Back to sign in"
+                            Style="{StaticResource SecondaryButton}"
+                            HeightRequest="38"
+                            Clicked="OnProvisioningAccountClicked" />
+                </VerticalStackLayout>
+            </Border>
+
+            <Border x:Name="selectCard" Style="{StaticResource CardBorder}">
+                <VerticalStackLayout Spacing="10">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <Label Text="Select access point" Style="{StaticResource SectionTitleLabel}"
+                               VerticalOptions="Center" />
+                        <HorizontalStackLayout Grid.Column="1" Spacing="8" VerticalOptions="Center">
+                            <Label x:Name="foundLabel" Text=""
+                                   FontSize="9.5" TextColor="{theme:ThemeColor MutedColor}"
+                                   VerticalOptions="Center" />
+                            <Border Style="{StaticResource SmallActionBorder}"
+                                    SemanticProperties.Description="Scan for access points">
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnScanClicked" />
+                                </Border.GestureRecognizers>
+                                <Image Source="{theme:ThemeIcon icon_refresh}"
+                                       WidthRequest="13" HeightRequest="13"
+                                       HorizontalOptions="Center" VerticalOptions="Center" />
+                            </Border>
+                        </HorizontalStackLayout>
+                    </Grid>
+                    <Label Text="Scanning asks for nearby-Wi-Fi access. Results show each BSSID separately."
+                           Style="{StaticResource MetaLabel}" LineBreakMode="WordWrap" />
+                    <VerticalStackLayout x:Name="networkRows" Spacing="8" />
+                    <Label x:Name="emptyNetworksLabel"
+                           Text="Tap scan to find the plant access point."
+                           FontSize="10.5" TextColor="{theme:ThemeColor MutedColor}"
+                           LineBreakMode="WordWrap" />
+                    <ActivityIndicator x:Name="scanSpinner" WidthRequest="18" HeightRequest="18"
+                                       Color="{theme:ThemeColor GoodColor}"
+                                       IsRunning="False" IsVisible="False"
+                                       HorizontalOptions="Start" />
+                </VerticalStackLayout>
+            </Border>
+
+            <Border x:Name="credentialsCard" Style="{StaticResource CardBorder}" IsVisible="False">
+                <VerticalStackLayout Spacing="10">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <Label Text="This access point" Style="{StaticResource SectionTitleLabel}"
+                               VerticalOptions="Center" />
+                        <Border Grid.Column="1" Style="{StaticResource MetaBadgeBorder}"
+                                VerticalOptions="Center">
+                            <Label x:Name="securityLabel" Text="WPA2"
+                                   Style="{StaticResource BadgeLabel}"
+                                   FontFamily="monospace" FontSize="8"
+                                   FontAttributes="Bold"
+                                   TextColor="{theme:ThemeColor MutedColor}" />
+                        </Border>
+                    </Grid>
+                    <VerticalStackLayout Spacing="1">
+                        <Label x:Name="selectedSsidLabel" FontSize="13" FontAttributes="Bold" />
+                        <Label x:Name="selectedBssidLabel" FontFamily="monospace" FontSize="9.5"
+                               TextColor="{theme:ThemeColor MutedColor}" />
+                    </VerticalStackLayout>
+                    <Label x:Name="credentialNote" Style="{StaticResource MetaLabel}"
+                           LineBreakMode="WordWrap" />
+                    <Border x:Name="passwordField" Style="{StaticResource FieldBorder}" Padding="12,0">
+                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9">
+                            <Image Source="{theme:ThemeIcon icon_lock}"
+                                   WidthRequest="14" HeightRequest="14"
+                                   VerticalOptions="Center" />
+                            <Entry x:Name="passwordEntry" Grid.Column="1"
+                                   BackgroundColor="Transparent"
+                                   Placeholder="Wi-Fi password"
+                                   IsPassword="True" />
+                            <Border Grid.Column="2" WidthRequest="28" HeightRequest="28"
+                                    BackgroundColor="Transparent" StrokeThickness="0"
+                                    SemanticProperties.Description="Show or hide the password"
+                                    VerticalOptions="Center">
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Tapped="OnRevealPasswordClicked" />
+                                </Border.GestureRecognizers>
+                                <Image x:Name="revealIcon"
+                                       Source="{theme:ThemeIcon icon_eye}"
+                                       WidthRequest="14" HeightRequest="14"
+                                       HorizontalOptions="Center" VerticalOptions="Center" />
+                            </Border>
+                        </Grid>
+                    </Border>
+                    <Button x:Name="saveButton" Text="Save &amp; connect"
+                            Style="{StaticResource PrimaryButton}"
+                            Clicked="OnSaveClicked" />
+                    <HorizontalStackLayout Spacing="7">
+                        <ActivityIndicator x:Name="saveSpinner" WidthRequest="14" HeightRequest="14"
+                                           Color="{theme:ThemeColor GoodColor}"
+                                           IsRunning="False" IsVisible="False"
+                                           VerticalOptions="Center" />
+                        <Label x:Name="actionMessageLabel" Text=""
+                               FontSize="10" TextColor="{theme:ThemeColor MutedColor}"
+                               LineBreakMode="WordWrap" VerticalOptions="Center" />
+                    </HorizontalStackLayout>
+                </VerticalStackLayout>
+            </Border>
+
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="7" Padding="0,2,0,0">
+                <Image Source="{theme:ThemeIcon icon_shield_check}"
+                       WidthRequest="13" HeightRequest="13"
+                       VerticalOptions="Start" Margin="0,2,0,0" />
+                <Label Grid.Column="1"
+                       Text="Only the bound BSSID may carry bridge traffic. Everywhere else the app stays offline."
+                       FontSize="9.5" TextColor="{theme:ThemeColor MutedColor}"
+                       LineBreakMode="WordWrap" />
+            </Grid>
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

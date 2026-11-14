@@ -15,6 +15,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Live data is gated on one bound plant access point, provisioned by a control user.**
+  Settings gained **Plant Wi-Fi**: after signing in with an **Engineer or Admin** bridge
+  account — the same `users.json` roles that control the Logic web page — the control user
+  scans nearby networks, picks the access point whose BSSID the phone may use, enters its
+  passphrase, and **Save & connect** binds that exact MAC (each band's BSSID is its own row)
+  and joins it through Android's app-scoped Wi-Fi request. The page then locks: Operator,
+  Viewer and signed-out users see the assigned AP read-only and can only **Connect** —
+  scanning, rebinding, forgetting and the passphrase field stay behind the control-user roles.
+  The passphrase lives in the phone's secure storage, never in the settings JSON. Sign in now
+  opens behind an **online locked** gate when the phone is not on that BSSID, with **Connect**,
+  **Access point details** and **Continue offline**; leaving the access point closes the live
+  hub at once and drops every reading and evaluated state to no data, while rejoining it
+  reconnects the remembered bridge automatically. Every bridge request consults the gate before
+  opening a socket, so a phone on another network can read its stored structure but cannot
+  reach a bridge. An unprovisioned phone may sign in to a bridge for exactly this setup step;
+  no bridge data is readable until the BSSID matches.
+- **The Logic web page shares the bridge's control users.** It now opens with the same
+  `users.json` sign-in as the mobile viewer: Operators and Viewers get the **Result** tab
+  read-only (the block rail, live verdict, checkpoints and tag details), while Engineers and
+  Admins keep the **Editor** and **Tags** tabs. The Logic authoring writes (`blocks`,
+  `tagsources`) are enforced server-side at Engineer, so an Operator cannot save by calling the
+  API directly; the logic reads stay on the HMI-trusted surface so the phone can still sync its
+  offline dataset before sign-in.
 - **Checkpoint usage on the block rail, and a full checkpoint sheet.** The block screen's
   checkpoint rail now keeps **CHECKPOINTS**, the count, a remembered **Usage** toggle and an expand
   control on a header line, with the dots on their own full-width row so longer networks no longer

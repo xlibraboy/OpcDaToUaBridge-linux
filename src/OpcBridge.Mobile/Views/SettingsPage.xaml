@@ -44,6 +44,50 @@
             </VerticalStackLayout>
 
             <Border Style="{StaticResource CardBorder}">
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Tapped="OnAccessPointTapped" />
+                </Border.GestureRecognizers>
+                <VerticalStackLayout Spacing="10">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <Label Text="Plant Wi-Fi" Style="{StaticResource SectionTitleLabel}"
+                               VerticalOptions="Center" />
+                        <Border x:Name="accessPointBadge"
+                                Grid.Column="1"
+                                Style="{StaticResource MetaBadgeBorder}"
+                                VerticalOptions="Center">
+                            <Label x:Name="accessPointBadgeLabel" Text="NOT BOUND"
+                                   Style="{StaticResource BadgeLabel}"
+                                   FontFamily="monospace" FontSize="8"
+                                   FontAttributes="Bold"
+                                   TextColor="{theme:ThemeColor MutedColor}" />
+                        </Border>
+                    </Grid>
+                    <Border Style="{StaticResource SubtleBorder}">
+                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10">
+                            <Image Source="{theme:ThemeIcon icon_wifi}"
+                                   WidthRequest="15" HeightRequest="15"
+                                   VerticalOptions="Center" />
+                            <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Center">
+                                <Label x:Name="accessPointSsidLabel" Text="Not provisioned"
+                                       FontSize="12" FontAttributes="Bold"
+                                       MaxLines="1" LineBreakMode="TailTruncation" />
+                                <Label x:Name="accessPointBssidLabel" Text="Engineer/Admin setup required"
+                                       FontFamily="monospace" FontSize="8.5"
+                                       TextColor="{theme:ThemeColor MutedColor}"
+                                       MaxLines="1" LineBreakMode="TailTruncation" />
+                            </VerticalStackLayout>
+                            <Image Grid.Column="2"
+                                   Source="{theme:ThemeIcon icon_chevron_right}"
+                                   WidthRequest="15" HeightRequest="15"
+                                   VerticalOptions="Center" />
+                        </Grid>
+                    </Border>
+                    <Label Text="Live data only works on the bound access point."
+                           Style="{StaticResource MetaLabel}" LineBreakMode="WordWrap" />
+                </VerticalStackLayout>
+            </Border>
+
+            <Border Style="{StaticResource CardBorder}">
                 <VerticalStackLayout Spacing="10">
                     <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
                         <Label Text="Bridges" Style="{StaticResource SectionTitleLabel}" />
@@ -139,7 +183,7 @@
                                    TextColor="{theme:ThemeColor MutedColor}" />
                         </Border>
                     </Grid>
-                    <Label Text="The phone must be on the plant network."
+                    <Label Text="The phone must be on the bound plant access point."
                            Style="{StaticResource MetaLabel}" />
                     <Border Style="{StaticResource FieldBorder}">
                         <Grid ColumnDefinitions="Auto,*">

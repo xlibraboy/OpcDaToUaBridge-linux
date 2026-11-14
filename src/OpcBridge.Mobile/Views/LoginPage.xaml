@@ -116,6 +116,46 @@
                 </VerticalStackLayout>
             </Border>
 
+            <Border Style="{StaticResource CardBorder}">
+                <VerticalStackLayout Spacing="10">
+                    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                        <Label Text="PLANT WI-FI" Style="{StaticResource UppercaseLabel}"
+                               VerticalOptions="Center" />
+                        <Border Grid.Column="1" Style="{StaticResource MetaBadgeBorder}"
+                                VerticalOptions="Center">
+                            <Label x:Name="wifiStateLabel" Text="NOT BOUND"
+                                   Style="{StaticResource BadgeLabel}"
+                                   FontFamily="monospace" FontSize="8"
+                                   FontAttributes="Bold"
+                                   TextColor="{theme:ThemeColor MutedColor}" />
+                        </Border>
+                    </Grid>
+                    <Border Style="{StaticResource FieldBorder}">
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Tapped="OnAccessPointTapped" />
+                        </Border.GestureRecognizers>
+                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="9" Padding="12,0">
+                            <Image Source="{theme:ThemeIcon icon_wifi}"
+                                   WidthRequest="15" HeightRequest="15"
+                                   VerticalOptions="Center" />
+                            <VerticalStackLayout Grid.Column="1" Spacing="1" VerticalOptions="Center">
+                                <Label x:Name="wifiNameLabel" Text="Not provisioned"
+                                       FontSize="13" FontAttributes="Bold"
+                                       MaxLines="1" LineBreakMode="TailTruncation" />
+                                <Label x:Name="wifiDetailLabel" Text="Engineer/Admin setup required"
+                                       FontFamily="monospace" FontSize="9.5"
+                                       TextColor="{theme:ThemeColor MutedColor}"
+                                       MaxLines="1" LineBreakMode="TailTruncation" />
+                            </VerticalStackLayout>
+                            <Image Grid.Column="2"
+                                   Source="{theme:ThemeIcon icon_chevron_right}"
+                                   WidthRequest="15" HeightRequest="15"
+                                   VerticalOptions="Center" />
+                        </Grid>
+                    </Border>
+                </VerticalStackLayout>
+            </Border>
+
             <Border x:Name="addBridgeCard"
                     Style="{StaticResource CardBorder}"
                     IsVisible="False">
@@ -248,5 +288,6 @@
                    LineBreakMode="WordWrap" />
         </Grid>
         <views:BridgePickerSheet x:Name="bridgeSheet" Grid.Row="0" Grid.RowSpan="2" />
+        <views:AccessPointGateView x:Name="accessPointGate" Grid.Row="0" Grid.RowSpan="2" />
     </Grid>
 </ContentPage>

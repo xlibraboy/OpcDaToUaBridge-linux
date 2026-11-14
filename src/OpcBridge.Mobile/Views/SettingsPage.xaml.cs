@@ -6,12 +6,14 @@ namespace OpcBridge.Mobile.Views;
 public partial class SettingsPage : ContentPage
 {
     private readonly BridgeCoordinator coordinator_;
+    private readonly AccessPointGate accessPointGate_;
     private CancellationTokenSource? connectCts_;
 
-    public SettingsPage(BridgeCoordinator coordinator)
+    public SettingsPage(BridgeCoordinator coordinator, AccessPointGate accessPointGate)
     {
         InitializeComponent();
         coordinator_ = coordinator;
+        accessPointGate_ = accessPointGate;
         BindableLayout.SetItemsSource(bridgesList, coordinator_.Bridges);
         aboutVersionLabel.Text = AppInfo.Current.VersionString;
         aboutTextLabel.Text = "OpcBridge Logic · plant logic viewer for the bridge HMI.";
@@ -25,8 +27,11 @@ public partial class SettingsPage : ContentPage
         // Follow the coordinator only while this page is the one on screen.
         coordinator_.Changed -= OnChanged;
         coordinator_.Changed += OnChanged;
+        accessPointGate_.Changed -= OnAccessPointChanged;
+        accessPointGate_.Changed += OnAccessPointChanged;
         ThemeManager.Changed -= OnThemeChanged;
         ThemeManager.Changed += OnThemeChanged;
+        accessPointGate_.Refresh();
         Repaint();
         PaintThemeSelection();
     }
@@ -34,11 +39,14 @@ public partial class SettingsPage : ContentPage
     protected override void OnDisappearing()
     {
         coordinator_.Changed -= OnChanged;
+        accessPointGate_.Changed -= OnAccessPointChanged;
         ThemeManager.Changed -= OnThemeChanged;
         base.OnDisappearing();
     }
 
     private void OnChanged() => MainThread.BeginInvokeOnMainThread(Repaint);
+
+    private void OnAccessPointChanged() => MainThread.BeginInvokeOnMainThread(Repaint);
 
     private void OnThemeChanged() => MainThread.BeginInvokeOnMainThread(() =>
     {
@@ -78,6 +86,7 @@ public partial class SettingsPage : ContentPage
 
     private void Repaint()
     {
+        RepaintAccessPoint();
         BridgeConnection? active = coordinator_.Active;
         bridgesEmptyLabel.IsVisible = coordinator_.Bridges.Count == 0;
         bridgesCountLabel.Text = coordinator_.Bridges.Count + " saved";
@@ -142,6 +151,36 @@ public partial class SettingsPage : ContentPage
         BindableLayout.SetItemsSource(outboxList, items);
         outboxEmptyLabel.IsVisible = items.Count == 0;
     }
+
+    private void RepaintAccessPoint()
+    {
+        AccessPointGateStatus status = accessPointGate_.Status;
+        accessPointSsidLabel.Text = status.Bound?.DisplayName ?? "Not provisioned";
+        accessPointBssidLabel.Text = status.Bound is null
+            ? "Engineer/Admin setup required"
+            : status.Bound.BssidText;
+        accessPointBadgeLabel.Text = status.StateText.ToUpperInvariant();
+
+        string key = status.State switch
+        {
+            AccessPointGateState.ConnectedToBound => "Good",
+            AccessPointGateState.ConnectedToOther => "Bad",
+            AccessPointGateState.PermissionRequired or AccessPointGateState.Unverifiable => "Warn",
+            AccessPointGateState.NotBound => "Muted",
+            _ => "Bad"
+        };
+        accessPointBadgeLabel.TextColor = ThemePalette.Get(key + "Color");
+        accessPointBadge.BackgroundColor = key == "Muted"
+            ? ThemePalette.Get("SurfaceAltColor")
+            : ThemePalette.Get(key + "BgColor");
+        accessPointBadge.Stroke = key == "Muted"
+            ? null
+            : new SolidColorBrush(ThemePalette.Get(key + "BorderColor"));
+        accessPointBadge.StrokeThickness = key == "Muted" ? 0 : 1;
+    }
+
+    private async void OnAccessPointTapped(object? sender, TappedEventArgs e) =>
+        await Shell.Current.GoToAsync("accesspoint");
 
     private static Color KeyColor(string key) => key switch
     {

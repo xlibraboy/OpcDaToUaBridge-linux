@@ -85,6 +85,54 @@
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* The page's own display rules (.btn, .pill, ...) must not re-show an element that the
+   hidden attribute took out of the flow. */
+[hidden] { display: none !important; }
+
+/* The Logic page is the control surface and carries the bridge session. It stays covered
+   until a signed-in Engineer/Admin is established, so an Operator account can read the
+   plant on the phone but cannot open the authoring page. */
+body.auth-checking .topbar,
+body.auth-checking .shell { visibility: hidden; }
+
+.auth-gate {
+  position: fixed; inset: 0; z-index: 500; display: flex; align-items: center;
+  justify-content: center; padding: 24px; background: var(--bg); overflow-y: auto;
+}
+.auth-gate[hidden] { display: none; }
+.auth-card {
+  width: min(420px, 100%); display: flex; flex-direction: column; gap: 12px;
+  padding: 24px; background: var(--panel); border: 1px solid var(--border);
+  border-radius: 14px; box-shadow: 0 18px 50px rgba(0, 0, 0, .18);
+}
+.auth-eyebrow {
+  color: var(--muted); font-size: var(--fs-micro); font-weight: 600;
+  letter-spacing: .08em; text-transform: uppercase;
+}
+.auth-title { font-size: 22px; font-weight: 700; line-height: 1.2; }
+.auth-copy { color: var(--muted); font-size: var(--fs-body); line-height: 1.45; }
+.auth-field {
+  display: flex; flex-direction: column; gap: 4px; margin-top: 2px;
+  color: var(--muted); font-size: var(--fs-micro); font-weight: 600;
+  letter-spacing: .06em; text-transform: uppercase;
+}
+.auth-field input {
+  min-height: 42px; padding: 8px 10px; border: 1px solid var(--border);
+  border-radius: 8px; background: var(--panel2); color: var(--text);
+  font: inherit; font-size: var(--fs-body); letter-spacing: 0; text-transform: none;
+}
+.auth-field input:focus {
+  outline: 2px solid var(--focus); outline-offset: 1px; border-color: transparent;
+}
+.auth-msg { min-height: 16px; color: var(--bad); font-size: var(--fs-micro); }
+.auth-msg.ok { color: var(--good); }
+.auth-submit { width: 100%; justify-content: center; }
+.auth-denied {
+  display: flex; flex-direction: column; gap: 10px; color: var(--muted);
+  font-size: var(--fs-body); line-height: 1.45;
+}
+.auth-denied[hidden] { display: none; }
+
 body {
   background: var(--bg);
   color: var(--text);

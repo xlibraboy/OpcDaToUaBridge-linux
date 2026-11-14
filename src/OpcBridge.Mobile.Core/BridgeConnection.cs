@@ -18,6 +18,7 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
 
     private readonly MobileHubClient hub_ = new();
     private readonly LogicApiClient api_ = new();
+    private readonly AccessPointGate? accessPointGate_;
     private readonly MultiBridgeTagCache tags_;
     private readonly IMobileStore store_;
     private readonly Action<Action> post_;
@@ -31,12 +32,23 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
     private DateTime nextAutoReconnectUtc_;
     private CancellationTokenSource? latencyCts_;
 
-    public BridgeConnection(SavedBridge bridge, MultiBridgeTagCache tags, Action<Action>? post = null, IMobileStore? store = null)
+    public BridgeConnection(
+        SavedBridge bridge,
+        MultiBridgeTagCache tags,
+        Action<Action>? post = null,
+        IMobileStore? store = null,
+        AccessPointGate? accessPointGate = null)
     {
         Bridge = bridge;
+        accessPointGate_ = accessPointGate;
         tags_ = tags;
         store_ = store ?? new MemoryMobileStore();
         post_ = post ?? (action => action());
+        api_.CanGoOnline = () => OnlineAllowed;
+        // Sign-in is the control-user door: it is how an Engineer/Admin provisions or repairs
+        // the AP, even when the phone is currently off the bound network. No data is readable
+        // until the gate opens, so this cannot become a live-data back door.
+        api_.CanAuthenticate = () => true;
         Outbox = new MobileOutbox(store_, Bridge.Id);
 
         hub_.LogicStateChanged += snapshot => post_(() =>
@@ -109,6 +121,9 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
     public event Action<IReadOnlyList<HmiValueDelta>>? TagValuesChanged;
 
     public SavedBridge Bridge { get; }
+
+    /// <summary>True when a gate is installed and the phone is on the bound plant access point.</summary>
+    public bool OnlineAllowed => accessPointGate_?.IsOnlineAllowed ?? true;
 
     public LogicApiClient Api => api_;
 
@@ -244,6 +259,12 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
     /// </summary>
     public async Task ConnectAsync(CancellationToken cancellationToken)
     {
+        if (!OnlineAllowed)
+        {
+            await SuspendForAccessPointAsync(AccessPointGate.BlockedText);
+            return;
+        }
+
         // A bridge switch connects the incoming bridge while the sign-in screen's own appearance
         // may connect the same one; one client means one connect at a time.
         await connectGate_.WaitAsync(cancellationToken);
@@ -301,6 +322,12 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
     /// </summary>
     public async Task RefreshAsync(CancellationToken cancellationToken)
     {
+        if (!OnlineAllowed)
+        {
+            await SuspendForAccessPointAsync(AccessPointGate.BlockedText);
+            return;
+        }
+
         BeginSync();
         try
         {
@@ -412,6 +439,11 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
                 "the offline view is read-only — sign in when the bridge is back to send notes");
         }
 
+        if (!OnlineAllowed)
+        {
+            ApplyAccessPointOffline();
+        }
+
         string trimmed = (text ?? string.Empty).Trim();
         if (trimmed.Length == 0 || trimmed.Length > 500)
         {
@@ -481,6 +513,11 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
                 "the offline view is read-only — sign in when the bridge is back to run actions");
         }
 
+        if (!OnlineAllowed)
+        {
+            ApplyAccessPointOffline();
+        }
+
         if (IsOffline || !IsConnected)
         {
             return EnqueueWrite(
@@ -532,6 +569,12 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
     {
         if (flushing_)
         {
+            return;
+        }
+
+        if (!OnlineAllowed)
+        {
+            await SuspendForAccessPointAsync(AccessPointGate.BlockedText);
             return;
         }
 
@@ -808,7 +851,7 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
         {
             try
             {
-                if (IsConnected && !IsOffline)
+                if (OnlineAllowed && IsConnected && !IsOffline)
                 {
                     await MeasureLatencyOnceAsync(token).ConfigureAwait(false);
                 }
@@ -902,7 +945,7 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
     /// </summary>
     private void TryAutoReconnect()
     {
-        if (!IsActive || autoReconnecting_ || !IsOffline || IsConnected)
+        if (!OnlineAllowed || !IsActive || autoReconnecting_ || !IsOffline || IsConnected)
         {
             return;
         }
@@ -1004,6 +1047,9 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
 
     public async Task<MobileResult<MobileSession>> SignInAsync(string username, string password, CancellationToken cancellationToken)
     {
+        // Sign-in is allowed even while the online gate is shut: the account's role is what
+        // decides whether the AP page may provision, and no live data is read here.
+        api_.SetBaseAddress(Bridge.Url);
         MobileResult<LogicApiClient.SessionResponse> result = await api_.LoginAsync(username, password, cancellationToken);
         if (!result.Ok || result.Value is null)
         {
@@ -1046,6 +1092,28 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
         RaiseChanged();
     }
 
+    /// <summary>
+    /// Ends the live link because the phone left the bound access point. The stored structure
+    /// stays readable, but every reading and evaluated state goes and the banner says why.
+    /// </summary>
+    public async Task SuspendForAccessPointAsync(string reason)
+    {
+        await DisconnectAsync();
+        ApplyAccessPointOffline(reason);
+    }
+
+    /// <summary>Marks the bridge offline without opening a socket on a non-bound network.</summary>
+    private void ApplyAccessPointOffline(string reason = AccessPointGate.BlockedText)
+    {
+        MarkOffline();
+        StatusText = reason;
+        OfflineText = datasetSyncedUtc_ is { } savedUtc
+            ? "offline · " + reason + " · last synced " + savedUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+            : "offline · " + reason;
+        RecomputeSync();
+        RaiseChanged();
+    }
+
     /// <summary>Closes the live link (the coordinator keeps one link open across bridges).</summary>
     public async Task DisconnectAsync()
     {
@@ -1072,7 +1140,7 @@ public sealed partial class BridgeConnection : ObservableObject, IDisposable
     {
         try
         {
-            await hub_.ConnectAsync(Bridge.Url, cancellationToken, null, api_.Cookies);
+            await hub_.ConnectAsync(Bridge.Url, cancellationToken, null, api_.Cookies, () => OnlineAllowed);
             StatusText = LiveText;
             // Reaching the bridge's hub means the link is back. Clear the offline view here
             // as well as in RefreshAsync: a reconnect can follow a state that was marked

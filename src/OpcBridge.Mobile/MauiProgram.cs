@@ -14,6 +14,12 @@ public static class MauiProgram
         builder.UseMauiApp<App>();
 
         builder.Services.AddSingleton<IBridgeSettings, MauiBridgeSettings>();
+        builder.Services.AddSingleton<ISecretStore, MauiSecretStore>();
+        builder.Services.AddSingleton<IAccessPointNetwork, AndroidAccessPointNetwork>();
+        builder.Services.AddSingleton(services => new AccessPointGate(
+            services.GetRequiredService<IBridgeSettings>(),
+            services.GetRequiredService<ISecretStore>(),
+            services.GetRequiredService<IAccessPointNetwork>()));
         // The phone's own copy of every bridge's synced dataset, in a SQLite database beside
         // the app's data. One file survives app restarts and releases.
         builder.Services.AddSingleton<IMobileStore>(_ => new SqliteMobileStore(
@@ -23,12 +29,14 @@ public static class MauiProgram
             services.GetRequiredService<IBridgeSettings>(),
             services.GetRequiredService<MultiBridgeTagCache>(),
             action => MainThread.BeginInvokeOnMainThread(action),
-            services.GetRequiredService<IMobileStore>()));
+            services.GetRequiredService<IMobileStore>(),
+            services.GetRequiredService<AccessPointGate>()));
         builder.Services.AddTransient<LoginPage>();
         builder.Services.AddTransient<LogicPage>();
         builder.Services.AddTransient<LogicBlockPage>();
         builder.Services.AddTransient<ElementsPage>();
         builder.Services.AddTransient<SettingsPage>();
+        builder.Services.AddTransient<AccessPointPage>();
 
 #if ANDROID
         Microsoft.Maui.Handlers.EntryHandler.Mapper.AppendToMapping("PlantField", (handler, _) =>

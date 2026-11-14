@@ -46,6 +46,17 @@ public static class AuthPolicy
         "/api/influx/status"
     };
 
+    /// <summary>
+    /// Authoring writes on the Logic page. Unlike the HMI trust paths these are enforced even
+    /// when <see cref="AuthOptions.TrustHmi"/> is on, because the Logic page is a browser page
+    /// that carries the shared OpcBridge session: only Engineer/Admin may change plant logic.
+    /// </summary>
+    private static readonly (string Path, string? Method, UserRole Role)[] Enforced =
+    {
+        ("/api/logic/blocks", null, UserRole.Engineer),
+        ("/api/logic/tagsources", null, UserRole.Engineer)
+    };
+
     /// <summary>Minimum role per endpoint, checked before the method default. Null method = any method.</summary>
     private static readonly (string Path, string? Method, UserRole Role)[] Overrides =
     {
@@ -66,11 +77,36 @@ public static class AuthPolicy
     public static bool IsHmiPath(string path) => MatchesAny(path, HmiPaths);
 
     /// <summary>
+    /// True when the request is a Logic authoring write that must authenticate even though the
+    /// logic read paths are HMI-trusted.
+    /// </summary>
+    public static bool TryEnforcedRole(string method, string path, out UserRole role)
+    {
+        foreach ((string enforcedPath, string? enforcedMethod, UserRole enforcedRole) in Enforced)
+        {
+            if (IsMatch(path, enforcedPath)
+                && (enforcedMethod is null || string.Equals(method, enforcedMethod, StringComparison.OrdinalIgnoreCase)))
+            {
+                role = enforcedRole;
+                return true;
+            }
+        }
+
+        role = UserRole.None;
+        return false;
+    }
+
+    /// <summary>
     /// Minimum role for a request. Callers must already have established that the
     /// path is neither public nor (with TrustHmi) an HMI path.
     /// </summary>
     public static UserRole RequiredRole(string method, string path)
     {
+        if (TryEnforcedRole(method, path, out UserRole enforced))
+        {
+            return enforced;
+        }
+
         foreach ((string overridePath, string? overrideMethod, UserRole role) in Overrides)
         {
             // Segment-aware: "/api/auth/users" also covers its sub-resources

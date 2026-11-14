@@ -28,11 +28,32 @@ public sealed class LogicApiClient : IDisposable
         PropertyNameCaseInsensitive = true
     };
 
+    private const string NotOnAccessPoint = AccessPointGate.BlockedText;
+
     private readonly CookieContainer cookies_ = new();
     private HttpClient client_ = new();
     private string base_url_ = string.Empty;
 
     public string BaseUrl => base_url_;
+
+    /// <summary>
+    /// Asked before every request. When it answers false (the phone is not on the bound plant
+    /// access point), the call fails before a socket is opened instead of quietly riding
+    /// another network.
+    /// </summary>
+    public Func<bool>? CanGoOnline { get; set; }
+
+    /// <summary>
+    /// Asked before sign-in on a phone that has no access point provisioned yet. This is the
+    /// one deliberate exception to the online gate: an installer may sign in to an
+    /// Engineer/Admin bridge account while standing on the plant network, so the same control
+    /// users can provision the access point. No other call is allowed until the BSSID matches.
+    /// </summary>
+    public Func<bool>? CanAuthenticate { get; set; }
+
+    private bool OnlineAllowed => CanGoOnline?.Invoke() ?? true;
+
+    private bool AuthenticationAllowed => CanAuthenticate?.Invoke() ?? OnlineAllowed;
 
     /// <summary>
     /// The bridge's session cookie, shared with the hub link so a hardened bridge
@@ -94,6 +115,11 @@ public sealed class LogicApiClient : IDisposable
 
     public async Task<MobileResult<LogicNoteDto>> AddNoteAsync(LogicNoteAddRequest request, CancellationToken cancellationToken)
     {
+        if (!OnlineAllowed)
+        {
+            return MobileResult<LogicNoteDto>.Fail(NotOnAccessPoint);
+        }
+
         try
         {
             using HttpResponseMessage response = await client_
@@ -118,6 +144,11 @@ public sealed class LogicApiClient : IDisposable
 
     public async Task<MobileResult<HmiWriteResponse>> WriteAsync(HmiWriteRequest request, CancellationToken cancellationToken)
     {
+        if (!OnlineAllowed)
+        {
+            return MobileResult<HmiWriteResponse>.Fail(NotOnAccessPoint);
+        }
+
         try
         {
             using HttpResponseMessage response = await client_
@@ -152,6 +183,11 @@ public sealed class LogicApiClient : IDisposable
     /// </summary>
     public async Task<MobileResult<int>> MeasureLatencyAsync(CancellationToken cancellationToken)
     {
+        if (!OnlineAllowed)
+        {
+            return MobileResult<int>.Fail(NotOnAccessPoint);
+        }
+
         if (string.IsNullOrWhiteSpace(base_url_))
         {
             return MobileResult<int>.Fail("no bridge address");
@@ -183,6 +219,11 @@ public sealed class LogicApiClient : IDisposable
 
     public async Task<MobileResult<SessionResponse>> LoginAsync(string username, string password, CancellationToken cancellationToken)
     {
+        if (!AuthenticationAllowed)
+        {
+            return MobileResult<SessionResponse>.Fail(NotOnAccessPoint);
+        }
+
         try
         {
             using HttpResponseMessage response = await client_
@@ -211,6 +252,11 @@ public sealed class LogicApiClient : IDisposable
     /// </summary>
     public async Task<MobileResult<bool>> LogoutAsync(CancellationToken cancellationToken)
     {
+        if (!OnlineAllowed)
+        {
+            return MobileResult<bool>.Fail(NotOnAccessPoint);
+        }
+
         try
         {
             using HttpResponseMessage response = await client_
@@ -230,6 +276,11 @@ public sealed class LogicApiClient : IDisposable
 
     private async Task<MobileResult<T>> GetJsonAsync<T>(string path, CancellationToken cancellationToken)
     {
+        if (!OnlineAllowed)
+        {
+            return MobileResult<T>.Fail(NotOnAccessPoint);
+        }
+
         try
         {
             using HttpResponseMessage response = await client_.GetAsync(path, cancellationToken).ConfigureAwait(false);
