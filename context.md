@@ -160,7 +160,7 @@ Endpoints (all in `Program.cs`):
 - `GET /logic` (+ `/logic/app.css`, `/logic/app.js`, `/logic/signalr.min.js`) — the plant-logic web page, served from the assembly's embedded `Assets/logic/*` like the dashboard shell (the shell is a public path in `AuthPolicy`, but the page itself signs in with the bridge session: Operators/Viewers get the Result tab read-only, Engineers/Admins author). The `/api/logic*` reads behind it stay HMI-trusted for the phone's pre-sign-in sync; authoring writes are enforced at Engineer. The page takes its evaluation from the `/hmi` hub's `logic` event through the vendored SignalR client, with the 1 Hz `/api/logic/state` poll as its fallback. The HMI embeds it in its Logic page (see **HMI Logic page** below).
 - `GET /api/values` — current `BridgeState` values
 - `GET /api/dashboard?limit=&sourceId=` — Live Values payload: `values[]` with `{sourceId, itemId, value, timestampUtc, daQuality, isGood, dataType, updateRate}` (dataType + updateRate resolved via `DashboardValues`; `updateRate` = effective ms per tag — per-tag `PollRateMs` wins, else the source default), `valuesTotal`, plus bridge/UA status blocks
-- `GET /api/status` | `/api/diagnostics` — bridge + UA status; diagnostics includes writeQueue stats, uaBandwidth, UA sessions/subscriptions, plus dashboard-facing sections: `runtime` (bridge/DA state, counters), `uaServer` (clients/nodes), `uptimeSeconds`, `mqtt` + `influx` health, `problems` (disconnected/bad-quality tags). Sections are individually guarded (`DiagnosticsSections.Safe`) — one failing section degrades to null instead of 500-ing the payload. Dashboard: Diagnostics tab = health overview; Ops ▸ Sessions tab = per-source/session detail (DA sources, time sync, UA sessions/subs/bandwidth).
+- `GET /api/status` | `/api/diagnostics` — bridge + UA status; diagnostics includes writeQueue stats, uaBandwidth, UA sessions/subscriptions, the live `/hmi` clients (`clients: { total, items[] }`, see **Bridge client presence**), plus dashboard-facing sections: `runtime` (bridge/DA state, counters), `uaServer` (clients/nodes), `uptimeSeconds`, `mqtt` + `influx` health, `problems` (disconnected/bad-quality tags). Sections are individually guarded (`DiagnosticsSections.Safe`) — one failing section degrades to null instead of 500-ing the payload. Dashboard: Diagnostics tab = health overview; Ops ▸ Sessions tab = per-source/session detail (DA sources, time sync, UA sessions/subs/bandwidth).
 - **Ports (#26):** `GET /api/status/ports` (running ports, per-family probes, discovery-server detection) | `GET`+`POST /api/ports/config` | `POST /api/ports/probe` | `GET /api/firewall/status` | `POST /api/firewall/apply`. `GET /api/ports/config` reports running vs saved (`Bridge` keys in the data-dir appsettings.json; the UA value is the port inside the *effective* endpoint URL — `ua-settings.json` wins when it exists — because that is what binds) plus `restartRequired`, scan ranges and `firewallSupported`. `POST /api/ports/config` validates range and distinctness, refuses an IPv4-busy port that is not the bridge's own listener (409 + `busy[]` + next-free `suggestion`; IPv6-only holders stay allowed per `PortHelper`'s documented policy), then persists via `PortConfigStore.Save` (data-dir appsettings + `Ua:EndpointUrl` patch), calls `UaServerHost.SetEndpointUrl` when the UA port moved (in-memory always, `ua-settings.json` only when it already exists, so a port-only save never pins the UA section) and deletes `pki/own/cert.der` on a UA change — parity with startup auto-assignment. On Windows it also moves the matching firewall rule (`WindowsFirewall`, PowerShell `Get-`/`Set-`/`New-NetFirewallRule`: CIM names are language-stable where `netsh` output is not, and `Set-` preserves rule identity so MSI uninstall cleanup still matches) for each port that differs from the running one; failures are reported, never fatal. Nothing rebinds live — the response carries the restart command and the new dashboard URL. Non-Windows hosts answer `supported:false` and the card hides the firewall block.
 - `GET /api/hmi/tags` — HMI tag snapshot (mappings + current values), each tag stamped with its source's display name and type read from the `DaRuntimeSettings` registry (source no longer configured → `SourceId` + empty type)
 - `POST /api/hmi/write` — HMI write; gated on mapping access rights; reuses `WriteQueue` / `ApplyUaWriteAsync`
@@ -302,6 +302,35 @@ the status tooltip.
   retried on a 2 s → 30 s backoff by the housekeeping tick, and joins when it comes up. Connect
   throws only when no bridge can be reached. `BridgeSummary` lists the live bridges,
   `BridgeStatusSummary` the aggregate detail (e.g. "1/2 bridges connected — failed: b (…)").
+
+### Bridge client presence (who is connected)
+
+The dashboard's **Ops ▸ Sessions ▸ Bridge Clients** card answers "which PCs are connected to
+this bridge". It is fed by the `/hmi` hub, so it covers the Logic page in a browser, the HMI
+runtime and the Android viewer — every surface that holds a live link.
+
+- **Registration:** `HmiHub.OnConnectedAsync` / `OnDisconnectedAsync` feed
+  `ClientPresenceStore` (`src/OpcBridge.App/Presence/ClientPresenceStore.cs`), an in-memory
+  registry like `AuthSessionStore` (a bridge restart clears it). `ClientPresenceReader` reads the
+  client's claims from the hub query string, joins the peer address from the connection and the
+  signed-in account from the request, and caps every claimed string.
+- **Identity query:** `client` (`hmi` / `logic` / `browser` / `mobile`), `clientId` (stable per
+  app process or browser profile), `machine`, `os`, `version`. The shared `ClientIdentity`
+  helper (`OpcBridge.Client`) builds it; `HmiHubClient` sends `hmi`, the HMI's embedded Logic
+  page URL carries `client=logic&machine=…` and the page forwards it to its own hub (the plain
+  browser page sends `browser`), `MobileHubClient` sends `mobile`. The page stores its
+  `clientId` under `localStorage` key `opcbridge.clientId`, so a reload/reconnect replaces its
+  row instead of adding one.
+- **Row key and lifetime:** one entry per `clientId + kind + username`, holding the set of live
+  connection ids. Reconnects add a second link briefly instead of flickering the row; two tabs
+  collapse into one row with a link count; the entry disappears when its last connection closes.
+- **What a browser can report:** a browser cannot read the PC's name. Its row is named by the
+  IP address it connected from and described by the OS/browser parsed from its user agent, plus
+  the signed-in account. The HMI and phone rows carry the real machine/device name.
+- **Exposure:** `GET /api/diagnostics` → `clients: { total, items[] }` (each item has
+  `clientId`, `kind`, `machineName`, `address`, `username`, `platform`, `userAgent`,
+  `appVersion`, `connectedAtUtc`, `lastSeenUtc`, `connectionCount`); the Sessions page re-renders
+  it on its 2 s diagnostics poll. Authorization is the normal GET rule (Viewer).
 
 ### HMI tag browser (bridge + source separation)
 

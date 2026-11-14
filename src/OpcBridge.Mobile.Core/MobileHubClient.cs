@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.SignalR.Client;
 using OpcBridge.Client;
 using System.Net;
+using System.Reflection;
 
 namespace OpcBridge.Mobile.Core;
 
@@ -60,8 +61,11 @@ public sealed class MobileHubClient : IAsyncDisposable
         await DisposeAsync().ConfigureAwait(false);
         MobileHubTiming settings = timing ?? MobileHubTiming.Default;
 
+        string hubUrl = ClientIdentity.AppendQuery(
+            baseUrl.TrimEnd('/') + "/hmi",
+            ClientIdentity.HubQuery("mobile", version: ClientIdentity.AppVersion(Assembly.GetEntryAssembly())));
         HubConnection connection = new HubConnectionBuilder()
-            .WithUrl(baseUrl.TrimEnd('/') + "/hmi", options =>
+            .WithUrl(hubUrl, options =>
             {
                 if (cookies is not null)
                 {

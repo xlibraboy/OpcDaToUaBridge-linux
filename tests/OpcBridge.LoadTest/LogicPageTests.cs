@@ -1143,7 +1143,13 @@ public sealed class LogicPageTests
         // 1/2/5 s, then every 5 s (HmiHubTiming).
         Assert.Contains("const HUB_PATH = '/hmi';", script);
         Assert.Contains("new signalR.HubConnectionBuilder()", script);
-        Assert.Contains(".withUrl(HUB_PATH)", script);
+        // The hub URL carries the page's identity (client kind, plus the machine/OS/version the
+        // HMI injects into the address), so the bridge's Bridge Clients card can name the PC.
+        Assert.Contains(".withUrl(HUB_PATH + '?' + hubQuery())", script);
+        Assert.Contains("function hubQuery()", script);
+        Assert.Contains("localStorage.getItem('opcbridge.clientId')", script);
+        Assert.Contains("params.set('client'", script);
+        Assert.Contains("['machine', 'os', 'version']", script);
         Assert.Contains(".withAutomaticReconnect({", script);
         Assert.Contains("nextRetryDelayInMilliseconds:", script);
         // The first retry is 0 ms — a falsy-zero fallback would put it on the 5 s tail instead.

@@ -11,6 +11,7 @@ using Microsoft.Extensions.Options;
 using OpcBridge.App;
 using OpcBridge.App.Auth;
 using OpcBridge.App.Hmi;
+using OpcBridge.App.Presence;
 using OpcBridge.Client;
 using OpcBridge.Core;
 using OpcBridge.Da;
@@ -211,6 +212,8 @@ builder.Services.Configure<AuthOptions>(builder.Configuration.GetSection("Auth")
 builder.Services.Configure<ProfileOptions>(builder.Configuration.GetSection("Profile"));
 builder.Services.AddSingleton<UserStore>();
 builder.Services.AddSingleton<AuthSessionStore>();
+// Who is connected to /hmi right now. Filled by HmiHub, read by /api/diagnostics.
+builder.Services.AddSingleton<ClientPresenceStore>();
 builder.Services.AddSingleton<LoginThrottle>();
 builder.Services.AddSingleton<DashboardLogStore>();
 builder.Logging.Services.AddSingleton<ILoggerProvider, DashboardLogProvider>();
@@ -865,7 +868,7 @@ app.MapPost("/api/firewall/apply", async (FirewallApplyRequest request, Cancella
          linkStats
      });
  });
-app.MapGet("/api/diagnostics", (BridgeWorker worker, UaServerHost uaServer, BridgeState state, MqttRuntimeSettings mqttSettings, InfluxRuntimeSettings influxSettings, ILogger<Program> logger) =>
+app.MapGet("/api/diagnostics", (BridgeWorker worker, UaServerHost uaServer, BridgeState state, ClientPresenceStore clientPresence, MqttRuntimeSettings mqttSettings, InfluxRuntimeSettings influxSettings, ILogger<Program> logger) =>
 {
     void LogSectionFailure(string name, Exception exception) =>
         logger.LogError(exception, "/api/diagnostics: section {Section} failed; omitting it from the payload", name);
@@ -883,6 +886,11 @@ app.MapGet("/api/diagnostics", (BridgeWorker worker, UaServerHost uaServer, Brid
             sessions = DiagnosticsSections.Safe("ua.sessions", () => uaServer.GetSessionDiagnostics(), ex => LogSectionFailure("ua.sessions", ex)),
             subscriptions = DiagnosticsSections.Safe("ua.subscriptions", () => uaServer.GetSubscriptionDiagnostics(), ex => LogSectionFailure("ua.subscriptions", ex))
         },
+        clients = DiagnosticsSections.Safe("clients", () => new
+        {
+            total = clientPresence.Count,
+            items = clientPresence.Snapshot()
+        }, ex => LogSectionFailure("clients", ex)),
         runtime = new
         {
             bridgeState = runtimeStatus.BridgeState,

@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using OpcBridge.Client;
 using OpcBridge.Hmi.ViewModels.Logic;
 
 namespace OpcBridge.Hmi.Views;
@@ -129,7 +130,7 @@ public partial class LogicPage : UserControl
             return;
         }
 
-        if (webView_ is not null && Uri.TryCreate(panel.WebPageUrl, UriKind.Absolute, out Uri? uri))
+        if (webView_ is not null && Uri.TryCreate(PageAddress(panel.WebPageUrl), UriKind.Absolute, out Uri? uri))
         {
             if (webView_.Url != uri)
             {
@@ -139,6 +140,16 @@ public partial class LogicPage : UserControl
 
         UpdateWebFallbackText();
     }
+
+    /// <summary>
+    /// The page address plus the identity the bridge shows in its Bridge Clients card: this
+    /// PC's name, OS and app version. <c>WebPageUrl</c> itself stays the plain
+    /// <c>&lt;bridge&gt;/logic</c> address, so the selector and its tests keep the clean URL.
+    /// </summary>
+    private static string PageAddress(string pageUrl) =>
+        ClientIdentity.AppendQuery(
+            pageUrl,
+            ClientIdentity.HubQuery("logic", version: ClientIdentity.AppVersion(typeof(LogicPage).Assembly)));
 
     private void FailWebView(string message)
     {
@@ -240,7 +251,7 @@ public partial class LogicPage : UserControl
     private void OpenInBrowser()
     {
         if (Panel is not { } panel
-            || !Uri.TryCreate(panel.WebPageUrl, UriKind.Absolute, out Uri? uri))
+            || !Uri.TryCreate(PageAddress(panel.WebPageUrl), UriKind.Absolute, out Uri? uri))
         {
             SetWebStatus("Select a bridge first — its /logic page has no address yet.");
             return;

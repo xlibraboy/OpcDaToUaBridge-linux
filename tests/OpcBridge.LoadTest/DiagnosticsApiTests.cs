@@ -122,6 +122,20 @@ public sealed class DiagnosticsApiTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Diagnostics_IncludesBridgeClientsSection()
+    {
+        using JsonDocument doc = await app_!.GetJsonAsync("/api/diagnostics");
+        JsonElement root = doc.RootElement;
+
+        Assert.True(root.TryGetProperty("clients", out JsonElement clients), "expected top-level 'clients'");
+        Assert.True(clients.TryGetProperty("total", out JsonElement total));
+        Assert.Equal(JsonValueKind.Number, total.ValueKind);
+        Assert.True(total.GetInt32() >= 0);
+        Assert.True(clients.TryGetProperty("items", out JsonElement items));
+        Assert.Equal(JsonValueKind.Array, items.ValueKind);
+    }
+
+    [Fact]
     public async Task Diagnostics_IncludesProblemsSection()
     {
         using JsonDocument doc = await app_!.GetJsonAsync("/api/diagnostics");

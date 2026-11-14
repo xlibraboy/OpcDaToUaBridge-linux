@@ -43,7 +43,9 @@ public sealed class HmiHubClient : IAsyncDisposable
         await DisposeAsync().ConfigureAwait(false);
         HmiHubTiming settings = timing ?? HmiHubTiming.Default;
 
-        string hubUrl = baseUrl.TrimEnd('/') + "/hmi";
+        string hubUrl = ClientIdentity.AppendQuery(
+            baseUrl.TrimEnd('/') + "/hmi",
+            ClientIdentity.HubQuery("hmi", version: ClientIdentity.AppVersion(typeof(HmiHubClient).Assembly)));
         connection_ = new HubConnectionBuilder()
             .WithUrl(hubUrl)
             .WithAutomaticReconnect(settings.ReconnectDelays.ToArray())

@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+**The HMI identifies itself to the bridge.** Its `/hmi` link now carries the PC's machine name,
+OS and the runtime's version, and the embedded Logic page's address carries the same identity.
+The bridge's dashboard uses that to list the HMI under **Ops ▸ Sessions ▸ Bridge Clients**, so an
+operator can see which PC a live link belongs to (a plain browser page can only report its
+address and browser/OS).
+
 **The Logic page is the bridge's own `/logic` page.** The runtime's Logic page (View ▸ Logic,
 Ctrl+4) now opens the selected bridge's `/logic` page — the same editor, Tags tab, Result tab and
 theme picker the dashboard's browser serves — instead of carrying a second, native editor. The page

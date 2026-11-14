@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The viewer identifies itself to the bridge.** Its `/hmi` link carries the device name, OS and
+  the app's version, so the bridge's dashboard can list the phone under **Ops ▸ Sessions ▸ Bridge
+  Clients** alongside the Logic page and the HMI runtime.
+
 - **Live data is gated on one bound plant access point, provisioned by a control user.**
   Settings gained **Plant Wi-Fi**: after signing in with an **Engineer or Admin** bridge
   account — the same `users.json` roles that control the Logic web page — the control user

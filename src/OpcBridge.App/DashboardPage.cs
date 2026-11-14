@@ -1367,6 +1367,10 @@ internal static class DashboardPage
 <div class="view" id="view-sessions">
     <h1 class="view-title" tabindex="-1">Sessions</h1>
     <div class="box" style="margin-bottom:14px">
+        <div class="box-h">Bridge Clients <span class="info" data-tip="Every live /hmi link: the Logic page in a browser, the HMI runtime and the Android viewer. The desktop apps report their PC/device name, OS and app version. A browser cannot read its PC's name, so its row shows the address it connected from and the browser/OS parsed from its user agent, next to the signed-in account.">i</span><span class="msg" id="diagClientCount" style="margin-left:auto"></span></div>
+        <div class="box-b"><div class="list" id="diagClients" style="max-height:280px"><span class="msg">Loading bridge clients…</span></div></div>
+    </div>
+    <div class="box" style="margin-bottom:14px">
         <div class="box-h">Source Diagnostics <span class="info" data-tip="Health of every configured source — OPC DA, OPC UA, and driver sources (Melsec, S7). Shows connection state, read latency, rate-group budget for polled sources, the last fault reason, and data freshness.">i</span><span class="msg" id="diagDaSummary" style="margin-left:auto"></span></div>
         <div class="box-b" id="diagDaSources"><span class="msg">Loading source diagnostics…</span></div>
     </div>
@@ -6122,6 +6126,28 @@ function renderDiagnostics(p) {
     }).join('') : '<span class="msg">No OPC DA sources.</span>';
     el('diagTimeSync').innerHTML = timeSyncHtml;
 
+
+    // Bridge Clients — the /hmi links that are live right now: the Logic page in a browser,
+    // the HMI runtime and the Android viewer. The PC/device name is what the app reported;
+    // a browser cannot read its machine name, so its row is named by its address and
+    // described by the OS/browser its user agent names.
+    const bridgeClients = (p.clients && p.clients.items) || [];
+    el('diagClientCount').textContent = bridgeClients.length + ' connected';
+    el('diagClients').innerHTML = bridgeClients.length ? bridgeClients.map(c => {
+        const kind = String(c.kind || 'unknown');
+        const kindLabel = { hmi: 'HMI', logic: 'LOGIC', browser: 'BROWSER', mobile: 'PHONE' }[kind] || 'CLIENT';
+        const kindClass = kind === 'hmi' ? 'good' : (kind === 'mobile' ? 'partial' : '');
+        const name = c.machineName || (c.address ? 'PC ' + c.address : 'Unknown PC');
+        const detail = [
+            c.username ? 'user ' + c.username : '',
+            c.address,
+            c.platform,
+            c.appVersion ? 'v' + c.appVersion : '',
+            (c.connectionCount || 1) > 1 ? c.connectionCount + ' links' : '',
+            'connected ' + relTime(c.connectedAtUtc)
+        ].filter(Boolean).join(' · ');
+        return `<div class="li"${c.userAgent ? ` title="${esc(c.userAgent)}"` : ''}><div style="flex:1"><div class="n">${esc(name)} ${badge(kindLabel, kindClass)}</div><div class="p">${esc(detail)}</div></div></div>`;
+    }).join('') : '<span class="msg">No Logic page, HMI or phone clients connected.</span>';
 
     // UA Sessions
     const sessions = (p.ua && p.ua.sessions) || [];

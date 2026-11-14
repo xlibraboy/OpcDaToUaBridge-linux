@@ -3680,6 +3680,35 @@ function poll() {
     });
 }
 
+// Who this page is, for the bridge's Bridge Clients card. The HMI embeds the page with
+// `client=logic&machine=…`, so the embedded page can report its PC; a plain browser cannot
+// read the machine name, and the bridge fills in the address and browser/OS it sees. The id
+// is per browser profile, so a reload or reconnect replaces the row instead of adding one.
+function hubQuery() {
+  const page = new URLSearchParams(location.search);
+  const params = new URLSearchParams();
+  const kind = page.get('client');
+  params.set('client', ['hmi', 'logic', 'browser', 'mobile'].indexOf(kind) >= 0 ? kind : 'browser');
+  ['machine', 'os', 'version'].forEach((key) => {
+    const value = page.get(key);
+    if (value) params.set(key, value);
+  });
+  let id = '';
+  try {
+    id = localStorage.getItem('opcbridge.clientId') || '';
+    if (!id) {
+      id = (window.crypto && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : Date.now().toString(36) + Math.random().toString(36).slice(2);
+      localStorage.setItem('opcbridge.clientId', id);
+    }
+  } catch (e) {
+    id = '';
+  }
+  if (id) params.set('clientId', id);
+  return params.toString();
+}
+
 // The bridge's own push: `logic` carries the same snapshot /api/logic/state returns, sent as soon
 // as a derived state changes. It is what makes a one-pass edge visible here — the page sees the
 // pulse the 1 Hz fallback could step over — and it goes through the same applyState path a poll
@@ -3687,7 +3716,7 @@ function poll() {
 function startHub() {
   if (!window.signalR || !window.signalR.HubConnectionBuilder) return;
   hub = new signalR.HubConnectionBuilder()
-    .withUrl(HUB_PATH)
+    .withUrl(HUB_PATH + '?' + hubQuery())
     .withAutomaticReconnect({
       // The HMI's own schedule (HmiHubTiming): at once, then 1/2/5 s, then every 5 s.
       nextRetryDelayInMilliseconds: (retry) => retry.previousRetryCount < HUB_RETRY_MS.length

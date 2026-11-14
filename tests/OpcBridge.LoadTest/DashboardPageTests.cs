@@ -6,6 +6,19 @@ namespace OpcBridge.LoadTest;
 public sealed class DashboardPageTests
 {
     [Fact]
+    public void Html_SessionsShowsBridgeClients()
+    {
+        // The Sessions page leads with the live hub clients, not only the OPC UA sessions:
+        // the Logic page, the HMI runtime and the phone, named by their PC/device when the
+        // app could report one.
+        Assert.Contains("Bridge Clients", DashboardPage.Html);
+        Assert.Contains("id=\"diagClients\"", DashboardPage.Html);
+        Assert.Contains("id=\"diagClientCount\"", DashboardPage.Html);
+        Assert.Contains("(p.clients && p.clients.items)", DashboardPage.Script);
+        Assert.Contains("No Logic page, HMI or phone clients connected.", DashboardPage.Script);
+    }
+
+    [Fact]
     public void Html_InterlinksViewUsesMappedTagPickers()
     {
         Assert.DoesNotContain("id=\"fpProvider\"", DashboardPage.Html);
@@ -1880,8 +1893,13 @@ public sealed class DashboardPageTests
     public void Html_NoLongerShipsTheLogicView()
     {
         // The Logic authoring surface moved into the OpcBridge HMI runtime: the bridge
-        // dashboard must not carry the tab, the editor or the endpoints any more.
-        Assert.DoesNotContain("logic", DashboardPage.FullHtml, StringComparison.OrdinalIgnoreCase);
+        // dashboard must not carry the tab, the editor or the endpoints any more. The word
+        // itself is allowed — the Sessions page's Bridge Clients card names the Logic page
+        // as a live client — so pin the retired surface, not the product name.
+        Assert.DoesNotContain("id=\"view-logic\"", DashboardPage.FullHtml, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("data-route=\"tags/logic\"", DashboardPage.FullHtml, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("/api/logic", DashboardPage.FullHtml, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("function saveBlock", DashboardPage.Script, StringComparison.Ordinal);
     }
 
     private static int CountOccurrences(string haystack, string needle)
