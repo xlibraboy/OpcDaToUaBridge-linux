@@ -52,12 +52,12 @@
     <Property Id="WEBVIEW2_RUNTIME_VERSION">
       <RegistrySearch Id="WebView2RuntimeMachine" Root="HKLM"
                       Key="SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
-                      Name="pv" Type="version" Win64="yes" />
+                      Name="pv" Type="raw" />
     </Property>
     <Property Id="WEBVIEW2_RUNTIME_VERSION_USER">
       <RegistrySearch Id="WebView2RuntimeUser" Root="HKCU"
                       Key="Software\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
-                      Name="pv" Type="version" Win64="yes" />
+                      Name="pv" Type="raw" />
     </Property>
 
     <Binary Id="WebView2Bootstrapper" SourceFile="build/webview2/MicrosoftEdgeWebview2Setup.exe" />
@@ -69,9 +69,8 @@
                   Return="ignore" />
 
     <InstallExecuteSequence>
-      <Custom Action="InstallWebView2Runtime" Before="InstallFinalize">
-        <![CDATA[NOT Installed AND NOT REMOVE AND NOT WEBVIEW2_RUNTIME_VERSION AND NOT WEBVIEW2_RUNTIME_VERSION_USER]]>
-      </Custom>
+      <Custom Action="InstallWebView2Runtime" Before="InstallFinalize"
+              Condition="NOT Installed AND NOT REMOVE AND NOT WEBVIEW2_RUNTIME_VERSION AND NOT WEBVIEW2_RUNTIME_VERSION_USER" />
     </InstallExecuteSequence>
 
     <ui:WixUI Id="WixUI_FeatureTree" />
