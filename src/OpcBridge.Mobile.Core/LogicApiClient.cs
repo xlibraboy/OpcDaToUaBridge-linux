@@ -63,6 +63,14 @@ public sealed class LogicApiClient : IDisposable
 
     public void SetBaseAddress(string baseUrl)
     {
+        string normalized = (baseUrl ?? string.Empty).TrimEnd('/');
+        if (string.Equals(base_url_, normalized, StringComparison.OrdinalIgnoreCase))
+        {
+            // A sign-in on an already-connected bridge must not replace the live client (and
+            // its pooled connection) — the coordinator's ConnectAsync already set the address.
+            return;
+        }
+
         client_.Dispose();
         // Retire pooled sockets and bound every request: after a Wi-Fi drop or a bridge
         // restart the phone must fail fast and retry rather than ride a dead connection.
@@ -73,10 +81,10 @@ public sealed class LogicApiClient : IDisposable
             UseCookies = true
         })
         {
-            BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/"),
+            BaseAddress = new Uri(normalized + "/"),
             Timeout = TimeSpan.FromSeconds(15)
         };
-        base_url_ = baseUrl.TrimEnd('/');
+        base_url_ = normalized;
     }
 
     public Task<MobileResult<LogicStateSnapshot>> GetLogicStateAsync(CancellationToken cancellationToken) =>
